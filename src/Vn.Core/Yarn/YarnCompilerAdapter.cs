@@ -182,14 +182,14 @@ internal sealed class YarnCompilerAdapter
         CompilationResult result)
     {
         YarnSymbolIndex symbols =
-            YarnSymbolIndex.Build(result, NormalizeUri);
+            YarnSymbolIndex.Build(result, YarnPaths.Normalize);
 
         return result.NodeMetadata
             .OrderBy(metadata => metadata.Title, StringComparer.Ordinal)
             .Select(metadata =>
             {
                 string filePath =
-                    NormalizeUri(metadata.Uri);
+                    YarnPaths.Normalize(metadata.Uri);
 
                 int headerLine = ToOneBased(metadata.HeaderStartLine);
                 int bodyStartLine = ToOneBased(metadata.BodyStartLine);
@@ -199,7 +199,7 @@ internal sealed class YarnCompilerAdapter
                     .Select(jump => new StoryJump(
                         metadata.Title,
                         jump.DestinationTitle,
-                        NormalizeUri(jump.Uri),
+                        YarnPaths.Normalize(jump.Uri),
                         ToOneBased(jump.Range.Start.Line),
                         ToOneBased(jump.Range.Start.Character)))
                     .OrderBy(jump => jump.FilePath, StringComparer.Ordinal)
@@ -243,24 +243,6 @@ internal sealed class YarnCompilerAdapter
             Array.Empty<StoryNode>(),
             new HashSet<string>(StringComparer.Ordinal),
             new[] { diagnostic });
-    }
-
-    private static string NormalizeUri(string value)
-    {
-        if (Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) &&
-            uri.IsFile)
-        {
-            return uri.LocalPath;
-        }
-
-        try
-        {
-            return Path.GetFullPath(value);
-        }
-        catch
-        {
-            return value;
-        }
     }
 
     private static int ToOneBased(int zeroBased)
