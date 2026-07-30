@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:story-editor-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+  h2:
+    console:
+      enabled: false
