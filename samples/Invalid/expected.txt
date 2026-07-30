@@ -1,0 +1,27 @@
+﻿VN Tool - Yarn 검증 결과
+========================================================
+Yarn 프로젝트: <root>/samples/Invalid/Demo.yarnproject
+게임 스키마:    <root>/samples/Invalid/game.schema.json
+소스 파일:      1
+노드:           2
+
+[노드]
+- Ending (samples/Invalid/Broken.yarn:10)
+- Start (samples/Invalid/Broken.yarn:1)
+    -> Enidng (samples/Invalid/Broken.yarn:7:8)
+
+[진단]
+(External) [Info] YS0010
+  Variable '$affection_ann' is declared but never used
+samples/Invalid/Broken.yarn:5:7 [Error] VN3001
+  알 수 없는 변수 '$affection_an'입니다. '$affection_ann'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Invalid/Broken.yarn:5:7 [Warning] YS0003
+  Variable '$affection_an' is used but not declared. Declare it with: <<declare $affection_an = value>>
+samples/Invalid/Broken.yarn:6:3 [Error] VN3002
+  알 수 없는 명령 'play_bg'입니다. 'play_bgm'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Invalid/Broken.yarn:7:8 [Error] VN4001
+  알 수 없는 이동 대상 노드 'Enidng'입니다. 'Ending'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Invalid/Broken.yarn:7:8 [Warning] YS0012
+  Jump to undefined node: 'Enidng'
+
+결과: 오류 3개, 경고 2개

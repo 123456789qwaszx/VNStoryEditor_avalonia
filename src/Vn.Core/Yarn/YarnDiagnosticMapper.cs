@@ -38,7 +38,7 @@ internal static class YarnDiagnosticMapper
 
         return new VnDiagnostic(
             string.IsNullOrWhiteSpace(code)
-                ? "YARN0000"
+                ? VnDiagnosticCodes.YarnUnclassified
                 : NormalizeCode(code),
             severity,
             string.IsNullOrWhiteSpace(message)
@@ -49,12 +49,22 @@ internal static class YarnDiagnosticMapper
             column < 0 ? 0 : column + 1);
     }
 
+    /// <summary>
+    /// Yarn이 낸 진단 코드를 YS 접두사 아래로 통과시킨다.
+    /// 3.2.1의 코드는 이미 YS0003 같은 형태라 그대로 쓰이고,
+    /// 다른 형태가 오면 원본을 잃지 않도록 YS- 를 붙여 감싼다.
+    /// 접두사가 곧 "이건 우리가 아니라 Yarn이 낸 진단"이라는 표시이며,
+    /// 억제 규칙은 이 구분 위에서 동작한다.
+    /// </summary>
     private static string NormalizeCode(string code)
     {
         string trimmed = code.Trim();
-        return trimmed.StartsWith("YARN", StringComparison.OrdinalIgnoreCase)
+
+        return trimmed.StartsWith(
+            VnDiagnosticCodes.YarnPrefix,
+            StringComparison.OrdinalIgnoreCase)
             ? trimmed.ToUpperInvariant()
-            : $"YARN-{trimmed}";
+            : $"{VnDiagnosticCodes.YarnPrefix}-{trimmed}";
     }
 
     private static object? ReadProperty(

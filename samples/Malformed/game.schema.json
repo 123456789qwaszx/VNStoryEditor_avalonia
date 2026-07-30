@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "variables": [
+    { "id": null, "type": "number", "default": 0 },
+    { "id": "affection_ann", "type": "number", "default": "숫자가 아님" },
+    { "id": "has_room_key", "type": "bool", "default": false },
+    { "id": "has_room_key", "type": "bool", "default": false },
+    { "id": "mood", "type": null }
+  ],
+  "commands": [
+    { "id": "play_bgm" },
+    { "id": "play_bgm" },
+    { "id": "give_item" },
+    { "id": null }
+  ],
+  "eventTypes": [
+    { "id": "give_item" }
+  ]
+}

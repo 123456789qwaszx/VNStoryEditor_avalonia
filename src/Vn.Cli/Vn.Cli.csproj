@@ -3,6 +3,11 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>Vn.Cli</RootNamespace>
+    <!--
+      컬처 독립성을 코드 리뷰가 아니라 런타임으로 보장한다.
+      어느 로케일에서 돌려도 정렬·숫자 변환 결과가 같아야 골든 픽스처가 의미를 가진다.
+    -->
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Vn.Core\Vn.Core.csproj" />

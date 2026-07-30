@@ -4,6 +4,8 @@ public sealed record StoryNode(
     string Title,
     string FilePath,
     int HeaderLine,
-    IReadOnlyList<string> CommandCalls,
-    IReadOnlyList<string> VariableReferences,
+    int BodyStartLine,
+    int BodyEndLine,
+    IReadOnlyList<StoryReference> CommandCalls,
+    IReadOnlyList<StoryReference> VariableReferences,
     IReadOnlyList<StoryJump> Jumps);
