@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "variables": [
+    {
+      "id": "affection_ann",
+      "type": "number",
+      "default": 0,
+      "description": "Ann의 호감도"
+    },
+    {
+      "id": "has_room_key",
+      "type": "bool",
+      "default": false,
+      "description": "객실 열쇠 보유 여부"
+    }
+  ],
+  "commands": [
+    {
+      "id": "play_bgm",
+      "description": "배경 음악을 재생한다.",
+      "params": [
+        {
+          "name": "trackId",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "give_item",
+      "description": "아이템을 지급한다.",
+      "params": [
+        {
+          "name": "itemId",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

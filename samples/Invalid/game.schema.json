@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "variables": [
+    {
+      "id": "affection_ann",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "commands": [
+    {
+      "id": "play_bgm",
+      "params": [
+        {
+          "name": "trackId",
+          "type": "string"
+        }
+      ]
+    }
+  ]
+}

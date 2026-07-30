@@ -1,0 +1,18 @@
+title: Start
+---
+Ann: 어서 오세요.
+<<play_bgm "guesthouse_day">>
+<<set $affection_ann += 1>>
+
+-> 열쇠를 건넨다
+    <<set $has_room_key = true>>
+    <<give_item "room_key">>
+    <<jump Ending>>
+-> 잠시 기다린다
+    <<jump Ending>>
+===
+
+title: Ending
+---
+Ann: 오늘 일은 여기까지예요.
+===
