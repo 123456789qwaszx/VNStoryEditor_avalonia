@@ -123,12 +123,15 @@ internal static class GameSchemaLoader
                     0,
                     0));
             }
-            else if (!SchemaTypeMapper.TryGetDefaultValue(variable, out _))
+            else if (!SchemaTypeMapper.TryGetDefaultValue(
+                         variable,
+                         out _,
+                         out string? problem))
             {
                 diagnostics.Add(new VnDiagnostic(
                     VnDiagnosticCodes.SchemaDefaultValueInvalid,
                     DiagnosticSeverity.Error,
-                    $"변수 '{variable.Id}'의 default 값이 타입 '{variable.Type}'과 맞지 않습니다.",
+                    $"변수 '{variable.Id}'의 default 값이 타입 '{variable.Type}'과 맞지 않습니다. {problem}",
                     path,
                     0,
                     0));

@@ -65,10 +65,7 @@ internal sealed class YarnCompilerAdapter
                 Compiler.Compile(compilationJob);
 
             IReadOnlyList<VnDiagnostic> diagnostics =
-                result.Diagnostics
-                    .Select(YarnDiagnosticMapper.Map)
-                    .OrderBy(DiagnosticSortKey, StringComparer.Ordinal)
-                    .ToArray();
+                MapDiagnostics(result, fullProjectPath);
 
             IReadOnlyList<StoryNode> nodes =
                 ExtractNodes(result);
@@ -93,11 +90,54 @@ internal sealed class YarnCompilerAdapter
                 new VnDiagnostic(
                     VnDiagnosticCodes.YarnUnexpectedFailure,
                     DiagnosticSeverity.Error,
-                    $"Yarn 프로젝트 처리 중 예상하지 못한 오류가 발생했습니다. {exception.Message}",
+                    $"Yarn 프로젝트 처리 중 예상하지 못한 오류가 발생했습니다. " +
+                    $"[{exception.GetType().Name}] {exception.Message}",
                     fullProjectPath,
                     0,
                     0));
         }
+    }
+
+    /// <summary>
+    /// Yarn 진단을 우리 모델로 옮긴다.
+    ///
+    /// 옮기기 전에 진단 객체의 모양을 한 번 확인한다. 모양이 다르면 그 아래 결과가
+    /// 전부 조용히 틀어지기 때문이다 — 심각도를 못 읽으면 오류가 사라진 것처럼 보이고,
+    /// 파일 이름을 못 읽으면 위치가 사라진다. 그런 상태를 침묵으로 넘기지 않고 VN2004로 알린다.
+    /// </summary>
+    private static IReadOnlyList<VnDiagnostic> MapDiagnostics(
+        CompilationResult result,
+        string projectPath)
+    {
+        var diagnostics = new List<VnDiagnostic>();
+
+        object? sample = result.Diagnostics.FirstOrDefault();
+
+        if (sample is not null)
+        {
+            IReadOnlyList<string> missing =
+                YarnDiagnosticMapper.FindMissingProperties(sample.GetType());
+
+            if (missing.Count > 0)
+            {
+                diagnostics.Add(new VnDiagnostic(
+                    VnDiagnosticCodes.YarnDiagnosticShapeUnknown,
+                    DiagnosticSeverity.Error,
+                    $"Yarn 진단 모델이 예상과 다릅니다. 찾지 못한 속성: {string.Join(", ", missing)}. " +
+                    "이 상태에서는 Yarn이 낸 진단의 심각도와 위치를 신뢰할 수 없습니다. " +
+                    "Directory.Packages.props의 YarnSpinner.Compiler 버전과 YarnDiagnosticMapper를 함께 확인하세요.",
+                    projectPath,
+                    0,
+                    0));
+            }
+        }
+
+        diagnostics.AddRange(
+            result.Diagnostics.Select(YarnDiagnosticMapper.Map));
+
+        return diagnostics
+            .OrderBy(DiagnosticSortKey, StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static IEnumerable<Declaration> CreateSchemaDeclarations(
@@ -124,12 +164,11 @@ internal sealed class YarnCompilerAdapter
 
             // default가 타입과 안 맞으면 VN1017이 이미 알렸다.
             // 여기서는 영값으로 계속 진행해서 오류 하나가 컴파일 전체를 막지 않게 한다.
-            if (!SchemaTypeMapper.TryGetDefaultValue(
-                    variable,
-                    out IConvertible defaultValue))
-            {
-                defaultValue = SchemaTypeMapper.GetFallbackValue(variable.Type);
-            }
+            // 실패해도 out 값은 타입별 영값으로 채워져 있으므로 그대로 쓴다.
+            SchemaTypeMapper.TryGetDefaultValue(
+                variable,
+                out IConvertible defaultValue,
+                out _);
 
             yield return Declaration.CreateVariable(
                 GameSchemaLoader.NormalizeVariableName(variable.Id),
@@ -180,17 +219,17 @@ internal sealed class YarnCompilerAdapter
                     symbols.Resolve(
                         YarnSymbolKind.Command,
                         filePath,
+                        headerLine,
                         bodyStartLine,
                         bodyEndLine,
-                        metadata.CommandCalls,
-                        headerLine),
+                        metadata.CommandCalls),
                     symbols.Resolve(
                         YarnSymbolKind.Variable,
                         filePath,
+                        headerLine,
                         bodyStartLine,
                         bodyEndLine,
-                        metadata.VariableReferences,
-                        headerLine),
+                        metadata.VariableReferences),
                     jumps);
             })
             .ToArray();

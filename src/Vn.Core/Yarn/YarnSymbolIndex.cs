@@ -53,17 +53,25 @@ internal sealed class YarnSymbolIndex
     }
 
     /// <summary>
-    /// 노드 본문 범위 안에서 <paramref name="names"/>가 쓰인 지점을 모두 찾는다.
-    /// 한 번도 못 찾은 이름은 노드 헤더 줄로 대체한다.
+    /// 노드 안에서 <paramref name="names"/>가 쓰인 지점을 모두 찾는다.
+    ///
+    /// 찾는 순서는 본문 → 헤더 → 실패다.
+    /// 헤더를 따로 보는 이유는 Yarn의 <c>when:</c> 절처럼 본문 밖에서 변수를 쓰는 자리가 있기 때문이다.
+    /// 그 토큰은 이미 인덱스에 들어 있으므로, 본문에서 못 찾았다고 바로 헤더 1열로 포기하면
+    /// 알고 있는 위치를 스스로 버리는 셈이 된다.
+    ///
+    /// 세 단계 모두 실패해도 진단 자체를 버리지는 않는다. 위치가 부정확한 진단이
+    /// 진단이 없는 것보다는 낫다.
     /// 같은 이름을 한 노드에서 두 번 쓰면 두 개가 나오며, 이는 의도된 동작이다.
+    /// 고칠 곳이 두 군데면 진단도 두 개여야 한다.
     /// </summary>
     public IReadOnlyList<StoryReference> Resolve(
         YarnSymbolKind kind,
         string filePath,
+        int headerLine,
         int bodyStartLine,
         int bodyEndLine,
-        IEnumerable<string> names,
-        int fallbackLine)
+        IEnumerable<string> names)
     {
         IReadOnlyList<Occurrence> candidates =
             _files.TryGetValue(filePath, out FileSymbols? symbols)
@@ -74,36 +82,24 @@ internal sealed class YarnSymbolIndex
 
         foreach (string name in names.Distinct(StringComparer.Ordinal))
         {
-            bool found = false;
-
-            foreach (Occurrence occurrence in candidates)
+            if (Collect(candidates, name, filePath, bodyStartLine, bodyEndLine, references))
             {
-                if (occurrence.Line < bodyStartLine ||
-                    occurrence.Line > bodyEndLine ||
-                    !string.Equals(occurrence.Name, name, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                references.Add(new StoryReference(
-                    name,
-                    filePath,
-                    occurrence.Line,
-                    occurrence.Column));
-
-                found = true;
+                continue;
             }
 
-            if (!found)
+            // 헤더 구간: 헤더 첫 줄부터 본문 시작 직전까지.
+            // headerLine이 0이면 위치 정보 자체가 없는 것이므로 건너뛴다.
+            if (headerLine > 0 &&
+                Collect(candidates, name, filePath, headerLine, bodyStartLine - 1, references))
             {
-                // 헤더 조건식처럼 본문 밖에서 쓰인 경우가 있다.
-                // 위치를 모른다고 진단 자체를 버리지는 않는다.
-                references.Add(new StoryReference(
-                    name,
-                    filePath,
-                    fallbackLine,
-                    1));
+                continue;
             }
+
+            references.Add(new StoryReference(
+                name,
+                filePath,
+                headerLine,
+                1));
         }
 
         return references
@@ -111,6 +107,46 @@ internal sealed class YarnSymbolIndex
             .ThenBy(reference => reference.Column)
             .ThenBy(reference => reference.Name, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    /// <summary>
+    /// 주어진 줄 범위 안에서 이름이 쓰인 지점을 전부 모은다.
+    /// 하나라도 찾으면 true. 범위가 뒤집혀 있으면(비어 있으면) 아무것도 하지 않는다.
+    /// </summary>
+    private static bool Collect(
+        IReadOnlyList<Occurrence> candidates,
+        string name,
+        string filePath,
+        int fromLine,
+        int toLine,
+        ICollection<StoryReference> references)
+    {
+        if (fromLine <= 0 || toLine < fromLine)
+        {
+            return false;
+        }
+
+        bool found = false;
+
+        foreach (Occurrence occurrence in candidates)
+        {
+            if (occurrence.Line < fromLine ||
+                occurrence.Line > toLine ||
+                !string.Equals(occurrence.Name, name, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            references.Add(new StoryReference(
+                name,
+                filePath,
+                occurrence.Line,
+                occurrence.Column));
+
+            found = true;
+        }
+
+        return found;
     }
 
     private static FileSymbols Scan(FileParseResult parseResult, string path)
