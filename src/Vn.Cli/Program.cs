@@ -293,6 +293,15 @@ static string ToStablePath(string path, string root)
         return "-";
     }
 
+    // Yarn은 파일에 매이지 않은 진단에 "(External)" 같은 의사 경로를 쓴다.
+    // 실제 경로가 아닌 것에 GetRelativePath를 걸면 "../../(External)" 처럼
+    // 프로젝트 폴더가 어느 깊이에 있느냐에 따라 달라지는 문자열이 나온다.
+    // 픽스처가 폴더 깊이에 매달리게 되므로, 절대 경로가 아니면 그대로 둔다.
+    if (!Path.IsPathRooted(path))
+    {
+        return path.Replace('\\', '/');
+    }
+
     string relative;
 
     try

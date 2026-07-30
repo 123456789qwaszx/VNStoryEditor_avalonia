@@ -5,7 +5,10 @@
     { "id": "affection_ann", "type": "number", "default": "숫자가 아님" },
     { "id": "has_room_key", "type": "bool", "default": false },
     { "id": "has_room_key", "type": "bool", "default": false },
-    { "id": "mood", "type": null }
+    { "id": "mood", "type": null },
+    { "id": "is_night", "type": "bool", "default": 1 },
+    { "id": "player_name", "type": "string", "default": true },
+    { "id": "chapter", "type": "int", "default": 1.5 }
   ],
   "commands": [
     { "id": "play_bgm" },

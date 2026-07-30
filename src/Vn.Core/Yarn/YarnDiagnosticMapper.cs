@@ -162,6 +162,15 @@ internal static class YarnDiagnosticMapper
         };
     }
 
+    /// <summary>
+    /// 진단이 가리키는 파일 경로를 다듬는다.
+    ///
+    /// Yarn은 파일에 매이지 않은 진단에 <c>(External)</c> 같은 의사 파일 이름을 쓴다.
+    /// 그런 값을 <see cref="Path.GetFullPath(string)"/>에 넘기면 현재 작업 디렉터리가 앞에 붙어
+    /// 실재하지 않는 절대 경로가 만들어진다. 그 뒤로는 이것이 진짜 경로인지 알 방법이 없고,
+    /// 출력 문자열이 "어디서 실행했느냐"에 따라 달라진다.
+    /// 그래서 실제로 파일을 가리킬 때만 절대 경로로 바꾸고, 나머지는 원본 그대로 둔다.
+    /// </summary>
     private static string NormalizeFilePath(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -177,11 +186,22 @@ internal static class YarnDiagnosticMapper
 
         try
         {
-            return Path.GetFullPath(value);
+            // 이미 절대 경로면 .. 같은 조각만 정리한다.
+            // 상대 경로는 실제로 그 파일이 있을 때만 절대 경로로 올린다.
+            if (Path.IsPathRooted(value) || File.Exists(value))
+            {
+                return Path.GetFullPath(value);
+            }
         }
-        catch
+        catch (Exception exception) when (
+            exception is ArgumentException or
+                IOException or
+                NotSupportedException or
+                UnauthorizedAccessException)
         {
-            return value;
+            // 경로로 해석할 수 없는 값이다. 아래에서 원본을 그대로 돌려준다.
         }
+
+        return value;
     }
 }

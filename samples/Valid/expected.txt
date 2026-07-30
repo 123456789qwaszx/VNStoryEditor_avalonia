@@ -1,17 +1,5 @@
-﻿VN Tool - Yarn 검증 결과
-========================================================
-Yarn 프로젝트: <root>/samples/Valid/Demo.yarnproject
-게임 스키마:    <root>/samples/Valid/game.schema.json
-소스 파일:      1
-노드:           2
-
-[노드]
-- Ending (samples/Valid/Story.yarn:15)
-- Start (samples/Valid/Story.yarn:1)
-    -> Ending (samples/Valid/Story.yarn:10:12)
-    -> Ending (samples/Valid/Story.yarn:12:12)
-
-[진단]
-오류와 경고가 없습니다.
-
-결과: 오류 0개, 경고 0개
+﻿source	Story.yarn
+node	Ending	Story.yarn	15
+node	Start	Story.yarn	1
+jump	Start	Ending	Story.yarn	10	12
+jump	Start	Ending	Story.yarn	12	12
