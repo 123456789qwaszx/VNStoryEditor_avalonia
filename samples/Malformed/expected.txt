@@ -1,0 +1,41 @@
+﻿VN Tool - Yarn 검증 결과
+========================================================
+Yarn 프로젝트: <root>/samples/Malformed/Demo.yarnproject
+게임 스키마:    <root>/samples/Malformed/game.schema.json
+소스 파일:      1
+노드:           1
+
+[노드]
+- Start (samples/Malformed/Story.yarn:1)
+
+[진단]
+(External) [Info] YS0010
+  Variable '$affection_ann' is declared but never used
+(External) [Info] YS0010
+  Variable '$has_room_key' is declared but never used
+samples/Malformed/Story.yarn:6:7 [Error] VN3001
+  알 수 없는 변수 '$affection_an'입니다. '$affection_ann'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Malformed/Story.yarn:6:7 [Warning] YS0003
+  Variable '$affection_an' is used but not declared. Declare it with: <<declare $affection_an = value>>
+samples/Malformed/Story.yarn:7:7 [Error] VN3001
+  알 수 없는 변수 '$affection_an'입니다. '$affection_ann'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Malformed/Story.yarn:8:3 [Error] VN3002
+  알 수 없는 명령 'play_bg'입니다. 'play_bgm'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Malformed/Story.yarn:9:3 [Error] VN3002
+  알 수 없는 명령 'play_bg'입니다. 'play_bgm'을(를) 입력하려던 것인지 확인해 주세요.
+samples/Malformed/game.schema.json [Error] VN1011
+  변수 '$has_room_key'이(가) 스키마에 두 번 이상 선언되어 있습니다.
+samples/Malformed/game.schema.json [Error] VN1012
+  명령 'play_bgm'이(가) 스키마에 두 번 이상 선언되어 있습니다.
+samples/Malformed/game.schema.json [Error] VN1013
+  변수 id가 비어 있습니다.
+samples/Malformed/game.schema.json [Error] VN1014
+  변수 'mood'의 타입 ''은 지원되지 않습니다. string, number, int, float, bool 중 하나를 사용하세요.
+samples/Malformed/game.schema.json [Error] VN1015
+  명령 id가 비어 있습니다.
+samples/Malformed/game.schema.json [Error] VN1016
+  명령 'give_item'이(가) commands와 eventTypes 양쪽에 선언되어 있습니다. 한쪽만 남기세요. 지금은 commands 쪽 정의만 사용됩니다.
+samples/Malformed/game.schema.json [Error] VN1017
+  변수 'affection_ann'의 default 값이 타입 'number'과 맞지 않습니다.
+
+결과: 오류 11개, 경고 1개

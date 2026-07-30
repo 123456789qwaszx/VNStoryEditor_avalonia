@@ -26,30 +26,55 @@ internal static class SchemaTypeMapper
         };
     }
 
-    public static IConvertible GetDefaultValue(VariableDefinition definition)
+    /// <summary>
+    /// 스키마의 default를 Yarn 값으로 변환한다.
+    /// 작가가 손으로 편집한 스키마에서 default가 타입과 맞지 않을 수 있으므로
+    /// 예외를 던지는 대신 false를 돌려주고, 호출부가 진단으로 알린다.
+    /// </summary>
+    public static bool TryGetDefaultValue(
+        VariableDefinition definition,
+        out IConvertible value)
     {
-        object? value = definition.Default;
+        object? raw = definition.Default is JsonElement element
+            ? ConvertJsonElement(element)
+            : null;
 
-        if (value is JsonElement element)
+        try
         {
-            value = ConvertJsonElement(element);
+            value = Normalize(definition.Type) switch
+            {
+                "string" =>
+                    Convert.ToString(raw, CultureInfo.InvariantCulture)
+                    ?? string.Empty,
+
+                "number" or "int" or "float" =>
+                    Convert.ToSingle(raw ?? 0, CultureInfo.InvariantCulture),
+
+                "bool" or "boolean" =>
+                    Convert.ToBoolean(raw ?? false, CultureInfo.InvariantCulture),
+
+                _ => string.Empty
+            };
+
+            return true;
         }
-
-        return Normalize(definition.Type) switch
+        catch (Exception exception) when (
+            exception is FormatException or
+                InvalidCastException or
+                OverflowException)
         {
-            "string" => Convert.ToString(value, CultureInfo.InvariantCulture)
-                ?? string.Empty,
+            value = GetFallbackValue(definition.Type);
+            return false;
+        }
+    }
 
-            "number" or "int" or "float" =>
-                Convert.ToSingle(
-                    value ?? 0,
-                    CultureInfo.InvariantCulture),
-
-            "bool" or "boolean" =>
-                Convert.ToBoolean(
-                    value ?? false,
-                    CultureInfo.InvariantCulture),
-
+    /// <summary>default를 해석할 수 없을 때 쓰는 타입별 영값.</summary>
+    public static IConvertible GetFallbackValue(string type)
+    {
+        return Normalize(type) switch
+        {
+            "number" or "int" or "float" => 0f,
+            "bool" or "boolean" => false,
             _ => string.Empty
         };
     }
@@ -59,16 +84,20 @@ internal static class SchemaTypeMapper
         return element.ValueKind switch
         {
             JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.GetSingle(),
+            JsonValueKind.Number => element.TryGetSingle(out float number)
+                ? number
+                : element.ToString(),
             JsonValueKind.True => true,
             JsonValueKind.False => false,
-            JsonValueKind.Null => null,
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
             _ => element.ToString()
         };
     }
 
-    private static string Normalize(string type)
+    private static string Normalize(string? type)
     {
-        return type.Trim().ToLowerInvariant();
+        return type is null
+            ? string.Empty
+            : type.Trim().ToLowerInvariant();
     }
 }

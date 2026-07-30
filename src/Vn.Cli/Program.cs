@@ -1,3 +1,4 @@
+using System.Text;
 using Vn.Core;
 using Vn.Core.Analysis;
 using Vn.Core.Diagnostics;
@@ -7,6 +8,8 @@ return Run(args);
 
 static int Run(string[] args)
 {
+    ConfigureConsole();
+
     if (args.Length is < 1 or > 2)
     {
         PrintUsage();
@@ -32,6 +35,42 @@ static int Run(string[] args)
     return report.HasErrors
         ? 1
         : 0;
+}
+
+// 진단 메시지가 한국어라서 콘솔 코드 페이지가 949로 남아 있으면 전부 깨진다.
+// 리다이렉트된 출력에는 색을 넣지 않는다. 파일이나 파이프에 제어 문자가 섞이면
+// 골든 픽스처 비교가 무너진다.
+static void ConfigureConsole()
+{
+    try
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+    }
+    catch (IOException)
+    {
+        // 콘솔 핸들이 없는 환경. 출력 자체는 그대로 진행한다.
+    }
+}
+
+static bool UseColor()
+{
+    return !Console.IsOutputRedirected;
+}
+
+static void SetColor(ConsoleColor color)
+{
+    if (UseColor())
+    {
+        Console.ForegroundColor = color;
+    }
+}
+
+static void ResetColor()
+{
+    if (UseColor())
+    {
+        Console.ResetColor();
+    }
 }
 
 static void PrintUsage()
@@ -73,23 +112,20 @@ static void PrintReport(AnalysisReport report)
 
     if (report.Diagnostics.Count == 0)
     {
-        Console.ForegroundColor = ConsoleColor.Green;
+        SetColor(ConsoleColor.Green);
         Console.WriteLine("오류와 경고가 없습니다.");
-        Console.ResetColor();
+        ResetColor();
     }
     else
     {
         foreach (VnDiagnostic diagnostic in report.Diagnostics)
         {
-            Console.ForegroundColor =
-                diagnostic.Severity switch
-                {
-                    DiagnosticSeverity.Error =>
-                        ConsoleColor.Red,
-                    DiagnosticSeverity.Warning =>
-                        ConsoleColor.Yellow,
-                    _ => ConsoleColor.Gray
-                };
+            SetColor(diagnostic.Severity switch
+            {
+                DiagnosticSeverity.Error => ConsoleColor.Red,
+                DiagnosticSeverity.Warning => ConsoleColor.Yellow,
+                _ => ConsoleColor.Gray
+            });
 
             string location =
                 diagnostic.Line > 0
@@ -99,7 +135,7 @@ static void PrintReport(AnalysisReport report)
             Console.WriteLine(
                 $"{location} [{diagnostic.Severity}] {diagnostic.Code}");
 
-            Console.ResetColor();
+            ResetColor();
             Console.WriteLine($"  {diagnostic.Message}");
         }
     }

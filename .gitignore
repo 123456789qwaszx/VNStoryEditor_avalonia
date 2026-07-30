@@ -18,3 +18,11 @@ out/
 data/
 *.mv.db
 *.trace.db
+
+### .NET ###
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+artifacts/

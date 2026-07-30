@@ -1,0 +1,11 @@
+title: Start
+---
+Ann: 스키마가 망가졌을 때 도구가 어떻게 버티는지 보는 샘플입니다.
+<<wait 1>>
+<<play_bgm "guesthouse_day">>
+<<set $affection_an += 1>>
+<<set $affection_an += 1>>
+<<play_bg "wrong_command">>
+<<play_bg "wrong_command">>
+<<stop>>
+===
