@@ -4,5 +4,23 @@
         x:Class="Vn.App.MainWindow"
         Width="900" Height="600"
         Title="Vn.App">
-    <views:AnalysisView />
+    <Grid ColumnDefinitions="*,4,*">
+
+        <TabControl Grid.Column="0">
+            <TabItem Header="분석">
+                <views:AnalysisView />
+            </TabItem>
+        </TabControl>
+
+        <GridSplitter Grid.Column="1"
+                      ResizeDirection="Columns"
+                      Background="Gray" />
+
+        <TabControl Grid.Column="2">
+            <TabItem Header="그래프">
+                <TextBlock Text="여기에 그래프가 들어옵니다" Margin="24" />
+            </TabItem>
+        </TabControl>
+
+    </Grid>
 </Window>
