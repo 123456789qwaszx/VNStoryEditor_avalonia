@@ -15,4 +15,7 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Vn.Core\Vn.Core.csproj" />
+  </ItemGroup>
 </Project>
