@@ -5,6 +5,11 @@
 
 	<ItemGroup>
 		<PackageVersion Include="YarnSpinner.Compiler" Version="3.2.1" />
+		<PackageVersion Include="Avalonia" Version="12.1.1" />
+		<PackageVersion Include="Avalonia.Desktop" Version="12.1.1" />
+		<PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+		<PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+		<PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
 
 		<PackageVersion Include="coverlet.collector" Version="6.0.2" />
 		<PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
