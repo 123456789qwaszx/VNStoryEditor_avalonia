@@ -18,7 +18,7 @@
 
         <TabControl Grid.Column="2">
             <TabItem Header="그래프">
-                <TextBlock Text="여기에 그래프가 들어옵니다" Margin="24" />
+                <views:GraphView />
             </TabItem>
         </TabControl>
 
