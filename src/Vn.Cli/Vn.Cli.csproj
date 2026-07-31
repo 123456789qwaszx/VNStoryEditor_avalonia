@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Vn.Cli</RootNamespace>
     <!--
       컬처 독립성을 코드 리뷰가 아니라 런타임으로 보장한다.
