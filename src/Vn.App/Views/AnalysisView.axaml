@@ -44,7 +44,9 @@
                                Text="진단"
                                FontWeight="Bold"
                                Margin="0,0,0,4" />
-                    <ListBox x:Name="DiagnosticList" FontFamily="Consolas" />
+                    <ListBox x:Name="DiagnosticList"
+                             FontFamily="Consolas"
+                             SelectionChanged="OnDiagnosticSelected" />
                 </DockPanel>
             </Grid>
 

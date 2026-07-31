@@ -67,6 +67,8 @@ public partial class AnalysisView : UserControl
         }
     }
 
+    // 노드 목록과 진단 목록의 선택은 서로 독립이다.
+    // 한쪽을 고를 때 다른 쪽 선택을 지우지 않는다. 마지막에 고른 것이 편집기를 채운다.
     private void OnNodeSelected(object? sender, SelectionChangedEventArgs e)
     {
         // 목록을 비울 때도 이 이벤트가 온다. 그때는 보여줄 노드가 없다.
@@ -77,14 +79,61 @@ public partial class AnalysisView : UserControl
 
         StoryNode node = item.Node;
 
+        ShowFile(node.FilePath, node.HeaderLine, 1);
+    }
+
+    private void OnDiagnosticSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DiagnosticList.SelectedItem is not DiagnosticItem item)
+        {
+            return;
+        }
+
+        VnDiagnostic diagnostic = item.Diagnostic;
+
+        // 모든 진단이 파일의 한 지점을 가리키지는 않는다.
+        //   - Yarn은 파일에 매이지 않은 진단에 "(External)" 같은 의사 이름을 쓴다.
+        //   - 스키마 진단처럼 파일 전체를 두고 하는 말은 Line이 0이다.
+        // 이런 것에 파일을 열려고 들면 엉뚱한 실패가 되므로, 진단 내용만 보여준다.
+        if (!HasFilePosition(diagnostic))
+        {
+            FileBox.Text = Describe(diagnostic);
+            return;
+        }
+
+        ShowFile(diagnostic.FilePath, diagnostic.Line, diagnostic.Column);
+    }
+
+    private static bool HasFilePosition(VnDiagnostic diagnostic)
+    {
+        return diagnostic.Line > 0 &&
+               !string.IsNullOrWhiteSpace(diagnostic.FilePath) &&
+               Path.IsPathRooted(diagnostic.FilePath);
+    }
+
+    private static string Describe(VnDiagnostic diagnostic)
+    {
+        string location = string.IsNullOrWhiteSpace(diagnostic.FilePath)
+            ? "(위치 없음)"
+            : diagnostic.FilePath;
+
+        return
+            $"[{diagnostic.Severity}] {diagnostic.Code}{Environment.NewLine}" +
+            $"{location}{Environment.NewLine}{Environment.NewLine}" +
+            $"{diagnostic.Message}{Environment.NewLine}{Environment.NewLine}" +
+            "이 진단은 파일의 특정 위치를 가리키지 않습니다.";
+    }
+
+    private void ShowFile(string filePath, int line, int column)
+    {
         try
         {
             // 매번 디스크에서 다시 읽는다. 캐시해두면 밖에서 파일을 고쳤을 때
             // 화면과 실제 파일이 어긋나고, 작가는 어긋난 줄 모른 채 읽게 된다.
-            string text = File.ReadAllText(node.FilePath);
+            string text = File.ReadAllText(filePath);
 
             FileBox.Text = text;
-            MoveCaretToLine(text, node.HeaderLine);
+            MoveCaretTo(text, line, column);
         }
         catch (Exception exception)
         {
@@ -92,14 +141,14 @@ public partial class AnalysisView : UserControl
             // 오류를 편집기 자리에 그대로 띄운다. 분석 요약을 덮어쓰지 않기 위해서다.
             FileBox.Text =
                 $"파일을 열지 못했습니다.{Environment.NewLine}" +
-                $"{node.FilePath}{Environment.NewLine}{Environment.NewLine}" +
+                $"{filePath}{Environment.NewLine}{Environment.NewLine}" +
                 $"[{exception.GetType().Name}] {exception.Message}";
         }
     }
 
-    private void MoveCaretToLine(string text, int oneBasedLine)
+    private void MoveCaretTo(string text, int oneBasedLine, int oneBasedColumn)
     {
-        FileBox.CaretIndex = GetLineStartIndex(text, oneBasedLine);
+        FileBox.CaretIndex = GetCaretIndex(text, oneBasedLine, oneBasedColumn);
 
         // ScrollToLine은 0부터 세고, 줄 수를 넘으면 예외를 던진다.
         int lineIndex = Math.Max(0, oneBasedLine - 1);
@@ -119,6 +168,35 @@ public partial class AnalysisView : UserControl
                 }
             },
             DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// 1부터 세는 줄·열을 <see cref="TextBox.CaretIndex"/>가 쓰는 문자 위치로 바꾼다.
+    /// 열이 그 줄의 길이를 넘으면 줄 끝에 둔다. 다음 줄로 넘어가지 않는다.
+    /// </summary>
+    private static int GetCaretIndex(string text, int oneBasedLine, int oneBasedColumn)
+    {
+        int lineStart = GetLineStartIndex(text, oneBasedLine);
+        int lineEnd = GetLineEndIndex(text, lineStart);
+        int offset = Math.Max(0, oneBasedColumn - 1);
+
+        return Math.Min(lineStart + offset, lineEnd);
+    }
+
+    /// <summary>
+    /// 줄이 끝나는 문자 위치. CR을 줄 끝으로 보므로 CRLF 사이에 캐럿이 끼지 않는다.
+    /// </summary>
+    private static int GetLineEndIndex(string text, int lineStart)
+    {
+        for (int index = lineStart; index < text.Length; index++)
+        {
+            if (text[index] is '\r' or '\n')
+            {
+                return index;
+            }
+        }
+
+        return text.Length;
     }
 
     /// <summary>
@@ -163,7 +241,7 @@ public partial class AnalysisView : UserControl
             .ToList();
 
         DiagnosticList.ItemsSource = report.Diagnostics
-            .Select(FormatDiagnostic)
+            .Select(diagnostic => new DiagnosticItem(diagnostic))
             .ToList();
     }
 
@@ -173,14 +251,6 @@ public partial class AnalysisView : UserControl
         NodeList.ItemsSource = null;
         DiagnosticList.ItemsSource = null;
         FileBox.Text = string.Empty;
-    }
-
-    private static string FormatDiagnostic(VnDiagnostic diagnostic)
-    {
-        return
-            $"[{diagnostic.Severity}] {diagnostic.Code}  " +
-            $"{diagnostic.FilePath}:{diagnostic.Line}:{diagnostic.Column}  " +
-            $"{diagnostic.Message}";
     }
 
     /// <summary>
@@ -200,6 +270,27 @@ public partial class AnalysisView : UserControl
         public override string ToString()
         {
             return $"{Node.Title}  ({Node.FilePath}:{Node.HeaderLine})";
+        }
+    }
+
+    /// <summary>
+    /// <see cref="NodeItem"/>과 같은 이유로 원본 진단을 들고 있는다.
+    /// </summary>
+    private sealed class DiagnosticItem
+    {
+        public DiagnosticItem(VnDiagnostic diagnostic)
+        {
+            Diagnostic = diagnostic;
+        }
+
+        public VnDiagnostic Diagnostic { get; }
+
+        public override string ToString()
+        {
+            return
+                $"[{Diagnostic.Severity}] {Diagnostic.Code}  " +
+                $"{Diagnostic.FilePath}:{Diagnostic.Line}:{Diagnostic.Column}  " +
+                $"{Diagnostic.Message}";
         }
     }
 }
