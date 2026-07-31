@@ -97,7 +97,7 @@ public class BoxItemTests
             Column: 9,
             Depth: 2,
             IsOption: false,
-            CommandsSincePreviousLine: Array.Empty<string>());
+            CommandsSincePreviousLine: Array.Empty<StoryCommand>());
 
         var box = new BoxItem(line);
 
@@ -117,7 +117,7 @@ public class BoxItemTests
             Column: 1,
             Depth: 0,
             IsOption: false,
-            CommandsSincePreviousLine: Array.Empty<string>());
+            CommandsSincePreviousLine: Array.Empty<StoryCommand>());
 
         var box = new BoxItem(line);
 

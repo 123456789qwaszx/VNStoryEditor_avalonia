@@ -33,13 +33,14 @@ public sealed record StoryLine(
     bool IsOption,
 
     /// <summary>
-    /// 이 라인과 직전 라인 사이의 텍스트에 나타난 명령들. <c>&lt;&lt;&gt;&gt;</c>를 포함한 원본 문자열이며 순서를 지킨다.
+    /// 이 라인과 직전 라인 사이의 텍스트에 나타난 명령들. 원본 순서를 지킨다.
     ///
     /// <b>이것은 텍스트 순서일 뿐 실행 순서가 아니다.</b>
     /// 선택지 갈래 안의 명령은 다음 선택지의 목록에 붙는다.
-    /// 실행 관계는 분기 트리(다음 단계)가 결정한다.
+    /// 실행 관계는 분기 트리(다음 단계)가 결정하며, 그 판정에
+    /// <see cref="StoryCommand.Depth"/>를 쓴다.
     ///
     /// 뒤에 라인이 없는 명령은 어느 목록에도 들어가지 않는다.
     /// 그 정보는 <see cref="StoryNode.CommandCalls"/>와 <see cref="StoryNode.Jumps"/>에 이미 있다.
     /// </summary>
-    IReadOnlyList<string> CommandsSincePreviousLine);
+    IReadOnlyList<StoryCommand> CommandsSincePreviousLine);

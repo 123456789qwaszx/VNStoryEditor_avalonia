@@ -75,7 +75,7 @@ internal sealed class YarnLineIndex
         }
 
         var lines = new List<StoryLine>();
-        var pending = new List<string>();
+        var pending = new List<StoryCommand>();
 
         foreach (Entry entry in entries)
         {
@@ -142,9 +142,13 @@ internal sealed class YarnLineIndex
 
             if (commandEnd is not null)
             {
-                entries.Add(Entry.ForCommand(
+                // 줄·열·깊이는 여기서 이미 손에 있다. 버리면 되살릴 방법이 없다.
+                // 깊이 규칙은 라인과 같아야 한다. 둘을 나란히 놓고 갈래를 판정하기 때문이다.
+                entries.Add(Entry.ForCommand(new StoryCommand(
+                    Slice(source, first.StartIndex, commandEnd.StopIndex),
                     first.Line,
-                    Slice(source, first.StartIndex, commandEnd.StopIndex)));
+                    ToOneBasedColumn(first.Column),
+                    first.Column / SpacesPerDepth)));
             }
 
             return;
@@ -347,7 +351,7 @@ internal sealed class YarnLineIndex
     /// </summary>
     private sealed record Entry(
         int Line,
-        string? Command,
+        StoryCommand? Command,
         int Column,
         int Depth,
         bool IsOption,
@@ -355,9 +359,17 @@ internal sealed class YarnLineIndex
         string Text,
         IReadOnlyList<string> Hashtags)
     {
-        public static Entry ForCommand(int line, string raw)
+        public static Entry ForCommand(StoryCommand command)
         {
-            return new Entry(line, raw, 0, 0, false, null, string.Empty, Array.Empty<string>());
+            return new Entry(
+                command.Line,
+                command,
+                command.Column,
+                command.Depth,
+                false,
+                null,
+                string.Empty,
+                Array.Empty<string>());
         }
 
         public static Entry ForLine(
@@ -372,7 +384,7 @@ internal sealed class YarnLineIndex
             return new Entry(line, null, column, depth, isOption, speaker, text, hashtags);
         }
 
-        public StoryLine ToStoryLine(string filePath, IReadOnlyList<string> commands)
+        public StoryLine ToStoryLine(string filePath, IReadOnlyList<StoryCommand> commands)
         {
             return new StoryLine(
                 Speaker,

@@ -72,8 +72,11 @@ public sealed class BoxItem
 
     public bool HasCommands => Line.CommandsSincePreviousLine.Count > 0;
 
+    // 명령은 원본 문자열 그대로 보여준다. 줄·열·깊이는 분기 트리가 쓸 값이라 화면에 내지 않는다.
     public string Commands =>
-        string.Join(Environment.NewLine, Line.CommandsSincePreviousLine);
+        string.Join(
+            Environment.NewLine,
+            Line.CommandsSincePreviousLine.Select(command => command.Raw));
 
     public bool HasHashtags => Line.Hashtags.Count > 0;
 

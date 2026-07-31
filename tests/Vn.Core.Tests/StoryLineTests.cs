@@ -64,7 +64,7 @@ public class StoryLineTests
 
         Assert.Equal(
             new[] { "<<play_bgm \"guesthouse_day\">>", "<<set $affection_ann += 1>>" },
-            start.Lines[1].CommandsSincePreviousLine);
+            start.Lines[1].CommandsSincePreviousLine.Select(command => command.Raw));
 
         Assert.Equal(
             new[]
@@ -73,7 +73,36 @@ public class StoryLineTests
                 "<<give_item \"room_key\">>",
                 "<<jump Ending>>"
             },
-            start.Lines[2].CommandsSincePreviousLine);
+            start.Lines[2].CommandsSincePreviousLine.Select(command => command.Raw));
+    }
+
+    /// <summary>
+    /// 명령이 원본의 어디에 있었는지 함께 담는다.
+    /// 분기 트리는 이 깊이로 "선택지 갈래 안"과 "선택지 사이"를 가른다.
+    /// </summary>
+    [Fact]
+    public void 명령은_줄과_깊이를_함께_담는다()
+    {
+        StoryNode start = Node(AnalyzeValid(), "Start");
+
+        // 4, 5행. 선택지 바깥이라 깊이 0이다.
+        IReadOnlyList<StoryCommand> beforeFirstOption =
+            start.Lines[1].CommandsSincePreviousLine;
+
+        Assert.Equal(new[] { 4, 5 }, beforeFirstOption.Select(command => command.Line));
+        Assert.All(beforeFirstOption, command => Assert.Equal(0, command.Depth));
+
+        // 8, 9, 10행. 선택지 1의 갈래 안이라 깊이 1이다.
+        // 평평한 목록에서는 선택지 2의 박스에 붙지만, 깊이가 갈래를 알려준다.
+        IReadOnlyList<StoryCommand> insideFirstBranch =
+            start.Lines[2].CommandsSincePreviousLine;
+
+        Assert.Equal(new[] { 8, 9, 10 }, insideFirstBranch.Select(command => command.Line));
+        Assert.All(insideFirstBranch, command => Assert.Equal(1, command.Depth));
+
+        // 열은 1부터 센다. 4칸 들여쓴 명령은 5열에서 시작한다.
+        Assert.All(beforeFirstOption, command => Assert.Equal(1, command.Column));
+        Assert.All(insideFirstBranch, command => Assert.Equal(5, command.Column));
     }
 
     /// <summary>
@@ -91,6 +120,7 @@ public class StoryLineTests
 
         string[] collected = start.Lines
             .SelectMany(line => line.CommandsSincePreviousLine)
+            .Select(command => command.Raw)
             .ToArray();
 
         // 본문의 명령은 4, 5, 8, 9, 10, 12행으로 여섯 개지만 박스에 담기는 것은 다섯 개다.
@@ -212,8 +242,14 @@ public class StoryLineTests
         IReadOnlyList<StoryLine> lines = Node(report, "T").Lines;
 
         Assert.Equal(2, lines.Count);
-        Assert.Equal(new[] { "<<if $favor >= 5>>" }, lines[0].CommandsSincePreviousLine);
-        Assert.Equal(new[] { "<<endif>>" }, lines[1].CommandsSincePreviousLine);
+
+        Assert.Equal(
+            new[] { "<<if $favor >= 5>>" },
+            lines[0].CommandsSincePreviousLine.Select(command => command.Raw));
+
+        Assert.Equal(
+            new[] { "<<endif>>" },
+            lines[1].CommandsSincePreviousLine.Select(command => command.Raw));
     }
 
     /// <summary>
