@@ -6,6 +6,9 @@
             <TextBox x:Name="ProjectPathBox"
                      Width="640"
                      PlaceholderText="Demo.yarnproject 경로" />
+            <Button x:Name="AnalyzeButton"
+                    Content="분석"
+                    Click="OnAnalyzeClick" />
         </StackPanel>
 
         <TextBox x:Name="OutputBox"
