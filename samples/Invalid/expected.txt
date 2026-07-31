@@ -1,7 +1,9 @@
 ﻿source	Broken.yarn
 node	Ending	Broken.yarn	10
+line	Ending	Broken.yarn	12	0	-	Ann	0	0
 node	Start	Broken.yarn	1
 jump	Start	Enidng	Broken.yarn	7	8
+line	Start	Broken.yarn	3	0	-	Ann	0	0
 diag	YS0010	Info	(External)	0	0
 diag	VN3001	Error	Broken.yarn	5	7
 diag	YS0003	Warning	Broken.yarn	5	7

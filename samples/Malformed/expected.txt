@@ -1,5 +1,6 @@
 ﻿source	Story.yarn
 node	Start	Story.yarn	1
+line	Start	Story.yarn	3	0	-	Ann	0	0
 diag	YS0010	Info	(External)	0	0
 diag	YS0010	Info	(External)	0	0
 diag	YS0010	Info	(External)	0	0

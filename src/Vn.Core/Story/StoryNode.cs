@@ -8,4 +8,5 @@ public sealed record StoryNode(
     int BodyEndLine,
     IReadOnlyList<StoryReference> CommandCalls,
     IReadOnlyList<StoryReference> VariableReferences,
-    IReadOnlyList<StoryJump> Jumps);
+    IReadOnlyList<StoryJump> Jumps,
+    IReadOnlyList<StoryLine> Lines);

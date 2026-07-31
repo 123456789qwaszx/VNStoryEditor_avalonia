@@ -196,6 +196,17 @@ static void PrintList(AnalysisReport report, string root)
                 $"jump\t{jump.SourceNodeTitle}\t{jump.DestinationNodeTitle}\t" +
                 $"{ToStablePath(jump.FilePath, root)}\t{jump.Line}\t{jump.Column}");
         }
+
+        // 텍스트는 넣지 않는다. 픽스처가 대사 문구에 걸리면 문구를 고칠 때마다 깨진다.
+        // 개수와 위치만으로 드리프트는 잡힌다.
+        foreach (StoryLine line in node.Lines)
+        {
+            Console.WriteLine(
+                $"line\t{node.Title}\t{ToStablePath(line.FilePath, root)}\t{line.Line}\t" +
+                $"{line.Depth}\t{(line.IsOption ? "opt" : "-")}\t" +
+                $"{(string.IsNullOrEmpty(line.Speaker) ? "-" : line.Speaker)}\t" +
+                $"{line.CommandsSincePreviousLine.Count}\t{line.Hashtags.Count}");
+        }
     }
 
     foreach (VnDiagnostic diagnostic in report.Diagnostics)

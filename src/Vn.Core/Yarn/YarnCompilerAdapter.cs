@@ -184,6 +184,9 @@ internal sealed class YarnCompilerAdapter
         YarnSymbolIndex symbols =
             YarnSymbolIndex.Build(result, YarnPaths.Normalize);
 
+        YarnLineIndex lines =
+            YarnLineIndex.Build(result, YarnPaths.Normalize);
+
         return result.NodeMetadata
             .OrderBy(metadata => metadata.Title, StringComparer.Ordinal)
             .Select(metadata =>
@@ -230,7 +233,8 @@ internal sealed class YarnCompilerAdapter
                         bodyStartLine,
                         bodyEndLine,
                         metadata.VariableReferences),
-                    jumps);
+                    jumps,
+                    lines.GetLines(filePath, bodyStartLine, bodyEndLine));
             })
             .ToArray();
     }
