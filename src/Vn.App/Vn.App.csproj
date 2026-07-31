@@ -23,5 +23,8 @@
       <SubType>Code</SubType>
       <DependentUpon>AnalysisView.axaml</DependentUpon>
     </Compile>
+    <Compile Update="Views\BoxListView.axaml.cs">
+      <DependentUpon>BoxListView.axaml</DependentUpon>
+    </Compile>
   </ItemGroup>
 </Project>
