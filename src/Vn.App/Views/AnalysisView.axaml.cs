@@ -19,12 +19,17 @@ public partial class AnalysisView : UserControl
         InitializeComponent();
     }
 
+    private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
+    {
+        await RunAnalysisAsync();
+    }
+
     // 분석은 Yarn 전체를 컴파일하므로 프로젝트가 커지면 눈에 띄게 오래 걸린다.
     // UI 스레드에서 돌리면 그동안 창이 통째로 멈춘다.
     //
     // Vn.Core에는 비동기 API를 두지 않는다. Core는 UI를 모르는 동기 라이브러리로 두고,
     // 어느 스레드에서 부를지는 부르는 쪽이 정한다. 그래서 감싸는 일은 여기서만 한다.
-    private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
+    private async Task RunAnalysisAsync()
     {
         string projectPath = ProjectPathBox.Text ?? string.Empty;
 
@@ -55,8 +60,8 @@ public partial class AnalysisView : UserControl
         }
         catch (Exception exception)
         {
-            // async void에서 예외가 새어나가면 앱이 그대로 죽는다.
-            // 잡지 못한 예외가 없도록 여기서 전부 받는다.
+            // 이 메서드를 부르는 곳은 async void 핸들러다.
+            // 예외가 거기까지 새어나가면 앱이 그대로 죽으므로 여기서 전부 받는다.
             StatusText.Text = $"[{exception.GetType().Name}] {exception.Message}";
         }
         finally
