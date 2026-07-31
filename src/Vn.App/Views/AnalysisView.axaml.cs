@@ -3,8 +3,10 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Vn.App.Services;
 using Vn.Core;
 using Vn.Core.Analysis;
 using Vn.Core.Diagnostics;
@@ -14,14 +16,101 @@ namespace Vn.App.Views;
 
 public partial class AnalysisView : UserControl
 {
+    /// <summary>
+    /// 지금 편집기에 올라와 있는 파일. 인코딩과 BOM을 여기서 그대로 들고 있다가 저장할 때 돌려준다.
+    /// 파일이 아닌 것(진단 설명, 오류 메시지)을 띄웠을 때는 null이다.
+    /// null이면 저장은 아무것도 하지 않는다. 설명 문구로 파일을 덮어쓰는 일이 없어야 한다.
+    /// </summary>
+    private StoryFile? _openFile;
+
+    /// <summary>
+    /// 마지막으로 읽거나 저장한 시점의 내용.
+    /// 변경 여부를 플래그로 들고 있지 않고 이것과 비교해서 판단한다.
+    /// 플래그는 "프로그램이 넣은 글자"와 "사람이 친 글자"를 구별하려고 이벤트 순서에
+    /// 기대게 되는데, 그 가정이 틀리면 저장하지 않은 변경을 조용히 놓친다.
+    /// </summary>
+    private string _savedText = string.Empty;
+
     public AnalysisView()
     {
         InitializeComponent();
     }
 
+    private bool HasUnsavedChanges =>
+        _openFile is not null &&
+        !string.Equals(FileBox.Text ?? string.Empty, _savedText, StringComparison.Ordinal);
+
     private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
     {
         await RunAnalysisAsync();
+    }
+
+    private async void OnSaveClick(object? sender, RoutedEventArgs e)
+    {
+        await SaveAsync();
+    }
+
+    private async void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.S || e.KeyModifiers != KeyModifiers.Control)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await SaveAsync();
+    }
+
+    private void OnFileTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        UpdateFileHeader();
+    }
+
+    private async Task SaveAsync()
+    {
+        // 열린 파일이 없으면 아무것도 하지 않는다.
+        if (_openFile is null)
+        {
+            return;
+        }
+
+        string text = FileBox.Text ?? string.Empty;
+
+        try
+        {
+            // File.WriteAllText를 직접 쓰지 않는다. 그러면 BOM과 인코딩이 조용히 바뀌어
+            // 고치지도 않은 줄까지 diff에 뜬다. 읽을 때 본 형태를 그대로 돌려준다.
+            StoryFileService.Write(_openFile.Path, text, _openFile);
+        }
+        catch (Exception exception)
+        {
+            // 저장에 실패해도 편집기 내용은 건드리지 않는다. 사람이 친 글자가 아직 그 안에 있다.
+            StatusText.Text =
+                $"저장하지 못했습니다. [{exception.GetType().Name}] {exception.Message}";
+
+            // 실패했는데 다시 분석하면 방금 실패가 성공처럼 보인다.
+            return;
+        }
+
+        _savedText = text;
+        UpdateFileHeader();
+
+        await RunAnalysisAsync();
+    }
+
+    private void UpdateFileHeader()
+    {
+        if (_openFile is null)
+        {
+            FileHeaderText.Text = "파일";
+            return;
+        }
+
+        string mark = HasUnsavedChanges
+            ? " *"
+            : string.Empty;
+
+        FileHeaderText.Text = $"파일 — {Path.GetFileName(_openFile.Path)}{mark}";
     }
 
     // 분석은 Yarn 전체를 컴파일하므로 프로젝트가 커지면 눈에 띄게 오래 걸린다.
@@ -102,7 +191,7 @@ public partial class AnalysisView : UserControl
         // 이런 것에 파일을 열려고 들면 엉뚱한 실패가 되므로, 진단 내용만 보여준다.
         if (!HasFilePosition(diagnostic))
         {
-            FileBox.Text = Describe(diagnostic);
+            ShowMessageInEditor(Describe(diagnostic));
             return;
         }
 
@@ -135,20 +224,55 @@ public partial class AnalysisView : UserControl
         {
             // 매번 디스크에서 다시 읽는다. 캐시해두면 밖에서 파일을 고쳤을 때
             // 화면과 실제 파일이 어긋나고, 작가는 어긋난 줄 모른 채 읽게 된다.
-            string text = File.ReadAllText(filePath);
+            StoryFile file = StoryFileService.Read(filePath);
 
-            FileBox.Text = text;
-            MoveCaretTo(text, line, column);
+            _openFile = file;
+            _savedText = file.Text;
+
+            // 새 줄을 넣을 때 이 파일이 쓰던 줄바꿈을 그대로 쓴다.
+            // 기본값은 Environment.NewLine이라, LF 파일에 한 줄 넣으면 그 줄만 CRLF가 되고
+            // 고친 적 없는 자리에 diff가 생긴다.
+            FileBox.NewLine = NewLineFor(file.LineEndings);
+            FileBox.Text = file.Text;
+
+            UpdateFileHeader();
+            MoveCaretTo(file.Text, line, column);
         }
         catch (Exception exception)
         {
             // 분석 뒤에 파일이 지워지거나 잠길 수 있다. 그래도 앱은 살아 있어야 한다.
             // 오류를 편집기 자리에 그대로 띄운다. 분석 요약을 덮어쓰지 않기 위해서다.
-            FileBox.Text =
+            ShowMessageInEditor(
                 $"파일을 열지 못했습니다.{Environment.NewLine}" +
                 $"{filePath}{Environment.NewLine}{Environment.NewLine}" +
-                $"[{exception.GetType().Name}] {exception.Message}";
+                $"[{exception.GetType().Name}] {exception.Message}");
         }
+    }
+
+    /// <summary>
+    /// 파일이 아닌 것을 편집기 자리에 띄운다. 진단 설명이나 오류 메시지가 그렇다.
+    /// 열린 파일을 지우므로 이 상태에서 저장을 눌러도 아무 일도 일어나지 않는다.
+    /// 설명 문구가 파일로 저장되면 원고가 사라진다.
+    /// </summary>
+    private void ShowMessageInEditor(string message)
+    {
+        _openFile = null;
+        _savedText = string.Empty;
+        FileBox.Text = message;
+        UpdateFileHeader();
+    }
+
+    private static string NewLineFor(LineEndingStyle style)
+    {
+        return style switch
+        {
+            LineEndingStyle.Lf => "\n",
+            LineEndingStyle.CrLf => "\r\n",
+            LineEndingStyle.Cr => "\r",
+
+            // 줄바꿈이 없거나 섞여 있으면 근거가 없다. 플랫폼 기본값을 쓴다.
+            _ => Environment.NewLine
+        };
     }
 
     private void MoveCaretTo(string text, int oneBasedLine, int oneBasedColumn)
@@ -250,12 +374,13 @@ public partial class AnalysisView : UserControl
             .ToList();
     }
 
+    // 편집기는 비우지 않는다. 저장하면 곧바로 다시 분석하는데, 여기서 비우면
+    // 방금 저장한 사람이 보던 파일과 캐럿 위치가 통째로 사라진다.
     private void ClearResults()
     {
         SourceFileList.ItemsSource = null;
         NodeList.ItemsSource = null;
         DiagnosticList.ItemsSource = null;
-        FileBox.Text = string.Empty;
     }
 
     /// <summary>
