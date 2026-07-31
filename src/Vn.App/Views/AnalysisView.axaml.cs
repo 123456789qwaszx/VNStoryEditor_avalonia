@@ -34,6 +34,8 @@ public partial class AnalysisView : UserControl
     public AnalysisView()
     {
         InitializeComponent();
+
+        BoxList.LineSelected += OnBoxLineSelected;
     }
 
     private bool HasUnsavedChanges =>
@@ -173,7 +175,32 @@ public partial class AnalysisView : UserControl
 
         StoryNode node = item.Node;
 
+        // 두 탭이 같은 노드를 보게 한다.
+        BoxList.Show(node.Lines);
+
         ShowFile(node.FilePath, node.HeaderLine, 1);
+    }
+
+    /// <summary>
+    /// 박스를 고르면 텍스트 탭이 그 줄을 가리킨다. 탭을 자동으로 바꾸지는 않는다.
+    /// 바꿔버리면 박스를 훑어보는 동안 한 번 누를 때마다 목록에서 튕겨 나간다.
+    ///
+    /// 같은 파일이 이미 열려 있으면 다시 읽지 않고 캐럿만 옮긴다.
+    /// 다시 읽으면 저장하지 않은 편집이 사라진다.
+    /// </summary>
+    private void OnBoxLineSelected(object? sender, StoryLine line)
+    {
+        bool sameFile =
+            _openFile is not null &&
+            string.Equals(_openFile.Path, line.FilePath, StringComparison.OrdinalIgnoreCase);
+
+        if (sameFile)
+        {
+            MoveCaretTo(FileBox.Text ?? string.Empty, line.Line, line.Column);
+            return;
+        }
+
+        ShowFile(line.FilePath, line.Line, line.Column);
     }
 
     private void OnDiagnosticSelected(object? sender, SelectionChangedEventArgs e)
@@ -291,9 +318,11 @@ public partial class AnalysisView : UserControl
                 {
                     FileBox.ScrollToLine(lineIndex);
                 }
-                catch (ArgumentOutOfRangeException)
+                catch (Exception)
                 {
-                    // 분석 이후 파일이 짧아졌다. 스크롤만 포기하고 내용은 그대로 둔다.
+                    // 분석 이후 파일이 짧아졌거나, 텍스트 탭이 아직 화면에 올라오지 않아
+                    // 줄 배치가 없는 상태다. 스크롤은 보기 편하자고 하는 것이므로
+                    // 여기서 앱을 죽이지 않는다. 캐럿은 이미 옮겨 놓았다.
                 }
             },
             DispatcherPriority.Loaded);

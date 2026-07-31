@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:Vn.App.Views"
+             x:Class="Vn.App.Views.BoxListView">
+    <!--
+        박스 하나가 "라인 하나와 그 앞에 쌓인 명령들"이다.
+        선택이 필요해서 ItemsControl 대신 ListBox를 쓴다. ListBox도 ItemsControl이고,
+        클릭·키보드 이동을 직접 구현하지 않아도 된다.
+    -->
+    <ListBox x:Name="Boxes"
+             SelectionChanged="OnBoxSelected"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="views:BoxItem">
+                <!-- Depth는 여백에만 쓴다. 트리 구조를 만들지 않는다. -->
+                <Border Margin="{Binding Indent}"
+                        BorderBrush="Gray"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="8">
+                    <StackPanel Spacing="4">
+                        <!-- 쌓인 명령. 원본 문자열 그대로 보여준다. -->
+                        <TextBlock Text="{Binding Commands}"
+                                   IsVisible="{Binding HasCommands}"
+                                   FontFamily="Consolas"
+                                   Opacity="0.7"
+                                   TextWrapping="Wrap" />
+                        <Border Height="1"
+                                Background="Gray"
+                                Opacity="0.4"
+                                IsVisible="{Binding HasCommands}" />
+
+                        <Grid ColumnDefinitions="Auto,Auto,*">
+                            <!-- 선택지 표시. 일반 대사와 눈으로 구분되게 한다. -->
+                            <TextBlock Grid.Column="0"
+                                       Text="→"
+                                       IsVisible="{Binding IsOption}"
+                                       FontWeight="Bold"
+                                       Margin="0,0,6,0" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Speaker}"
+                                       FontWeight="Bold"
+                                       MinWidth="56"
+                                       Margin="0,0,8,0"
+                                       TextWrapping="NoWrap" />
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding Text}"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+
+                        <TextBlock Text="{Binding Hashtags}"
+                                   IsVisible="{Binding HasHashtags}"
+                                   Opacity="0.7"
+                                   FontSize="11" />
+                    </StackPanel>
+                </Border>
+            </DataTemplate>
+        </ListBox.ItemTemplate>
+    </ListBox>
+</UserControl>
