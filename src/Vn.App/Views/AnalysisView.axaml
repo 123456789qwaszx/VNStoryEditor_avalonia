@@ -11,11 +11,36 @@
                     Click="OnAnalyzeClick" />
         </StackPanel>
 
-        <TextBox x:Name="OutputBox"
-                 Margin="0,12,0,0"
-                 IsReadOnly="True"
-                 AcceptsReturn="True"
-                 TextWrapping="NoWrap"
-                 FontFamily="Consolas" />
+        <!-- 요약 한 줄과 오류 메시지가 여기로 온다. 목록은 결과만 담는다. -->
+        <TextBlock x:Name="StatusText"
+                   DockPanel.Dock="Top"
+                   Margin="0,12,0,0"
+                   TextWrapping="Wrap" />
+
+        <Grid RowDefinitions="*,*,2*" Margin="0,12,0,0">
+            <DockPanel Grid.Row="0">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="소스 파일"
+                           FontWeight="Bold"
+                           Margin="0,0,0,4" />
+                <ListBox x:Name="SourceFileList" FontFamily="Consolas" />
+            </DockPanel>
+
+            <DockPanel Grid.Row="1" Margin="0,8,0,0">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="노드"
+                           FontWeight="Bold"
+                           Margin="0,0,0,4" />
+                <ListBox x:Name="NodeList" FontFamily="Consolas" />
+            </DockPanel>
+
+            <DockPanel Grid.Row="2" Margin="0,8,0,0">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="진단"
+                           FontWeight="Bold"
+                           Margin="0,0,0,4" />
+                <ListBox x:Name="DiagnosticList" FontFamily="Consolas" />
+            </DockPanel>
+        </Grid>
     </DockPanel>
 </UserControl>

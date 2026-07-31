@@ -1,12 +1,13 @@
-﻿using System;
+using System;
 using System.IO;
-using System.Text;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Vn.Core;
 using Vn.Core.Analysis;
 using Vn.Core.Diagnostics;
+using Vn.Core.Story;
 
 namespace Vn.App.Views;
 
@@ -28,14 +29,15 @@ public partial class AnalysisView : UserControl
 
         if (string.IsNullOrWhiteSpace(projectPath))
         {
-            OutputBox.Text = "경로를 입력하세요.";
+            StatusText.Text = "경로를 입력하세요.";
             return;
         }
 
         // 버튼을 끄는 것은 안내이기도 하고 재진입 방지이기도 하다.
         // 분석 중에 또 누르면 두 번째 분석이 첫 번째 결과를 덮어쓴다.
         AnalyzeButton.IsEnabled = false;
-        OutputBox.Text = "분석 중...";
+        StatusText.Text = "분석 중...";
+        ClearResults();
 
         try
         {
@@ -48,13 +50,13 @@ public partial class AnalysisView : UserControl
             AnalysisReport report = await Task.Run(
                 () => new VnProjectAnalyzer().Analyze(fullPath, schemaPath));
 
-            OutputBox.Text = Format(report);
+            ShowResults(report);
         }
         catch (Exception exception)
         {
             // async void에서 예외가 새어나가면 앱이 그대로 죽는다.
             // 잡지 못한 예외가 없도록 여기서 전부 받는다.
-            OutputBox.Text = $"[{exception.GetType().Name}] {exception.Message}";
+            StatusText.Text = $"[{exception.GetType().Name}] {exception.Message}";
         }
         finally
         {
@@ -64,23 +66,44 @@ public partial class AnalysisView : UserControl
         }
     }
 
-    private static string Format(AnalysisReport report)
+    // 목록에 담는 것은 Core가 준 순서 그대로다. 여기서 다시 정렬하거나 거르지 않는다.
+    // AnalysisReport.Diagnostics는 이미 정렬되어 있고, 그 순서가 CLI 출력·골든 픽스처와
+    // 같은 순서다. 뷰가 순서를 바꾸면 화면과 픽스처가 서로 다른 것을 말하게 된다.
+    private void ShowResults(AnalysisReport report)
     {
-        var builder = new StringBuilder();
+        StatusText.Text =
+            $"소스 파일 {report.SourceFiles.Count}개, " +
+            $"노드 {report.Nodes.Count}개, " +
+            $"진단 {report.Diagnostics.Count}개";
 
-        builder.AppendLine($"소스 파일 {report.SourceFiles.Count}개, " +
-                           $"노드 {report.Nodes.Count}개, " +
-                           $"진단 {report.Diagnostics.Count}개");
-        builder.AppendLine();
+        SourceFileList.ItemsSource = report.SourceFiles;
 
-        foreach (VnDiagnostic diagnostic in report.Diagnostics)
-        {
-            builder.AppendLine(
-                $"[{diagnostic.Severity}] {diagnostic.Code}  " +
-                $"{diagnostic.FilePath}:{diagnostic.Line}:{diagnostic.Column}");
-            builder.AppendLine($"    {diagnostic.Message}");
-        }
+        NodeList.ItemsSource = report.Nodes
+            .Select(FormatNode)
+            .ToList();
 
-        return builder.ToString();
+        DiagnosticList.ItemsSource = report.Diagnostics
+            .Select(FormatDiagnostic)
+            .ToList();
+    }
+
+    private void ClearResults()
+    {
+        SourceFileList.ItemsSource = null;
+        NodeList.ItemsSource = null;
+        DiagnosticList.ItemsSource = null;
+    }
+
+    private static string FormatNode(StoryNode node)
+    {
+        return $"{node.Title}  ({node.FilePath}:{node.HeaderLine})";
+    }
+
+    private static string FormatDiagnostic(VnDiagnostic diagnostic)
+    {
+        return
+            $"[{diagnostic.Severity}] {diagnostic.Code}  " +
+            $"{diagnostic.FilePath}:{diagnostic.Line}:{diagnostic.Column}  " +
+            $"{diagnostic.Message}";
     }
 }
