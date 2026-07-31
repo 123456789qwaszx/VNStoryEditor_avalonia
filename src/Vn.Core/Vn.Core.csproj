@@ -6,4 +6,7 @@
   <ItemGroup>
     <PackageReference Include="YarnSpinner.Compiler" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vn.Core.Tests" />
+  </ItemGroup>
 </Project>
