@@ -42,25 +42,51 @@ public sealed class ProjectEditor
 
     public bool CanRedo => _redo.Count > 0;
 
-    // ── 노드 ────────────────────────────────────────────────────────────────
+    // ── 파일과 노드 ────────────────────────────────────────────────────────
+
+    public StoryFile AddStoryFile(string? name = null)
+    {
+        var file = new StoryFile(name: name ?? NextFileName());
+
+        Mutate(() => Project.Files.Add(file));
+        return file;
+    }
+
+    public void RenameStoryFile(string fileId, string name)
+    {
+        if (Project.FindFile(fileId) is { } file && !string.Equals(file.Name, name, StringComparison.Ordinal))
+        {
+            Mutate(ProjectChangeKind.NodeMetadata, () => file.Name = name);
+        }
+    }
 
     /// <summary>
-    /// 새 노드를 만든다. 파일 순서의 <b>가장 아래</b>에 붙는다.
-    /// 중간에 끼워 넣지 않는 이유는, 그래프에서의 위치와 파일 순서가 별개이기 때문이다.
-    /// 시각적으로 위에 놓았다고 파일에서도 위로 가면 diff가 매번 크게 흔들린다.
+    /// 새 노드를 지정한 파일의 가장 아래에 붙인다.
+    /// 노드 Id는 프로젝트 전체에서 유일해야 한다.
     /// </summary>
-    public TNode AddNode<TNode>(TNode node) where TNode : StoryNode
+    public TNode AddNode<TNode>(string fileId, TNode node) where TNode : StoryNode
     {
+        StoryFile file = RequireFile(fileId);
+
+        if (Project.FindNode(node.Id) is not null)
+        {
+            throw new InvalidOperationException($"노드 Id '{node.Id}'가 프로젝트 안에서 중복됩니다.");
+        }
+
         Mutate(() =>
         {
-            Project.Nodes.Add(node);
+            file.Nodes.Add(node);
             Project.StartNodeId ??= node.Id;
         });
 
         return node;
     }
 
-    public DialogueNode AddDialogueNode(double x = 0, double y = 0, string? name = null)
+    public DialogueNode AddDialogueNode(
+        string fileId,
+        double x = 0,
+        double y = 0,
+        string? name = null)
     {
         var node = new DialogueNode(name: name ?? NextName("장면"))
         {
@@ -69,56 +95,81 @@ public sealed class ProjectEditor
 
         // 빈 노드에서 바로 쓰기 시작할 수 있게 줄 하나를 둔다.
         node.Lines.Add(new LineBox());
-        return AddNode(node);
+        return AddNode(fileId, node);
     }
 
-    public SetNode AddSetNode(double x = 0, double y = 0, string? name = null)
+    public SetNode AddSetNode(
+        string fileId,
+        double x = 0,
+        double y = 0,
+        string? name = null)
     {
         var node = new SetNode(name: name ?? NextName("설정"))
         {
             Layout = new NodeLayout { X = x, Y = y }
         };
 
-        return AddNode(node);
+        return AddNode(fileId, node);
     }
 
     public void RemoveNode(string nodeId)
     {
+        StoryFile? owner = Project.FindFileContainingNode(nodeId);
         StoryNode? node = Project.FindNode(nodeId);
 
-        if (node is null)
+        if (owner is null || node is null)
         {
             return;
         }
 
         Mutate(() =>
         {
-            Project.Nodes.Remove(node);
-
-            // 사라진 노드를 가리키던 출구를 남겨 두면 그래프에 끊어진 간선이 생긴다.
-            foreach (StoryNode other in Project.Nodes)
-            {
-                if (string.Equals(other.DefaultExitTargetNodeId, nodeId, StringComparison.Ordinal))
-                {
-                    other.DefaultExitTargetNodeId = null;
-                }
-
-                if (other is DialogueNode dialogue)
-                {
-                    foreach (string key in dialogue.BranchExits
-                                 .Where(pair => string.Equals(pair.Value, nodeId, StringComparison.Ordinal))
-                                 .Select(pair => pair.Key)
-                                 .ToList())
-                    {
-                        dialogue.BranchExits.Remove(key);
-                    }
-                }
-            }
+            owner.Nodes.Remove(node);
+            RemoveReferencesToNode(nodeId);
 
             if (string.Equals(Project.StartNodeId, nodeId, StringComparison.Ordinal))
             {
-                Project.StartNodeId = Project.Nodes.FirstOrDefault()?.Id;
+                Project.StartNodeId = Project.EnumerateNodes().FirstOrDefault()?.Id;
             }
+        });
+    }
+
+    /// <summary>
+    /// 노드를 다른 StoryFile로 옮긴다. 같은 파일을 주면 그 파일 안에서 순서를 바꾼다.
+    /// 노드의 Id와 그래프 좌표, 연결은 그대로 유지된다.
+    /// </summary>
+    public void MoveNodeToFile(string nodeId, string targetFileId, int? targetIndex = null)
+    {
+        StoryFile? source = Project.FindFileContainingNode(nodeId);
+        StoryFile target = RequireFile(targetFileId);
+        StoryNode? node = Project.FindNode(nodeId);
+
+        if (source is null || node is null)
+        {
+            return;
+        }
+
+        int sourceIndex = source.Nodes.IndexOf(node);
+        int requested = Math.Clamp(targetIndex ?? target.Nodes.Count, 0, target.Nodes.Count);
+        int insertionIndex = requested;
+
+        if (ReferenceEquals(source, target))
+        {
+            // targetIndex는 이동 전 목록을 기준으로 받는다. 앞의 항목을 제거하면 뒤쪽 위치가 하나 줄어든다.
+            insertionIndex = requested > sourceIndex ? requested - 1 : requested;
+            insertionIndex = Math.Clamp(insertionIndex, 0, source.Nodes.Count - 1);
+
+            if (insertionIndex == sourceIndex)
+            {
+                return;
+            }
+        }
+
+        Mutate(() =>
+        {
+            source.Nodes.Remove(node);
+            int at = Math.Clamp(insertionIndex, 0, target.Nodes.Count);
+            target.Nodes.Insert(at, node);
         });
     }
 
@@ -344,7 +395,7 @@ public sealed class ProjectEditor
     /// </summary>
     public void RemoveCondition(string conditionId)
     {
-        SetNode? owner = Project.Nodes.OfType<SetNode>()
+        SetNode? owner = Project.EnumerateNodes().OfType<SetNode>()
             .FirstOrDefault(node => node.Conditions.Any(
                 item => string.Equals(item.Id, conditionId, StringComparison.Ordinal)));
 
@@ -476,15 +527,51 @@ public sealed class ProjectEditor
         }
     }
 
+    private void RemoveReferencesToNode(string nodeId)
+    {
+        // 사라진 노드를 가리키던 출구를 남겨 두면 그래프에 끊어진 간선이 생긴다.
+        foreach (StoryNode other in Project.EnumerateNodes())
+        {
+            if (string.Equals(other.DefaultExitTargetNodeId, nodeId, StringComparison.Ordinal))
+            {
+                other.DefaultExitTargetNodeId = null;
+            }
+
+            if (other is not DialogueNode dialogue)
+            {
+                continue;
+            }
+
+            foreach (string key in dialogue.BranchExits
+                         .Where(pair => string.Equals(pair.Value, nodeId, StringComparison.Ordinal))
+                         .Select(pair => pair.Key)
+                         .ToList())
+            {
+                dialogue.BranchExits.Remove(key);
+            }
+        }
+    }
+
+    private StoryFile RequireFile(string fileId)
+    {
+        return Project.FindFile(fileId)
+            ?? throw new InvalidOperationException($"StoryFile '{fileId}'를 찾을 수 없습니다.");
+    }
+
     private DialogueNode RequireDialogue(string nodeId)
     {
         return Project.FindDialogue(nodeId)
             ?? throw new InvalidOperationException($"'{nodeId}'는 대사 노드가 아닙니다.");
     }
 
+    private string NextFileName()
+    {
+        return $"파일 {Project.Files.Count + 1}";
+    }
+
     private string NextName(string prefix)
     {
-        int count = Project.Nodes.Count(node =>
+        int count = Project.EnumerateNodes().Count(node =>
             node.Name.StartsWith(prefix, StringComparison.Ordinal)) + 1;
 
         return $"{prefix} {count}";

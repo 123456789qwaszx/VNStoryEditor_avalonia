@@ -13,7 +13,7 @@ public sealed class NodeLayout
 /// <summary>
 /// 그래프에 놓이는 노드의 공통 부분.
 ///
-/// 파일에서의 순서는 <see cref="StoryProject.Nodes"/>의 순서이고,
+/// 파일에서의 순서는 소유한 <see cref="StoryFile.Nodes"/> 안의 순서이고,
 /// 화면에서의 위치는 <see cref="Layout"/>이다. 둘은 별개의 개념이며 서로를 따라가지 않는다.
 /// </summary>
 public abstract class StoryNode

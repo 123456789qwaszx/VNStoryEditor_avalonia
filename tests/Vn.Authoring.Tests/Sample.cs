@@ -11,23 +11,28 @@ internal sealed class Sample
 {
     public Sample()
     {
-        Editor = new ProjectEditor(new StoryProject { Title = "테스트" });
+        var project = new StoryProject { Title = "테스트" };
+        File = new StoryFile("sf_test", "테스트 파일");
+        project.Files.Add(File);
+        Editor = new ProjectEditor(project);
 
-        SetNode = Editor.AddSetNode(name: "설정");
+        SetNode = Editor.AddSetNode(File.Id, name: "설정");
         ConditionA = Editor.AddCondition(SetNode.Id, "호감 높음", "favor >= 5");
         ConditionB = Editor.AddCondition(SetNode.Id, "신뢰 높음", "trust >= 3");
 
-        Dialogue = Editor.AddDialogueNode(name: "본문");
+        Dialogue = Editor.AddDialogueNode(File.Id, name: "본문");
         Dialogue.Lines.Clear();
 
-        TargetA = Editor.AddDialogueNode(name: "A로 간다");
-        TargetB = Editor.AddDialogueNode(name: "B로 간다");
-        TargetDefault = Editor.AddDialogueNode(name: "기본으로 간다");
+        TargetA = Editor.AddDialogueNode(File.Id, name: "A로 간다");
+        TargetB = Editor.AddDialogueNode(File.Id, name: "B로 간다");
+        TargetDefault = Editor.AddDialogueNode(File.Id, name: "기본으로 간다");
     }
 
     public ProjectEditor Editor { get; }
 
     public StoryProject Project => Editor.Project;
+
+    public StoryFile File { get; }
 
     public SetNode SetNode { get; }
 

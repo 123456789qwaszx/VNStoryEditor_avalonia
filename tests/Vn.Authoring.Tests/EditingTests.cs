@@ -51,22 +51,29 @@ public class EditingTests
     public void 새_노드는_파일_순서의_마지막에_생긴다()
     {
         var sample = new Sample();
-        int before = sample.Project.Nodes.Count;
+        int before = sample.File.Nodes.Count;
 
-        // 그래프에서 왼쪽 위에 놓아도 파일에서는 맨 뒤다.
-        DialogueNode added = sample.Editor.AddDialogueNode(x: -500, y: -500, name: "나중에 만든 것");
+        // 그래프에서 왼쪽 위에 놓아도 지정한 파일에서는 맨 뒤다.
+        DialogueNode added = sample.Editor.AddDialogueNode(
+            sample.File.Id,
+            x: -500,
+            y: -500,
+            name: "나중에 만든 것");
 
-        Assert.Equal(before + 1, sample.Project.Nodes.Count);
-        Assert.Same(added, sample.Project.Nodes[^1]);
+        Assert.Equal(before + 1, sample.File.Nodes.Count);
+        Assert.Same(added, sample.File.Nodes[^1]);
         Assert.Equal(-500, added.Layout.X);
     }
 
     [Fact]
     public void 첫_노드가_시작_노드가_된다()
     {
-        var editor = new ProjectEditor(new StoryProject());
-        SetNode first = editor.AddSetNode();
-        editor.AddDialogueNode();
+        var project = new StoryProject();
+        var file = new StoryFile("sf_start", "시작 파일");
+        project.Files.Add(file);
+        var editor = new ProjectEditor(project);
+        SetNode first = editor.AddSetNode(file.Id);
+        editor.AddDialogueNode(file.Id);
 
         Assert.Equal(first.Id, editor.Project.StartNodeId);
     }
@@ -75,11 +82,11 @@ public class EditingTests
     public void 그래프에서_노드를_옮겨도_파일_순서는_그대로다()
     {
         var sample = new Sample();
-        List<string> order = sample.Project.Nodes.Select(node => node.Id).ToList();
+        List<string> order = sample.Project.EnumerateNodes().Select(node => node.Id).ToList();
 
         sample.Editor.MoveNode(sample.TargetB.Id, 10, 20);
 
-        Assert.Equal(order, sample.Project.Nodes.Select(node => node.Id));
+        Assert.Equal(order, sample.Project.EnumerateNodes().Select(node => node.Id));
         Assert.Equal(10, sample.TargetB.Layout.X);
     }
 

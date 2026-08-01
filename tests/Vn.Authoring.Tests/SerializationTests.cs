@@ -20,10 +20,15 @@ public class SerializationTests
 
         StoryProject reloaded = ProjectJson.Read(ProjectJson.Write(sample.Project));
 
+        Assert.Equal(StoryProject.CurrentFormatVersion, reloaded.FormatVersion);
+        StoryFile reloadedFile = Assert.Single(reloaded.Files);
+        Assert.Equal(sample.File.Id, reloadedFile.Id);
+        Assert.Equal(sample.File.Name, reloadedFile.Name);
+
         // 노드와 파일 순서
         Assert.Equal(
-            sample.Project.Nodes.Select(node => node.Id),
-            reloaded.Nodes.Select(node => node.Id));
+            sample.Project.EnumerateNodes().Select(node => node.Id),
+            reloaded.EnumerateNodes().Select(node => node.Id));
 
         DialogueNode dialogue = reloaded.FindDialogue(sample.Dialogue.Id)!;
 
@@ -148,7 +153,7 @@ public class SerializationTests
             Assert.NotEqual(0xEF, bytes[0]); // BOM 없는 UTF-8
 
             StoryProject loaded = ProjectJson.Load(path);
-            Assert.Equal(sample.Project.Nodes.Count, loaded.Nodes.Count);
+            Assert.Equal(sample.Project.EnumerateNodes().Count(), loaded.EnumerateNodes().Count());
         }
         finally
         {
@@ -191,6 +196,72 @@ public class SerializationTests
     }
 
     [Fact]
+    public void 버전1의_평면_nodes는_하나의_StoryFile로_승격된다()
+    {
+        const string json = """
+            {
+              "formatVersion": 1,
+              "title": "이전 형식",
+              "nodes": [
+                { "id": "nd_a", "kind": "dialogue", "name": "A", "lines": [] },
+                { "id": "nd_b", "kind": "set", "name": "B" }
+              ]
+            }
+            """;
+
+        StoryProject project = ProjectJson.Read(json);
+        StoryFile file = Assert.Single(project.Files);
+
+        Assert.Equal(StoryProject.CurrentFormatVersion, project.FormatVersion);
+        Assert.Equal(new[] { "nd_a", "nd_b" }, file.Nodes.Select(node => node.Id));
+        string upgraded = ProjectJson.Write(project);
+        Assert.Contains("\"files\"", upgraded, StringComparison.Ordinal);
+        Assert.True(
+            upgraded.IndexOf("\"files\"", StringComparison.Ordinal) <
+            upgraded.IndexOf("\"nodes\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 여러_StoryFile의_순서와_노드_소유가_왕복된다()
+    {
+        var project = new StoryProject { Title = "여러 파일" };
+        var first = new StoryFile("sf_a", "A");
+        var second = new StoryFile("sf_b", "B");
+        project.Files.Add(first);
+        project.Files.Add(second);
+        first.Nodes.Add(new DialogueNode("nd_a", "A 노드"));
+        second.Nodes.Add(new SetNode("nd_b", "B 노드"));
+        project.StartNodeId = "nd_a";
+
+        StoryProject loaded = ProjectJson.Read(ProjectJson.Write(project));
+
+        Assert.Equal(new[] { "sf_a", "sf_b" }, loaded.Files.Select(file => file.Id));
+        Assert.Equal(new[] { "nd_a" }, loaded.Files[0].Nodes.Select(node => node.Id));
+        Assert.Equal(new[] { "nd_b" }, loaded.Files[1].Nodes.Select(node => node.Id));
+    }
+
+    [Fact]
+    public void 파일이_달라도_노드_Id가_중복되면_읽지_않는다()
+    {
+        const string json = """
+            {
+              "formatVersion": 2,
+              "files": [
+                { "id": "sf_a", "name": "A", "nodes": [
+                  { "id": "nd_same", "kind": "dialogue", "name": "A", "lines": [] }
+                ] },
+                { "id": "sf_b", "name": "B", "nodes": [
+                  { "id": "nd_same", "kind": "set", "name": "B" }
+                ] }
+              ]
+            }
+            """;
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(() => ProjectJson.Read(json));
+        Assert.Contains("중복", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void JSON이_아니면_읽을_수_없다고_알린다()
     {
         Assert.Throws<InvalidDataException>(() => ProjectJson.Read("이건 JSON이 아니다"));
@@ -211,7 +282,7 @@ public class SerializationTests
             """;
 
         StoryProject project = ProjectJson.Read(json);
-        DialogueNode node = Assert.IsType<DialogueNode>(Assert.Single(project.Nodes));
+        DialogueNode node = Assert.IsType<DialogueNode>(Assert.Single(project.EnumerateNodes()));
 
         Assert.Equal("장면", node.Name);
         Assert.Equal("안녕", node.Lines[0].Text);

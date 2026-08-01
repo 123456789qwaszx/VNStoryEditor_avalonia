@@ -214,7 +214,7 @@ public partial class SetNodeEditor : UserControl
 
     private void BuildDefaultExit(SetNode node)
     {
-        List<StoryNode> targets = _session!.Project.Nodes
+        List<StoryNode> targets = _session!.Project.EnumerateNodes()
             .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
             .ToList();
 

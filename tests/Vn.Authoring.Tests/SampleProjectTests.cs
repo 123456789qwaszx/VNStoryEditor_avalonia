@@ -23,9 +23,11 @@ public class SampleProjectTests
         StoryProject project = Load();
 
         Assert.Equal("게리에 1장", project.Title);
-        Assert.Equal(5, project.Nodes.Count);
+        Assert.Equal(5, project.EnumerateNodes().Count());
         Assert.Equal("nd_setup", project.StartNodeId);
-        Assert.IsType<SetNode>(project.Nodes[0]);
+        StoryFile file = Assert.Single(project.Files);
+        Assert.Equal("sf_chapter01", file.Id);
+        Assert.IsType<SetNode>(file.Nodes[0]);
     }
 
     [Fact]
@@ -110,8 +112,8 @@ public class SampleProjectTests
         StoryProject roundTripped = ProjectJson.Read(ProjectJson.Write(original));
 
         Assert.Equal(
-            original.Nodes.Select(node => node.Id),
-            roundTripped.Nodes.Select(node => node.Id));
+            original.EnumerateNodes().Select(node => node.Id),
+            roundTripped.EnumerateNodes().Select(node => node.Id));
 
         DialogueNode before = original.FindDialogue("nd_scene")!;
         DialogueNode after = roundTripped.FindDialogue("nd_scene")!;

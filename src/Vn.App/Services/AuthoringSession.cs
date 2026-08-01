@@ -19,6 +19,7 @@ internal sealed class AuthoringSession
     public AuthoringSession()
     {
         Editor = new ProjectEditor(NewProjectInstance());
+        ActiveFileId = Editor.Project.Files.FirstOrDefault()?.Id;
         _savedSnapshot = ProjectJson.Write(Editor.Project);
         Editor.Changed += OnEditorChanged;
     }
@@ -31,6 +32,11 @@ internal sealed class AuthoringSession
     public string? ProjectPath { get; private set; }
 
     public GameDefinition Definition { get; private set; } = GameDefinition.Empty;
+
+    /// <summary>새 노드가 추가될 현재 작업 파일. 그래프 표시 상태와는 별개의 개념이다.</summary>
+    public string? ActiveFileId { get; private set; }
+
+    public StoryFile? ActiveFile => Project.FindFile(ActiveFileId);
 
     public string? SelectedNodeId { get; private set; }
 
@@ -67,8 +73,9 @@ internal sealed class AuthoringSession
         _savedSnapshot = ProjectJson.Write(project);
         StatusMessage = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
 
+        ActiveFileId = project.Files.FirstOrDefault()?.Id;
         Editor.Replace(project);
-        Select(project.Nodes.FirstOrDefault()?.Id);
+        Select(project.EnumerateNodes().FirstOrDefault()?.Id);
     }
 
     public void Open(string path)
@@ -78,12 +85,14 @@ internal sealed class AuthoringSession
         ProjectPath = Path.GetFullPath(path);
         Definition = GameDefinition.LoadBeside(ProjectPath);
         _savedSnapshot = ProjectJson.Write(project);
-        StatusMessage = $"{Path.GetFileName(ProjectPath)} · 노드 {project.Nodes.Count}개";
+        StatusMessage = $"{Path.GetFileName(ProjectPath)} · 노드 {project.EnumerateNodes().Count()}개";
 
         AppSettingsService.SaveRecentProject(ProjectPath);
 
+        ActiveFileId = project.FindFileContainingNode(project.StartNodeId)?.Id
+            ?? project.Files.FirstOrDefault()?.Id;
         Editor.Replace(project);
-        Select(project.StartNodeId ?? project.Nodes.FirstOrDefault()?.Id);
+        Select(project.StartNodeId ?? project.EnumerateNodes().FirstOrDefault()?.Id);
     }
 
     public void Save(string? path = null)
@@ -110,18 +119,35 @@ internal sealed class AuthoringSession
 
     private void OnEditorChanged(object? sender, ProjectChangedEventArgs e)
     {
+        if (Project.FindFile(ActiveFileId) is null)
+        {
+            ActiveFileId = Project.Files.FirstOrDefault()?.Id;
+        }
+
         // 선택하고 있던 노드가 사라졌다면 선택을 놓는다.
         if (SelectedNodeId is not null && Project.FindNode(SelectedNodeId) is null)
         {
-            SelectedNodeId = Project.Nodes.FirstOrDefault()?.Id;
+            SelectedNodeId = Project.EnumerateNodes().FirstOrDefault()?.Id;
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
 
         Changed?.Invoke(this, e);
     }
 
+    internal void SelectFile(string? fileId)
+    {
+        if (fileId is not null && Project.FindFile(fileId) is null)
+        {
+            return;
+        }
+
+        ActiveFileId = fileId;
+    }
+
     private static StoryProject NewProjectInstance()
     {
-        return new StoryProject { Title = "새 프로젝트" };
+        var project = new StoryProject { Title = "새 프로젝트" };
+        project.Files.Add(new StoryFile(name: "기본 파일"));
+        return project;
     }
 }

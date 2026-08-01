@@ -35,6 +35,8 @@ public static class Identifier
         return $"{prefix}_{new string(chars)}";
     }
 
+    public static string File() => Create("sf");
+
     public static string Node() => Create("nd");
 
     public static string Line() => Create("ln");

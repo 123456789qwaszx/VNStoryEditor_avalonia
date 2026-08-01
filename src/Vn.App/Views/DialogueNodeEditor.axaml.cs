@@ -312,7 +312,7 @@ public partial class DialogueNodeEditor : UserControl
 
     private void BuildDefaultExit(DialogueNode node)
     {
-        List<StoryNode> targets = _session!.Project.Nodes
+        List<StoryNode> targets = _session!.Project.EnumerateNodes()
             .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
             .ToList();
 

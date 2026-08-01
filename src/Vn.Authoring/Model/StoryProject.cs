@@ -3,45 +3,65 @@ namespace Vn.Authoring.Model;
 /// <summary>
 /// 저작 도구가 다루는 공식 원본.
 ///
-/// 이 객체가 진실이고, Yarn을 비롯한 게임별 형식은 여기서 내보내는 결과물이다.
-/// 예전 구조에서는 <c>.yarn</c> 원문이 진실이고 화면 모델이 그것의 손실 압축이었다.
-/// 그래서 화면에서 만든 구조를 원문에 되쓸 방법이 없었고, 편집은 "한 줄만 안전하게
-/// 갈아 끼우기"에 갇혀 있었다. 방향을 뒤집었기 때문에 조건 갈래·출구·노드 추가처럼
-/// 구조를 바꾸는 편집이 자연스러워진다.
-///
-/// <see cref="Nodes"/>의 순서가 곧 파일 순서다. 새 노드는 언제나 맨 뒤에 붙는다.
-/// 그래프에서의 위치는 <see cref="StoryNode.Layout"/>이며 순서와 무관하다.
+/// 프로젝트는 여러 <see cref="StoryFile"/>을 가지고, 각 파일이 노드를 소유한다.
+/// 프로젝트 전체 노드 순서가 필요할 때는 <see cref="EnumerateNodes"/>를 사용한다.
+/// 그 순서는 파일 순서 뒤에 각 파일 안의 노드 순서를 이어 붙인 것이다.
 /// </summary>
 public sealed class StoryProject
 {
-    /// <summary>파일 형식 버전. 마이그레이션 판단에 쓴다.</summary>
-    public const int CurrentFormatVersion = 1;
+    /// <summary>StoryFile 소유 구조를 도입한 형식 버전.</summary>
+    public const int CurrentFormatVersion = 2;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 
     public string Title { get; set; } = "새 프로젝트";
 
-    public List<StoryNode> Nodes { get; init; } = new();
+    public List<StoryFile> Files { get; init; } = new();
 
     /// <summary>이야기가 시작되는 노드. null이면 아직 정하지 않은 것이다.</summary>
     public string? StartNodeId { get; set; }
+
+    /// <summary>
+    /// 프로젝트 전체 노드를 결정적인 순서로 펼친다.
+    /// 파일 순서 → 각 파일의 Nodes 순서다.
+    /// </summary>
+    public IEnumerable<StoryNode> EnumerateNodes()
+    {
+        return Files.SelectMany(file => file.Nodes);
+    }
+
+    public StoryFile? FindFile(string? fileId)
+    {
+        return fileId is null
+            ? null
+            : Files.FirstOrDefault(file => string.Equals(file.Id, fileId, StringComparison.Ordinal));
+    }
+
+    public StoryFile? FindFileContainingNode(string? nodeId)
+    {
+        return nodeId is null
+            ? null
+            : Files.FirstOrDefault(file => file.Nodes.Any(
+                node => string.Equals(node.Id, nodeId, StringComparison.Ordinal)));
+    }
 
     public StoryNode? FindNode(string? nodeId)
     {
         return nodeId is null
             ? null
-            : Nodes.FirstOrDefault(node => string.Equals(node.Id, nodeId, StringComparison.Ordinal));
+            : EnumerateNodes().FirstOrDefault(
+                node => string.Equals(node.Id, nodeId, StringComparison.Ordinal));
     }
 
     public DialogueNode? FindDialogue(string? nodeId) => FindNode(nodeId) as DialogueNode;
 
     /// <summary>
-    /// 프로젝트 안의 모든 조건. <see cref="SetNode"/>가 선언한 순서를 지킨다.
-    /// 조건 드롭다운과 그래프 간선 라벨이 같은 목록을 본다.
+    /// 프로젝트 안의 모든 조건. 파일 순서, SetNode 순서, 조건 순서를 지킨다.
+    /// 작업 3에서 Settings 연결 범위가 도입되기 전까지는 전역 조건 카탈로그로 사용한다.
     /// </summary>
     public IEnumerable<ConditionDefinition> EnumerateConditions()
     {
-        return Nodes.OfType<SetNode>().SelectMany(node => node.Conditions);
+        return EnumerateNodes().OfType<SetNode>().SelectMany(node => node.Conditions);
     }
 
     public ConditionDefinition? FindCondition(string? conditionId)
@@ -59,7 +79,7 @@ public sealed class StoryProject
             FormatVersion = FormatVersion,
             Title = Title,
             StartNodeId = StartNodeId,
-            Nodes = Nodes.Select(node => node.Clone()).ToList()
+            Files = Files.Select(file => file.Clone()).ToList()
         };
     }
 }

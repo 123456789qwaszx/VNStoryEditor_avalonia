@@ -96,7 +96,7 @@ public static class NodeConnections
     {
         ArgumentNullException.ThrowIfNull(project);
 
-        return project.Nodes
+        return project.EnumerateNodes()
             .SelectMany(node => PortsOf(node, project))
             .Where(port => port.IsConnected)
             .ToList();

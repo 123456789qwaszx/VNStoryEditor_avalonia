@@ -6,35 +6,35 @@ using Vn.Authoring.Model;
 namespace Vn.Authoring.Serialization;
 
 /// <summary>
-/// 프로젝트를 <c>.vnstory.json</c>으로 읽고 쓴다.
+/// 프로젝트 aggregate를 <c>.vnstory.json</c>으로 읽고 쓴다.
 ///
-/// 형식을 손으로 다루는 이유는 두 가지다.
-/// 첫째, 노드가 종류마다 다른 모양이라 자동 다형 직렬화에 맡기면 파일에
-/// 어셈블리 이름 같은 것이 새어 나온다. 둘째, 이 파일은 git diff에서 읽히는 것이 목적이라
-/// 키 순서와 빈 값 생략을 우리가 정해야 한다.
+/// 형식 버전 2부터 프로젝트 안에 여러 StoryFile이 있고 각 파일이 노드를 소유한다.
+/// 이 단계에서는 아직 물리적인 여러 파일로 나누지 않고 한 JSON 안에 파일 경계를 저장한다.
+/// 형식 버전 1의 평면 nodes는 읽을 때 하나의 StoryFile로 승격한다.
 ///
-/// <b>줄바꿈은 언제나 LF, 인코딩은 BOM 없는 UTF-8이다.</b> 저작 도구가 만드는 파일이므로
-/// 원본 형식을 보존할 대상이 아니라 우리가 형식을 정하는 대상이다. 환경마다 달라지면
-/// 같은 편집이 사람마다 다른 diff를 만든다.
+/// 줄바꿈은 언제나 LF, 인코딩은 BOM 없는 UTF-8이다.
 /// </summary>
 public static class ProjectJson
 {
     public const string FileExtension = ".vnstory.json";
 
+    private const string LegacyFileId = "sf_main";
+    private const string LegacyFileName = "기본 파일";
+
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
         WriteIndented = true,
-        // 한글 화자·대사를 \uXXXX로 바꾸면 사람이 읽을 수 없다.
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public static string Write(StoryProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
+        ValidateIdentities(project);
 
         var root = new JsonObject
         {
-            ["formatVersion"] = project.FormatVersion,
+            ["formatVersion"] = StoryProject.CurrentFormatVersion,
             ["title"] = project.Title
         };
 
@@ -43,14 +43,14 @@ public static class ProjectJson
             root["startNode"] = project.StartNodeId;
         }
 
-        var nodes = new JsonArray();
+        var files = new JsonArray();
 
-        foreach (StoryNode node in project.Nodes)
+        foreach (StoryFile file in project.Files)
         {
-            nodes.Add(WriteNode(node));
+            files.Add(WriteFile(file));
         }
 
-        root["nodes"] = nodes;
+        root["files"] = files;
 
         return root.ToJsonString(WriteOptions).Replace("\r\n", "\n", StringComparison.Ordinal);
     }
@@ -65,7 +65,6 @@ public static class ProjectJson
             Directory.CreateDirectory(directory);
         }
 
-        // 임시 파일에 다 쓰고 나서 옮긴다. 저장 도중 죽어도 반쪽짜리 원고가 남지 않는다.
         string temporary = path + ".tmp";
         File.WriteAllText(temporary, json, new UTF8Encoding(false));
         File.Move(temporary, path, overwrite: true);
@@ -73,10 +72,6 @@ public static class ProjectJson
 
     /// <summary>
     /// 문자열을 프로젝트로 읽는다. VnTool 프로젝트가 아니면 예외를 던진다.
-    ///
-    /// <b>모르는 파일을 관대하게 읽지 않는다.</b> 관대하게 읽으면 다른 도구의 JSON이
-    /// "노드 0개짜리 프로젝트"로 열리고, 작가가 저장을 누르는 순간 원본이 빈 프로젝트로 덮어써진다.
-    /// 열리지 않는 것은 불편하지만 되돌릴 수 있고, 덮어써진 원고는 되돌릴 수 없다.
     /// </summary>
     public static StoryProject Read(string json)
     {
@@ -92,33 +87,33 @@ public static class ProjectJson
             throw new InvalidDataException($"프로젝트 파일을 읽을 수 없습니다. {exception.Message}", exception);
         }
 
-        if (root["formatVersion"] is null || root["nodes"] is not JsonArray)
+        if (root["formatVersion"] is null)
         {
-            throw new InvalidDataException(
-                "VnTool 프로젝트 파일이 아닙니다. " +
-                $"VnTool 프로젝트는 formatVersion과 nodes를 가진 {FileExtension} 파일입니다.");
+            throw NotProjectFile();
         }
 
-        var project = new StoryProject
-        {
-            FormatVersion = (int?)root["formatVersion"] ?? StoryProject.CurrentFormatVersion,
-            Title = (string?)root["title"] ?? "제목 없음",
-            StartNodeId = (string?)root["startNode"]
-        };
+        int formatVersion = (int?)root["formatVersion"] ?? 0;
 
-        if (project.FormatVersion > StoryProject.CurrentFormatVersion)
+        if (formatVersion > StoryProject.CurrentFormatVersion)
         {
             throw new InvalidDataException(
-                $"이 파일은 형식 버전 {project.FormatVersion}입니다. " +
+                $"이 파일은 형식 버전 {formatVersion}입니다. " +
                 $"이 VnTool은 {StoryProject.CurrentFormatVersion}까지 읽을 수 있습니다.");
         }
 
-        foreach (JsonNode? item in root["nodes"]!.AsArray())
+        StoryProject project = formatVersion switch
         {
-            if (item is JsonObject node)
-            {
-                project.Nodes.Add(ReadNode(node));
-            }
+            1 => ReadVersion1(root),
+            2 => ReadVersion2(root),
+            _ => throw NotProjectFile()
+        };
+
+        ValidateIdentities(project);
+
+        if (project.StartNodeId is not null && project.FindNode(project.StartNodeId) is null)
+        {
+            throw new InvalidDataException(
+                $"시작 노드 '{project.StartNodeId}'를 프로젝트에서 찾을 수 없습니다.");
         }
 
         return project;
@@ -127,7 +122,88 @@ public static class ProjectJson
     public static StoryProject Load(string path) =>
         Read(File.ReadAllText(path, new UTF8Encoding(false)));
 
+    // ── 프로젝트 버전 읽기 ──────────────────────────────────────────────────
+
+    private static StoryProject ReadVersion2(JsonNode root)
+    {
+        if (root["files"] is not JsonArray files)
+        {
+            throw NotProjectFile();
+        }
+
+        var project = NewProject(root);
+
+        foreach (JsonNode? item in files)
+        {
+            if (item is not JsonObject fileJson)
+            {
+                continue;
+            }
+
+            project.Files.Add(ReadFile(fileJson));
+        }
+
+        return project;
+    }
+
+    /// <summary>평면 nodes 형식을 하나의 StoryFile로 승격한다.</summary>
+    private static StoryProject ReadVersion1(JsonNode root)
+    {
+        if (root["nodes"] is not JsonArray nodes)
+        {
+            throw NotProjectFile();
+        }
+
+        var project = NewProject(root);
+        var file = new StoryFile(LegacyFileId, LegacyFileName);
+
+        foreach (JsonNode? item in nodes)
+        {
+            if (item is JsonObject node)
+            {
+                file.Nodes.Add(ReadNode(node));
+            }
+        }
+
+        project.Files.Add(file);
+        return project;
+    }
+
+    private static StoryProject NewProject(JsonNode root)
+    {
+        return new StoryProject
+        {
+            FormatVersion = StoryProject.CurrentFormatVersion,
+            Title = (string?)root["title"] ?? "제목 없음",
+            StartNodeId = (string?)root["startNode"]
+        };
+    }
+
+    private static InvalidDataException NotProjectFile()
+    {
+        return new InvalidDataException(
+            "VnTool 프로젝트 파일이 아닙니다. " +
+            $"VnTool 프로젝트는 formatVersion과 files(버전 2) 또는 nodes(버전 1)를 가진 {FileExtension} 파일입니다.");
+    }
+
     // ── 쓰기 ────────────────────────────────────────────────────────────────
+
+    private static JsonObject WriteFile(StoryFile file)
+    {
+        var nodes = new JsonArray();
+
+        foreach (StoryNode node in file.Nodes)
+        {
+            nodes.Add(WriteNode(node));
+        }
+
+        return new JsonObject
+        {
+            ["id"] = file.Id,
+            ["name"] = file.Name,
+            ["nodes"] = nodes
+        };
+    }
 
     private static JsonObject WriteNode(StoryNode node)
     {
@@ -230,8 +306,6 @@ public static class ProjectJson
                     transitionJson["condition"] = transition.ConditionId;
                 }
 
-                // 이 갈래의 출구를 여는 줄 옆에 함께 적는다. 갈래와 출구가 한 자리에 있어야
-                // 파일만 읽어도 "이 갈래가 끝나면 어디로 가는가"를 알 수 있다.
                 if (transition.OpensBranch &&
                     node.BranchExits.TryGetValue(line.Id, out string? exit))
                 {
@@ -248,6 +322,23 @@ public static class ProjectJson
     }
 
     // ── 읽기 ────────────────────────────────────────────────────────────────
+
+    private static StoryFile ReadFile(JsonObject json)
+    {
+        string id = (string?)json["id"] ?? Identifier.File();
+        string name = (string?)json["name"] ?? "이름 없는 파일";
+        var file = new StoryFile(id, name);
+
+        foreach (JsonNode? item in json["nodes"]?.AsArray() ?? new JsonArray())
+        {
+            if (item is JsonObject node)
+            {
+                file.Nodes.Add(ReadNode(node));
+            }
+        }
+
+        return file;
+    }
 
     private static StoryNode ReadNode(JsonObject json)
     {
@@ -344,5 +435,27 @@ public static class ProjectJson
         }
 
         return node;
+    }
+
+    private static void ValidateIdentities(StoryProject project)
+    {
+        HashSet<string> fileIds = new(StringComparer.Ordinal);
+        HashSet<string> nodeIds = new(StringComparer.Ordinal);
+
+        foreach (StoryFile file in project.Files)
+        {
+            if (!fileIds.Add(file.Id))
+            {
+                throw new InvalidDataException($"StoryFile Id '{file.Id}'가 중복됩니다.");
+            }
+
+            foreach (StoryNode node in file.Nodes)
+            {
+                if (!nodeIds.Add(node.Id))
+                {
+                    throw new InvalidDataException($"노드 Id '{node.Id}'가 프로젝트 전체에서 중복됩니다.");
+                }
+            }
+        }
     }
 }

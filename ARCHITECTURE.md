@@ -114,17 +114,23 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 
 | 타입 | 역할 |
 |---|---|
-| `StoryProject` | 노드 목록(= 파일 순서), 제목, 시작 노드. 조건 조회의 입구 |
+| `StoryProject` | `StoryFile` 목록, 제목, 시작 노드. 조건 조회의 입구 |
+| `StoryFile` | 노드를 **소유하는** 단위. Id는 이름·경로와 분리되어 있다 |
 | `StoryNode` (추상) | Id, 이름, 그래프 좌표, **기본 출구**. 종류를 가리지 않는 공통부 |
 | `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리** |
 | `DialogueNode` | `LineBox` 목록, `BranchExits`(갈래 출구) |
 | `LineBox` | 작가가 보는 최소 단위. Id·화자·대사·조건 전환 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
 | `ConditionDefinition` | Id + 작가용 이름 + 게임이 평가할 식 |
-| `Identifier` | `nd_` / `ln_` / `cd_` 안정 식별자 생성 |
+| `Identifier` | `sf_` / `nd_` / `ln_` / `cd_` 안정 식별자 생성 |
 
 **Id와 이름을 나눈 이유:** 작가는 노드 이름을 바꾸고 줄 순서를 계속 바꾼다.
-그때마다 간선과 출구가 끊어지면 저작 도구로 쓸 수 없다.
+그때마다 간선과 출구가 끊어지면 저작 도구로 쓸 수 없다. 파일도 같다. 파일 이름과
+상대 경로가 바뀌어도 `StoryFile.Id`는 그대로이므로 노드 소유 관계가 끊기지 않는다.
+
+**NodeId는 파일이 아니라 프로젝트 전체에서 유일하다.** 파일을 넘나드는 출구가 있고,
+노드가 파일 사이를 옮겨 다니기 때문이다. 프로젝트 전체 순회는 `EnumerateNodes()`
+하나이며 순서는 파일 순서 + 파일 안 순서로 고정한다.
 
 ### 3.2 `Vn.Authoring/Flow` — 무엇을 계산하는가
 
@@ -232,6 +238,8 @@ Line 6                                  Line 6
 | 조건의 이름·식 구조 | `Model/StoryNode.cs`의 `ConditionDefinition` |
 | 식별자 형식 | `Model/Identifier.cs` |
 | 시작 노드 규칙 | `Model/StoryProject.cs`, `ProjectEditor.AddNode` |
+| 노드가 어느 파일에 속하는지 | `Model/StoryFile.cs`, `StoryProject.FindFileContainingNode` |
+| 파일 추가·삭제·노드 이동 | `Editing/ProjectEditor.cs`의 `AddFile` / `RemoveFile` / `MoveNodeToFile` |
 
 **조건과 갈래**
 
@@ -264,7 +272,7 @@ Line 6                                  Line 6
 | 되돌리기 방식 | 같은 파일. 스냅샷(전체 직렬화)을 쌓는다 |
 | 어떤 편집이 어떤 종류의 변경인지 | `Editing/ProjectChangedEventArgs.cs` |
 | 그 변경이 어느 화면을 다시 만들게 할지 | `App/Services/ProjectRefreshPlanner.cs` |
-| 새 노드가 파일 어디에 붙는지 | `ProjectEditor.AddNode` — 언제나 맨 뒤 |
+| 새 노드가 파일 어디에 붙는지 | `ProjectEditor.AddNode` — 지정한 파일의 맨 뒤 |
 
 **저장 형식**
 
