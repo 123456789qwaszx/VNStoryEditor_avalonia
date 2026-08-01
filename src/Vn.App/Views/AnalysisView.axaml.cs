@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Vn.App.Services;
 using Vn.Core;
@@ -37,6 +38,56 @@ public partial class AnalysisView : UserControl
 
         BoxList.LineSelected += OnBoxLineSelected;
         BoxList.LineEdited += OnBoxLineEdited;
+
+        // 마지막에 연 프로젝트를 채워만 둔다. 자동으로 분석하지는 않는다 —
+        // 큰 프로젝트라면 앱이 뜨자마자 멈춘 것처럼 보인다.
+        ProjectPathBox.Text = AppSettingsService.LoadRecentProject() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 경로를 직접 치는 대신 파일 대화상자로 고른다.
+    /// 작가는 파일 경로를 다룰 일이 없어야 한다.
+    /// </summary>
+    private async void OnOpenClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+
+            if (storage is null || !storage.CanOpen)
+            {
+                StatusText.Text = "이 환경에서는 파일 대화상자를 열 수 없습니다. 경로를 직접 입력하세요.";
+                return;
+            }
+
+            IReadOnlyList<IStorageFile> picked = await storage.OpenFilePickerAsync(
+                new FilePickerOpenOptions
+                {
+                    Title = "Yarn 프로젝트 열기",
+                    AllowMultiple = false,
+                    FileTypeFilter = new[]
+                    {
+                        new FilePickerFileType("Yarn 프로젝트")
+                        {
+                            Patterns = new[] { "*.yarnproject" }
+                        }
+                    }
+                });
+
+            if (picked.Count == 0)
+            {
+                return;
+            }
+
+            ProjectPathBox.Text = picked[0].Path.LocalPath;
+
+            await RunAnalysisAsync();
+        }
+        catch (Exception exception)
+        {
+            // async void에서 예외가 새어나가면 앱이 그대로 죽는다.
+            StatusText.Text = $"[{exception.GetType().Name}] {exception.Message}";
+        }
     }
 
     /// <summary>
@@ -214,6 +265,9 @@ public partial class AnalysisView : UserControl
 
             ShowResults(report);
             Analyzed?.Invoke(this, report);
+
+            // 열린 것이 확인된 뒤에만 기억한다. 못 여는 경로를 다음에 또 들이밀지 않는다.
+            AppSettingsService.SaveRecentProject(report.ProjectPath);
         }
         catch (Exception exception)
         {
