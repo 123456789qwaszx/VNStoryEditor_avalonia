@@ -1,0 +1,13 @@
+{
+  "variables": [
+    { "name": "favor", "type": "number", "description": "주인공에 대한 호감" },
+    { "name": "trust", "type": "number", "description": "약속에 대한 신뢰" },
+    { "name": "contract_signed", "type": "bool", "description": "계약서 서명 여부" },
+    { "name": "route", "type": "string", "description": "현재 루트" }
+  ],
+  "events": [
+    { "name": "play_bgm", "description": "배경음 재생" },
+    { "name": "show_cg", "description": "일러스트 표시" }
+  ],
+  "conditions": []
+}
