@@ -2,7 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -221,15 +223,116 @@ public partial class AnalysisView : UserControl
         if (_openFile is null)
         {
             FileHeaderText.Text = "파일";
+            UnsavedChanges?.Invoke(this, false);
             return;
         }
 
-        string mark = HasUnsavedChanges
+        bool dirty = HasUnsavedChanges;
+
+        string mark = dirty
             ? " *"
             : string.Empty;
 
         FileHeaderText.Text = $"파일 — {Path.GetFileName(_openFile.Path)}{mark}";
+
+        // 창 제목에도 같은 표시를 낸다. 박스 탭을 보고 있으면 이 머리글이 안 보인다.
+        UnsavedChanges?.Invoke(this, dirty);
     }
+
+    /// <summary>저장하지 않은 변경이 있는지 알린다. 제목 표시줄이 이것을 듣는다.</summary>
+    public event EventHandler<bool>? UnsavedChanges;
+
+    /// <summary>저장하지 않은 변경이 있는지. 창을 닫기 전에 확인하는 쪽이 쓴다.</summary>
+    public bool HasUnsavedWork => HasUnsavedChanges;
+
+    /// <summary>
+    /// 버리고 진행할지 묻는다. 예를 누르면 true.
+    ///
+    /// 대화상자를 코드로 만든다. 이 하나를 위해 프레임워크를 들이지 않는다.
+    /// </summary>
+    public async Task<bool> ConfirmDiscardAsync(string action)
+    {
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
+
+        if (owner is null)
+        {
+            // 창을 못 찾으면 물어볼 수단이 없다. 원고를 지키는 쪽으로 막는다.
+            return false;
+        }
+
+        var dialog = new Window
+        {
+            Title = "저장하지 않은 변경",
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false
+        };
+
+        bool discard = false;
+
+        var discardButton = new Button { Content = "버리고 계속", IsDefault = false };
+        var cancelButton = new Button { Content = "취소", IsCancel = true, IsDefault = true };
+
+        discardButton.Click += (_, _) =>
+        {
+            discard = true;
+            dialog.Close();
+        };
+
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(16),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = $"저장하지 않은 변경이 있습니다.{Environment.NewLine}" +
+                        $"{action} 하면 그 내용이 사라집니다.",
+                    TextWrapping = TextWrapping.Wrap
+                },
+                new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                    Spacing = 8,
+                    Children = { discardButton, cancelButton }
+                }
+            }
+        };
+
+        await dialog.ShowDialog(owner);
+
+        return discard;
+    }
+
+    /// <summary>
+    /// 취소했을 때 고르기 전 노드로 되돌린다.
+    /// 되돌리는 동안 이 핸들러가 다시 돌면 또 물어보게 되므로 한 번 잠근다.
+    /// </summary>
+    private void RestorePreviousSelection(SelectionChangedEventArgs e)
+    {
+        if (_restoringSelection || e.RemovedItems.Count == 0)
+        {
+            return;
+        }
+
+        _restoringSelection = true;
+
+        try
+        {
+            NodeList.SelectedItem = e.RemovedItems[0];
+        }
+        finally
+        {
+            _restoringSelection = false;
+        }
+    }
+
+    private bool _restoringSelection;
 
     // 분석은 Yarn 전체를 컴파일하므로 프로젝트가 커지면 눈에 띄게 오래 걸린다.
     // UI 스레드에서 돌리면 그동안 창이 통째로 멈춘다.
@@ -285,11 +388,25 @@ public partial class AnalysisView : UserControl
 
     // 노드 목록과 진단 목록의 선택은 서로 독립이다.
     // 한쪽을 고를 때 다른 쪽 선택을 지우지 않는다. 마지막에 고른 것이 편집기를 채운다.
-    private void OnNodeSelected(object? sender, SelectionChangedEventArgs e)
+    private async void OnNodeSelected(object? sender, SelectionChangedEventArgs e)
     {
         // 목록을 비울 때도 이 이벤트가 온다. 그때는 보여줄 노드가 없다.
         if (NodeList.SelectedItem is not NodeItem item)
         {
+            return;
+        }
+
+        // 되돌리는 중이면 다시 묻지 않는다.
+        if (_restoringSelection)
+        {
+            return;
+        }
+
+        // 다른 노드를 고르면 그 파일을 다시 읽어 편집기를 덮는다.
+        // 저장하지 않은 원고가 그대로 사라지므로 먼저 묻는다.
+        if (HasUnsavedChanges && !await ConfirmDiscardAsync("다른 노드로 이동"))
+        {
+            RestorePreviousSelection(e);
             return;
         }
 

@@ -1,3 +1,5 @@
+using System;
+using System.ComponentModel;
 using Avalonia.Controls;
 using Vn.Core.Analysis;
 
@@ -17,7 +19,50 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         Analysis.Analyzed += OnAnalyzed;
+        Analysis.UnsavedChanges += OnUnsavedChanges;
         Graph.NodeSelected += OnGraphNodeSelected;
+
+        Closing += OnClosing;
+    }
+
+    private const string BaseTitle = "Vn.App";
+
+    /// <summary>닫기를 한 번 물어본 뒤에는 다시 막지 않는다.</summary>
+    private bool _closeConfirmed;
+
+    private void OnUnsavedChanges(object? sender, bool dirty)
+    {
+        // 박스 탭을 보고 있으면 파일 머리글이 안 보인다. 제목 표시줄에도 같은 표시를 낸다.
+        Title = dirty
+            ? $"* {BaseTitle}"
+            : BaseTitle;
+    }
+
+    /// <summary>
+    /// 창을 닫을 때도 묻는다. 여기서 안 막으면 저장하지 않은 원고가 조용히 사라진다.
+    /// </summary>
+    private async void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_closeConfirmed || !Analysis.HasUnsavedWork)
+        {
+            return;
+        }
+
+        // 대화상자를 기다리는 동안 창이 닫히면 안 되므로 일단 막고, 답을 받은 뒤 다시 닫는다.
+        e.Cancel = true;
+
+        try
+        {
+            if (await Analysis.ConfirmDiscardAsync("창을 닫기"))
+            {
+                _closeConfirmed = true;
+                Close();
+            }
+        }
+        catch (Exception)
+        {
+            // 물어보다 실패하면 닫지 않는다. 원고를 지키는 쪽으로 남는다.
+        }
     }
 
     private void OnAnalyzed(object? sender, AnalysisReport report)
