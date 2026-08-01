@@ -17,6 +17,8 @@ public partial class AnalysisView : UserControl
     private ProjectSession? _session;
     private bool _updatingUi;
     private bool _syncingSelection;
+    private bool _rebuildingBoxes;
+    private bool _controlsReady;
     private string? _displayedDocumentPath;
     private IReadOnlyList<NodeListItem> _allNodes = Array.Empty<NodeListItem>();
 
@@ -26,7 +28,20 @@ public partial class AnalysisView : UserControl
 
         BoxList.LineSelected += OnBoxLineSelected;
         BoxList.LineEdited += OnBoxLineEdited;
+
+        // XAML을 다 읽고 x:Name 필드가 모두 채워진 뒤에야 이벤트에 반응한다.
+        // 자세한 이유는 IsReady 주석 참고.
+        _controlsReady = true;
     }
+
+    /// <summary>
+    /// XAML을 읽는 도중에도 컨트롤은 이벤트를 낸다. 예를 들어 TabControl은 채워지는 순간
+    /// 첫 탭을 스스로 고르면서 SelectionChanged를 낸다. 그런데 x:Name 필드는 XAML을 다 읽은
+    /// 뒤에 채워지므로, 그 시점의 핸들러가 필드를 만지면 NullReferenceException이 난다.
+    /// 이 예외는 MainWindow 생성자 → OnFrameworkInitializationCompleted로 올라가 창이 생기기 전에
+    /// 앱을 죽인다. 준비되기 전의 이벤트는 사용자의 의도가 아니므로 무시하는 것이 맞다.
+    /// </summary>
+    private bool IsReady => _controlsReady;
 
     public event EventHandler<string>? NodeSelected;
 
@@ -305,11 +320,21 @@ public partial class AnalysisView : UserControl
 
         // 원문 편집으로 물리적 줄 수가 달라졌다면 분석 당시 줄 번호를 신뢰하지 않는다.
         // 줄 수가 같을 때는 각 카드가 저장 시점 원문과 현재 원문을 대조해 안전한 줄만 편집한다.
-        BoxList.Show(
-            node.Body,
-            document.WorkingText,
-            allowEditing: document.CanUseAnalyzedLineMap,
-            baselineText: document.SavedText);
+        _rebuildingBoxes = true;
+
+        try
+        {
+            BoxList.Show(
+                node.Body,
+                document.WorkingText,
+                allowEditing: document.CanUseAnalyzedLineMap,
+                baselineText: document.SavedText);
+        }
+        finally
+        {
+            _rebuildingBoxes = false;
+        }
+
         UpdateStructureNotice(document);
         MoveCaretTo(document.WorkingText, _session.SelectedLine, _session.SelectedColumn);
     }
@@ -327,7 +352,7 @@ public partial class AnalysisView : UserControl
 
     private async void OnNodeSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (_syncingSelection || NodeList.SelectedItem is not NodeListItem item)
+        if (!IsReady || _syncingSelection || NodeList.SelectedItem is not NodeListItem item)
         {
             return;
         }
@@ -337,7 +362,8 @@ public partial class AnalysisView : UserControl
 
     private async void OnSourceFileSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (_syncingSelection ||
+        if (!IsReady ||
+            _syncingSelection ||
             _session is null ||
             SourceFileList.SelectedItem is not SourceFileListItem item)
         {
@@ -363,7 +389,8 @@ public partial class AnalysisView : UserControl
 
     private async void OnDiagnosticSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (_syncingSelection ||
+        if (!IsReady ||
+            _syncingSelection ||
             _session is null ||
             DiagnosticList.SelectedItem is not DiagnosticListItem item)
         {
@@ -400,7 +427,7 @@ public partial class AnalysisView : UserControl
 
     private void OnFileTextChanged(object? sender, TextChangedEventArgs e)
     {
-        if (_updatingUi || _session?.Document is null)
+        if (!IsReady || _updatingUi || _session?.Document is null)
         {
             return;
         }
@@ -424,7 +451,9 @@ public partial class AnalysisView : UserControl
 
     private void OnBoxLineEdited(object? sender, StoryLineEdit edit)
     {
-        if (_session?.Document is null)
+        // 카드 목록을 다시 만드는 동안 새 TextBox가 내는 이벤트는 사용자의 편집이 아니다.
+        // 여기서 막지 않으면 "적용 실패 → 다시 그리기 → 또 이벤트"가 되풀이된다.
+        if (_session?.Document is null || _rebuildingBoxes)
         {
             return;
         }
@@ -452,6 +481,11 @@ public partial class AnalysisView : UserControl
 
     private void OnEditorTabChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (!IsReady)
+        {
+            return;
+        }
+
         if (EditorTabs.SelectedIndex == 0)
         {
             RenderSelectedNode();
@@ -460,12 +494,22 @@ public partial class AnalysisView : UserControl
 
     private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
+        if (!IsReady)
+        {
+            return;
+        }
+
         ApplyNodeFilter();
         SyncSelections();
     }
 
     private async void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (!IsReady)
+        {
+            return;
+        }
+
         if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.Control)
         {
             e.Handled = true;

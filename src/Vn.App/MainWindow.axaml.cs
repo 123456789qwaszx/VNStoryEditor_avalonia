@@ -34,6 +34,13 @@ public partial class MainWindow : Window
         RefreshShell();
     }
 
+    /// <summary>
+    /// 최근 프로젝트 복원은 편의 기능이다. 실패해도 앱을 닫지 않는다.
+    ///
+    /// 이 핸들러는 <c>async void</c>라 여기서 새는 예외는 잡아 줄 곳이 없고 곧장 프로세스를 죽인다.
+    /// 그러면 마지막에 열었던 프로젝트가 깨졌다는 이유만으로 새 프로젝트를 열 기회조차 사라진다.
+    /// 그래서 실패는 상태 줄로 알리고 빈 창은 그대로 쓸 수 있게 둔다.
+    /// </summary>
     private async void OnOpened(object? sender, EventArgs e)
     {
         if (_openedRecentProject)
@@ -42,11 +49,22 @@ public partial class MainWindow : Window
         }
 
         _openedRecentProject = true;
-        string? recent = AppSettingsService.LoadRecentProject();
 
-        if (recent is not null)
+        try
         {
-            await OpenProjectPathAsync(recent, askToDiscard: false);
+            string? recent = AppSettingsService.LoadRecentProject();
+
+            if (recent is not null)
+            {
+                await OpenProjectPathAsync(recent, askToDiscard: false);
+            }
+        }
+        catch (Exception exception)
+        {
+            StartupLog.TryWrite("최근 프로젝트 복원", exception);
+            _session.SetStatus(
+                "마지막에 열었던 프로젝트를 다시 열지 못했습니다. " +
+                $"'프로젝트 열기…'로 새로 열어 주세요. ({exception.Message})");
         }
     }
 
@@ -112,12 +130,36 @@ public partial class MainWindow : Window
 
     private async void OnSaveClick(object? sender, RoutedEventArgs e)
     {
-        await Analysis.SaveAsync();
+        try
+        {
+            await Analysis.SaveAsync();
+        }
+        catch (Exception exception)
+        {
+            ReportRecoverable("저장", exception);
+        }
     }
 
     private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
     {
-        await Analysis.ReanalyzeAsync();
+        try
+        {
+            await Analysis.ReanalyzeAsync();
+        }
+        catch (Exception exception)
+        {
+            ReportRecoverable("다시 검사", exception);
+        }
+    }
+
+    /// <summary>
+    /// <c>async void</c> 핸들러에서 샌 예외는 앱을 죽인다. 한 번의 조작이 실패했다고
+    /// 편집 중인 원고까지 잃게 할 이유는 없다. 상세 내용은 로그에, 작가에게는 한 문장만 보인다.
+    /// </summary>
+    private void ReportRecoverable(string action, Exception exception)
+    {
+        StartupLog.TryWrite(action, exception);
+        _session.SetStatus($"{action}하지 못했습니다. {exception.Message}");
     }
 
     private void OnSessionStateChanged(object? sender, EventArgs e)
@@ -161,17 +203,24 @@ public partial class MainWindow : Window
 
     private async void OnGraphNodeSelected(object? sender, string title)
     {
-        bool selected = await Analysis.SelectNodeByTitleAsync(title);
+        try
+        {
+            bool selected = await Analysis.SelectNodeByTitleAsync(title);
 
-        if (selected)
-        {
-            Graph.SelectByTitle(title);
+            if (selected)
+            {
+                Graph.SelectByTitle(title);
+            }
+            else if (_session.SelectedNode is not null)
+            {
+                // 다른 파일로 이동하기 직전 미저장 확인을 취소했다면
+                // 그래프도 실제 선택으로 되돌려 세 화면이 다른 장면을 가리키지 않게 한다.
+                Graph.SelectByTitle(_session.SelectedNode.Title);
+            }
         }
-        else if (_session.SelectedNode is not null)
+        catch (Exception exception)
         {
-            // 다른 파일로 이동하기 직전 미저장 확인을 취소했다면
-            // 그래프도 실제 선택으로 되돌려 세 화면이 다른 장면을 가리키지 않게 한다.
-            Graph.SelectByTitle(_session.SelectedNode.Title);
+            ReportRecoverable("장면 이동", exception);
         }
     }
 

@@ -60,7 +60,26 @@ internal sealed class ProjectSession
 
     public async Task OpenProjectAsync(string projectPath)
     {
-        string fullPath = Path.GetFullPath(projectPath.Trim('"'));
+        string fullPath;
+
+        try
+        {
+            fullPath = Path.GetFullPath(projectPath.Trim('"'));
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or
+                NotSupportedException or
+                PathTooLongException or
+                IOException or
+                UnauthorizedAccessException)
+        {
+            // 설정 파일에 남은 경로가 깨져 있어도 세션은 계속 살아 있어야 한다.
+            // 여기서 예외가 나가면 최근 프로젝트 자동 복원이 앱 전체를 끌고 내려간다.
+            StatusMessage =
+                $"'{projectPath}' 경로를 사용할 수 없습니다. 다른 프로젝트를 열어 주세요.";
+            OnStateChanged();
+            return;
+        }
 
         ProjectPath = fullPath;
         SchemaPath = Path.Combine(

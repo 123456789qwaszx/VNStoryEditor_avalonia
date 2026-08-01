@@ -68,9 +68,17 @@ public partial class BoxListView : UserControl
         }
     }
 
+    /// <summary>
+    /// TextBox는 사용자가 친 글자뿐 아니라 바인딩이 초기값을 넣을 때도 TextChanged를 낸다.
+    /// 그 이벤트를 편집으로 취급하면 카드를 그리기만 해도 문서가 고쳐진 것이 되고,
+    /// 그 결과 카드 목록을 다시 만들면 새 TextBox가 또 TextChanged를 내는 무한 되풀이가 된다.
+    /// 그래서 실제로 원문 줄이 달라지는 변경만 밖으로 알린다. 되돌린 편집도 편집이 아니다.
+    /// </summary>
     private void OnBoxEdited(object? sender, TextChangedEventArgs e)
     {
-        if (sender is Control { DataContext: BoxItem item } && !item.IsLocked)
+        if (sender is Control { DataContext: BoxItem item } &&
+            !item.IsLocked &&
+            item.HasPendingChange)
         {
             LineEdited?.Invoke(this, item.ToEdit());
         }
@@ -80,6 +88,7 @@ public partial class BoxListView : UserControl
 public sealed class BoxItem
 {
     private readonly string? _originalLine;
+    private readonly string _indent = string.Empty;
 
     public BoxItem(
         StoryLine line,
@@ -137,9 +146,18 @@ public sealed class BoxItem
         }
 
         _originalLine = currentLine;
+        _indent = indent;
         Speaker = speaker ?? string.Empty;
         Text = text;
     }
+
+    /// <summary>
+    /// 지금 상자의 내용이 원문 줄과 실제로 다른지. 같으면 저장할 것이 없다.
+    /// 카드를 그리는 순간의 TextChanged와 사용자가 되돌린 편집을 함께 걸러 낸다.
+    /// </summary>
+    public bool HasPendingChange =>
+        _originalLine is not null &&
+        !string.Equals(ComposeCurrentLine(), _originalLine, StringComparison.Ordinal);
 
     public StoryLine Line { get; }
 
@@ -155,10 +173,16 @@ public sealed class BoxItem
     {
         return new StoryLineEdit(
             Line.Line,
-            string.IsNullOrWhiteSpace(Speaker) ? null : Speaker,
+            NormalizedSpeaker,
             Text ?? string.Empty,
             _originalLine);
     }
+
+    private string? NormalizedSpeaker =>
+        string.IsNullOrWhiteSpace(Speaker) ? null : Speaker;
+
+    private string ComposeCurrentLine() =>
+        StoryLineReplacer.Compose(_indent, NormalizedSpeaker, Text ?? string.Empty);
 
     public bool HasCommands => Line.CommandsSincePreviousLine.Count > 0;
 
