@@ -79,17 +79,21 @@ public partial class MainWindow : Window
     {
         void Apply()
         {
-            switch (e.Kind)
-            {
-                case ProjectChangeKind.Layout:
-                    // 좌표만 바뀌었다. 카드를 다시 만들면 드래그가 끊긴다.
-                    Graph.RefreshPositions();
-                    break;
+            ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(e.Kind, _session.SelectedNode);
 
-                case ProjectChangeKind.Structure:
-                    Graph.Rebuild();
-                    RebuildInspector();
-                    break;
+            if (plan.RebuildGraph)
+            {
+                Graph.Rebuild();
+            }
+            else if (plan.RefreshGraphPositions)
+            {
+                // 좌표만 바뀌었다. 카드를 다시 만들면 드래그가 끊긴다.
+                Graph.RefreshPositions();
+            }
+
+            if (plan.RebuildInspector)
+            {
+                RebuildInspector();
             }
 
             RefreshShell();

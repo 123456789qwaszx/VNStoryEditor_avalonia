@@ -126,7 +126,7 @@ public sealed class ProjectEditor
     {
         if (Project.FindNode(nodeId) is { } node && !string.Equals(node.Name, name, StringComparison.Ordinal))
         {
-            Mutate(() => node.Name = name);
+            Mutate(ProjectChangeKind.NodeMetadata, () => node.Name = name);
         }
     }
 
@@ -320,12 +320,17 @@ public sealed class ProjectEditor
     {
         ConditionDefinition? condition = Project.FindCondition(conditionId);
 
-        if (condition is null)
+        if (condition is null ||
+            (string.Equals(condition.Name, name, StringComparison.Ordinal) &&
+             string.Equals(condition.Expression, expression, StringComparison.Ordinal)))
         {
             return;
         }
 
-        Mutate(() =>
+        // 조건 행의 개수나 순서는 그대로다. 현재 SetNode 입력 컨트롤을 다시 만들면
+        // LostFocus로 커밋하는 순간 다음 클릭 대상이 사라진다. 대신 조건 이름을 사용하는
+        // 그래프 라벨과 Dialogue 드롭다운만 새 값을 읽도록 별도 변경 종류를 알린다.
+        Mutate(ProjectChangeKind.ConditionDefinition, () =>
         {
             condition.Name = name;
             condition.Expression = expression;
@@ -359,10 +364,36 @@ public sealed class ProjectEditor
             return;
         }
 
-        Mutate(() =>
+        List<VariableAssignment> next = assignments.Select(item => item.Clone()).ToList();
+
+        bool sameValues = setNode.Assignments.Count == next.Count;
+
+        for (int index = 0; sameValues && index < next.Count; index++)
+        {
+            VariableAssignment current = setNode.Assignments[index];
+            VariableAssignment replacement = next[index];
+
+            sameValues =
+                string.Equals(current.Variable, replacement.Variable, StringComparison.Ordinal) &&
+                string.Equals(current.Value, replacement.Value, StringComparison.Ordinal);
+        }
+
+        if (sameValues)
+        {
+            return;
+        }
+
+        // 행 개수가 바뀌면 컨트롤 목록을 다시 만들어야 한다. 개수가 그대로인 채 변수명이나
+        // 값만 바뀌었다면 현재 TextBox/AutoCompleteBox가 이미 그 값을 보여 주고 있으므로
+        // 구조 재생성은 오히려 다음 클릭을 가로막는다.
+        ProjectChangeKind kind = setNode.Assignments.Count == next.Count
+            ? ProjectChangeKind.Content
+            : ProjectChangeKind.Structure;
+
+        Mutate(kind, () =>
         {
             setNode.Assignments.Clear();
-            setNode.Assignments.AddRange(assignments.Select(item => item.Clone()));
+            setNode.Assignments.AddRange(next);
         });
     }
 

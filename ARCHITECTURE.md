@@ -145,7 +145,11 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | 타입 | 역할 |
 |---|---|
 | `ProjectEditor` | **모델을 바꾸는 유일한 통로.** 되돌리기·알림을 함께 책임진다 |
-| `ProjectChangedEventArgs` | 변경 종류: `Structure` / `Content` / `Layout` |
+| `ProjectChangedEventArgs` | 변경 종류: `Structure` / `Content` / `ConditionDefinition` / `NodeMetadata` / `Layout` |
+
+**변경 종류는 영향 범위를 말한다.** 조건 이름을 고치는 일과 조건을 추가하는 일은
+화면에 주는 영향이 다르다. 같은 신호를 보내면 화면은 최악의 경우를 가정해 편집 중인
+컨트롤까지 다시 만들고, 작가는 입력 도중 포커스를 잃는다.
 
 ### 3.4 `Vn.Authoring/Serialization`, `Definition`
 
@@ -164,6 +168,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | `SetNodeEditor` | 조건과 변수 값 정의 |
 | `BranchPalette` | 갈래 색 표. 데이터가 아니라 표시 수단 |
 | `MainWindow` | 도구 모음, 열기·저장, 세션을 두 화면에 물려준다 |
+| `ProjectRefreshPlanner` | 변경 알림 하나가 어느 화면을 다시 만들게 할지 정하는 유일한 자리 |
 | `AppSettingsService` | 최근 프로젝트 기억 |
 | `StartupLog` | `%LOCALAPPDATA%\VnTool\logs\startup-error.log` |
 
@@ -257,7 +262,8 @@ Line 6                                  Line 6
 |---|---|
 | 새 편집 명령 추가 | `Editing/ProjectEditor.cs` — **모델을 바꾸는 코드는 전부 여기에만** |
 | 되돌리기 방식 | 같은 파일. 스냅샷(전체 직렬화)을 쌓는다 |
-| 어떤 편집이 화면을 다시 만들게 할지 | `Editing/ProjectChangedEventArgs.cs` |
+| 어떤 편집이 어떤 종류의 변경인지 | `Editing/ProjectChangedEventArgs.cs` |
+| 그 변경이 어느 화면을 다시 만들게 할지 | `App/Services/ProjectRefreshPlanner.cs` |
 | 새 노드가 파일 어디에 붙는지 | `ProjectEditor.AddNode` — 언제나 맨 뒤 |
 
 **저장 형식**

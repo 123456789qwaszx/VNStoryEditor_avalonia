@@ -142,4 +142,106 @@ public class EditingTests
 
         Assert.Equal(0, notifications);
     }
+    [Fact]
+    public void 조건_이름과_식_수정은_구조_변경이_아니다()
+    {
+        var sample = new Sample();
+        ProjectChangedEventArgs? change = null;
+        sample.Editor.Changed += (_, args) => change = args;
+
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "새 이름", "$favor >= 10");
+
+        Assert.NotNull(change);
+        Assert.Equal(ProjectChangeKind.ConditionDefinition, change!.Kind);
+        Assert.False(change!.NeedsInspectorRebuild);
+        Assert.True(change!.NeedsGraphRebuild);
+    }
+
+    [Fact]
+    public void 조건_수정은_그래프_라벨과_Dialogue_선택지에_즉시_반영된다()
+    {
+        var sample = new Sample();
+        LineBox opener = sample.Line(
+            "조건 시작",
+            LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        sample.Editor.SetExitTarget(
+            sample.Dialogue.Id,
+            ExitPortKind.Branch,
+            opener.Id,
+            sample.TargetA.Id);
+
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 매우 높음", "$favor >= 10");
+
+        ExitPort branchPort = Assert.Single(
+            NodeConnections.PortsOf(sample.Dialogue, sample.Project),
+            port => port.Kind == ExitPortKind.Branch);
+        Assert.Equal("호감 매우 높음", branchPort.Label);
+
+        ConditionChoice choice = Assert.Single(
+            ConditionChoices.For(preceding: null, sample.Project),
+            item => string.Equals(item.ConditionId, sample.ConditionA.Id, StringComparison.Ordinal));
+        Assert.Equal("호감 매우 높음", choice.Label);
+    }
+
+    [Fact]
+    public void assignment_값만_바꾸면_현재_편집_행을_다시_만들지_않는다()
+    {
+        var sample = new Sample();
+        sample.Editor.SetAssignments(
+            sample.SetNode.Id,
+            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
+
+        ProjectChangedEventArgs? change = null;
+        sample.Editor.Changed += (_, args) => change = args;
+
+        sample.Editor.SetAssignments(
+            sample.SetNode.Id,
+            new[] { new VariableAssignment { Variable = "$favor", Value = "2" } });
+
+        Assert.NotNull(change);
+        Assert.Equal(ProjectChangeKind.Content, change!.Kind);
+        Assert.False(change!.NeedsInspectorRebuild);
+        Assert.False(change!.NeedsGraphRebuild);
+        Assert.Equal("2", sample.SetNode.Assignments[0].Value);
+    }
+
+    [Fact]
+    public void assignment_행_개수가_바뀌면_구조_변경이다()
+    {
+        var sample = new Sample();
+        ProjectChangedEventArgs? change = null;
+        sample.Editor.Changed += (_, args) => change = args;
+
+        sample.Editor.SetAssignments(
+            sample.SetNode.Id,
+            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
+
+        Assert.NotNull(change);
+        Assert.Equal(ProjectChangeKind.Structure, change!.Kind);
+        Assert.True(change!.NeedsInspectorRebuild);
+        Assert.True(change!.NeedsGraphRebuild);
+    }
+
+    [Fact]
+    public void 같은_조건과_assignment를_다시_설정하면_알리지_않는다()
+    {
+        var sample = new Sample();
+        sample.Editor.SetAssignments(
+            sample.SetNode.Id,
+            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
+
+        int notifications = 0;
+        sample.Editor.Changed += (_, _) => notifications++;
+
+        sample.Editor.UpdateCondition(
+            sample.ConditionA.Id,
+            sample.ConditionA.Name,
+            sample.ConditionA.Expression);
+        sample.Editor.SetAssignments(
+            sample.SetNode.Id,
+            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
+
+        Assert.Equal(0, notifications);
+    }
+
 }
