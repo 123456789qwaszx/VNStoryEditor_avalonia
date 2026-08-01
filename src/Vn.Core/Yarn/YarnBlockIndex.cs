@@ -64,7 +64,6 @@ internal sealed class YarnBlockIndex
     {
         private readonly List<YarnScannedLine> _items;
         private readonly IReadOnlyDictionary<int, StoryLine> _lines;
-        private readonly HashSet<int> _promoted;
         private readonly string _filePath;
 
         public Parser(
@@ -75,13 +74,6 @@ internal sealed class YarnBlockIndex
             _items = items;
             _lines = lines;
             _filePath = filePath;
-
-            // if 계열은 쌓이는 명령이 아니라 블록으로 승격한다.
-            _promoted = items
-                .Where(item => item.Kind is YarnLineKind.If or YarnLineKind.ElseIf
-                    or YarnLineKind.Else or YarnLineKind.EndIf)
-                .Select(item => item.Line)
-                .ToHashSet();
         }
 
         /// <param name="commands">
@@ -95,6 +87,12 @@ internal sealed class YarnBlockIndex
             List<StoryCommand>? commands = null)
         {
             var elements = new List<StoryElement>();
+
+            // 이 층에서 직전 라인 이후에 나타난 명령. 이 층의 다음 라인이 닫는다.
+            // 층마다 따로 두는 것이 핵심이다. 하나로 공유하면 <<if>> 갈래의 명령이
+            // <<else>> 갈래의 첫 대사에 붙는다 — 원본에서 바로 다음 라인이기 때문이다.
+            // 갈래가 바뀌면 쌓인 것은 그 갈래에 남고 다음 갈래로 넘어가지 않는다.
+            var pending = new List<StoryCommand>();
 
             while (index < _items.Count)
             {
@@ -125,9 +123,11 @@ internal sealed class YarnBlockIndex
                     case YarnLineKind.Line when item.Depth >= minDepth:
                         if (_lines.TryGetValue(item.Line, out StoryLine? line))
                         {
-                            elements.Add(new StoryLineElement(Strip(line)));
+                            elements.Add(new StoryLineElement(
+                                line with { CommandsSincePreviousLine = pending.ToArray() }));
                         }
 
+                        pending.Clear();
                         index++;
                         break;
 
@@ -141,11 +141,14 @@ internal sealed class YarnBlockIndex
                         // 짝 없는 구분자도 여기로 와서 조용히 지나간다. 멈추면 무한 반복이 된다.
                         if (item.Kind == YarnLineKind.Command)
                         {
-                            commands?.Add(new StoryCommand(
+                            var command = new StoryCommand(
                                 item.Raw,
                                 item.Line,
                                 item.Column,
-                                item.Depth));
+                                item.Depth);
+
+                            commands?.Add(command);
+                            pending.Add(command);
                         }
 
                         index++;
@@ -259,26 +262,6 @@ internal sealed class YarnBlockIndex
                 : string.Empty;
         }
 
-        /// <summary>
-        /// if 계열 명령을 뺀 라인. 그것들은 블록으로 승격했으므로
-        /// 박스 안에 다시 나타나면 같은 것이 두 번 보인다.
-        /// 평평한 <see cref="StoryNode.Lines"/>는 건드리지 않는다. 여기서 만든 복사본만 다르다.
-        /// </summary>
-        private StoryLine Strip(StoryLine line)
-        {
-            if (line.CommandsSincePreviousLine.Count == 0)
-            {
-                return line;
-            }
-
-            StoryCommand[] kept = line.CommandsSincePreviousLine
-                .Where(command => !_promoted.Contains(command.Line))
-                .ToArray();
-
-            return kept.Length == line.CommandsSincePreviousLine.Count
-                ? line
-                : line with { CommandsSincePreviousLine = kept };
-        }
 
         /// <summary>
         /// 갈래 끝의 <c>&lt;&lt;jump X&gt;&gt;</c> 하나를 목적지로 올리고 명령 목록에서 뺀다.
