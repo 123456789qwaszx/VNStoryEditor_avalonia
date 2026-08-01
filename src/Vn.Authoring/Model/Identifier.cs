@@ -37,6 +37,8 @@ public static class Identifier
 
     public static string File() => Create("sf");
 
+    public static string Link() => Create("lk");
+
     public static string Node() => Create("nd");
 
     public static string Line() => Create("ln");

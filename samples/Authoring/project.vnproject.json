@@ -8,5 +8,14 @@
       "name": "1장",
       "path": "story/chapter01.vnstory.json"
     }
+  ],
+  "links": [
+    {
+      "id": "lk_setup_scene",
+      "kind": "settings",
+      "source": "nd_setup",
+      "target": "nd_scene",
+      "order": 0
+    }
   ]
 }

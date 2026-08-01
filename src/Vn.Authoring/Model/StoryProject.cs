@@ -18,6 +18,9 @@ public sealed class StoryProject
 
     public List<StoryFile> Files { get; init; } = new();
 
+    /// <summary>실행 출구가 아닌 설정·연출 공급 관계. 현재는 Settings link를 지원한다.</summary>
+    public List<NodeLink> Links { get; init; } = new();
+
     /// <summary>이야기가 시작되는 노드. null이면 아직 정하지 않은 것이다.</summary>
     public string? StartNodeId { get; set; }
 
@@ -55,9 +58,22 @@ public sealed class StoryProject
 
     public DialogueNode? FindDialogue(string? nodeId) => FindNode(nodeId) as DialogueNode;
 
+    public NodeLink? FindLink(string? linkId)
+    {
+        return linkId is null
+            ? null
+            : Links.FirstOrDefault(link => string.Equals(link.Id, linkId, StringComparison.Ordinal));
+    }
+
+    public IEnumerable<NodeLink> EnumerateLinks(NodeLinkKind kind)
+    {
+        return Links.Where(link => link.Kind == kind);
+    }
+
     /// <summary>
-    /// 프로젝트 안의 모든 조건. 파일 순서, SetNode 순서, 조건 순서를 지킨다.
-    /// 작업 3에서 Settings 연결 범위가 도입되기 전까지는 전역 조건 카탈로그로 사용한다.
+    /// 프로젝트 안의 모든 SetNode 조건. 파일 순서, SetNode 순서, 조건 순서를 지킨다.
+    /// 편집·진단용 전체 조회이며 DialogueNode의 드롭다운 범위에는 사용하지 않는다.
+    /// Dialogue별 범위는 AvailableConditionResolver가 Settings link를 기준으로 계산한다.
     /// </summary>
     public IEnumerable<ConditionDefinition> EnumerateConditions()
     {
@@ -79,7 +95,8 @@ public sealed class StoryProject
             FormatVersion = FormatVersion,
             Title = Title,
             StartNodeId = StartNodeId,
-            Files = Files.Select(file => file.Clone()).ToList()
+            Files = Files.Select(file => file.Clone()).ToList(),
+            Links = Links.Select(link => link.Clone()).ToList()
         };
     }
 }

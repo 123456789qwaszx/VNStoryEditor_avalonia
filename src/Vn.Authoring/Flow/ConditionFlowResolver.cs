@@ -1,3 +1,4 @@
+using Vn.Authoring.Definition;
 using Vn.Authoring.Model;
 
 namespace Vn.Authoring.Flow;
@@ -9,19 +10,24 @@ namespace Vn.Authoring.Flow;
 /// 저장 형식이 검증될 때도 여기를 지난다. 해석이 두 벌 있으면 화면과 그래프가 다른 구조를
 /// 보여 주게 되고, 그때 작가는 어느 쪽이 맞는지 알 방법이 없다.
 ///
-/// 반대로 색이나 들여쓰기 같은 화면 값에서 조건을 거꾸로 추론하지 않는다.
-/// 방향은 언제나 전환 데이터 → 갈래 계산 → 표시다.
-///
-/// 갈래는 마지막 줄이 정해져야 완성되므로 두 번 훑는다.
-/// 첫 번째 훑기에서 갈래의 범위를 정하고, 두 번째에서 줄마다 완성된 갈래를 붙인다.
+/// 조건의 존재 여부는 프로젝트 전체 목록이 아니라 현재 DialogueNode에 Settings link로 연결된
+/// SetNode와 게임 전역 조건을 합친 카탈로그로 검증한다. 연결이 끊겼을 때 Transition은 보존하고
+/// <see cref="FlowProblemKind.UnavailableCondition"/>으로 알린다.
 /// </summary>
 public static class ConditionFlowResolver
 {
-    public static DialogueFlow Resolve(DialogueNode node, StoryProject project)
+    public static DialogueFlow Resolve(
+        DialogueNode node,
+        StoryProject project,
+        GameDefinition? definition = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(project);
 
+        AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
+            project,
+            node.Id,
+            definition);
         var problems = new List<FlowProblem>();
         var builders = new List<BranchBuilder>();
 
@@ -42,17 +48,35 @@ public static class ConditionFlowResolver
                 {
                     case ConditionTransitionKind.BeginIf when active is null:
                         chainIndex++;
-                        active = Open(line, transition, chainIndex, 0, index, builders, problems, project);
+                        active = Open(
+                            line,
+                            transition,
+                            chainIndex,
+                            0,
+                            index,
+                            builders,
+                            problems,
+                            project,
+                            definition,
+                            available);
                         break;
 
                     case ConditionTransitionKind.BeginIf:
-                        // 첫 버전은 중첩을 지원하지 않는다. 조용히 다른 의미로 바꾸지 않고 알린다.
-                        // 그러면서도 깊이는 1로 유지해 화면이 표현할 수 없는 상태로 가지 않게 한다.
                         problems.Add(new FlowProblem(
                             FlowProblemKind.NestedCondition,
                             line.Id,
                             "조건 안에서 새 조건을 열었습니다. 첫 버전은 중첩 조건을 지원하지 않아 같은 깊이의 다른 갈래로 다룹니다."));
-                        active = Open(line, transition, active.ChainIndex, active.BranchIndexInChain + 1, index, builders, problems, project);
+                        active = Open(
+                            line,
+                            transition,
+                            active.ChainIndex,
+                            active.BranchIndexInChain + 1,
+                            index,
+                            builders,
+                            problems,
+                            project,
+                            definition,
+                            available);
                         break;
 
                     case ConditionTransitionKind.BeginElseIf when active is null:
@@ -61,12 +85,31 @@ public static class ConditionFlowResolver
                             line.Id,
                             "열린 조건이 없는데 elseif가 있습니다. 새 조건을 여는 것으로 다룹니다."));
                         chainIndex++;
-                        active = Open(line, transition, chainIndex, 0, index, builders, problems, project);
+                        active = Open(
+                            line,
+                            transition,
+                            chainIndex,
+                            0,
+                            index,
+                            builders,
+                            problems,
+                            project,
+                            definition,
+                            available);
                         break;
 
                     case ConditionTransitionKind.BeginElseIf:
-                        // 같은 깊이의 형제 갈래다. 중첩이 아니므로 체인 번호는 그대로 둔다.
-                        active = Open(line, transition, active.ChainIndex, active.BranchIndexInChain + 1, index, builders, problems, project);
+                        active = Open(
+                            line,
+                            transition,
+                            active.ChainIndex,
+                            active.BranchIndexInChain + 1,
+                            index,
+                            builders,
+                            problems,
+                            project,
+                            definition,
+                            available);
                         break;
 
                     case ConditionTransitionKind.EndIf when active is null:
@@ -120,16 +163,33 @@ public static class ConditionFlowResolver
         int lineIndex,
         List<BranchBuilder> builders,
         List<FlowProblem> problems,
-        StoryProject project)
+        StoryProject project,
+        GameDefinition? definition,
+        AvailableConditionCatalog available)
     {
         string conditionId = transition.ConditionId ?? string.Empty;
 
-        if (project.FindCondition(conditionId) is null)
+        if (available.Find(conditionId) is null)
         {
-            problems.Add(new FlowProblem(
-                FlowProblemKind.UnknownCondition,
-                line.Id,
-                "이 줄이 가리키는 조건을 프로젝트에서 찾을 수 없습니다. 설정 노드에서 지워졌을 수 있습니다."));
+            AvailableCondition? known = AvailableConditionResolver.FindKnown(
+                project,
+                definition,
+                conditionId);
+
+            if (known is null)
+            {
+                problems.Add(new FlowProblem(
+                    FlowProblemKind.UnknownCondition,
+                    line.Id,
+                    "이 줄이 가리키는 조건 정의를 찾을 수 없습니다. 조건이 삭제되었을 수 있습니다."));
+            }
+            else
+            {
+                problems.Add(new FlowProblem(
+                    FlowProblemKind.UnavailableCondition,
+                    line.Id,
+                    $"조건 '{known.DisplayName}'은 이 대사 노드에 연결된 SetNode 또는 게임 전역 조건에 포함되지 않습니다."));
+            }
         }
 
         var builder = new BranchBuilder(

@@ -3,7 +3,7 @@ using Vn.Authoring.Model;
 
 namespace Vn.Authoring.Serialization;
 
-/// <summary>프로젝트 메타데이터와 StoryFile 경로만 담는 manifest 형식.</summary>
+/// <summary>프로젝트 메타데이터, StoryFile 경로와 파일을 넘는 typed link를 담는 manifest 형식.</summary>
 public static class ProjectManifestJson
 {
     public const int CurrentFormatVersion = StoryProject.CurrentFormatVersion;
@@ -25,6 +25,12 @@ public static class ProjectManifestJson
             });
         }
 
+        var links = new JsonArray();
+        foreach (NodeLink link in project.Links)
+        {
+            links.Add(WriteLink(link));
+        }
+
         var root = new JsonObject
         {
             ["formatVersion"] = CurrentFormatVersion,
@@ -37,6 +43,12 @@ public static class ProjectManifestJson
         }
 
         root["files"] = files;
+
+        if (links.Count > 0)
+        {
+            root["links"] = links;
+        }
+
         return JsonSupport.ToDeterministicText(root);
     }
 
@@ -88,17 +100,83 @@ public static class ProjectManifestJson
             references.Add(new ProjectStoryFileReference(id, name, path));
         }
 
+        var links = new List<NodeLink>();
+        HashSet<string> linkIds = new(StringComparer.Ordinal);
+
+        foreach (JsonNode? item in root["links"]?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject linkObject)
+            {
+                throw new InvalidDataException("프로젝트 manifest의 links 항목이 객체가 아닙니다.");
+            }
+
+            NodeLink link = ReadLink(linkObject);
+            if (!linkIds.Add(link.Id))
+            {
+                throw new InvalidDataException($"NodeLink Id '{link.Id}'가 manifest에서 중복됩니다.");
+            }
+
+            links.Add(link);
+        }
+
         return new ProjectManifest(
             (string?)root["title"] ?? "제목 없음",
             (string?)root["startNode"],
-            references);
+            references,
+            links);
+    }
+
+    internal static JsonObject WriteLink(NodeLink link)
+    {
+        var result = new JsonObject
+        {
+            ["id"] = link.Id,
+            ["kind"] = link.Kind switch
+            {
+                NodeLinkKind.Settings => "settings",
+                _ => throw new InvalidDataException($"지원하지 않는 NodeLink 종류 '{link.Kind}'입니다.")
+            },
+            ["source"] = link.SourceNodeId,
+            ["target"] = link.TargetNodeId,
+            ["order"] = link.Order
+        };
+
+        if (!link.IsEnabled)
+        {
+            result["enabled"] = false;
+        }
+
+        return result;
+    }
+
+    internal static NodeLink ReadLink(JsonObject json)
+    {
+        string id = (string?)json["id"]
+            ?? throw new InvalidDataException("NodeLink에 id가 없습니다.");
+        NodeLinkKind kind = (string?)json["kind"] switch
+        {
+            "settings" => NodeLinkKind.Settings,
+            { } unknown => throw new InvalidDataException($"지원하지 않는 NodeLink 종류 '{unknown}'입니다."),
+            _ => throw new InvalidDataException($"NodeLink '{id}'에 kind가 없습니다.")
+        };
+        string source = (string?)json["source"]
+            ?? throw new InvalidDataException($"NodeLink '{id}'에 source가 없습니다.");
+        string target = (string?)json["target"]
+            ?? throw new InvalidDataException($"NodeLink '{id}'에 target이 없습니다.");
+
+        return new NodeLink(id, kind, source, target)
+        {
+            IsEnabled = (bool?)json["enabled"] ?? true,
+            Order = (int?)json["order"] ?? 0
+        };
     }
 }
 
 public sealed record ProjectManifest(
     string Title,
     string? StartNodeId,
-    IReadOnlyList<ProjectStoryFileReference> Files);
+    IReadOnlyList<ProjectStoryFileReference> Files,
+    IReadOnlyList<NodeLink> Links);
 
 public sealed record ProjectStoryFileReference(
     string Id,

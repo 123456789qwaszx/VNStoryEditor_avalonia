@@ -1,3 +1,4 @@
+using Vn.Authoring.Definition;
 using Vn.Authoring.Model;
 
 namespace Vn.Authoring.Flow;
@@ -18,7 +19,12 @@ public enum ConditionChoiceKind
 }
 
 /// <param name="Label">드롭다운에 그대로 보이는 문구.</param>
-public sealed record ConditionChoice(ConditionChoiceKind Kind, string? ConditionId, string Label)
+/// <param name="IsAvailable">현재 DialogueNode의 Settings 범위 또는 게임 전역 조건에 포함되는가.</param>
+public sealed record ConditionChoice(
+    ConditionChoiceKind Kind,
+    string? ConditionId,
+    string Label,
+    bool IsAvailable = true)
 {
     public LineConditionTransition? ToTransition()
     {
@@ -37,7 +43,8 @@ public sealed record ConditionChoice(ConditionChoiceKind Kind, string? Condition
 ///
 /// 이 드롭다운은 "이 줄이 조건에 포함되는가"를 표시하는 것이 아니다.
 /// <b>이 줄에서 조건 흐름을 바꿀 것인지</b>를 고르는 자리다. 그래서 선택지의 의미가
-/// 바로 앞 줄까지의 상태에 따라 달라진다. 그 규칙을 화면이 아니라 여기에 둔다.
+/// 바로 앞 줄까지의 상태에 따라 달라진다. 프로젝트의 모든 SetNode 조건을 전역 노출하지 않고,
+/// 현재 DialogueNode에 Settings link로 연결된 SetNode와 게임 전역 조건만 사용한다.
 /// </summary>
 public static class ConditionChoices
 {
@@ -47,15 +54,23 @@ public static class ConditionChoices
 
     /// <summary>
     /// <paramref name="preceding"/>는 이 줄의 전환을 적용하기 전의 갈래다.
-    /// null이면 조건 바깥이다.
+    /// null이면 조건 바깥이다. 현재 전환이 연결 해제로 인해 사용할 수 없게 되었더라도
+    /// <paramref name="currentTransition"/>을 그대로 선택할 수 있도록 목록에 보존한다.
     /// </summary>
     public static IReadOnlyList<ConditionChoice> For(
         ConditionBranch? preceding,
-        StoryProject project)
+        DialogueNode dialogue,
+        StoryProject project,
+        GameDefinition? definition = null,
+        LineConditionTransition? currentTransition = null)
     {
+        ArgumentNullException.ThrowIfNull(dialogue);
         ArgumentNullException.ThrowIfNull(project);
 
-        List<ConditionDefinition> conditions = project.EnumerateConditions().ToList();
+        AvailableConditionCatalog catalog = AvailableConditionResolver.Resolve(
+            project,
+            dialogue.Id,
+            definition);
         var choices = new List<ConditionChoice>();
 
         if (preceding is null)
@@ -63,36 +78,42 @@ public static class ConditionChoices
             // 바깥이다. 조건을 고르면 새 갈래가 열린다.
             choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritOutsideLabel));
 
-            foreach (ConditionDefinition condition in conditions)
+            foreach (AvailableCondition condition in catalog.Conditions)
             {
                 choices.Add(new ConditionChoice(
                     ConditionChoiceKind.BeginIf,
                     condition.Id,
-                    DisplayName(condition)));
+                    condition.DisplayName));
             }
-
-            return choices;
         }
-
-        // 안이다. 유지 / 다른 조건으로 전환 / 종료.
-        choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritInsideLabel));
-
-        foreach (ConditionDefinition condition in conditions)
+        else
         {
-            // 지금 적용 중인 조건을 "새 전환 대상"으로 다시 보여 줄 이유가 없다.
-            // 그것을 고르는 것은 아무것도 바꾸지 않는 것과 같고, 유지 항목이 이미 그 자리다.
-            if (string.Equals(condition.Id, preceding.ConditionId, StringComparison.Ordinal))
+            // 안이다. 유지 / 다른 조건으로 전환 / 종료.
+            choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritInsideLabel));
+
+            foreach (AvailableCondition condition in catalog.Conditions)
             {
-                continue;
+                // 지금 적용 중인 조건을 "새 전환 대상"으로 다시 보여 줄 이유가 없다.
+                if (string.Equals(condition.Id, preceding.ConditionId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                choices.Add(new ConditionChoice(
+                    ConditionChoiceKind.BeginElseIf,
+                    condition.Id,
+                    condition.DisplayName));
             }
 
-            choices.Add(new ConditionChoice(
-                ConditionChoiceKind.BeginElseIf,
-                condition.Id,
-                DisplayName(condition)));
+            choices.Add(new ConditionChoice(ConditionChoiceKind.EndIf, null, EndIfLabel));
         }
 
-        choices.Add(new ConditionChoice(ConditionChoiceKind.EndIf, null, EndIfLabel));
+        PreserveUnavailableCurrent(
+            choices,
+            currentTransition,
+            project,
+            definition);
+
         return choices;
     }
 
@@ -106,12 +127,7 @@ public static class ConditionChoices
             return choices[0];
         }
 
-        ConditionChoiceKind kind = transition.Kind switch
-        {
-            ConditionTransitionKind.BeginIf => ConditionChoiceKind.BeginIf,
-            ConditionTransitionKind.BeginElseIf => ConditionChoiceKind.BeginElseIf,
-            _ => ConditionChoiceKind.EndIf
-        };
+        ConditionChoiceKind kind = KindOf(transition);
 
         return choices.FirstOrDefault(choice =>
                    choice.Kind == kind &&
@@ -124,5 +140,57 @@ public static class ConditionChoices
         return string.IsNullOrWhiteSpace(condition.Name)
             ? condition.Id
             : condition.Name;
+    }
+
+    private static void PreserveUnavailableCurrent(
+        List<ConditionChoice> choices,
+        LineConditionTransition? transition,
+        StoryProject project,
+        GameDefinition? definition)
+    {
+        if (transition is null || !transition.OpensBranch || transition.ConditionId is null)
+        {
+            return;
+        }
+
+        ConditionChoiceKind kind = KindOf(transition);
+        bool alreadyPresent = choices.Any(choice =>
+            choice.Kind == kind &&
+            string.Equals(choice.ConditionId, transition.ConditionId, StringComparison.Ordinal));
+
+        if (alreadyPresent)
+        {
+            return;
+        }
+
+        AvailableCondition? known = AvailableConditionResolver.FindKnown(
+            project,
+            definition,
+            transition.ConditionId);
+        var unavailable = new ConditionChoice(
+            kind,
+            transition.ConditionId,
+            AvailableConditionResolver.UnavailableLabel(known, transition.ConditionId),
+            IsAvailable: false);
+
+        int endIndex = choices.FindIndex(choice => choice.Kind == ConditionChoiceKind.EndIf);
+        if (endIndex < 0)
+        {
+            choices.Add(unavailable);
+        }
+        else
+        {
+            choices.Insert(endIndex, unavailable);
+        }
+    }
+
+    private static ConditionChoiceKind KindOf(LineConditionTransition transition)
+    {
+        return transition.Kind switch
+        {
+            ConditionTransitionKind.BeginIf => ConditionChoiceKind.BeginIf,
+            ConditionTransitionKind.BeginElseIf => ConditionChoiceKind.BeginElseIf,
+            _ => ConditionChoiceKind.EndIf
+        };
     }
 }

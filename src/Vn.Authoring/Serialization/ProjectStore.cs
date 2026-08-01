@@ -150,6 +150,8 @@ public static class ProjectStore
             project.Files.Add(file);
         }
 
+        project.Links.AddRange(manifest.Links.Select(link => link.Clone()));
+
         JsonSupport.ValidateProject(project);
         return project;
     }

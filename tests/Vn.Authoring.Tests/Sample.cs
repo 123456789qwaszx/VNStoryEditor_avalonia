@@ -22,6 +22,7 @@ internal sealed class Sample
 
         Dialogue = Editor.AddDialogueNode(File.Id, name: "본문");
         Dialogue.Lines.Clear();
+        SettingsLink = Editor.AddSettingsLink(SetNode.Id, Dialogue.Id);
 
         TargetA = Editor.AddDialogueNode(File.Id, name: "A로 간다");
         TargetB = Editor.AddDialogueNode(File.Id, name: "B로 간다");
@@ -41,6 +42,8 @@ internal sealed class Sample
     public ConditionDefinition ConditionB { get; }
 
     public DialogueNode Dialogue { get; }
+
+    public NodeLink SettingsLink { get; }
 
     public DialogueNode TargetA { get; }
 

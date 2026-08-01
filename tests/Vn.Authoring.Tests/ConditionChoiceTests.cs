@@ -15,7 +15,7 @@ public class ConditionChoiceTests
     {
         var sample = new Sample();
 
-        IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(null, sample.Project);
+        IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(null, sample.Dialogue, sample.Project);
 
         Assert.Equal(ConditionChoiceKind.Inherit, choices[0].Kind);
         Assert.Equal(ConditionChoices.InheritOutsideLabel, choices[0].Label);
@@ -37,7 +37,7 @@ public class ConditionChoiceTests
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         IReadOnlyList<ConditionChoice> choices =
-            ConditionChoices.For(flow.Lines[1].PrecedingBranch, sample.Project);
+            ConditionChoices.For(flow.Lines[1].PrecedingBranch, sample.Dialogue, sample.Project);
 
         Assert.Equal(ConditionChoices.InheritInsideLabel, choices[0].Label);
 
@@ -59,14 +59,14 @@ public class ConditionChoiceTests
     {
         var sample = new Sample();
 
-        ConditionChoice beginIf = ConditionChoices.For(null, sample.Project)
+        ConditionChoice beginIf = ConditionChoices.For(null, sample.Dialogue, sample.Project)
             .Single(choice => choice.ConditionId == sample.ConditionA.Id);
 
         LineConditionTransition transition = beginIf.ToTransition()!;
         Assert.Equal(ConditionTransitionKind.BeginIf, transition.Kind);
         Assert.Equal(sample.ConditionA.Id, transition.ConditionId);
 
-        Assert.Null(ConditionChoices.For(null, sample.Project)[0].ToTransition());
+        Assert.Null(ConditionChoices.For(null, sample.Dialogue, sample.Project)[0].ToTransition());
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class ConditionChoiceTests
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         IReadOnlyList<ConditionChoice> choices =
-            ConditionChoices.For(flow.Lines[1].PrecedingBranch, sample.Project);
+            ConditionChoices.For(flow.Lines[1].PrecedingBranch, sample.Dialogue, sample.Project);
 
         ConditionChoice current = ConditionChoices.Current(choices, second.Transition);
 
@@ -93,7 +93,7 @@ public class ConditionChoiceTests
         sample.Editor.UpdateCondition(sample.ConditionA.Id, string.Empty, "favor >= 5");
 
         Assert.Contains(
-            ConditionChoices.For(null, sample.Project),
+            ConditionChoices.For(null, sample.Dialogue, sample.Project),
             choice => choice.Label == sample.ConditionA.Id);
     }
 }

@@ -70,7 +70,7 @@ public partial class DialogueNodeEditor : UserControl
         {
             NameBox.Text = node.Name;
 
-            DialogueFlow flow = ConditionFlowResolver.Resolve(node, _session.Project);
+            DialogueFlow flow = ConditionFlowResolver.Resolve(node, _session.Project, _session.Definition);
 
             LineHost.Children.Clear();
 
@@ -150,7 +150,20 @@ public partial class DialogueNodeEditor : UserControl
         // 지금 어느 갈래인지는 색이 아니라 글자로도 반드시 알 수 있어야 한다.
         if (resolved.Branch is { } branch)
         {
-            ConditionDefinition? condition = _session!.Project.FindCondition(branch.ConditionId);
+            AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
+                _session!.Project,
+                node.Id,
+                _session.Definition);
+            AvailableCondition? condition = available.Find(branch.ConditionId);
+            AvailableCondition? known = condition ?? AvailableConditionResolver.FindKnown(
+                _session.Project,
+                _session.Definition,
+                branch.ConditionId);
+            string conditionLabel = condition is not null
+                ? condition.DisplayName
+                : known is not null
+                    ? AvailableConditionResolver.UnavailableLabel(known, branch.ConditionId)
+                    : "알 수 없는 조건";
 
             var label = new Border
             {
@@ -161,9 +174,7 @@ public partial class DialogueNodeEditor : UserControl
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
                 {
-                    Text = condition is null
-                        ? "알 수 없는 조건"
-                        : ConditionChoices.DisplayName(condition),
+                    Text = conditionLabel,
                     FontSize = 10,
                     FontWeight = FontWeight.Bold,
                     Foreground = Brushes.White
@@ -199,8 +210,12 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private ComboBox BuildConditionBox(DialogueNode node, ResolvedLine resolved)
     {
-        IReadOnlyList<ConditionChoice> choices =
-            ConditionChoices.For(resolved.PrecedingBranch, _session!.Project);
+        IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(
+            resolved.PrecedingBranch,
+            node,
+            _session!.Project,
+            _session.Definition,
+            resolved.Line.Transition);
 
         var box = new ComboBox
         {

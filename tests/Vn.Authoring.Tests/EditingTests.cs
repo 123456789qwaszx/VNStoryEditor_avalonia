@@ -185,7 +185,7 @@ public class EditingTests
         Assert.Equal("호감 매우 높음", branchPort.Label);
 
         ConditionChoice choice = Assert.Single(
-            ConditionChoices.For(preceding: null, sample.Project),
+            ConditionChoices.For(preceding: null, sample.Dialogue, sample.Project),
             item => string.Equals(item.ConditionId, sample.ConditionA.Id, StringComparison.Ordinal));
         Assert.Equal("호감 매우 높음", choice.Label);
     }

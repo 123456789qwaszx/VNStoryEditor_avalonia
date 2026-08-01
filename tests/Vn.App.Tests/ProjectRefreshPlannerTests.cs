@@ -56,4 +56,28 @@ public class ProjectRefreshPlannerTests
         Assert.True(plan.RebuildGraph);
         Assert.True(plan.RebuildInspector);
     }
+    [Fact]
+    public void Settings_link_변경은_SetNode_편집기를_유지하고_그래프만_갱신한다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Connections,
+            new SetNode(name: "설정"));
+
+        Assert.True(plan.RebuildGraph);
+        Assert.False(plan.RefreshGraphPositions);
+        Assert.False(plan.RebuildInspector);
+    }
+
+    [Fact]
+    public void Settings_link_변경은_선택된_Dialogue의_조건_목록을_다시_계산한다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Connections,
+            new DialogueNode(name: "장면"));
+
+        Assert.True(plan.RebuildGraph);
+        Assert.False(plan.RefreshGraphPositions);
+        Assert.True(plan.RebuildInspector);
+    }
+
 }

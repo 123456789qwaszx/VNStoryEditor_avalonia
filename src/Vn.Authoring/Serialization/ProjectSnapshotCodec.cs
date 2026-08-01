@@ -25,6 +25,12 @@ public static class ProjectSnapshotCodec
             files.Add(item);
         }
 
+        var links = new JsonArray();
+        foreach (NodeLink link in project.Links)
+        {
+            links.Add(ProjectManifestJson.WriteLink(link));
+        }
+
         var root = new JsonObject
         {
             ["snapshotVersion"] = CurrentSnapshotVersion,
@@ -38,6 +44,11 @@ public static class ProjectSnapshotCodec
         }
 
         root["files"] = files;
+        if (links.Count > 0)
+        {
+            root["links"] = links;
+        }
+
         return JsonSupport.ToDeterministicText(root);
     }
 
@@ -84,6 +95,16 @@ public static class ProjectSnapshotCodec
             file.RelativePath = ProjectStore.NormalizeRelativeStoryPath(
                 (string?)fileObject["path"] ?? ProjectStore.DefaultRelativePath(file.Id));
             project.Files.Add(file);
+        }
+
+        foreach (JsonNode? item in root["links"]?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject linkObject)
+            {
+                throw new InvalidDataException("프로젝트 스냅샷의 links 항목이 객체가 아닙니다.");
+            }
+
+            project.Links.Add(ProjectManifestJson.ReadLink(linkObject));
         }
 
         JsonSupport.ValidateProject(project);

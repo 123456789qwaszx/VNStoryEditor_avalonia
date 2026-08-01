@@ -122,7 +122,8 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | `LineBox` | 작가가 보는 최소 단위. Id·화자·대사·조건 전환 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
 | `ConditionDefinition` | Id + 작가용 이름 + 게임이 평가할 식 |
-| `Identifier` | `sf_` / `nd_` / `ln_` / `cd_` 안정 식별자 생성 |
+| `NodeLink` | 실행이 아닌 연결. `Settings`는 SetNode가 Dialogue에 조건을 공급한다 |
+| `Identifier` | `sf_` / `nd_` / `ln_` / `cd_` / `lk_` 안정 식별자 생성 |
 
 **Id와 이름을 나눈 이유:** 작가는 노드 이름을 바꾸고 줄 순서를 계속 바꾼다.
 그때마다 간선과 출구가 끊어지면 저작 도구로 쓸 수 없다. 파일도 같다. 파일 이름과
@@ -141,6 +142,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | `ConditionBranch` | 갈래 하나. 여는 줄 Id, 조건, 체인 번호, 색 자리, 범위, 출구 |
 | `ResolvedLine` | 줄 하나의 갈래·깊이·출구 여부, 그리고 **전환 적용 전** 갈래 |
 | `ConditionChoices` | 조건 드롭다운에 무엇을 보여 줄지 (§6.4 규칙) |
+| `AvailableConditionResolver` | **이 DialogueNode가 쓸 수 있는 조건**의 카탈로그 |
 | `NodeConnections` | 노드의 출력 포트와 프로젝트 전체 간선 |
 
 `ResolvedLine`에 "전환 적용 전 갈래"(`PrecedingBranch`)가 함께 있는 이유는,
@@ -151,7 +153,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | 타입 | 역할 |
 |---|---|
 | `ProjectEditor` | **모델을 바꾸는 유일한 통로.** 되돌리기·알림을 함께 책임진다 |
-| `ProjectChangedEventArgs` | 변경 종류: `Structure` / `Content` / `ConditionDefinition` / `NodeMetadata` / `Layout` |
+| `ProjectChangedEventArgs` | 변경 종류: `Structure` / `Content` / `ConditionDefinition` / `Connections` / `NodeMetadata` / `Layout` |
 
 **변경 종류는 영향 범위를 말한다.** 조건 이름을 고치는 일과 조건을 추가하는 일은
 화면에 주는 영향이 다르다. 같은 신호를 보내면 화면은 최악의 경우를 가정해 편집 중인
@@ -262,6 +264,7 @@ Line 6                                  Line 6
 | 중첩 조건·깊이 2 이상 지원 | 같은 파일. 지금은 문제로 알리고 같은 깊이로 다룬다 |
 | `else` 갈래 추가 | `Model/LineBox.cs`의 `ConditionTransitionKind` → 위 해석자 → `Flow/ConditionChoices.cs` |
 | 드롭다운에 무엇을 보여 줄지 | `Flow/ConditionChoices.cs` |
+| 어떤 조건을 쓸 수 있는지 | `Flow/AvailableConditionResolver.cs` — 연결된 SetNode + 게임 전역 |
 | 갈래 색 | 자리 계산은 `Flow/DialogueFlow.cs`의 `PaletteIndex`, 실제 색은 `App/Views/BranchPalette.cs` |
 | 잘못된 구조를 알리는 방식 | `Flow/DialogueFlow.cs`의 `FlowProblemKind` |
 
@@ -270,6 +273,8 @@ Line 6                                  Line 6
 | 하고 싶은 일 | 여는 곳 |
 |---|---|
 | 출구를 어디에 저장하는가 | `Model/StoryNode.cs`의 `DialogueNode.BranchExits` |
+| 실행이 아닌 연결을 저장하는 곳 | `Model/NodeLink.cs`, manifest의 `links` |
+| 조건 공급 연결 만들기·끊기 | `Editing/ProjectEditor.cs`의 `AddSettingsLink` / `RemoveLink` / `SetLinkEnabled` |
 | 포트를 만드는 규칙 | `Flow/NodeConnections.cs`의 `PortsOf` |
 | 간선 라벨 문구 | `Flow/NodeConnections.cs`의 `LabelFor` |
 | 연결·해제 동작 | `Editing/ProjectEditor.cs`의 `SetExitTarget` |
@@ -382,12 +387,16 @@ Line 6                                  Line 6
 8. **모르는 파일을 관대하게 읽지 않는다.**
    열리지 않는 것은 되돌릴 수 있지만, 덮어써진 원고는 되돌릴 수 없다.
 
-9. **바인딩이 값을 넣을 때 나는 이벤트를 사용자 입력으로 보지 않는다.**
+9. **작가가 고른 조건을 도구가 조용히 바꾸지 않는다.**
+   연결이 끊겨 쓸 수 없게 된 조건도 전환은 그대로 두고 "사용할 수 없음"으로 보여 준다.
+   말없이 다른 조건으로 갈아 끼우면 이야기가 바뀐 것을 아무도 모른다.
+
+10. **바인딩이 값을 넣을 때 나는 이벤트를 사용자 입력으로 보지 않는다.**
    `_building` 가드와 `ProjectChangeKind.Content`가 그 역할을 한다.
 
-10. **XAML을 읽는 도중에도 컨트롤은 이벤트를 낸다.** `x:Name` 필드는 그 뒤에 채워진다.
+11. **XAML을 읽는 도중에도 컨트롤은 이벤트를 낸다.** `x:Name` 필드는 그 뒤에 채워진다.
 
-11. **골든 파일은 언제나 UTF-8로 읽는다.** PowerShell 5.1은 BOM이 없으면 ANSI로 읽는다.
+12. **골든 파일은 언제나 UTF-8로 읽는다.** PowerShell 5.1은 BOM이 없으면 ANSI로 읽는다.
     한국어를 담은 `.ps1`은 UTF-8 BOM으로 저장해야 한다.
 
 ---

@@ -33,6 +33,12 @@ internal static class ProjectRefreshPlanner
                 // 드롭다운과 갈래 라벨을 새 조건 이름으로 다시 계산한다.
                 RebuildInspector: selectedNode is DialogueNode),
 
+            ProjectChangeKind.Connections => new ProjectRefreshPlan(
+                RebuildGraph: true,
+                RefreshGraphPositions: false,
+                // Settings link가 바뀌면 선택된 Dialogue의 조건 목록과 문제 표시가 달라진다.
+                RebuildInspector: selectedNode is DialogueNode),
+
             ProjectChangeKind.NodeMetadata => new ProjectRefreshPlan(
                 RebuildGraph: true,
                 RefreshGraphPositions: false,

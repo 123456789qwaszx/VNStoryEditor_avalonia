@@ -30,6 +30,10 @@ public class SerializationTests
         Assert.Equal(sample.TargetDefault.Id, dialogue.DefaultExitTargetNodeId);
         Assert.Equal(120, dialogue.Layout.X);
         Assert.Equal(340, dialogue.Layout.Y);
+        NodeLink settings = Assert.Single(reloaded.Links);
+        Assert.Equal(NodeLinkKind.Settings, settings.Kind);
+        Assert.Equal(sample.SetNode.Id, settings.SourceNodeId);
+        Assert.Equal(sample.Dialogue.Id, settings.TargetNodeId);
 
         DialogueFlow before = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         DialogueFlow after = ConditionFlowResolver.Resolve(dialogue, reloaded);
@@ -82,6 +86,11 @@ public class SerializationTests
             project.Files.Add(second);
             first.Nodes.Add(new DialogueNode("nd_a", "A 노드"));
             second.Nodes.Add(new SetNode("nd_b", "B 노드"));
+            project.Links.Add(new NodeLink(
+                "lk_b_a",
+                NodeLinkKind.Settings,
+                sourceNodeId: "nd_b",
+                targetNodeId: "nd_a"));
             project.StartNodeId = "nd_a";
 
             ProjectStore.Save(manifestPath, project);
@@ -89,14 +98,22 @@ public class SerializationTests
             Assert.True(File.Exists(manifestPath));
             Assert.True(File.Exists(Path.Combine(directory, "story", "a.vnstory.json")));
             Assert.True(File.Exists(Path.Combine(directory, "story", "b.vnstory.json")));
-            Assert.DoesNotContain("\"nodes\"", File.ReadAllText(manifestPath));
-            Assert.Contains("\"nodes\"", File.ReadAllText(Path.Combine(directory, "story", "a.vnstory.json")), StringComparison.Ordinal);
+            string manifest = File.ReadAllText(manifestPath);
+            string firstStory = File.ReadAllText(Path.Combine(directory, "story", "a.vnstory.json"));
+            Assert.DoesNotContain("\"nodes\"", manifest);
+            Assert.Contains("\"links\"", manifest, StringComparison.Ordinal);
+            Assert.Contains("\"nodes\"", firstStory, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"links\"", firstStory);
 
             ProjectLoadResult loaded = ProjectStore.Load(manifestPath);
             Assert.False(loaded.WasMigrated);
             Assert.Equal(new[] { "sf_a", "sf_b" }, loaded.Project.Files.Select(file => file.Id));
             Assert.Equal(new[] { "nd_a", "nd_b" }, loaded.Project.EnumerateNodes().Select(node => node.Id));
             Assert.Equal("story/b.vnstory.json", loaded.Project.Files[1].RelativePath);
+            NodeLink loadedLink = Assert.Single(loaded.Project.Links);
+            Assert.Equal("lk_b_a", loadedLink.Id);
+            Assert.Equal("nd_b", loadedLink.SourceNodeId);
+            Assert.Equal("nd_a", loadedLink.TargetNodeId);
         }
         finally
         {
@@ -301,6 +318,42 @@ public class SerializationTests
 
         Assert.Throws<InvalidDataException>(() => ProjectSnapshotCodec.Encode(project));
         Assert.Throws<InvalidDataException>(() => ProjectManifestJson.Write(project));
+    }
+
+    [Fact]
+    public void Settings_link의_노드_종류가_잘못되면_저장하지_않는다()
+    {
+        var project = new StoryProject();
+        var file = new StoryFile("sf_link", "링크");
+        var first = new DialogueNode("nd_first", "첫 장면");
+        var second = new DialogueNode("nd_second", "둘째 장면");
+        file.Nodes.Add(first);
+        file.Nodes.Add(second);
+        project.Files.Add(file);
+        project.Links.Add(new NodeLink(
+            "lk_invalid",
+            NodeLinkKind.Settings,
+            sourceNodeId: first.Id,
+            targetNodeId: second.Id));
+
+        Assert.Throws<InvalidDataException>(() => ProjectSnapshotCodec.Encode(project));
+        Assert.Throws<InvalidDataException>(() => ProjectManifestJson.Write(project));
+    }
+
+    [Fact]
+    public void 같은_Settings_link가_중복되면_저장하지_않는다()
+    {
+        var project = new StoryProject();
+        var file = new StoryFile("sf_link", "링크");
+        var setNode = new SetNode("nd_set", "설정");
+        var dialogue = new DialogueNode("nd_dialogue", "장면");
+        file.Nodes.Add(setNode);
+        file.Nodes.Add(dialogue);
+        project.Files.Add(file);
+        project.Links.Add(new NodeLink("lk_one", NodeLinkKind.Settings, setNode.Id, dialogue.Id));
+        project.Links.Add(new NodeLink("lk_two", NodeLinkKind.Settings, setNode.Id, dialogue.Id));
+
+        Assert.Throws<InvalidDataException>(() => ProjectSnapshotCodec.Encode(project));
     }
 
     [Fact]

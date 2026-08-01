@@ -79,6 +79,8 @@ internal static class JsonSupport
         HashSet<string> fileIds = new(StringComparer.Ordinal);
         HashSet<string> nodeIds = new(StringComparer.Ordinal);
         HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> linkIds = new(StringComparer.Ordinal);
+        HashSet<(NodeLinkKind Kind, string Source, string Target)> linkPairs = new();
 
         foreach (StoryFile file in project.Files)
         {
@@ -100,6 +102,42 @@ internal static class JsonSupport
                 {
                     throw new InvalidDataException($"노드 Id '{node.Id}'가 프로젝트 전체에서 중복됩니다.");
                 }
+            }
+        }
+
+
+        foreach (NodeLink link in project.Links)
+        {
+            if (!linkIds.Add(link.Id))
+            {
+                throw new InvalidDataException($"NodeLink Id '{link.Id}'가 중복됩니다.");
+            }
+
+            StoryNode? source = project.FindNode(link.SourceNodeId);
+            StoryNode? target = project.FindNode(link.TargetNodeId);
+
+            if (source is null || target is null)
+            {
+                throw new InvalidDataException(
+                    $"NodeLink '{link.Id}'가 존재하지 않는 노드를 가리킵니다.");
+            }
+
+            if (link.Order < 0)
+            {
+                throw new InvalidDataException($"NodeLink '{link.Id}'의 order는 음수일 수 없습니다.");
+            }
+
+            if (link.Kind == NodeLinkKind.Settings &&
+                (source is not SetNode || target is not DialogueNode))
+            {
+                throw new InvalidDataException(
+                    $"Settings link '{link.Id}'는 SetNode에서 DialogueNode로만 연결할 수 있습니다.");
+            }
+
+            if (!linkPairs.Add((link.Kind, link.SourceNodeId, link.TargetNodeId)))
+            {
+                throw new InvalidDataException(
+                    $"{link.Kind} link '{link.SourceNodeId}' → '{link.TargetNodeId}'가 중복됩니다.");
             }
         }
 
