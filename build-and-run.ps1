@@ -37,8 +37,8 @@ $previousEncoding = [Console]::OutputEncoding
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $repoRoot = $PSScriptRoot
-$samples = @("Valid", "Invalid", "Malformed")
-$expectedExitCodes = @{ Valid = 0; Invalid = 1; Malformed = 1 }
+$samples = @("Valid", "Invalid", "Malformed", "Real")
+$expectedExitCodes = @{ Valid = 0; Invalid = 1; Malformed = 1; Real = 1 }
 
 function Invoke-Sample {
     param(

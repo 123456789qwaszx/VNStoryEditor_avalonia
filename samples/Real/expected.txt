@@ -1,0 +1,141 @@
+﻿source	Story.yarn
+node	gerie1	Story.yarn	4
+jump	gerie1	gerie1_low_pay_end	Story.yarn	60	12
+jump	gerie1	gerie1_reason_route	Story.yarn	62	12
+jump	gerie1	gerie1_trust_route	Story.yarn	64	12
+line	gerie1	Story.yarn	16	0	-	-	8	0
+line	gerie1	Story.yarn	17	0	-	윌로	0	0
+line	gerie1	Story.yarn	18	0	-	라루	0	0
+line	gerie1	Story.yarn	19	0	-	라루	0	0
+line	gerie1	Story.yarn	20	0	-	윌로	0	0
+line	gerie1	Story.yarn	23	1	-	윌로	1	0
+line	gerie1	Story.yarn	26	1	-	윌로	2	0
+line	gerie1	Story.yarn	30	0	-	라루	2	0
+line	gerie1	Story.yarn	31	0	-	라루	0	0
+line	gerie1	Story.yarn	34	1	-	라루	1	0
+line	gerie1	Story.yarn	38	0	-	윌로	2	1
+line	gerie1	Story.yarn	43	0	opt	-	1	1
+line	gerie1	Story.yarn	47	1	-	라루	3	0
+line	gerie1	Story.yarn	48	1	-	라루	0	0
+line	gerie1	Story.yarn	49	0	opt	-	0	1
+line	gerie1	Story.yarn	52	1	-	라루	2	0
+line	gerie1	Story.yarn	53	1	-	라루	0	0
+line	gerie1	Story.yarn	54	0	opt	-	0	0
+line	gerie1	Story.yarn	57	1	-	라루	2	0
+block	gerie1	Story.yarn	22	28	Condition	0	2
+block	gerie1	Story.yarn	33	36	Condition	0	1
+block	gerie1	Story.yarn	43	64	Option	0	3
+node	gerie1_debt_promise_end	Story.yarn	129
+line	gerie1_debt_promise_end	Story.yarn	131	0	-	윌로	0	0
+line	gerie1_debt_promise_end	Story.yarn	132	0	-	윌로	0	0
+line	gerie1_debt_promise_end	Story.yarn	135	1	-	라루	1	0
+line	gerie1_debt_promise_end	Story.yarn	137	1	-	라루	1	0
+line	gerie1_debt_promise_end	Story.yarn	140	0	-	라루	1	0
+line	gerie1_debt_promise_end	Story.yarn	141	0	-	윌로	0	0
+line	gerie1_debt_promise_end	Story.yarn	142	0	-	라루	0	0
+block	gerie1_debt_promise_end	Story.yarn	134	138	Condition	0	2
+node	gerie1_good_end	Story.yarn	146
+line	gerie1_good_end	Story.yarn	148	0	-	윌로	0	0
+line	gerie1_good_end	Story.yarn	149	0	-	라루	0	0
+line	gerie1_good_end	Story.yarn	150	0	-	윌로	0	0
+line	gerie1_good_end	Story.yarn	153	1	-	라루	1	0
+line	gerie1_good_end	Story.yarn	154	1	-	라루	0	0
+line	gerie1_good_end	Story.yarn	155	1	-	윌로	0	0
+line	gerie1_good_end	Story.yarn	157	1	-	라루	1	0
+line	gerie1_good_end	Story.yarn	158	1	-	라루	0	0
+block	gerie1_good_end	Story.yarn	152	159	Condition	0	2
+node	gerie1_low_pay_end	Story.yarn	116
+line	gerie1_low_pay_end	Story.yarn	119	0	-	윌로	1	0
+line	gerie1_low_pay_end	Story.yarn	121	0	-	윌로	1	0
+line	gerie1_low_pay_end	Story.yarn	124	0	-	라루	1	0
+block	gerie1_low_pay_end	Story.yarn	118	122	Condition	0	2
+node	gerie1_reason_route	Story.yarn	68
+jump	gerie1_reason_route	gerie1_good_end	Story.yarn	96	8
+line	gerie1_reason_route	Story.yarn	70	0	-	윌로	0	0
+line	gerie1_reason_route	Story.yarn	71	0	-	윌로	0	0
+line	gerie1_reason_route	Story.yarn	72	0	-	라루	0	0
+line	gerie1_reason_route	Story.yarn	74	0	-	윌로	0	0
+line	gerie1_reason_route	Story.yarn	76	0	opt	-	0	1
+line	gerie1_reason_route	Story.yarn	79	1	-	라루	2	0
+line	gerie1_reason_route	Story.yarn	80	1	-	윌로	0	0
+line	gerie1_reason_route	Story.yarn	81	0	opt	-	0	1
+line	gerie1_reason_route	Story.yarn	83	1	-	라루	1	0
+line	gerie1_reason_route	Story.yarn	84	1	-	라루	0	0
+line	gerie1_reason_route	Story.yarn	85	0	opt	-	0	0
+line	gerie1_reason_route	Story.yarn	87	2	-	라루	1	0
+line	gerie1_reason_route	Story.yarn	90	2	-	라루	2	0
+line	gerie1_reason_route	Story.yarn	95	0	-	결과	2	0
+block	gerie1_reason_route	Story.yarn	76	92	Option	0	3
+block	gerie1_reason_route	Story.yarn	86	92	Condition	1	2
+node	gerie1_trust_route	Story.yarn	100
+jump	gerie1_trust_route	gerie1_good_end	Story.yarn	112	8
+line	gerie1_trust_route	Story.yarn	102	0	-	윌로	0	0
+line	gerie1_trust_route	Story.yarn	103	0	-	라루	0	0
+line	gerie1_trust_route	Story.yarn	104	0	-	라루	0	0
+line	gerie1_trust_route	Story.yarn	109	0	-	윌로	2	0
+line	gerie1_trust_route	Story.yarn	110	0	-	라루	0	0
+diag	VN3001	Error	Story.yarn	6	7
+diag	YS0003	Warning	Story.yarn	6	7
+diag	VN3001	Error	Story.yarn	7	7
+diag	YS0003	Warning	Story.yarn	7	7
+diag	VN3001	Error	Story.yarn	8	7
+diag	YS0003	Warning	Story.yarn	8	7
+diag	VN3001	Error	Story.yarn	9	7
+diag	YS0003	Warning	Story.yarn	9	7
+diag	VN3001	Error	Story.yarn	10	7
+diag	YS0003	Warning	Story.yarn	10	7
+diag	VN3001	Error	Story.yarn	11	7
+diag	YS0003	Warning	Story.yarn	11	7
+diag	VN3001	Error	Story.yarn	12	7
+diag	YS0003	Warning	Story.yarn	12	7
+diag	VN3002	Error	Story.yarn	14	3
+diag	VN3001	Error	Story.yarn	22	6
+diag	VN3001	Error	Story.yarn	24	11
+diag	VN3001	Error	Story.yarn	24	20
+diag	VN3001	Error	Story.yarn	27	11
+diag	VN3001	Error	Story.yarn	27	20
+diag	VN3001	Error	Story.yarn	33	6
+diag	VN3001	Error	Story.yarn	33	18
+diag	VN3001	Error	Story.yarn	35	11
+diag	VN3001	Error	Story.yarn	35	20
+diag	VN3001	Error	Story.yarn	41	7
+diag	YS0003	Warning	Story.yarn	41	7
+diag	VN3001	Error	Story.yarn	44	11
+diag	VN3001	Error	Story.yarn	44	20
+diag	VN3001	Error	Story.yarn	45	11
+diag	VN3001	Error	Story.yarn	45	28
+diag	VN3001	Error	Story.yarn	46	11
+diag	VN3001	Error	Story.yarn	46	26
+diag	VN3001	Error	Story.yarn	50	11
+diag	VN3001	Error	Story.yarn	50	20
+diag	VN3001	Error	Story.yarn	51	11
+diag	VN3001	Error	Story.yarn	51	26
+diag	VN3001	Error	Story.yarn	54	22
+diag	VN3001	Error	Story.yarn	55	11
+diag	VN3001	Error	Story.yarn	55	26
+diag	VN3001	Error	Story.yarn	56	11
+diag	VN3001	Error	Story.yarn	56	20
+diag	VN3001	Error	Story.yarn	59	6
+diag	VN3002	Error	Story.yarn	61	3
+diag	VN3001	Error	Story.yarn	77	11
+diag	VN3001	Error	Story.yarn	78	11
+diag	VN3001	Error	Story.yarn	78	20
+diag	VN3001	Error	Story.yarn	82	11
+diag	VN3001	Error	Story.yarn	82	20
+diag	VN3001	Error	Story.yarn	85	26
+diag	VN3001	Error	Story.yarn	86	10
+diag	VN3001	Error	Story.yarn	88	15
+diag	VN3001	Error	Story.yarn	88	24
+diag	VN3001	Error	Story.yarn	91	15
+diag	VN3001	Error	Story.yarn	91	32
+diag	VN3001	Error	Story.yarn	95	9
+diag	VN3001	Error	Story.yarn	95	21
+diag	VN3001	Error	Story.yarn	106	7
+diag	VN3001	Error	Story.yarn	106	16
+diag	VN3001	Error	Story.yarn	107	7
+diag	VN3001	Error	Story.yarn	107	16
+diag	VN3001	Error	Story.yarn	118	6
+diag	VN3001	Error	Story.yarn	134	6
+diag	VN3001	Error	Story.yarn	152	6
+diag	VN3001	Error	Story.yarn	161	7
+diag	VN3001	Error	Story.yarn	161	16
