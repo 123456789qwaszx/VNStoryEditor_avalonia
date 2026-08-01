@@ -38,6 +38,27 @@ public partial class AnalysisView : UserControl
         BoxList.LineSelected += OnBoxLineSelected;
     }
 
+    /// <summary>분석이 끝나면 결과를 알린다. 다른 뷰에 어떻게 전할지는 MainWindow가 정한다.</summary>
+    public event EventHandler<AnalysisReport>? Analyzed;
+
+    /// <summary>바깥에서 고른 노드를 목록에서도 고른다. 없는 제목이면 아무 일도 하지 않는다.</summary>
+    public void SelectNodeByTitle(string title)
+    {
+        if (NodeList.ItemsSource is not IEnumerable<object> items)
+        {
+            return;
+        }
+
+        object? match = items.FirstOrDefault(
+            item => item is NodeItem node &&
+                string.Equals(node.Node.Title, title, StringComparison.Ordinal));
+
+        if (match is not null)
+        {
+            NodeList.SelectedItem = match;
+        }
+    }
+
     private bool HasUnsavedChanges =>
         _openFile is not null &&
         !string.Equals(FileBox.Text ?? string.Empty, _savedText, StringComparison.Ordinal);
@@ -148,6 +169,7 @@ public partial class AnalysisView : UserControl
                 () => new VnProjectAnalyzer().Analyze(fullPath, schemaPath));
 
             ShowResults(report);
+            Analyzed?.Invoke(this, report);
         }
         catch (Exception exception)
         {

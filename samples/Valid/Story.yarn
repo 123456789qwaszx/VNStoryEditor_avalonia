@@ -7,12 +7,25 @@ Ann: 어서 오세요.
 -> 열쇠를 건넨다
     <<set $has_room_key = true>>
     <<give_item "room_key">>
-    <<jump Ending>>
+    여기있습니다.
+    
 -> 잠시 기다린다
-    <<jump Ending>>
+    잠시만기다려주세요.
+
+
+<<jump Ending>>
 ===
 
 title: Ending
 ---
 Ann: 오늘 일은 여기까지예요.
+
+<<jump IfEnding>>
+
+===
+
+title: IfEnding
+---
+
+배가고프네요.
 ===

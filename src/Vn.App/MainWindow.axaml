@@ -8,7 +8,7 @@
 
         <TabControl Grid.Column="0">
             <TabItem Header="분석">
-                <views:AnalysisView />
+                <views:AnalysisView x:Name="Analysis" />
             </TabItem>
         </TabControl>
 
@@ -18,7 +18,7 @@
 
         <TabControl Grid.Column="2">
             <TabItem Header="그래프">
-                <views:GraphView />
+                <views:GraphView x:Name="Graph" />
             </TabItem>
         </TabControl>
 
