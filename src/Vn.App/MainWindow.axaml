@@ -40,14 +40,59 @@
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
         </Border>
 
-        <Grid ColumnDefinitions="*,6,460">
-            <views:GraphEditorView Grid.Column="0" x:Name="Graph" />
+        <Grid ColumnDefinitions="240,6,*,6,460">
+            <Border Grid.Column="0"
+                    BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                    BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <Border Grid.Row="0"
+                            Padding="12,10"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="시나리오 파일" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ActiveFileSummaryText"
+                                       FontSize="11"
+                                       Opacity="0.65"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Grid.Row="1"
+                          ColumnDefinitions="54,*"
+                          Margin="10,8,10,4">
+                        <TextBlock Grid.Column="0"
+                                   Text="그래프"
+                                   FontSize="10"
+                                   Opacity="0.55"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="현재 작업 파일"
+                                   FontSize="10"
+                                   Opacity="0.55" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="2"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="FileListPanel"
+                                    Margin="8,0,8,10"
+                                    Spacing="4" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
 
             <GridSplitter Grid.Column="1"
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
-            <Border Grid.Column="2"
+            <views:GraphEditorView Grid.Column="2" x:Name="Graph" />
+
+            <GridSplitter Grid.Column="3"
+                          ResizeDirection="Columns"
+                          Background="{DynamicResource ThemeBorderLowBrush}" />
+
+            <Border Grid.Column="4"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1,0,0,0">
                 <Panel>

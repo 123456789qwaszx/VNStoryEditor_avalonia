@@ -77,10 +77,13 @@ public partial class GraphEditorView : UserControl
         _selectedEdge = null;
         DeleteEdgeButton.IsEnabled = false;
 
-        foreach (StoryNode node in _session.Project.EnumerateNodes())
+        foreach (StoryNode node in _session.EnumerateExpandedNodes())
         {
             _cards.Add(BuildCard(node));
         }
+
+        AddDialogueButton.IsEnabled = _session.ActiveFileId is not null;
+        AddSetButton.IsEnabled = _session.ActiveFileId is not null;
 
         DrawEdges();
         HighlightSelection();
@@ -548,15 +551,20 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        // 겹치지 않게 대충 아래로 쌓는다. 배치는 작가가 다시 옮기면 된다.
-        double x = 60 + (_session.Project.EnumerateNodes().Count() % 4) * 260;
-        double y = 60 + (_session.Project.EnumerateNodes().Count() / 4) * 200;
-
         if (_session.ActiveFileId is not { } fileId)
         {
             _session.SetStatus("새 노드를 추가할 StoryFile이 없습니다.");
             return;
         }
+
+        StoryFile activeFile = _session.Project.FindFile(fileId)
+            ?? throw new InvalidOperationException($"현재 StoryFile '{fileId}'를 찾을 수 없습니다.");
+
+        // 파일 안의 직렬화 순서는 Nodes 마지막에 추가하는 것으로 정한다.
+        // 그래프 좌표는 별개의 값이므로, 현재 파일의 노드 수를 기준으로 겹치지 않게 배치한다.
+        int fileNodeCount = activeFile.Nodes.Count;
+        double x = 60 + (fileNodeCount % 4) * 260;
+        double y = 60 + (fileNodeCount / 4) * 200;
 
         StoryNode node = dialogue
             ? _session.Editor.AddDialogueNode(fileId, x, y)

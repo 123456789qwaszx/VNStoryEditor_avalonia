@@ -183,7 +183,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 
 | 타입 | 역할 |
 |---|---|
-| `AuthoringSession` | 열린 파일 경로, 저장 여부, 선택 상태. 편집은 도메인이 한다 |
+| `AuthoringSession` | 열린 프로젝트 경로, 저장 여부, 선택 상태, `ActiveFileId`와 `ExpandedFileIds`. 편집은 도메인이 한다 |
 | `GraphEditorView` | 노드 추가·이동·선택, 포트 드래그 연결, 간선 선택·삭제 |
 | `DialogueNodeEditor` | `LineBox` 카드, 조건 드롭다운, 갈래 색·들여쓰기, 출구 표시 |
 | `SetNodeEditor` | 조건과 변수 값 정의 |
@@ -254,6 +254,8 @@ Line 6                                  Line 6
 | 식별자 형식 | `Model/Identifier.cs` |
 | 시작 노드 규칙 | `Model/StoryProject.cs`, `ProjectEditor.AddNode` |
 | 노드가 어느 파일에 속하는지 | `Model/StoryFile.cs`, `StoryProject.FindFileContainingNode` |
+| 새 노드가 어느 파일에 들어가는지 | `App/Services/AuthoringSession.cs`의 `ActiveFileId` |
+| 그래프에 어떤 파일을 펼칠지 | 같은 파일의 `ExpandedFileIds` / `SetFileExpanded` |
 | 파일 추가·삭제·노드 이동 | `Editing/ProjectEditor.cs`의 `AddFile` / `RemoveFile` / `MoveNodeToFile` |
 
 **조건과 갈래**

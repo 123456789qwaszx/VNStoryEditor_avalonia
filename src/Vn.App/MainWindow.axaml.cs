@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Vn.App.Services;
@@ -21,6 +24,7 @@ public partial class MainWindow : Window
 
     private readonly AuthoringSession _session = new();
     private bool _restoredRecent;
+    private bool _rebuildingFileList;
 
     public MainWindow()
     {
@@ -32,6 +36,7 @@ public partial class MainWindow : Window
 
         _session.Changed += OnSessionChanged;
         _session.SelectionChanged += OnSelectionChanged;
+        _session.FileGraphStateChanged += OnFileGraphStateChanged;
 
         NewButton.Click += OnNewClick;
         OpenButton.Click += OnOpenClick;
@@ -42,6 +47,7 @@ public partial class MainWindow : Window
 
         Opened += OnOpened;
 
+        RebuildFileList();
         Graph.Rebuild();
         ShowSelectedNode();
         RefreshShell();
@@ -116,6 +122,25 @@ public partial class MainWindow : Window
         RefreshShell();
     }
 
+    private void OnFileGraphStateChanged(object? sender, FileGraphStateChangedEventArgs e)
+    {
+        void Apply()
+        {
+            RebuildFileList();
+
+            if (e.ExpandedFilesChanged)
+            {
+                Graph.Rebuild();
+            }
+
+            RefreshShell();
+        }
+
+        // 체크박스나 라디오 버튼의 RoutedEvent가 끝나기 전에 파일 목록을 통째로
+        // 교체하면 클릭한 컨트롤을 자기 이벤트 안에서 제거하게 된다. 다음 UI turn에서 갱신한다.
+        Dispatcher.UIThread.Post(Apply);
+    }
+
     // ── 파일 ────────────────────────────────────────────────────────────────
 
     private void OnNewClick(object? sender, RoutedEventArgs e)
@@ -123,9 +148,6 @@ public partial class MainWindow : Window
         try
         {
             _session.NewProject();
-            Graph.Rebuild();
-            ShowSelectedNode();
-            RefreshShell();
         }
         catch (Exception exception)
         {
@@ -156,9 +178,6 @@ public partial class MainWindow : Window
             if (files.Count > 0)
             {
                 _session.Open(files[0].Path.LocalPath);
-                Graph.Rebuild();
-                ShowSelectedNode();
-                RefreshShell();
             }
         }
         catch (Exception exception)
@@ -233,6 +252,109 @@ public partial class MainWindow : Window
 
     // ── 화면 ────────────────────────────────────────────────────────────────
 
+    private void RebuildFileList()
+    {
+        _rebuildingFileList = true;
+
+        try
+        {
+            FileListPanel.Children.Clear();
+
+            foreach (StoryFile file in _session.Project.Files)
+            {
+                string fileId = file.Id;
+
+                var expanded = new CheckBox
+                {
+                    IsChecked = _session.IsFileExpanded(fileId),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                ToolTip.SetTip(expanded, "이 파일의 노드를 그래프에 펼쳐 표시");
+
+                expanded.IsCheckedChanged += (_, _) =>
+                {
+                    if (!_rebuildingFileList)
+                    {
+                        _session.SetFileExpanded(fileId, expanded: expanded.IsChecked == true);
+                    }
+                };
+
+                var active = new RadioButton
+                {
+                    GroupName = "ActiveStoryFile",
+                    IsChecked = string.Equals(_session.ActiveFileId, fileId, StringComparison.Ordinal),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Content = new StackPanel
+                    {
+                        Spacing = 1,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = file.Name,
+                                FontWeight = FontWeight.SemiBold,
+                                TextTrimming = TextTrimming.CharacterEllipsis
+                            },
+                            new TextBlock
+                            {
+                                Text = $"{file.Nodes.Count}개 노드 · {file.RelativePath}",
+                                FontSize = 10,
+                                Opacity = 0.55,
+                                TextTrimming = TextTrimming.CharacterEllipsis
+                            }
+                        }
+                    }
+                };
+
+                active.IsCheckedChanged += (_, _) =>
+                {
+                    if (!_rebuildingFileList && active.IsChecked == true)
+                    {
+                        _session.SelectFile(fileId);
+                    }
+                };
+
+                var row = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("54,*"),
+                    MinHeight = 42
+                };
+
+                Grid.SetColumn(expanded, 0);
+                Grid.SetColumn(active, 1);
+                row.Children.Add(expanded);
+                row.Children.Add(active);
+
+                FileListPanel.Children.Add(new Border
+                {
+                    Padding = new Thickness(2),
+                    CornerRadius = new CornerRadius(5),
+                    Background = string.Equals(_session.ActiveFileId, fileId, StringComparison.Ordinal)
+                        ? new SolidColorBrush(Color.FromArgb(24, 37, 99, 235))
+                        : Brushes.Transparent,
+                    Child = row
+                });
+            }
+
+            if (_session.Project.Files.Count == 0)
+            {
+                FileListPanel.Children.Add(new TextBlock
+                {
+                    Text = "StoryFile이 없습니다.",
+                    Margin = new Thickness(6, 10),
+                    Opacity = 0.55,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+        }
+        finally
+        {
+            _rebuildingFileList = false;
+        }
+    }
+
     private void ShowSelectedNode()
     {
         StoryNode? node = _session.SelectedNode;
@@ -282,6 +404,9 @@ public partial class MainWindow : Window
 
         ProjectNameText.Text = name;
         ProjectPathText.Text = _session.ProjectPath ?? "저장되지 않음";
+        ActiveFileSummaryText.Text = _session.ActiveFile is { } activeFile
+            ? $"현재: {activeFile.Name}"
+            : "현재 작업 파일 없음";
         StatusText.Text = _session.StatusMessage;
 
         bool dirty = _session.IsDirty;

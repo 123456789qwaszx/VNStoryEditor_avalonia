@@ -14,12 +14,14 @@ namespace Vn.App.Services;
 /// </summary>
 internal sealed class AuthoringSession
 {
+    private readonly HashSet<string> _expandedFileIds = new(StringComparer.Ordinal);
+    private string _fileListSignature = string.Empty;
     private string _savedSnapshot;
 
     public AuthoringSession()
     {
         Editor = new ProjectEditor(NewProjectInstance());
-        ActiveFileId = Editor.Project.Files.FirstOrDefault()?.Id;
+        ResetFileGraphState(Editor.Project);
         _savedSnapshot = ProjectSnapshotCodec.Encode(Editor.Project);
         Editor.Changed += OnEditorChanged;
     }
@@ -33,10 +35,23 @@ internal sealed class AuthoringSession
 
     public GameDefinition Definition { get; private set; } = GameDefinition.Empty;
 
-    /// <summary>새 노드가 추가될 현재 작업 파일. 그래프 표시 상태와는 별개의 개념이다.</summary>
+    /// <summary>
+    /// 새 노드가 추가될 현재 작업 파일.
+    ///
+    /// 그래프에 펼쳐 보이는 파일 목록과는 독립된 workspace 상태다. 현재 파일을 접어 둔
+    /// 상태에서도 그 파일을 계속 작업 대상으로 유지할 수 있다.
+    /// </summary>
     public string? ActiveFileId { get; private set; }
 
     public StoryFile? ActiveFile => Project.FindFile(ActiveFileId);
+
+    /// <summary>
+    /// 그래프에 실제 NodeCard로 펼쳐 보일 StoryFile Id 목록.
+    ///
+    /// 저장 콘텐츠나 Undo 대상이 아니라 앱 workspace 상태다. 파일을 접어도 StoryProject와
+    /// 실행·Settings 연결은 전혀 바뀌지 않는다.
+    /// </summary>
+    public IReadOnlySet<string> ExpandedFileIds => _expandedFileIds;
 
     public string? SelectedNodeId { get; private set; }
 
@@ -50,6 +65,12 @@ internal sealed class AuthoringSession
     public event EventHandler<ProjectChangedEventArgs>? Changed;
 
     public event EventHandler? SelectionChanged;
+
+    /// <summary>
+    /// 현재 파일 또는 그래프 펼침 상태가 바뀌었을 때.
+    /// StoryProject 변경이 아니므로 <see cref="Changed"/>와 분리한다.
+    /// </summary>
+    public event EventHandler<FileGraphStateChangedEventArgs>? FileGraphStateChanged;
 
     public void Select(string? nodeId)
     {
@@ -73,9 +94,13 @@ internal sealed class AuthoringSession
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
         StatusMessage = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
 
-        ActiveFileId = project.Files.FirstOrDefault()?.Id;
+        ResetFileGraphState(project);
         Editor.Replace(project);
         Select(project.EnumerateNodes().FirstOrDefault()?.Id);
+        RaiseFileGraphStateChanged(
+            activeFileChanged: true,
+            expandedFilesChanged: true,
+            fileListChanged: true);
     }
 
     public void Open(string path)
@@ -92,10 +117,16 @@ internal sealed class AuthoringSession
 
         AppSettingsService.SaveRecentProject(loaded.OpenedPath);
 
-        ActiveFileId = project.FindFileContainingNode(project.StartNodeId)?.Id
+        string? activeFileId = project.FindFileContainingNode(project.StartNodeId)?.Id
             ?? project.Files.FirstOrDefault()?.Id;
+        ResetFileGraphState(project, activeFileId);
+
         Editor.Replace(project);
         Select(project.StartNodeId ?? project.EnumerateNodes().FirstOrDefault()?.Id);
+        RaiseFileGraphStateChanged(
+            activeFileChanged: true,
+            expandedFilesChanged: true,
+            fileListChanged: true);
     }
 
     public void Save(string? path = null)
@@ -120,11 +151,88 @@ internal sealed class AuthoringSession
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
     }
 
+    public bool IsFileExpanded(string fileId)
+    {
+        return _expandedFileIds.Contains(fileId);
+    }
+
+    public IEnumerable<StoryNode> EnumerateExpandedNodes()
+    {
+        return Project.Files
+            .Where(file => _expandedFileIds.Contains(file.Id))
+            .SelectMany(file => file.Nodes);
+    }
+
+    internal void SelectFile(string? fileId)
+    {
+        if (fileId is not null && Project.FindFile(fileId) is null)
+        {
+            return;
+        }
+
+        if (string.Equals(ActiveFileId, fileId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ActiveFileId = fileId;
+        RaiseFileGraphStateChanged(
+            activeFileChanged: true,
+            expandedFilesChanged: false,
+            fileListChanged: false);
+    }
+
+    internal void SetFileExpanded(string fileId, bool expanded)
+    {
+        if (Project.FindFile(fileId) is null)
+        {
+            return;
+        }
+
+        bool changed = expanded
+            ? _expandedFileIds.Add(fileId)
+            : _expandedFileIds.Remove(fileId);
+
+        if (changed)
+        {
+            RaiseFileGraphStateChanged(
+                activeFileChanged: false,
+                expandedFilesChanged: true,
+                fileListChanged: false);
+        }
+    }
+
     private void OnEditorChanged(object? sender, ProjectChangedEventArgs e)
     {
+        bool activeChanged = false;
+        bool expandedChanged = false;
+        bool fileListChanged = false;
+
+        HashSet<string> validFileIds = Project.Files
+            .Select(file => file.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
         if (Project.FindFile(ActiveFileId) is null)
         {
             ActiveFileId = Project.Files.FirstOrDefault()?.Id;
+            activeChanged = true;
+        }
+
+        expandedChanged |= _expandedFileIds.RemoveWhere(fileId => !validFileIds.Contains(fileId)) > 0;
+
+        // 새 파일은 기본적으로 펼쳐 보인다. 파일 추가가 곧 "화면에서 사라진 파일"이 되면
+        // 현재 파일과 표시 파일의 차이를 이해하기 어렵다.
+        foreach (string fileId in validFileIds)
+        {
+            expandedChanged |= _expandedFileIds.Add(fileId);
+        }
+
+        string nextFileListSignature = BuildFileListSignature(Project);
+
+        if (!string.Equals(_fileListSignature, nextFileListSignature, StringComparison.Ordinal))
+        {
+            _fileListSignature = nextFileListSignature;
+            fileListChanged = true;
         }
 
         // 선택하고 있던 노드가 사라졌다면 선택을 놓는다.
@@ -135,16 +243,46 @@ internal sealed class AuthoringSession
         }
 
         Changed?.Invoke(this, e);
+
+        if (activeChanged || expandedChanged || fileListChanged)
+        {
+            RaiseFileGraphStateChanged(activeChanged, expandedChanged, fileListChanged);
+        }
     }
 
-    internal void SelectFile(string? fileId)
+    private void ResetFileGraphState(StoryProject project, string? activeFileId = null)
     {
-        if (fileId is not null && Project.FindFile(fileId) is null)
+        ActiveFileId = activeFileId ?? project.Files.FirstOrDefault()?.Id;
+
+        _expandedFileIds.Clear();
+
+        foreach (StoryFile file in project.Files)
         {
-            return;
+            _expandedFileIds.Add(file.Id);
         }
 
-        ActiveFileId = fileId;
+        _fileListSignature = BuildFileListSignature(project);
+    }
+
+    private void RaiseFileGraphStateChanged(
+        bool activeFileChanged,
+        bool expandedFilesChanged,
+        bool fileListChanged)
+    {
+        FileGraphStateChanged?.Invoke(
+            this,
+            new FileGraphStateChangedEventArgs(
+                activeFileChanged,
+                expandedFilesChanged,
+                fileListChanged));
+    }
+
+    private static string BuildFileListSignature(StoryProject project)
+    {
+        return string.Join(
+            "\n",
+            project.Files.Select(file =>
+                $"{file.Id}\u001f{file.Name}\u001f{file.RelativePath}\u001f{file.Nodes.Count}"));
     }
 
     private static StoryProject NewProjectInstance()
@@ -153,4 +291,24 @@ internal sealed class AuthoringSession
         project.Files.Add(new StoryFile(name: "기본 파일"));
         return project;
     }
+}
+
+internal sealed class FileGraphStateChangedEventArgs : EventArgs
+{
+    public FileGraphStateChangedEventArgs(
+        bool activeFileChanged,
+        bool expandedFilesChanged,
+        bool fileListChanged)
+    {
+        ActiveFileChanged = activeFileChanged;
+        ExpandedFilesChanged = expandedFilesChanged;
+        FileListChanged = fileListChanged;
+    }
+
+    public bool ActiveFileChanged { get; }
+
+    public bool ExpandedFilesChanged { get; }
+
+    /// <summary>파일 이름·경로·순서 또는 소유 노드 개수가 바뀌어 목록 행을 다시 만들어야 하는가.</summary>
+    public bool FileListChanged { get; }
 }
