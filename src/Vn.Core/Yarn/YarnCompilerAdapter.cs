@@ -187,6 +187,9 @@ internal sealed class YarnCompilerAdapter
         YarnLineIndex lines =
             YarnLineIndex.Build(result, YarnPaths.Normalize);
 
+        YarnBlockIndex blocks =
+            YarnBlockIndex.Build(result, YarnPaths.Normalize);
+
         return result.NodeMetadata
             .OrderBy(metadata => metadata.Title, StringComparer.Ordinal)
             .Select(metadata =>
@@ -197,6 +200,10 @@ internal sealed class YarnCompilerAdapter
                 int headerLine = ToOneBased(metadata.HeaderStartLine);
                 int bodyStartLine = ToOneBased(metadata.BodyStartLine);
                 int bodyEndLine = ToOneBased(metadata.BodyEndLine);
+
+                // 평평한 목록과 트리가 같은 라인 객체를 보게 한다.
+                IReadOnlyList<StoryLine> nodeLines =
+                    lines.GetLines(filePath, bodyStartLine, bodyEndLine);
 
                 StoryJump[] jumps = metadata.Jumps
                     .Select(jump => new StoryJump(
@@ -234,7 +241,8 @@ internal sealed class YarnCompilerAdapter
                         bodyEndLine,
                         metadata.VariableReferences),
                     jumps,
-                    lines.GetLines(filePath, bodyStartLine, bodyEndLine));
+                    nodeLines,
+                    blocks.GetBody(filePath, bodyStartLine, bodyEndLine, nodeLines));
             })
             .ToArray();
     }

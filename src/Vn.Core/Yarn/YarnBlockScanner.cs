@@ -28,6 +28,7 @@ internal enum YarnLineKind
 /// <param name="Raw">명령이면 <c>&lt;&lt;&gt;&gt;</c>를 포함한 원본 문자열. 그 밖에는 빈 문자열이다.</param>
 internal sealed record YarnScannedLine(
     int Line,
+    int Column,
     int Depth,
     YarnLineKind Kind,
     string Raw);
@@ -115,15 +116,18 @@ internal static class YarnBlockScanner
 
         IToken first = tokens[firstIndex];
         int depth = first.Column / SpacesPerDepth;
+        int column = first.Column < 0 ? 1 : first.Column + 1;
 
         if (first.Type == YarnSpinnerLexer.SHORTCUT_ARROW)
         {
-            return new YarnScannedLine(first.Line, depth, YarnLineKind.Option, string.Empty);
+            return new YarnScannedLine(
+                first.Line, column, depth, YarnLineKind.Option, string.Empty);
         }
 
         if (first.Type == YarnSpinnerLexer.TEXT)
         {
-            return new YarnScannedLine(first.Line, depth, YarnLineKind.Line, string.Empty);
+            return new YarnScannedLine(
+                first.Line, column, depth, YarnLineKind.Line, string.Empty);
         }
 
         if (first.Type != YarnSpinnerLexer.COMMAND_START)
@@ -154,7 +158,7 @@ internal static class YarnBlockScanner
             ? string.Empty
             : Slice(source, first.StartIndex, commandEnd.StopIndex);
 
-        return new YarnScannedLine(first.Line, depth, kind, raw);
+        return new YarnScannedLine(first.Line, column, depth, kind, raw);
     }
 
     /// <summary>
