@@ -77,8 +77,10 @@ internal sealed class YarnBlockIndex
         }
 
         /// <param name="commands">
-        /// 이 층에서 만난 명령이 여기 쌓인다. 중첩된 블록의 명령은 그 블록의 갈래로 들어가므로
-        /// 여기 섞이지 않는다. null이면 버린다 — 최상위에서는 라인이 이미 명령을 들고 있다.
+        /// 어느 박스도 닫지 못하고 이 층에 남은 명령이 여기 담긴다.
+        /// 라인 앞에 온 명령은 그 라인의 박스로 들어가므로 여기 오지 않는다 —
+        /// 양쪽에 다 넣으면 화면에서 같은 명령이 두 번 보인다.
+        /// null이면 버린다. 최상위에는 담아 둘 갈래가 없다.
         /// </param>
         public List<StoryElement> ParseElements(
             ref int index,
@@ -87,6 +89,7 @@ internal sealed class YarnBlockIndex
             List<StoryCommand>? commands = null)
         {
             var elements = new List<StoryElement>();
+            bool leftForOuter = false;
 
             // 이 층에서 직전 라인 이후에 나타난 명령. 이 층의 다음 라인이 닫는다.
             // 층마다 따로 두는 것이 핵심이다. 하나로 공유하면 <<if>> 갈래의 명령이
@@ -135,26 +138,33 @@ internal sealed class YarnBlockIndex
                     case YarnLineKind.Line:
                     case YarnLineKind.If:
                         // 여기보다 얕다. 바깥 갈래의 것이므로 넘긴다.
-                        return elements;
+                        leftForOuter = true;
+                        break;
 
                     default:
                         // 짝 없는 구분자도 여기로 와서 조용히 지나간다. 멈추면 무한 반복이 된다.
                         if (item.Kind == YarnLineKind.Command)
                         {
-                            var command = new StoryCommand(
+                            pending.Add(new StoryCommand(
                                 item.Raw,
                                 item.Line,
                                 item.Column,
-                                item.Depth);
-
-                            commands?.Add(command);
-                            pending.Add(command);
+                                item.Depth));
                         }
 
                         index++;
                         break;
                 }
+
+                if (leftForOuter)
+                {
+                    break;
+                }
             }
+
+            // 남은 것은 뒤에 라인이 없어 어느 박스도 닫지 못한 명령이다.
+            // 갈래 끝의 <<jump>>가 여기 해당하며, 목적지로 올라가는 것도 이 자리에서다.
+            commands?.AddRange(pending);
 
             return elements;
         }
