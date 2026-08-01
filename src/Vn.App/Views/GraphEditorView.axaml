@@ -32,7 +32,7 @@
                        FontSize="11"
                        Opacity="0.7"
                        TextWrapping="Wrap"
-                       Text="포트(●)를 끌어 다른 노드에 놓으면 연결됩니다. 노드를 끌면 배치가 바뀝니다." />
+                       Text="포트(●)를 끌어 실제 노드나 접힌 FileProxy의 노드 행에 놓으면 연결됩니다." />
         </Border>
     </Grid>
 </UserControl>

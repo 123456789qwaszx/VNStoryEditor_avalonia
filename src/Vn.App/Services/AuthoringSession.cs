@@ -15,6 +15,7 @@ namespace Vn.App.Services;
 internal sealed class AuthoringSession
 {
     private readonly HashSet<string> _expandedFileIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _knownFileIds = new(StringComparer.Ordinal);
     private string _fileListSignature = string.Empty;
     private string _savedSnapshot;
 
@@ -219,12 +220,16 @@ internal sealed class AuthoringSession
         }
 
         expandedChanged |= _expandedFileIds.RemoveWhere(fileId => !validFileIds.Contains(fileId)) > 0;
+        _knownFileIds.RemoveWhere(fileId => !validFileIds.Contains(fileId));
 
-        // 새 파일은 기본적으로 펼쳐 보인다. 파일 추가가 곧 "화면에서 사라진 파일"이 되면
-        // 현재 파일과 표시 파일의 차이를 이해하기 어렵다.
+        // 새로 생긴 파일만 기본적으로 펼친다. 이미 존재하던 파일을 사용자가 접어 둔 상태는
+        // 대사 수정이나 노드 이동 같은 프로젝트 변경 뒤에도 그대로 유지되어야 한다.
         foreach (string fileId in validFileIds)
         {
-            expandedChanged |= _expandedFileIds.Add(fileId);
+            if (_knownFileIds.Add(fileId))
+            {
+                expandedChanged |= _expandedFileIds.Add(fileId);
+            }
         }
 
         string nextFileListSignature = BuildFileListSignature(Project);
@@ -255,10 +260,12 @@ internal sealed class AuthoringSession
         ActiveFileId = activeFileId ?? project.Files.FirstOrDefault()?.Id;
 
         _expandedFileIds.Clear();
+        _knownFileIds.Clear();
 
         foreach (StoryFile file in project.Files)
         {
             _expandedFileIds.Add(file.Id);
+            _knownFileIds.Add(file.Id);
         }
 
         _fileListSignature = BuildFileListSignature(project);

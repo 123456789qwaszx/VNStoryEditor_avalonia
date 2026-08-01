@@ -148,7 +148,22 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 `ResolvedLine`에 "전환 적용 전 갈래"(`PrecedingBranch`)가 함께 있는 이유는,
 드롭다운의 의미가 **바로 앞 줄까지의 상태**로 정해지기 때문이다.
 
-### 3.3 `Vn.Authoring/Editing` — 어떻게 바꾸는가
+### 3.3 `Vn.Authoring/Graph` — 그래프에 무엇을 그릴지
+
+| 타입 | 역할 |
+|---|---|
+| `GraphProjectionBuilder` | 프로젝트와 펼침 상태로부터 **화면에 그릴 것**을 계산한다 |
+| `ExpandedNodeProjection` | 펼친 파일의 실제 노드 카드 |
+| `CollapsedFileProjection` | 접힌 파일 하나. 소유 노드가 `CollapsedNodeEntry` 행으로 들어간다 |
+| `GraphConnectionProjection` | 실행·설정 간선 하나와 그 라벨·색 자리 |
+| `GraphEndpointProjection` | 간선의 끝이 실제 포트인지 프록시의 몇 번째 행인지 |
+| `OrthogonalEdgeRouter` | 두 끝점 사이 ㄱ자 경로 |
+
+**연결의 소스와 대상은 언제나 실제 NodeId다.** 파일을 접어도 대상이 FileId로 바뀌지
+않는다. 바뀌는 것은 그 끝을 화면 어디에 붙일지뿐이다. 이 구분을 잃으면 접었다 펴는
+동작이 데이터를 바꾸게 된다.
+
+### 3.4 `Vn.Authoring/Editing` — 어떻게 바꾸는가
 
 | 타입 | 역할 |
 |---|---|
@@ -159,7 +174,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 화면에 주는 영향이 다르다. 같은 신호를 보내면 화면은 최악의 경우를 가정해 편집 중인
 컨트롤까지 다시 만들고, 작가는 입력 도중 포커스를 잃는다.
 
-### 3.4 `Vn.Authoring/Serialization`, `Definition`
+### 3.5 `Vn.Authoring/Serialization`, `Definition`
 
 | 타입 | 역할 |
 |---|---|
@@ -179,7 +194,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 **저장 순서:** StoryFile을 먼저 임시 파일로 교체하고 manifest를 마지막에 바꾼다.
 중간에 멈춰도 manifest가 가리키는 파일 집합은 언제나 존재한다.
 
-### 3.5 `Vn.App` — 화면
+### 3.6 `Vn.App` — 화면
 
 | 타입 | 역할 |
 |---|---|
@@ -283,6 +298,9 @@ Line 6                                  Line 6
 | 포트를 끌어 잇는 조작 | `App/Views/GraphEditorView.axaml.cs`의 `OnPortPressed` / `OnCanvasPointerReleased` |
 | 간선 선택·삭제 | 같은 파일의 `SelectEdge` / `DeleteSelectedEdge` |
 | 노드 카드 크기·포트 좌표 | 같은 파일 위쪽 상수와 `PortAnchor` / `InputAnchor` |
+| 그래프에 무엇이 나타나는지 | `Graph/GraphProjectionBuilder.cs` — 화면이 아니라 여기가 정한다 |
+| 접힌 파일 프록시의 모양 | `Graph/GraphProjection.cs`의 `CollapsedFileProjection` |
+| 간선이 꺾이는 모양 | `Graph/OrthogonalEdgeRouter.cs` |
 
 **편집과 되돌리기**
 
@@ -382,6 +400,8 @@ Line 6                                  Line 6
 5. **모델 변경은 `ProjectEditor`만 한다.** 화면이 직접 만지면 되돌리기와 알림이 빠진다.
 
 6. **화면끼리 직접 이야기하지 않는다.** 그래프와 노드 편집기는 세션만 본다.
+   그래프는 도메인을 직접 순회하지 않고 `GraphProjection`을 그린다.
+   무엇이 보이는지의 규칙이 그리는 코드 안에 섞이면 테스트할 자리가 사라진다.
 
 7. **파일 순서와 그래프 좌표는 별개다.** 새 노드는 언제나 파일 맨 뒤에 붙는다.
    시각적 위치를 파일 순서에 반영하면 diff가 매번 크게 흔들린다.

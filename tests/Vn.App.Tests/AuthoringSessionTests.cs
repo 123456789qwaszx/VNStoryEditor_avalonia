@@ -213,6 +213,22 @@ public class AuthoringSessionTests
         Assert.False(changes[1].ExpandedFilesChanged);
     }
 
+
+    [Fact]
+    public void 접어_둔_파일은_다른_프로젝트_편집_뒤에도_접힌_상태를_유지한다()
+    {
+        var session = new AuthoringSession();
+        StoryFile first = session.ActiveFile!;
+        StoryFile second = session.Editor.AddStoryFile("두 번째");
+        DialogueNode node = session.Editor.AddDialogueNode(first.Id, name: "장면");
+
+        session.SetFileExpanded(second.Id, expanded: false);
+        session.Editor.RenameNode(node.Id, "수정된 장면");
+
+        Assert.False(session.IsFileExpanded(second.Id));
+        Assert.True(session.IsFileExpanded(first.Id));
+    }
+
     [Fact]
     public void Undo로_파일이_사라지면_workspace_상태에서_정리되고_Redo시_다시_펼쳐진다()
     {

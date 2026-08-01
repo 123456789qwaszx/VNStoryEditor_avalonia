@@ -2,25 +2,23 @@ using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
-using Vn.Authoring.Flow;
+using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
 
 namespace Vn.App.Views;
 
 /// <summary>
-/// 노드를 만들고 이어 붙이는 저작 화면.
+/// GraphProjection을 그리는 저작 화면.
 ///
-/// 여기서 보이는 포트와 간선은 저장된 것이 아니다. 노드의 조건 전환에서 계산된다
-/// (<see cref="NodeConnections"/>). 그래서 대사 화면에서 elseif를 하나 추가하면
-/// 이 화면에도 포트가 하나 늘고, 여기서 간선을 끌면 대사 화면의 출구 표시가 바뀐다.
-/// 두 화면 사이에 동기화 코드는 없다. 같은 것을 계산해서 볼 뿐이다.
-///
-/// 카드의 좌표는 계산하지 않고 <see cref="NodeLayout"/>에 저장한다. 배치는 작가의 의도이지
-/// 데이터에서 유도되는 값이 아니기 때문이다. 반대로 파일에서의 노드 순서는 배치와 무관하다.
+/// StoryProject를 직접 순회하지 않는다. 공식 원본과 workspace의 파일 펼침 상태를
+/// <see cref="GraphProjectionBuilder"/>에 전달하고, 펼쳐진 노드는 NodeCard로, 접힌 파일은
+/// FileProxy로 받은 결과만 그린다. 파일을 접어도 실제 연결 target은 NodeId로 유지되고
+/// endpoint만 프록시의 해당 노드 행으로 바뀐다.
 /// </summary>
 public partial class GraphEditorView : UserControl
 {
@@ -30,15 +28,22 @@ public partial class GraphEditorView : UserControl
     private const double CardPadding = 8;
     private const double PortRadius = 6;
 
+    private const double ProxyWidth = 250;
+    private const double ProxyHeaderHeight = 50;
+    private const double ProxyRowHeight = 28;
+    private const double ProxyPortRadius = 5;
+
     private readonly List<NodeCard> _cards = new();
+    private readonly List<FileProxyVisual> _proxies = new();
     private readonly List<EdgeVisual> _edges = new();
 
     private AuthoringSession? _session;
+    private GraphProjection? _projection;
 
     private NodeCard? _draggingCard;
     private Point _dragOffset;
 
-    private GraphPort? _connectingFrom;
+    private GraphOutputPortProjection? _connectingFrom;
     private Line? _connectingLine;
 
     private EdgeVisual? _selectedEdge;
@@ -71,15 +76,30 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
+        _projection = GraphProjectionBuilder.Build(
+            _session.Project,
+            _session.ExpandedFileIds,
+            _session.Definition);
+
         GraphCanvas.Children.Clear();
         _cards.Clear();
+        _proxies.Clear();
         _edges.Clear();
         _selectedEdge = null;
         DeleteEdgeButton.IsEnabled = false;
 
-        foreach (StoryNode node in _session.EnumerateExpandedNodes())
+        foreach (GraphItemProjection item in _projection.Items)
         {
-            _cards.Add(BuildCard(node));
+            switch (item)
+            {
+                case ExpandedNodeProjection node:
+                    _cards.Add(BuildCard(node));
+                    break;
+
+                case CollapsedFileProjection file:
+                    _proxies.Add(BuildFileProxy(file));
+                    break;
+            }
         }
 
         AddDialogueButton.IsEnabled = _session.ActiveFileId is not null;
@@ -89,23 +109,51 @@ public partial class GraphEditorView : UserControl
         HighlightSelection();
     }
 
-    /// <summary>좌표만 바뀌었을 때. 카드를 다시 만들지 않고 위치와 선만 옮긴다.</summary>
+    /// <summary>좌표만 바뀌었을 때. projection을 다시 계산하되 컨트롤은 유지한다.</summary>
     internal void RefreshPositions()
     {
-        foreach (NodeCard card in _cards)
+        if (_session is null)
         {
-            StoryNode? node = _session?.Project.FindNode(card.NodeId);
+            return;
+        }
 
-            if (node is not null)
+        _projection = GraphProjectionBuilder.Build(
+            _session.Project,
+            _session.ExpandedFileIds,
+            _session.Definition);
+
+        foreach (ExpandedNodeProjection node in _projection.Items.OfType<ExpandedNodeProjection>())
+        {
+            NodeCard? card = FindCard(node.NodeId);
+
+            if (card is not null)
             {
-                Canvas.SetLeft(card.Visual, node.Layout.X);
-                Canvas.SetTop(card.Visual, node.Layout.Y);
+                Canvas.SetLeft(card.Visual, node.Position.X);
+                Canvas.SetTop(card.Visual, node.Position.Y);
+            }
+        }
+
+        foreach (CollapsedFileProjection file in _projection.Items.OfType<CollapsedFileProjection>())
+        {
+            FileProxyVisual? proxy = FindProxy(file.FileId);
+
+            if (proxy is not null)
+            {
+                Canvas.SetLeft(proxy.Visual, file.Position.X);
+                Canvas.SetTop(proxy.Visual, file.Position.Y);
             }
         }
 
         foreach (EdgeVisual edge in _edges)
         {
-            PositionEdge(edge);
+            GraphConnectionProjection? current = _projection.Connections.FirstOrDefault(
+                item => string.Equals(item.Key, edge.Connection.Key, StringComparison.Ordinal));
+
+            if (current is not null)
+            {
+                edge.Connection = current;
+                PositionEdge(edge);
+            }
         }
     }
 
@@ -121,35 +169,33 @@ public partial class GraphEditorView : UserControl
 
             card.Visual.BorderThickness = new Thickness(selected ? 2 : 1);
         }
+
+        foreach (FileProxyVisual proxy in _proxies)
+        {
+            foreach (ProxyNodeRow row in proxy.Rows)
+            {
+                bool selected = string.Equals(row.NodeId, _session?.SelectedNodeId, StringComparison.Ordinal);
+                row.Visual.Background = selected
+                    ? new SolidColorBrush(Color.FromArgb(42, 37, 99, 235))
+                    : Brushes.Transparent;
+            }
+        }
     }
 
-    private NodeCard BuildCard(StoryNode node)
+    private NodeCard BuildCard(ExpandedNodeProjection node)
     {
-        var ports = NodeConnections.PortsOf(node, _session!.Project, _session.Definition)
-            .Select(GraphPort.ForExecution)
-            .ToList();
-
-        if (node is SetNode)
-        {
-            bool hasSettingsLinks = _session.Project.Links.Any(link =>
-                link.Kind == NodeLinkKind.Settings &&
-                link.IsEnabled &&
-                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
-            ports.Add(GraphPort.ForSettings(node.Id, hasSettingsLinks));
-        }
-
         var body = new StackPanel { Spacing = 0 };
 
         body.Children.Add(new TextBlock
         {
-            Text = node.Name,
+            Text = node.NodeName,
             FontWeight = FontWeight.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis
         });
 
         body.Children.Add(new TextBlock
         {
-            Text = node is SetNode ? "설정" : "대사",
+            Text = NodeKindLabel(node.NodeKind),
             FontSize = 10,
             Opacity = 0.6,
             Margin = new Thickness(0, 1, 0, 6)
@@ -160,41 +206,213 @@ public partial class GraphEditorView : UserControl
             Width = CardWidth,
             Padding = new Thickness(CardPadding),
             CornerRadius = new CornerRadius(8),
-            Background = node is SetNode
+            Background = node.NodeKind == GraphNodeKind.Set
                 ? new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF))
                 : new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(1),
             BorderBrush = new SolidColorBrush(Color.FromArgb(90, 128, 128, 128)),
             Child = body,
-            Tag = node.Id
+            Tag = node.NodeId
         };
 
-        var visual = new NodeCard(node.Id, card, ports);
+        var visual = new NodeCard(node.NodeId, node.NodeKind, card, node.OutputPorts);
 
-        for (int index = 0; index < ports.Count; index++)
+        for (int index = 0; index < node.OutputPorts.Count; index++)
         {
-            body.Children.Add(BuildPortRow(ports[index], visual, index));
+            body.Children.Add(BuildPortRow(node.OutputPorts[index], visual, index));
         }
 
-        Canvas.SetLeft(card, node.Layout.X);
-        Canvas.SetTop(card, node.Layout.Y);
+        Canvas.SetLeft(card, node.Position.X);
+        Canvas.SetTop(card, node.Position.Y);
         GraphCanvas.Children.Add(card);
 
         card.PointerPressed += (_, args) => OnCardPressed(visual, args);
         return visual;
     }
 
-    private Control BuildPortRow(GraphPort port, NodeCard card, int index)
+    private FileProxyVisual BuildFileProxy(CollapsedFileProjection file)
     {
-        bool branch = port.Exit?.Kind == ExitPortKind.Branch;
-        bool settings = port.Kind == GraphPortKind.Settings;
+        var content = new StackPanel { Spacing = 0 };
+
+        var headerDot = new Ellipse
+        {
+            Width = 11,
+            Height = 11,
+            Fill = new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+
+        var headerText = new StackPanel
+        {
+            Spacing = 1,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = file.FileName,
+                    FontWeight = FontWeight.SemiBold,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                },
+                new TextBlock
+                {
+                    Text = $"접힘 · {file.Nodes.Count}개 노드 · {file.RelativePath}",
+                    FontSize = 9,
+                    Opacity = 0.6,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                }
+            }
+        };
+
+        var header = new Grid
+        {
+            Height = ProxyHeaderHeight,
+            Margin = new Thickness(10, 0),
+            ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(headerDot, 0);
+        Grid.SetColumn(headerText, 1);
+        header.Children.Add(headerDot);
+        header.Children.Add(headerText);
+        content.Children.Add(header);
+
+        var rows = new List<ProxyNodeRow>();
+
+        if (file.Nodes.Count == 0)
+        {
+            content.Children.Add(new Border
+            {
+                Height = ProxyRowHeight,
+                Child = new TextBlock
+                {
+                    Text = "빈 파일",
+                    Margin = new Thickness(22, 0),
+                    FontSize = 10,
+                    Opacity = 0.5,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            });
+        }
+        else
+        {
+            for (int index = 0; index < file.Nodes.Count; index++)
+            {
+                CollapsedNodeEntry entry = file.Nodes[index];
+                ProxyNodeRow row = BuildProxyRow(entry, index);
+                rows.Add(row);
+                content.Children.Add(row.Visual);
+            }
+        }
+
+        var visual = new Border
+        {
+            Width = ProxyWidth,
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromRgb(0xF3, 0xF4, 0xF6)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x9C, 0xA3, 0xAF)),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = false,
+            Child = content,
+            Tag = file.FileId
+        };
+
+        Canvas.SetLeft(visual, file.Position.X);
+        Canvas.SetTop(visual, file.Position.Y);
+        GraphCanvas.Children.Add(visual);
+
+        return new FileProxyVisual(file.FileId, visual, rows);
+    }
+
+    private ProxyNodeRow BuildProxyRow(CollapsedNodeEntry entry, int index)
+    {
+        IBrush dotBrush = new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80));
+
+        var input = new Ellipse
+        {
+            Width = ProxyPortRadius * 2,
+            Height = ProxyPortRadius * 2,
+            Margin = new Thickness(-ProxyPortRadius, 0, 7, 0),
+            Fill = entry.IncomingCount > 0 ? dotBrush : Brushes.Transparent,
+            Stroke = dotBrush,
+            StrokeThickness = 1.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var name = new TextBlock
+        {
+            Text = entry.NodeName,
+            FontSize = 10,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var kind = new TextBlock
+        {
+            Text = NodeKindLabel(entry.NodeKind),
+            FontSize = 9,
+            Opacity = 0.5,
+            Margin = new Thickness(6, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var output = new Ellipse
+        {
+            Width = ProxyPortRadius * 2,
+            Height = ProxyPortRadius * 2,
+            Margin = new Thickness(7, 0, -ProxyPortRadius, 0),
+            Fill = entry.OutgoingCount > 0 ? dotBrush : Brushes.Transparent,
+            Stroke = dotBrush,
+            StrokeThickness = 1.5,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var grid = new Grid
+        {
+            Height = ProxyRowHeight,
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto")
+        };
+        Grid.SetColumn(input, 0);
+        Grid.SetColumn(name, 1);
+        Grid.SetColumn(kind, 2);
+        Grid.SetColumn(output, 3);
+        grid.Children.Add(input);
+        grid.Children.Add(name);
+        grid.Children.Add(kind);
+        grid.Children.Add(output);
+
+        var row = new Border
+        {
+            Height = ProxyRowHeight,
+            Padding = new Thickness(0, 0),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(35, 107, 114, 128)),
+            BorderThickness = new Thickness(0, index == 0 ? 1 : 0, 0, 1),
+            Child = grid,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Tag = entry.NodeId
+        };
+
+        row.PointerPressed += (_, args) =>
+        {
+            _session?.Select(entry.NodeId);
+            HighlightSelection();
+            args.Handled = true;
+        };
+
+        return new ProxyNodeRow(entry.NodeId, entry.NodeKind, index, row);
+    }
+
+    private Control BuildPortRow(GraphOutputPortProjection port, NodeCard card, int index)
+    {
+        bool branch = port.Kind == GraphOutputPortKind.ExecutionBranch;
+        bool settings = port.Kind == GraphOutputPortKind.Settings;
         IBrush settingsBrush = new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E));
 
         var label = new TextBlock
         {
             Text = port.Label,
             FontSize = 10,
-            Opacity = port.Exit?.Kind == ExitPortKind.Default ? 0.6 : 1,
+            Opacity = port.Kind == GraphOutputPortKind.ExecutionDefault ? 0.6 : 1,
             Foreground = branch
                 ? BranchPalette.Accent(port.PaletteIndex)
                 : settings
@@ -242,64 +460,36 @@ public partial class GraphEditorView : UserControl
 
     private void DrawEdges()
     {
-        foreach (NodeCard card in _cards)
-        {
-            for (int index = 0; index < card.Ports.Count; index++)
-            {
-                GraphPort port = card.Ports[index];
-
-                if (port.Kind == GraphPortKind.Execution)
-                {
-                    if (port.Exit?.TargetNodeId is { } executionTarget)
-                    {
-                        AddEdge(card, index, port, executionTarget, linkId: null);
-                    }
-
-                    continue;
-                }
-
-                foreach (NodeLink link in _session!.Project.Links.Where(link =>
-                             link.Kind == NodeLinkKind.Settings &&
-                             link.IsEnabled &&
-                             string.Equals(link.SourceNodeId, card.NodeId, StringComparison.Ordinal)))
-                {
-                    AddEdge(card, index, port, link.TargetNodeId, link.Id);
-                }
-            }
-        }
-    }
-
-    private void AddEdge(
-        NodeCard source,
-        int portIndex,
-        GraphPort port,
-        string targetNodeId,
-        string? linkId)
-    {
-        NodeCard? target = _cards.FirstOrDefault(
-            item => string.Equals(item.NodeId, targetNodeId, StringComparison.Ordinal));
-
-        if (target is null)
+        if (_projection is null)
         {
             return;
         }
 
-        bool settings = port.Kind == GraphPortKind.Settings;
-        bool branch = port.Exit?.Kind == ExitPortKind.Branch;
-        IBrush stroke = settings
-            ? new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E))
-            : branch
-                ? BranchPalette.Accent(port.PaletteIndex)
-                : new SolidColorBrush(Color.FromArgb(150, 100, 100, 100));
+        foreach (GraphConnectionProjection connection in _projection.Connections)
+        {
+            AddEdge(connection);
+        }
+    }
 
-        var line = new Line
+    private void AddEdge(GraphConnectionProjection connection)
+    {
+        if (!TryEndpointAnchor(connection.Source, out _) ||
+            !TryEndpointAnchor(connection.Target, out _))
+        {
+            return;
+        }
+
+        IBrush stroke = ConnectionBrush(connection);
+        var path = new ShapePath
         {
             Stroke = stroke,
             StrokeThickness = 2,
-            StrokeDashArray = settings ? new AvaloniaList<double> { 5, 3 } : null
+            StrokeDashArray = connection.Kind == GraphConnectionKind.Settings
+                ? new AvaloniaList<double> { 5, 3 }
+                : null
         };
 
-        bool showLabel = branch || settings;
+        bool showLabel = connection.Kind is GraphConnectionKind.ExecutionBranch or GraphConnectionKind.Settings;
         var label = new Border
         {
             Padding = new Thickness(5, 1),
@@ -308,19 +498,27 @@ public partial class GraphEditorView : UserControl
             IsVisible = showLabel,
             Child = new TextBlock
             {
-                Text = port.Label,
+                Text = connection.Label,
                 FontSize = 9,
                 FontWeight = FontWeight.Bold,
                 Foreground = Brushes.White
             }
         };
 
-        var edge = new EdgeVisual(port, source, portIndex, target, targetNodeId, linkId, line, label);
+        var edge = new EdgeVisual(connection, path, label);
 
-        line.PointerPressed += (_, _) => SelectEdge(edge);
-        label.PointerPressed += (_, _) => SelectEdge(edge);
+        path.PointerPressed += (_, args) =>
+        {
+            SelectEdge(edge);
+            args.Handled = true;
+        };
+        label.PointerPressed += (_, args) =>
+        {
+            SelectEdge(edge);
+            args.Handled = true;
+        };
 
-        GraphCanvas.Children.Insert(0, line);
+        GraphCanvas.Children.Insert(0, path);
         GraphCanvas.Children.Add(label);
         _edges.Add(edge);
 
@@ -329,21 +527,101 @@ public partial class GraphEditorView : UserControl
 
     private void PositionEdge(EdgeVisual edge)
     {
-        Point from = PortAnchor(edge.Source, edge.PortIndex);
-        Point to = InputAnchor(edge.Target);
+        if (!TryEndpointAnchor(edge.Connection.Source, out Point from) ||
+            !TryEndpointAnchor(edge.Connection.Target, out Point to))
+        {
+            edge.Path.IsVisible = false;
+            edge.Label.IsVisible = false;
+            return;
+        }
 
-        edge.Line.StartPoint = from;
-        edge.Line.EndPoint = to;
+        edge.Path.IsVisible = true;
+        bool showLabel = edge.Connection.Kind is GraphConnectionKind.ExecutionBranch or GraphConnectionKind.Settings;
+        edge.Label.IsVisible = showLabel;
+
+        IReadOnlyList<GraphPosition> route = OrthogonalEdgeRouter.Route(
+            new GraphPosition(from.X, from.Y),
+            new GraphPosition(to.X, to.Y));
+
+        var geometry = new StreamGeometry();
+
+        using (StreamGeometryContext context = geometry.Open())
+        {
+            context.BeginFigure(ToPoint(route[0]), isFilled: false);
+
+            for (int index = 1; index < route.Count; index++)
+            {
+                context.LineTo(ToPoint(route[index]));
+            }
+
+            context.EndFigure(isClosed: false);
+        }
+
+        edge.Path.Data = geometry;
+
+        GraphPosition labelPoint = new(
+            (route[1].X + route[2].X) / 2,
+            (route[1].Y + route[2].Y) / 2);
 
         edge.Label.Measure(Size.Infinity);
-        Canvas.SetLeft(edge.Label, ((from.X + to.X) / 2) - (edge.Label.DesiredSize.Width / 2));
-        Canvas.SetTop(edge.Label, ((from.Y + to.Y) / 2) - (edge.Label.DesiredSize.Height / 2));
+        Canvas.SetLeft(edge.Label, labelPoint.X - (edge.Label.DesiredSize.Width / 2));
+        Canvas.SetTop(edge.Label, labelPoint.Y - (edge.Label.DesiredSize.Height / 2));
     }
 
-    /// <summary>
-    /// 포트의 화면 좌표. 카드 안의 배치가 고정 높이라서 계산으로 얻을 수 있다.
-    /// 실제 렌더링을 기다렸다가 읽으면 첫 그리기에서 선이 엉뚱한 곳에 놓인다.
-    /// </summary>
+    private bool TryEndpointAnchor(GraphEndpointProjection endpoint, out Point point)
+    {
+        switch (endpoint.Kind)
+        {
+            case GraphEndpointKind.ExpandedNodeOutput:
+            {
+                NodeCard? card = FindCard(endpoint.NodeId);
+                int portIndex = card?.PortIndex(endpoint.PortKey) ?? -1;
+
+                if (card is not null && portIndex >= 0)
+                {
+                    point = PortAnchor(card, portIndex);
+                    return true;
+                }
+
+                break;
+            }
+
+            case GraphEndpointKind.ExpandedNodeInput:
+            {
+                NodeCard? card = FindCard(endpoint.NodeId);
+
+                if (card is not null)
+                {
+                    point = InputAnchor(card);
+                    return true;
+                }
+
+                break;
+            }
+
+            case GraphEndpointKind.CollapsedFileNodeOutput:
+            case GraphEndpointKind.CollapsedFileNodeInput:
+            {
+                FileProxyVisual? proxy = FindProxy(endpoint.FileId);
+
+                if (proxy is not null && endpoint.ProxyRowIndex is { } rowIndex)
+                {
+                    point = ProxyRowAnchor(
+                        proxy,
+                        rowIndex,
+                        output: endpoint.Kind == GraphEndpointKind.CollapsedFileNodeOutput);
+                    return true;
+                }
+
+                break;
+            }
+        }
+
+        point = default;
+        return false;
+    }
+
+    /// <summary>펼쳐진 노드 카드의 출력 포트 좌표.</summary>
     private static Point PortAnchor(NodeCard card, int portIndex)
     {
         double x = Canvas.GetLeft(card.Visual) + CardWidth;
@@ -359,6 +637,17 @@ public partial class GraphEditorView : UserControl
         return new Point(
             Canvas.GetLeft(card.Visual),
             Canvas.GetTop(card.Visual) + CardPadding + (HeaderHeight / 2));
+    }
+
+    private static Point ProxyRowAnchor(FileProxyVisual proxy, int rowIndex, bool output)
+    {
+        double x = Canvas.GetLeft(proxy.Visual) + (output ? ProxyWidth : 0);
+        double y = Canvas.GetTop(proxy.Visual)
+            + ProxyHeaderHeight
+            + (rowIndex * ProxyRowHeight)
+            + (ProxyRowHeight / 2);
+
+        return new Point(x, y);
     }
 
     // ── 조작 ────────────────────────────────────────────────────────────────
@@ -377,7 +666,11 @@ public partial class GraphEditorView : UserControl
         args.Handled = true;
     }
 
-    private void OnPortPressed(GraphPort port, NodeCard card, int index, PointerPressedEventArgs args)
+    private void OnPortPressed(
+        GraphOutputPortProjection port,
+        NodeCard card,
+        int index,
+        PointerPressedEventArgs args)
     {
         _connectingFrom = port;
 
@@ -392,17 +685,15 @@ public partial class GraphEditorView : UserControl
         };
 
         GraphCanvas.Children.Add(_connectingLine);
-        HintText.Text = port.Kind == GraphPortKind.Settings
-            ? "조건을 공급할 대사 노드 위에서 놓으세요. Settings 간선은 선택 후 삭제할 수 있습니다."
-            : "연결할 노드 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다.";
+        HintText.Text = port.Kind == GraphOutputPortKind.Settings
+            ? "조건을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요."
+            : "연결할 노드 또는 접힌 파일의 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다.";
 
-        // 카드 드래그로 넘어가지 않게 막는다.
         args.Handled = true;
     }
 
     private void OnCanvasPointerPressed(object? sender, PointerPressedEventArgs args)
     {
-        // 빈 곳을 눌렀다면 간선 선택을 푼다.
         if (args.Source is Canvas)
         {
             SelectEdge(null);
@@ -439,7 +730,7 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        GraphPort port = _connectingFrom;
+        GraphOutputPortProjection port = _connectingFrom;
         _connectingFrom = null;
 
         if (_connectingLine is not null)
@@ -448,17 +739,16 @@ public partial class GraphEditorView : UserControl
             _connectingLine = null;
         }
 
-        HintText.Text = "포트(●)를 끌어 다른 노드에 놓으면 연결됩니다. 노드를 끌면 배치가 바뀝니다.";
+        HintText.Text = "포트(●)를 끌어 실제 노드나 FileProxy의 노드 행에 놓으면 연결됩니다.";
 
-        NodeCard? dropped = CardAt(args.GetPosition(GraphCanvas));
+        GraphNodeHit? dropped = NodeAt(args.GetPosition(GraphCanvas));
 
-        if (port.Kind == GraphPortKind.Settings)
+        if (port.Kind == GraphOutputPortKind.Settings)
         {
-            if (dropped is not null &&
-                _session?.Project.FindNode(dropped.NodeId) is DialogueNode &&
+            if (dropped is { NodeKind: GraphNodeKind.Dialogue } &&
                 !string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal))
             {
-                _session.Editor.AddSettingsLink(port.NodeId, dropped.NodeId);
+                _session?.Editor.AddSettingsLink(port.NodeId, dropped.NodeId);
             }
             else if (dropped is not null)
             {
@@ -468,18 +758,17 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        // 실행 출구는 자기 자신으로 잇지 않는다. 빈 곳에 놓으면 연결을 끊는다.
         string? target = dropped is null || string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal)
             ? null
             : dropped.NodeId;
 
-        if (port.Exit is not null)
+        if (port.ExecutionPort is not null)
         {
-            _session?.Editor.SetExitTarget(port.Exit, target);
+            _session?.Editor.SetExitTarget(port.ExecutionPort, target);
         }
     }
 
-    private NodeCard? CardAt(Point point)
+    private GraphNodeHit? NodeAt(Point point)
     {
         foreach (NodeCard card in _cards)
         {
@@ -492,7 +781,26 @@ public partial class GraphEditorView : UserControl
             if (point.X >= left && point.X <= left + CardWidth &&
                 point.Y >= top && point.Y <= top + height)
             {
-                return card;
+                return new GraphNodeHit(card.NodeId, card.NodeKind);
+            }
+        }
+
+        foreach (FileProxyVisual proxy in _proxies)
+        {
+            double left = Canvas.GetLeft(proxy.Visual);
+            double top = Canvas.GetTop(proxy.Visual);
+
+            if (point.X < left || point.X > left + ProxyWidth || point.Y < top + ProxyHeaderHeight)
+            {
+                continue;
+            }
+
+            int rowIndex = (int)((point.Y - top - ProxyHeaderHeight) / ProxyRowHeight);
+
+            if (rowIndex >= 0 && rowIndex < proxy.Rows.Count)
+            {
+                ProxyNodeRow row = proxy.Rows[rowIndex];
+                return new GraphNodeHit(row.NodeId, row.NodeKind);
             }
         }
 
@@ -503,7 +811,7 @@ public partial class GraphEditorView : UserControl
     {
         foreach (EdgeVisual item in _edges)
         {
-            item.Line.StrokeThickness = 2;
+            item.Path.StrokeThickness = 2;
         }
 
         _selectedEdge = edge;
@@ -514,17 +822,18 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        edge.Line.StrokeThickness = 4;
+        edge.Path.StrokeThickness = 4;
 
-        StoryNode? source = _session?.Project.FindNode(edge.Port.NodeId);
-        StoryNode? target = _session?.Project.FindNode(edge.TargetNodeId);
+        string sourceName = FindNodeName(edge.Connection.SourceNodeId) ?? edge.Connection.SourceNodeId;
+        string targetName = FindNodeName(edge.Connection.TargetNodeId) ?? edge.Connection.TargetNodeId;
+        string kind = edge.Connection.Kind switch
+        {
+            GraphConnectionKind.Settings => "조건 공급",
+            GraphConnectionKind.ExecutionBranch => $"조건 '{edge.Connection.Label}'",
+            _ => "기본 출구"
+        };
 
-        string kind = edge.Port.Kind == GraphPortKind.Settings
-            ? "조건 공급"
-            : edge.Port.Exit?.Kind == ExitPortKind.Branch
-                ? $"조건 '{edge.Port.Label}'"
-                : "기본 출구";
-        HintText.Text = $"{source?.Name} — {kind} → {target?.Name}";
+        HintText.Text = $"{sourceName} — {kind} → {targetName}";
     }
 
     private void DeleteSelectedEdge()
@@ -534,11 +843,11 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        if (_selectedEdge.LinkId is { } linkId)
+        if (_selectedEdge.Connection.LinkId is { } linkId)
         {
             _session.Editor.RemoveLink(linkId);
         }
-        else if (_selectedEdge.Port.Exit is { } exit)
+        else if (_selectedEdge.Connection.ExecutionPort is { } exit)
         {
             _session.Editor.SetExitTarget(exit, null);
         }
@@ -557,11 +866,9 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        StoryFile activeFile = _session.Project.FindFile(fileId)
+        StoryFile activeFile = _session.ActiveFile
             ?? throw new InvalidOperationException($"현재 StoryFile '{fileId}'를 찾을 수 없습니다.");
 
-        // 파일 안의 직렬화 순서는 Nodes 마지막에 추가하는 것으로 정한다.
-        // 그래프 좌표는 별개의 값이므로, 현재 파일의 노드 수를 기준으로 겹치지 않게 배치한다.
         int fileNodeCount = activeFile.Nodes.Count;
         double x = 60 + (fileNodeCount % 4) * 260;
         double y = 60 + (fileNodeCount / 4) * 200;
@@ -581,86 +888,111 @@ public partial class GraphEditorView : UserControl
         }
     }
 
-    private enum GraphPortKind
+    private NodeCard? FindCard(string nodeId)
     {
-        Execution,
-        Settings
+        return _cards.FirstOrDefault(item => string.Equals(item.NodeId, nodeId, StringComparison.Ordinal));
     }
 
-    private sealed record GraphPort(
-        GraphPortKind Kind,
-        string NodeId,
-        string Label,
-        int PaletteIndex,
-        bool IsConnected,
-        ExitPort? Exit)
+    private FileProxyVisual? FindProxy(string fileId)
     {
-        public static GraphPort ForExecution(ExitPort exit)
+        return _proxies.FirstOrDefault(item => string.Equals(item.FileId, fileId, StringComparison.Ordinal));
+    }
+
+    private string? FindNodeName(string nodeId)
+    {
+        ExpandedNodeProjection? expanded = _projection?.Items
+            .OfType<ExpandedNodeProjection>()
+            .FirstOrDefault(item => string.Equals(item.NodeId, nodeId, StringComparison.Ordinal));
+
+        if (expanded is not null)
         {
-            return new GraphPort(
-                GraphPortKind.Execution,
-                exit.NodeId,
-                exit.Label,
-                exit.PaletteIndex,
-                exit.IsConnected,
-                exit);
+            return expanded.NodeName;
         }
 
-        public static GraphPort ForSettings(string nodeId, bool isConnected)
-        {
-            return new GraphPort(
-                GraphPortKind.Settings,
-                nodeId,
-                "조건 공급",
-                -1,
-                isConnected,
-                null);
-        }
+        return _projection?.Items
+            .OfType<CollapsedFileProjection>()
+            .SelectMany(file => file.Nodes)
+            .FirstOrDefault(item => string.Equals(item.NodeId, nodeId, StringComparison.Ordinal))
+            ?.NodeName;
     }
+
+    private static IBrush ConnectionBrush(GraphConnectionProjection connection)
+    {
+        return connection.Kind switch
+        {
+            GraphConnectionKind.Settings => new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E)),
+            GraphConnectionKind.ExecutionBranch => BranchPalette.Accent(connection.PaletteIndex),
+            _ => new SolidColorBrush(Color.FromArgb(150, 100, 100, 100))
+        };
+    }
+
+    private static string NodeKindLabel(GraphNodeKind kind)
+    {
+        return kind == GraphNodeKind.Set ? "설정" : "대사";
+    }
+
+    private static Point ToPoint(GraphPosition position) => new(position.X, position.Y);
 
     private sealed class NodeCard
     {
-        public NodeCard(string nodeId, Border visual, IReadOnlyList<GraphPort> ports)
+        public NodeCard(
+            string nodeId,
+            GraphNodeKind nodeKind,
+            Border visual,
+            IReadOnlyList<GraphOutputPortProjection> ports)
         {
             NodeId = nodeId;
+            NodeKind = nodeKind;
             Visual = visual;
             Ports = ports;
         }
 
         public string NodeId { get; }
+        public GraphNodeKind NodeKind { get; }
         public Border Visual { get; }
-        public IReadOnlyList<GraphPort> Ports { get; }
+        public IReadOnlyList<GraphOutputPortProjection> Ports { get; }
+
+        public int PortIndex(string? key)
+        {
+            return key is null
+                ? -1
+                : Ports.ToList().FindIndex(port => string.Equals(port.Key, key, StringComparison.Ordinal));
+        }
     }
+
+    private sealed class FileProxyVisual
+    {
+        public FileProxyVisual(string fileId, Border visual, IReadOnlyList<ProxyNodeRow> rows)
+        {
+            FileId = fileId;
+            Visual = visual;
+            Rows = rows;
+        }
+
+        public string FileId { get; }
+        public Border Visual { get; }
+        public IReadOnlyList<ProxyNodeRow> Rows { get; }
+    }
+
+    private sealed record ProxyNodeRow(
+        string NodeId,
+        GraphNodeKind NodeKind,
+        int Index,
+        Border Visual);
+
+    private sealed record GraphNodeHit(string NodeId, GraphNodeKind NodeKind);
 
     private sealed class EdgeVisual
     {
-        public EdgeVisual(
-            GraphPort port,
-            NodeCard source,
-            int portIndex,
-            NodeCard target,
-            string targetNodeId,
-            string? linkId,
-            Line line,
-            Border label)
+        public EdgeVisual(GraphConnectionProjection connection, ShapePath path, Border label)
         {
-            Port = port;
-            Source = source;
-            PortIndex = portIndex;
-            Target = target;
-            TargetNodeId = targetNodeId;
-            LinkId = linkId;
-            Line = line;
+            Connection = connection;
+            Path = path;
             Label = label;
         }
 
-        public GraphPort Port { get; }
-        public NodeCard Source { get; }
-        public int PortIndex { get; }
-        public NodeCard Target { get; }
-        public string TargetNodeId { get; }
-        public string? LinkId { get; }
-        public Line Line { get; }
+        public GraphConnectionProjection Connection { get; set; }
+        public ShapePath Path { get; }
         public Border Label { get; }
     }
 }
