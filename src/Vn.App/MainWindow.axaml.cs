@@ -22,7 +22,8 @@ public partial class MainWindow : Window
 
     private void OnAnalyzed(object? sender, AnalysisReport report)
     {
-        Graph.Show(report.Nodes);
+        // 좌표는 프로젝트 폴더 옆 vn.workspace.json에 남는다.
+        Graph.Show(report.Nodes, report.ProjectPath);
     }
 
     private void OnGraphNodeSelected(object? sender, string title)

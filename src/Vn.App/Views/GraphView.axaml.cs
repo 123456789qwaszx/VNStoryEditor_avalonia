@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
+using Vn.App.Services;
 using Vn.Core.Story;
 
 namespace Vn.App.Views;
@@ -43,6 +44,9 @@ public partial class GraphView : UserControl
     private GraphNode? _dragging;
     private Point _dragOffset;
 
+    /// <summary>좌표를 어디에 남길지. 분석 전에는 null이라 저장하지 않는다.</summary>
+    private string? _projectPath;
+
     public GraphView()
     {
         InitializeComponent();
@@ -54,11 +58,19 @@ public partial class GraphView : UserControl
     public event EventHandler<string>? NodeSelected;
 
     /// <summary>
-    /// 분석 결과로 그래프를 다시 그린다. 이전 그림과 드래그해 둔 위치는 사라진다.
+    /// 분석 결과로 그래프를 다시 그린다.
+    /// 저장된 좌표가 있으면 그 자리에, 없으면 격자로 자동 배치한다.
     /// </summary>
-    public void Show(IReadOnlyList<StoryNode> nodes)
+    /// <param name="projectPath">좌표 파일을 찾을 프로젝트 경로. null이면 저장하지 않는다.</param>
+    public void Show(IReadOnlyList<StoryNode> nodes, string? projectPath = null)
     {
         ClearGraph();
+
+        _projectPath = projectPath;
+
+        IReadOnlyDictionary<string, NodePosition> saved = projectPath is null
+            ? new Dictionary<string, NodePosition>(StringComparer.Ordinal)
+            : WorkspaceService.LoadPositions(projectPath);
 
         var byTitle = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
 
@@ -69,6 +81,13 @@ public partial class GraphView : UserControl
             // 격자 배치. 겹치지만 않으면 되고, 보기 좋은 배치는 나중 일이다.
             double x = OriginX + index / NodesPerColumn * ColumnStep;
             double y = OriginY + index % NodesPerColumn * RowStep;
+
+            // 저장된 좌표는 그 노드에만 적용한다. 새로 생긴 노드는 자동 배치로 남는다.
+            if (saved.TryGetValue(node.Title, out NodePosition? position))
+            {
+                x = Math.Clamp(position.X, 0, CanvasWidth - NodeWidth);
+                y = Math.Clamp(position.Y, 0, CanvasHeight - NodeHeight);
+            }
 
             GraphNode created = AddNode(node, x, y);
             byTitle[node.Title] = created;
@@ -258,8 +277,40 @@ public partial class GraphView : UserControl
 
     private void OnNodePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        bool moved = _dragging is not null;
+
         _dragging = null;
         e.Pointer.Capture(null);
+
+        if (moved)
+        {
+            SavePositions();
+        }
+    }
+
+    /// <summary>
+    /// 놓을 때마다 좌표를 남긴다. 저장에 실패해도 알리지 않는다 —
+    /// 원고가 아니라 편집기 편의를 위한 것이고, 다음에 자동 배치되면 그만이다.
+    /// </summary>
+    private void SavePositions()
+    {
+        if (_projectPath is null)
+        {
+            return;
+        }
+
+        var positions = new Dictionary<string, NodePosition>(StringComparer.Ordinal);
+
+        foreach (GraphNode node in _nodes)
+        {
+            positions[node.Title] = new NodePosition
+            {
+                X = Canvas.GetLeft(node.Visual),
+                Y = Canvas.GetTop(node.Visual)
+            };
+        }
+
+        WorkspaceService.SavePositions(_projectPath, positions);
     }
 
     /// <summary>드래그한 노드에 붙은 선이 따라오게 한다.</summary>
