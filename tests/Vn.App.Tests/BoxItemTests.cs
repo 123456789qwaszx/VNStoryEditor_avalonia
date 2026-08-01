@@ -19,7 +19,7 @@ public class BoxItemTests
 
         StoryNode start = Assert.Single(report.Nodes, node => node.Title == "Start");
 
-        return BoxListView.BuildChildren(start.Body);
+        return BoxListView.BuildChildren(start.Body, File.ReadAllText(start.FilePath));
     }
 
     private static BlockItem OptionBlock()
@@ -93,7 +93,7 @@ public class BoxItemTests
     [Fact]
     public void 중첩된_블록은_갈래_안의_항목이_된다()
     {
-        StoryNode node = AnalyzeSource("""
+        const string yarn = """
             title: T
             ---
             -> 첫째 선택지
@@ -103,10 +103,12 @@ public class BoxItemTests
             -> 둘째 선택지
                 윌로: 둘째.
             ===
-            """);
+            """;
+
+        StoryNode node = AnalyzeSource(yarn);
 
         var options = Assert.IsType<BlockItem>(
-            Assert.Single(BoxListView.BuildChildren(node.Body)));
+            Assert.Single(BoxListView.BuildChildren(node.Body, yarn)));
 
         var nested = Assert.IsType<BlockItem>(
             Assert.Single(options.Branches[0].Children));
@@ -121,17 +123,19 @@ public class BoxItemTests
     [Fact]
     public void 조건_갈래에는_목적지가_없다()
     {
-        StoryNode node = AnalyzeSource("""
+        const string yarn = """
             title: T
             ---
             <<if $favor >= 5>>
             라루: 참.
             <<endif>>
             ===
-            """);
+            """;
+
+        StoryNode node = AnalyzeSource(yarn);
 
         var block = Assert.IsType<BlockItem>(
-            Assert.Single(BoxListView.BuildChildren(node.Body)));
+            Assert.Single(BoxListView.BuildChildren(node.Body, yarn)));
 
         Assert.False(Assert.Single(block.Branches).HasDestination);
     }

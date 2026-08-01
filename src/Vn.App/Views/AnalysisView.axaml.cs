@@ -36,7 +36,16 @@ public partial class AnalysisView : UserControl
         InitializeComponent();
 
         BoxList.LineSelected += OnBoxLineSelected;
+        BoxList.LineEdited += OnBoxLineEdited;
     }
+
+    /// <summary>
+    /// 박스 탭에서 고친 대사. 줄 번호를 키로 마지막 값만 남긴다.
+    ///
+    /// 저장할 때 트리로 Yarn을 다시 만들지 않고 이 목록만 원본에 갈아 끼운다.
+    /// 재조립하면 작가가 한 줄만 고쳤는데 파일 전체의 공백과 주석이 바뀐다.
+    /// </summary>
+    private readonly Dictionary<int, StoryLineEdit> _boxEdits = new();
 
     /// <summary>분석이 끝나면 결과를 알린다. 다른 뷰에 어떻게 전할지는 MainWindow가 정한다.</summary>
     public event EventHandler<AnalysisReport>? Analyzed;
@@ -61,7 +70,19 @@ public partial class AnalysisView : UserControl
 
     private bool HasUnsavedChanges =>
         _openFile is not null &&
-        !string.Equals(FileBox.Text ?? string.Empty, _savedText, StringComparison.Ordinal);
+        (_boxEdits.Count > 0 ||
+         !string.Equals(FileBox.Text ?? string.Empty, _savedText, StringComparison.Ordinal));
+
+    private void OnBoxLineEdited(object? sender, StoryLineEdit edit)
+    {
+        if (_openFile is null)
+        {
+            return;
+        }
+
+        _boxEdits[edit.Line] = edit;
+        UpdateFileHeader();
+    }
 
     private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
     {
@@ -97,10 +118,23 @@ public partial class AnalysisView : UserControl
             return;
         }
 
-        string text = FileBox.Text ?? string.Empty;
+        string text;
 
         try
         {
+            // 박스에서 고쳤으면 트리를 다시 쓰지 않고 그 줄만 원본에 갈아 끼운다.
+            // 이때 편집기에 떠 있는 문자열이 아니라 디스크의 원본을 기준으로 삼는다.
+            // 박스 편집은 텍스트 탭을 갱신하지 않으므로 그쪽 내용은 이미 낡았다.
+            if (_boxEdits.Count > 0)
+            {
+                StoryFile onDisk = StoryFileService.Read(_openFile.Path);
+                text = StoryLineEditor.Apply(onDisk.Text, _boxEdits.Values);
+            }
+            else
+            {
+                text = FileBox.Text ?? string.Empty;
+            }
+
             // File.WriteAllText를 직접 쓰지 않는다. 그러면 BOM과 인코딩이 조용히 바뀌어
             // 고치지도 않은 줄까지 diff에 뜬다. 읽을 때 본 형태를 그대로 돌려준다.
             StoryFileService.Write(_openFile.Path, text, _openFile);
@@ -116,9 +150,19 @@ public partial class AnalysisView : UserControl
         }
 
         _savedText = text;
+        _boxEdits.Clear();
         UpdateFileHeader();
 
+        // 재분석하면 목록이 새로 그려지면서 선택이 풀린다.
+        // 방금 고친 노드를 계속 보고 있어야 하므로 되돌려 놓는다.
+        string? selected = (NodeList.SelectedItem as NodeItem)?.Node.Title;
+
         await RunAnalysisAsync();
+
+        if (selected is not null)
+        {
+            SelectNodeByTitle(selected);
+        }
     }
 
     private void UpdateFileHeader()
@@ -197,12 +241,14 @@ public partial class AnalysisView : UserControl
 
         StoryNode node = item.Node;
 
+        // 파일을 먼저 연다. 박스가 "이 줄을 안전하게 되살릴 수 있는가"를 판단하려면
+        // 원본 텍스트가 있어야 한다.
+        ShowFile(node.FilePath, node.HeaderLine, 1);
+
         // 두 탭이 같은 노드를 보게 한다.
         // 박스 탭은 평평한 Lines가 아니라 분기 트리를 그린다. 평평한 목록에서는
         // 선택지 갈래 안의 명령이 다음 선택지에 붙어 보인다.
-        BoxList.Show(node.Body);
-
-        ShowFile(node.FilePath, node.HeaderLine, 1);
+        BoxList.Show(node.Body, _openFile?.Text ?? string.Empty);
     }
 
     /// <summary>
@@ -279,6 +325,9 @@ public partial class AnalysisView : UserControl
 
             _openFile = file;
             _savedText = file.Text;
+
+            // 다른 파일을 열면 이전 파일에 대한 편집은 의미가 없다.
+            _boxEdits.Clear();
 
             // 새 줄을 넣을 때 이 파일이 쓰던 줄바꿈을 그대로 쓴다.
             // 기본값은 Environment.NewLine이라, LF 파일에 한 줄 넣으면 그 줄만 CRLF가 되고

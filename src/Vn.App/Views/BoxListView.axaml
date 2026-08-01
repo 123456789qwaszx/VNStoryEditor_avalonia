@@ -29,22 +29,34 @@
                             Opacity="0.4"
                             IsVisible="{Binding HasCommands}" />
 
+                    <!-- 대사와 화자만 고칠 수 있다. 명령·라벨·태그는 읽기 전용이다.
+                         고친 뒤 원본 줄을 그대로 되살릴 수 없는 박스는 잠근다. -->
                     <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding Speaker}"
-                                   FontWeight="Bold"
-                                   MinWidth="56"
-                                   Margin="0,0,8,0"
-                                   TextWrapping="NoWrap" />
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding Text}"
-                                   TextWrapping="Wrap" />
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding Speaker, Mode=TwoWay}"
+                                 IsReadOnly="{Binding IsLocked}"
+                                 FontWeight="Bold"
+                                 MinWidth="80"
+                                 Margin="0,0,8,0"
+                                 TextChanged="OnBoxEdited" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding Text, Mode=TwoWay}"
+                                 IsReadOnly="{Binding IsLocked}"
+                                 AcceptsReturn="False"
+                                 TextWrapping="Wrap"
+                                 TextChanged="OnBoxEdited" />
                     </Grid>
 
                     <TextBlock Text="{Binding Hashtags}"
                                IsVisible="{Binding HasHashtags}"
                                Opacity="0.7"
                                FontSize="11" />
+
+                    <TextBlock Text="{Binding LockReason}"
+                               IsVisible="{Binding IsLocked}"
+                               Opacity="0.6"
+                               FontSize="11"
+                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </DataTemplate>
