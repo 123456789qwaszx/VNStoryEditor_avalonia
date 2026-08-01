@@ -19,7 +19,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Vn.Core\Vn.Core.csproj" />
+    <!-- 저작 도메인만 참조한다. Yarn 분석(Vn.Core)은 가져오기 도구의 것이지 편집기의 것이 아니다. -->
+    <ProjectReference Include="..\Vn.Authoring\Vn.Authoring.csproj" />
   </ItemGroup>
 
   <ItemGroup>

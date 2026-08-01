@@ -2,46 +2,34 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="using:Vn.App.Views"
         x:Class="Vn.App.MainWindow"
-        Width="1280"
-        Height="820"
-        MinWidth="920"
-        MinHeight="620"
+        Width="1400"
+        Height="880"
+        MinWidth="1000"
+        MinHeight="640"
         Title="VnTool">
     <DockPanel>
         <Border DockPanel.Dock="Top"
                 Padding="12,10"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,16,*,Auto">
-                <Button Grid.Column="0"
-                        x:Name="OpenButton"
-                        Content="프로젝트 열기…"
-                        Click="OnOpenClick" />
-                <Button Grid.Column="1"
-                        x:Name="SaveButton"
-                        Content="저장"
-                        Click="OnSaveClick" />
-                <Button Grid.Column="2"
-                        x:Name="AnalyzeButton"
-                        Content="저장 후 다시 검사"
-                        Click="OnAnalyzeClick" />
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,16,Auto,Auto,16,*,Auto">
+                <Button Grid.Column="0" x:Name="NewButton" Content="새 프로젝트" />
+                <Button Grid.Column="1" x:Name="OpenButton" Content="열기…" Margin="6,0,0,0" />
+                <Button Grid.Column="2" x:Name="SaveButton" Content="저장" Margin="6,0,0,0" />
+                <Button Grid.Column="3" x:Name="SaveAsButton" Content="다른 이름으로…" Margin="6,0,0,0" />
 
-                <StackPanel Grid.Column="4" VerticalAlignment="Center">
-                    <TextBlock x:Name="ProjectNameText"
-                               Text="열린 프로젝트 없음"
-                               FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock x:Name="ProjectPathText"
-                               FontSize="11"
-                               Opacity="0.65"
-                               TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="5" x:Name="UndoButton" Content="실행 취소" />
+                <Button Grid.Column="6" x:Name="RedoButton" Content="다시 실행" Margin="6,0,0,0" />
+
+                <StackPanel Grid.Column="8" VerticalAlignment="Center" Margin="8,0">
+                    <TextBlock x:Name="ProjectNameText" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="ProjectPathText" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <ProgressBar Grid.Column="5"
-                             x:Name="AnalysisProgress"
-                             Width="120"
-                             IsIndeterminate="True"
-                             IsVisible="False" />
+                <TextBlock Grid.Column="9"
+                           x:Name="DirtyText"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold" />
             </Grid>
         </Border>
 
@@ -49,25 +37,29 @@
                 Padding="12,8"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,1,0,0">
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBlock x:Name="StatusText"
-                           Grid.Column="0"
-                           Text="Yarn 프로젝트를 열어 주세요."
-                           TextWrapping="Wrap" />
-                <TextBlock x:Name="DirtyText"
-                           Grid.Column="1"
-                           Margin="16,0,0,0"
-                           FontWeight="SemiBold" />
-            </Grid>
+            <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
         </Border>
 
-        <TabControl x:Name="WorkspaceTabs">
-            <TabItem Header="대본 작업">
-                <views:AnalysisView x:Name="Analysis" />
-            </TabItem>
-            <TabItem Header="전체 흐름">
-                <views:GraphView x:Name="Graph" />
-            </TabItem>
-        </TabControl>
+        <Grid ColumnDefinitions="*,6,460">
+            <views:GraphEditorView Grid.Column="0" x:Name="Graph" />
+
+            <GridSplitter Grid.Column="1"
+                          ResizeDirection="Columns"
+                          Background="{DynamicResource ThemeBorderLowBrush}" />
+
+            <Border Grid.Column="2"
+                    BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                    BorderThickness="1,0,0,0">
+                <Panel>
+                    <views:DialogueNodeEditor x:Name="DialogueEditor" />
+                    <views:SetNodeEditor x:Name="SetEditor" />
+                    <TextBlock x:Name="EmptyText"
+                               Text="노드를 선택하면 여기서 편집합니다."
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Opacity="0.5" />
+                </Panel>
+            </Border>
+        </Grid>
     </DockPanel>
 </Window>

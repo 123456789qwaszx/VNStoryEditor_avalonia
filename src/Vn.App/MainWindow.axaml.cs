@@ -3,68 +3,129 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Vn.App.Services;
+using Vn.Authoring.Editing;
+using Vn.Authoring.Model;
+using Vn.Authoring.Serialization;
 
 namespace Vn.App;
 
 /// <summary>
-/// 앱 셸. 프로젝트 세션을 한 번 만들고 대본 화면과 그래프 화면에 연결한다.
+/// 앱 셸. 세션을 하나 만들고 그래프 화면과 노드 화면에 같은 것을 물려준다.
+///
+/// 두 화면은 서로를 모른다. 둘 다 <see cref="AuthoringSession"/>만 보고 있고,
+/// 편집은 전부 <see cref="ProjectEditor"/>를 지난다. 그래서 여기에는 화면을 잇는 코드가 없다.
 /// </summary>
 public partial class MainWindow : Window
 {
     private const string BaseTitle = "VnTool";
 
-    private readonly ProjectSession _session = new();
-    private bool _closeConfirmed;
-    private bool _openedRecentProject;
+    private readonly AuthoringSession _session = new();
+    private bool _restoredRecent;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        Analysis.Attach(_session);
+        Graph.Attach(_session);
+        DialogueEditor.Attach(_session);
+        SetEditor.Attach(_session);
 
-        _session.StateChanged += OnSessionStateChanged;
-        _session.AnalysisChanged += OnAnalysisChanged;
-        Analysis.NodeSelected += OnAnalysisNodeSelected;
-        Graph.NodeSelected += OnGraphNodeSelected;
+        _session.Changed += OnSessionChanged;
+        _session.SelectionChanged += OnSelectionChanged;
+
+        NewButton.Click += OnNewClick;
+        OpenButton.Click += OnOpenClick;
+        SaveButton.Click += OnSaveClick;
+        SaveAsButton.Click += OnSaveAsClick;
+        UndoButton.Click += (_, _) => _session.Editor.Undo();
+        RedoButton.Click += (_, _) => _session.Editor.Redo();
 
         Opened += OnOpened;
-        Closing += OnClosing;
 
+        Graph.Rebuild();
+        ShowSelectedNode();
         RefreshShell();
     }
 
     /// <summary>
-    /// 최근 프로젝트 복원은 편의 기능이다. 실패해도 앱을 닫지 않는다.
-    ///
-    /// 이 핸들러는 <c>async void</c>라 여기서 새는 예외는 잡아 줄 곳이 없고 곧장 프로세스를 죽인다.
-    /// 그러면 마지막에 열었던 프로젝트가 깨졌다는 이유만으로 새 프로젝트를 열 기회조차 사라진다.
-    /// 그래서 실패는 상태 줄로 알리고 빈 창은 그대로 쓸 수 있게 둔다.
+    /// 최근 프로젝트 복원은 편의 기능이다. 실패해도 빈 창은 그대로 쓸 수 있어야 한다.
+    /// 이 핸들러는 async void라 예외가 새면 잡아 줄 곳이 없고 곧장 프로세스를 죽인다.
     /// </summary>
-    private async void OnOpened(object? sender, EventArgs e)
+    private void OnOpened(object? sender, EventArgs e)
     {
-        if (_openedRecentProject)
+        if (_restoredRecent)
         {
             return;
         }
 
-        _openedRecentProject = true;
+        _restoredRecent = true;
 
         try
         {
-            string? recent = AppSettingsService.LoadRecentProject();
-
-            if (recent is not null)
+            if (AppSettingsService.LoadRecentProject() is { } recent)
             {
-                await OpenProjectPathAsync(recent, askToDiscard: false);
+                _session.Open(recent);
             }
         }
         catch (Exception exception)
         {
             StartupLog.TryWrite("최근 프로젝트 복원", exception);
             _session.SetStatus(
-                "마지막에 열었던 프로젝트를 다시 열지 못했습니다. " +
-                $"'프로젝트 열기…'로 새로 열어 주세요. ({exception.Message})");
+                $"마지막에 열었던 프로젝트를 열지 못했습니다. '열기…'로 다시 시도해 주세요. ({exception.Message})");
+        }
+    }
+
+    private void OnSessionChanged(object? sender, ProjectChangedEventArgs e)
+    {
+        void Apply()
+        {
+            switch (e.Kind)
+            {
+                case ProjectChangeKind.Layout:
+                    // 좌표만 바뀌었다. 카드를 다시 만들면 드래그가 끊긴다.
+                    Graph.RefreshPositions();
+                    break;
+
+                case ProjectChangeKind.Structure:
+                    Graph.Rebuild();
+                    RebuildInspector();
+                    break;
+            }
+
+            RefreshShell();
+        }
+
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Apply();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(Apply);
+        }
+    }
+
+    private void OnSelectionChanged(object? sender, EventArgs e)
+    {
+        ShowSelectedNode();
+        Graph.HighlightSelection();
+        RefreshShell();
+    }
+
+    // ── 파일 ────────────────────────────────────────────────────────────────
+
+    private void OnNewClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _session.NewProject();
+            Graph.Rebuild();
+            ShowSelectedNode();
+            RefreshShell();
+        }
+        catch (Exception exception)
+        {
+            Report("새 프로젝트", exception);
         }
     }
 
@@ -72,12 +133,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (!await Analysis.ResolveUnsavedChangesAsync("다른 프로젝트를 열기"))
-            {
-                return;
-            }
-
-            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
 
             if (storage is null || !storage.CanOpen)
             {
@@ -88,43 +144,22 @@ public partial class MainWindow : Window
             IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(
                 new FilePickerOpenOptions
                 {
-                    Title = "Yarn 프로젝트 열기",
+                    Title = "VnTool 프로젝트 열기",
                     AllowMultiple = false,
-                    FileTypeFilter = new[]
-                    {
-                        new FilePickerFileType("Yarn 프로젝트")
-                        {
-                            Patterns = new[] { "*.yarnproject" }
-                        }
-                    }
+                    FileTypeFilter = new[] { ProjectFileType() }
                 });
 
-            if (files.Count == 0)
+            if (files.Count > 0)
             {
-                return;
+                _session.Open(files[0].Path.LocalPath);
+                Graph.Rebuild();
+                ShowSelectedNode();
+                RefreshShell();
             }
-
-            await OpenProjectPathAsync(files[0].Path.LocalPath, askToDiscard: false);
         }
         catch (Exception exception)
         {
-            _session.SetStatus($"프로젝트를 열지 못했습니다. {exception.Message}");
-        }
-    }
-
-    private async Task OpenProjectPathAsync(string path, bool askToDiscard)
-    {
-        if (askToDiscard &&
-            !await Analysis.ResolveUnsavedChangesAsync("다른 프로젝트를 열기"))
-        {
-            return;
-        }
-
-        await _session.OpenProjectAsync(path);
-
-        if (_session.SelectedNode is not null)
-        {
-            Graph.SelectByTitle(_session.SelectedNode.Title);
+            Report("프로젝트 열기", exception);
         }
     }
 
@@ -132,137 +167,132 @@ public partial class MainWindow : Window
     {
         try
         {
-            await Analysis.SaveAsync();
+            if (_session.ProjectPath is null)
+            {
+                await SaveAsAsync();
+                return;
+            }
+
+            _session.Save();
+            RefreshShell();
         }
         catch (Exception exception)
         {
-            ReportRecoverable("저장", exception);
+            Report("저장", exception);
         }
     }
 
-    private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
+    private async void OnSaveAsClick(object? sender, RoutedEventArgs e)
     {
         try
         {
-            await Analysis.ReanalyzeAsync();
+            await SaveAsAsync();
         }
         catch (Exception exception)
         {
-            ReportRecoverable("다시 검사", exception);
+            Report("저장", exception);
+        }
+    }
+
+    private async Task SaveAsAsync()
+    {
+        IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
+
+        if (storage is null || !storage.CanSave)
+        {
+            _session.SetStatus("이 환경에서는 저장 창을 열 수 없습니다.");
+            return;
+        }
+
+        IStorageFile? file = await storage.SaveFilePickerAsync(
+            new FilePickerSaveOptions
+            {
+                Title = "VnTool 프로젝트 저장",
+                SuggestedFileName = "story" + ProjectJson.FileExtension,
+                FileTypeChoices = new[] { ProjectFileType() }
+            });
+
+        if (file is not null)
+        {
+            _session.Save(file.Path.LocalPath);
+            RefreshShell();
+        }
+    }
+
+    private static FilePickerFileType ProjectFileType()
+    {
+        return new FilePickerFileType("VnTool 프로젝트")
+        {
+            Patterns = new[] { "*.vnstory.json", "*.json" }
+        };
+    }
+
+    // ── 화면 ────────────────────────────────────────────────────────────────
+
+    private void ShowSelectedNode()
+    {
+        StoryNode? node = _session.SelectedNode;
+
+        DialogueEditor.IsVisible = node is DialogueNode;
+        SetEditor.IsVisible = node is SetNode;
+        EmptyText.IsVisible = node is null;
+
+        if (node is DialogueNode)
+        {
+            DialogueEditor.Show(node.Id);
+        }
+        else if (node is SetNode)
+        {
+            SetEditor.Show(node.Id);
         }
     }
 
     /// <summary>
-    /// <c>async void</c> 핸들러에서 샌 예외는 앱을 죽인다. 한 번의 조작이 실패했다고
-    /// 편집 중인 원고까지 잃게 할 이유는 없다. 상세 내용은 로그에, 작가에게는 한 문장만 보인다.
+    /// 구조가 바뀌었을 때 오른쪽 화면을 다시 만든다.
+    /// 선택된 노드가 그대로면 같은 노드를 다시 그리고, 바뀌었으면 그쪽으로 옮긴다.
     /// </summary>
-    private void ReportRecoverable(string action, Exception exception)
+    private void RebuildInspector()
     {
-        StartupLog.TryWrite(action, exception);
-        _session.SetStatus($"{action}하지 못했습니다. {exception.Message}");
-    }
+        StoryNode? node = _session.SelectedNode;
 
-    private void OnSessionStateChanged(object? sender, EventArgs e)
-    {
-        if (Dispatcher.UIThread.CheckAccess())
+        if (node is DialogueNode && DialogueEditor.NodeId == node.Id)
         {
-            RefreshShell();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(RefreshShell);
-        }
-    }
-
-    private void OnAnalysisChanged(object? sender, EventArgs e)
-    {
-        void RefreshGraph()
-        {
-            Graph.Show(_session.Nodes, _session.ProjectPath);
-
-            if (_session.SelectedNode is not null)
-            {
-                Graph.SelectByTitle(_session.SelectedNode.Title);
-            }
-        }
-
-        if (Dispatcher.UIThread.CheckAccess())
-        {
-            RefreshGraph();
-        }
-        else
-        {
-            Dispatcher.UIThread.Post(RefreshGraph);
-        }
-    }
-
-    private void OnAnalysisNodeSelected(object? sender, string title)
-    {
-        Graph.SelectByTitle(title);
-    }
-
-    private async void OnGraphNodeSelected(object? sender, string title)
-    {
-        try
-        {
-            bool selected = await Analysis.SelectNodeByTitleAsync(title);
-
-            if (selected)
-            {
-                Graph.SelectByTitle(title);
-            }
-            else if (_session.SelectedNode is not null)
-            {
-                // 다른 파일로 이동하기 직전 미저장 확인을 취소했다면
-                // 그래프도 실제 선택으로 되돌려 세 화면이 다른 장면을 가리키지 않게 한다.
-                Graph.SelectByTitle(_session.SelectedNode.Title);
-            }
-        }
-        catch (Exception exception)
-        {
-            ReportRecoverable("장면 이동", exception);
-        }
-    }
-
-    private async void OnClosing(object? sender, WindowClosingEventArgs e)
-    {
-        if (_closeConfirmed || !_session.HasUnsavedChanges)
-        {
+            DialogueEditor.Rebuild();
             return;
         }
 
-        e.Cancel = true;
-
-        if (await Analysis.ResolveUnsavedChangesAsync("앱을 닫기"))
+        if (node is SetNode && SetEditor.NodeId == node.Id)
         {
-            _closeConfirmed = true;
-            Close();
+            SetEditor.Rebuild();
+            return;
         }
+
+        ShowSelectedNode();
     }
 
     private void RefreshShell()
     {
-        string? projectPath = _session.ProjectPath;
-        string projectName = projectPath is null
-            ? "열린 프로젝트 없음"
-            : Path.GetFileNameWithoutExtension(projectPath);
+        string name = _session.ProjectPath is null
+            ? _session.Project.Title
+            : Path.GetFileNameWithoutExtension(_session.ProjectPath);
 
-        ProjectNameText.Text = projectName;
-        ProjectPathText.Text = projectPath ?? string.Empty;
+        ProjectNameText.Text = name;
+        ProjectPathText.Text = _session.ProjectPath ?? "저장되지 않음";
         StatusText.Text = _session.StatusMessage;
-        DirtyText.Text = _session.HasUnsavedChanges
-            ? "● 저장되지 않은 변경"
-            : string.Empty;
 
-        AnalysisProgress.IsVisible = _session.IsAnalyzing;
-        OpenButton.IsEnabled = !_session.IsAnalyzing;
-        SaveButton.IsEnabled = !_session.IsAnalyzing && _session.Document is not null;
-        AnalyzeButton.IsEnabled = !_session.IsAnalyzing && _session.HasProject;
+        bool dirty = _session.IsDirty;
+        DirtyText.Text = dirty ? "● 저장되지 않은 변경" : string.Empty;
 
-        Title = _session.HasUnsavedChanges
-            ? $"* {BaseTitle} — {projectName}"
-            : projectPath is null
-                ? BaseTitle
-                : $"{BaseTitle} — {projectName}";
+        UndoButton.IsEnabled = _session.Editor.CanUndo;
+        RedoButton.IsEnabled = _session.Editor.CanRedo;
+
+        Title = dirty ? $"* {BaseTitle} — {name}" : $"{BaseTitle} — {name}";
+    }
+
+    private void Report(string action, Exception exception)
+    {
+        StartupLog.TryWrite(action, exception);
+        _session.SetStatus($"{action}하지 못했습니다. {exception.Message}");
+        RefreshShell();
     }
 }

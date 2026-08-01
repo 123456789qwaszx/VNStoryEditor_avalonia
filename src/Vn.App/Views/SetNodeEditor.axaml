@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.SetNodeEditor">
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0"
+                Padding="12,10"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,0,0,1">
+            <TextBox x:Name="NameBox" FontWeight="SemiBold" PlaceholderText="설정 이름" />
+        </Border>
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="12" Spacing="14">
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="조건" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" x:Name="AddConditionButton" Content="조건 추가" FontSize="11" />
+                    </Grid>
+                    <TextBlock Text="여기서 만든 조건이 대사 노드의 조건 드롭다운에 나타납니다. 식은 게임이 해석합니다."
+                               FontSize="11"
+                               Opacity="0.65"
+                               TextWrapping="Wrap" />
+                    <StackPanel x:Name="ConditionHost" Spacing="6" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="변수 값" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" x:Name="AddAssignmentButton" Content="변수 추가" FontSize="11" />
+                    </Grid>
+                    <TextBlock x:Name="VariableHintText"
+                               FontSize="11"
+                               Opacity="0.65"
+                               TextWrapping="Wrap" />
+                    <StackPanel x:Name="AssignmentHost" Spacing="6" />
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="기본 출구" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="Auto,*">
+                        <CheckBox Grid.Column="0"
+                                  x:Name="DefaultExitCheck"
+                                  Content="다음 노드로 이동"
+                                  VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1"
+                                  x:Name="DefaultExitCombo"
+                                  Margin="10,0,0,0"
+                                  HorizontalAlignment="Stretch"
+                                  PlaceholderText="대상 노드" />
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.DialogueNodeEditor">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0"
+                Padding="12,10"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBox x:Name="NameBox" FontWeight="SemiBold" PlaceholderText="장면 이름" />
+                    <TextBlock x:Name="ProblemText"
+                               FontSize="11"
+                               Foreground="#C2410C"
+                               TextWrapping="Wrap"
+                               IsVisible="False" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        x:Name="AddLineButton"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Top"
+                        Content="줄 추가" />
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="LineHost" Margin="12" Spacing="6" />
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Padding="12,10"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,1,0,0">
+            <StackPanel Spacing="6">
+                <TextBlock Text="기본 출구" FontWeight="SemiBold" FontSize="12" />
+                <TextBlock Text="모든 줄과 조건 갈래가 끝난 뒤 이동합니다."
+                           FontSize="11"
+                           Opacity="0.65"
+                           TextWrapping="Wrap" />
+                <Grid ColumnDefinitions="Auto,*">
+                    <CheckBox Grid.Column="0"
+                              x:Name="DefaultExitCheck"
+                              Content="다음 노드로 이동"
+                              VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              x:Name="DefaultExitCombo"
+                              Margin="10,0,0,0"
+                              HorizontalAlignment="Stretch"
+                              PlaceholderText="대상 노드" />
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,266 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Vn.App.Services;
+using Vn.Authoring.Definition;
+using Vn.Authoring.Flow;
+using Vn.Authoring.Model;
+
+namespace Vn.App.Views;
+
+/// <summary>
+/// 설정 노드를 편집한다. 조건을 만드는 유일한 자리다.
+///
+/// 변수 이름 후보는 <see cref="GameDefinition"/>이 공급한다. 이 화면은 게임의 변수를
+/// 하나도 알지 못하고, 정의 파일이 없으면 후보 없이 작가가 직접 적는다.
+/// 그래야 같은 도구를 다음 게임에 그대로 가져다 쓸 수 있다.
+/// </summary>
+public partial class SetNodeEditor : UserControl
+{
+    private AuthoringSession? _session;
+    private string? _nodeId;
+    private bool _building;
+
+    public SetNodeEditor()
+    {
+        InitializeComponent();
+
+        NameBox.LostFocus += (_, _) =>
+        {
+            if (!_building && _session is not null && _nodeId is not null)
+            {
+                _session.Editor.RenameNode(_nodeId, NameBox.Text ?? string.Empty);
+            }
+        };
+
+        AddConditionButton.Click += (_, _) =>
+        {
+            if (_session is not null && _nodeId is not null)
+            {
+                _session.Editor.AddCondition(_nodeId, "새 조건", string.Empty);
+            }
+        };
+
+        AddAssignmentButton.Click += (_, _) => AddAssignment();
+        DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
+        DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
+    }
+
+    internal void Attach(AuthoringSession session) => _session = session;
+
+    internal void Show(string? nodeId)
+    {
+        _nodeId = nodeId;
+        Rebuild();
+    }
+
+    internal string? NodeId => _nodeId;
+
+    internal void Rebuild()
+    {
+        if (_session is null || _session.Project.FindNode(_nodeId) is not SetNode node)
+        {
+            ConditionHost.Children.Clear();
+            AssignmentHost.Children.Clear();
+            return;
+        }
+
+        _building = true;
+
+        try
+        {
+            NameBox.Text = node.Name;
+
+            ConditionHost.Children.Clear();
+
+            foreach (ConditionDefinition condition in node.Conditions)
+            {
+                ConditionHost.Children.Add(BuildConditionRow(condition));
+            }
+
+            AssignmentHost.Children.Clear();
+
+            for (int index = 0; index < node.Assignments.Count; index++)
+            {
+                AssignmentHost.Children.Add(BuildAssignmentRow(node, index));
+            }
+
+            VariableHintText.Text = _session.Definition.Variables.Count == 0
+                ? $"{GameDefinition.FileName}이 없으면 변수 이름을 직접 적습니다."
+                : $"{GameDefinition.FileName}이 제안하는 변수 {_session.Definition.Variables.Count}개를 쓸 수 있습니다.";
+
+            BuildDefaultExit(node);
+        }
+        finally
+        {
+            _building = false;
+        }
+    }
+
+    private Control BuildConditionRow(ConditionDefinition condition)
+    {
+        var name = new TextBox { Text = condition.Name, PlaceholderText = "작가가 읽을 이름", FontSize = 12 };
+
+        var expression = new TextBox
+        {
+            Text = condition.Expression,
+            PlaceholderText = "게임이 평가할 식",
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12,
+            FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono,Consolas")
+        };
+
+        void Commit()
+        {
+            if (!_building)
+            {
+                _session!.Editor.UpdateCondition(
+                    condition.Id,
+                    name.Text ?? string.Empty,
+                    expression.Text ?? string.Empty);
+            }
+        }
+
+        name.LostFocus += (_, _) => Commit();
+        expression.LostFocus += (_, _) => Commit();
+
+        var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+        remove.Click += (_, _) => _session!.Editor.RemoveCondition(condition.Id);
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(expression, 1);
+        Grid.SetColumn(remove, 2);
+        row.Children.Add(name);
+        row.Children.Add(expression);
+        row.Children.Add(remove);
+
+        return row;
+    }
+
+    private Control BuildAssignmentRow(SetNode node, int index)
+    {
+        VariableAssignment assignment = node.Assignments[index];
+
+        var variable = new AutoCompleteBox
+        {
+            Text = assignment.Variable,
+            PlaceholderText = "변수",
+            FontSize = 12,
+            ItemsSource = _session!.Definition.Variables.Select(item => item.Name).ToList(),
+            FilterMode = AutoCompleteFilterMode.Contains,
+            MinimumPrefixLength = 0
+        };
+
+        var value = new TextBox
+        {
+            Text = assignment.Value,
+            PlaceholderText = "값",
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12
+        };
+
+        void Commit()
+        {
+            if (_building)
+            {
+                return;
+            }
+
+            List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
+            next[index] = new VariableAssignment
+            {
+                Variable = variable.Text ?? string.Empty,
+                Value = value.Text ?? string.Empty
+            };
+
+            _session!.Editor.SetAssignments(node.Id, next);
+        }
+
+        variable.LostFocus += (_, _) => Commit();
+        value.LostFocus += (_, _) => Commit();
+
+        var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+
+        remove.Click += (_, _) =>
+        {
+            List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
+            next.RemoveAt(index);
+            _session!.Editor.SetAssignments(node.Id, next);
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        Grid.SetColumn(variable, 0);
+        Grid.SetColumn(value, 1);
+        Grid.SetColumn(remove, 2);
+        row.Children.Add(variable);
+        row.Children.Add(value);
+        row.Children.Add(remove);
+
+        return row;
+    }
+
+    private void AddAssignment()
+    {
+        if (_session?.Project.FindNode(_nodeId) is not SetNode node)
+        {
+            return;
+        }
+
+        List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
+        next.Add(new VariableAssignment());
+        _session.Editor.SetAssignments(node.Id, next);
+    }
+
+    private void BuildDefaultExit(SetNode node)
+    {
+        List<StoryNode> targets = _session!.Project.Nodes
+            .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
+            .ToList();
+
+        DefaultExitCombo.ItemsSource = targets.Select(target => target.Name).ToList();
+        DefaultExitCombo.Tag = targets;
+
+        bool connected = node.DefaultExitTargetNodeId is not null;
+        DefaultExitCheck.IsChecked = connected;
+        DefaultExitCombo.IsEnabled = connected;
+
+        DefaultExitCombo.SelectedIndex = connected
+            ? targets.FindIndex(target => string.Equals(target.Id, node.DefaultExitTargetNodeId, StringComparison.Ordinal))
+            : -1;
+    }
+
+    private void OnDefaultExitToggled()
+    {
+        if (_building || _session is null || _nodeId is null)
+        {
+            return;
+        }
+
+        DefaultExitCombo.IsEnabled = DefaultExitCheck.IsChecked == true;
+
+        if (DefaultExitCheck.IsChecked != true)
+        {
+            _session.Editor.SetExitTarget(_nodeId, ExitPortKind.Default, null, null);
+        }
+    }
+
+    private void OnDefaultExitSelected()
+    {
+        if (_building ||
+            _session is null ||
+            _nodeId is null ||
+            DefaultExitCombo.Tag is not List<StoryNode> targets ||
+            DefaultExitCombo.SelectedIndex < 0 ||
+            DefaultExitCombo.SelectedIndex >= targets.Count)
+        {
+            return;
+        }
+
+        _session.Editor.SetExitTarget(
+            _nodeId,
+            ExitPortKind.Default,
+            null,
+            targets[DefaultExitCombo.SelectedIndex].Id);
+    }
+}

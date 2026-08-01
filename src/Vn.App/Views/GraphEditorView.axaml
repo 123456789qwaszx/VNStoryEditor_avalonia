@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.GraphEditorView">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0"
+                Padding="10,8"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button x:Name="AddDialogueButton" Content="+ 대사 노드" />
+                <Button x:Name="AddSetButton" Content="+ 설정 노드" />
+                <Border Width="1" Margin="4,2" Background="{DynamicResource ThemeBorderLowBrush}" />
+                <Button x:Name="DeleteNodeButton" Content="노드 삭제" />
+                <Button x:Name="DeleteEdgeButton" Content="간선 삭제" IsEnabled="False" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto">
+            <Canvas x:Name="GraphCanvas"
+                    Width="3000"
+                    Height="2000"
+                    Background="{DynamicResource ThemeBackgroundBrush}" />
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Padding="10,6"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,1,0,0">
+            <TextBlock x:Name="HintText"
+                       FontSize="11"
+                       Opacity="0.7"
+                       TextWrapping="Wrap"
+                       Text="포트(●)를 끌어 다른 노드에 놓으면 연결됩니다. 노드를 끌면 배치가 바뀝니다." />
+        </Border>
+    </Grid>
+</UserControl>
