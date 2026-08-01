@@ -57,33 +57,10 @@ internal static class AppSettingsService
         }
     }
 
-    public static string? LoadRecentNode(string projectPath)
-    {
-        string key = NormalizeProjectKey(projectPath);
-        AppSettings settings = Load(SettingsPath);
-
-        return settings.RecentNodes.TryGetValue(key, out string? title) &&
-            !string.IsNullOrWhiteSpace(title)
-                ? title
-                : null;
-    }
-
     public static void SaveRecentProject(string projectPath)
     {
         AppSettings settings = Load(SettingsPath);
         settings.RecentProject = NormalizeProjectKey(projectPath);
-        Save(settings);
-    }
-
-    public static void SaveRecentNode(string projectPath, string nodeTitle)
-    {
-        if (string.IsNullOrWhiteSpace(nodeTitle))
-        {
-            return;
-        }
-
-        AppSettings settings = Load(SettingsPath);
-        settings.RecentNodes[NormalizeProjectKey(projectPath)] = nodeTitle;
         Save(settings);
     }
 
@@ -157,17 +134,6 @@ internal static class AppSettingsService
 
     internal sealed class AppSettings
     {
-        private Dictionary<string, string> _recentNodes =
-            new(StringComparer.OrdinalIgnoreCase);
-
         public string? RecentProject { get; set; }
-
-        public Dictionary<string, string> RecentNodes
-        {
-            get => _recentNodes;
-            set => _recentNodes = value is null
-                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                : new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
-        }
     }
 }

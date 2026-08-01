@@ -43,7 +43,6 @@ public class AppSettingsServiceTests
 
         Assert.Null(AppSettingsService.LoadRecentProject(path));
         Assert.Null(AppSettingsService.Load(path).RecentProject);
-        Assert.Empty(AppSettingsService.Load(path).RecentNodes);
     }
 
     [Theory]
