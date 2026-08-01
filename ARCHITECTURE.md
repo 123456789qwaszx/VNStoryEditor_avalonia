@@ -205,6 +205,10 @@ Segment는 문자열만 들고 있지 않다. 어디서 나왔는지를 함께 �
 | `LegacyProjectJson` | 버전 1 평면 nodes와 inline 버전 2를 새 구조로 들여온다 |
 | `JsonSupport` | 공통 읽기 도우미와 형식 검증 |
 | `GameDefinition` | 게임별 변수·이벤트 후보. 없으면 빈 정의로 계속 |
+| `PresentationCommandCatalog` | 게임별 연출 명령 정의. 정의 파일이 없으면 기본 카탈로그 |
+
+**연출 명령을 C# enum에 박지 않는다.** 게임마다 명령과 프리셋이 다르다. 코드가 특정
+게임의 명령 이름을 알기 시작하면 그 게임 전용 도구가 된다. 변수·이벤트와 같은 이유다.
 
 **디스크 배치와 되돌리기 형식을 나눈 이유:** 되돌리기 한 번에 여러 실제 파일을 다시
 조립할 이유가 없다. manifest와 StoryFile 구조가 앞으로 또 바뀌어도 편집 기록은
@@ -221,6 +225,7 @@ Segment는 문자열만 들고 있지 않다. 어디서 나왔는지를 함께 �
 | `GraphEditorView` | 노드 추가·이동·선택, 포트 드래그 연결, 간선 선택·삭제 |
 | `DialogueNodeEditor` | `LineBox` 카드, 조건 드롭다운, 갈래 색·들여쓰기, 출구 표시 |
 | `SetNodeEditor` | 조건과 변수 값 정의 |
+| `PresentationNodeEditor` | 연결된 대사를 읽기 전용으로 비추고 LineId마다 연출 명령 배정 |
 | `BranchPalette` | 갈래 색 표. 데이터가 아니라 표시 수단 |
 | `MainWindow` | 도구 모음, 열기·저장, 세션을 두 화면에 물려준다 |
 | `ProjectRefreshPlanner` | 변경 알림 하나가 어느 화면을 다시 만들게 할지 정하는 유일한 자리 |
@@ -314,6 +319,8 @@ Line 6                                  Line 6
 | 연출 연결과 그 제약 | 같은 파일의 `SetPresentationTarget` — 연출 하나는 대사 하나만 |
 | 연출 명령 편집 | 같은 파일의 `AddPresentationCommand` / `MovePresentationCommand` / `RemovePresentationCommand` |
 | 줄이 사라진 연출을 찾기 | `Flow/PresentationBindingResolver.cs`의 orphan 판정 |
+| 연출 명령 목록에 항목 추가 | `game.definition.json`의 `presentationCommands` — 코드가 아니다 |
+| 이 대사에 붙은 연출 노드 찾기 | `Flow/ConnectedPresentationNodeResolver.cs` |
 | 포트를 만드는 규칙 | `Flow/NodeConnections.cs`의 `PortsOf` |
 | 간선 라벨 문구 | `Flow/NodeConnections.cs`의 `LabelFor` |
 | 연결·해제 동작 | `Editing/ProjectEditor.cs`의 `SetExitTarget` |

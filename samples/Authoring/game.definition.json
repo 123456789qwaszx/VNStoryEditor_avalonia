@@ -1,13 +1,118 @@
 {
   "variables": [
-    { "name": "favor", "type": "number", "description": "주인공에 대한 호감" },
-    { "name": "trust", "type": "number", "description": "약속에 대한 신뢰" },
-    { "name": "contract_signed", "type": "bool", "description": "계약서 서명 여부" },
-    { "name": "route", "type": "string", "description": "현재 루트" }
+    {
+      "name": "favor",
+      "type": "number",
+      "description": "주인공에 대한 호감"
+    },
+    {
+      "name": "trust",
+      "type": "number",
+      "description": "약속에 대한 신뢰"
+    },
+    {
+      "name": "contract_signed",
+      "type": "bool",
+      "description": "계약서 서명 여부"
+    },
+    {
+      "name": "route",
+      "type": "string",
+      "description": "현재 루트"
+    }
   ],
   "events": [
-    { "name": "play_bgm", "description": "배경음 재생" },
-    { "name": "show_cg", "description": "일러스트 표시" }
+    {
+      "name": "play_bgm",
+      "description": "배경음 재생"
+    },
+    {
+      "name": "show_cg",
+      "description": "일러스트 표시"
+    }
   ],
-  "conditions": []
+  "conditions": [],
+  "presentationCommands": [
+    {
+      "id": "camera.closeup",
+      "name": "클로즈업",
+      "category": "Camera",
+      "outputCommand": "camera",
+      "arguments": {
+        "preset": "closeup"
+      }
+    },
+    {
+      "id": "camera.medium",
+      "name": "미디엄",
+      "category": "Camera",
+      "outputCommand": "camera",
+      "arguments": {
+        "preset": "medium"
+      }
+    },
+    {
+      "id": "camera.wide",
+      "name": "와이드",
+      "category": "Camera",
+      "outputCommand": "camera",
+      "arguments": {
+        "preset": "wide"
+      }
+    },
+    {
+      "id": "screen.fade",
+      "name": "페이드",
+      "category": "ScreenEffect",
+      "outputCommand": "screen_effect",
+      "arguments": {
+        "preset": "fade"
+      }
+    },
+    {
+      "id": "screen.shake",
+      "name": "화면 흔들림",
+      "category": "ScreenEffect",
+      "outputCommand": "screen_effect",
+      "arguments": {
+        "preset": "shake"
+      }
+    },
+    {
+      "id": "screen.flash",
+      "name": "플래시",
+      "category": "ScreenEffect",
+      "outputCommand": "screen_effect",
+      "arguments": {
+        "preset": "flash"
+      }
+    },
+    {
+      "id": "acting.neutral",
+      "name": "기본 표정",
+      "category": "CharacterActing",
+      "outputCommand": "character_acting",
+      "arguments": {
+        "preset": "neutral"
+      }
+    },
+    {
+      "id": "acting.smile",
+      "name": "미소",
+      "category": "CharacterActing",
+      "outputCommand": "character_acting",
+      "arguments": {
+        "preset": "smile"
+      }
+    },
+    {
+      "id": "acting.surprised",
+      "name": "놀람",
+      "category": "CharacterActing",
+      "outputCommand": "character_acting",
+      "arguments": {
+        "preset": "surprised"
+      }
+    }
+  ]
 }

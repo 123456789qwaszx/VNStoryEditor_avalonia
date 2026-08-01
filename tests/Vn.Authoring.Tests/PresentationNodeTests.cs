@@ -1,3 +1,4 @@
+using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
@@ -250,6 +251,33 @@ public class PresentationNodeTests
 
         DialogueNode dialogue = editor.AddDialogueNode(file.Id);
         Assert.Equal(dialogue.Id, project.StartNodeId);
+    }
+
+    [Fact]
+    public void Presentation_Command_추가와_드롭다운_변경은_Content_변경으로_알린다()
+    {
+        var context = BuildContext();
+        LineBox line = context.Editor.AddLine(context.DialogueA.Id);
+        ProjectChangedEventArgs? change = null;
+        context.Editor.Changed += (_, args) => change = args;
+
+        PresentationCommandInstance command = context.Editor.AddPresentationCommand(
+            context.PresentationA.Id,
+            line.Id,
+            "camera.closeup");
+
+        Assert.Equal(ProjectChangeKind.PresentationContent, change!.Kind);
+
+        change = null;
+        context.Editor.SetPresentationCommandDefinition(
+            context.PresentationA.Id,
+            command.Id,
+            "camera.wide",
+            new Dictionary<string, string> { ["preset"] = "wide" });
+
+        Assert.Equal(ProjectChangeKind.PresentationContent, change!.Kind);
+        Assert.Equal("camera.wide", command.DefinitionId);
+        Assert.Equal("wide", command.Arguments["preset"]);
     }
 
     private static PresentationContext BuildContext()

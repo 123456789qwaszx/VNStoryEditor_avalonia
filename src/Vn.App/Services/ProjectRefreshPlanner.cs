@@ -26,6 +26,18 @@ internal static class ProjectRefreshPlanner
                 RefreshGraphPositions: false,
                 RebuildInspector: true),
 
+            ProjectChangeKind.DialogueContent => new ProjectRefreshPlan(
+                RebuildGraph: false,
+                RefreshGraphPositions: false,
+                RebuildInspector: selectedNode is PresentationNode,
+                RefreshPreview: selectedNode is DialogueNode),
+
+            ProjectChangeKind.PresentationContent => new ProjectRefreshPlan(
+                RebuildGraph: false,
+                RefreshGraphPositions: false,
+                RebuildInspector: false,
+                RefreshPreview: selectedNode is DialogueNode),
+
             ProjectChangeKind.ConditionDefinition => new ProjectRefreshPlan(
                 RebuildGraph: true,
                 RefreshGraphPositions: false,

@@ -15,7 +15,8 @@ public static class DialogueDocumentComposer
     public static RenderedDocument Compose(
         StoryProject project,
         string dialogueNodeId,
-        GameDefinition? definition = null)
+        GameDefinition? definition = null,
+        IReadOnlySet<string>? includedPresentationNodeIds = null)
     {
         ArgumentNullException.ThrowIfNull(project);
 
@@ -45,6 +46,11 @@ public static class DialogueDocumentComposer
             project,
             dialogue.Id,
             definition);
+        PresentationCommandCatalog presentationCatalog = PresentationCommandCatalog.For(definition);
+        IReadOnlyList<ConnectedPresentationNode> presentations = ConnectedPresentationNodeResolver.Resolve(
+            project,
+            dialogue.Id,
+            includedPresentationNodeIds);
 
         Dictionary<int, List<ConditionBranch>> exitsByLastLine = flow.Branches
             .Where(branch => branch.HasExit)
@@ -63,6 +69,15 @@ public static class DialogueDocumentComposer
                 dialogue,
                 resolved.Line,
                 resolved.Line.Transition,
+                segments);
+
+            AddPresentationCommands(
+                project,
+                dialogue,
+                resolved.Line,
+                resolved.Depth,
+                presentations,
+                presentationCatalog,
                 segments);
 
             segments.Add(new RenderedSegment(
@@ -103,6 +118,70 @@ public static class DialogueDocumentComposer
             Source: dialogueSource));
 
         return new RenderedDocument(dialogue.Id, segments);
+    }
+
+
+    private static void AddPresentationCommands(
+        StoryProject project,
+        DialogueNode dialogue,
+        LineBox line,
+        int indentLevel,
+        IReadOnlyList<ConnectedPresentationNode> presentations,
+        PresentationCommandCatalog catalog,
+        List<RenderedSegment> segments)
+    {
+        foreach (ConnectedPresentationNode connected in presentations)
+        {
+            PresentationLineBinding? binding = connected.Node.Bindings.FirstOrDefault(item =>
+                string.Equals(item.LineId, line.Id, StringComparison.Ordinal));
+
+            if (binding is null)
+            {
+                continue;
+            }
+
+            StoryFile presentationFile = project.FindFileContainingNode(connected.Node.Id)
+                ?? throw new InvalidOperationException(
+                    $"PresentationNode '{connected.Node.Id}'의 StoryFile을 찾을 수 없습니다.");
+
+            foreach (PresentationCommandInstance command in binding.Commands.Where(item => item.IsEnabled))
+            {
+                PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
+                string commandName = definition?.OutputCommandName ?? command.DefinitionId;
+                var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+                if (definition is not null)
+                {
+                    foreach ((string key, string value) in definition.DefaultArguments)
+                    {
+                        arguments[key] = value;
+                    }
+                }
+
+                foreach ((string key, string value) in command.Arguments)
+                {
+                    arguments[key] = value;
+                }
+
+                segments.Add(new RenderedSegment(
+                    Id: $"presentation:{connected.Node.Id}:{command.Id}",
+                    Kind: RenderedSegmentKind.PresentationCommand,
+                    Layer: DocumentLayer.Presentation,
+                    Source: new RenderSourceReference(
+                        StoryFileId: presentationFile.Id,
+                        NodeId: dialogue.Id,
+                        LineId: line.Id,
+                        LinkId: connected.Link.Id,
+                        PresentationNodeId: connected.Node.Id,
+                        PresentationCommandId: command.Id),
+                    IndentLevel: indentLevel,
+                    Text: definition?.DisplayName,
+                    DefinitionId: command.DefinitionId,
+                    CommandName: commandName,
+                    PresentationCategory: definition?.Category,
+                    Arguments: arguments));
+            }
+        }
     }
 
     private static void AddConnectedSetAssignments(

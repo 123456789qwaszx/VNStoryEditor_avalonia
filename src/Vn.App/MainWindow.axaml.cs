@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         Graph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
+        PresentationEditor.Attach(_session);
 
         _session.Changed += OnSessionChanged;
         _session.SelectionChanged += OnSelectionChanged;
@@ -367,10 +368,9 @@ public partial class MainWindow : Window
 
         DialogueEditor.IsVisible = node is DialogueNode;
         SetEditor.IsVisible = node is SetNode;
-        EmptyText.IsVisible = node is null or PresentationNode;
-        EmptyText.Text = node is PresentationNode presentation
-            ? $"{presentation.Name}\n\n{presentation.Bindings.Count}개 LineId binding\n연출 명령 편집 UI는 다음 단계에서 추가합니다."
-            : "노드를 선택하면 여기서 편집합니다.";
+        PresentationEditor.IsVisible = node is PresentationNode;
+        EmptyText.IsVisible = node is null;
+        EmptyText.Text = "노드를 선택하면 여기서 편집합니다.";
 
         if (node is DialogueNode)
         {
@@ -379,6 +379,10 @@ public partial class MainWindow : Window
         else if (node is SetNode)
         {
             SetEditor.Show(node.Id);
+        }
+        else if (node is PresentationNode)
+        {
+            PresentationEditor.Show(node.Id);
         }
     }
 
@@ -402,9 +406,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (node is PresentationNode)
+        if (node is PresentationNode && PresentationEditor.NodeId == node.Id)
         {
-            ShowSelectedNode();
+            PresentationEditor.Rebuild();
             return;
         }
 

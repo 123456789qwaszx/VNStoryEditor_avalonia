@@ -35,7 +35,7 @@ public class ProjectRefreshPlannerTests
     }
 
     [Fact]
-    public void assignment와_대사_내용_변경은_컨트롤을_재생성하지_않는다()
+    public void assignment_내용_변경은_컨트롤을_재생성하지_않는다()
     {
         ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
             ProjectChangeKind.Content,
@@ -51,7 +51,7 @@ public class ProjectRefreshPlannerTests
     public void Dialogue_내용_변경은_편집기를_재생성하지_않고_Preview만_갱신한다()
     {
         ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
-            ProjectChangeKind.Content,
+            ProjectChangeKind.DialogueContent,
             new DialogueNode(name: "장면"));
 
         Assert.False(plan.RebuildGraph);
@@ -113,6 +113,29 @@ public class ProjectRefreshPlannerTests
 
         Assert.True(plan.RebuildGraph);
         Assert.True(plan.RebuildInspector);
+    }
+
+    [Fact]
+    public void Presentation_Command_편집은_현재_연출_편집기를_재생성하지_않는다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.PresentationContent,
+            new PresentationNode(name: "연출"));
+
+        Assert.False(plan.RebuildGraph);
+        Assert.False(plan.RebuildInspector);
+        Assert.False(plan.RefreshPreview);
+    }
+
+    [Fact]
+    public void Dialogue_내용이_바뀌면_선택된_Presentation의_읽기_전용_행을_다시_만든다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.DialogueContent,
+            new PresentationNode(name: "연출"));
+
+        Assert.True(plan.RebuildInspector);
+        Assert.False(plan.RefreshPreview);
     }
 
 }

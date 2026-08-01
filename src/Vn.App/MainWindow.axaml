@@ -98,6 +98,7 @@
                 <Panel>
                     <views:DialogueNodeEditor x:Name="DialogueEditor" />
                     <views:SetNodeEditor x:Name="SetEditor" />
+                    <views:PresentationNodeEditor x:Name="PresentationEditor" />
                     <TextBlock x:Name="EmptyText"
                                Text="노드를 선택하면 여기서 편집합니다."
                                HorizontalAlignment="Center"

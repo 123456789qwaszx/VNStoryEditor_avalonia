@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.PresentationNodeEditor">
+    <Grid RowDefinitions="Auto,Auto,*" Margin="12">
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="연출 노드" FontWeight="SemiBold" />
+            <TextBox x:Name="NameBox" PlaceholderText="노드 이름" />
+            <TextBlock x:Name="TargetText" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Margin="0,10,0,8"
+                Padding="8"
+                CornerRadius="6"
+                Background="#12000000">
+            <TextBlock Text="Dialogue 대사는 읽기 전용입니다. 체크박스는 작성 데이터를 삭제하지 않고 Command 활성 상태만 바꿉니다."
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Opacity="0.7" />
+        </Border>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="LineHost" Spacing="8" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

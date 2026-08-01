@@ -182,4 +182,99 @@ public class DialogueDocumentComposerTests
         Assert.Equal(sample.Dialogue.Id, segment.Source.NodeId);
         Assert.Equal(line.Id, segment.Source.LineId);
     }
+
+    [Fact]
+    public void 선택된_PresentationNode의_활성_Command를_대사_앞에_작성_순서대로_삽입한다()
+    {
+        var sample = new Sample();
+        LineBox line = sample.Line("연출 대사");
+        PresentationNode presentation = sample.Editor.AddPresentationNode(sample.File.Id, name: "카메라 연출");
+        sample.Editor.SetPresentationTarget(presentation.Id, sample.Dialogue.Id);
+        PresentationCommandInstance camera = sample.Editor.AddPresentationCommand(
+            presentation.Id,
+            line.Id,
+            "camera.closeup",
+            new Dictionary<string, string> { ["preset"] = "closeup" });
+        PresentationCommandInstance acting = sample.Editor.AddPresentationCommand(
+            presentation.Id,
+            line.Id,
+            "acting.smile",
+            new Dictionary<string, string> { ["preset"] = "smile" });
+
+        RenderedDocument document = DialogueDocumentComposer.Compose(
+            sample.Project,
+            sample.Dialogue.Id,
+            includedPresentationNodeIds: new HashSet<string>(new[] { presentation.Id }, StringComparer.Ordinal));
+
+        RenderedSegment[] commands = document.Segments
+            .Where(segment => segment.Kind == RenderedSegmentKind.PresentationCommand)
+            .ToArray();
+        RenderedSegment dialogue = document.Segments.Single(segment =>
+            segment.Kind == RenderedSegmentKind.DialogueLine && segment.Source.LineId == line.Id);
+
+        Assert.Equal(new[] { camera.Id, acting.Id },
+            commands.Select(segment => segment.Source.PresentationCommandId));
+        Assert.All(commands, segment => Assert.Equal(line.Id, segment.Source.LineId));
+        Assert.All(commands, segment => Assert.Equal(presentation.Id, segment.Source.PresentationNodeId));
+        Assert.True(Array.IndexOf(document.Segments.ToArray(), commands[1]) <
+                    Array.IndexOf(document.Segments.ToArray(), dialogue));
+
+        string text = YarnPreviewFormatter.Format(document);
+        int cameraIndex = text.IndexOf("<<camera preset=closeup>>", StringComparison.Ordinal);
+        int actingIndex = text.IndexOf("<<character_acting preset=smile>>", StringComparison.Ordinal);
+        int dialogueIndex = text.IndexOf("연출 대사 #line:", StringComparison.Ordinal);
+        Assert.True(cameraIndex >= 0 && cameraIndex < actingIndex);
+        Assert.True(actingIndex < dialogueIndex);
+    }
+
+    [Fact]
+    public void 비활성_Command와_선택되지_않은_PresentationNode는_문서에서_제외한다()
+    {
+        var sample = new Sample();
+        LineBox line = sample.Line("본문");
+        PresentationNode selected = sample.Editor.AddPresentationNode(sample.File.Id, name: "선택");
+        PresentationNode excluded = sample.Editor.AddPresentationNode(sample.File.Id, name: "제외");
+        sample.Editor.SetPresentationTarget(selected.Id, sample.Dialogue.Id);
+        sample.Editor.SetPresentationTarget(excluded.Id, sample.Dialogue.Id);
+
+        PresentationCommandInstance disabled = sample.Editor.AddPresentationCommand(
+            selected.Id, line.Id, "screen.flash");
+        sample.Editor.SetPresentationCommandEnabled(selected.Id, disabled.Id, enabled: false);
+        sample.Editor.AddPresentationCommand(excluded.Id, line.Id, "camera.wide");
+
+        RenderedDocument document = DialogueDocumentComposer.Compose(
+            sample.Project,
+            sample.Dialogue.Id,
+            includedPresentationNodeIds: new HashSet<string>(new[] { selected.Id }, StringComparer.Ordinal));
+
+        Assert.DoesNotContain(document.Segments, segment =>
+            segment.Kind == RenderedSegmentKind.PresentationCommand);
+    }
+
+    [Fact]
+    public void Presentation_Command_Segment는_연출_파일과_Dialogue_LineId_원본을_유지한다()
+    {
+        var sample = new Sample();
+        var presentationFile = new StoryFile("sf_presentation_doc", "연출 파일", "story/presentation-doc.vnstory.json");
+        sample.Project.Files.Add(presentationFile);
+        LineBox line = sample.Line("원본");
+        PresentationNode presentation = sample.Editor.AddPresentationNode(presentationFile.Id);
+        NodeLink link = sample.Editor.SetPresentationTarget(presentation.Id, sample.Dialogue.Id)!;
+        PresentationCommandInstance command = sample.Editor.AddPresentationCommand(
+            presentation.Id, line.Id, "screen.shake");
+
+        RenderedDocument document = DialogueDocumentComposer.Compose(sample.Project, sample.Dialogue.Id);
+        RenderedSegment segment = Assert.Single(
+            document.Segments,
+            item => item.Kind == RenderedSegmentKind.PresentationCommand);
+
+        Assert.Equal(presentationFile.Id, segment.Source.StoryFileId);
+        Assert.Equal(sample.Dialogue.Id, segment.Source.NodeId);
+        Assert.Equal(line.Id, segment.Source.LineId);
+        Assert.Equal(link.Id, segment.Source.LinkId);
+        Assert.Equal(presentation.Id, segment.Source.PresentationNodeId);
+        Assert.Equal(command.Id, segment.Source.PresentationCommandId);
+        Assert.Equal(DocumentLayer.Presentation, segment.Layer);
+    }
+
 }

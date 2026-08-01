@@ -291,7 +291,7 @@ public sealed class ProjectEditor
         }
 
         // 글자만 바뀌는 편집이다. 화면은 이미 그 값을 보여 주고 있으므로 다시 만들지 않는다.
-        Mutate(ProjectChangeKind.Content, () =>
+        Mutate(ProjectChangeKind.DialogueContent, () =>
         {
             line.Speaker = speaker;
             line.Text = text;
@@ -557,7 +557,7 @@ public sealed class ProjectEditor
         }
 
         var binding = new PresentationLineBinding(lineId);
-        Mutate(() => node.Bindings.Add(binding));
+        Mutate(ProjectChangeKind.PresentationContent, () => node.Bindings.Add(binding));
         return binding;
     }
 
@@ -585,7 +585,7 @@ public sealed class ProjectEditor
             }
         }
 
-        Mutate(() =>
+        Mutate(ProjectChangeKind.PresentationContent, () =>
         {
             if (existingBinding is null)
             {
@@ -627,7 +627,7 @@ public sealed class ProjectEditor
             return;
         }
 
-        Mutate(() =>
+        Mutate(ProjectChangeKind.PresentationContent, () =>
         {
             PresentationCommandInstance command = binding.Commands[from];
             binding.Commands.RemoveAt(from);
@@ -646,7 +646,7 @@ public sealed class ProjectEditor
             return;
         }
 
-        Mutate(() => binding.Commands.RemoveAll(command =>
+        Mutate(ProjectChangeKind.PresentationContent, () => binding.Commands.RemoveAll(command =>
             string.Equals(command.Id, commandId, StringComparison.Ordinal)));
     }
 
@@ -662,8 +662,51 @@ public sealed class ProjectEditor
 
         if (command is not null && command.IsEnabled != enabled)
         {
-            Mutate(ProjectChangeKind.Content, () => command.IsEnabled = enabled);
+            Mutate(ProjectChangeKind.PresentationContent, () => command.IsEnabled = enabled);
         }
+    }
+
+    public void SetPresentationCommandDefinition(
+        string presentationNodeId,
+        string commandId,
+        string definitionId,
+        IReadOnlyDictionary<string, string>? defaultArguments = null)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationCommandInstance? command = node.Bindings
+            .SelectMany(binding => binding.Commands)
+            .FirstOrDefault(item => string.Equals(item.Id, commandId, StringComparison.Ordinal));
+
+        if (command is null)
+        {
+            return;
+        }
+
+        bool sameDefinition = string.Equals(command.DefinitionId, definitionId, StringComparison.Ordinal);
+        bool sameArguments = defaultArguments is null ||
+            (command.Arguments.Count == defaultArguments.Count &&
+             command.Arguments.All(pair =>
+                 defaultArguments.TryGetValue(pair.Key, out string? value) &&
+                 string.Equals(value, pair.Value, StringComparison.Ordinal)));
+
+        if (sameDefinition && sameArguments)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            command.DefinitionId = definitionId;
+
+            if (defaultArguments is not null)
+            {
+                command.Arguments.Clear();
+                foreach ((string key, string value) in defaultArguments)
+                {
+                    command.Arguments[key] = value;
+                }
+            }
+        });
     }
 
     // ── 조건 ────────────────────────────────────────────────────────────────

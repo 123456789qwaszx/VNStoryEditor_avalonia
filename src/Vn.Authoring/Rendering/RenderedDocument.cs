@@ -8,6 +8,7 @@ public enum RenderedSegmentKind
     ConditionBegin,
     ConditionElseIf,
     ConditionEnd,
+    PresentationCommand,
     DialogueLine,
     BranchJump,
     DefaultJump,
@@ -24,6 +25,7 @@ public enum DocumentLayer
     Structure,
     SetAssignments,
     Conditions,
+    Presentation,
     Dialogue,
     ExecutionJumps,
     Diagnostics
@@ -62,7 +64,11 @@ public sealed record RenderedSegment(
     string? Variable = null,
     string? Value = null,
     string? TargetNodeId = null,
-    string? TargetNodeName = null);
+    string? TargetNodeName = null,
+    string? DefinitionId = null,
+    string? CommandName = null,
+    Vn.Authoring.Definition.PresentationCategory? PresentationCategory = null,
+    IReadOnlyDictionary<string, string>? Arguments = null);
 
 /// <summary>
 /// DialogueNode 하나를 평평하게 합성한 결과.

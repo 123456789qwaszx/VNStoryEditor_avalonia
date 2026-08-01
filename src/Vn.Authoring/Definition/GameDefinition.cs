@@ -33,6 +33,10 @@ public sealed class GameDefinition
     [JsonPropertyName("conditions")]
     public List<ConditionSpec> Conditions { get; init; } = new();
 
+    /// <summary>연출 편집기의 드롭다운과 Yarn Preview Formatter가 공유하는 명령 정의.</summary>
+    [JsonPropertyName("presentationCommands")]
+    public List<PresentationCommandSpec> PresentationCommands { get; init; } = new();
+
     public static string PathFor(string projectPath)
     {
         string directory = Path.GetDirectoryName(Path.GetFullPath(projectPath))
@@ -110,4 +114,23 @@ public sealed class ConditionSpec
 
     [JsonPropertyName("expression")]
     public string Expression { get; init; } = string.Empty;
+}
+
+
+public sealed class PresentationCommandSpec
+{
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    [JsonPropertyName("category")]
+    public string Category { get; init; } = string.Empty;
+
+    [JsonPropertyName("outputCommand")]
+    public string OutputCommand { get; init; } = string.Empty;
+
+    [JsonPropertyName("arguments")]
+    public Dictionary<string, string> Arguments { get; init; } = new(StringComparer.Ordinal);
 }

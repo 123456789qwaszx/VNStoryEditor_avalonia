@@ -68,6 +68,27 @@ public static class YarnPreviewFormatter
                 builder.Append(indent).Append("<<endif>>\n");
                 break;
 
+            case RenderedSegmentKind.PresentationCommand:
+                builder.Append(indent)
+                    .Append("<<")
+                    .Append(string.IsNullOrWhiteSpace(segment.CommandName)
+                        ? segment.DefinitionId ?? "presentation"
+                        : segment.CommandName);
+
+                foreach ((string key, string value) in (segment.Arguments ??
+                             new Dictionary<string, string>()).OrderBy(
+                                 pair => pair.Key,
+                                 StringComparer.Ordinal))
+                {
+                    builder.Append(' ')
+                        .Append(key)
+                        .Append('=')
+                        .Append(value);
+                }
+
+                builder.Append(">>\n");
+                break;
+
             case RenderedSegmentKind.DialogueLine:
                 builder.Append(indent);
 

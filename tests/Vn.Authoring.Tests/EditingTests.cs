@@ -251,4 +251,19 @@ public class EditingTests
         Assert.Equal(0, notifications);
     }
 
+    [Fact]
+    public void 대사_본문_수정은_DialogueContent로_알린다()
+    {
+        var sample = new Sample();
+        LineBox line = sample.Line("처음");
+        ProjectChangedEventArgs? change = null;
+        sample.Editor.Changed += (_, args) => change = args;
+
+        sample.Editor.SetLineText(sample.Dialogue.Id, line.Id, "라루", "수정");
+
+        Assert.Equal(ProjectChangeKind.DialogueContent, change!.Kind);
+        Assert.False(change.NeedsInspectorRebuild);
+        Assert.False(change.NeedsGraphRebuild);
+    }
+
 }
