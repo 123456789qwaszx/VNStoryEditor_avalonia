@@ -7,3 +7,4 @@ jump	Start	Ending	Story.yarn	12	12
 line	Start	Story.yarn	3	0	-	Ann	0	0
 line	Start	Story.yarn	7	0	opt	-	2	0
 line	Start	Story.yarn	11	0	opt	-	3	0
+block	Start	Story.yarn	7	12	Option	0	2

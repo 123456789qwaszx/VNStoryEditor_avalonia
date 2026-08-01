@@ -207,6 +207,15 @@ static void PrintList(AnalysisReport report, string root)
                 $"{(string.IsNullOrEmpty(line.Speaker) ? "-" : line.Speaker)}\t" +
                 $"{line.CommandsSincePreviousLine.Count}\t{line.Hashtags.Count}");
         }
+
+        // 블록은 서로 중첩되므로 트리를 훑어 안쪽 것까지 낸다.
+        foreach (StoryBlock block in Flatten(node.Body))
+        {
+            Console.WriteLine(
+                $"block\t{node.Title}\t{ToStablePath(block.FilePath, root)}\t" +
+                $"{block.StartLine}\t{block.EndLine}\t{block.Kind}\t" +
+                $"{block.Depth}\t{block.Branches.Count}");
+        }
     }
 
     foreach (VnDiagnostic diagnostic in report.Diagnostics)
@@ -214,6 +223,28 @@ static void PrintList(AnalysisReport report, string root)
         Console.WriteLine(
             $"diag\t{diagnostic.Code}\t{diagnostic.Severity}\t" +
             $"{ToStablePath(diagnostic.FilePath, root)}\t{diagnostic.Line}\t{diagnostic.Column}");
+    }
+}
+
+// 바깥 블록 다음에 그 안의 블록이 오도록, 원본 순서대로 훑는다.
+static IEnumerable<StoryBlock> Flatten(IReadOnlyList<StoryElement> elements)
+{
+    foreach (StoryElement element in elements)
+    {
+        if (element is not StoryBlockElement blockElement)
+        {
+            continue;
+        }
+
+        yield return blockElement.Block;
+
+        foreach (StoryBranch branch in blockElement.Block.Branches)
+        {
+            foreach (StoryBlock nested in Flatten(branch.Children))
+            {
+                yield return nested;
+            }
+        }
     }
 }
 
