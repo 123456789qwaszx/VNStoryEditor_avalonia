@@ -13,6 +13,8 @@ namespace Vn.Core.Schema;
 /// </summary>
 internal sealed class GameSchema
 {
+    public static GameSchema Empty { get; } = new() { SchemaVersion = 1 };
+
     [JsonPropertyName("schemaVersion")]
     public int SchemaVersion { get; init; }
 

@@ -1,38 +1,24 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.Input;
-using Avalonia.Interactivity;
-using Avalonia.Platform.Storage;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Vn.App.Services;
-using Vn.Core;
-using Vn.Core.Analysis;
 using Vn.Core.Diagnostics;
 using Vn.Core.Story;
 
 namespace Vn.App.Views;
 
+/// <summary>
+/// 대본 작업 화면. 상태를 소유하지 않고 <see cref="ProjectSession"/>을 표시한다.
+/// </summary>
 public partial class AnalysisView : UserControl
 {
-    /// <summary>
-    /// 지금 편집기에 올라와 있는 파일. 인코딩과 BOM을 여기서 그대로 들고 있다가 저장할 때 돌려준다.
-    /// 파일이 아닌 것(진단 설명, 오류 메시지)을 띄웠을 때는 null이다.
-    /// null이면 저장은 아무것도 하지 않는다. 설명 문구로 파일을 덮어쓰는 일이 없어야 한다.
-    /// </summary>
-    private StoryFile? _openFile;
-
-    /// <summary>
-    /// 마지막으로 읽거나 저장한 시점의 내용.
-    /// 변경 여부를 플래그로 들고 있지 않고 이것과 비교해서 판단한다.
-    /// 플래그는 "프로그램이 넣은 글자"와 "사람이 친 글자"를 구별하려고 이벤트 순서에
-    /// 기대게 되는데, 그 가정이 틀리면 저장하지 않은 변경을 조용히 놓친다.
-    /// </summary>
-    private string _savedText = string.Empty;
+    private ProjectSession? _session;
+    private bool _updatingUi;
+    private bool _syncingSelection;
+    private string? _displayedDocumentPath;
+    private IReadOnlyList<NodeListItem> _allNodes = Array.Empty<NodeListItem>();
 
     public AnalysisView()
     {
@@ -40,258 +26,540 @@ public partial class AnalysisView : UserControl
 
         BoxList.LineSelected += OnBoxLineSelected;
         BoxList.LineEdited += OnBoxLineEdited;
+    }
 
-        // 마지막에 연 프로젝트를 채워만 둔다. 자동으로 분석하지는 않는다 —
-        // 큰 프로젝트라면 앱이 뜨자마자 멈춘 것처럼 보인다.
-        ProjectPathBox.Text = AppSettingsService.LoadRecentProject() ?? string.Empty;
+    public event EventHandler<string>? NodeSelected;
+
+    internal void Attach(ProjectSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (_session is not null)
+        {
+            _session.StateChanged -= OnSessionStateChanged;
+            _session.AnalysisChanged -= OnAnalysisChanged;
+        }
+
+        _session = session;
+        _session.StateChanged += OnSessionStateChanged;
+        _session.AnalysisChanged += OnAnalysisChanged;
+
+        RebuildLists();
+        RefreshState();
+    }
+
+    public bool HasUnsavedWork => _session?.HasUnsavedChanges == true;
+
+    public async Task<bool> SaveAsync()
+    {
+        if (_session?.Document is null)
+        {
+            return true;
+        }
+
+        DocumentSaveResult result = _session.SaveDocument();
+
+        if (result.Status == DocumentSaveStatus.ExternalConflict)
+        {
+            bool overwrite = await ConfirmExternalOverwriteAsync();
+
+            if (!overwrite)
+            {
+                return false;
+            }
+
+            result = _session.SaveDocument(overwriteExternalChanges: true);
+        }
+
+        if (result.Status == DocumentSaveStatus.NoChanges)
+        {
+            return true;
+        }
+
+        if (result.Status != DocumentSaveStatus.Saved)
+        {
+            return false;
+        }
+
+        await _session.AnalyzeAsync(restoreSelection: true);
+        return true;
+    }
+
+    public async Task<bool> ReanalyzeAsync()
+    {
+        if (_session is null)
+        {
+            return false;
+        }
+
+        if (_session.HasUnsavedChanges)
+        {
+            // SaveAsync가 저장 성공 뒤 재분석까지 수행한다. 여기서 다시 분석하면
+            // 같은 프로젝트를 연속 두 번 컴파일하게 된다.
+            return await SaveAsync();
+        }
+
+        return await _session.AnalyzeAsync(restoreSelection: true);
     }
 
     /// <summary>
-    /// 경로를 직접 치는 대신 파일 대화상자로 고른다.
-    /// 작가는 파일 경로를 다룰 일이 없어야 한다.
+    /// 현재 문서를 교체하는 행동 앞에서 공통으로 사용한다.
+    /// 저장·버리기·취소의 의미가 프로젝트 전환, 파일 전환, 종료에서 동일하다.
     /// </summary>
-    private async void OnOpenClick(object? sender, RoutedEventArgs e)
+    public async Task<bool> ResolveUnsavedChangesAsync(string action)
     {
-        try
+        if (_session?.HasUnsavedChanges != true)
         {
-            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+            return true;
+        }
 
-            if (storage is null || !storage.CanOpen)
+        UnsavedChoice choice = await ShowUnsavedDialogAsync(action);
+
+        switch (choice)
+        {
+            case UnsavedChoice.Save:
+                return await SaveAsync();
+
+            case UnsavedChoice.Discard:
+                _session.DiscardDocumentChanges();
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    public async Task<bool> SelectNodeByTitleAsync(string title)
+    {
+        if (_session is null)
+        {
+            return false;
+        }
+
+        if (_session.WouldReplaceDocumentForNode(title) &&
+            !await ResolveUnsavedChangesAsync("다른 장면으로 이동"))
+        {
+            SyncSelections();
+            return false;
+        }
+
+        bool selected = _session.SelectNode(title);
+
+        if (selected)
+        {
+            RenderSelectedNode();
+            SyncSelections();
+            NodeSelected?.Invoke(this, title);
+        }
+
+        return selected;
+    }
+
+    private void OnSessionStateChanged(object? sender, EventArgs e)
+    {
+        RunOnUiThread(RefreshState);
+    }
+
+    private void OnAnalysisChanged(object? sender, EventArgs e)
+    {
+        RunOnUiThread(() =>
+        {
+            RebuildLists();
+            RefreshState();
+            RenderSelectedNode();
+            SyncSelections();
+        });
+    }
+
+    private static void RunOnUiThread(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(action);
+        }
+    }
+
+    private void RefreshState()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        OpenDocumentSession? document = _session.Document;
+
+        if (document is null)
+        {
+            _updatingUi = true;
+
+            try
             {
-                StatusText.Text = "이 환경에서는 파일 대화상자를 열 수 없습니다. 경로를 직접 입력하세요.";
-                return;
+                FileBox.Text = string.Empty;
+            }
+            finally
+            {
+                _updatingUi = false;
             }
 
-            IReadOnlyList<IStorageFile> picked = await storage.OpenFilePickerAsync(
-                new FilePickerOpenOptions
-                {
-                    Title = "Yarn 프로젝트 열기",
-                    AllowMultiple = false,
-                    FileTypeFilter = new[]
-                    {
-                        new FilePickerFileType("Yarn 프로젝트")
-                        {
-                            Patterns = new[] { "*.yarnproject" }
-                        }
-                    }
-                });
+            _displayedDocumentPath = null;
+            DocumentTitleText.Text = "열린 문서 없음";
+            SelectionText.Text = string.Empty;
+            DocumentStateText.Text = string.Empty;
+            BoxList.Clear();
+            return;
+        }
 
-            if (picked.Count == 0)
+        DocumentTitleText.Text = Path.GetFileName(document.Path);
+        SelectionText.Text = _session.SelectedNode is null
+            ? RelativePath(document.Path)
+            : $"장면: {_session.SelectedNode.Title} · {RelativePath(document.Path)}";
+
+        DocumentStateText.Text = document.IsDirty
+            ? "저장되지 않음"
+            : "저장됨";
+
+        if (!string.Equals(
+                _displayedDocumentPath,
+                document.Path,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(FileBox.Text ?? string.Empty, document.WorkingText, StringComparison.Ordinal))
+        {
+            int oldCaret = FileBox.CaretIndex;
+
+            _updatingUi = true;
+
+            try
             {
-                return;
+                FileBox.NewLine = NewLineFor(document.LineEndings);
+                FileBox.Text = document.WorkingText;
+                FileBox.CaretIndex = Math.Min(oldCaret, document.WorkingText.Length);
+            }
+            finally
+            {
+                _updatingUi = false;
             }
 
-            ProjectPathBox.Text = picked[0].Path.LocalPath;
+            _displayedDocumentPath = document.Path;
+        }
 
-            await RunAnalysisAsync();
-        }
-        catch (Exception exception)
-        {
-            // async void에서 예외가 새어나가면 앱이 그대로 죽는다.
-            StatusText.Text = $"[{exception.GetType().Name}] {exception.Message}";
-        }
+        UpdateStructureNotice(document);
     }
 
-    /// <summary>
-    /// 박스 탭에서 고친 대사. 줄 번호를 키로 마지막 값만 남긴다.
-    ///
-    /// 저장할 때 트리로 Yarn을 다시 만들지 않고 이 목록만 원본에 갈아 끼운다.
-    /// 재조립하면 작가가 한 줄만 고쳤는데 파일 전체의 공백과 주석이 바뀐다.
-    /// </summary>
-    private readonly Dictionary<int, StoryLineEdit> _boxEdits = new();
-
-    /// <summary>분석이 끝나면 결과를 알린다. 다른 뷰에 어떻게 전할지는 MainWindow가 정한다.</summary>
-    public event EventHandler<AnalysisReport>? Analyzed;
-
-    /// <summary>바깥에서 고른 노드를 목록에서도 고른다. 없는 제목이면 아무 일도 하지 않는다.</summary>
-    public void SelectNodeByTitle(string title)
+    private void RebuildLists()
     {
-        if (NodeList.ItemsSource is not IEnumerable<object> items)
+        if (_session is null)
         {
             return;
         }
 
-        object? match = items.FirstOrDefault(
-            item => item is NodeItem node &&
-                string.Equals(node.Node.Title, title, StringComparison.Ordinal));
+        _allNodes = _session.Nodes
+            .Select(node => new NodeListItem(node, _session.ProjectPath))
+            .ToArray();
 
-        if (match is not null)
-        {
-            NodeList.SelectedItem = match;
-        }
+        ApplyNodeFilter();
+
+        SourceFileList.ItemsSource = _session.SourceFiles
+            .Select(path => new SourceFileListItem(path, _session.ProjectPath))
+            .ToArray();
+
+        DiagnosticList.ItemsSource = _session.Diagnostics
+            .Select(diagnostic => new DiagnosticListItem(diagnostic, _session.ProjectPath))
+            .ToArray();
+
+        int errors = _session.Diagnostics.Count(item => item.Severity == DiagnosticSeverity.Error);
+        int warnings = _session.Diagnostics.Count(item => item.Severity == DiagnosticSeverity.Warning);
+        int schemaUsageProblems = _session.Diagnostics.Count(item =>
+            item.Code is VnDiagnosticCodes.UnknownVariable or VnDiagnosticCodes.UnknownCommand);
+
+        DiagnosticSummaryText.Text = schemaUsageProblems >= 10
+            ? $"오류 {errors}개 · 주의 {warnings}개\n게임 스키마 정의가 비어 있거나 실제 대본과 맞지 않아 같은 문제가 반복되고 있습니다."
+            : $"오류 {errors}개 · 주의 {warnings}개";
     }
 
-    private bool HasUnsavedChanges =>
-        _openFile is not null &&
-        (_boxEdits.Count > 0 ||
-         !string.Equals(FileBox.Text ?? string.Empty, _savedText, StringComparison.Ordinal));
-
-    private void OnBoxLineEdited(object? sender, StoryLineEdit edit)
+    private void ApplyNodeFilter()
     {
-        if (_openFile is null)
+        string query = (SearchBox.Text ?? string.Empty).Trim();
+
+        NodeList.ItemsSource = string.IsNullOrEmpty(query)
+            ? _allNodes
+            : _allNodes
+                .Where(item =>
+                    item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    item.Location.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+    }
+
+    private void RenderSelectedNode()
+    {
+        if (_session?.SelectedNode is not StoryNode node ||
+            _session.Document is not OpenDocumentSession document ||
+            !string.Equals(node.FilePath, document.Path, StringComparison.OrdinalIgnoreCase))
+        {
+            BoxList.Clear();
+            return;
+        }
+
+        // 원문 편집으로 물리적 줄 수가 달라졌다면 분석 당시 줄 번호를 신뢰하지 않는다.
+        // 줄 수가 같을 때는 각 카드가 저장 시점 원문과 현재 원문을 대조해 안전한 줄만 편집한다.
+        BoxList.Show(
+            node.Body,
+            document.WorkingText,
+            allowEditing: document.CanUseAnalyzedLineMap,
+            baselineText: document.SavedText);
+        UpdateStructureNotice(document);
+        MoveCaretTo(document.WorkingText, _session.SelectedLine, _session.SelectedColumn);
+    }
+
+    private void UpdateStructureNotice(OpenDocumentSession document)
+    {
+        bool stale = document.StructureIsStale;
+        StructureNoticeBorder.IsVisible = stale;
+        StructureNoticeText.Text = stale
+            ? "Yarn 원문이 변경되어 현재 구조 보기는 이전 검사 결과입니다. " +
+              "현재 원문과 정확히 일치하는 대사 카드는 계속 수정할 수 있지만, 줄 위치가 달라진 카드는 잠깁니다. " +
+              "저장 후 다시 검사하면 구조와 문제 목록이 완전히 갱신됩니다."
+            : string.Empty;
+    }
+
+    private async void OnNodeSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingSelection || NodeList.SelectedItem is not NodeListItem item)
         {
             return;
         }
 
-        _boxEdits[edit.Line] = edit;
-        UpdateFileHeader();
+        await SelectNodeByTitleAsync(item.Node.Title);
     }
 
-    private async void OnAnalyzeClick(object? sender, RoutedEventArgs e)
+    private async void OnSourceFileSelected(object? sender, SelectionChangedEventArgs e)
     {
-        await RunAnalysisAsync();
-    }
-
-    private async void OnSaveClick(object? sender, RoutedEventArgs e)
-    {
-        await SaveAsync();
-    }
-
-    private async void OnKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.S || e.KeyModifiers != KeyModifiers.Control)
+        if (_syncingSelection ||
+            _session is null ||
+            SourceFileList.SelectedItem is not SourceFileListItem item)
         {
             return;
         }
 
-        e.Handled = true;
-        await SaveAsync();
+        if (_session.WouldReplaceDocument(item.Path) &&
+            !await ResolveUnsavedChangesAsync("다른 파일로 이동"))
+        {
+            SyncSelections();
+            return;
+        }
+
+        _session.SelectSourceFile(item.Path);
+        RenderSelectedNode();
+        SyncSelections();
+
+        if (_session.SelectedNode is not null)
+        {
+            NodeSelected?.Invoke(this, _session.SelectedNode.Title);
+        }
+    }
+
+    private async void OnDiagnosticSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingSelection ||
+            _session is null ||
+            DiagnosticList.SelectedItem is not DiagnosticListItem item)
+        {
+            return;
+        }
+
+        VnDiagnostic diagnostic = item.Diagnostic;
+
+        if (HasFilePosition(diagnostic) &&
+            _session.WouldReplaceDocument(diagnostic.FilePath) &&
+            !await ResolveUnsavedChangesAsync("문제가 있는 파일로 이동"))
+        {
+            SyncSelections();
+            return;
+        }
+
+        bool moved = _session.SelectDiagnostic(diagnostic);
+
+        if (moved)
+        {
+            RenderSelectedNode();
+            SyncSelections();
+            MoveCaretTo(
+                _session.Document?.WorkingText ?? string.Empty,
+                diagnostic.Line,
+                diagnostic.Column);
+
+            if (_session.SelectedNode is not null)
+            {
+                NodeSelected?.Invoke(this, _session.SelectedNode.Title);
+            }
+        }
     }
 
     private void OnFileTextChanged(object? sender, TextChangedEventArgs e)
     {
-        UpdateFileHeader();
-    }
-
-    private async Task SaveAsync()
-    {
-        // 열린 파일이 없으면 아무것도 하지 않는다.
-        if (_openFile is null)
+        if (_updatingUi || _session?.Document is null)
         {
             return;
         }
 
-        string text;
+        _session.SetWorkingText(FileBox.Text ?? string.Empty);
+    }
+
+    private void OnBoxLineSelected(object? sender, StoryLine line)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        _session.SetSelectionPosition(line.Line, line.Column);
+        MoveCaretTo(
+            _session.Document?.WorkingText ?? string.Empty,
+            line.Line,
+            line.Column);
+    }
+
+    private void OnBoxLineEdited(object? sender, StoryLineEdit edit)
+    {
+        if (_session?.Document is null)
+        {
+            return;
+        }
+
+        if (!_session.ApplyLineEdit(edit))
+        {
+            _session.SetStatus(
+                "이 대사의 원문 위치가 변경되어 구조 화면에서 안전하게 수정할 수 없습니다. 저장 후 다시 검사해 주세요.");
+            RenderSelectedNode();
+            return;
+        }
+
+        // 박스 수정은 같은 WorkingText를 변경하므로 원문 탭도 즉시 같은 내용을 보여준다.
+        _updatingUi = true;
 
         try
         {
-            // 박스에서 고쳤으면 트리를 다시 쓰지 않고 그 줄만 원본에 갈아 끼운다.
-            // 이때 편집기에 떠 있는 문자열이 아니라 디스크의 원본을 기준으로 삼는다.
-            // 박스 편집은 텍스트 탭을 갱신하지 않으므로 그쪽 내용은 이미 낡았다.
-            if (_boxEdits.Count > 0)
-            {
-                StoryFile onDisk = StoryFileService.Read(_openFile.Path);
-                text = StoryLineEditor.Apply(onDisk.Text, _boxEdits.Values);
-            }
-            else
-            {
-                text = FileBox.Text ?? string.Empty;
-            }
-
-            // File.WriteAllText를 직접 쓰지 않는다. 그러면 BOM과 인코딩이 조용히 바뀌어
-            // 고치지도 않은 줄까지 diff에 뜬다. 읽을 때 본 형태를 그대로 돌려준다.
-            StoryFileService.Write(_openFile.Path, text, _openFile);
+            FileBox.Text = _session.Document.WorkingText;
         }
-        catch (Exception exception)
+        finally
         {
-            // 저장에 실패해도 편집기 내용은 건드리지 않는다. 사람이 친 글자가 아직 그 안에 있다.
-            StatusText.Text =
-                $"저장하지 못했습니다. [{exception.GetType().Name}] {exception.Message}";
-
-            // 실패했는데 다시 분석하면 방금 실패가 성공처럼 보인다.
-            return;
-        }
-
-        _savedText = text;
-        _boxEdits.Clear();
-        UpdateFileHeader();
-
-        // 재분석하면 목록이 새로 그려지면서 선택이 풀린다.
-        // 방금 고친 노드를 계속 보고 있어야 하므로 되돌려 놓는다.
-        string? selected = (NodeList.SelectedItem as NodeItem)?.Node.Title;
-
-        await RunAnalysisAsync();
-
-        if (selected is not null)
-        {
-            SelectNodeByTitle(selected);
+            _updatingUi = false;
         }
     }
 
-    private void UpdateFileHeader()
+    private void OnEditorTabChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_openFile is null)
+        if (EditorTabs.SelectedIndex == 0)
         {
-            FileHeaderText.Text = "파일";
-            UnsavedChanges?.Invoke(this, false);
+            RenderSelectedNode();
+        }
+    }
+
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        ApplyNodeFilter();
+        SyncSelections();
+    }
+
+    private async void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            await SaveAsync();
             return;
         }
 
-        bool dirty = HasUnsavedChanges;
-
-        string mark = dirty
-            ? " *"
-            : string.Empty;
-
-        FileHeaderText.Text = $"파일 — {Path.GetFileName(_openFile.Path)}{mark}";
-
-        // 창 제목에도 같은 표시를 낸다. 박스 탭을 보고 있으면 이 머리글이 안 보인다.
-        UnsavedChanges?.Invoke(this, dirty);
+        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+        }
     }
 
-    /// <summary>저장하지 않은 변경이 있는지 알린다. 제목 표시줄이 이것을 듣는다.</summary>
-    public event EventHandler<bool>? UnsavedChanges;
+    private void SyncSelections()
+    {
+        if (_session is null)
+        {
+            return;
+        }
 
-    /// <summary>저장하지 않은 변경이 있는지. 창을 닫기 전에 확인하는 쪽이 쓴다.</summary>
-    public bool HasUnsavedWork => HasUnsavedChanges;
+        _syncingSelection = true;
 
-    /// <summary>
-    /// 버리고 진행할지 묻는다. 예를 누르면 true.
-    ///
-    /// 대화상자를 코드로 만든다. 이 하나를 위해 프레임워크를 들이지 않는다.
-    /// </summary>
-    public async Task<bool> ConfirmDiscardAsync(string action)
+        try
+        {
+            NodeList.SelectedItem = (NodeList.ItemsSource as IEnumerable<NodeListItem>)?
+                .FirstOrDefault(item =>
+                    string.Equals(
+                        item.Node.Title,
+                        _session.SelectedNode?.Title,
+                        StringComparison.Ordinal));
+
+            SourceFileList.SelectedItem =
+                (SourceFileList.ItemsSource as IEnumerable<SourceFileListItem>)?
+                    .FirstOrDefault(item =>
+                        string.Equals(
+                            item.Path,
+                            _session.Document?.Path,
+                            StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
+    }
+
+    private async Task<UnsavedChoice> ShowUnsavedDialogAsync(string action)
     {
         Window? owner = TopLevel.GetTopLevel(this) as Window;
 
         if (owner is null)
         {
-            // 창을 못 찾으면 물어볼 수단이 없다. 원고를 지키는 쪽으로 막는다.
-            return false;
+            return UnsavedChoice.Cancel;
         }
 
         var dialog = new Window
         {
             Title = "저장하지 않은 변경",
-            Width = 420,
+            Width = 480,
             SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false
         };
 
-        bool discard = false;
+        UnsavedChoice choice = UnsavedChoice.Cancel;
 
-        var discardButton = new Button { Content = "버리고 계속", IsDefault = false };
-        var cancelButton = new Button { Content = "취소", IsCancel = true, IsDefault = true };
+        var save = new Button { Content = "저장하고 계속", IsDefault = true };
+        var discard = new Button { Content = "버리고 계속" };
+        var cancel = new Button { Content = "취소", IsCancel = true };
 
-        discardButton.Click += (_, _) =>
+        save.Click += (_, _) =>
         {
-            discard = true;
+            choice = UnsavedChoice.Save;
             dialog.Close();
         };
 
-        cancelButton.Click += (_, _) => dialog.Close();
+        discard.Click += (_, _) =>
+        {
+            choice = UnsavedChoice.Discard;
+            dialog.Close();
+        };
+
+        cancel.Click += (_, _) => dialog.Close();
 
         dialog.Content = new StackPanel
         {
-            Margin = new Thickness(16),
-            Spacing = 12,
+            Margin = new Thickness(18),
+            Spacing = 14,
             Children =
             {
                 new TextBlock
                 {
-                    Text = $"저장하지 않은 변경이 있습니다.{Environment.NewLine}" +
-                        $"{action} 하면 그 내용이 사라집니다.",
+                    Text = $"저장하지 않은 대본 변경이 있습니다.\n{action} 전에 어떻게 할지 선택해 주세요.",
                     TextWrapping = TextWrapping.Wrap
                 },
                 new StackPanel
@@ -299,262 +567,75 @@ public partial class AnalysisView : UserControl
                     Orientation = Avalonia.Layout.Orientation.Horizontal,
                     HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
                     Spacing = 8,
-                    Children = { discardButton, cancelButton }
+                    Children = { save, discard, cancel }
                 }
             }
         };
 
         await dialog.ShowDialog(owner);
-
-        return discard;
+        return choice;
     }
 
-    /// <summary>
-    /// 취소했을 때 고르기 전 노드로 되돌린다.
-    /// 되돌리는 동안 이 핸들러가 다시 돌면 또 물어보게 되므로 한 번 잠근다.
-    /// </summary>
-    private void RestorePreviousSelection(SelectionChangedEventArgs e)
+    private async Task<bool> ConfirmExternalOverwriteAsync()
     {
-        if (_restoringSelection || e.RemovedItems.Count == 0)
+        Window? owner = TopLevel.GetTopLevel(this) as Window;
+
+        if (owner is null)
         {
-            return;
+            return false;
         }
 
-        _restoringSelection = true;
-
-        try
+        var dialog = new Window
         {
-            NodeList.SelectedItem = e.RemovedItems[0];
-        }
-        finally
-        {
-            _restoringSelection = false;
-        }
-    }
-
-    private bool _restoringSelection;
-
-    // 분석은 Yarn 전체를 컴파일하므로 프로젝트가 커지면 눈에 띄게 오래 걸린다.
-    // UI 스레드에서 돌리면 그동안 창이 통째로 멈춘다.
-    //
-    // Vn.Core에는 비동기 API를 두지 않는다. Core는 UI를 모르는 동기 라이브러리로 두고,
-    // 어느 스레드에서 부를지는 부르는 쪽이 정한다. 그래서 감싸는 일은 여기서만 한다.
-    private async Task RunAnalysisAsync()
-    {
-        string projectPath = ProjectPathBox.Text ?? string.Empty;
-
-        if (string.IsNullOrWhiteSpace(projectPath))
-        {
-            StatusText.Text = "경로를 입력하세요.";
-            return;
-        }
-
-        // 버튼을 끄는 것은 안내이기도 하고 재진입 방지이기도 하다.
-        // 분석 중에 또 누르면 두 번째 분석이 첫 번째 결과를 덮어쓴다.
-        AnalyzeButton.IsEnabled = false;
-        StatusText.Text = "분석 중...";
-        ClearResults();
-
-        try
-        {
-            string fullPath = Path.GetFullPath(projectPath.Trim('"'));
-
-            string schemaPath = Path.Combine(
-                Path.GetDirectoryName(fullPath) ?? ".",
-                "game.schema.json");
-
-            AnalysisReport report = await Task.Run(
-                () => new VnProjectAnalyzer().Analyze(fullPath, schemaPath));
-
-            ShowResults(report);
-            Analyzed?.Invoke(this, report);
-
-            // 열린 것이 확인된 뒤에만 기억한다. 못 여는 경로를 다음에 또 들이밀지 않는다.
-            AppSettingsService.SaveRecentProject(report.ProjectPath);
-        }
-        catch (Exception exception)
-        {
-            // 이 메서드를 부르는 곳은 async void 핸들러다.
-            // 예외가 거기까지 새어나가면 앱이 그대로 죽으므로 여기서 전부 받는다.
-            StatusText.Text = $"[{exception.GetType().Name}] {exception.Message}";
-        }
-        finally
-        {
-            // 성공이든 실패든 버튼은 반드시 돌아와야 한다.
-            // 여기가 비면 한 번 실패한 앱은 다시 분석할 수 없는 상태로 남는다.
-            AnalyzeButton.IsEnabled = true;
-        }
-    }
-
-    // 노드 목록과 진단 목록의 선택은 서로 독립이다.
-    // 한쪽을 고를 때 다른 쪽 선택을 지우지 않는다. 마지막에 고른 것이 편집기를 채운다.
-    private async void OnNodeSelected(object? sender, SelectionChangedEventArgs e)
-    {
-        // 목록을 비울 때도 이 이벤트가 온다. 그때는 보여줄 노드가 없다.
-        if (NodeList.SelectedItem is not NodeItem item)
-        {
-            return;
-        }
-
-        // 되돌리는 중이면 다시 묻지 않는다.
-        if (_restoringSelection)
-        {
-            return;
-        }
-
-        // 다른 노드를 고르면 그 파일을 다시 읽어 편집기를 덮는다.
-        // 저장하지 않은 원고가 그대로 사라지므로 먼저 묻는다.
-        if (HasUnsavedChanges && !await ConfirmDiscardAsync("다른 노드로 이동"))
-        {
-            RestorePreviousSelection(e);
-            return;
-        }
-
-        StoryNode node = item.Node;
-
-        // 파일을 먼저 연다. 박스가 "이 줄을 안전하게 되살릴 수 있는가"를 판단하려면
-        // 원본 텍스트가 있어야 한다.
-        ShowFile(node.FilePath, node.HeaderLine, 1);
-
-        // 두 탭이 같은 노드를 보게 한다.
-        // 박스 탭은 평평한 Lines가 아니라 분기 트리를 그린다. 평평한 목록에서는
-        // 선택지 갈래 안의 명령이 다음 선택지에 붙어 보인다.
-        BoxList.Show(node.Body, _openFile?.Text ?? string.Empty);
-    }
-
-    /// <summary>
-    /// 박스를 고르면 텍스트 탭이 그 줄을 가리킨다. 탭을 자동으로 바꾸지는 않는다.
-    /// 바꿔버리면 박스를 훑어보는 동안 한 번 누를 때마다 목록에서 튕겨 나간다.
-    ///
-    /// 같은 파일이 이미 열려 있으면 다시 읽지 않고 캐럿만 옮긴다.
-    /// 다시 읽으면 저장하지 않은 편집이 사라진다.
-    /// </summary>
-    private void OnBoxLineSelected(object? sender, StoryLine line)
-    {
-        bool sameFile =
-            _openFile is not null &&
-            string.Equals(_openFile.Path, line.FilePath, StringComparison.OrdinalIgnoreCase);
-
-        if (sameFile)
-        {
-            MoveCaretTo(FileBox.Text ?? string.Empty, line.Line, line.Column);
-            return;
-        }
-
-        ShowFile(line.FilePath, line.Line, line.Column);
-    }
-
-    private void OnDiagnosticSelected(object? sender, SelectionChangedEventArgs e)
-    {
-        if (DiagnosticList.SelectedItem is not DiagnosticItem item)
-        {
-            return;
-        }
-
-        VnDiagnostic diagnostic = item.Diagnostic;
-
-        // 모든 진단이 파일의 한 지점을 가리키지는 않는다.
-        //   - Yarn은 파일에 매이지 않은 진단에 "(External)" 같은 의사 이름을 쓴다.
-        //   - 스키마 진단처럼 파일 전체를 두고 하는 말은 Line이 0이다.
-        // 이런 것에 파일을 열려고 들면 엉뚱한 실패가 되므로, 진단 내용만 보여준다.
-        if (!HasFilePosition(diagnostic))
-        {
-            ShowMessageInEditor(Describe(diagnostic));
-            return;
-        }
-
-        ShowFile(diagnostic.FilePath, diagnostic.Line, diagnostic.Column);
-    }
-
-    private static bool HasFilePosition(VnDiagnostic diagnostic)
-    {
-        return diagnostic.Line > 0 &&
-               !string.IsNullOrWhiteSpace(diagnostic.FilePath) &&
-               Path.IsPathRooted(diagnostic.FilePath);
-    }
-
-    private static string Describe(VnDiagnostic diagnostic)
-    {
-        string location = string.IsNullOrWhiteSpace(diagnostic.FilePath)
-            ? "(위치 없음)"
-            : diagnostic.FilePath;
-
-        return
-            $"[{diagnostic.Severity}] {diagnostic.Code}{Environment.NewLine}" +
-            $"{location}{Environment.NewLine}{Environment.NewLine}" +
-            $"{diagnostic.Message}{Environment.NewLine}{Environment.NewLine}" +
-            "이 진단은 파일의 특정 위치를 가리키지 않습니다.";
-    }
-
-    private void ShowFile(string filePath, int line, int column)
-    {
-        try
-        {
-            // 매번 디스크에서 다시 읽는다. 캐시해두면 밖에서 파일을 고쳤을 때
-            // 화면과 실제 파일이 어긋나고, 작가는 어긋난 줄 모른 채 읽게 된다.
-            StoryFile file = StoryFileService.Read(filePath);
-
-            _openFile = file;
-            _savedText = file.Text;
-
-            // 다른 파일을 열면 이전 파일에 대한 편집은 의미가 없다.
-            _boxEdits.Clear();
-
-            // 새 줄을 넣을 때 이 파일이 쓰던 줄바꿈을 그대로 쓴다.
-            // 기본값은 Environment.NewLine이라, LF 파일에 한 줄 넣으면 그 줄만 CRLF가 되고
-            // 고친 적 없는 자리에 diff가 생긴다.
-            FileBox.NewLine = NewLineFor(file.LineEndings);
-            FileBox.Text = file.Text;
-
-            UpdateFileHeader();
-            MoveCaretTo(file.Text, line, column);
-        }
-        catch (Exception exception)
-        {
-            // 분석 뒤에 파일이 지워지거나 잠길 수 있다. 그래도 앱은 살아 있어야 한다.
-            // 오류를 편집기 자리에 그대로 띄운다. 분석 요약을 덮어쓰지 않기 위해서다.
-            ShowMessageInEditor(
-                $"파일을 열지 못했습니다.{Environment.NewLine}" +
-                $"{filePath}{Environment.NewLine}{Environment.NewLine}" +
-                $"[{exception.GetType().Name}] {exception.Message}");
-        }
-    }
-
-    /// <summary>
-    /// 파일이 아닌 것을 편집기 자리에 띄운다. 진단 설명이나 오류 메시지가 그렇다.
-    /// 열린 파일을 지우므로 이 상태에서 저장을 눌러도 아무 일도 일어나지 않는다.
-    /// 설명 문구가 파일로 저장되면 원고가 사라진다.
-    /// </summary>
-    private void ShowMessageInEditor(string message)
-    {
-        _openFile = null;
-        _savedText = string.Empty;
-        FileBox.Text = message;
-        UpdateFileHeader();
-    }
-
-    private static string NewLineFor(LineEndingStyle style)
-    {
-        return style switch
-        {
-            LineEndingStyle.Lf => "\n",
-            LineEndingStyle.CrLf => "\r\n",
-            LineEndingStyle.Cr => "\r",
-
-            // 줄바꿈이 없거나 섞여 있으면 근거가 없다. 플랫폼 기본값을 쓴다.
-            _ => Environment.NewLine
+            Title = "외부 변경 발견",
+            Width = 500,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false
         };
+
+        bool overwrite = false;
+        var overwriteButton = new Button { Content = "내 편집 내용으로 덮어쓰기" };
+        var cancelButton = new Button { Content = "취소", IsCancel = true, IsDefault = true };
+
+        overwriteButton.Click += (_, _) =>
+        {
+            overwrite = true;
+            dialog.Close();
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(18),
+            Spacing = 14,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "이 파일이 VnTool에서 열린 뒤 다른 프로그램에서 변경되었습니다.\n" +
+                           "덮어쓰면 외부 변경이 사라집니다. 취소하면 현재 편집 내용은 앱 안에 그대로 남습니다.",
+                    TextWrapping = TextWrapping.Wrap
+                },
+                new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right,
+                    Spacing = 8,
+                    Children = { overwriteButton, cancelButton }
+                }
+            }
+        };
+
+        await dialog.ShowDialog(owner);
+        return overwrite;
     }
 
     private void MoveCaretTo(string text, int oneBasedLine, int oneBasedColumn)
     {
         FileBox.CaretIndex = GetCaretIndex(text, oneBasedLine, oneBasedColumn);
-
-        // ScrollToLine은 0부터 세고, 줄 수를 넘으면 예외를 던진다.
         int lineIndex = Math.Max(0, oneBasedLine - 1);
 
-        // 스크롤은 새 Text로 레이아웃이 한 번 돌아간 뒤라야 줄 위치를 안다.
-        // 여기서 바로 부르면 아직 만들어지지 않은 줄을 찾게 되므로 레이아웃 뒤로 미룬다.
         Dispatcher.UIThread.Post(
             () =>
             {
@@ -564,48 +645,20 @@ public partial class AnalysisView : UserControl
                 }
                 catch (Exception)
                 {
-                    // 분석 이후 파일이 짧아졌거나, 텍스트 탭이 아직 화면에 올라오지 않아
-                    // 줄 배치가 없는 상태다. 스크롤은 보기 편하자고 하는 것이므로
-                    // 여기서 앱을 죽이지 않는다. 캐럿은 이미 옮겨 놓았다.
+                    // 스크롤 실패는 편집 내용이나 선택 상태를 손상시키지 않는다.
                 }
             },
             DispatcherPriority.Loaded);
     }
 
-    /// <summary>
-    /// 1부터 세는 줄·열을 <see cref="TextBox.CaretIndex"/>가 쓰는 문자 위치로 바꾼다.
-    /// 열이 그 줄의 길이를 넘으면 줄 끝에 둔다. 다음 줄로 넘어가지 않는다.
-    /// </summary>
     private static int GetCaretIndex(string text, int oneBasedLine, int oneBasedColumn)
     {
         int lineStart = GetLineStartIndex(text, oneBasedLine);
         int lineEnd = GetLineEndIndex(text, lineStart);
         int offset = Math.Max(0, oneBasedColumn - 1);
-
         return Math.Min(lineStart + offset, lineEnd);
     }
 
-    /// <summary>
-    /// 줄이 끝나는 문자 위치. CR을 줄 끝으로 보므로 CRLF 사이에 캐럿이 끼지 않는다.
-    /// </summary>
-    private static int GetLineEndIndex(string text, int lineStart)
-    {
-        for (int index = lineStart; index < text.Length; index++)
-        {
-            if (text[index] is '\r' or '\n')
-            {
-                return index;
-            }
-        }
-
-        return text.Length;
-    }
-
-    /// <summary>
-    /// 1부터 세는 줄 번호를 <see cref="TextBox.CaretIndex"/>가 쓰는 문자 위치로 바꾼다.
-    /// 화면에 올린 문자열을 직접 세므로 줄바꿈이 CRLF든 LF든 결과가 같다.
-    /// 파일이 그만큼 길지 않으면 마지막으로 찾은 줄에 둔다.
-    /// </summary>
     private static int GetLineStartIndex(string text, int oneBasedLine)
     {
         int target = Math.Max(1, oneBasedLine);
@@ -626,74 +679,149 @@ public partial class AnalysisView : UserControl
         return Math.Min(index, text.Length);
     }
 
-    // 목록에 담는 것은 Core가 준 순서 그대로다. 여기서 다시 정렬하거나 거르지 않는다.
-    // AnalysisReport.Diagnostics는 이미 정렬되어 있고, 그 순서가 CLI 출력·골든 픽스처와
-    // 같은 순서다. 뷰가 순서를 바꾸면 화면과 픽스처가 서로 다른 것을 말하게 된다.
-    private void ShowResults(AnalysisReport report)
+    private static int GetLineEndIndex(string text, int lineStart)
     {
-        StatusText.Text =
-            $"소스 파일 {report.SourceFiles.Count}개, " +
-            $"노드 {report.Nodes.Count}개, " +
-            $"진단 {report.Diagnostics.Count}개";
-
-        SourceFileList.ItemsSource = report.SourceFiles;
-
-        NodeList.ItemsSource = report.Nodes
-            .Select(node => new NodeItem(node))
-            .ToList();
-
-        DiagnosticList.ItemsSource = report.Diagnostics
-            .Select(diagnostic => new DiagnosticItem(diagnostic))
-            .ToList();
-    }
-
-    // 편집기는 비우지 않는다. 저장하면 곧바로 다시 분석하는데, 여기서 비우면
-    // 방금 저장한 사람이 보던 파일과 캐럿 위치가 통째로 사라진다.
-    private void ClearResults()
-    {
-        SourceFileList.ItemsSource = null;
-        NodeList.ItemsSource = null;
-        DiagnosticList.ItemsSource = null;
-    }
-
-    /// <summary>
-    /// 목록에 보일 문장과 원본 <see cref="StoryNode"/>를 같이 들고 있는다.
-    /// 목록에 문자열만 넣으면 선택했을 때 파일 경로와 줄 번호를 다시 알 길이 없다.
-    /// ListBox는 항목을 그릴 때 ToString()을 쓰므로 별도 DataTemplate이 필요 없다.
-    /// </summary>
-    private sealed class NodeItem
-    {
-        public NodeItem(StoryNode node)
+        for (int index = lineStart; index < text.Length; index++)
         {
-            Node = node;
+            if (text[index] is '\r' or '\n')
+            {
+                return index;
+            }
         }
 
-        public StoryNode Node { get; }
+        return text.Length;
+    }
 
-        public override string ToString()
+    private string RelativePath(string path)
+    {
+        if (_session?.ProjectPath is null)
         {
-            return $"{Node.Title}  ({Node.FilePath}:{Node.HeaderLine})";
+            return Path.GetFileName(path);
+        }
+
+        string root = Path.GetDirectoryName(_session.ProjectPath) ?? Environment.CurrentDirectory;
+
+        try
+        {
+            return Path.GetRelativePath(root, path);
+        }
+        catch (ArgumentException)
+        {
+            return Path.GetFileName(path);
         }
     }
 
-    /// <summary>
-    /// <see cref="NodeItem"/>과 같은 이유로 원본 진단을 들고 있는다.
-    /// </summary>
-    private sealed class DiagnosticItem
+    private static bool HasFilePosition(VnDiagnostic diagnostic)
     {
-        public DiagnosticItem(VnDiagnostic diagnostic)
+        return diagnostic.Line > 0 &&
+            !string.IsNullOrWhiteSpace(diagnostic.FilePath) &&
+            Path.IsPathRooted(diagnostic.FilePath);
+    }
+
+    private static string NewLineFor(LineEndingStyle style)
+    {
+        return style switch
         {
-            Diagnostic = diagnostic;
+            LineEndingStyle.Lf => "\n",
+            LineEndingStyle.CrLf => "\r\n",
+            LineEndingStyle.Cr => "\r",
+            _ => Environment.NewLine
+        };
+    }
+
+    private enum UnsavedChoice
+    {
+        Save,
+        Discard,
+        Cancel
+    }
+}
+
+public sealed class NodeListItem
+{
+    public NodeListItem(StoryNode node, string? projectPath)
+    {
+        Node = node;
+        Title = node.Title;
+        Location = PathDisplay.Relative(node.FilePath, projectPath) + $" · {node.HeaderLine}행";
+    }
+
+    public StoryNode Node { get; }
+    public string Title { get; }
+    public string Location { get; }
+}
+
+public sealed class SourceFileListItem
+{
+    public SourceFileListItem(string path, string? projectPath)
+    {
+        Path = path;
+        Name = System.IO.Path.GetFileName(path);
+        RelativePath = PathDisplay.Relative(path, projectPath);
+    }
+
+    public string Path { get; }
+    public string Name { get; }
+    public string RelativePath { get; }
+}
+
+public sealed class DiagnosticListItem
+{
+    public DiagnosticListItem(VnDiagnostic diagnostic, string? projectPath)
+    {
+        Diagnostic = diagnostic;
+        Code = diagnostic.Code;
+        Message = diagnostic.Message;
+        SeverityText = diagnostic.Severity switch
+        {
+            DiagnosticSeverity.Error => "오류",
+            DiagnosticSeverity.Warning => "주의",
+            _ => "정보"
+        };
+
+        BadgeBrush = diagnostic.Severity switch
+        {
+            DiagnosticSeverity.Error => Brushes.IndianRed,
+            DiagnosticSeverity.Warning => Brushes.DarkGoldenrod,
+            _ => Brushes.SteelBlue
+        };
+
+        Location = diagnostic.Line <= 0
+            ? "프로젝트 전체"
+            : $"{PathDisplay.Relative(diagnostic.FilePath, projectPath)} · {diagnostic.Line}행 {Math.Max(1, diagnostic.Column)}열";
+    }
+
+    public VnDiagnostic Diagnostic { get; }
+    public string Code { get; }
+    public string Message { get; }
+    public string SeverityText { get; }
+    public IBrush BadgeBrush { get; }
+    public string Location { get; }
+}
+
+internal static class PathDisplay
+{
+    public static string Relative(string path, string? projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "위치 없음";
         }
 
-        public VnDiagnostic Diagnostic { get; }
-
-        public override string ToString()
+        if (projectPath is null || !Path.IsPathRooted(path))
         {
-            return
-                $"[{Diagnostic.Severity}] {Diagnostic.Code}  " +
-                $"{Diagnostic.FilePath}:{Diagnostic.Line}:{Diagnostic.Column}  " +
-                $"{Diagnostic.Message}";
+            return Path.GetFileName(path);
+        }
+
+        string root = Path.GetDirectoryName(projectPath) ?? Environment.CurrentDirectory;
+
+        try
+        {
+            return Path.GetRelativePath(root, path);
+        }
+        catch (ArgumentException)
+        {
+            return Path.GetFileName(path);
         }
     }
 }

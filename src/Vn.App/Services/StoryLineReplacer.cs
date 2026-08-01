@@ -102,7 +102,11 @@ internal static class StoryLineReplacer
 }
 
 /// <summary>고친 대사 한 줄. 줄 번호가 원본에서의 자리를 가리킨다.</summary>
-public sealed record StoryLineEdit(int Line, string? Speaker, string Text);
+public sealed record StoryLineEdit(
+    int Line,
+    string? Speaker,
+    string Text,
+    string? OriginalLine = null);
 
 /// <summary>
 /// 고친 줄들을 원본에 반영한다. 뒤에서 앞으로 적용해 앞선 교체가 뒤 줄의 자리를 밀지 않게 한다.

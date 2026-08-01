@@ -17,9 +17,8 @@ namespace Vn.App.Views;
 /// <c>&lt;&lt;jump&gt;&gt;</c>만 간선으로 그린다. <c>&lt;&lt;beat&gt;&gt;</c> 같은 것도 노드 이름을 받지만
 /// 이야기의 흐름이 아니므로 그리지 않는다.
 ///
-/// 노드 위치는 그릴 때마다 자동으로 배치하고 저장하지 않는다.
-/// 위치는 편집기 전용 데이터라 <c>.yarn</c>에 넣을 자리가 없다.
-/// 드래그는 지금 보기 좋으라고 있는 것이며 다음 실행에는 남지 않는다.
+/// 노드 위치는 프로젝트 옆의 편집기 전용 작업공간 파일에 저장한다.
+/// <c>.yarn</c> 원본에는 그래프 좌표를 넣지 않는다.
 /// </summary>
 public partial class GraphView : UserControl
 {
@@ -96,8 +95,8 @@ public partial class GraphView : UserControl
         DrawEdges(nodes, byTitle);
 
         SelectedTitleText.Text = nodes.Count == 0
-            ? "(분석 결과 없음)"
-            : "(없음)";
+            ? "분석할 수 있는 장면이 없습니다"
+            : "장면을 선택해 주세요";
 
         SelectedBodyText.Text = string.Empty;
     }
@@ -339,8 +338,8 @@ public partial class GraphView : UserControl
         SelectedTitleText.Text = node.Title;
 
         SelectedBodyText.Text =
-            $"{System.IO.Path.GetFileName(node.Node.FilePath)}:{node.Node.HeaderLine}" +
-            $"{Environment.NewLine}라인 {node.Node.Lines.Count}개, 점프 {node.Node.Jumps.Count}개";
+            $"{System.IO.Path.GetFileName(node.Node.FilePath)} · {node.Node.HeaderLine}행" +
+            $"{Environment.NewLine}대사·선택지 {node.Node.Lines.Count}개 · 다음 장면 연결 {node.Node.Jumps.Count}개";
     }
 
     private static double Snap(double value)

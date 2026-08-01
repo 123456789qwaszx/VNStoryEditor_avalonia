@@ -23,26 +23,24 @@ public sealed class VnProjectAnalyzer
         GameSchemaLoadResult schemaResult =
             GameSchemaLoader.Load(fullSchemaPath);
 
-        if (schemaResult.Schema is null)
-        {
-            return new AnalysisReport(
-                fullProjectPath,
-                fullSchemaPath,
-                Array.Empty<string>(),
-                Array.Empty<Story.StoryNode>(),
-                SortDiagnostics(schemaResult.Diagnostics));
-        }
+        // 스키마가 없거나 깨져도 원고 자체는 열 수 있어야 한다.
+        // 저작 도구에서 스키마 실패가 텍스트·노드·그래프 전체를 함께 죽이면
+        // 사용자는 오류를 고칠 수 없다. 빈 스키마로 Yarn 분석을 계속하고,
+        // 스키마 문제는 별도 진단으로 남긴다.
+        GameSchema schema = schemaResult.Schema ?? GameSchema.Empty;
 
         YarnCompileOutput yarnOutput =
             _compiler.Compile(
                 fullProjectPath,
-                schemaResult.Schema);
+                schema);
 
         IReadOnlyList<VnDiagnostic> customDiagnostics =
-            SchemaUsageValidator.Validate(
-                schemaResult.Schema,
-                yarnOutput.Nodes,
-                yarnOutput.ExplicitYarnVariables);
+            schemaResult.Schema is null
+                ? Array.Empty<VnDiagnostic>()
+                : SchemaUsageValidator.Validate(
+                    schema,
+                    yarnOutput.Nodes,
+                    yarnOutput.ExplicitYarnVariables);
 
         // 작성 규약은 전부 Warning이라 종료 코드를 바꾸지 않는다.
         // 못 지킨 파일도 열려야 하므로 읽어낸 뒤 알리기만 한다.

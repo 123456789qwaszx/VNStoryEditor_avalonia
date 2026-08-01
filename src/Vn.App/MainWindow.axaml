@@ -2,25 +2,72 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="using:Vn.App.Views"
         x:Class="Vn.App.MainWindow"
-        Width="900" Height="600"
-        Title="Vn.App">
-    <Grid ColumnDefinitions="*,4,*">
+        Width="1280"
+        Height="820"
+        MinWidth="920"
+        MinHeight="620"
+        Title="VnTool">
+    <DockPanel>
+        <Border DockPanel.Dock="Top"
+                Padding="12,10"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,16,*,Auto">
+                <Button Grid.Column="0"
+                        x:Name="OpenButton"
+                        Content="프로젝트 열기…"
+                        Click="OnOpenClick" />
+                <Button Grid.Column="1"
+                        x:Name="SaveButton"
+                        Content="저장"
+                        Click="OnSaveClick" />
+                <Button Grid.Column="2"
+                        x:Name="AnalyzeButton"
+                        Content="저장 후 다시 검사"
+                        Click="OnAnalyzeClick" />
 
-        <TabControl Grid.Column="0">
-            <TabItem Header="분석">
+                <StackPanel Grid.Column="4" VerticalAlignment="Center">
+                    <TextBlock x:Name="ProjectNameText"
+                               Text="열린 프로젝트 없음"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="ProjectPathText"
+                               FontSize="11"
+                               Opacity="0.65"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <ProgressBar Grid.Column="5"
+                             x:Name="AnalysisProgress"
+                             Width="120"
+                             IsIndeterminate="True"
+                             IsVisible="False" />
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom"
+                Padding="12,8"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="StatusText"
+                           Grid.Column="0"
+                           Text="Yarn 프로젝트를 열어 주세요."
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="DirtyText"
+                           Grid.Column="1"
+                           Margin="16,0,0,0"
+                           FontWeight="SemiBold" />
+            </Grid>
+        </Border>
+
+        <TabControl x:Name="WorkspaceTabs">
+            <TabItem Header="대본 작업">
                 <views:AnalysisView x:Name="Analysis" />
             </TabItem>
-        </TabControl>
-
-        <GridSplitter Grid.Column="1"
-                      ResizeDirection="Columns"
-                      Background="Gray" />
-
-        <TabControl Grid.Column="2">
-            <TabItem Header="그래프">
+            <TabItem Header="전체 흐름">
                 <views:GraphView x:Name="Graph" />
             </TabItem>
         </TabControl>
-
-    </Grid>
+    </DockPanel>
 </Window>

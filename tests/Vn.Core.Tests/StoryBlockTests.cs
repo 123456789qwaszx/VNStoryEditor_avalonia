@@ -4,8 +4,8 @@ using Vn.Core.Story;
 namespace Vn.Core.Tests;
 
 /// <summary>
-/// 트리 조립의 최소 확인. 중첩과 조건문의 여러 형태는 다음 커밋에서 체계적으로 검증한다.
-/// 여기서는 Valid 샘플과, 앞선 시도를 무너뜨린 중첩 케이스 하나를 잡아둔다.
+/// 트리 조립의 핵심 회귀 확인. 실제 Valid 샘플과, 앞선 구현을 무너뜨렸던
+/// 중첩·갈래 끝 명령 케이스를 고정한다.
 /// </summary>
 public class StoryBlockTests
 {

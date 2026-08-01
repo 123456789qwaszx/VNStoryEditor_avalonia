@@ -1,13 +1,6 @@
-title: Start
+title: Broken
 ---
-Ann: 이 파일에는 의도적으로 오류가 있습니다.
-<<play_bgm "guesthouse_day">>
-<<set $affection_an += 1>>
-<<play_bg "wrong_command">>
-<<jump Enidng>>
-===
+Ann: 오타가 있습니다.
 
-title: Ending
----
-Ann: 도달 대상 노드입니다.
+<<set $affection_an = 1>>
 ===

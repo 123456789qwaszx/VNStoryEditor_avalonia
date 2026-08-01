@@ -1,25 +1,36 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Vn.App.Views.GraphView">
-    <DockPanel>
-        <Border DockPanel.Dock="Right"
-                Width="200"
-                BorderThickness="1,0,0,0"
-                BorderBrush="Gray"
-                Padding="12">
-            <StackPanel Spacing="8">
-                <TextBlock Text="선택한 노드" FontWeight="Bold" />
-                <TextBlock x:Name="SelectedTitleText" Text="(없음)" />
-                <TextBlock x:Name="SelectedBodyText" Text="" TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
-
-        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+    <Grid ColumnDefinitions="*,280">
+        <ScrollViewer Grid.Column="0"
+                      HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
             <Canvas x:Name="GraphCanvas"
                     Width="2000"
                     Height="1200"
-                    Background="Transparent" />
+                    Background="{DynamicResource ThemeBackgroundBrush}" />
         </ScrollViewer>
-    </DockPanel>
+
+        <Border Grid.Column="1"
+                BorderThickness="1,0,0,0"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                Padding="16">
+            <StackPanel Spacing="10">
+                <TextBlock Text="선택한 장면" FontWeight="SemiBold" />
+                <TextBlock x:Name="SelectedTitleText"
+                           Text="장면을 선택해 주세요"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock x:Name="SelectedBodyText"
+                           TextWrapping="Wrap"
+                           Opacity="0.7" />
+                <TextBlock Margin="0,16,0,0"
+                           Text="장면을 클릭하면 대본 작업 화면으로 이동합니다. 노드를 끌어 놓으면 이 프로젝트의 그래프 배치가 기억됩니다."
+                           TextWrapping="Wrap"
+                           FontSize="11"
+                           Opacity="0.6" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>

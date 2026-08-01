@@ -1,4 +1,4 @@
-﻿using Vn.Core.Analysis;
+using Vn.Core.Analysis;
 using Vn.Core.Diagnostics;
 
 namespace Vn.Core.Tests;
@@ -47,5 +47,52 @@ public class AnalyzerTests
         Assert.EndsWith("Broken.yarn", diagnostic.FilePath);
         Assert.Equal(5, diagnostic.Line);
         Assert.Equal(7, diagnostic.Column);
+    }
+
+    [Fact]
+    public void 스키마가_없어도_Yarn_노드와_원문_구조는_분석한다()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(),
+            $"VnTool.MissingSchemaTests.{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(directory, "Story.yarn"),
+                "title: Start\n---\nAnn: 고칠 수 있습니다.\n===\n");
+
+            string project = Path.Combine(directory, "Demo.yarnproject");
+            File.WriteAllText(
+                project,
+                """
+                {
+                  "projectFileVersion": 3,
+                  "baseLanguage": "ko",
+                  "sourceFiles": [ "**/*.yarn" ],
+                  "excludeFiles": []
+                }
+                """);
+
+            AnalysisReport report = new VnProjectAnalyzer().Analyze(
+                project,
+                Path.Combine(directory, "game.schema.json"));
+
+            Assert.Contains(
+                report.Diagnostics,
+                item => item.Code == VnDiagnosticCodes.SchemaFileNotFound);
+            Assert.Contains(report.Nodes, node => node.Title == "Start");
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 }

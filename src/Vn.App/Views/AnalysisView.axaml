@@ -3,93 +3,135 @@
              xmlns:views="using:Vn.App.Views"
              x:Class="Vn.App.Views.AnalysisView"
              KeyDown="OnKeyDown">
-    <DockPanel Margin="12">
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8">
-            <!-- 경로 입력창은 남겨 둔다. 붙여넣기로 여는 편이 빠른 경우가 있다. -->
-            <TextBox x:Name="ProjectPathBox"
-                     Width="560"
-                     PlaceholderText="Demo.yarnproject 경로" />
-            <Button x:Name="OpenButton"
-                    Content="열기…"
-                    Click="OnOpenClick" />
-            <Button x:Name="AnalyzeButton"
-                    Content="분석"
-                    Click="OnAnalyzeClick" />
-        </StackPanel>
+    <UserControl.DataTemplates>
+        <DataTemplate DataType="views:NodeListItem" x:DataType="views:NodeListItem">
+            <StackPanel Margin="4,5">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Location}" FontSize="11" Opacity="0.6" />
+            </StackPanel>
+        </DataTemplate>
 
-        <!-- 요약 한 줄과 오류 메시지가 여기로 온다. 목록은 결과만 담는다. -->
-        <TextBlock x:Name="StatusText"
-                   DockPanel.Dock="Top"
-                   Margin="0,12,0,0"
-                   TextWrapping="Wrap" />
+        <DataTemplate DataType="views:SourceFileListItem" x:DataType="views:SourceFileListItem">
+            <StackPanel Margin="4,5">
+                <TextBlock Text="{Binding Name}" />
+                <TextBlock Text="{Binding RelativePath}" FontSize="11" Opacity="0.6" />
+            </StackPanel>
+        </DataTemplate>
 
-        <!-- 파일 전체를 띄워야 하므로 편집기에 세로 공간을 통째로 준다.
-             목록 아래에 쌓으면 파일이 몇 줄만 보이는 창이 된다. -->
-        <Grid ColumnDefinitions="*,8,1.2*" Margin="0,12,0,0">
-            <Grid Grid.Column="0" RowDefinitions="*,*,2*">
-                <DockPanel Grid.Row="0">
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="소스 파일"
-                               FontWeight="Bold"
-                               Margin="0,0,0,4" />
-                    <ListBox x:Name="SourceFileList" FontFamily="Consolas" />
-                </DockPanel>
-
-                <DockPanel Grid.Row="1" Margin="0,8,0,0">
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="노드"
-                               FontWeight="Bold"
-                               Margin="0,0,0,4" />
-                    <ListBox x:Name="NodeList"
-                             FontFamily="Consolas"
-                             SelectionChanged="OnNodeSelected" />
-                </DockPanel>
-
-                <DockPanel Grid.Row="2" Margin="0,8,0,0">
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="진단"
-                               FontWeight="Bold"
-                               Margin="0,0,0,4" />
-                    <ListBox x:Name="DiagnosticList"
-                             FontFamily="Consolas"
-                             SelectionChanged="OnDiagnosticSelected" />
-                </DockPanel>
+        <DataTemplate DataType="views:DiagnosticListItem" x:DataType="views:DiagnosticListItem">
+            <Grid Margin="4,6" ColumnDefinitions="Auto,*">
+                <Border Grid.Column="0"
+                        Padding="5,2"
+                        CornerRadius="4"
+                        Background="{Binding BadgeBrush}">
+                    <TextBlock Text="{Binding SeverityText}"
+                               Foreground="White"
+                               FontSize="10"
+                               FontWeight="Bold" />
+                </Border>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Location}" FontSize="11" Opacity="0.65" />
+                        <TextBlock Text="{Binding Code}" FontSize="11" Opacity="0.45" />
+                    </StackPanel>
+                </StackPanel>
             </Grid>
+        </DataTemplate>
+    </UserControl.DataTemplates>
 
-            <DockPanel Grid.Column="2">
-                <Grid DockPanel.Dock="Top"
-                      ColumnDefinitions="*,Auto"
-                      Margin="0,0,0,4">
-                    <!-- 저장되지 않은 변경은 파일명 뒤 *로 알린다. -->
-                    <TextBlock x:Name="FileHeaderText"
-                               Grid.Column="0"
-                               Text="파일"
-                               FontWeight="Bold"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
-                    <Button x:Name="SaveButton"
-                            Grid.Column="1"
-                            Content="저장 (Ctrl+S)"
-                            Click="OnSaveClick" />
-                </Grid>
+    <Grid Margin="12" ColumnDefinitions="300,8,*">
+        <Border Grid.Column="0"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="8">
+            <Grid RowDefinitions="Auto,*">
+                <TextBox Grid.Row="0"
+                         x:Name="SearchBox"
+                         PlaceholderText="장면 이름 검색"
+                         TextChanged="OnSearchTextChanged" />
 
-                <!-- 같은 노드를 두 가지로 본다. 텍스트는 Unity에서 볼 모습,
-                     박스는 작가가 대사를 다루는 단위. -->
-                <TabControl>
-                    <TabItem Header="텍스트">
-                        <TextBox x:Name="FileBox"
-                                 AcceptsReturn="True"
-                                 TextWrapping="NoWrap"
-                                 FontFamily="Consolas"
-                                 TextChanged="OnFileTextChanged"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                <TabControl Grid.Row="1" Margin="0,8,0,0">
+                    <TabItem Header="장면">
+                        <ListBox x:Name="NodeList"
+                                 SelectionChanged="OnNodeSelected" />
                     </TabItem>
-                    <TabItem Header="박스">
-                        <views:BoxListView x:Name="BoxList" />
+                    <TabItem Header="파일">
+                        <ListBox x:Name="SourceFileList"
+                                 SelectionChanged="OnSourceFileSelected" />
+                    </TabItem>
+                    <TabItem Header="문제">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock x:Name="DiagnosticSummaryText"
+                                       Grid.Row="0"
+                                       Margin="6"
+                                       Opacity="0.7" />
+                            <ListBox x:Name="DiagnosticList"
+                                     Grid.Row="1"
+                                     SelectionChanged="OnDiagnosticSelected" />
+                        </Grid>
                     </TabItem>
                 </TabControl>
-            </DockPanel>
+            </Grid>
+        </Border>
+
+        <GridSplitter Grid.Column="1"
+                      ResizeDirection="Columns"
+                      Background="{DynamicResource ThemeBorderLowBrush}" />
+
+        <Grid Grid.Column="2" RowDefinitions="Auto,*">
+            <Border Grid.Row="0"
+                    Padding="10,8"
+                    BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6,6,0,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock x:Name="DocumentTitleText"
+                                   Text="열린 문서 없음"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="SelectionText"
+                                   FontSize="11"
+                                   Opacity="0.65" />
+                    </StackPanel>
+                    <TextBlock x:Name="DocumentStateText"
+                               Grid.Column="1"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold" />
+                </Grid>
+            </Border>
+
+            <TabControl Grid.Row="1"
+                        x:Name="EditorTabs"
+                        SelectionChanged="OnEditorTabChanged">
+                <TabItem Header="구조로 보기">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                x:Name="StructureNoticeBorder"
+                                Padding="10,7"
+                                Background="{DynamicResource ThemeControlMidBrush}"
+                                IsVisible="False">
+                            <TextBlock x:Name="StructureNoticeText"
+                                       TextWrapping="Wrap" />
+                        </Border>
+                        <views:BoxListView Grid.Row="1" x:Name="BoxList" />
+                    </Grid>
+                </TabItem>
+                <TabItem Header="Yarn 원문">
+                    <TextBox x:Name="FileBox"
+                             AcceptsReturn="True"
+                             AcceptsTab="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Cascadia Mono,Consolas"
+                             FontSize="14"
+                             Padding="12"
+                             TextChanged="OnFileTextChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </TabItem>
+            </TabControl>
         </Grid>
-    </DockPanel>
+    </Grid>
 </UserControl>

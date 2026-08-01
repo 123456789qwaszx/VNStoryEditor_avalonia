@@ -2,42 +2,29 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="using:Vn.App.Views"
              x:Class="Vn.App.Views.BoxListView">
-
-    <!--
-        템플릿을 컨트롤 수준에 두면 타입으로 찾아 쓴다.
-        그래서 갈래 안의 ItemsControl이 다시 박스와 블록을 그릴 수 있다 — 중첩이 저절로 된다.
-    -->
     <UserControl.DataTemplates>
-
-        <!-- 박스: 쌓인 명령과 그것이 닫는 라인 하나. -->
         <DataTemplate DataType="views:BoxItem" x:DataType="views:BoxItem">
-            <Border BorderBrush="Gray"
+            <Border BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="8"
-                    Margin="0,0,0,4"
-                    Background="Transparent"
+                    CornerRadius="6"
+                    Padding="10"
+                    Margin="0,0,0,6"
+                    Background="{DynamicResource ThemeControlLowBrush}"
                     PointerPressed="OnBoxPressed">
-                <StackPanel Spacing="4">
+                <StackPanel Spacing="6">
                     <TextBlock Text="{Binding Commands}"
                                IsVisible="{Binding HasCommands}"
-                               FontFamily="Consolas"
-                               Opacity="0.7"
+                               FontFamily="Cascadia Mono,Consolas"
+                               FontSize="11"
+                               Opacity="0.65"
                                TextWrapping="Wrap" />
-                    <Border Height="1"
-                            Background="Gray"
-                            Opacity="0.4"
-                            IsVisible="{Binding HasCommands}" />
 
-                    <!-- 대사와 화자만 고칠 수 있다. 명령·라벨·태그는 읽기 전용이다.
-                         고친 뒤 원본 줄을 그대로 되살릴 수 없는 박스는 잠근다. -->
-                    <Grid ColumnDefinitions="Auto,*">
+                    <Grid ColumnDefinitions="120,*">
                         <TextBox Grid.Column="0"
                                  Text="{Binding Speaker, Mode=TwoWay}"
                                  IsReadOnly="{Binding IsLocked}"
-                                 FontWeight="Bold"
-                                 MinWidth="80"
-                                 Margin="0,0,8,0"
+                                 FontWeight="SemiBold"
+                                 PlaceholderText="화자"
                                  TextChanged="OnBoxEdited" />
                         <TextBox Grid.Column="1"
                                  Text="{Binding Text, Mode=TwoWay}"
@@ -49,41 +36,41 @@
 
                     <TextBlock Text="{Binding Hashtags}"
                                IsVisible="{Binding HasHashtags}"
-                               Opacity="0.7"
+                               Opacity="0.65"
                                FontSize="11" />
 
                     <TextBlock Text="{Binding LockReason}"
                                IsVisible="{Binding IsLocked}"
-                               Opacity="0.6"
+                               Opacity="0.7"
                                FontSize="11"
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </DataTemplate>
 
-        <!-- 갈래: 접히는 카드. 머리에 라벨과 목적지를 둔다. -->
         <DataTemplate DataType="views:BranchItem" x:DataType="views:BranchItem">
-            <Expander IsExpanded="True" Margin="0,0,0,4">
+            <Expander IsExpanded="True" Margin="0,0,0,6">
                 <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{Binding Marker}" FontWeight="Bold" />
-                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding DestinationText}"
+                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="2,4">
+                        <TextBlock Grid.Column="0" Text="{Binding Marker}" FontWeight="Bold" />
+                        <TextBlock Grid.Column="1" Text="{Binding Label}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding DestinationText}"
                                    IsVisible="{Binding HasDestination}"
-                                   Opacity="0.7" />
-                    </StackPanel>
+                                   Opacity="0.65" />
+                    </Grid>
                 </Expander.Header>
 
-                <StackPanel Spacing="4">
-                    <!-- 이 갈래에서 실행되는 명령. 갈래에 대사가 없으면 이것이 내용 전부다. -->
-                    <Border BorderBrush="Gray"
+                <StackPanel Spacing="6" Margin="16,2,0,0">
+                    <Border BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                             BorderThickness="1"
-                            CornerRadius="4"
+                            CornerRadius="6"
                             Padding="8"
                             Opacity="0.85"
                             IsVisible="{Binding HasCommands}">
                         <TextBlock Text="{Binding Commands}"
-                                   FontFamily="Consolas"
+                                   FontFamily="Cascadia Mono,Consolas"
+                                   FontSize="11"
                                    TextWrapping="Wrap" />
                     </Border>
 
@@ -92,21 +79,25 @@
             </Expander>
         </DataTemplate>
 
-        <!-- 블록: 갈래 카드를 모아 놓은 것. 중첩되면 왼쪽으로 들여쓴다. -->
         <DataTemplate DataType="views:BlockItem" x:DataType="views:BlockItem">
-            <StackPanel Margin="{Binding Indent}">
-                <TextBlock Text="{Binding Title}"
-                           FontWeight="Bold"
-                           Opacity="0.7"
-                           FontSize="11"
-                           Margin="0,4,0,4" />
-                <ItemsControl ItemsSource="{Binding Branches}" />
-            </StackPanel>
+            <Border Margin="{Binding Indent}"
+                    BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="0,4,0,6">
+                <StackPanel>
+                    <TextBlock Text="{Binding Title}"
+                               FontWeight="SemiBold"
+                               Opacity="0.7"
+                               FontSize="11"
+                               Margin="0,2,0,6" />
+                    <ItemsControl ItemsSource="{Binding Branches}" />
+                </StackPanel>
+            </Border>
         </DataTemplate>
-
     </UserControl.DataTemplates>
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <ItemsControl x:Name="Elements" />
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <ItemsControl x:Name="Elements" Margin="12" />
     </ScrollViewer>
 </UserControl>

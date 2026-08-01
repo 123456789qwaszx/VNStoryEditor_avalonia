@@ -1,23 +1,18 @@
-using System;
-using System.IO;
 using System.Text;
 using System.Text.Json;
 
 namespace Vn.App.Services;
 
 /// <summary>
-/// 앱 자체의 설정. 프로젝트가 아니라 이 컴퓨터의 이 사용자에게 딸린 것이다.
-///
-/// 최근 연 프로젝트는 프로젝트 폴더에 둘 수 없다 — 아직 아무 프로젝트도 안 열었을 때
-/// 읽어야 하는 값이기 때문이다. 그래서 <c>vn.workspace.json</c> 옆이 아니라 여기 둔다.
-///
-/// 읽지 못하면 조용히 비어 있는 것으로 본다. 편의 기능 하나 때문에 앱이 안 열리면 안 된다.
+/// 프로젝트 원본과 무관한 사용자별 편의 설정.
+/// 읽기·쓰기에 실패해도 저작 작업 자체를 막지 않는다.
 /// </summary>
 internal static class AppSettingsService
 {
     private static readonly JsonSerializerOptions ReadOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true
     };
 
@@ -31,26 +26,59 @@ internal static class AppSettingsService
         "VnTool",
         "settings.json");
 
-    /// <summary>마지막으로 연 프로젝트 경로. 없거나 읽을 수 없으면 null이다.</summary>
     public static string? LoadRecentProject()
+    {
+        AppSettings settings = Load();
+        string? path = settings.RecentProject;
+
+        return string.IsNullOrWhiteSpace(path) || !File.Exists(path)
+            ? null
+            : path;
+    }
+
+    public static string? LoadRecentNode(string projectPath)
+    {
+        string key = NormalizeProjectKey(projectPath);
+        AppSettings settings = Load();
+
+        return settings.RecentNodes.TryGetValue(key, out string? title) &&
+            !string.IsNullOrWhiteSpace(title)
+                ? title
+                : null;
+    }
+
+    public static void SaveRecentProject(string projectPath)
+    {
+        AppSettings settings = Load();
+        settings.RecentProject = Path.GetFullPath(projectPath);
+        Save(settings);
+    }
+
+    public static void SaveRecentNode(string projectPath, string nodeTitle)
+    {
+        if (string.IsNullOrWhiteSpace(nodeTitle))
+        {
+            return;
+        }
+
+        AppSettings settings = Load();
+        settings.RecentNodes[NormalizeProjectKey(projectPath)] = nodeTitle;
+        Save(settings);
+    }
+
+    private static AppSettings Load()
     {
         try
         {
             if (!File.Exists(SettingsPath))
             {
-                return null;
+                return new AppSettings();
             }
 
-            AppSettings? settings = JsonSerializer.Deserialize<AppSettings>(
-                File.ReadAllText(SettingsPath),
-                ReadOptions);
-
-            string? path = settings?.RecentProject;
-
-            // 지워진 프로젝트를 계속 들이밀지 않는다.
-            return string.IsNullOrWhiteSpace(path) || !File.Exists(path)
-                ? null
-                : path;
+            return JsonSerializer.Deserialize<AppSettings>(
+                       File.ReadAllText(SettingsPath),
+                       ReadOptions)
+                   ?? new AppSettings();
         }
         catch (Exception exception) when (
             exception is IOException or
@@ -59,11 +87,11 @@ internal static class AppSettingsService
                 NotSupportedException or
                 ArgumentException)
         {
-            return null;
+            return new AppSettings();
         }
     }
 
-    public static void SaveRecentProject(string projectPath)
+    private static void Save(AppSettings settings)
     {
         try
         {
@@ -76,9 +104,7 @@ internal static class AppSettingsService
 
             File.WriteAllText(
                 SettingsPath,
-                JsonSerializer.Serialize(
-                    new AppSettings { RecentProject = projectPath },
-                    WriteOptions),
+                JsonSerializer.Serialize(settings, WriteOptions),
                 new UTF8Encoding(false));
         }
         catch (Exception exception) when (
@@ -87,12 +113,36 @@ internal static class AppSettingsService
                 NotSupportedException or
                 ArgumentException)
         {
-            // 기억하지 못해도 경로를 다시 고르면 그만이다.
+            // 편의 설정을 기억하지 못해도 프로젝트와 원고는 계속 사용할 수 있다.
+        }
+    }
+
+    private static string NormalizeProjectKey(string projectPath)
+    {
+        try
+        {
+            return Path.GetFullPath(projectPath);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException)
+        {
+            return projectPath;
         }
     }
 
     private sealed class AppSettings
     {
+        private Dictionary<string, string> _recentNodes =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public string? RecentProject { get; set; }
+
+        public Dictionary<string, string> RecentNodes
+        {
+            get => _recentNodes;
+            set => _recentNodes = value is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(value, StringComparer.OrdinalIgnoreCase);
+        }
     }
 }
