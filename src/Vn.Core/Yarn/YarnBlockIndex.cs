@@ -108,7 +108,11 @@ internal sealed class YarnBlockIndex
 
                 switch (item.Kind)
                 {
-                    case YarnLineKind.If:
+                    // 조건 갈래의 끝은 구분자가 정하지만, 조건 블록이 <em>어디에 속하는지</em>는
+                    // 여전히 깊이가 정한다. 갈래보다 얕은 <<if>>는 그 갈래 바깥의 것이다.
+                    // 가드가 없으면 선택지 그룹 다음에 오는 조건문이 마지막 갈래 안으로 빨려 들어가고,
+                    // 그 안의 대사와 <<endif>>가 블록 밖으로 밀려난다.
+                    case YarnLineKind.If when item.Depth >= minDepth:
                         elements.Add(new StoryBlockElement(
                             ParseCondition(ref index, minDepth)));
                         break;
@@ -129,6 +133,7 @@ internal sealed class YarnBlockIndex
 
                     case YarnLineKind.Option:
                     case YarnLineKind.Line:
+                    case YarnLineKind.If:
                         // 여기보다 얕다. 바깥 갈래의 것이므로 넘긴다.
                         return elements;
 

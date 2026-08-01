@@ -81,4 +81,28 @@ public class BlankLineAfterOptionTests
         Assert.Equal("<<if $favor >= 5>>", scanned.Raw);
     }
 
+    /// <summary>
+    /// 조건 블록은 선택지 갈래보다 얕으므로 갈래 바깥에 놓여야 한다.
+    /// 안으로 들어가면 그 안의 대사와 <c>&lt;&lt;endif&gt;&gt;</c>가 블록 밖으로 밀려난다.
+    /// </summary>
+    [Fact]
+    public void 갈래보다_얕은_조건은_갈래_바깥에_놓인다()
+    {
+        StoryNode node = Fixture.Node(ConditionAfterOptions);
+
+        Assert.Equal(2, node.Body.Count);
+
+        StoryBlock options = Assert.IsType<StoryBlockElement>(node.Body[0]).Block;
+        Assert.Equal(StoryBlockKind.Option, options.Kind);
+        Assert.All(options.Branches, branch => Assert.Single(branch.Children));
+
+        StoryBlock condition = Assert.IsType<StoryBlockElement>(node.Body[1]).Block;
+
+        Assert.Equal(StoryBlockKind.Condition, condition.Kind);
+        Assert.Equal(8, condition.StartLine);
+        Assert.Equal(10, condition.EndLine);
+
+        StoryBranch only = Assert.Single(condition.Branches);
+        Assert.Equal(9, Assert.IsType<StoryLineElement>(Assert.Single(only.Children)).Line.Line);
+    }
 }
