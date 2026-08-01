@@ -26,6 +26,8 @@ public partial class DialogueNodeEditor : UserControl
     private string? _nodeId;
     private bool _building;
     private RenderedDocument? _previewDocument;
+    private readonly IReadOnlyList<OutputPreset> _outputPresets = OutputPresetCatalog.All;
+    private OutputPreset _selectedOutputPreset = OutputPresetCatalog.RuntimeFull;
 
     public DialogueNodeEditor()
     {
@@ -43,6 +45,12 @@ public partial class DialogueNodeEditor : UserControl
         DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
         DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
         EditorTabs.SelectionChanged += (_, _) => RefreshPreview();
+
+        PreviewPresetCombo.ItemsSource = _outputPresets
+            .Select(preset => preset.DisplayName)
+            .ToArray();
+        PreviewPresetCombo.SelectedIndex = 0;
+        PreviewPresetCombo.SelectionChanged += (_, _) => OnPreviewPresetSelected();
     }
 
     internal void Attach(AuthoringSession session)
@@ -61,6 +69,29 @@ public partial class DialogueNodeEditor : UserControl
 
     /// <summary>현재 Preview가 보관하는 원본 매핑 Segment. 문자열 표시와 별개로 유지한다.</summary>
     internal RenderedDocument? PreviewDocument => _previewDocument;
+
+    internal OutputPresetId SelectedOutputPresetId => _selectedOutputPreset.Id;
+
+    internal void SelectOutputPreset(OutputPresetId presetId)
+    {
+        int index = -1;
+
+        for (int itemIndex = 0; itemIndex < _outputPresets.Count; itemIndex++)
+        {
+            if (_outputPresets[itemIndex].Id == presetId)
+            {
+                index = itemIndex;
+                break;
+            }
+        }
+
+        if (index < 0 || index == PreviewPresetCombo.SelectedIndex)
+        {
+            return;
+        }
+
+        PreviewPresetCombo.SelectedIndex = index;
+    }
 
     internal void Rebuild()
     {
@@ -114,20 +145,41 @@ public partial class DialogueNodeEditor : UserControl
 
     private void RefreshPreviewCore(DialogueNode node)
     {
-        _previewDocument = DialogueDocumentComposer.Compose(
+        _previewDocument = DialogueDocumentComposer.ComposePreset(
             _session!.Project,
             node.Id,
+            _selectedOutputPreset,
             _session.Definition);
-        PreviewBox.Text = YarnPreviewFormatter.Format(_previewDocument);
+        PreviewBox.Text = DocumentPreviewFormatter.Format(_previewDocument);
         PreviewSummaryText.Text =
-            $"읽기 전용 · {_previewDocument.Segments.Count}개 Segment · 파일 저장 및 역파싱 없음";
+            $"{_selectedOutputPreset.DisplayName} · {_previewDocument.Segments.Count}개 Segment · StoryProject 변경 없음";
+    }
+
+    private void OnPreviewPresetSelected()
+    {
+        if (_building ||
+            PreviewPresetCombo.SelectedIndex < 0 ||
+            PreviewPresetCombo.SelectedIndex >= _outputPresets.Count)
+        {
+            return;
+        }
+
+        OutputPreset selected = _outputPresets[PreviewPresetCombo.SelectedIndex];
+
+        if (_selectedOutputPreset.Id == selected.Id)
+        {
+            return;
+        }
+
+        _selectedOutputPreset = selected;
+        RefreshPreview();
     }
 
     private void ClearPreview()
     {
         _previewDocument = null;
         PreviewBox.Text = string.Empty;
-        PreviewSummaryText.Text = "DialogueNode를 선택하면 구조화된 원본을 Yarn 스타일로 펼쳐 보여 줍니다.";
+        PreviewSummaryText.Text = "DialogueNode를 선택하면 구조화된 원본을 선택한 출력 프리셋으로 펼쳐 보여 줍니다.";
     }
 
     // ── 카드 ────────────────────────────────────────────────────────────────

@@ -5,10 +5,11 @@ using Vn.Authoring.Model;
 namespace Vn.Authoring.Rendering;
 
 /// <summary>
-/// 구조화된 DialogueNode와 연결된 SetNode를 평평한 Segment 목록으로 합성한다.
+/// 구조화된 DialogueNode, 연결된 SetNode와 선택된 PresentationNode를
+/// 출력 옵션에 맞는 평평한 Segment 목록으로 합성한다.
 ///
 /// 조건 의미는 직접 다시 계산하지 않고 <see cref="ConditionFlowResolver"/> 결과를 사용한다.
-/// 이 클래스는 문자열 문법을 모르며, Yarn 표기는 <see cref="YarnPreviewFormatter"/>가 맡는다.
+/// 이 클래스는 문자열 문법을 모르며, 실제 표기는 Formatter가 맡는다.
 /// </summary>
 public static class DialogueDocumentComposer
 {
@@ -16,7 +17,10 @@ public static class DialogueDocumentComposer
         StoryProject project,
         string dialogueNodeId,
         GameDefinition? definition = null,
-        IReadOnlySet<string>? includedPresentationNodeIds = null)
+        IReadOnlySet<string>? includedPresentationNodeIds = null,
+        DocumentOutputOptions? options = null,
+        OutputPresetId? presetId = null,
+        ILocalizedLineProvider? localization = null)
     {
         ArgumentNullException.ThrowIfNull(project);
 
@@ -26,21 +30,32 @@ public static class DialogueDocumentComposer
             ?? throw new InvalidOperationException($"DialogueNode '{dialogue.Id}'의 StoryFile을 찾을 수 없습니다.");
 
         definition ??= GameDefinition.Empty;
+        options ??= OutputPresetCatalog.RuntimeFull.Options;
 
         var segments = new List<RenderedSegment>();
         RenderSourceReference dialogueSource = SourceFor(dialogueFile, dialogue);
 
-        segments.Add(new RenderedSegment(
-            Id: $"node:{dialogue.Id}:header",
-            Kind: RenderedSegmentKind.NodeHeader,
-            Layer: DocumentLayer.Structure,
-            Source: dialogueSource,
-            Text: dialogue.Name));
+        if (options.IncludeStructure)
+        {
+            segments.Add(new RenderedSegment(
+                Id: $"node:{dialogue.Id}:header",
+                Kind: RenderedSegmentKind.NodeHeader,
+                Layer: DocumentLayer.Structure,
+                Source: dialogueSource,
+                Text: dialogue.Name));
+        }
 
-        AddConnectedSetAssignments(project, dialogue, segments);
+        if (options.IncludeSetAssignments)
+        {
+            AddConnectedSetAssignments(project, dialogue, segments);
+        }
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(dialogue, project, definition);
-        AddProblems(flow, dialogueFile, dialogue, segments);
+
+        if (options.IncludeDiagnostics)
+        {
+            AddProblems(flow, dialogueFile, dialogue, segments);
+        }
 
         AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
             project,
@@ -61,35 +76,52 @@ public static class DialogueDocumentComposer
 
         foreach (ResolvedLine resolved in flow.Lines)
         {
-            AddTransition(
-                project,
-                definition,
-                available,
-                dialogueFile,
-                dialogue,
-                resolved.Line,
-                resolved.Line.Transition,
-                segments);
+            if (options.IncludeConditions)
+            {
+                AddTransition(
+                    project,
+                    definition,
+                    available,
+                    dialogueFile,
+                    dialogue,
+                    resolved.Line,
+                    resolved.Line.Transition,
+                    segments);
+            }
 
-            AddPresentationCommands(
-                project,
-                dialogue,
-                resolved.Line,
-                resolved.Depth,
-                presentations,
-                presentationCatalog,
-                segments);
+            if (options.IncludePresentation)
+            {
+                AddPresentationCommands(
+                    project,
+                    dialogue,
+                    resolved.Line,
+                    options.IncludeConditions ? resolved.Depth : 0,
+                    presentations,
+                    presentationCatalog,
+                    options,
+                    segments);
+            }
 
-            segments.Add(new RenderedSegment(
-                Id: $"line:{resolved.Line.Id}",
-                Kind: RenderedSegmentKind.DialogueLine,
-                Layer: DocumentLayer.Dialogue,
-                Source: SourceFor(dialogueFile, dialogue, resolved.Line.Id),
-                IndentLevel: resolved.Depth,
-                Text: resolved.Line.Text,
-                Speaker: resolved.Line.Speaker));
+            if (options.IncludeDialogueText ||
+                options.IncludeLocalizedDialogue ||
+                options.IncludeSpeaker ||
+                options.IncludeLineId)
+            {
+                segments.Add(new RenderedSegment(
+                    Id: $"line:{resolved.Line.Id}",
+                    Kind: RenderedSegmentKind.DialogueLine,
+                    Layer: DocumentLayer.Dialogue,
+                    Source: SourceFor(dialogueFile, dialogue, resolved.Line.Id),
+                    IndentLevel: options.IncludeConditions ? resolved.Depth : 0,
+                    Text: options.IncludeDialogueText ? resolved.Line.Text : null,
+                    LocalizedText: options.IncludeLocalizedDialogue
+                        ? localization?.GetLocalizedText(resolved.Line.Id)
+                        : null,
+                    Speaker: options.IncludeSpeaker ? resolved.Line.Speaker : null));
+            }
 
-            if (exitsByLastLine.TryGetValue(resolved.Index, out List<ConditionBranch>? exits) &&
+            if (options.IncludeExecutionJumps &&
+                exitsByLastLine.TryGetValue(resolved.Index, out List<ConditionBranch>? exits) &&
                 exits is not null)
             {
                 foreach (ConditionBranch branch in exits)
@@ -99,7 +131,7 @@ public static class DialogueDocumentComposer
             }
         }
 
-        if (dialogue.DefaultExitTargetNodeId is { } defaultTargetId)
+        if (options.IncludeExecutionJumps && dialogue.DefaultExitTargetNodeId is { } defaultTargetId)
         {
             StoryNode? target = project.FindNode(defaultTargetId);
             segments.Add(new RenderedSegment(
@@ -111,13 +143,37 @@ public static class DialogueDocumentComposer
                 TargetNodeName: target?.Name));
         }
 
-        segments.Add(new RenderedSegment(
-            Id: $"node:{dialogue.Id}:footer",
-            Kind: RenderedSegmentKind.NodeFooter,
-            Layer: DocumentLayer.Structure,
-            Source: dialogueSource));
+        if (options.IncludeStructure)
+        {
+            segments.Add(new RenderedSegment(
+                Id: $"node:{dialogue.Id}:footer",
+                Kind: RenderedSegmentKind.NodeFooter,
+                Layer: DocumentLayer.Structure,
+                Source: dialogueSource));
+        }
 
-        return new RenderedDocument(dialogue.Id, segments);
+        return new RenderedDocument(dialogue.Id, segments, options, presetId);
+    }
+
+
+    public static RenderedDocument ComposePreset(
+        StoryProject project,
+        string dialogueNodeId,
+        OutputPreset preset,
+        GameDefinition? definition = null,
+        IReadOnlySet<string>? includedPresentationNodeIds = null,
+        ILocalizedLineProvider? localization = null)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+
+        return Compose(
+            project,
+            dialogueNodeId,
+            definition,
+            includedPresentationNodeIds,
+            preset.Options,
+            preset.Id,
+            localization);
     }
 
 
@@ -128,6 +184,7 @@ public static class DialogueDocumentComposer
         int indentLevel,
         IReadOnlyList<ConnectedPresentationNode> presentations,
         PresentationCommandCatalog catalog,
+        DocumentOutputOptions options,
         List<RenderedSegment> segments)
     {
         foreach (ConnectedPresentationNode connected in presentations)
@@ -147,6 +204,12 @@ public static class DialogueDocumentComposer
             foreach (PresentationCommandInstance command in binding.Commands.Where(item => item.IsEnabled))
             {
                 PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
+
+                if (!options.IncludesPresentation(definition?.Category))
+                {
+                    continue;
+                }
+
                 string commandName = definition?.OutputCommandName ?? command.DefinitionId;
                 var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
 

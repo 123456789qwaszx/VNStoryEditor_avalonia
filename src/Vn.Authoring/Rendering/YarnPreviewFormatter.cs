@@ -20,13 +20,13 @@ public static class YarnPreviewFormatter
 
         foreach (RenderedSegment segment in document.Segments)
         {
-            AppendSegment(builder, segment);
+            AppendSegment(builder, document, segment);
         }
 
         return builder.ToString();
     }
 
-    private static void AppendSegment(StringBuilder builder, RenderedSegment segment)
+    private static void AppendSegment(StringBuilder builder, RenderedDocument document, RenderedSegment segment)
     {
         string indent = string.Concat(Enumerable.Repeat(Indent, Math.Max(0, segment.IndentLevel)));
 
@@ -99,7 +99,7 @@ public static class YarnPreviewFormatter
 
                 builder.Append(segment.Text ?? string.Empty);
 
-                if (segment.Source.LineId is { Length: > 0 } lineId)
+                if (document.Options.IncludeLineId && segment.Source.LineId is { Length: > 0 } lineId)
                 {
                     builder.Append(" #line:").Append(lineId);
                 }

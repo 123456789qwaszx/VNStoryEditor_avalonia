@@ -103,9 +103,9 @@ Vn.Core   ── Yarn 읽기·분석 엔진. 저작 경로에 관여하지 않�
    ▲
    └── Vn.Cli    Yarn 검증 콘솔
 
-tests/Vn.Authoring.Tests   조건 흐름·출구·연결·직렬화 (59)
+tests/Vn.Authoring.Tests   조건 흐름·출구·연결·파일·연출·문서 합성 (120)
 tests/Vn.Core.Tests        Yarn 분석과 골든 픽스처 (60)
-tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
+tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시작 로그 (40)
 ```
 
 **`Vn.App`은 `Vn.Core`를 참조하지 않는다.** 두 세계가 갈라져 있다.
@@ -184,11 +184,17 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | `DialogueDocumentComposer` | DialogueNode 하나를 `RenderedSegment` 목록으로 합성한다 |
 | `RenderedDocument` / `RenderedSegment` | 문서 한 벌과 그 조각. 종류·레이어·들여쓰기 |
 | `RenderSourceReference` | 이 조각이 어느 StoryFile·Node·Line·조건에서 나왔는지 |
-| `YarnPreviewFormatter` | Segment를 Yarn 스타일 읽기 전용 문자열로 |
+| `DocumentOutputOptions` | 어떤 레이어와 연출 category를 담을지. 다섯 프리셋이 여기 있다 |
+| `YarnPreviewFormatter` | Runtime Full의 Yarn 스타일 문자열 |
+| `DocumentPreviewFormatter` | 시나리오·녹음·번역·연출 지시서 문자열 |
+| `ILocalizedLineProvider` | LineId로 번역문을 공급하는 바깥 경계 |
 | `ConnectedSetNodeResolver` | 이 Dialogue에 연결된 SetNode와 그 순서를 한 번만 계산 |
 
 **합성이지 파싱이 아니다.** 방향은 언제나 모델 → 문서다. Preview 문자열을 다시 읽어
 모델로 되돌리지 않는다. 되파싱을 허용하는 순간 진실이 두 곳이 된다.
+
+**출력 프리셋은 옵션일 뿐 저장 대상이 아니다.** `StoryProject`, 스냅샷, 되돌리기 어디에도
+들어가지 않는다. 필터로 빠진 Segment가 있어도 남은 Segment의 원본 참조는 그대로다.
 
 Segment는 문자열만 들고 있지 않다. 어디서 나왔는지를 함께 들고 있어야 미리보기 줄을
 눌러 원본으로 갈 수 있고, 녹음 대본과 번역본이 같은 LineId를 공유할 수 있다.
@@ -329,7 +335,8 @@ Line 6                                  Line 6
 | 노드 카드 크기·포트 좌표 | 같은 파일 위쪽 상수와 `PortAnchor` / `InputAnchor` |
 | 그래프에 무엇이 나타나는지 | `Graph/GraphProjectionBuilder.cs` — 화면이 아니라 여기가 정한다 |
 | Preview에 무엇이 나오는지 | `Rendering/DialogueDocumentComposer.cs` |
-| Preview 문자열 모양 | `Rendering/YarnPreviewFormatter.cs` |
+| 출력 프리셋 추가·수정 | `Rendering/DocumentOutputOptions.cs`의 `OutputPresetCatalog` |
+| Preview 문자열 모양 | `Rendering/YarnPreviewFormatter.cs`, `Rendering/DocumentPreviewFormatter.cs` |
 | 접힌 파일 프록시의 모양 | `Graph/GraphProjection.cs`의 `CollapsedFileProjection` |
 | 간선이 꺾이는 모양 | `Graph/OrthogonalEdgeRouter.cs` |
 

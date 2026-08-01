@@ -17,8 +17,8 @@ public enum RenderedSegmentKind
 }
 
 /// <summary>
-/// 같은 Segment 목록을 런타임용, 녹음용, 연출 지시서용으로 필터링할 때 사용할 큰 범주.
-/// 이번 단계에서는 모두 출력하지만, Presentation과 출력 프리셋이 들어올 자리를 미리 분명히 한다.
+/// 같은 공식 원본을 런타임용, 녹음용, 번역용, 연출 지시서용으로
+/// 합성할 때 사용하는 의미 레이어.
 /// </summary>
 public enum DocumentLayer
 {
@@ -59,6 +59,7 @@ public sealed record RenderedSegment(
     RenderSourceReference Source,
     int IndentLevel = 0,
     string? Text = null,
+    string? LocalizedText = null,
     string? Speaker = null,
     string? Expression = null,
     string? Variable = null,
@@ -76,16 +77,28 @@ public sealed record RenderedSegment(
 /// </summary>
 public sealed class RenderedDocument
 {
-    public RenderedDocument(string dialogueNodeId, IReadOnlyList<RenderedSegment> segments)
+    public RenderedDocument(
+        string dialogueNodeId,
+        IReadOnlyList<RenderedSegment> segments,
+        DocumentOutputOptions? options = null,
+        OutputPresetId? presetId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dialogueNodeId);
         ArgumentNullException.ThrowIfNull(segments);
 
         DialogueNodeId = dialogueNodeId;
         Segments = segments.ToArray();
+        Options = options ?? OutputPresetCatalog.RuntimeFull.Options;
+        PresetId = presetId;
     }
 
     public string DialogueNodeId { get; }
 
     public IReadOnlyList<RenderedSegment> Segments { get; }
+
+    /// <summary>이 문서 결과를 만들 때 사용한 Preview 전용 합성 옵션.</summary>
+    public DocumentOutputOptions Options { get; }
+
+    /// <summary>기본 프리셋으로 합성한 경우의 식별자. 사용자 정의 옵션이면 null일 수 있다.</summary>
+    public OutputPresetId? PresetId { get; }
 }

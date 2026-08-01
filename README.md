@@ -14,7 +14,7 @@
 4. 갈래마다 다른 노드로 가는 출구를, 노드 전체에는 기본 출구를 답니다.
 5. 그래프에서 포트를 끌어 노드를 잇습니다. 간선에는 조건 이름이 표시됩니다.
 6. 연출 노드를 대사 노드에 잇고 줄마다 카메라·화면 효과·연기 명령을 답니다.
-7. Script Preview 탭에서 그 노드가 어떤 문서로 펼쳐지는지 읽기 전용으로 확인합니다.
+7. Script Preview 탭에서 그 노드를 다섯 가지 출력 프리셋으로 펼쳐 읽기 전용으로 확인합니다.
 8. 저장하면 프로젝트 manifest와 StoryFile별 `*.vnstory.json`으로 나뉘어 들어갑니다.
 
 ## 저장 구조
@@ -53,7 +53,8 @@ MyStory/
 - `if` / `elseif` / `endif` 한 단계 조건 갈래 (깊이 0 또는 1)
 - 조건 갈래 출구와 노드 기본 출구
 - 그래프에서 노드 추가·이동·연결·간선 삭제
-- 대사 노드를 평평한 Yarn 스타일 문서로 펼쳐 보는 읽기 전용 Preview
+- 대사 노드를 평평한 문서로 펼쳐 보는 읽기 전용 Preview
+  (Runtime Full · Scenario Only · Recording Script · Localization Script · Direction Sheet)
 - 되돌리기와 다시 실행, 저장과 열기
 
 아직 지원하지 않습니다.
