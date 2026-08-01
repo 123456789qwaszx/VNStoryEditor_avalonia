@@ -32,7 +32,7 @@ DSL부터 맞춰야 했다.
 ### 지금
 
 ```
-StoryProject  ← 진실 (*.vnstory.json)
+StoryProject  ← 진실 (project.vnproject.json + story/*.vnstory.json)
    ├─ SetNode        조건과 변수를 정의한다
    └─ DialogueNode
         ├─ LineBox[]      화자·대사·조건 전환
@@ -52,7 +52,7 @@ DialogueFlow (갈래·깊이·출구 위치)  →  화면 카드 / 그래프 포
 
 | 주제 | 이전 | 지금 |
 |---|---|---|
-| 진실의 원천 | `.yarn` 원문 | `StoryProject` (`*.vnstory.json`) |
+| 진실의 원천 | `.yarn` 원문 | `StoryProject` (manifest + StoryFile) |
 | 저장 방식 | 원문의 한 줄만 부분 교체 | 프로젝트 전체 직렬화 |
 | 편집 범위 | 대사·화자 한 줄 | 노드·줄·조건·연결 전부 |
 | 조건 표현 | Yarn `<<if>>` 블록을 읽어 트리로 | 줄의 **전환**만 저장하고 갈래는 계산 |
@@ -72,7 +72,7 @@ DialogueFlow (갈래·깊이·출구 위치)  →  화면 카드 / 그래프 포
 |---|---|---|
 | `ProjectSession` | 상태 소유와 편집이 한 클래스에 섞여 있었다 | `AuthoringSession` + `ProjectEditor` |
 | `OpenDocumentSession` | `WorkingText`라는 단일 문자열이 더는 진실이 아니다 | `StoryProject` |
-| `StoryLineReplacer` / `StoryLineEditor` | 부분 문자열 교체 저장을 버렸다 | `ProjectJson` 전체 직렬화 |
+| `StoryLineReplacer` / `StoryLineEditor` | 부분 문자열 교체 저장을 버렸다 | 프로젝트 전체 직렬화 |
 | `StoryFileService` | 원본 인코딩·BOM·줄바꿈 보존은 *우리가 만드는* 파일에 필요 없다 | 형식을 우리가 정한다 (LF, BOM 없는 UTF-8) |
 | `WorkspaceService` | 좌표만 따로 둘 이유가 사라졌다 | `StoryNode.Layout` |
 | `AnalysisView` | Yarn 분석 결과 열람 화면 | `GraphEditorView` + 노드 편집기 |
@@ -161,8 +161,21 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 
 | 타입 | 역할 |
 |---|---|
-| `ProjectJson` | `*.vnstory.json` 읽기·쓰기. 형식 검증과 버전 확인 |
+| `ProjectManifestJson` | `*.vnproject.json` — 제목, 시작 노드, StoryFile의 Id·이름·경로 |
+| `StoryFileJson` | `*.vnstory.json` — StoryFile 하나와 그것이 소유한 노드 |
+| `StoryNodeJson` | 노드 직렬화 규칙의 **단일 구현**. manifest도 스냅샷도 여기를 지난다 |
+| `ProjectStore` | 경로 해석, 전체 읽기·쓰기, 임시 파일 교체 |
+| `ProjectSnapshotCodec` | 되돌리기와 저장 여부 비교용 aggregate 문자열 |
+| `LegacyProjectJson` | 버전 1 평면 nodes와 inline 버전 2를 새 구조로 들여온다 |
+| `JsonSupport` | 공통 읽기 도우미와 형식 검증 |
 | `GameDefinition` | 게임별 변수·이벤트 후보. 없으면 빈 정의로 계속 |
+
+**디스크 배치와 되돌리기 형식을 나눈 이유:** 되돌리기 한 번에 여러 실제 파일을 다시
+조립할 이유가 없다. manifest와 StoryFile 구조가 앞으로 또 바뀌어도 편집 기록은
+`ProjectSnapshotCodec`의 aggregate 하나로 독립되어 있어야 한다.
+
+**저장 순서:** StoryFile을 먼저 임시 파일로 교체하고 manifest를 마지막에 바꾼다.
+중간에 멈춰도 manifest가 가리키는 파일 집합은 언제나 존재한다.
 
 ### 3.5 `Vn.App` — 화면
 
@@ -232,8 +245,8 @@ Line 6                                  Line 6
 
 | 하고 싶은 일 | 여는 곳 |
 |---|---|
-| LineBox에 항목 추가(BGM·이벤트·메모) | `Model/LineBox.cs` → `Serialization/ProjectJson.cs` → `Editing/ProjectEditor.cs` → `App/Views/DialogueNodeEditor.axaml.cs` |
-| 노드 종류 추가(연출 노드 등) | `Model/StoryNode.cs` → `ProjectJson`의 `kind` 분기 → `Flow/NodeConnections.cs` → 화면 |
+| LineBox에 항목 추가(BGM·이벤트·메모) | `Model/LineBox.cs` → `Serialization/StoryNodeJson.cs` → `Editing/ProjectEditor.cs` → `App/Views/DialogueNodeEditor.axaml.cs` |
+| 노드 종류 추가(연출 노드 등) | `Model/StoryNode.cs` → `StoryNodeJson`의 `kind` 분기 → `Flow/NodeConnections.cs` → 화면 |
 | 설정 노드가 담는 것 | `Model/StoryNode.cs`의 `SetNode` |
 | 조건의 이름·식 구조 | `Model/StoryNode.cs`의 `ConditionDefinition` |
 | 식별자 형식 | `Model/Identifier.cs` |
@@ -269,7 +282,7 @@ Line 6                                  Line 6
 | 하고 싶은 일 | 여는 곳 |
 |---|---|
 | 새 편집 명령 추가 | `Editing/ProjectEditor.cs` — **모델을 바꾸는 코드는 전부 여기에만** |
-| 되돌리기 방식 | 같은 파일. 스냅샷(전체 직렬화)을 쌓는다 |
+| 되돌리기 방식 | 같은 파일. `ProjectSnapshotCodec` 스냅샷을 쌓는다 |
 | 어떤 편집이 어떤 종류의 변경인지 | `Editing/ProjectChangedEventArgs.cs` |
 | 그 변경이 어느 화면을 다시 만들게 할지 | `App/Services/ProjectRefreshPlanner.cs` |
 | 새 노드가 파일 어디에 붙는지 | `ProjectEditor.AddNode` — 지정한 파일의 맨 뒤 |
@@ -278,9 +291,13 @@ Line 6                                  Line 6
 
 | 하고 싶은 일 | 여는 곳 |
 |---|---|
-| 파일에 항목 추가·삭제 | `Serialization/ProjectJson.cs` |
-| 어떤 파일을 열지 말지 | 같은 파일의 `Read` 앞부분 검증 |
-| 형식 버전 올리기 | `Model/StoryProject.cs`의 `CurrentFormatVersion` + `ProjectJson.Read` |
+| 노드에 항목 추가·삭제 | `Serialization/StoryNodeJson.cs` — 노드 직렬화는 여기 하나뿐 |
+| 프로젝트 메타데이터 추가 | `Serialization/ProjectManifestJson.cs` |
+| 파일 배치·경로 규칙 | `Serialization/ProjectStore.cs` |
+| 어떤 파일을 열지 말지 | `ProjectStore`와 `JsonSupport`의 검증 |
+| 되돌리기·저장 여부 비교 형식 | `Serialization/ProjectSnapshotCodec.cs` |
+| 옛 형식 들여오기 | `Serialization/LegacyProjectJson.cs` |
+| 형식 버전 올리기 | `Model/StoryProject.cs`의 `CurrentFormatVersion` + 위 세 읽기 경로 |
 | 게임별 정의 스키마 | `Definition/GameDefinition.cs` |
 
 **화면**
@@ -308,7 +325,7 @@ Line 6                                  Line 6
 **LineBox에 새 항목을 붙인다 (예: BGM)**
 
 1. `Model/LineBox.cs` — 속성 추가, `Clone()`에도 반영
-2. `Serialization/ProjectJson.cs` — 쓰기·읽기 양쪽. 값이 없으면 키를 생략해 파일이 조용하게
+2. `Serialization/StoryNodeJson.cs` — 쓰기·읽기 양쪽. 값이 없으면 키를 생략해 파일이 조용하게
 3. `Editing/ProjectEditor.cs` — 편집 명령. 글자만 바뀌면 `ProjectChangeKind.Content`
 4. `App/Views/DialogueNodeEditor.axaml.cs`의 `BuildCard` — UI
 5. `tests/Vn.Authoring.Tests/SerializationTests.cs` — 왕복 테스트
@@ -316,7 +333,7 @@ Line 6                                  Line 6
 **노드 종류를 추가한다 (예: 연출 노드)**
 
 1. `Model/StoryNode.cs` — 파생 클래스와 `Clone()`
-2. `Serialization/ProjectJson.cs` — `kind` 문자열, 쓰기·읽기 분기 양쪽
+2. `Serialization/StoryNodeJson.cs` — `kind` 문자열, 쓰기·읽기 분기 양쪽
 3. `Flow/NodeConnections.cs` — 이 노드의 포트 규칙
 4. `App/Views/`에 편집기 하나 + `MainWindow.ShowSelectedNode`에 분기
 5. `App/Views/GraphEditorView.axaml.cs`의 `BuildCard` — 배지와 배경색
@@ -328,7 +345,7 @@ Line 6                                  Line 6
 2. `Flow/ConditionFlowResolver.cs`의 상태 기계 수정
    — 깊이가 늘어나면 `ResolvedLine.Depth`의 뜻이 바뀌므로 화면 들여쓰기도 함께 본다
 3. `Flow/ConditionChoices.cs` — 드롭다운 규칙
-4. `Serialization/ProjectJson.cs` — `kind` 문자열
+4. `Serialization/StoryNodeJson.cs` — `kind` 문자열
 5. `tests/Vn.Authoring.Tests/ConditionFlowTests.cs` — **예시부터** 추가
 
 **Yarn 가져오기를 만든다 (다음 단계)**
@@ -397,5 +414,5 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 - `build-and-run.ps1`은 Yarn 분석 쪽 골든 픽스처까지 확인한다
 - 창이 뜨지 않으면 `%LOCALAPPDATA%\VnTool\logs\startup-error.log`를 먼저 본다
 
-손으로 쓴 예제는 `samples/Authoring/story.vnstory.json`이다.
+손으로 쓴 예제는 `samples/Authoring/project.vnproject.json`과 `samples/Authoring/story/`다.
 저장 형식을 고치면 `SampleProjectTests`가 먼저 깨진다.

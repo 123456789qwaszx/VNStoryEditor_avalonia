@@ -11,9 +11,9 @@ namespace Vn.Authoring.Editing;
 /// <see cref="Changed"/>를 듣고 다시 그린다. 화면끼리 직접 연결하면 화면 수가 늘어날 때마다
 /// 연결 수가 제곱으로 늘고, 어느 화면이 최신인지 알 수 없게 된다.
 ///
-/// 되돌리기는 스냅샷 방식이다. 편집 명령마다 역연산을 따로 만들면 명령이 늘어날수록
-/// 짝이 맞지 않는 자리가 생긴다. 이 규모에서는 프로젝트 전체를 직렬화해 쌓는 편이
-/// 더 단순하고 확실하다.
+/// 되돌리기는 <see cref="ProjectSnapshotCodec"/>의 aggregate 스냅샷 방식이다.
+/// 디스크의 manifest/StoryFile 배치와 무관하므로 물리 저장 구조가 바뀌어도 편집 기록은
+/// 하나의 문자열로 안정적으로 왕복한다.
 /// </summary>
 public sealed class ProjectEditor
 {
@@ -457,7 +457,7 @@ public sealed class ProjectEditor
             return;
         }
 
-        _redo.Add(ProjectJson.Write(Project));
+        _redo.Add(ProjectSnapshotCodec.Encode(Project));
         Restore(_undo[^1]);
         _undo.RemoveAt(_undo.Count - 1);
     }
@@ -469,7 +469,7 @@ public sealed class ProjectEditor
             return;
         }
 
-        _undo.Add(ProjectJson.Write(Project));
+        _undo.Add(ProjectSnapshotCodec.Encode(Project));
         Restore(_redo[^1]);
         _redo.RemoveAt(_redo.Count - 1);
     }
@@ -485,7 +485,7 @@ public sealed class ProjectEditor
 
     private void Restore(string snapshot)
     {
-        Project = ProjectJson.Read(snapshot);
+        Project = ProjectSnapshotCodec.Decode(snapshot);
         Raise(ProjectChangeKind.Structure);
     }
 
@@ -493,7 +493,7 @@ public sealed class ProjectEditor
 
     private void Mutate(ProjectChangeKind kind, Action change)
     {
-        _undo.Add(ProjectJson.Write(Project));
+        _undo.Add(ProjectSnapshotCodec.Encode(Project));
 
         if (_undo.Count > MaxHistory)
         {

@@ -20,7 +20,7 @@ internal sealed class AuthoringSession
     {
         Editor = new ProjectEditor(NewProjectInstance());
         ActiveFileId = Editor.Project.Files.FirstOrDefault()?.Id;
-        _savedSnapshot = ProjectJson.Write(Editor.Project);
+        _savedSnapshot = ProjectSnapshotCodec.Encode(Editor.Project);
         Editor.Changed += OnEditorChanged;
     }
 
@@ -28,7 +28,7 @@ internal sealed class AuthoringSession
 
     public StoryProject Project => Editor.Project;
 
-    /// <summary>아직 한 번도 저장하지 않았으면 null이다.</summary>
+    /// <summary>현재 프로젝트 manifest 경로. 아직 저장하지 않았으면 null이다.</summary>
     public string? ProjectPath { get; private set; }
 
     public GameDefinition Definition { get; private set; } = GameDefinition.Empty;
@@ -45,7 +45,7 @@ internal sealed class AuthoringSession
     public string StatusMessage { get; private set; } = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
 
     /// <summary>저장한 뒤로 바뀐 것이 있는지. 실제 내용을 비교하므로 되돌리기로 원상복구하면 깨끗해진다.</summary>
-    public bool IsDirty => !string.Equals(_savedSnapshot, ProjectJson.Write(Project), StringComparison.Ordinal);
+    public bool IsDirty => !string.Equals(_savedSnapshot, ProjectSnapshotCodec.Encode(Project), StringComparison.Ordinal);
 
     public event EventHandler<ProjectChangedEventArgs>? Changed;
 
@@ -70,7 +70,7 @@ internal sealed class AuthoringSession
 
         ProjectPath = null;
         Definition = GameDefinition.Empty;
-        _savedSnapshot = ProjectJson.Write(project);
+        _savedSnapshot = ProjectSnapshotCodec.Encode(project);
         StatusMessage = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
 
         ActiveFileId = project.Files.FirstOrDefault()?.Id;
@@ -80,14 +80,17 @@ internal sealed class AuthoringSession
 
     public void Open(string path)
     {
-        StoryProject project = ProjectJson.Load(path);
+        ProjectLoadResult loaded = ProjectStore.Load(path);
+        StoryProject project = loaded.Project;
 
-        ProjectPath = Path.GetFullPath(path);
-        Definition = GameDefinition.LoadBeside(ProjectPath);
-        _savedSnapshot = ProjectJson.Write(project);
-        StatusMessage = $"{Path.GetFileName(ProjectPath)} · 노드 {project.EnumerateNodes().Count()}개";
+        ProjectPath = loaded.ManifestPath;
+        Definition = GameDefinition.LoadBeside(loaded.OpenedPath);
+        _savedSnapshot = ProjectSnapshotCodec.Encode(project);
+        StatusMessage = loaded.WasMigrated
+            ? $"이전 프로젝트를 불러왔습니다. 저장하면 {Path.GetFileName(ProjectPath)}와 파일별 StoryFile로 마이그레이션됩니다."
+            : $"{Path.GetFileName(ProjectPath)} · 노드 {project.EnumerateNodes().Count()}개";
 
-        AppSettingsService.SaveRecentProject(ProjectPath);
+        AppSettingsService.SaveRecentProject(loaded.OpenedPath);
 
         ActiveFileId = project.FindFileContainingNode(project.StartNodeId)?.Id
             ?? project.Files.FirstOrDefault()?.Id;
@@ -100,10 +103,10 @@ internal sealed class AuthoringSession
         string target = path ?? ProjectPath
             ?? throw new InvalidOperationException("저장할 경로가 없습니다.");
 
-        ProjectJson.Save(target, Project);
+        ProjectStore.Save(target, Project);
 
         ProjectPath = Path.GetFullPath(target);
-        _savedSnapshot = ProjectJson.Write(Project);
+        _savedSnapshot = ProjectSnapshotCodec.Encode(Project);
         Definition = GameDefinition.LoadBeside(ProjectPath);
         AppSettingsService.SaveRecentProject(ProjectPath);
 

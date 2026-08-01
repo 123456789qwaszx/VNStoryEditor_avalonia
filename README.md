@@ -13,7 +13,24 @@
 3. 줄의 조건 드롭다운으로 `if` 갈래를 열고, 다른 조건을 고르면 같은 깊이의 `elseif`로 넘어갑니다.
 4. 갈래마다 다른 노드로 가는 출구를, 노드 전체에는 기본 출구를 답니다.
 5. 그래프에서 포트를 끌어 노드를 잇습니다. 간선에는 조건 이름이 표시됩니다.
-6. 저장하면 `*.vnstory.json` 하나에 전부 들어갑니다.
+6. 저장하면 프로젝트 manifest와 StoryFile별 `*.vnstory.json`으로 나뉘어 들어갑니다.
+
+## 저장 구조
+
+```text
+MyStory/
+├─ project.vnproject.json
+├─ game.definition.json
+└─ story/
+   ├─ chapter01.vnstory.json
+   └─ side-events.vnstory.json
+```
+
+- manifest에는 제목, 시작 노드, StoryFile의 Id·이름·상대 경로만 들어갑니다.
+- 각 StoryFile은 자신이 소유한 노드만 담습니다. 한 장을 고치면 그 파일만 바뀝니다.
+- 되돌리기와 저장 여부 비교는 디스크 배치와 무관한 `ProjectSnapshotCodec`이 맡습니다.
+- 예전 `*.vnstory.json` 한 덩어리 파일도 열 수 있고, 다음 저장에서 새 구조로 옮겨집니다.
+- JSON은 BOM 없는 UTF-8, LF, 결정적인 키·목록 순서를 씁니다.
 
 ## 설계 원칙
 
@@ -47,7 +64,7 @@
 dotnet run --project .\src\Vn.App\Vn.App.csproj
 ```
 
-예제 프로젝트는 `samples/Authoring/story.vnstory.json`입니다. 손으로 쓴 파일이며 저장 형식이 사람이 읽고 고칠 수 있다는 것을 보여 줍니다.
+예제 프로젝트는 `samples/Authoring/project.vnproject.json`입니다. 손으로 쓴 파일이며 저장 형식이 사람이 읽고 고칠 수 있다는 것을 보여 줍니다.
 
 ## 검증
 

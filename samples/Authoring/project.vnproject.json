@@ -1,0 +1,12 @@
+{
+  "formatVersion": 2,
+  "title": "게리에 1장",
+  "startNode": "nd_setup",
+  "files": [
+    {
+      "id": "sf_chapter01",
+      "name": "1장",
+      "path": "story/chapter01.vnstory.json"
+    }
+  ]
+}

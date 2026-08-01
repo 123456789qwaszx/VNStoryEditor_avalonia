@@ -1,0 +1,152 @@
+{
+  "formatVersion": 1,
+  "fileId": "sf_chapter01",
+  "name": "1장",
+  "nodes": [
+    {
+      "id": "nd_setup",
+      "kind": "set",
+      "name": "1장 설정",
+      "layout": {
+        "x": 60,
+        "y": 80
+      },
+      "defaultExit": "nd_scene",
+      "assignments": [
+        {
+          "variable": "favor",
+          "value": "0"
+        },
+        {
+          "variable": "trust",
+          "value": "0"
+        }
+      ],
+      "conditions": [
+        {
+          "id": "cd_favor",
+          "name": "호감 높음",
+          "expression": "favor >= 5"
+        },
+        {
+          "id": "cd_trust",
+          "name": "신뢰 높음",
+          "expression": "trust >= 3"
+        }
+      ]
+    },
+    {
+      "id": "nd_scene",
+      "kind": "dialogue",
+      "name": "의뢰 장면",
+      "layout": {
+        "x": 360,
+        "y": 80
+      },
+      "defaultExit": "nd_normal",
+      "lines": [
+        {
+          "id": "ln_a1",
+          "speaker": "윌로",
+          "text": "이번 의뢰는 보수의 3분의 1밖에 드릴 수 없겠군요."
+        },
+        {
+          "id": "ln_a2",
+          "speaker": "라루",
+          "text": "3분의 1이요?"
+        },
+        {
+          "id": "ln_b1",
+          "speaker": "라루",
+          "text": "그래도 당신이라면 믿어 보죠.",
+          "condition": {
+            "kind": "beginIf",
+            "condition": "cd_favor",
+            "exit": "nd_good"
+          }
+        },
+        {
+          "id": "ln_b2",
+          "speaker": "윌로",
+          "text": "고맙습니다. 반드시 갚겠습니다."
+        },
+        {
+          "id": "ln_c1",
+          "speaker": "라루",
+          "text": "약속은 지키는 사람이라고 들었습니다.",
+          "condition": {
+            "kind": "beginElseIf",
+            "condition": "cd_trust",
+            "exit": "nd_trust"
+          }
+        },
+        {
+          "id": "ln_c2",
+          "speaker": "윌로",
+          "text": "그 말, 잊지 않겠습니다."
+        },
+        {
+          "id": "ln_d1",
+          "speaker": "라루",
+          "text": "생각할 시간을 좀 주세요.",
+          "condition": {
+            "kind": "endIf"
+          }
+        },
+        {
+          "id": "ln_d2",
+          "speaker": "윌로",
+          "text": "천천히 생각해 주십시오."
+        }
+      ]
+    },
+    {
+      "id": "nd_good",
+      "kind": "dialogue",
+      "name": "호감 결말",
+      "layout": {
+        "x": 700,
+        "y": 40
+      },
+      "lines": [
+        {
+          "id": "ln_g1",
+          "speaker": "라루",
+          "text": "그럼 계약서에 서명하죠."
+        }
+      ]
+    },
+    {
+      "id": "nd_trust",
+      "kind": "dialogue",
+      "name": "신뢰 경로",
+      "layout": {
+        "x": 700,
+        "y": 220
+      },
+      "lines": [
+        {
+          "id": "ln_t1",
+          "speaker": "라루",
+          "text": "조건을 하나만 더 붙이겠습니다."
+        }
+      ]
+    },
+    {
+      "id": "nd_normal",
+      "kind": "dialogue",
+      "name": "보류",
+      "layout": {
+        "x": 700,
+        "y": 400
+      },
+      "lines": [
+        {
+          "id": "ln_n1",
+          "speaker": "윌로",
+          "text": "연락 기다리겠습니다."
+        }
+      ]
+    }
+  ]
+}

@@ -212,7 +212,7 @@ public partial class MainWindow : Window
             new FilePickerSaveOptions
             {
                 Title = "VnTool 프로젝트 저장",
-                SuggestedFileName = "story" + ProjectJson.FileExtension,
+                SuggestedFileName = "project" + ProjectManifestJson.FileExtension,
                 FileTypeChoices = new[] { ProjectFileType() }
             });
 
@@ -227,7 +227,7 @@ public partial class MainWindow : Window
     {
         return new FilePickerFileType("VnTool 프로젝트")
         {
-            Patterns = new[] { "*.vnstory.json", "*.json" }
+            Patterns = new[] { "*.vnproject.json", "*.vnstory.json", "*.json" }
         };
     }
 
@@ -278,7 +278,7 @@ public partial class MainWindow : Window
     {
         string name = _session.ProjectPath is null
             ? _session.Project.Title
-            : Path.GetFileNameWithoutExtension(_session.ProjectPath);
+            : ProjectDisplayName(_session.ProjectPath);
 
         ProjectNameText.Text = name;
         ProjectPathText.Text = _session.ProjectPath ?? "저장되지 않음";
@@ -291,6 +291,14 @@ public partial class MainWindow : Window
         RedoButton.IsEnabled = _session.Editor.CanRedo;
 
         Title = dirty ? $"* {BaseTitle} — {name}" : $"{BaseTitle} — {name}";
+    }
+
+    private static string ProjectDisplayName(string path)
+    {
+        string fileName = Path.GetFileName(path) ?? string.Empty;
+        return fileName.EndsWith(ProjectManifestJson.FileExtension, StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^ProjectManifestJson.FileExtension.Length]
+            : Path.GetFileNameWithoutExtension(fileName) ?? fileName;
     }
 
     private void Report(string action, Exception exception)

@@ -13,9 +13,9 @@ namespace Vn.Authoring.Tests;
 public class SampleProjectTests
 {
     private static string SamplePath =>
-        Path.GetFullPath("../../../../../samples/Authoring/story.vnstory.json");
+        Path.GetFullPath("../../../../../samples/Authoring/project.vnproject.json");
 
-    private static StoryProject Load() => ProjectJson.Load(SamplePath);
+    private static StoryProject Load() => ProjectStore.Load(SamplePath).Project;
 
     [Fact]
     public void 손으로_쓴_샘플을_읽는다()
@@ -109,7 +109,7 @@ public class SampleProjectTests
     public void 다시_저장해도_의미가_같다()
     {
         StoryProject original = Load();
-        StoryProject roundTripped = ProjectJson.Read(ProjectJson.Write(original));
+        StoryProject roundTripped = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(original));
 
         Assert.Equal(
             original.EnumerateNodes().Select(node => node.Id),
@@ -124,6 +124,8 @@ public class SampleProjectTests
             after.Lines.Select(line => (line.Id, line.Speaker, line.Text, line.Transition?.Kind, line.Transition?.ConditionId)));
 
         // 한 번 더 써도 같은 문자열이다.
-        Assert.Equal(ProjectJson.Write(roundTripped), ProjectJson.Write(ProjectJson.Read(ProjectJson.Write(roundTripped))));
+        Assert.Equal(
+            ProjectSnapshotCodec.Encode(roundTripped),
+            ProjectSnapshotCodec.Encode(ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(roundTripped))));
     }
 }
