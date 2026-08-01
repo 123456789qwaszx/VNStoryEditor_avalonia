@@ -262,9 +262,14 @@ internal sealed class YarnLineIndex
     }
 
     /// <summary>
-    /// 줄의 정체를 정하는 첫 토큰. 들여쓰기 토큰과 공백은 건너뛴다.
-    /// INDENT/DEDENT는 들여쓰기가 바뀌는 줄에서만 맨 앞에 나타나므로,
-    /// 건너뛰지 않으면 그 줄만 정체를 잃는다.
+    /// 줄의 정체를 정하는 첫 토큰.
+    ///
+    /// 줄 맨 앞에 붙지만 정체를 결정하지 않는 토큰들을 건너뛴다.
+    /// 건너뛰지 않으면 그 줄이 분류되지 않고 통째로 사라진다. 실제로
+    /// <c>BLANK_LINE_FOLLOWING_OPTION</c>(선택지 그룹 뒤 빈 줄이 오면 다음 줄에 붙는
+    /// 폭 없는 토큰) 때문에 실제 대본의 대사 한 줄이 <see cref="StoryNode.Lines"/>에서 빠졌다.
+    ///
+    /// 렉서 토큰 1~6이 이 성질을 공유한다.
     /// </summary>
     private static IToken? FindFirstMeaningfulToken(
         IList<IToken> tokens,
@@ -282,6 +287,9 @@ internal sealed class YarnLineIndex
 
             if (token.Type is YarnSpinnerLexer.INDENT
                 or YarnSpinnerLexer.DEDENT
+                or YarnSpinnerLexer.BLANK_LINE_FOLLOWING_OPTION
+                or YarnSpinnerLexer.WS
+                or YarnSpinnerLexer.COMMENT
                 or YarnSpinnerLexer.NEWLINE)
             {
                 continue;

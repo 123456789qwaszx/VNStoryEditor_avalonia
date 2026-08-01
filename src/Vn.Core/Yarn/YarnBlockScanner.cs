@@ -162,7 +162,7 @@ internal static class YarnBlockScanner
     }
 
     /// <summary>
-    /// 줄의 정체를 정하는 첫 토큰의 <em>인덱스</em>. 들여쓰기 토큰과 숨은 채널은 건너뛴다.
+    /// 줄의 정체를 정하는 첫 토큰의 <em>인덱스</em>.
     /// 토큰 자체가 아니라 인덱스를 돌려주는 이유는, 그 다음부터 이어서 찾아야 하는 자리가 있기 때문이다.
     /// </summary>
     private static int FindFirstMeaningfulIndex(IList<IToken> tokens, int start, int end)
@@ -176,9 +176,7 @@ internal static class YarnBlockScanner
                 continue;
             }
 
-            if (token.Type is YarnSpinnerLexer.INDENT
-                or YarnSpinnerLexer.DEDENT
-                or YarnSpinnerLexer.NEWLINE)
+            if (IsLayoutMarker(token.Type))
             {
                 continue;
             }
@@ -187,6 +185,26 @@ internal static class YarnBlockScanner
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// 줄 맨 앞에 붙지만 그 줄의 정체를 결정하지 않는 토큰들.
+    ///
+    /// 이것을 건너뛰지 않으면 <see cref="Classify"/>가 그 줄을 분류하지 못하고 통째로 버린다.
+    /// 실제로 <c>BLANK_LINE_FOLLOWING_OPTION</c> 때문에 대사 한 줄과 조건 블록 하나가
+    /// 실제 대본에서 사라졌다. Yarn은 선택지 그룹 뒤에 빈 줄이 오면 다음 줄 맨 앞에
+    /// 폭 없는 이 토큰을 붙인다.
+    ///
+    /// 렉서 토큰 1~6이 이 성질을 공유한다. 나머지는 전부 내용을 가진 토큰이다.
+    /// </summary>
+    private static bool IsLayoutMarker(int tokenType)
+    {
+        return tokenType is YarnSpinnerLexer.INDENT
+            or YarnSpinnerLexer.DEDENT
+            or YarnSpinnerLexer.BLANK_LINE_FOLLOWING_OPTION
+            or YarnSpinnerLexer.WS
+            or YarnSpinnerLexer.COMMENT
+            or YarnSpinnerLexer.NEWLINE;
     }
 
     private static IToken? FindToken(IList<IToken> tokens, int start, int end, int type)

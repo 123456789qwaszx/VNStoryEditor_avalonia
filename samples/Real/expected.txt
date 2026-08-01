@@ -24,7 +24,8 @@ line	gerie1	Story.yarn	54	0	opt	-	0	0
 line	gerie1	Story.yarn	57	1	-	라루	2	0
 block	gerie1	Story.yarn	22	28	Condition	0	2
 block	gerie1	Story.yarn	33	36	Condition	0	1
-block	gerie1	Story.yarn	43	64	Option	0	3
+block	gerie1	Story.yarn	43	65	Option	0	3
+block	gerie1	Story.yarn	59	65	Condition	0	2
 node	gerie1_debt_promise_end	Story.yarn	129
 line	gerie1_debt_promise_end	Story.yarn	131	0	-	윌로	0	0
 line	gerie1_debt_promise_end	Story.yarn	132	0	-	윌로	0	0
@@ -64,7 +65,8 @@ line	gerie1_reason_route	Story.yarn	84	1	-	라루	0	0
 line	gerie1_reason_route	Story.yarn	85	0	opt	-	0	0
 line	gerie1_reason_route	Story.yarn	87	2	-	라루	1	0
 line	gerie1_reason_route	Story.yarn	90	2	-	라루	2	0
-line	gerie1_reason_route	Story.yarn	95	0	-	결과	2	0
+line	gerie1_reason_route	Story.yarn	94	0	-	윌로	2	0
+line	gerie1_reason_route	Story.yarn	95	0	-	결과	0	0
 block	gerie1_reason_route	Story.yarn	76	92	Option	0	3
 block	gerie1_reason_route	Story.yarn	86	92	Condition	1	2
 node	gerie1_trust_route	Story.yarn	100
