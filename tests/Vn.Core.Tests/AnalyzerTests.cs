@@ -6,7 +6,7 @@ namespace Vn.Core.Tests;
 public class AnalyzerTests
 {
     [Fact]
-    public void Valid_프로젝트는_진단이_없다()
+    public void Valid_프로젝트는_오류가_없다()
     {
         var analyzer = new VnProjectAnalyzer();
 
@@ -15,8 +15,17 @@ public class AnalyzerTests
             "../../../../../samples/Valid/game.schema.json");
 
         Assert.False(report.HasErrors);
-        Assert.Empty(report.Diagnostics);
         Assert.Equal(2, report.Nodes.Count);
+
+        // 이 샘플의 선택지 갈래에는 대사가 없다. 작성 규약 위반이지만 오류는 아니다.
+        // 규약 위반은 "틀린 것"이 아니라 "이 툴이 편하게 다루기 어려운 것"이라 Warning이다.
+        Assert.All(
+            report.Diagnostics,
+            diagnostic => Assert.Equal(DiagnosticSeverity.Warning, diagnostic.Severity));
+
+        Assert.All(
+            report.Diagnostics,
+            diagnostic => Assert.StartsWith("VN5", diagnostic.Code, StringComparison.Ordinal));
     }
 
     [Fact]

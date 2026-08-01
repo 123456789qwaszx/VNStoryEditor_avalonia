@@ -44,11 +44,17 @@ public sealed class VnProjectAnalyzer
                 yarnOutput.Nodes,
                 yarnOutput.ExplicitYarnVariables);
 
+        // 작성 규약은 전부 Warning이라 종료 코드를 바꾸지 않는다.
+        // 못 지킨 파일도 열려야 하므로 읽어낸 뒤 알리기만 한다.
+        IReadOnlyList<VnDiagnostic> conventionDiagnostics =
+            WritingConventionValidator.Validate(yarnOutput.Nodes);
+
         IReadOnlyList<VnDiagnostic> diagnostics =
             SortDiagnostics(
                 schemaResult.Diagnostics
                     .Concat(yarnOutput.Diagnostics)
-                    .Concat(customDiagnostics));
+                    .Concat(customDiagnostics)
+                    .Concat(conventionDiagnostics));
 
         return new AnalysisReport(
             fullProjectPath,

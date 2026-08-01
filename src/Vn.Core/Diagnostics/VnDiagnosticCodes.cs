@@ -59,6 +59,15 @@ public static class VnDiagnosticCodes
     // VN4xxx — 노드 그래프
     public const string UnknownJumpTarget = "VN4001";
 
+    // VN5xxx — 작성 규약. 전부 Warning이다.
+    //
+    // 규약 위반은 "틀린 것"이 아니라 "이 툴이 편하게 다루기 어려운 것"이다.
+    // 이 .yarn은 Unity에서도, 이전 도구에서도 편집되므로 규약을 지키지 않는 파일이 반드시 있다.
+    // 파서는 그것을 읽어내고, 알리기만 한다.
+    public const string OptionBranchHasNoLine = "VN5001";
+    public const string OptionBranchHasNoDestination = "VN5002";
+    public const string OptionBranchHasManyJumps = "VN5003";
+
     /// <summary>Yarn 진단 코드를 우리 형태로 옮기지 못했을 때 쓰는 대체 코드.</summary>
     public const string YarnUnclassified = "YS0000";
 
