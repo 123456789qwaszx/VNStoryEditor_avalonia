@@ -46,6 +46,30 @@ public class ProjectRefreshPlannerTests
         Assert.False(plan.RebuildInspector);
     }
 
+
+    [Fact]
+    public void Dialogue_내용_변경은_편집기를_재생성하지_않고_Preview만_갱신한다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Content,
+            new DialogueNode(name: "장면"));
+
+        Assert.False(plan.RebuildGraph);
+        Assert.False(plan.RebuildInspector);
+        Assert.True(plan.RefreshPreview);
+    }
+
+    [Fact]
+    public void 그래프_좌표_이동은_Preview를_다시_합성하지_않는다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Layout,
+            new DialogueNode(name: "장면"));
+
+        Assert.True(plan.RefreshGraphPositions);
+        Assert.False(plan.RefreshPreview);
+    }
+
     [Fact]
     public void 구조_변경만_그래프와_Inspector를_모두_다시_만든다()
     {

@@ -42,7 +42,14 @@ internal static class ProjectRefreshPlanner
             ProjectChangeKind.NodeMetadata => new ProjectRefreshPlan(
                 RebuildGraph: true,
                 RefreshGraphPositions: false,
-                RebuildInspector: false),
+                RebuildInspector: false,
+                RefreshPreview: selectedNode is DialogueNode),
+
+            ProjectChangeKind.Content => new ProjectRefreshPlan(
+                RebuildGraph: false,
+                RefreshGraphPositions: false,
+                RebuildInspector: false,
+                RefreshPreview: selectedNode is DialogueNode),
 
             _ => default
         };
@@ -52,4 +59,5 @@ internal static class ProjectRefreshPlanner
 internal readonly record struct ProjectRefreshPlan(
     bool RebuildGraph,
     bool RefreshGraphPositions,
-    bool RebuildInspector);
+    bool RebuildInspector,
+    bool RefreshPreview = false);

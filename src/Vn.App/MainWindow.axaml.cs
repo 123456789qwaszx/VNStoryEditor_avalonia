@@ -101,6 +101,12 @@ public partial class MainWindow : Window
             {
                 RebuildInspector();
             }
+            else if (plan.RefreshPreview)
+            {
+                // 화자·대사 내용 변경은 편집 컨트롤을 유지해야 하지만 Script Preview는
+                // 현재 모델을 곧바로 반영해야 한다. Preview만 다시 합성한다.
+                DialogueEditor.RefreshPreview();
+            }
 
             RefreshShell();
         }

@@ -6,6 +6,7 @@ using Vn.App.Services;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Rendering;
 
 namespace Vn.App.Views;
 
@@ -24,6 +25,7 @@ public partial class DialogueNodeEditor : UserControl
     private AuthoringSession? _session;
     private string? _nodeId;
     private bool _building;
+    private RenderedDocument? _previewDocument;
 
     public DialogueNodeEditor()
     {
@@ -40,6 +42,7 @@ public partial class DialogueNodeEditor : UserControl
 
         DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
         DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
+        EditorTabs.SelectionChanged += (_, _) => RefreshPreview();
     }
 
     internal void Attach(AuthoringSession session)
@@ -56,11 +59,15 @@ public partial class DialogueNodeEditor : UserControl
 
     internal string? NodeId => _nodeId;
 
+    /// <summary>현재 Preview가 보관하는 원본 매핑 Segment. 문자열 표시와 별개로 유지한다.</summary>
+    internal RenderedDocument? PreviewDocument => _previewDocument;
+
     internal void Rebuild()
     {
         if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
         {
             LineHost.Children.Clear();
+            ClearPreview();
             return;
         }
 
@@ -81,11 +88,46 @@ public partial class DialogueNodeEditor : UserControl
 
             BuildDefaultExit(node);
             ShowProblems(flow);
+            RefreshPreviewCore(node);
         }
         finally
         {
             _building = false;
         }
+    }
+
+
+    /// <summary>
+    /// 편집 컨트롤을 다시 만들지 않고 읽기 전용 Preview만 재합성한다.
+    /// 화자·대사를 입력하는 동안 ProjectChangeKind.Content가 연속으로 와도 포커스를 잃지 않는다.
+    /// </summary>
+    internal void RefreshPreview()
+    {
+        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
+        {
+            ClearPreview();
+            return;
+        }
+
+        RefreshPreviewCore(node);
+    }
+
+    private void RefreshPreviewCore(DialogueNode node)
+    {
+        _previewDocument = DialogueDocumentComposer.Compose(
+            _session!.Project,
+            node.Id,
+            _session.Definition);
+        PreviewBox.Text = YarnPreviewFormatter.Format(_previewDocument);
+        PreviewSummaryText.Text =
+            $"읽기 전용 · {_previewDocument.Segments.Count}개 Segment · 파일 저장 및 역파싱 없음";
+    }
+
+    private void ClearPreview()
+    {
+        _previewDocument = null;
+        PreviewBox.Text = string.Empty;
+        PreviewSummaryText.Text = "DialogueNode를 선택하면 구조화된 원본을 Yarn 스타일로 펼쳐 보여 줍니다.";
     }
 
     // ── 카드 ────────────────────────────────────────────────────────────────

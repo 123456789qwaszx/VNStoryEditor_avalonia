@@ -174,7 +174,23 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 화면에 주는 영향이 다르다. 같은 신호를 보내면 화면은 최악의 경우를 가정해 편집 중인
 컨트롤까지 다시 만들고, 작가는 입력 도중 포커스를 잃는다.
 
-### 3.5 `Vn.Authoring/Serialization`, `Definition`
+### 3.5 `Vn.Authoring/Rendering` — 평평한 문서로 펼치기
+
+| 타입 | 역할 |
+|---|---|
+| `DialogueDocumentComposer` | DialogueNode 하나를 `RenderedSegment` 목록으로 합성한다 |
+| `RenderedDocument` / `RenderedSegment` | 문서 한 벌과 그 조각. 종류·레이어·들여쓰기 |
+| `RenderSourceReference` | 이 조각이 어느 StoryFile·Node·Line·조건에서 나왔는지 |
+| `YarnPreviewFormatter` | Segment를 Yarn 스타일 읽기 전용 문자열로 |
+| `ConnectedSetNodeResolver` | 이 Dialogue에 연결된 SetNode와 그 순서를 한 번만 계산 |
+
+**합성이지 파싱이 아니다.** 방향은 언제나 모델 → 문서다. Preview 문자열을 다시 읽어
+모델로 되돌리지 않는다. 되파싱을 허용하는 순간 진실이 두 곳이 된다.
+
+Segment는 문자열만 들고 있지 않다. 어디서 나왔는지를 함께 들고 있어야 미리보기 줄을
+눌러 원본으로 갈 수 있고, 녹음 대본과 번역본이 같은 LineId를 공유할 수 있다.
+
+### 3.6 `Vn.Authoring/Serialization`, `Definition`
 
 | 타입 | 역할 |
 |---|---|
@@ -194,7 +210,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 **저장 순서:** StoryFile을 먼저 임시 파일로 교체하고 manifest를 마지막에 바꾼다.
 중간에 멈춰도 manifest가 가리키는 파일 집합은 언제나 존재한다.
 
-### 3.6 `Vn.App` — 화면
+### 3.7 `Vn.App` — 화면
 
 | 타입 | 역할 |
 |---|---|
@@ -299,6 +315,8 @@ Line 6                                  Line 6
 | 간선 선택·삭제 | 같은 파일의 `SelectEdge` / `DeleteSelectedEdge` |
 | 노드 카드 크기·포트 좌표 | 같은 파일 위쪽 상수와 `PortAnchor` / `InputAnchor` |
 | 그래프에 무엇이 나타나는지 | `Graph/GraphProjectionBuilder.cs` — 화면이 아니라 여기가 정한다 |
+| Preview에 무엇이 나오는지 | `Rendering/DialogueDocumentComposer.cs` |
+| Preview 문자열 모양 | `Rendering/YarnPreviewFormatter.cs` |
 | 접힌 파일 프록시의 모양 | `Graph/GraphProjection.cs`의 `CollapsedFileProjection` |
 | 간선이 꺾이는 모양 | `Graph/OrthogonalEdgeRouter.cs` |
 

@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Vn.App.Views.DialogueNodeEditor">
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*">
         <Border Grid.Row="0"
                 Padding="12,10"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
@@ -23,32 +23,57 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="LineHost" Margin="12" Spacing="6" />
-        </ScrollViewer>
+        <TabControl Grid.Row="1" x:Name="EditorTabs">
+            <TabItem Header="LineBox 편집">
+                <Grid RowDefinitions="*,Auto">
+                    <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="LineHost" Margin="12" Spacing="6" />
+                    </ScrollViewer>
 
-        <Border Grid.Row="2"
-                Padding="12,10"
-                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-                BorderThickness="0,1,0,0">
-            <StackPanel Spacing="6">
-                <TextBlock Text="기본 출구" FontWeight="SemiBold" FontSize="12" />
-                <TextBlock Text="모든 줄과 조건 갈래가 끝난 뒤 이동합니다."
-                           FontSize="11"
-                           Opacity="0.65"
-                           TextWrapping="Wrap" />
-                <Grid ColumnDefinitions="Auto,*">
-                    <CheckBox Grid.Column="0"
-                              x:Name="DefaultExitCheck"
-                              Content="다음 노드로 이동"
-                              VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1"
-                              x:Name="DefaultExitCombo"
-                              Margin="10,0,0,0"
-                              HorizontalAlignment="Stretch"
-                              PlaceholderText="대상 노드" />
+                    <Border Grid.Row="1"
+                            Padding="12,10"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                            BorderThickness="0,1,0,0">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="기본 출구" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="모든 줄과 조건 갈래가 끝난 뒤 이동합니다."
+                                       FontSize="11"
+                                       Opacity="0.65"
+                                       TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="Auto,*">
+                                <CheckBox Grid.Column="0"
+                                          x:Name="DefaultExitCheck"
+                                          Content="다음 노드로 이동"
+                                          VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1"
+                                          x:Name="DefaultExitCombo"
+                                          Margin="10,0,0,0"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="대상 노드" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </Grid>
-            </StackPanel>
-        </Border>
+            </TabItem>
+
+            <TabItem Header="Script Preview">
+                <Grid RowDefinitions="Auto,*" Margin="12">
+                    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,8">
+                        <TextBlock Text="평면 문서 Preview" FontWeight="SemiBold" />
+                        <TextBlock x:Name="PreviewSummaryText"
+                                   FontSize="11"
+                                   Opacity="0.65"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TextBox Grid.Row="1"
+                             x:Name="PreviewBox"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             VerticalContentAlignment="Top" />
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>

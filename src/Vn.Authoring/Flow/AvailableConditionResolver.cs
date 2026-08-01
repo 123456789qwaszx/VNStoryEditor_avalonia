@@ -84,23 +84,9 @@ public static class AvailableConditionResolver
                 SourceNodeId: null));
         }
 
-        IEnumerable<(NodeLink Link, int Index)> links = project.Links
-            .Select((link, index) => (Link: link, Index: index))
-            .Where(item =>
-                item.Link.Kind == NodeLinkKind.Settings &&
-                item.Link.IsEnabled &&
-                string.Equals(item.Link.TargetNodeId, dialogueNodeId, StringComparison.Ordinal))
-            .OrderBy(item => item.Link.Order)
-            .ThenBy(item => item.Index);
-
-        foreach ((NodeLink link, _) in links)
+        foreach (ConnectedSetNode connected in ConnectedSetNodeResolver.Resolve(project, dialogueNodeId))
         {
-            if (project.FindNode(link.SourceNodeId) is not SetNode setNode)
-            {
-                continue;
-            }
-
-            foreach (ConditionDefinition condition in setNode.Conditions)
+            foreach (ConditionDefinition condition in connected.Node.Conditions)
             {
                 if (string.IsNullOrWhiteSpace(condition.Id) || !seen.Add(condition.Id))
                 {
@@ -112,7 +98,7 @@ public static class AvailableConditionResolver
                     condition.Name,
                     condition.Expression,
                     AvailableConditionSourceKind.SetNode,
-                    setNode.Id));
+                    connected.Node.Id));
             }
         }
 
