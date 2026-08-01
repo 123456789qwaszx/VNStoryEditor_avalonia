@@ -119,6 +119,8 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | `StoryNode` (추상) | Id, 이름, 그래프 좌표, **기본 출구**. 종류를 가리지 않는 공통부 |
 | `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리** |
 | `DialogueNode` | `LineBox` 목록, `BranchExits`(갈래 출구) |
+| `PresentationNode` | `LineId`별 `PresentationLineBinding`. **대사를 복사하지 않는다** |
+| `PresentationCommandInstance` | 명령 하나. 정의 Id, 인자, 사용 여부, 메모. 순서를 보존한다 |
 | `LineBox` | 작가가 보는 최소 단위. Id·화자·대사·조건 전환 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
 | `ConditionDefinition` | Id + 작가용 이름 + 게임이 평가할 식 |
@@ -143,6 +145,7 @@ tests/Vn.App.Tests         앱 서비스 — 설정·시작 로그 (17)
 | `ResolvedLine` | 줄 하나의 갈래·깊이·출구 여부, 그리고 **전환 적용 전** 갈래 |
 | `ConditionChoices` | 조건 드롭다운에 무엇을 보여 줄지 (§6.4 규칙) |
 | `AvailableConditionResolver` | **이 DialogueNode가 쓸 수 있는 조건**의 카탈로그 |
+| `PresentationBindingResolver` | binding이 지금 어느 줄에 붙는지, 고아인지 |
 | `NodeConnections` | 노드의 출력 포트와 프로젝트 전체 간선 |
 
 `ResolvedLine`에 "전환 적용 전 갈래"(`PrecedingBranch`)가 함께 있는 이유는,
@@ -308,6 +311,9 @@ Line 6                                  Line 6
 | 출구를 어디에 저장하는가 | `Model/StoryNode.cs`의 `DialogueNode.BranchExits` |
 | 실행이 아닌 연결을 저장하는 곳 | `Model/NodeLink.cs`, manifest의 `links` |
 | 조건 공급 연결 만들기·끊기 | `Editing/ProjectEditor.cs`의 `AddSettingsLink` / `RemoveLink` / `SetLinkEnabled` |
+| 연출 연결과 그 제약 | 같은 파일의 `SetPresentationTarget` — 연출 하나는 대사 하나만 |
+| 연출 명령 편집 | 같은 파일의 `AddPresentationCommand` / `MovePresentationCommand` / `RemovePresentationCommand` |
+| 줄이 사라진 연출을 찾기 | `Flow/PresentationBindingResolver.cs`의 orphan 판정 |
 | 포트를 만드는 규칙 | `Flow/NodeConnections.cs`의 `PortsOf` |
 | 간선 라벨 문구 | `Flow/NodeConnections.cs`의 `LabelFor` |
 | 연결·해제 동작 | `Editing/ProjectEditor.cs`의 `SetExitTarget` |
@@ -427,16 +433,20 @@ Line 6                                  Line 6
 8. **모르는 파일을 관대하게 읽지 않는다.**
    열리지 않는 것은 되돌릴 수 있지만, 덮어써진 원고는 되돌릴 수 없다.
 
-9. **작가가 고른 조건을 도구가 조용히 바꾸지 않는다.**
+9. **연출은 줄 번호가 아니라 `LineId`에 매단다.**
+   줄을 옮기면 연출이 따라가야 하고, 줄이 지워지면 연출은 고아로 남아야 한다.
+   자동으로 지우면 작가가 쓴 것이 말없이 사라진다.
+
+10. **작가가 고른 조건을 도구가 조용히 바꾸지 않는다.**
    연결이 끊겨 쓸 수 없게 된 조건도 전환은 그대로 두고 "사용할 수 없음"으로 보여 준다.
    말없이 다른 조건으로 갈아 끼우면 이야기가 바뀐 것을 아무도 모른다.
 
-10. **바인딩이 값을 넣을 때 나는 이벤트를 사용자 입력으로 보지 않는다.**
+11. **바인딩이 값을 넣을 때 나는 이벤트를 사용자 입력으로 보지 않는다.**
    `_building` 가드와 `ProjectChangeKind.Content`가 그 역할을 한다.
 
-11. **XAML을 읽는 도중에도 컨트롤은 이벤트를 낸다.** `x:Name` 필드는 그 뒤에 채워진다.
+12. **XAML을 읽는 도중에도 컨트롤은 이벤트를 낸다.** `x:Name` 필드는 그 뒤에 채워진다.
 
-12. **골든 파일은 언제나 UTF-8로 읽는다.** PowerShell 5.1은 BOM이 없으면 ANSI로 읽는다.
+13. **골든 파일은 언제나 UTF-8로 읽는다.** PowerShell 5.1은 BOM이 없으면 ANSI로 읽는다.
     한국어를 담은 `.ps1`은 UTF-8 BOM으로 저장해야 한다.
 
 ---

@@ -36,8 +36,9 @@ internal static class ProjectRefreshPlanner
             ProjectChangeKind.Connections => new ProjectRefreshPlan(
                 RebuildGraph: true,
                 RefreshGraphPositions: false,
-                // Settings link가 바뀌면 선택된 Dialogue의 조건 목록과 문제 표시가 달라진다.
-                RebuildInspector: selectedNode is DialogueNode),
+                // Settings link가 바뀌면 Dialogue 조건 목록이, Presentation link가 바뀌면
+                // PresentationNode의 대상과 orphan 판정이 달라진다.
+                RebuildInspector: selectedNode is DialogueNode or PresentationNode),
 
             ProjectChangeKind.NodeMetadata => new ProjectRefreshPlan(
                 RebuildGraph: true,

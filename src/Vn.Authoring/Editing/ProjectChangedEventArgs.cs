@@ -21,8 +21,8 @@ public enum ProjectChangeKind
     ConditionDefinition,
 
     /// <summary>
-    /// 실행 출구가 아닌 Settings link가 추가·삭제·활성 변경되었다.
-    /// 그래프 간선과 Dialogue 조건 목록을 다시 계산해야 하지만 SetNode 입력 행은 유지한다.
+    /// 실행 출구가 아닌 Settings 또는 Presentation link가 추가·삭제·활성 변경되었다.
+    /// 그래프 간선과 연결 범위를 다시 계산해야 하지만 공급 노드의 입력 행은 유지한다.
     /// </summary>
     Connections,
 

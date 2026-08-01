@@ -152,12 +152,10 @@ public class DialogueDocumentComposerTests
 
         RenderedDocument document = DialogueDocumentComposer.Compose(sample.Project, sample.Dialogue.Id);
 
-        RenderedSegment warning = Assert.Single(
-            document.Segments,
-            segment => segment.Kind == RenderedSegmentKind.Warning);
-        RenderedSegment condition = Assert.Single(
-            document.Segments,
-            segment => segment.Kind == RenderedSegmentKind.ConditionBegin);
+        RenderedSegment warning = Assert.Single(document.Segments, segment =>
+            segment.Kind == RenderedSegmentKind.Warning);
+        RenderedSegment condition = Assert.Single(document.Segments, segment =>
+            segment.Kind == RenderedSegmentKind.ConditionBegin);
 
         Assert.Equal(opening.Id, warning.Source.LineId);
         Assert.Contains("포함되지 않습니다", warning.Text ?? string.Empty, StringComparison.Ordinal);
@@ -177,9 +175,8 @@ public class DialogueDocumentComposerTests
         LineBox line = sample.Line("원본 위치");
 
         RenderedDocument document = DialogueDocumentComposer.Compose(sample.Project, sample.Dialogue.Id);
-        RenderedSegment segment = Assert.Single(
-            document.Segments,
-            item => item.Kind == RenderedSegmentKind.DialogueLine);
+        RenderedSegment segment = Assert.Single(document.Segments, item =>
+            item.Kind == RenderedSegmentKind.DialogueLine);
 
         Assert.Equal(sample.File.Id, segment.Source.StoryFileId);
         Assert.Equal(sample.Dialogue.Id, segment.Source.NodeId);

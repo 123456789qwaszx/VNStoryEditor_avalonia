@@ -18,7 +18,7 @@ public sealed class StoryProject
 
     public List<StoryFile> Files { get; init; } = new();
 
-    /// <summary>실행 출구가 아닌 설정·연출 공급 관계. 현재는 Settings link를 지원한다.</summary>
+    /// <summary>실행 출구가 아닌 Settings·Presentation 공급 관계.</summary>
     public List<NodeLink> Links { get; init; } = new();
 
     /// <summary>이야기가 시작되는 노드. null이면 아직 정하지 않은 것이다.</summary>

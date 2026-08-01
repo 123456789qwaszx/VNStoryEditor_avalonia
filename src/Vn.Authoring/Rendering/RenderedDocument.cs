@@ -41,7 +41,9 @@ public sealed record RenderSourceReference(
     string? LineId = null,
     string? SetNodeId = null,
     string? ConditionId = null,
-    string? LinkId = null);
+    string? LinkId = null,
+    string? PresentationNodeId = null,
+    string? PresentationCommandId = null);
 
 /// <summary>
 /// Formatter에 종속되지 않은 평면 문서 조각.

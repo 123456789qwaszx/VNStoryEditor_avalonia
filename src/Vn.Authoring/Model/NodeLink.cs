@@ -10,15 +10,18 @@ namespace Vn.Authoring.Model;
 public enum NodeLinkKind
 {
     /// <summary>SetNode가 DialogueNode에 조건과 assignment를 공급한다.</summary>
-    Settings
+    Settings,
+
+    /// <summary>PresentationNode가 DialogueNode의 LineId에 연출 데이터를 공급한다.</summary>
+    Presentation
 }
 
 /// <summary>
 /// 실행 출구와 분리된 타입 있는 노드 연결.
 ///
 /// 노드 이름이나 파일 경로가 아니라 프로젝트 전체에서 안정된 NodeId를 가리킨다.
-/// 여러 SetNode가 한 DialogueNode에 연결될 수 있으므로 <see cref="Order"/>로 합성 순서를
-/// 명시한다.
+/// 여러 공급 노드가 한 DialogueNode에 연결될 수 있으므로 <see cref="Order"/>로 합성 순서를
+/// 명시한다. Presentation link는 한 PresentationNode당 하나만 허용한다.
 /// </summary>
 public sealed class NodeLink
 {

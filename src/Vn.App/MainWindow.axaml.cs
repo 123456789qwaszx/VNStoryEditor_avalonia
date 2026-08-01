@@ -367,7 +367,10 @@ public partial class MainWindow : Window
 
         DialogueEditor.IsVisible = node is DialogueNode;
         SetEditor.IsVisible = node is SetNode;
-        EmptyText.IsVisible = node is null;
+        EmptyText.IsVisible = node is null or PresentationNode;
+        EmptyText.Text = node is PresentationNode presentation
+            ? $"{presentation.Name}\n\n{presentation.Bindings.Count}개 LineId binding\n연출 명령 편집 UI는 다음 단계에서 추가합니다."
+            : "노드를 선택하면 여기서 편집합니다.";
 
         if (node is DialogueNode)
         {
@@ -396,6 +399,12 @@ public partial class MainWindow : Window
         if (node is SetNode && SetEditor.NodeId == node.Id)
         {
             SetEditor.Rebuild();
+            return;
+        }
+
+        if (node is PresentationNode)
+        {
+            ShowSelectedNode();
             return;
         }
 

@@ -104,4 +104,15 @@ public class ProjectRefreshPlannerTests
         Assert.True(plan.RebuildInspector);
     }
 
+    [Fact]
+    public void Presentation_link_변경은_선택된_Presentation의_대상과_orphan을_다시_계산한다()
+    {
+        ProjectRefreshPlan plan = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Connections,
+            new PresentationNode(name: "연출"));
+
+        Assert.True(plan.RebuildGraph);
+        Assert.True(plan.RebuildInspector);
+    }
+
 }

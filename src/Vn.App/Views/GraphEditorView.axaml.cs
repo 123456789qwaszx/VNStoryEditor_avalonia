@@ -52,8 +52,9 @@ public partial class GraphEditorView : UserControl
     {
         InitializeComponent();
 
-        AddDialogueButton.Click += (_, _) => AddNode(dialogue: true);
-        AddSetButton.Click += (_, _) => AddNode(dialogue: false);
+        AddDialogueButton.Click += (_, _) => AddNode(GraphNodeKind.Dialogue);
+        AddSetButton.Click += (_, _) => AddNode(GraphNodeKind.Set);
+        AddPresentationButton.Click += (_, _) => AddNode(GraphNodeKind.Presentation);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
         DeleteEdgeButton.Click += (_, _) => DeleteSelectedEdge();
 
@@ -104,6 +105,7 @@ public partial class GraphEditorView : UserControl
 
         AddDialogueButton.IsEnabled = _session.ActiveFileId is not null;
         AddSetButton.IsEnabled = _session.ActiveFileId is not null;
+        AddPresentationButton.IsEnabled = _session.ActiveFileId is not null;
 
         DrawEdges();
         HighlightSelection();
@@ -206,9 +208,12 @@ public partial class GraphEditorView : UserControl
             Width = CardWidth,
             Padding = new Thickness(CardPadding),
             CornerRadius = new CornerRadius(8),
-            Background = node.NodeKind == GraphNodeKind.Set
-                ? new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF))
-                : new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)),
+            Background = node.NodeKind switch
+            {
+                GraphNodeKind.Set => new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF)),
+                GraphNodeKind.Presentation => new SolidColorBrush(Color.FromRgb(0xFA, 0xF5, 0xFF)),
+                _ => new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF))
+            },
             BorderThickness = new Thickness(1),
             BorderBrush = new SolidColorBrush(Color.FromArgb(90, 128, 128, 128)),
             Child = body,
@@ -406,7 +411,9 @@ public partial class GraphEditorView : UserControl
     {
         bool branch = port.Kind == GraphOutputPortKind.ExecutionBranch;
         bool settings = port.Kind == GraphOutputPortKind.Settings;
+        bool presentation = port.Kind == GraphOutputPortKind.Presentation;
         IBrush settingsBrush = new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E));
+        IBrush presentationBrush = new SolidColorBrush(Color.FromRgb(0x7C, 0x3A, 0xED));
 
         var label = new TextBlock
         {
@@ -417,8 +424,10 @@ public partial class GraphEditorView : UserControl
                 ? BranchPalette.Accent(port.PaletteIndex)
                 : settings
                     ? settingsBrush
-                    : null,
-            FontWeight = branch || settings ? FontWeight.SemiBold : FontWeight.Normal,
+                    : presentation
+                        ? presentationBrush
+                        : null,
+            FontWeight = branch || settings || presentation ? FontWeight.SemiBold : FontWeight.Normal,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right
@@ -428,7 +437,9 @@ public partial class GraphEditorView : UserControl
             ? BranchPalette.Accent(port.PaletteIndex)
             : settings
                 ? settingsBrush
-                : Brushes.DimGray;
+                : presentation
+                    ? presentationBrush
+                    : Brushes.DimGray;
 
         var knob = new Ellipse
         {
@@ -484,12 +495,18 @@ public partial class GraphEditorView : UserControl
         {
             Stroke = stroke,
             StrokeThickness = 2,
-            StrokeDashArray = connection.Kind == GraphConnectionKind.Settings
-                ? new AvaloniaList<double> { 5, 3 }
-                : null
+            StrokeDashArray = connection.Kind switch
+            {
+                GraphConnectionKind.Settings => new AvaloniaList<double> { 5, 3 },
+                GraphConnectionKind.Presentation => new AvaloniaList<double> { 2, 3 },
+                _ => null
+            }
         };
 
-        bool showLabel = connection.Kind is GraphConnectionKind.ExecutionBranch or GraphConnectionKind.Settings;
+        bool showLabel = connection.Kind is
+            GraphConnectionKind.ExecutionBranch or
+            GraphConnectionKind.Settings or
+            GraphConnectionKind.Presentation;
         var label = new Border
         {
             Padding = new Thickness(5, 1),
@@ -536,7 +553,10 @@ public partial class GraphEditorView : UserControl
         }
 
         edge.Path.IsVisible = true;
-        bool showLabel = edge.Connection.Kind is GraphConnectionKind.ExecutionBranch or GraphConnectionKind.Settings;
+        bool showLabel = edge.Connection.Kind is
+            GraphConnectionKind.ExecutionBranch or
+            GraphConnectionKind.Settings or
+            GraphConnectionKind.Presentation;
         edge.Label.IsVisible = showLabel;
 
         IReadOnlyList<GraphPosition> route = OrthogonalEdgeRouter.Route(
@@ -685,9 +705,15 @@ public partial class GraphEditorView : UserControl
         };
 
         GraphCanvas.Children.Add(_connectingLine);
-        HintText.Text = port.Kind == GraphOutputPortKind.Settings
-            ? "조건을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요."
-            : "연결할 노드 또는 접힌 파일의 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다.";
+        HintText.Text = port.Kind switch
+        {
+            GraphOutputPortKind.Settings =>
+                "조건을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요.",
+            GraphOutputPortKind.Presentation =>
+                "연출을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요.",
+            _ =>
+                "연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다."
+        };
 
         args.Handled = true;
     }
@@ -755,6 +781,32 @@ public partial class GraphEditorView : UserControl
                 _session?.SetStatus("Settings link는 SetNode에서 DialogueNode로만 연결할 수 있습니다.");
             }
 
+            return;
+        }
+
+        if (port.Kind == GraphOutputPortKind.Presentation)
+        {
+            if (dropped is { NodeKind: GraphNodeKind.Dialogue } &&
+                !string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal))
+            {
+                _session?.Editor.SetPresentationTarget(port.NodeId, dropped.NodeId);
+            }
+            else if (dropped is null)
+            {
+                _session?.Editor.SetPresentationTarget(port.NodeId, null);
+            }
+            else
+            {
+                _session?.SetStatus(
+                    "Presentation link는 PresentationNode에서 DialogueNode로만 연결할 수 있습니다.");
+            }
+
+            return;
+        }
+
+        if (dropped is { NodeKind: GraphNodeKind.Presentation })
+        {
+            _session?.SetStatus("PresentationNode는 실행 출구의 대상이 될 수 없습니다.");
             return;
         }
 
@@ -829,6 +881,7 @@ public partial class GraphEditorView : UserControl
         string kind = edge.Connection.Kind switch
         {
             GraphConnectionKind.Settings => "조건 공급",
+            GraphConnectionKind.Presentation => "연출 공급",
             GraphConnectionKind.ExecutionBranch => $"조건 '{edge.Connection.Label}'",
             _ => "기본 출구"
         };
@@ -853,7 +906,7 @@ public partial class GraphEditorView : UserControl
         }
     }
 
-    private void AddNode(bool dialogue)
+    private void AddNode(GraphNodeKind kind)
     {
         if (_session is null)
         {
@@ -873,9 +926,13 @@ public partial class GraphEditorView : UserControl
         double x = 60 + (fileNodeCount % 4) * 260;
         double y = 60 + (fileNodeCount / 4) * 200;
 
-        StoryNode node = dialogue
-            ? _session.Editor.AddDialogueNode(fileId, x, y)
-            : _session.Editor.AddSetNode(fileId, x, y);
+        StoryNode node = kind switch
+        {
+            GraphNodeKind.Dialogue => _session.Editor.AddDialogueNode(fileId, x, y),
+            GraphNodeKind.Set => _session.Editor.AddSetNode(fileId, x, y),
+            GraphNodeKind.Presentation => _session.Editor.AddPresentationNode(fileId, x, y),
+            _ => throw new NotSupportedException($"지원하지 않는 그래프 노드 종류 '{kind}'입니다.")
+        };
 
         _session.Select(node.Id);
     }
@@ -921,6 +978,7 @@ public partial class GraphEditorView : UserControl
         return connection.Kind switch
         {
             GraphConnectionKind.Settings => new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E)),
+            GraphConnectionKind.Presentation => new SolidColorBrush(Color.FromRgb(0x7C, 0x3A, 0xED)),
             GraphConnectionKind.ExecutionBranch => BranchPalette.Accent(connection.PaletteIndex),
             _ => new SolidColorBrush(Color.FromArgb(150, 100, 100, 100))
         };
@@ -928,7 +986,12 @@ public partial class GraphEditorView : UserControl
 
     private static string NodeKindLabel(GraphNodeKind kind)
     {
-        return kind == GraphNodeKind.Set ? "설정" : "대사";
+        return kind switch
+        {
+            GraphNodeKind.Set => "설정",
+            GraphNodeKind.Presentation => "연출",
+            _ => "대사"
+        };
     }
 
     private static Point ToPoint(GraphPosition position) => new(position.X, position.Y);

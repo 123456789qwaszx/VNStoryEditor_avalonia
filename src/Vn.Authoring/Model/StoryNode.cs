@@ -34,8 +34,8 @@ public abstract class StoryNode
     /// <summary>
     /// 노드가 끝난 뒤 이동할 노드. null이면 이야기가 여기서 멈춘다.
     ///
-    /// 종류를 가리지 않고 모든 노드가 하나씩 가진다. 그래서 그래프는 노드가 무엇이든
-    /// 기본 출력 포트를 똑같이 그릴 수 있다.
+    /// 실행 가능한 DialogueNode와 SetNode가 사용한다. PresentationNode는 실행 흐름에
+    /// 참여하지 않고 Presentation link만 가지므로 이 값을 사용하지 않는다.
     /// </summary>
     public string? DefaultExitTargetNodeId { get; set; }
 

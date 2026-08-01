@@ -5,7 +5,7 @@ namespace Vn.Authoring.Flow;
 
 public enum ExitPortKind
 {
-    /// <summary>노드 전체가 끝난 뒤의 출구. 모든 노드에 하나씩 있다.</summary>
+    /// <summary>실행 가능한 노드 전체가 끝난 뒤의 출구.</summary>
     Default,
 
     /// <summary>특정 조건 갈래를 지났을 때의 출구.</summary>
@@ -15,7 +15,7 @@ public enum ExitPortKind
 /// <summary>
 /// 그래프에서 끌어다 연결할 수 있는 실행 출력 포트 하나.
 ///
-/// Settings link는 실행 포트가 아니며 <see cref="StoryProject.Links"/>에 별도로 저장된다.
+/// Settings·Presentation link는 실행 포트가 아니며 <see cref="StoryProject.Links"/>에 별도로 저장된다.
 /// 이 타입은 오직 다음 실행 노드를 결정하는 기본/조건 출구만 표현한다.
 /// </summary>
 public sealed record ExitPort(
@@ -38,7 +38,7 @@ public sealed record ExitPort(
 
 /// <summary>
 /// 노드의 실행 출력 포트 목록을 계산한다.
-/// Settings 공급 연결은 여기에 섞지 않는다.
+/// Settings·Presentation 공급 연결은 여기에 섞지 않는다.
 /// </summary>
 public static class NodeConnections
 {
@@ -51,6 +51,13 @@ public static class NodeConnections
         ArgumentNullException.ThrowIfNull(project);
 
         var ports = new List<ExitPort>();
+
+        if (node is PresentationNode)
+        {
+            // PresentationNode는 실행 순서를 결정하지 않는다. Dialogue에 연출 데이터를
+            // 공급하는 Presentation link만 GraphProjection에서 별도 포트로 계산한다.
+            return ports;
+        }
 
         if (node is DialogueNode dialogue)
         {

@@ -43,5 +43,7 @@ public static class Identifier
 
     public static string Line() => Create("ln");
 
+    public static string PresentationCommand() => Create("pc");
+
     public static string Condition() => Create("cd");
 }

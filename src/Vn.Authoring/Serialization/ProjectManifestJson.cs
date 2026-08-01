@@ -3,7 +3,9 @@ using Vn.Authoring.Model;
 
 namespace Vn.Authoring.Serialization;
 
-/// <summary>프로젝트 메타데이터, StoryFile 경로와 파일을 넘는 typed link를 담는 manifest 형식.</summary>
+/// <summary>
+/// 프로젝트 메타데이터, StoryFile 경로와 파일을 넘는 Settings·Presentation link를 담는 manifest 형식.
+/// </summary>
 public static class ProjectManifestJson
 {
     public const int CurrentFormatVersion = StoryProject.CurrentFormatVersion;
@@ -134,6 +136,7 @@ public static class ProjectManifestJson
             ["kind"] = link.Kind switch
             {
                 NodeLinkKind.Settings => "settings",
+                NodeLinkKind.Presentation => "presentation",
                 _ => throw new InvalidDataException($"지원하지 않는 NodeLink 종류 '{link.Kind}'입니다.")
             },
             ["source"] = link.SourceNodeId,
@@ -156,6 +159,7 @@ public static class ProjectManifestJson
         NodeLinkKind kind = (string?)json["kind"] switch
         {
             "settings" => NodeLinkKind.Settings,
+            "presentation" => NodeLinkKind.Presentation,
             { } unknown => throw new InvalidDataException($"지원하지 않는 NodeLink 종류 '{unknown}'입니다."),
             _ => throw new InvalidDataException($"NodeLink '{id}'에 kind가 없습니다.")
         };

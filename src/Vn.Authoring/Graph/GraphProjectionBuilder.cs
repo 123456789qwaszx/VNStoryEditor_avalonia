@@ -164,6 +164,23 @@ public static class GraphProjectionBuilder
                 null));
         }
 
+        if (node is PresentationNode)
+        {
+            bool connected = project.Links.Any(link =>
+                link.Kind == NodeLinkKind.Presentation &&
+                link.IsEnabled &&
+                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
+
+            ports.Add(new GraphOutputPortProjection(
+                PresentationPortKey(node.Id),
+                GraphOutputPortKind.Presentation,
+                node.Id,
+                "연출 공급",
+                -1,
+                connected,
+                null));
+        }
+
         return ports;
     }
 
@@ -215,6 +232,21 @@ public static class GraphProjectionBuilder
                 null));
         }
 
+        foreach (NodeLink link in project.Links.Where(link =>
+                     link.Kind == NodeLinkKind.Presentation && link.IsEnabled))
+        {
+            result.Add(new RawConnection(
+                $"link:{link.Id}",
+                GraphConnectionKind.Presentation,
+                link.SourceNodeId,
+                link.TargetNodeId,
+                PresentationPortKey(link.SourceNodeId),
+                "연출 공급",
+                -1,
+                link.Id,
+                null));
+        }
+
         return result;
     }
 
@@ -236,6 +268,7 @@ public static class GraphProjectionBuilder
         {
             DialogueNode => GraphNodeKind.Dialogue,
             SetNode => GraphNodeKind.Set,
+            PresentationNode => GraphNodeKind.Presentation,
             _ => throw new NotSupportedException($"지원하지 않는 노드 타입입니다: {node.GetType().Name}")
         };
     }
@@ -263,6 +296,8 @@ public static class GraphProjectionBuilder
     }
 
     private static string SettingsPortKey(string nodeId) => $"settings:{nodeId}";
+
+    private static string PresentationPortKey(string nodeId) => $"presentation:{nodeId}";
 
     private sealed record RawConnection(
         string Key,

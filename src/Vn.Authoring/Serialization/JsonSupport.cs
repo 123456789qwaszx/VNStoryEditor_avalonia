@@ -81,6 +81,8 @@ internal static class JsonSupport
         HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> linkIds = new(StringComparer.Ordinal);
         HashSet<(NodeLinkKind Kind, string Source, string Target)> linkPairs = new();
+        HashSet<string> presentationSources = new(StringComparer.Ordinal);
+        HashSet<string> presentationCommandIds = new(StringComparer.Ordinal);
 
         foreach (StoryFile file in project.Files)
         {
@@ -101,6 +103,11 @@ internal static class JsonSupport
                 if (!nodeIds.Add(node.Id))
                 {
                     throw new InvalidDataException($"노드 Id '{node.Id}'가 프로젝트 전체에서 중복됩니다.");
+                }
+
+                if (node is PresentationNode presentation)
+                {
+                    ValidatePresentationNode(presentation, presentationCommandIds);
                 }
             }
         }
@@ -134,6 +141,21 @@ internal static class JsonSupport
                     $"Settings link '{link.Id}'는 SetNode에서 DialogueNode로만 연결할 수 있습니다.");
             }
 
+            if (link.Kind == NodeLinkKind.Presentation)
+            {
+                if (source is not PresentationNode || target is not DialogueNode)
+                {
+                    throw new InvalidDataException(
+                        $"Presentation link '{link.Id}'는 PresentationNode에서 DialogueNode로만 연결할 수 있습니다.");
+                }
+
+                if (!presentationSources.Add(link.SourceNodeId))
+                {
+                    throw new InvalidDataException(
+                        $"PresentationNode '{link.SourceNodeId}'에는 Presentation link를 하나만 둘 수 있습니다.");
+                }
+            }
+
             if (!linkPairs.Add((link.Kind, link.SourceNodeId, link.TargetNodeId)))
             {
                 throw new InvalidDataException(
@@ -145,6 +167,48 @@ internal static class JsonSupport
         {
             throw new InvalidDataException(
                 $"시작 노드 '{project.StartNodeId}'를 프로젝트에서 찾을 수 없습니다.");
+        }
+
+        if (project.FindNode(project.StartNodeId) is PresentationNode)
+        {
+            throw new InvalidDataException("PresentationNode는 프로젝트 시작 노드가 될 수 없습니다.");
+        }
+    }
+
+    private static void ValidatePresentationNode(
+        PresentationNode node,
+        HashSet<string> projectCommandIds)
+    {
+        if (node.DefaultExitTargetNodeId is not null)
+        {
+            throw new InvalidDataException(
+                $"PresentationNode '{node.Id}'는 실행 기본 출구를 가질 수 없습니다.");
+        }
+
+        HashSet<string> lineIds = new(StringComparer.Ordinal);
+
+        foreach (PresentationLineBinding binding in node.Bindings)
+        {
+            if (string.IsNullOrWhiteSpace(binding.LineId))
+            {
+                throw new InvalidDataException(
+                    $"PresentationNode '{node.Id}'에 빈 LineId binding이 있습니다.");
+            }
+
+            if (!lineIds.Add(binding.LineId))
+            {
+                throw new InvalidDataException(
+                    $"PresentationNode '{node.Id}'에서 LineId '{binding.LineId}' binding이 중복됩니다.");
+            }
+
+            foreach (PresentationCommandInstance command in binding.Commands)
+            {
+                if (!projectCommandIds.Add(command.Id))
+                {
+                    throw new InvalidDataException(
+                        $"Presentation command Id '{command.Id}'가 프로젝트에서 중복됩니다.");
+                }
+            }
         }
     }
 }

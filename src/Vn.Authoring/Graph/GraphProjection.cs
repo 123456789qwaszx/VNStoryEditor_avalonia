@@ -59,14 +59,16 @@ public sealed record CollapsedNodeEntry(
 public enum GraphNodeKind
 {
     Dialogue,
-    Set
+    Set,
+    Presentation
 }
 
 public enum GraphOutputPortKind
 {
     ExecutionDefault,
     ExecutionBranch,
-    Settings
+    Settings,
+    Presentation
 }
 
 /// <summary>펼쳐진 노드 카드가 표시할 출력 포트.</summary>
@@ -83,7 +85,8 @@ public enum GraphConnectionKind
 {
     ExecutionDefault,
     ExecutionBranch,
-    Settings
+    Settings,
+    Presentation
 }
 
 public enum GraphEndpointKind

@@ -76,7 +76,13 @@ public sealed class ProjectEditor
         Mutate(() =>
         {
             file.Nodes.Add(node);
-            Project.StartNodeId ??= node.Id;
+
+            // PresentationNode는 실행 흐름의 시작점이 아니다. 프로젝트에 연출 노드만 먼저
+            // 만들어져도 이후 처음 추가되는 실행 노드가 정상적으로 시작 노드가 되어야 한다.
+            if (node is not PresentationNode)
+            {
+                Project.StartNodeId ??= node.Id;
+            }
         });
 
         return node;
@@ -112,6 +118,20 @@ public sealed class ProjectEditor
         return AddNode(fileId, node);
     }
 
+    public PresentationNode AddPresentationNode(
+        string fileId,
+        double x = 0,
+        double y = 0,
+        string? name = null)
+    {
+        var node = new PresentationNode(name: name ?? NextName("연출"))
+        {
+            Layout = new NodeLayout { X = x, Y = y }
+        };
+
+        return AddNode(fileId, node);
+    }
+
     public void RemoveNode(string nodeId)
     {
         StoryFile? owner = Project.FindFileContainingNode(nodeId);
@@ -129,7 +149,9 @@ public sealed class ProjectEditor
 
             if (string.Equals(Project.StartNodeId, nodeId, StringComparison.Ordinal))
             {
-                Project.StartNodeId = Project.EnumerateNodes().FirstOrDefault()?.Id;
+                Project.StartNodeId = Project.EnumerateNodes()
+                    .FirstOrDefault(candidate => candidate is not PresentationNode)
+                    ?.Id;
             }
         });
     }
@@ -322,6 +344,12 @@ public sealed class ProjectEditor
             return;
         }
 
+        if (node is PresentationNode)
+        {
+            // PresentationNode는 실행 출구가 아니라 Presentation link만 가진다.
+            return;
+        }
+
         if (targetNodeId is not null && Project.FindNode(targetNodeId) is null)
         {
             return;
@@ -427,6 +455,214 @@ public sealed class ProjectEditor
         if (link is not null && link.IsEnabled != enabled)
         {
             Mutate(ProjectChangeKind.Connections, () => link.IsEnabled = enabled);
+        }
+    }
+
+    /// <summary>
+    /// PresentationNode 하나의 Dialogue 대상을 정한다.
+    /// 같은 PresentationNode에서 다른 Dialogue로 바꾸면 기존 link Id를 유지한 채 대상을 교체한다.
+    /// null이면 link를 삭제한다. Dialogue 하나에는 여러 PresentationNode가 연결될 수 있다.
+    /// </summary>
+    public NodeLink? SetPresentationTarget(string presentationNodeId, string? dialogueNodeId)
+    {
+        if (Project.FindNode(presentationNodeId) is not PresentationNode)
+        {
+            throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
+        }
+
+        if (dialogueNodeId is not null && Project.FindNode(dialogueNodeId) is not DialogueNode)
+        {
+            throw new InvalidOperationException($"'{dialogueNodeId}'는 대사 노드가 아닙니다.");
+        }
+
+        List<NodeLink> existing = Project.Links
+            .Where(link =>
+                link.Kind == NodeLinkKind.Presentation &&
+                string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal))
+            .ToList();
+
+        if (dialogueNodeId is null)
+        {
+            if (existing.Count > 0)
+            {
+                Mutate(ProjectChangeKind.Connections, () =>
+                    Project.Links.RemoveAll(link => existing.Contains(link)));
+            }
+
+            return null;
+        }
+
+        NodeLink? current = existing.FirstOrDefault();
+
+        if (current is not null &&
+            string.Equals(current.TargetNodeId, dialogueNodeId, StringComparison.Ordinal) &&
+            current.IsEnabled &&
+            existing.Count == 1)
+        {
+            return current;
+        }
+
+        int nextOrder = Project.Links
+            .Where(link =>
+                link.Kind == NodeLinkKind.Presentation &&
+                string.Equals(link.TargetNodeId, dialogueNodeId, StringComparison.Ordinal) &&
+                !string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal))
+            .Select(link => link.Order)
+            .DefaultIfEmpty(-1)
+            .Max() + 1;
+
+        if (current is not null)
+        {
+            Mutate(ProjectChangeKind.Connections, () =>
+            {
+                // 손으로 잘못 만든 중복 link가 있더라도 편집 API를 거치면 하나로 정규화한다.
+                foreach (NodeLink duplicate in existing.Skip(1))
+                {
+                    Project.Links.Remove(duplicate);
+                }
+
+                current.TargetNodeId = dialogueNodeId;
+                current.IsEnabled = true;
+                current.Order = nextOrder;
+            });
+
+            return current;
+        }
+
+        var created = new NodeLink(
+            kind: NodeLinkKind.Presentation,
+            sourceNodeId: presentationNodeId,
+            targetNodeId: dialogueNodeId)
+        {
+            Order = nextOrder
+        };
+
+        Mutate(ProjectChangeKind.Connections, () => Project.Links.Add(created));
+        return created;
+    }
+
+    // ── Presentation command ────────────────────────────────────────────────
+
+    public PresentationLineBinding AddPresentationBinding(
+        string presentationNodeId,
+        string lineId)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationLineBinding? existing = node.Bindings.FirstOrDefault(binding =>
+            string.Equals(binding.LineId, lineId, StringComparison.Ordinal));
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var binding = new PresentationLineBinding(lineId);
+        Mutate(() => node.Bindings.Add(binding));
+        return binding;
+    }
+
+    public PresentationCommandInstance AddPresentationCommand(
+        string presentationNodeId,
+        string lineId,
+        string definitionId,
+        IReadOnlyDictionary<string, string>? arguments = null,
+        string? note = null)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationLineBinding? existingBinding = node.Bindings.FirstOrDefault(item =>
+            string.Equals(item.LineId, lineId, StringComparison.Ordinal));
+        PresentationLineBinding binding = existingBinding ?? new PresentationLineBinding(lineId);
+        var command = new PresentationCommandInstance(definitionId: definitionId)
+        {
+            Note = note
+        };
+
+        if (arguments is not null)
+        {
+            foreach ((string key, string value) in arguments)
+            {
+                command.Arguments[key] = value;
+            }
+        }
+
+        Mutate(() =>
+        {
+            if (existingBinding is null)
+            {
+                node.Bindings.Add(binding);
+            }
+
+            binding.Commands.Add(command);
+        });
+
+        return command;
+    }
+
+    public void MovePresentationCommand(
+        string presentationNodeId,
+        string commandId,
+        int delta)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationLineBinding? binding = node.Bindings.FirstOrDefault(item =>
+            item.Commands.Any(command => string.Equals(command.Id, commandId, StringComparison.Ordinal)));
+
+        if (binding is null)
+        {
+            return;
+        }
+
+        int from = binding.Commands.FindIndex(command =>
+            string.Equals(command.Id, commandId, StringComparison.Ordinal));
+
+        if (from < 0)
+        {
+            return;
+        }
+
+        int to = Math.Clamp(from + delta, 0, binding.Commands.Count - 1);
+
+        if (from == to)
+        {
+            return;
+        }
+
+        Mutate(() =>
+        {
+            PresentationCommandInstance command = binding.Commands[from];
+            binding.Commands.RemoveAt(from);
+            binding.Commands.Insert(to, command);
+        });
+    }
+
+    public void RemovePresentationCommand(string presentationNodeId, string commandId)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationLineBinding? binding = node.Bindings.FirstOrDefault(item =>
+            item.Commands.Any(command => string.Equals(command.Id, commandId, StringComparison.Ordinal)));
+
+        if (binding is null)
+        {
+            return;
+        }
+
+        Mutate(() => binding.Commands.RemoveAll(command =>
+            string.Equals(command.Id, commandId, StringComparison.Ordinal)));
+    }
+
+    public void SetPresentationCommandEnabled(
+        string presentationNodeId,
+        string commandId,
+        bool enabled)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationCommandInstance? command = node.Bindings
+            .SelectMany(binding => binding.Commands)
+            .FirstOrDefault(item => string.Equals(item.Id, commandId, StringComparison.Ordinal));
+
+        if (command is not null && command.IsEnabled != enabled)
+        {
+            Mutate(ProjectChangeKind.Content, () => command.IsEnabled = enabled);
         }
     }
 
@@ -641,6 +877,12 @@ public sealed class ProjectEditor
     {
         return Project.FindDialogue(nodeId)
             ?? throw new InvalidOperationException($"'{nodeId}'는 대사 노드가 아닙니다.");
+    }
+
+    private PresentationNode RequirePresentation(string nodeId)
+    {
+        return Project.FindNode(nodeId) as PresentationNode
+            ?? throw new InvalidOperationException($"'{nodeId}'는 연출 노드가 아닙니다.");
     }
 
     private string NextFileName()
