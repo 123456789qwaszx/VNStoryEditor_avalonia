@@ -19,6 +19,9 @@
     <ProjectReference Include="..\Vn.Core\Vn.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Vn.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Update="Views\Views\AnalysisView.axaml.cs">
       <SubType>Code</SubType>
       <DependentUpon>AnalysisView.axaml</DependentUpon>

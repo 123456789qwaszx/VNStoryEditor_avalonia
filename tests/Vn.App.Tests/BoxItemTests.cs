@@ -6,122 +6,179 @@ using Vn.Core.Story;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// 박스 뷰가 화면에 무엇을 그릴지는 <see cref="BoxItem"/>이 정한다.
-/// 클릭은 자동으로 확인할 수 없지만, 박스 개수와 각 칸의 내용은 여기서 고정할 수 있다.
+/// 박스 뷰가 화면에 무엇을 그릴지는 이 뷰 모델들이 정한다.
+/// 클릭과 접기는 자동으로 확인할 수 없지만, 무엇이 어느 카드에 들어가는지는 여기서 고정할 수 있다.
 /// </summary>
 public class BoxItemTests
 {
-    private const string ValidProject = "../../../../../samples/Valid/Demo.yarnproject";
-    private const string ValidSchema = "../../../../../samples/Valid/game.schema.json";
-
-    private static IReadOnlyList<BoxItem> BoxesOf(string title)
+    private static IReadOnlyList<object> ValidStartBody()
     {
-        AnalysisReport report =
-            new VnProjectAnalyzer().Analyze(ValidProject, ValidSchema);
+        AnalysisReport report = new VnProjectAnalyzer().Analyze(
+            "../../../../../samples/Valid/Demo.yarnproject",
+            "../../../../../samples/Valid/game.schema.json");
 
-        StoryNode node = Assert.Single(report.Nodes, n => n.Title == title);
+        StoryNode start = Assert.Single(report.Nodes, node => node.Title == "Start");
 
-        return node.Lines.Select(line => new BoxItem(line)).ToList();
+        return BoxListView.BuildChildren(start.Body);
+    }
+
+    private static BlockItem OptionBlock()
+    {
+        return Assert.IsType<BlockItem>(
+            Assert.Single(ValidStartBody(), item => item is BlockItem));
     }
 
     [Fact]
-    public void Start를_고르면_박스가_셋이다()
+    public void 최상위는_대사_박스_하나와_선택지_블록_하나다()
     {
-        Assert.Equal(3, BoxesOf("Start").Count);
+        IReadOnlyList<object> body = ValidStartBody();
+
+        Assert.Collection(
+            body,
+            item => Assert.Equal("어서 오세요.", Assert.IsType<BoxItem>(item).Text),
+            item => Assert.Equal("선택지", Assert.IsType<BlockItem>(item).Title));
     }
 
     [Fact]
-    public void 첫_박스는_명령_없이_대사만_있다()
+    public void 선택지_두_개가_각각_카드가_된다()
     {
-        BoxItem box = BoxesOf("Start")[0];
+        BlockItem block = OptionBlock();
 
-        Assert.False(box.HasCommands);
-        Assert.Equal("Ann", box.Speaker);
-        Assert.Equal("어서 오세요.", box.Text);
-        Assert.False(box.IsOption);
-        Assert.False(box.HasHashtags);
-    }
-
-    [Fact]
-    public void 둘째_박스는_명령_두_줄과_선택지다()
-    {
-        BoxItem box = BoxesOf("Start")[1];
-
-        Assert.True(box.HasCommands);
-        Assert.Equal(
-            new[] { "<<play_bgm \"guesthouse_day\">>", "<<set $affection_ann += 1>>" },
-            box.Commands.Split(Environment.NewLine));
-
-        Assert.True(box.IsOption);
-        Assert.Equal("열쇠를 건넨다", box.Text);
-
-        // 선택지에는 화자가 없다. 화자 칸은 비어 있어야 한다.
-        Assert.Equal(string.Empty, box.Speaker);
-    }
-
-    [Fact]
-    public void 셋째_박스는_명령_세_줄과_선택지다()
-    {
-        BoxItem box = BoxesOf("Start")[2];
+        Assert.Equal(2, block.Branches.Count);
 
         Assert.Equal(
-            new[]
+            new[] { "열쇠를 건넨다", "잠시 기다린다" },
+            block.Branches.Select(branch => branch.Label));
+
+        // 선택지와 조건은 같은 위젯으로 그리고 표시만 다르다.
+        Assert.All(block.Branches, branch => Assert.Equal("→", branch.Marker));
+    }
+
+    /// <summary>
+    /// 이 커밋의 핵심. 평평한 목록에서는 8~10행 명령이 11행 선택지 박스에 붙어 보였다.
+    /// 트리에서는 그것이 속한 갈래로 간다.
+    /// </summary>
+    [Fact]
+    public void 갈래_안의_명령이_다음_선택지_카드에_붙지_않는다()
+    {
+        BlockItem block = OptionBlock();
+
+        BranchItem first = block.Branches[0];
+        BranchItem second = block.Branches[1];
+
+        Assert.True(first.HasCommands);
+        Assert.Equal(
+            new[] { "<<set $has_room_key = true>>", "<<give_item \"room_key\">>" },
+            first.Commands.Split(Environment.NewLine));
+
+        // 둘째 카드는 비어 있다. 예전에는 여기에 명령 세 개가 붙어 있었다.
+        Assert.False(second.HasCommands);
+    }
+
+    [Fact]
+    public void 갈래의_목적지를_카드_머리에_보여준다()
+    {
+        BlockItem block = OptionBlock();
+
+        Assert.All(block.Branches, branch => Assert.True(branch.HasDestination));
+        Assert.All(block.Branches, branch => Assert.Equal("→ Ending", branch.DestinationText));
+    }
+
+    [Fact]
+    public void 대사_없는_갈래는_자식이_없다()
+    {
+        Assert.All(OptionBlock().Branches, branch => Assert.Empty(branch.Children));
+    }
+
+    [Fact]
+    public void 중첩된_블록은_갈래_안의_항목이_된다()
+    {
+        StoryNode node = AnalyzeSource("""
+            title: T
+            ---
+            -> 첫째 선택지
+                <<if $favor >= 5>>
+                라루: 안쪽.
+                <<endif>>
+            -> 둘째 선택지
+                윌로: 둘째.
+            ===
+            """);
+
+        var options = Assert.IsType<BlockItem>(
+            Assert.Single(BoxListView.BuildChildren(node.Body)));
+
+        var nested = Assert.IsType<BlockItem>(
+            Assert.Single(options.Branches[0].Children));
+
+        Assert.Equal("조건", nested.Title);
+        Assert.Equal("?", Assert.Single(nested.Branches).Marker);
+
+        // 중첩된 블록은 왼쪽으로 들여쓴다.
+        Assert.True(nested.Indent.Left > 0);
+    }
+
+    [Fact]
+    public void 조건_갈래에는_목적지가_없다()
+    {
+        StoryNode node = AnalyzeSource("""
+            title: T
+            ---
+            <<if $favor >= 5>>
+            라루: 참.
+            <<endif>>
+            ===
+            """);
+
+        var block = Assert.IsType<BlockItem>(
+            Assert.Single(BoxListView.BuildChildren(node.Body)));
+
+        Assert.False(Assert.Single(block.Branches).HasDestination);
+    }
+
+    private static StoryNode AnalyzeSource(string yarn)
+    {
+        string workDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"VnTool.BoxItemTests.{Guid.NewGuid():N}");
+
+        Directory.CreateDirectory(workDirectory);
+
+        try
+        {
+            File.WriteAllText(Path.Combine(workDirectory, "Story.yarn"), yarn);
+
+            File.WriteAllText(
+                Path.Combine(workDirectory, "Demo.yarnproject"),
+                """
+                {
+                  "projectFileVersion": 3,
+                  "baseLanguage": "ko",
+                  "sourceFiles": [ "**/*.yarn" ],
+                  "excludeFiles": []
+                }
+                """);
+
+            string schemaPath = Path.Combine(workDirectory, "game.schema.json");
+
+            File.WriteAllText(
+                schemaPath,
+                """{ "schemaVersion": 1, "variables": [], "commands": [] }""");
+
+            return new VnProjectAnalyzer()
+                .Analyze(Path.Combine(workDirectory, "Demo.yarnproject"), schemaPath)
+                .Nodes
+                .Single();
+        }
+        finally
+        {
+            try
             {
-                "<<set $has_room_key = true>>",
-                "<<give_item \"room_key\">>",
-                "<<jump Ending>>"
-            },
-            box.Commands.Split(Environment.NewLine));
-
-        Assert.True(box.IsOption);
-        Assert.Equal("잠시 기다린다", box.Text);
-    }
-
-    [Fact]
-    public void Depth가_0이면_왼쪽_여백이_없다()
-    {
-        Assert.All(
-            BoxesOf("Start"),
-            box => Assert.Equal(0, box.Indent.Left));
-    }
-
-    [Fact]
-    public void Depth가_깊어지면_여백이_늘어난다()
-    {
-        var line = new StoryLine(
-            Speaker: null,
-            Text: "깊이 2",
-            Hashtags: Array.Empty<string>(),
-            FilePath: "Story.yarn",
-            Line: 1,
-            Column: 9,
-            Depth: 2,
-            IsOption: false,
-            CommandsSincePreviousLine: Array.Empty<StoryCommand>());
-
-        var box = new BoxItem(line);
-
-        Assert.True(box.Indent.Left > 0);
-        Assert.Equal(2 * new BoxItem(line with { Depth = 1 }).Indent.Left, box.Indent.Left);
-    }
-
-    [Fact]
-    public void 해시태그는_샵을_붙여_이어_쓴다()
-    {
-        var line = new StoryLine(
-            Speaker: "윌로",
-            Text: "태그가 둘이다.",
-            Hashtags: new[] { "emotion:calm", "wip" },
-            FilePath: "Story.yarn",
-            Line: 1,
-            Column: 1,
-            Depth: 0,
-            IsOption: false,
-            CommandsSincePreviousLine: Array.Empty<StoryCommand>());
-
-        var box = new BoxItem(line);
-
-        Assert.True(box.HasHashtags);
-        Assert.Equal("#emotion:calm #wip", box.Hashtags);
+                Directory.Delete(workDirectory, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 }

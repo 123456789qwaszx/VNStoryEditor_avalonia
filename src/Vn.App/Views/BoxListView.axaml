@@ -2,59 +2,99 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="using:Vn.App.Views"
              x:Class="Vn.App.Views.BoxListView">
+
     <!--
-        박스 하나가 "라인 하나와 그 앞에 쌓인 명령들"이다.
-        선택이 필요해서 ItemsControl 대신 ListBox를 쓴다. ListBox도 ItemsControl이고,
-        클릭·키보드 이동을 직접 구현하지 않아도 된다.
+        템플릿을 컨트롤 수준에 두면 타입으로 찾아 쓴다.
+        그래서 갈래 안의 ItemsControl이 다시 박스와 블록을 그릴 수 있다 — 중첩이 저절로 된다.
     -->
-    <ListBox x:Name="Boxes"
-             SelectionChanged="OnBoxSelected"
-             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-        <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="views:BoxItem">
-                <!-- Depth는 여백에만 쓴다. 트리 구조를 만들지 않는다. -->
-                <Border Margin="{Binding Indent}"
-                        BorderBrush="Gray"
-                        BorderThickness="1"
-                        CornerRadius="4"
-                        Padding="8">
-                    <StackPanel Spacing="4">
-                        <!-- 쌓인 명령. 원본 문자열 그대로 보여준다. -->
-                        <TextBlock Text="{Binding Commands}"
-                                   IsVisible="{Binding HasCommands}"
-                                   FontFamily="Consolas"
-                                   Opacity="0.7"
+    <UserControl.DataTemplates>
+
+        <!-- 박스: 쌓인 명령과 그것이 닫는 라인 하나. -->
+        <DataTemplate DataType="views:BoxItem" x:DataType="views:BoxItem">
+            <Border BorderBrush="Gray"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8"
+                    Margin="0,0,0,4"
+                    Background="Transparent"
+                    PointerPressed="OnBoxPressed">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Commands}"
+                               IsVisible="{Binding HasCommands}"
+                               FontFamily="Consolas"
+                               Opacity="0.7"
+                               TextWrapping="Wrap" />
+                    <Border Height="1"
+                            Background="Gray"
+                            Opacity="0.4"
+                            IsVisible="{Binding HasCommands}" />
+
+                    <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding Speaker}"
+                                   FontWeight="Bold"
+                                   MinWidth="56"
+                                   Margin="0,0,8,0"
+                                   TextWrapping="NoWrap" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Text}"
                                    TextWrapping="Wrap" />
-                        <Border Height="1"
-                                Background="Gray"
-                                Opacity="0.4"
-                                IsVisible="{Binding HasCommands}" />
+                    </Grid>
 
-                        <Grid ColumnDefinitions="Auto,Auto,*">
-                            <!-- 선택지 표시. 일반 대사와 눈으로 구분되게 한다. -->
-                            <TextBlock Grid.Column="0"
-                                       Text="→"
-                                       IsVisible="{Binding IsOption}"
-                                       FontWeight="Bold"
-                                       Margin="0,0,6,0" />
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding Speaker}"
-                                       FontWeight="Bold"
-                                       MinWidth="56"
-                                       Margin="0,0,8,0"
-                                       TextWrapping="NoWrap" />
-                            <TextBlock Grid.Column="2"
-                                       Text="{Binding Text}"
-                                       TextWrapping="Wrap" />
-                        </Grid>
+                    <TextBlock Text="{Binding Hashtags}"
+                               IsVisible="{Binding HasHashtags}"
+                               Opacity="0.7"
+                               FontSize="11" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
 
-                        <TextBlock Text="{Binding Hashtags}"
-                                   IsVisible="{Binding HasHashtags}"
-                                   Opacity="0.7"
-                                   FontSize="11" />
+        <!-- 갈래: 접히는 카드. 머리에 라벨과 목적지를 둔다. -->
+        <DataTemplate DataType="views:BranchItem" x:DataType="views:BranchItem">
+            <Expander IsExpanded="True" Margin="0,0,0,4">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Marker}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding DestinationText}"
+                                   IsVisible="{Binding HasDestination}"
+                                   Opacity="0.7" />
                     </StackPanel>
-                </Border>
-            </DataTemplate>
-        </ListBox.ItemTemplate>
-    </ListBox>
+                </Expander.Header>
+
+                <StackPanel Spacing="4">
+                    <!-- 이 갈래에서 실행되는 명령. 갈래에 대사가 없으면 이것이 내용 전부다. -->
+                    <Border BorderBrush="Gray"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8"
+                            Opacity="0.85"
+                            IsVisible="{Binding HasCommands}">
+                        <TextBlock Text="{Binding Commands}"
+                                   FontFamily="Consolas"
+                                   TextWrapping="Wrap" />
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding Children}" />
+                </StackPanel>
+            </Expander>
+        </DataTemplate>
+
+        <!-- 블록: 갈래 카드를 모아 놓은 것. 중첩되면 왼쪽으로 들여쓴다. -->
+        <DataTemplate DataType="views:BlockItem" x:DataType="views:BlockItem">
+            <StackPanel Margin="{Binding Indent}">
+                <TextBlock Text="{Binding Title}"
+                           FontWeight="Bold"
+                           Opacity="0.7"
+                           FontSize="11"
+                           Margin="0,4,0,4" />
+                <ItemsControl ItemsSource="{Binding Branches}" />
+            </StackPanel>
+        </DataTemplate>
+
+    </UserControl.DataTemplates>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl x:Name="Elements" />
+    </ScrollViewer>
 </UserControl>

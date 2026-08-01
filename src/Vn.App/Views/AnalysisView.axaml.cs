@@ -176,7 +176,9 @@ public partial class AnalysisView : UserControl
         StoryNode node = item.Node;
 
         // 두 탭이 같은 노드를 보게 한다.
-        BoxList.Show(node.Lines);
+        // 박스 탭은 평평한 Lines가 아니라 분기 트리를 그린다. 평평한 목록에서는
+        // 선택지 갈래 안의 명령이 다음 선택지에 붙어 보인다.
+        BoxList.Show(node.Body);
 
         ShowFile(node.FilePath, node.HeaderLine, 1);
     }
