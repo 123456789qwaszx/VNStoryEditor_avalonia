@@ -1,6 +1,7 @@
 using System.Text;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 using Vn.Authoring.Serialization;
 
 namespace Vn.Authoring.Tests;
@@ -12,8 +13,8 @@ public class SerializationTests
     {
         var sample = new Sample();
         var (_, l1, _, l3, _, _, _) = sample.BuildSpecExample();
-        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l1.Id, sample.TargetA.Id);
-        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l3.Id, sample.TargetB.Id);
+        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l1, sample.TargetA.Id);
+        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l3, sample.TargetB.Id);
         sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Default, null, sample.TargetDefault.Id);
         sample.Editor.MoveNode(sample.Dialogue.Id, 120, 340);
 
@@ -24,9 +25,9 @@ public class SerializationTests
         Assert.Equal(sample.File.Id, reloadedFile.Id);
         Assert.Equal(sample.File.RelativePath, reloadedFile.RelativePath);
         Assert.Equal(sample.Project.EnumerateNodes().Select(node => node.Id), reloaded.EnumerateNodes().Select(node => node.Id));
-        Assert.Equal(sample.Dialogue.Lines.Select(line => line.Id), dialogue.Lines.Select(line => line.Id));
-        Assert.Equal(sample.TargetA.Id, dialogue.BranchExits[l1.Id]);
-        Assert.Equal(sample.TargetB.Id, dialogue.BranchExits[l3.Id]);
+        Assert.Equal(DialogueScriptResolver.Resolve(sample.Project, sample.Dialogue).Lines.Select(line => line.LineId), DialogueScriptResolver.Resolve(reloaded, dialogue).Lines.Select(line => line.LineId));
+        Assert.Equal(sample.TargetA.Id, dialogue.BranchExits[l1]);
+        Assert.Equal(sample.TargetB.Id, dialogue.BranchExits[l3]);
         Assert.Equal(sample.TargetDefault.Id, dialogue.DefaultExitTargetNodeId);
         Assert.Equal(120, dialogue.Layout.X);
         Assert.Equal(340, dialogue.Layout.Y);
@@ -46,8 +47,8 @@ public class SerializationTests
     public void 스냅샷은_결정적이고_LF이며_한글을_보존한다()
     {
         var sample = new Sample();
-        LineBox line = sample.Line("안녕하세요");
-        sample.Editor.SetLineText(sample.Dialogue.Id, line.Id, "윌로", "안녕하세요");
+        string line = sample.Line("안녕하세요");
+        sample.Editor.SetScriptLineText(sample.Script.Id, line, "윌로", "안녕하세요");
 
         string first = ProjectSnapshotCodec.Encode(sample.Project);
         string second = ProjectSnapshotCodec.Encode(sample.Project);
@@ -106,7 +107,6 @@ public class SerializationTests
             Assert.DoesNotContain("\"links\"", firstStory);
 
             ProjectLoadResult loaded = ProjectStore.Load(manifestPath);
-            Assert.False(loaded.WasMigrated);
             Assert.Equal(new[] { "sf_a", "sf_b" }, loaded.Project.Files.Select(file => file.Id));
             Assert.Equal(new[] { "nd_a", "nd_b" }, loaded.Project.EnumerateNodes().Select(node => node.Id));
             Assert.Equal("story/b.vnstory.json", loaded.Project.Files[1].RelativePath);
@@ -149,14 +149,19 @@ public class SerializationTests
         string directory = TempDirectory();
         string manifestPath = Path.Combine(directory, "project" + ProjectManifestJson.FileExtension);
         var project = new StoryProject { Title = "부분 변경" };
+        var firstScript = new ScriptDocument("sc_a", "A 대본");
+        firstScript.Lines.Add(new ScriptLine("ln_a"));
+        firstScript.RequireLocale(firstScript.PrimaryLocale).Entries["ln_a"] = new LocalizedLine("", "처음");
+        var secondScript = new ScriptDocument("sc_b", "B 대본");
+        secondScript.Lines.Add(new ScriptLine("ln_b"));
+        secondScript.RequireLocale(secondScript.PrimaryLocale).Entries["ln_b"] = new LocalizedLine("", "고정");
+        project.Scripts.Add(firstScript);
+        project.Scripts.Add(secondScript);
+
         var first = new StoryFile("sf_a", "A", "story/a.vnstory.json");
         var second = new StoryFile("sf_b", "B", "story/b.vnstory.json");
-        var firstNode = new DialogueNode("nd_a", "A");
-        var secondNode = new DialogueNode("nd_b", "B");
-        firstNode.Lines.Add(new LineBox("ln_a") { Text = "처음" });
-        secondNode.Lines.Add(new LineBox("ln_b") { Text = "고정" });
-        first.Nodes.Add(firstNode);
-        second.Nodes.Add(secondNode);
+        first.Nodes.Add(new DialogueNode("nd_a", "A") { ScriptId = "sc_a" });
+        second.Nodes.Add(new DialogueNode("nd_b", "B") { ScriptId = "sc_b" });
         project.Files.Add(first);
         project.Files.Add(second);
 
@@ -164,12 +169,12 @@ public class SerializationTests
         {
             ProjectStore.Save(manifestPath, project);
             string manifestBefore = File.ReadAllText(manifestPath);
-            string firstPath = Path.Combine(directory, "story", "a.vnstory.json");
-            string secondPath = Path.Combine(directory, "story", "b.vnstory.json");
+            string firstPath = Path.Combine(directory, "script", "sc_a.vnscript.json");
+            string secondPath = Path.Combine(directory, "script", "sc_b.vnscript.json");
             string firstBefore = File.ReadAllText(firstPath);
             string secondBefore = File.ReadAllText(secondPath);
 
-            firstNode.Lines[0].Text = "수정";
+            firstScript.Locales[0].Entries["ln_a"] = new LocalizedLine("", "수정");
             ProjectStore.Save(manifestPath, project);
 
             Assert.Equal(manifestBefore, File.ReadAllText(manifestPath));
@@ -182,35 +187,49 @@ public class SerializationTests
         }
     }
 
+    /// <summary>
+    /// 버전 2 이하는 화자·대사를 대사 노드가 직접 소유했고 연출이 편집 중인 노드를 실시간으로
+    /// 읽었다. 그 데이터를 새 의미로 자동 해석하면 어느 문장이 어느 LineId인지 도구가 임의로
+    /// 정하게 된다. <b>덮어써서 원고를 잃는 것보다 열지 않는 편이 낫다.</b>
+    ///
+    /// 이전에 있던 두 마이그레이션 테스트를 이 테스트로 교체했다.
+    /// 그 경로는 이제 존재하지 않으며, 존재하지 않아야 한다는 것이 새 불변 조건이다.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void 이전_형식_프로젝트는_열지_않고_이유를_알린다(int version)
+    {
+        string json = $$"""
+            {
+              "formatVersion": {{version}},
+              "title": "이전 형식",
+              "files": []
+            }
+            """;
+
+        InvalidDataException error = Assert.Throws<InvalidDataException>(
+            () => ProjectManifestJson.Read(json));
+
+        Assert.Contains("더 이상 열 수 없습니다", error.Message, StringComparison.Ordinal);
+        Assert.Contains("대본을 가져오세요", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>이전 형식 파일을 열려다 실패해도 그 파일은 그대로 남아 있어야 한다.</summary>
     [Fact]
-    public void formatVersion_1은_StoryFile_하나로_마이그레이션되고_새_manifest로_저장된다()
+    public void 이전_형식_파일을_열지_못해도_내용은_그대로다()
     {
         string directory = TempDirectory();
-        string legacyPath = Path.Combine(directory, "legacy.vnstory.json");
-        File.WriteAllText(legacyPath, """
-            {
-              "formatVersion": 1,
-              "title": "이전 형식",
-              "nodes": [
-                { "id": "nd_a", "kind": "dialogue", "name": "A", "lines": [] },
-                { "id": "nd_b", "kind": "set", "name": "B" }
-              ]
-            }
-            """, new UTF8Encoding(false));
+        string legacyPath = Path.Combine(directory, "legacy.vnproject.json");
+        const string original = """
+            { "formatVersion": 2, "title": "이전 형식", "files": [] }
+            """;
+        File.WriteAllText(legacyPath, original, new UTF8Encoding(false));
 
         try
         {
-            ProjectLoadResult loaded = ProjectStore.Load(legacyPath);
-            StoryFile file = Assert.Single(loaded.Project.Files);
-
-            Assert.True(loaded.WasMigrated);
-            Assert.Equal(Path.Combine(directory, "legacy.vnproject.json"), loaded.ManifestPath);
-            Assert.Equal(new[] { "nd_a", "nd_b" }, file.Nodes.Select(node => node.Id));
-
-            ProjectStore.Save(loaded.ManifestPath, loaded.Project);
-            Assert.True(File.Exists(loaded.ManifestPath));
-            Assert.True(File.Exists(Path.Combine(directory, "story", "sf_main.vnstory.json")));
-            Assert.Equal(new[] { "nd_a", "nd_b" }, ProjectStore.Load(loaded.ManifestPath).Project.EnumerateNodes().Select(node => node.Id));
+            Assert.Throws<InvalidDataException>(() => ProjectStore.Load(legacyPath));
+            Assert.Equal(original, File.ReadAllText(legacyPath, new UTF8Encoding(false)));
         }
         finally
         {
@@ -219,27 +238,19 @@ public class SerializationTests
     }
 
     [Fact]
-    public void 이전_inline_formatVersion_2도_물리_저장으로_마이그레이션된다()
+    public void 개별_대본_파일을_프로젝트로_잘못_열지_않는다()
     {
         string directory = TempDirectory();
-        string legacyPath = Path.Combine(directory, "inline.vnstory.json");
-        File.WriteAllText(legacyPath, """
-            {
-              "formatVersion": 2,
-              "title": "논리 파일 형식",
-              "files": [
-                { "id": "sf_a", "name": "A", "nodes": [
-                  { "id": "nd_a", "kind": "dialogue", "name": "A", "lines": [] }
-                ] }
-              ]
-            }
-            """, new UTF8Encoding(false));
+        string scriptPath = Path.Combine(directory, "chapter.vnscript.json");
+        File.WriteAllText(scriptPath, """
+            { "formatVersion": 1, "scriptId": "sc_chapter", "name": "1장", "lines": [], "locales": [] }
+            """);
 
         try
         {
-            ProjectLoadResult loaded = ProjectStore.Load(legacyPath);
-            Assert.True(loaded.WasMigrated);
-            Assert.Equal("story/sf_a.vnstory.json", loaded.Project.Files[0].RelativePath);
+            InvalidDataException error = Assert.Throws<InvalidDataException>(
+                () => ProjectStore.Load(scriptPath));
+            Assert.Contains("manifest", error.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -274,7 +285,7 @@ public class SerializationTests
         Directory.CreateDirectory(Path.Combine(directory, "story"));
         string manifestPath = Path.Combine(directory, "project.vnproject.json");
         File.WriteAllText(manifestPath, """
-            { "formatVersion": 2, "files": [
+            { "formatVersion": 3, "scripts": [], "files": [
               { "id": "sf_manifest", "name": "A", "path": "story/a.vnstory.json" }
             ] }
             """);

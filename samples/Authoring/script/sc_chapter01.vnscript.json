@@ -1,0 +1,81 @@
+{
+  "formatVersion": 1,
+  "scriptId": "sc_chapter01",
+  "name": "1장 대본",
+  "primaryLocale": "ko-KR",
+  "sourceRevision": 1,
+  "sourcePath": "raw/chapter01.txt",
+  "lines": [
+    {
+      "id": "ln_a1",
+      "revision": 1
+    },
+    {
+      "id": "ln_a2",
+      "revision": 1
+    },
+    {
+      "id": "ln_b1",
+      "revision": 1
+    },
+    {
+      "id": "ln_b2",
+      "revision": 1
+    },
+    {
+      "id": "ln_c1",
+      "revision": 1
+    },
+    {
+      "id": "ln_c2",
+      "revision": 1
+    },
+    {
+      "id": "ln_d1",
+      "revision": 1
+    },
+    {
+      "id": "ln_d2",
+      "revision": 1
+    }
+  ],
+  "locales": [
+    {
+      "locale": "ko-KR",
+      "entries": {
+        "ln_a1": {
+          "speaker": "윌로",
+          "text": "이번 의뢰는 보수의 3분의 1밖에 드릴 수 없겠군요."
+        },
+        "ln_a2": {
+          "speaker": "라루",
+          "text": "3분의 1이요?"
+        },
+        "ln_b1": {
+          "speaker": "라루",
+          "text": "그래도 당신이라면 믿어 보죠."
+        },
+        "ln_b2": {
+          "speaker": "윌로",
+          "text": "고맙습니다. 반드시 갚겠습니다."
+        },
+        "ln_c1": {
+          "speaker": "라루",
+          "text": "약속은 지키는 사람이라고 들었습니다."
+        },
+        "ln_c2": {
+          "speaker": "윌로",
+          "text": "그 말, 잊지 않겠습니다."
+        },
+        "ln_d1": {
+          "speaker": "라루",
+          "text": "생각할 시간을 좀 주세요."
+        },
+        "ln_d2": {
+          "speaker": "윌로",
+          "text": "천천히 생각해 주십시오."
+        }
+      }
+    }
+  ]
+}

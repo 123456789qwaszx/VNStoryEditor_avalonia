@@ -1,7 +1,29 @@
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "title": "게리에 1장",
   "startNode": "nd_setup",
+  "scripts": [
+    {
+      "id": "sc_chapter01",
+      "name": "1장 대본",
+      "path": "script/sc_chapter01.vnscript.json"
+    },
+    {
+      "id": "sc_good",
+      "name": "호감 결말",
+      "path": "script/sc_good.vnscript.json"
+    },
+    {
+      "id": "sc_trust",
+      "name": "신뢰 경로",
+      "path": "script/sc_trust.vnscript.json"
+    },
+    {
+      "id": "sc_normal",
+      "name": "보류",
+      "path": "script/sc_normal.vnscript.json"
+    }
+  ],
   "files": [
     {
       "id": "sf_chapter01",

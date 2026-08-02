@@ -1,10 +1,24 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Vn.App.Views.PresentationNodeEditor">
-    <Grid RowDefinitions="Auto,Auto,*" Margin="12">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="12">
         <StackPanel Grid.Row="0" Spacing="6">
             <TextBlock Text="연출 노드" FontWeight="SemiBold" />
             <TextBox x:Name="NameBox" PlaceholderText="노드 이름" />
+
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0"
+                           Text="입력 결과"
+                           FontSize="11"
+                           Opacity="0.7"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          x:Name="SourceCombo"
+                          Margin="8,0,0,0"
+                          HorizontalAlignment="Stretch"
+                          PlaceholderText="발행된 대사 결과 선택" />
+            </Grid>
+
             <TextBlock x:Name="TargetText" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
         </StackPanel>
 
@@ -13,13 +27,25 @@
                 Padding="8"
                 CornerRadius="6"
                 Background="#12000000">
-            <TextBlock Text="Dialogue 대사는 읽기 전용입니다. 체크박스는 작성 데이터를 삭제하지 않고 Command 활성 상태만 바꿉니다."
+            <TextBlock Text="대사는 발행된 결과에서 온 읽기 전용 스냅샷입니다. 여기서 고쳐도 원고는 바뀌지 않습니다. 체크박스는 작성 데이터를 지우지 않고 명령의 활성 상태만 바꿉니다."
                        FontSize="11"
                        TextWrapping="Wrap"
                        Opacity="0.7" />
         </Border>
 
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="0,0,0,8">
+            <Button x:Name="PublishButton" Content="연출 발행" />
+            <TextBlock x:Name="PublishStatusText"
+                       FontSize="11"
+                       Opacity="0.75"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="LineHost" Spacing="8" />
         </ScrollViewer>
     </Grid>

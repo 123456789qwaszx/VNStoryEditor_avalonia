@@ -1,32 +1,43 @@
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Tests;
 
 /// <summary>
 /// 테스트가 공유하는 작은 프로젝트 하나.
-/// 조건 두 개와 대사 노드 하나, 그리고 이동할 대상 노드 두 개를 갖춘다.
+/// 대본 하나, 조건 두 개, 대사 노드 하나, 그리고 이동할 대상 노드 세 개를 갖춘다.
+///
+/// LineId와 발행 시각은 예측 가능한 값으로 주입한다. 무작위 Id와 현재 시각은
+/// 결과 해시와 동기화 계획을 테스트에서 읽을 수 없게 만든다.
 /// </summary>
 internal sealed class Sample
 {
+    private int _nextLineNumber;
+
     public Sample()
     {
         var project = new StoryProject { Title = "테스트" };
         File = new StoryFile("sf_test", "테스트 파일");
         project.Files.Add(File);
-        Editor = new ProjectEditor(project);
+
+        Editor = new ProjectEditor(
+            project,
+            now: () => new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            newLineId: NextLineId);
+
+        Script = Editor.AddScript("본문 대본");
 
         SetNode = Editor.AddSetNode(File.Id, name: "설정");
         ConditionA = Editor.AddCondition(SetNode.Id, "호감 높음", "favor >= 5");
         ConditionB = Editor.AddCondition(SetNode.Id, "신뢰 높음", "trust >= 3");
 
-        Dialogue = Editor.AddDialogueNode(File.Id, name: "본문");
-        Dialogue.Lines.Clear();
+        Dialogue = Editor.AddDialogueNode(File.Id, name: "본문", scriptId: Script.Id);
         SettingsLink = Editor.AddSettingsLink(SetNode.Id, Dialogue.Id);
 
-        TargetA = Editor.AddDialogueNode(File.Id, name: "A로 간다");
-        TargetB = Editor.AddDialogueNode(File.Id, name: "B로 간다");
-        TargetDefault = Editor.AddDialogueNode(File.Id, name: "기본으로 간다");
+        TargetA = AddEndNode("A로 간다");
+        TargetB = AddEndNode("B로 간다");
+        TargetDefault = AddEndNode("기본으로 간다");
     }
 
     public ProjectEditor Editor { get; }
@@ -34,6 +45,8 @@ internal sealed class Sample
     public StoryProject Project => Editor.Project;
 
     public StoryFile File { get; }
+
+    public ScriptDocument Script { get; }
 
     public SetNode SetNode { get; }
 
@@ -51,31 +64,42 @@ internal sealed class Sample
 
     public DialogueNode TargetDefault { get; }
 
-    /// <summary>대사 노드에 줄을 하나 붙이고 그 줄을 돌려준다.</summary>
-    public LineBox Line(string text, LineConditionTransition? transition = null)
+    /// <summary>대본에 줄을 하나 붙이고 그 줄의 LineId를 돌려준다.</summary>
+    public string Line(string text, LineConditionTransition? transition = null)
     {
-        LineBox line = Editor.AddLine(Dialogue.Id);
-        Editor.SetLineText(Dialogue.Id, line.Id, string.Empty, text);
+        ScriptLine line = Editor.InsertScriptLine(Script.Id);
+        Editor.SetScriptLineText(Script.Id, line.Id, string.Empty, text);
 
         if (transition is not null)
         {
             Editor.SetLineTransition(Dialogue.Id, line.Id, transition);
         }
 
-        return line;
+        return line.Id;
     }
 
     /// <summary>작업지시서 6.2의 예시를 그대로 만든다.</summary>
-    public (LineBox L0, LineBox L1, LineBox L2, LineBox L3, LineBox L4, LineBox L5, LineBox L6) BuildSpecExample()
+    public (string L0, string L1, string L2, string L3, string L4, string L5, string L6) BuildSpecExample()
     {
-        LineBox l0 = Line("0");
-        LineBox l1 = Line("1", LineConditionTransition.BeginIf(ConditionA.Id));
-        LineBox l2 = Line("2");
-        LineBox l3 = Line("3", LineConditionTransition.BeginElseIf(ConditionB.Id));
-        LineBox l4 = Line("4");
-        LineBox l5 = Line("5", LineConditionTransition.EndIf());
-        LineBox l6 = Line("6");
+        string l0 = Line("0");
+        string l1 = Line("1", LineConditionTransition.BeginIf(ConditionA.Id));
+        string l2 = Line("2");
+        string l3 = Line("3", LineConditionTransition.BeginElseIf(ConditionB.Id));
+        string l4 = Line("4");
+        string l5 = Line("5", LineConditionTransition.EndIf());
+        string l6 = Line("6");
 
         return (l0, l1, l2, l3, l4, l5, l6);
     }
+
+    /// <summary>대본 한 줄짜리 종점 노드. 발행할 수 있는 상태로 만들어 둔다.</summary>
+    private DialogueNode AddEndNode(string name)
+    {
+        ScriptDocument script = Editor.AddScript(name + " 대본");
+        ScriptLine line = Editor.InsertScriptLine(script.Id);
+        Editor.SetScriptLineText(script.Id, line.Id, "화자", name);
+        return Editor.AddDialogueNode(File.Id, name: name, scriptId: script.Id);
+    }
+
+    private string NextLineId() => $"ln_{++_nextLineNumber:D3}";
 }

@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "scriptId": "sc_good",
+  "name": "호감 결말",
+  "primaryLocale": "ko-KR",
+  "sourceRevision": 1,
+  "sourcePath": "raw/sc_good.txt",
+  "lines": [
+    {
+      "id": "ln_g1",
+      "revision": 1
+    }
+  ],
+  "locales": [
+    {
+      "locale": "ko-KR",
+      "entries": {
+        "ln_g1": {
+          "speaker": "라루",
+          "text": "그럼 계약서에 서명하죠."
+        }
+      }
+    }
+  ]
+}

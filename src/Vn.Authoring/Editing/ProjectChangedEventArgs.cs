@@ -33,10 +33,16 @@ public enum ProjectChangeKind
     ConditionDefinition,
 
     /// <summary>
-    /// 실행 출구가 아닌 Settings 또는 Presentation link가 추가·삭제·활성 변경되었다.
+    /// 조건 공급 link 또는 연출이 읽는 대사 결과가 바뀌었다.
     /// 그래프 간선과 연결 범위를 다시 계산해야 하지만 공급 노드의 입력 행은 유지한다.
     /// </summary>
     Connections,
+
+    /// <summary>
+    /// 결과가 발행되었거나 RuntimeComposition이 바뀌었다.
+    /// 작업 노드의 편집 행은 그대로이고, 결과 목록과 버전 뱃지만 새로 읽으면 된다.
+    /// </summary>
+    Results,
 
     /// <summary>
     /// 노드의 이름처럼 그래프와 참조 표시에는 영향을 주지만 현재 편집 행을 다시 만들 필요는 없는 값이 바뀌었다.
@@ -64,5 +70,6 @@ public sealed class ProjectChangedEventArgs : EventArgs
         ProjectChangeKind.Structure or
         ProjectChangeKind.ConditionDefinition or
         ProjectChangeKind.Connections or
-        ProjectChangeKind.NodeMetadata;
+        ProjectChangeKind.NodeMetadata or
+        ProjectChangeKind.Results;
 }

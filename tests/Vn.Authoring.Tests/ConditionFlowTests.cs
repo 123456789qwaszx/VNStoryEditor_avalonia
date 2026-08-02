@@ -32,8 +32,8 @@ public class ConditionFlowTests
         Assert.Null(flow.Lines[5].Branch);
         Assert.Null(flow.Lines[6].Branch);
 
-        Assert.Equal(new[] { l0.Id, l1.Id, l2.Id, l3.Id, l4.Id, l5.Id, l6.Id },
-            flow.Lines.Select(line => line.Line.Id));
+        Assert.Equal(new[] { l0, l1, l2, l3, l4, l5, l6 },
+            flow.Lines.Select(line => line.Line.LineId));
         Assert.Empty(flow.Problems);
     }
 
@@ -42,16 +42,16 @@ public class ConditionFlowTests
     {
         var sample = new Sample();
         sample.Line("바깥");
-        LineBox opener = sample.Line("여는 줄", LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        string opener = sample.Line("여는 줄", LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Line("따라오는 줄");
         sample.Line("또 따라오는 줄");
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
 
         // 전환을 적지 않은 줄들이 여는 줄과 같은 갈래를 가리킨다.
-        Assert.Equal(opener.Id, flow.Lines[1].Branch!.OpenLineId);
-        Assert.Equal(opener.Id, flow.Lines[2].Branch!.OpenLineId);
-        Assert.Equal(opener.Id, flow.Lines[3].Branch!.OpenLineId);
+        Assert.Equal(opener, flow.Lines[1].Branch!.OpenLineId);
+        Assert.Equal(opener, flow.Lines[2].Branch!.OpenLineId);
+        Assert.Equal(opener, flow.Lines[3].Branch!.OpenLineId);
         Assert.Single(flow.Branches);
     }
 

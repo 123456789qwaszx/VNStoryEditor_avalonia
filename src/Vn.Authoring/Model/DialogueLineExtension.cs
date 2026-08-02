@@ -48,44 +48,41 @@ public sealed class LineConditionTransition
     /// <summary>갈래를 여는 전환인지. 여는 전환만 조건 갈래 출구를 가질 수 있다.</summary>
     public bool OpensBranch =>
         Kind is ConditionTransitionKind.BeginIf or ConditionTransitionKind.BeginElseIf;
+
+    public LineConditionTransition Clone() => new(Kind, ConditionId);
 }
 
 /// <summary>
-/// 작가가 보는 가장 작은 서사 단위. 화면의 카드 하나에 대응한다.
+/// DialogueNode가 <b>대본 한 줄에 덧붙이는 대사 논리</b>.
 ///
-/// 화면에 보이는 순서(Index)는 목록에서의 위치일 뿐이고, 이 줄의 정체성은 <see cref="Id"/>다.
-/// 줄을 위아래로 옮겨도 조건 갈래 출구와 그래프 간선이 따라오는 것은 이 구분 덕분이다.
+/// 화자와 대사는 여기 없다. 그것은 <see cref="Script.ScriptDocument"/>가 소유하고,
+/// 이 객체는 안정된 <see cref="LineId"/>로 그 줄을 가리키기만 한다. 같은 문장을 고칠 수 있는
+/// 자리가 두 곳이 되면 어느 쪽이 진실인지 아무도 답할 수 없게 된다.
 ///
-/// 앞으로 변수 변경·이벤트·BGM·연출 같은 것이 이 카드에 붙는다.
-/// 지금 그것을 위한 범용 플러그인 층을 만들지는 않는다. 필요해질 때 여기에 속성을 더한다.
+/// 목록에서의 순서는 의미가 없다. 줄 순서는 언제나 대본이 정한다.
+/// 대본에서 사라진 LineId의 확장 데이터도 자동으로 지우지 않는다. 작가가 만든 조건 구조가
+/// 말없이 사라지는 것보다 고아로 남아 눈에 띄는 편이 낫다.
+///
+/// 앞으로 선택지·변수 변경·인라인 이벤트가 붙을 자리도 여기다.
 /// </summary>
-public sealed class LineBox
+public sealed class DialogueLineExtension
 {
-    public LineBox(string? id = null)
+    public DialogueLineExtension(string lineId)
     {
-        Id = id ?? Identifier.Line();
+        ArgumentException.ThrowIfNullOrWhiteSpace(lineId);
+        LineId = lineId;
     }
 
-    public string Id { get; }
-
-    public string Speaker { get; set; } = string.Empty;
-
-    public string Text { get; set; } = string.Empty;
+    public string LineId { get; }
 
     /// <summary>
     /// 이 줄에서 조건 흐름이 바뀐다면 그 내용. null이면 앞 줄의 상태를 그대로 물려받는다.
     /// </summary>
     public LineConditionTransition? Transition { get; set; }
 
-    public LineBox Clone()
-    {
-        return new LineBox(Id)
-        {
-            Speaker = Speaker,
-            Text = Text,
-            Transition = Transition is null
-                ? null
-                : new LineConditionTransition(Transition.Kind, Transition.ConditionId)
-        };
-    }
+    /// <summary>이 확장이 아무것도 담고 있지 않은지. 빈 확장은 저장하지 않는다.</summary>
+    public bool IsEmpty => Transition is null;
+
+    public DialogueLineExtension Clone() =>
+        new(LineId) { Transition = Transition?.Clone() };
 }

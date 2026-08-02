@@ -1,274 +1,234 @@
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
-using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
-using Vn.Authoring.Serialization;
+using Vn.Authoring.Results;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Tests;
 
 /// <summary>
-/// PresentationNode가 Dialogue 내용을 복제하지 않고 안정된 LineId와 ordered command만
-/// 소유한다는 계약. 대상 줄이 사라져도 binding은 자료 손실 없이 orphan으로 남는다.
+/// 연출은 편집 중인 대사 노드가 아니라 <b>발행된 대사 결과</b>를 읽는다.
+///
+/// 이전 구조에서는 <c>NodeLinkKind.Presentation</c>이 연출 노드를 편집 중인 대사 노드에
+/// 실시간으로 이었다. 그 링크와 그것을 검증하던 테스트는 폐기했다. 링크가 있으면
+/// 연출가가 작업하는 동안 발밑의 대사가 바뀌고, 완성한 연출표가 어느 대사에 맞는 것인지
+/// 아무도 말할 수 없기 때문이다. 여기서 그 자리를 대신하는 불변 조건을 검증한다.
 /// </summary>
 public class PresentationNodeTests
 {
     [Fact]
-    public void PresentationNode는_대사를_복사하지_않고_LineId만_참조한다()
+    public void 연출은_정확한_대사_결과_Id와_버전과_해시를_기억한다()
     {
-        var context = BuildContext();
-        LineBox line = context.Editor.AddLine(context.DialogueA.Id);
-        context.Editor.SetLineText(context.DialogueA.Id, line.Id, "라루", "원래 대사");
-        PresentationLineBinding binding = context.Editor.AddPresentationBinding(
+        PresentationContext context = BuildContext();
+        DialogueResult published = context.Editor.PublishDialogue(context.DialogueA.Id).Result;
+
+        context.Editor.SetPresentationSource(
             context.PresentationA.Id,
-            line.Id);
+            published.Identity.ResultId,
+            published.Identity.Version);
 
-        context.Editor.SetLineText(context.DialogueA.Id, line.Id, "라루", "수정된 대사");
-
-        Assert.Equal(line.Id, binding.LineId);
-        Assert.Equal("수정된 대사", context.DialogueA.Lines.Single().Text);
-        Assert.Empty(binding.Commands);
-        Assert.Null(typeof(PresentationLineBinding).GetProperty("Text"));
-        Assert.Null(typeof(PresentationLineBinding).GetProperty("Speaker"));
+        DialogueResultReference source = context.PresentationA.Source!.Value;
+        Assert.Equal(published.Identity.ResultId, source.ResultId);
+        Assert.Equal(1, source.Version);
+        Assert.Equal(published.Identity.ContentHash, source.ContentHash);
+        Assert.True(source.Matches(published.Identity));
     }
 
     [Fact]
-    public void Presentation_command는_작성_순서와_이동_순서를_저장한다()
+    public void 발행하지_않은_대사는_연출의_입력이_될_수_없다()
     {
-        var context = BuildContext();
-        LineBox line = context.Editor.AddLine(context.DialogueA.Id);
+        PresentationContext context = BuildContext();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            context.Editor.SetPresentationSource(context.PresentationA.Id, "rs_없음", 1));
+
+        Assert.Null(context.PresentationA.Source);
+    }
+
+    [Fact]
+    public void 입력_결과의_대사와_LineId는_읽기_전용_스냅샷이다()
+    {
+        PresentationContext context = BuildContext();
+        DialogueResult published = context.Editor.PublishDialogue(context.DialogueA.Id).Result;
+        context.Editor.SetPresentationSource(
+            context.PresentationA.Id,
+            published.Identity.ResultId,
+            published.Identity.Version);
+
+        // 발행 뒤 원본 대본을 고쳐도 연출이 보는 것은 얼어붙은 결과 그대로다.
+        context.Editor.SetScriptLineText(context.ScriptA.Id, context.FirstLineId, "다른 화자", "다른 대사");
+
+        PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
+            context.Project,
+            context.PresentationA);
+
+        DialogueResultLine line = workspace.Dialogue!.Lines[0];
+        Assert.Equal(context.FirstLineId, line.LineId);
+        Assert.Equal("첫 줄", line.Text);
+        Assert.False(workspace.IsStale);
+    }
+
+    [Fact]
+    public void LineId별_command_순서가_유지된다()
+    {
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
+
         PresentationCommandInstance first = context.Editor.AddPresentationCommand(
             context.PresentationA.Id,
-            line.Id,
+            context.FirstLineId,
             "camera.closeup");
         PresentationCommandInstance second = context.Editor.AddPresentationCommand(
             context.PresentationA.Id,
-            line.Id,
-            "acting.smile");
-        PresentationCommandInstance third = context.Editor.AddPresentationCommand(
-            context.PresentationA.Id,
-            line.Id,
-            "screen.flash");
-
-        context.Editor.MovePresentationCommand(context.PresentationA.Id, third.Id, delta: -2);
-
-        Assert.Equal(
-            new[] { third.Id, first.Id, second.Id },
-            context.PresentationA.Bindings.Single().Commands.Select(command => command.Id));
-
-        StoryProject restored = ProjectSnapshotCodec.Decode(
-            ProjectSnapshotCodec.Encode(context.Project));
-        PresentationNode restoredPresentation = Assert.IsType<PresentationNode>(
-            restored.FindNode(context.PresentationA.Id));
-
-        Assert.Equal(
-            new[] { third.Id, first.Id, second.Id },
-            restoredPresentation.Bindings.Single().Commands.Select(command => command.Id));
-    }
-
-    [Fact]
-    public void PresentationNode_하나는_Dialogue_하나만_대상으로_가지고_Dialogue에는_여러_연출이_붙는다()
-    {
-        var context = BuildContext();
-        PresentationNode presentationB = context.Editor.AddPresentationNode(
-            context.File.Id,
-            name: "연출 B");
-
-        NodeLink firstLink = context.Editor.SetPresentationTarget(
-            context.PresentationA.Id,
-            context.DialogueA.Id)!;
-        NodeLink movedLink = context.Editor.SetPresentationTarget(
-            context.PresentationA.Id,
-            context.DialogueB.Id)!;
-        NodeLink secondPresentationLink = context.Editor.SetPresentationTarget(
-            presentationB.Id,
-            context.DialogueB.Id)!;
-
-        Assert.Same(firstLink, movedLink);
-        Assert.Equal(context.DialogueB.Id, movedLink.TargetNodeId);
-        Assert.Single(context.Project.Links, link =>
-            link.Kind == NodeLinkKind.Presentation &&
-            link.SourceNodeId == context.PresentationA.Id);
-        Assert.Equal(2, context.Project.Links.Count(link =>
-            link.Kind == NodeLinkKind.Presentation &&
-            link.TargetNodeId == context.DialogueB.Id));
-        Assert.NotEqual(movedLink.SourceNodeId, secondPresentationLink.SourceNodeId);
-    }
-
-    [Fact]
-    public void Dialogue_줄을_삭제해도_binding은_삭제되지_않고_orphan으로_보존된다()
-    {
-        var context = BuildContext();
-        LineBox line = context.Editor.AddLine(context.DialogueA.Id);
-        context.Editor.SetPresentationTarget(context.PresentationA.Id, context.DialogueA.Id);
-        PresentationCommandInstance command = context.Editor.AddPresentationCommand(
-            context.PresentationA.Id,
-            line.Id,
-            "acting.surprised");
-
-        context.Editor.RemoveLine(context.DialogueA.Id, line.Id);
+            context.FirstLineId,
+            "screen.fade");
 
         PresentationLineBinding binding = Assert.Single(context.PresentationA.Bindings);
-        Assert.Equal(line.Id, binding.LineId);
-        Assert.Equal(command.Id, Assert.Single(binding.Commands).Id);
+        Assert.Equal(new[] { first.Id, second.Id }, binding.Commands.Select(item => item.Id));
 
-        ResolvedPresentationBinding resolved = Assert.Single(
-            PresentationBindingResolver.Resolve(context.Project, context.PresentationA));
-        Assert.True(resolved.IsOrphan);
-        Assert.Null(resolved.Line);
-        Assert.Equal(context.DialogueA.Id, resolved.DialogueNodeId);
+        context.Editor.MovePresentationCommand(context.PresentationA.Id, second.Id, -1);
+        Assert.Equal(new[] { second.Id, first.Id }, binding.Commands.Select(item => item.Id));
     }
 
     [Fact]
-    public void Dialogue_줄_순서가_바뀌어도_binding은_같은_LineId를_따라간다()
+    public void 대상_결과에_없는_LineId의_연출은_고아로_남고_지워지지_않는다()
     {
-        var context = BuildContext();
-        LineBox first = context.Editor.AddLine(context.DialogueA.Id);
-        LineBox second = context.Editor.AddLine(context.DialogueA.Id);
-        context.Editor.SetPresentationTarget(context.PresentationA.Id, context.DialogueA.Id);
-        context.Editor.AddPresentationBinding(context.PresentationA.Id, second.Id);
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
 
-        context.Editor.MoveLine(context.DialogueA.Id, second.Id, delta: -1);
+        context.Editor.AddPresentationCommand(context.PresentationA.Id, "ln_없는줄", "camera.wide");
 
-        ResolvedPresentationBinding resolved = Assert.Single(
-            PresentationBindingResolver.Resolve(context.Project, context.PresentationA));
-        Assert.False(resolved.IsOrphan);
-        Assert.Same(second, resolved.Line);
-        Assert.Equal(new[] { second.Id, first.Id }, context.DialogueA.Lines.Select(line => line.Id));
+        PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
+            context.Project,
+            context.PresentationA);
+        ResolvedPresentationBinding orphan = Assert.Single(workspace.Orphans);
+
+        Assert.Equal("ln_없는줄", orphan.Binding.LineId);
+        Assert.Null(orphan.Line);
+
+        // 자동 삭제하지 않는다. 연출가가 쓴 것이 말없이 사라지면 안 된다.
+        Assert.Contains(context.PresentationA.Bindings, binding => binding.LineId == "ln_없는줄");
     }
 
     [Fact]
-    public void PresentationNode와_link는_StoryFile_manifest_snapshot을_왕복한다()
+    public void 입력_결과를_다른_버전으로_바꿔도_연출_binding은_그대로다()
     {
-        var context = BuildContext();
-        LineBox line = context.Editor.AddLine(context.DialogueA.Id);
-        context.Editor.SetPresentationTarget(context.PresentationA.Id, context.DialogueA.Id);
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
+        context.Editor.AddPresentationCommand(
+            context.PresentationA.Id,
+            context.FirstLineId,
+            "camera.closeup");
+
+        // 대본을 고치고 다시 발행하면 v2가 생긴다.
+        context.Editor.SetScriptLineText(context.ScriptA.Id, context.FirstLineId, "윌로", "고친 첫 줄");
+        DialogueResult second = context.Editor.PublishDialogue(context.DialogueA.Id).Result;
+        Assert.Equal(2, second.Identity.Version);
+
+        context.Editor.SetPresentationSource(
+            context.PresentationA.Id,
+            second.Identity.ResultId,
+            second.Identity.Version);
+
+        // LineId가 유지되었으므로 연출도 그대로 붙는다.
+        PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
+            context.Project,
+            context.PresentationA);
+        Assert.Empty(workspace.Orphans);
+        Assert.Equal(2, context.PresentationA.Source!.Value.Version);
+    }
+
+    [Fact]
+    public void PresentationResult는_대상_대사_결과의_Id와_버전과_해시를_보존한다()
+    {
+        PresentationContext context = BuildContext();
+        DialogueResult dialogue = AttachLatest(context);
+        context.Editor.AddPresentationCommand(
+            context.PresentationA.Id,
+            context.FirstLineId,
+            "camera.closeup");
+
+        PresentationResult result = context.Editor.PublishPresentation(context.PresentationA.Id).Result;
+
+        Assert.Equal(dialogue.Identity.ResultId, result.Source.ResultId);
+        Assert.Equal(dialogue.Identity.Version, result.Source.Version);
+        Assert.Equal(dialogue.Identity.ContentHash, result.Source.ContentHash);
+        Assert.Equal(1, result.Identity.Version);
+    }
+
+    [Fact]
+    public void 입력_결과가_없으면_연출을_발행하지_않는다()
+    {
+        PresentationContext context = BuildContext();
+
+        PublishRejectedException error = Assert.Throws<PublishRejectedException>(
+            () => context.Editor.PublishPresentation(context.PresentationA.Id));
+
+        Assert.Contains(
+            error.Problems,
+            problem => problem.Kind == PublishProblemKind.MissingSourceResult);
+        Assert.Empty(context.Project.Results.PresentationResults);
+    }
+
+    [Fact]
+    public void 고아_binding은_발행을_막지_않고_orphan으로_표시된다()
+    {
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
+        context.Editor.AddPresentationCommand(context.PresentationA.Id, "ln_없는줄", "camera.wide");
+
+        PresentationResult result = context.Editor.PublishPresentation(context.PresentationA.Id).Result;
+
+        PresentationResultBinding orphan = Assert.Single(result.Orphans);
+        Assert.Equal("ln_없는줄", orphan.LineId);
+    }
+
+    [Fact]
+    public void 비활성_command는_결과에_들어가지_않지만_작성_데이터는_남는다()
+    {
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
         PresentationCommandInstance command = context.Editor.AddPresentationCommand(
             context.PresentationA.Id,
-            line.Id,
-            "camera.focus",
-            new Dictionary<string, string>
-            {
-                ["zTarget"] = "hero",
-                ["aDuration"] = "0.4"
-            },
-            note: "눈으로 이동");
-        context.Editor.SetPresentationCommandEnabled(
+            context.FirstLineId,
+            "camera.closeup");
+
+        context.Editor.SetPresentationCommandEnabled(context.PresentationA.Id, command.Id, enabled: false);
+        PresentationResult result = context.Editor.PublishPresentation(context.PresentationA.Id).Result;
+
+        Assert.Empty(Assert.Single(result.Bindings).Commands);
+        Assert.Single(Assert.Single(context.PresentationA.Bindings).Commands);
+    }
+
+    [Fact]
+    public void 연출_노드는_실행_출구를_가지지_않는다()
+    {
+        PresentationContext context = BuildContext();
+
+        context.Editor.SetExitTarget(
             context.PresentationA.Id,
-            command.Id,
-            enabled: false);
+            ExitPortKind.Default,
+            null,
+            context.DialogueB.Id);
 
-        string storyJson = StoryFileJson.Write(context.File);
-        string manifestJson = ProjectManifestJson.Write(context.Project);
-        StoryProject restored = ProjectSnapshotCodec.Decode(
-            ProjectSnapshotCodec.Encode(context.Project));
-
-        Assert.Contains("\"kind\": \"presentation\"", storyJson, StringComparison.Ordinal);
-        Assert.Contains("\"aDuration\"", storyJson, StringComparison.Ordinal);
-        Assert.Contains("\"zTarget\"", storyJson, StringComparison.Ordinal);
-        Assert.True(
-            storyJson.IndexOf("\"aDuration\"", StringComparison.Ordinal) <
-            storyJson.IndexOf("\"zTarget\"", StringComparison.Ordinal));
-        Assert.Contains("\"kind\": \"presentation\"", manifestJson, StringComparison.Ordinal);
-
-        PresentationNode restoredNode = Assert.IsType<PresentationNode>(
-            restored.FindNode(context.PresentationA.Id));
-        PresentationCommandInstance restoredCommand = Assert.Single(
-            Assert.Single(restoredNode.Bindings).Commands);
-        Assert.Equal(command.Id, restoredCommand.Id);
-        Assert.False(restoredCommand.IsEnabled);
-        Assert.Equal("눈으로 이동", restoredCommand.Note);
-        Assert.Equal("0.4", restoredCommand.Arguments["aDuration"]);
-
-        NodeLink restoredLink = Assert.Single(restored.Links, link =>
-            link.Kind == NodeLinkKind.Presentation);
-        Assert.Equal(context.PresentationA.Id, restoredLink.SourceNodeId);
-        Assert.Equal(context.DialogueA.Id, restoredLink.TargetNodeId);
+        Assert.Null(context.PresentationA.DefaultExitTargetNodeId);
+        Assert.Empty(NodeConnections.PortsOf(context.PresentationA, context.Project));
     }
 
     [Fact]
-    public void 저장은_Presentation_link_타입과_소스당_하나_제약을_검증한다()
+    public void command_편집은_PresentationContent로_알린다()
     {
-        var context = BuildContext();
-        context.Project.Links.Add(new NodeLink(
-            "lk_wrong",
-            NodeLinkKind.Presentation,
-            context.DialogueA.Id,
-            context.DialogueB.Id));
-
-        Assert.Throws<InvalidDataException>(() => ProjectSnapshotCodec.Encode(context.Project));
-
-        context.Project.Links.Clear();
-        context.Project.Links.Add(new NodeLink(
-            "lk_one",
-            NodeLinkKind.Presentation,
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
+        PresentationCommandInstance command = context.Editor.AddPresentationCommand(
             context.PresentationA.Id,
-            context.DialogueA.Id));
-        context.Project.Links.Add(new NodeLink(
-            "lk_two",
-            NodeLinkKind.Presentation,
-            context.PresentationA.Id,
-            context.DialogueB.Id));
+            context.FirstLineId,
+            "camera.closeup",
+            new Dictionary<string, string> { ["preset"] = "closeup" });
 
-        Assert.Throws<InvalidDataException>(() => ProjectSnapshotCodec.Encode(context.Project));
-    }
-
-    [Fact]
-    public void GraphProjection은_PresentationNode와_연출_공급_간선을_별도로_표시한다()
-    {
-        var context = BuildContext();
-        context.Editor.SetPresentationTarget(context.PresentationA.Id, context.DialogueA.Id);
-
-        GraphProjection projection = GraphProjectionBuilder.Build(
-            context.Project,
-            new HashSet<string>(new[] { context.File.Id }, StringComparer.Ordinal));
-
-        ExpandedNodeProjection presentation = projection.Items
-            .OfType<ExpandedNodeProjection>()
-            .Single(item => item.NodeId == context.PresentationA.Id);
-        GraphOutputPortProjection port = Assert.Single(presentation.OutputPorts);
-        GraphConnectionProjection connection = Assert.Single(projection.Connections, item =>
-            item.Kind == GraphConnectionKind.Presentation);
-
-        Assert.Equal(GraphNodeKind.Presentation, presentation.NodeKind);
-        Assert.Equal(GraphOutputPortKind.Presentation, port.Kind);
-        Assert.True(port.IsConnected);
-        Assert.Equal(context.PresentationA.Id, connection.SourceNodeId);
-        Assert.Equal(context.DialogueA.Id, connection.TargetNodeId);
-        Assert.Equal(GraphEndpointKind.ExpandedNodeOutput, connection.Source.Kind);
-        Assert.Equal(GraphEndpointKind.ExpandedNodeInput, connection.Target.Kind);
-    }
-
-    [Fact]
-    public void PresentationNode만_먼저_추가해도_시작_노드가_되지_않는다()
-    {
-        var project = new StoryProject();
-        var file = new StoryFile("sf_only", "연출 먼저");
-        project.Files.Add(file);
-        var editor = new Vn.Authoring.Editing.ProjectEditor(project);
-
-        editor.AddPresentationNode(file.Id);
-        Assert.Null(project.StartNodeId);
-
-        DialogueNode dialogue = editor.AddDialogueNode(file.Id);
-        Assert.Equal(dialogue.Id, project.StartNodeId);
-    }
-
-    [Fact]
-    public void Presentation_Command_추가와_드롭다운_변경은_Content_변경으로_알린다()
-    {
-        var context = BuildContext();
-        LineBox line = context.Editor.AddLine(context.DialogueA.Id);
         ProjectChangedEventArgs? change = null;
         context.Editor.Changed += (_, args) => change = args;
 
-        PresentationCommandInstance command = context.Editor.AddPresentationCommand(
-            context.PresentationA.Id,
-            line.Id,
-            "camera.closeup");
-
-        Assert.Equal(ProjectChangeKind.PresentationContent, change!.Kind);
-
-        change = null;
         context.Editor.SetPresentationCommandDefinition(
             context.PresentationA.Id,
             command.Id,
@@ -280,22 +240,48 @@ public class PresentationNodeTests
         Assert.Equal("wide", command.Arguments["preset"]);
     }
 
+    private static DialogueResult AttachLatest(PresentationContext context)
+    {
+        DialogueResult published = context.Editor.PublishDialogue(context.DialogueA.Id).Result;
+        context.Editor.SetPresentationSource(
+            context.PresentationA.Id,
+            published.Identity.ResultId,
+            published.Identity.Version);
+        return published;
+    }
+
     private static PresentationContext BuildContext()
     {
         var project = new StoryProject { Title = "Presentation" };
         var file = new StoryFile("sf_presentation", "연출", "story/presentation.vnstory.json");
         project.Files.Add(file);
-        var editor = new Vn.Authoring.Editing.ProjectEditor(project);
-        DialogueNode dialogueA = editor.AddDialogueNode(file.Id, name: "대사 A");
-        dialogueA.Lines.Clear();
-        DialogueNode dialogueB = editor.AddDialogueNode(file.Id, name: "대사 B");
-        dialogueB.Lines.Clear();
+
+        int nextLine = 0;
+        var editor = new ProjectEditor(
+            project,
+            now: () => new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            newLineId: () => $"ln_{++nextLine:D3}");
+
+        ScriptDocument scriptA = editor.AddScript("A 대본");
+        ScriptLine firstLine = editor.InsertScriptLine(scriptA.Id);
+        editor.SetScriptLineText(scriptA.Id, firstLine.Id, "라루", "첫 줄");
+        ScriptLine secondLine = editor.InsertScriptLine(scriptA.Id);
+        editor.SetScriptLineText(scriptA.Id, secondLine.Id, "윌로", "둘째 줄");
+
+        ScriptDocument scriptB = editor.AddScript("B 대본");
+        ScriptLine onlyLine = editor.InsertScriptLine(scriptB.Id);
+        editor.SetScriptLineText(scriptB.Id, onlyLine.Id, "라루", "B 줄");
+
+        DialogueNode dialogueA = editor.AddDialogueNode(file.Id, name: "대사 A", scriptId: scriptA.Id);
+        DialogueNode dialogueB = editor.AddDialogueNode(file.Id, name: "대사 B", scriptId: scriptB.Id);
         PresentationNode presentationA = editor.AddPresentationNode(file.Id, name: "연출 A");
 
         return new PresentationContext(
             project,
             file,
             editor,
+            scriptA,
+            firstLine.Id,
             dialogueA,
             dialogueB,
             presentationA);
@@ -304,7 +290,9 @@ public class PresentationNodeTests
     private sealed record PresentationContext(
         StoryProject Project,
         StoryFile File,
-        Vn.Authoring.Editing.ProjectEditor Editor,
+        ProjectEditor Editor,
+        ScriptDocument ScriptA,
+        string FirstLineId,
         DialogueNode DialogueA,
         DialogueNode DialogueB,
         PresentationNode PresentationA);

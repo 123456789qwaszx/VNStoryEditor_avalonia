@@ -112,7 +112,15 @@ public sealed class ConditionDefinition
 }
 
 /// <summary>
-/// 위에서 아래로 쌓인 <see cref="LineBox"/>들과 출구를 가진 노드.
+/// 대본 하나를 읽어 그 줄들에 <b>대사 논리</b>를 얹는 노드.
+///
+/// 줄 순서와 화자·대사는 여기 없다. <see cref="ScriptId"/>가 가리키는
+/// <see cref="Script.ScriptDocument"/>가 소유한다. 이 노드가 소유하는 것은
+/// LineId에 매달린 조건 전환과 출구뿐이다. 앞으로 선택지·변수 변경·인라인 이벤트도
+/// 같은 자리에 붙는다.
+///
+/// 이 분리 덕분에 대본을 다시 읽어 문구가 바뀌어도 조건 구조가 그대로 남고,
+/// 같은 문장을 고칠 수 있는 자리가 도구 안에 하나만 존재한다.
 ///
 /// 출구는 두 종류다.
 ///   기본 출구   — 모든 줄과 조건 체인이 끝난 뒤 이동한다. 노드 전체가 소유한다.
@@ -130,17 +138,33 @@ public sealed class DialogueNode : StoryNode
     {
     }
 
-    public List<LineBox> Lines { get; init; } = new();
+    /// <summary>이 노드가 읽는 대본. null이면 아직 대본을 고르지 않은 것이다.</summary>
+    public string? ScriptId { get; set; }
+
+    /// <summary>
+    /// LineId별 대사 논리. 목록 순서는 파일에서 읽는 순서일 뿐이고 실행 순서가 아니다.
+    /// 실행 순서는 언제나 대본이 정한다.
+    /// </summary>
+    public List<DialogueLineExtension> LineExtensions { get; init; } = new();
 
     /// <summary>갈래를 여는 줄의 Id → 그 갈래가 끝났을 때 이동할 노드.</summary>
     public Dictionary<string, string> BranchExits { get; init; } = new(StringComparer.Ordinal);
+
+    public DialogueLineExtension? FindExtension(string? lineId)
+    {
+        return lineId is null
+            ? null
+            : LineExtensions.FirstOrDefault(
+                item => string.Equals(item.LineId, lineId, StringComparison.Ordinal));
+    }
 
     public override StoryNode Clone()
     {
         return new DialogueNode(Id, Name)
         {
             Layout = Layout.Clone(),
-            Lines = Lines.Select(line => line.Clone()).ToList(),
+            ScriptId = ScriptId,
+            LineExtensions = LineExtensions.Select(item => item.Clone()).ToList(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
             BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal)
         };

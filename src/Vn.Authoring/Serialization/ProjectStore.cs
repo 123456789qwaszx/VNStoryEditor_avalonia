@@ -1,12 +1,22 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Serialization;
 
 /// <summary>
-/// 프로젝트 manifest와 여러 StoryFile을 물리 파일로 읽고 쓴다.
+/// manifest·대본·StoryFile·발행 결과를 물리 파일로 읽고 쓴다.
 /// StoryProject 자체는 경로 해석이나 파일 IO를 모른다.
+///
+/// 디스크 배치:
+/// <code>
+/// project.vnproject.json      목차와 파일을 넘나드는 관계
+/// script/&lt;scriptId&gt;.vnscript.json   대본 산출물 (줄 정체성 + locale별 본문)
+/// story/&lt;fileId&gt;.vnstory.json       노드
+/// results.vnresults.json      발행된 불변 결과
+/// </code>
 /// </summary>
 public static class ProjectStore
 {
@@ -16,12 +26,6 @@ public static class ProjectStore
         string json = File.ReadAllText(openedPath, new UTF8Encoding(false));
         JsonObject root = JsonSupport.ParseObject(json, "VnTool 프로젝트");
 
-        if (LooksLikeManifest(openedPath, root))
-        {
-            StoryProject project = LoadManifest(openedPath, ProjectManifestJson.Read(json));
-            return new ProjectLoadResult(project, openedPath, openedPath, WasMigrated: false);
-        }
-
         if (LooksLikeStandaloneStoryFile(root))
         {
             throw new InvalidDataException(
@@ -29,9 +33,15 @@ public static class ProjectStore
                 $"개별 {StoryFileJson.FileExtension} 대신 {ProjectManifestJson.FileExtension} manifest를 여세요.");
         }
 
-        StoryProject migrated = LegacyProjectJson.Read(json, openedPath);
-        string manifestPath = SuggestManifestPath(openedPath);
-        return new ProjectLoadResult(migrated, manifestPath, openedPath, WasMigrated: true);
+        if (LooksLikeStandaloneScript(root))
+        {
+            throw new InvalidDataException(
+                "이 파일은 프로젝트가 소유하는 대본입니다. " +
+                $"개별 {ScriptDocumentJson.FileExtension} 대신 {ProjectManifestJson.FileExtension} manifest를 여세요.");
+        }
+
+        StoryProject project = LoadManifest(openedPath, ProjectManifestJson.Read(json));
+        return new ProjectLoadResult(project, openedPath);
     }
 
     public static void Save(string manifestPath, StoryProject project)
@@ -45,17 +55,35 @@ public static class ProjectStore
         Directory.CreateDirectory(rootDirectory);
 
         // 직렬화와 경로 검증은 디스크를 건드리기 전에 모두 끝낸다.
-        // 한 StoryFile의 데이터가 잘못됐다는 이유로 앞 파일만 새 내용으로 바뀌는 일을 줄인다.
-        var storyWrites = project.Files
-            .Select(file => new PendingWrite(
-                ResolveStoryPath(rootDirectory, file.RelativePath),
-                StoryFileJson.Write(file)))
-            .ToList();
+        // 한 파일의 데이터가 잘못됐다는 이유로 앞 파일만 새 내용으로 바뀌는 일을 줄인다.
+        var writes = new List<PendingWrite>();
+
+        foreach (ScriptDocument script in project.Scripts)
+        {
+            writes.Add(new PendingWrite(
+                Resolve(rootDirectory, DefaultScriptPath(script.Id), ScriptDocumentJson.FileExtension),
+                ScriptDocumentJson.Write(script)));
+        }
+
+        foreach (StoryFile file in project.Files)
+        {
+            writes.Add(new PendingWrite(
+                Resolve(rootDirectory, file.RelativePath, StoryFileJson.FileExtension),
+                StoryFileJson.Write(file)));
+        }
+
+        if (!project.Results.IsEmpty)
+        {
+            writes.Add(new PendingWrite(
+                Path.Combine(rootDirectory, ResultStoreJson.DefaultFileName),
+                ResultStoreJson.Write(project.Results)));
+        }
+
         string manifestText = ProjectManifestJson.Write(project);
 
-        // StoryFile을 먼저 안전하게 교체한 뒤 manifest를 마지막에 교체한다.
+        // 부속 파일을 먼저 안전하게 교체한 뒤 manifest를 마지막에 교체한다.
         // 새 manifest가 아직 쓰이지 않은 파일을 가리키는 상태를 만들지 않기 위해서다.
-        foreach (PendingWrite write in storyWrites)
+        foreach (PendingWrite write in writes)
         {
             JsonSupport.WriteAtomic(write.Path, write.Text);
         }
@@ -69,45 +97,50 @@ public static class ProjectStore
         return $"story/{fileId}{StoryFileJson.FileExtension}";
     }
 
-    public static string NormalizeRelativeStoryPath(string relativePath)
+    public static string DefaultScriptPath(string scriptId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scriptId);
+        return $"script/{scriptId}{ScriptDocumentJson.FileExtension}";
+    }
+
+    public static string NormalizeRelativeStoryPath(string relativePath) =>
+        NormalizeRelativePath(relativePath, StoryFileJson.FileExtension);
+
+    /// <summary>
+    /// 프로젝트 디렉터리 안의 상대 경로로 정규화한다.
+    /// 프로젝트 밖을 가리킬 수 있는 경로는 읽지 않는다. manifest 하나로 임의의 파일을
+    /// 덮어쓸 수 있게 되면 프로젝트를 여는 일 자체가 위험해진다.
+    /// </summary>
+    public static string NormalizeRelativePath(string relativePath, string expectedExtension)
     {
         if (string.IsNullOrWhiteSpace(relativePath))
         {
-            throw new InvalidDataException("StoryFile 상대 경로가 비어 있습니다.");
+            throw new InvalidDataException("부속 파일 상대 경로가 비어 있습니다.");
         }
 
         string normalized = relativePath.Replace('\\', '/').Trim();
 
         if (Path.IsPathRooted(normalized))
         {
-            throw new InvalidDataException($"StoryFile 경로 '{relativePath}'는 상대 경로여야 합니다.");
+            throw new InvalidDataException($"부속 파일 경로 '{relativePath}'는 상대 경로여야 합니다.");
         }
 
         string[] parts = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
         if (parts.Length == 0 || parts.Any(part => part is "." or ".."))
         {
-            throw new InvalidDataException($"StoryFile 경로 '{relativePath}'가 프로젝트 밖을 가리킬 수 있습니다.");
+            throw new InvalidDataException($"부속 파일 경로 '{relativePath}'가 프로젝트 밖을 가리킬 수 있습니다.");
         }
 
         normalized = string.Join('/', parts);
-        if (!normalized.EndsWith(StoryFileJson.FileExtension, StringComparison.OrdinalIgnoreCase))
+
+        if (!normalized.EndsWith(expectedExtension, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException(
-                $"StoryFile 경로 '{relativePath}'는 {StoryFileJson.FileExtension}으로 끝나야 합니다.");
+                $"부속 파일 경로 '{relativePath}'는 {expectedExtension}으로 끝나야 합니다.");
         }
 
         return normalized;
-    }
-
-    public static string SuggestManifestPath(string legacyPath)
-    {
-        string fullPath = Path.GetFullPath(legacyPath);
-        string directory = Path.GetDirectoryName(fullPath) ?? string.Empty;
-        string fileName = Path.GetFileName(fullPath) ?? string.Empty;
-        string stem = fileName.EndsWith(StoryFileJson.FileExtension, StringComparison.OrdinalIgnoreCase)
-            ? fileName[..^StoryFileJson.FileExtension.Length]
-            : Path.GetFileNameWithoutExtension(fileName);
-        return Path.Combine(directory, stem + ProjectManifestJson.FileExtension);
     }
 
     private static StoryProject LoadManifest(string manifestPath, ProjectManifest manifest)
@@ -121,9 +154,32 @@ public static class ProjectStore
             StartNodeId = manifest.StartNodeId
         };
 
+        foreach (ScriptFileReference reference in manifest.Scripts)
+        {
+            string scriptPath = Resolve(rootDirectory, reference.RelativePath, ScriptDocumentJson.FileExtension);
+
+            if (!File.Exists(scriptPath))
+            {
+                throw new FileNotFoundException(
+                    $"프로젝트가 참조하는 대본을 찾을 수 없습니다: {reference.RelativePath}",
+                    scriptPath);
+            }
+
+            ScriptDocument script = ScriptDocumentJson.Read(
+                File.ReadAllText(scriptPath, new UTF8Encoding(false)));
+
+            if (!string.Equals(script.Id, reference.Id, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"manifest의 대본 Id '{reference.Id}'와 파일의 Id '{script.Id}'가 다릅니다.");
+            }
+
+            project.Scripts.Add(script);
+        }
+
         foreach (ProjectStoryFileReference reference in manifest.Files)
         {
-            string storyPath = ResolveStoryPath(rootDirectory, reference.RelativePath);
+            string storyPath = Resolve(rootDirectory, reference.RelativePath, StoryFileJson.FileExtension);
 
             if (!File.Exists(storyPath))
             {
@@ -150,7 +206,33 @@ public static class ProjectStore
             project.Files.Add(file);
         }
 
+        if (manifest.ResultsRelativePath is { } resultsRelative)
+        {
+            string resultsPath = Resolve(rootDirectory, resultsRelative, ResultStoreJson.FileExtension);
+
+            if (!File.Exists(resultsPath))
+            {
+                throw new FileNotFoundException(
+                    $"프로젝트가 참조하는 발행 결과 파일을 찾을 수 없습니다: {resultsRelative}",
+                    resultsPath);
+            }
+
+            ResultRepository results = ResultStoreJson.Read(
+                File.ReadAllText(resultsPath, new UTF8Encoding(false)));
+
+            foreach (DialogueResult result in results.DialogueResults)
+            {
+                project.Results.Add(result);
+            }
+
+            foreach (PresentationResult result in results.PresentationResults)
+            {
+                project.Results.Add(result);
+            }
+        }
+
         project.Links.AddRange(manifest.Links.Select(link => link.Clone()));
+        project.Compositions.AddRange(manifest.Compositions.Select(item => item.Clone()));
 
         JsonSupport.ValidateProject(project);
         return project;
@@ -163,29 +245,18 @@ public static class ProjectStore
             root["nodes"] is JsonArray;
     }
 
-    private static bool LooksLikeManifest(string path, JsonObject root)
+    private static bool LooksLikeStandaloneScript(JsonObject root)
     {
-        if (path.EndsWith(ProjectManifestJson.FileExtension, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if ((int?)root["formatVersion"] != ProjectManifestJson.CurrentFormatVersion ||
-            root["files"] is not JsonArray files)
-        {
-            return false;
-        }
-
-        // 빈 manifest도 유효하다. 확장자가 아니라 내용만으로 판정할 때는
-        // inline nodes가 하나라도 있으면 이전 aggregate v2로 본다.
-        return files.Count > 0 && files.All(item => item is JsonObject file && file["path"] is not null && file["nodes"] is null);
+        return (int?)root["formatVersion"] == ScriptDocumentJson.CurrentFormatVersion &&
+            root["scriptId"] is not null &&
+            root["lines"] is JsonArray;
     }
 
     private sealed record PendingWrite(string Path, string Text);
 
-    private static string ResolveStoryPath(string rootDirectory, string relativePath)
+    private static string Resolve(string rootDirectory, string relativePath, string expectedExtension)
     {
-        string normalized = NormalizeRelativeStoryPath(relativePath);
+        string normalized = NormalizeRelativePath(relativePath, expectedExtension);
         string fullRoot = Path.GetFullPath(rootDirectory)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             + Path.DirectorySeparatorChar;
@@ -195,15 +266,11 @@ public static class ProjectStore
 
         if (!combined.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException($"StoryFile 경로 '{relativePath}'가 프로젝트 디렉터리 밖을 가리킵니다.");
+            throw new InvalidDataException($"부속 파일 경로 '{relativePath}'가 프로젝트 디렉터리 밖을 가리킵니다.");
         }
 
         return combined;
     }
 }
 
-public sealed record ProjectLoadResult(
-    StoryProject Project,
-    string ManifestPath,
-    string OpenedPath,
-    bool WasMigrated);
+public sealed record ProjectLoadResult(StoryProject Project, string ManifestPath);

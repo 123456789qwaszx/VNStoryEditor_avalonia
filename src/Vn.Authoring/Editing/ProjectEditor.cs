@@ -15,16 +15,27 @@ namespace Vn.Authoring.Editing;
 /// 디스크의 manifest/StoryFile 배치와 무관하므로 물리 저장 구조가 바뀌어도 편집 기록은
 /// 하나의 문자열로 안정적으로 왕복한다.
 /// </summary>
-public sealed class ProjectEditor
+public sealed partial class ProjectEditor
 {
     private const int MaxHistory = 100;
 
     private readonly List<string> _undo = new();
     private readonly List<string> _redo = new();
+    private readonly Func<DateTimeOffset> _now;
+    private readonly Func<string> _newLineId;
 
-    public ProjectEditor(StoryProject project)
+    /// <param name="now">발행 시각의 출처. 테스트가 고정된 시각을 넣을 수 있게 주입한다.</param>
+    /// <param name="newLineId">
+    /// 새 LineId 발급기. 동기화 계획을 테스트에서 읽으려면 Id가 예측 가능해야 한다.
+    /// </param>
+    public ProjectEditor(
+        StoryProject project,
+        Func<DateTimeOffset>? now = null,
+        Func<string>? newLineId = null)
     {
         Project = project ?? throw new ArgumentNullException(nameof(project));
+        _now = now ?? (() => DateTimeOffset.UtcNow);
+        _newLineId = newLineId ?? Identifier.Line;
     }
 
     public StoryProject Project { get; private set; }
@@ -92,15 +103,15 @@ public sealed class ProjectEditor
         string fileId,
         double x = 0,
         double y = 0,
-        string? name = null)
+        string? name = null,
+        string? scriptId = null)
     {
         var node = new DialogueNode(name: name ?? NextName("장면"))
         {
-            Layout = new NodeLayout { X = x, Y = y }
+            Layout = new NodeLayout { X = x, Y = y },
+            ScriptId = scriptId
         };
 
-        // 빈 노드에서 바로 쓰기 시작할 수 있게 줄 하나를 둔다.
-        node.Lines.Add(new LineBox());
         return AddNode(fileId, node);
     }
 
@@ -217,105 +228,48 @@ public sealed class ProjectEditor
         }
     }
 
-    // ── 줄 ──────────────────────────────────────────────────────────────────
-
-    public LineBox AddLine(string nodeId, int? index = null)
-    {
-        DialogueNode node = RequireDialogue(nodeId);
-        var line = new LineBox();
-
-        Mutate(() =>
-        {
-            int at = index ?? node.Lines.Count;
-            node.Lines.Insert(Math.Clamp(at, 0, node.Lines.Count), line);
-        });
-
-        return line;
-    }
-
-    public void RemoveLine(string nodeId, string lineId)
-    {
-        DialogueNode node = RequireDialogue(nodeId);
-        LineBox? line = node.Lines.FirstOrDefault(item => string.Equals(item.Id, lineId, StringComparison.Ordinal));
-
-        if (line is null)
-        {
-            return;
-        }
-
-        Mutate(() =>
-        {
-            node.Lines.Remove(line);
-            PruneBranchExits(node);
-        });
-    }
-
-    /// <summary>
-    /// 줄을 위아래로 옮긴다. 줄의 Id는 그대로이므로 그 줄이 열던 갈래와 출구가 함께 따라간다.
-    /// </summary>
-    public void MoveLine(string nodeId, string lineId, int delta)
-    {
-        DialogueNode node = RequireDialogue(nodeId);
-        int from = node.Lines.FindIndex(item => string.Equals(item.Id, lineId, StringComparison.Ordinal));
-
-        if (from < 0)
-        {
-            return;
-        }
-
-        int to = Math.Clamp(from + delta, 0, node.Lines.Count - 1);
-
-        if (to == from)
-        {
-            return;
-        }
-
-        Mutate(() =>
-        {
-            LineBox line = node.Lines[from];
-            node.Lines.RemoveAt(from);
-            node.Lines.Insert(to, line);
-        });
-    }
-
-    public void SetLineText(string nodeId, string lineId, string speaker, string text)
-    {
-        DialogueNode node = RequireDialogue(nodeId);
-        LineBox? line = node.Lines.FirstOrDefault(item => string.Equals(item.Id, lineId, StringComparison.Ordinal));
-
-        if (line is null ||
-            (string.Equals(line.Speaker, speaker, StringComparison.Ordinal) &&
-             string.Equals(line.Text, text, StringComparison.Ordinal)))
-        {
-            return;
-        }
-
-        // 글자만 바뀌는 편집이다. 화면은 이미 그 값을 보여 주고 있으므로 다시 만들지 않는다.
-        Mutate(ProjectChangeKind.DialogueContent, () =>
-        {
-            line.Speaker = speaker;
-            line.Text = text;
-        });
-    }
+    // ── 줄에 얹는 대사 논리 ────────────────────────────────────────────────
+    //
+    // 줄 자체를 만들고 지우고 옮기는 명령은 여기 없다. 그것은 대본의 일이고
+    // ProjectEditor.Scripts.cs에 있다. 여기서는 이미 있는 LineId에 논리를 붙인다.
 
     /// <summary>
     /// 이 줄에서 조건 흐름을 어떻게 바꿀지 정한다.
     /// 갈래를 더 이상 열지 않게 되면 거기 매달려 있던 조건 출구도 함께 사라진다.
+    ///
+    /// 대본에 없는 LineId를 주면 아무것도 하지 않는다. 조건은 존재하는 줄에만 붙는다.
     /// </summary>
     public void SetLineTransition(string nodeId, string lineId, LineConditionTransition? transition)
     {
         DialogueNode node = RequireDialogue(nodeId);
-        LineBox? line = node.Lines.FirstOrDefault(item => string.Equals(item.Id, lineId, StringComparison.Ordinal));
 
-        if (line is null)
+        if (Project.FindScript(node.ScriptId)?.FindLine(lineId) is not { IsRetired: false })
+        {
+            return;
+        }
+
+        DialogueLineExtension? existing = node.FindExtension(lineId);
+
+        if (existing?.Transition is null && transition is null)
         {
             return;
         }
 
         Mutate(() =>
         {
-            line.Transition = transition;
+            DialogueLineExtension extension = existing ?? new DialogueLineExtension(lineId);
+
+            if (existing is null)
+            {
+                node.LineExtensions.Add(extension);
+            }
+
+            extension.Transition = transition;
+
+            // 순서가 중요하다. 먼저 주인 없는 출구를 버리고, 그다음에 빈 항목을 버린다.
+            // 반대로 하면 아직 출구가 매달려 있어 빈 항목이 남는다.
             PruneBranchExits(node);
+            PruneLineExtensions(node);
         });
     }
 
@@ -456,89 +410,6 @@ public sealed class ProjectEditor
         {
             Mutate(ProjectChangeKind.Connections, () => link.IsEnabled = enabled);
         }
-    }
-
-    /// <summary>
-    /// PresentationNode 하나의 Dialogue 대상을 정한다.
-    /// 같은 PresentationNode에서 다른 Dialogue로 바꾸면 기존 link Id를 유지한 채 대상을 교체한다.
-    /// null이면 link를 삭제한다. Dialogue 하나에는 여러 PresentationNode가 연결될 수 있다.
-    /// </summary>
-    public NodeLink? SetPresentationTarget(string presentationNodeId, string? dialogueNodeId)
-    {
-        if (Project.FindNode(presentationNodeId) is not PresentationNode)
-        {
-            throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
-        }
-
-        if (dialogueNodeId is not null && Project.FindNode(dialogueNodeId) is not DialogueNode)
-        {
-            throw new InvalidOperationException($"'{dialogueNodeId}'는 대사 노드가 아닙니다.");
-        }
-
-        List<NodeLink> existing = Project.Links
-            .Where(link =>
-                link.Kind == NodeLinkKind.Presentation &&
-                string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal))
-            .ToList();
-
-        if (dialogueNodeId is null)
-        {
-            if (existing.Count > 0)
-            {
-                Mutate(ProjectChangeKind.Connections, () =>
-                    Project.Links.RemoveAll(link => existing.Contains(link)));
-            }
-
-            return null;
-        }
-
-        NodeLink? current = existing.FirstOrDefault();
-
-        if (current is not null &&
-            string.Equals(current.TargetNodeId, dialogueNodeId, StringComparison.Ordinal) &&
-            current.IsEnabled &&
-            existing.Count == 1)
-        {
-            return current;
-        }
-
-        int nextOrder = Project.Links
-            .Where(link =>
-                link.Kind == NodeLinkKind.Presentation &&
-                string.Equals(link.TargetNodeId, dialogueNodeId, StringComparison.Ordinal) &&
-                !string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal))
-            .Select(link => link.Order)
-            .DefaultIfEmpty(-1)
-            .Max() + 1;
-
-        if (current is not null)
-        {
-            Mutate(ProjectChangeKind.Connections, () =>
-            {
-                // 손으로 잘못 만든 중복 link가 있더라도 편집 API를 거치면 하나로 정규화한다.
-                foreach (NodeLink duplicate in existing.Skip(1))
-                {
-                    Project.Links.Remove(duplicate);
-                }
-
-                current.TargetNodeId = dialogueNodeId;
-                current.IsEnabled = true;
-                current.Order = nextOrder;
-            });
-
-            return current;
-        }
-
-        var created = new NodeLink(
-            kind: NodeLinkKind.Presentation,
-            sourceNodeId: presentationNodeId,
-            targetNodeId: dialogueNodeId)
-        {
-            Order = nextOrder
-        };
-
-        Mutate(ProjectChangeKind.Connections, () => Project.Links.Add(created));
-        return created;
     }
 
     // ── Presentation command ────────────────────────────────────────────────
@@ -867,18 +738,28 @@ public sealed class ProjectEditor
     /// <summary>
     /// 더 이상 갈래를 열지 않는 줄에 매달린 조건 출구를 버린다.
     /// 남겨 두면 그래프에 주인 없는 간선이 생기고, 그 간선은 어느 화면에서도 지울 수 없다.
+    ///
+    /// 대본에서 사라진 줄의 출구는 여기서 지우지 않는다. 그것은 <b>고아</b>이지 쓰레기가 아니다.
+    /// 대본을 되돌리면 살아나야 하고, 그때까지는 진단으로 보인다.
     /// </summary>
     private static void PruneBranchExits(DialogueNode node)
     {
-        HashSet<string> opening = node.Lines
-            .Where(line => line.Transition?.OpensBranch == true)
-            .Select(line => line.Id)
+        HashSet<string> opening = node.LineExtensions
+            .Where(extension => extension.Transition?.OpensBranch == true)
+            .Select(extension => extension.LineId)
             .ToHashSet(StringComparer.Ordinal);
 
         foreach (string key in node.BranchExits.Keys.Where(key => !opening.Contains(key)).ToList())
         {
             node.BranchExits.Remove(key);
         }
+    }
+
+    /// <summary>아무것도 담지 않게 된 확장 항목을 버린다. 빈 항목은 파일만 시끄럽게 한다.</summary>
+    private static void PruneLineExtensions(DialogueNode node)
+    {
+        node.LineExtensions.RemoveAll(extension =>
+            extension.IsEmpty && !node.BranchExits.ContainsKey(extension.LineId));
     }
 
     private void RemoveReferencesToNode(string nodeId)

@@ -70,33 +70,35 @@ public class AuthoringSessionTests
         Assert.NotNull(session.Project.FindNode(node.Id));
     }
 
+    /// <summary>
+    /// 이전 형식은 자동 마이그레이션하지 않고 거부한다. 이 테스트는 그 마이그레이션을
+    /// 검증하던 테스트를 대체한다. 열지 못한 뒤에도 세션은 원래 상태로 계속 쓸 수 있어야 한다.
+    /// </summary>
     [Fact]
-    public void 이전_formatVersion1을_열면_새_manifest_경로를_저장_대상으로_사용한다()
+    public void 이전_형식을_열면_거부하고_세션은_그대로_남는다()
     {
         string directory = TempDirectory();
-        string legacyPath = Path.Combine(directory, "legacy.vnstory.json");
+        string legacyPath = Path.Combine(directory, "legacy.vnproject.json");
         File.WriteAllText(legacyPath, """
             {
-              "formatVersion": 1,
+              "formatVersion": 2,
               "title": "이전",
-              "nodes": [
-                { "id": "nd_a", "kind": "dialogue", "name": "A", "lines": [] }
-              ]
+              "files": []
             }
             """, new UTF8Encoding(false));
 
         try
         {
             var session = new AuthoringSession();
-            session.Open(legacyPath);
+            string? pathBefore = session.ProjectPath;
+            int nodesBefore = session.Project.EnumerateNodes().Count();
 
-            Assert.Equal(Path.Combine(directory, "legacy.vnproject.json"), session.ProjectPath);
-            Assert.Contains("마이그레이션", session.StatusMessage, StringComparison.Ordinal);
-            Assert.False(session.IsDirty);
+            InvalidDataException error = Assert.Throws<InvalidDataException>(
+                () => session.Open(legacyPath));
 
-            session.Save();
-            Assert.True(File.Exists(session.ProjectPath));
-            Assert.True(File.Exists(Path.Combine(directory, "story", "sf_main.vnstory.json")));
+            Assert.Contains("더 이상 열 수 없습니다", error.Message, StringComparison.Ordinal);
+            Assert.Equal(pathBefore, session.ProjectPath);
+            Assert.Equal(nodesBefore, session.Project.EnumerateNodes().Count());
             Assert.False(session.IsDirty);
         }
         finally

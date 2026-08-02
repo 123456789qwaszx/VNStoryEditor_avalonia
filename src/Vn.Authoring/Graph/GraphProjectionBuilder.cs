@@ -1,6 +1,7 @@
 using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
 
 namespace Vn.Authoring.Graph;
 
@@ -59,7 +60,8 @@ public static class GraphProjectionBuilder
                         node.Name,
                         KindOf(node),
                         new GraphPosition(node.Layout.X, node.Layout.Y),
-                        portsByNodeId[node.Id]));
+                        portsByNodeId[node.Id],
+                        BadgeFor(node, project)));
                 }
 
                 continue;
@@ -164,24 +166,63 @@ public static class GraphProjectionBuilder
                 null));
         }
 
-        if (node is PresentationNode)
+        // 발행 결과 포트는 대사 노드 쪽에 붙는다. 연출은 이 결과를 읽는 소비자이지
+        // 대사에 무언가를 공급하는 쪽이 아니다. 화살표 방향이 의존 방향과 같아야 한다.
+        if (node is DialogueNode)
         {
-            bool connected = project.Links.Any(link =>
-                link.Kind == NodeLinkKind.Presentation &&
-                link.IsEnabled &&
-                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
+            DialogueResult? latest = project.Results.DialogueResultsOf(node.Id).LastOrDefault();
+            bool consumed = latest is not null && project.EnumerateNodes()
+                .OfType<PresentationNode>()
+                .Any(presentation => presentation.Source is { } source &&
+                    string.Equals(source.ResultId, latest.Identity.ResultId, StringComparison.Ordinal));
 
             ports.Add(new GraphOutputPortProjection(
-                PresentationPortKey(node.Id),
-                GraphOutputPortKind.Presentation,
+                ResultPortKey(node.Id),
+                GraphOutputPortKind.PublishedResult,
                 node.Id,
-                "연출 공급",
+                latest is null ? "발행 없음" : $"결과 v{latest.Identity.Version}",
                 -1,
-                connected,
+                consumed,
                 null));
         }
 
         return ports;
+    }
+
+    /// <summary>
+    /// 카드에 붙는 짧은 부가 정보. 발행 버전과 읽는 버전을 즉시 알 수 있게 한다.
+    /// 모든 발행 버전을 카드로 펼치면 몇 번만 발행해도 그래프가 결과로 덮인다.
+    /// </summary>
+    private static string? BadgeFor(StoryNode node, StoryProject project)
+    {
+        switch (node)
+        {
+            case DialogueNode dialogue:
+            {
+                DialogueResult? latest = project.Results.DialogueResultsOf(dialogue.Id).LastOrDefault();
+                string script = project.FindScript(dialogue.ScriptId)?.Name ?? "대본 없음";
+                return latest is null ? script : $"{script} · v{latest.Identity.Version} 발행";
+            }
+
+            case PresentationNode presentation:
+            {
+                if (presentation.Source is not { } source)
+                {
+                    return "입력 결과 없음";
+                }
+
+                DialogueResult? dialogueResult = project.Results.FindDialogue(
+                    source.ResultId,
+                    source.Version);
+
+                return dialogueResult is null
+                    ? $"{source.Label} (없음)"
+                    : $"{dialogueResult.SourceNodeName} v{source.Version} 읽는 중";
+            }
+
+            default:
+                return null;
+        }
     }
 
     private static IReadOnlyList<RawConnection> BuildRawConnections(
@@ -232,18 +273,31 @@ public static class GraphProjectionBuilder
                 null));
         }
 
-        foreach (NodeLink link in project.Links.Where(link =>
-                     link.Kind == NodeLinkKind.Presentation && link.IsEnabled))
+        // 연출이 어느 대사 결과를 읽는지는 링크가 아니라 계산이다. 결과를 낳은 노드가
+        // 아직 프로젝트에 있을 때만 간선을 그린다. 없으면 뱃지에 "(없음)"으로 남는다.
+        foreach (PresentationNode presentation in project.EnumerateNodes().OfType<PresentationNode>())
         {
+            if (presentation.Source is not { } source)
+            {
+                continue;
+            }
+
+            DialogueResult? dialogue = project.Results.FindDialogue(source.ResultId, source.Version);
+
+            if (dialogue is null || project.FindDialogue(dialogue.SourceNodeId) is null)
+            {
+                continue;
+            }
+
             result.Add(new RawConnection(
-                $"link:{link.Id}",
-                GraphConnectionKind.Presentation,
-                link.SourceNodeId,
-                link.TargetNodeId,
-                PresentationPortKey(link.SourceNodeId),
-                "연출 공급",
+                $"result:{presentation.Id}",
+                GraphConnectionKind.ResultSnapshot,
+                dialogue.SourceNodeId,
+                presentation.Id,
+                ResultPortKey(dialogue.SourceNodeId),
+                $"결과 v{source.Version}",
                 -1,
-                link.Id,
+                null,
                 null));
         }
 
@@ -297,7 +351,7 @@ public static class GraphProjectionBuilder
 
     private static string SettingsPortKey(string nodeId) => $"settings:{nodeId}";
 
-    private static string PresentationPortKey(string nodeId) => $"presentation:{nodeId}";
+    private static string ResultPortKey(string nodeId) => $"result:{nodeId}";
 
     private sealed record RawConnection(
         string Key,

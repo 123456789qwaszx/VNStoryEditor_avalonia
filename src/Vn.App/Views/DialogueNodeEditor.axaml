@@ -6,25 +6,46 @@
                 Padding="12,10"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Spacing="2">
-                    <TextBox x:Name="NameBox" FontWeight="SemiBold" PlaceholderText="장면 이름" />
-                    <TextBlock x:Name="ProblemText"
+            <StackPanel Spacing="6">
+                <TextBox x:Name="NameBox" FontWeight="SemiBold" PlaceholderText="장면 이름" />
+
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="대본"
                                FontSize="11"
-                               Foreground="#C2410C"
-                               TextWrapping="Wrap"
-                               IsVisible="False" />
-                </StackPanel>
-                <Button Grid.Column="1"
-                        x:Name="AddLineButton"
-                        Margin="8,0,0,0"
-                        VerticalAlignment="Top"
-                        Content="줄 추가" />
-            </Grid>
+                               Opacity="0.7"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              x:Name="ScriptCombo"
+                              Margin="8,0"
+                              HorizontalAlignment="Stretch"
+                              PlaceholderText="대본 선택" />
+                    <Button Grid.Column="2"
+                            x:Name="ImportScriptButton"
+                            Content="대본 가져오기…"
+                            FontSize="11" />
+                    <Button Grid.Column="3"
+                            x:Name="AddLineButton"
+                            Margin="6,0,0,0"
+                            Content="줄 추가"
+                            FontSize="11" />
+                </Grid>
+
+                <TextBlock x:Name="ScriptSummaryText"
+                           FontSize="11"
+                           Opacity="0.65"
+                           TextWrapping="Wrap" />
+
+                <TextBlock x:Name="ProblemText"
+                           FontSize="11"
+                           Foreground="#C2410C"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+            </StackPanel>
         </Border>
 
         <TabControl Grid.Row="1" x:Name="EditorTabs">
-            <TabItem Header="LineBox 편집">
+            <TabItem Header="대사 편집">
                 <Grid RowDefinitions="*,Auto">
                     <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="LineHost" Margin="12" Spacing="6" />
@@ -53,6 +74,34 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="발행">
+                <Grid RowDefinitions="Auto,Auto,*" Margin="12">
+                    <StackPanel Grid.Row="0" Spacing="4">
+                        <TextBlock Text="발행 결과" FontWeight="SemiBold" />
+                        <TextBlock Text="발행하면 지금 상태가 얼어붙습니다. 연출은 편집 중인 노드가 아니라 이 결과를 읽습니다."
+                                   FontSize="11"
+                                   Opacity="0.65"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                Margin="0,10">
+                        <Button x:Name="PublishButton" Content="이 상태를 발행" />
+                        <TextBlock x:Name="PublishStatusText"
+                                   FontSize="11"
+                                   Opacity="0.75"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="ResultHost" Spacing="6" />
+                    </ScrollViewer>
                 </Grid>
             </TabItem>
 

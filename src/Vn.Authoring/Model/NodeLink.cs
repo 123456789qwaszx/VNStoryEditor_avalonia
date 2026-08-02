@@ -6,14 +6,15 @@ namespace Vn.Authoring.Model;
 /// 실행 연결은 여전히 <see cref="StoryNode.DefaultExitTargetNodeId"/>와
 /// <see cref="DialogueNode.BranchExits"/>가 소유한다. 이 목록에는 다음 노드를 정하지 않고
 /// 다른 노드의 저작 데이터를 공급하는 관계만 둔다.
+///
+/// 연출은 더 이상 여기에 없다. PresentationNode는 편집 중인 노드가 아니라 발행된
+/// <see cref="Results.DialogueResult"/>를 읽으므로, 그 관계는 링크가 아니라
+/// <see cref="PresentationNode.Source"/>가 소유하고 그래프는 그것을 계산해 그린다.
 /// </summary>
 public enum NodeLinkKind
 {
     /// <summary>SetNode가 DialogueNode에 조건과 assignment를 공급한다.</summary>
-    Settings,
-
-    /// <summary>PresentationNode가 DialogueNode의 LineId에 연출 데이터를 공급한다.</summary>
-    Presentation
+    Settings
 }
 
 /// <summary>
@@ -21,7 +22,7 @@ public enum NodeLinkKind
 ///
 /// 노드 이름이나 파일 경로가 아니라 프로젝트 전체에서 안정된 NodeId를 가리킨다.
 /// 여러 공급 노드가 한 DialogueNode에 연결될 수 있으므로 <see cref="Order"/>로 합성 순서를
-/// 명시한다. Presentation link는 한 PresentationNode당 하나만 허용한다.
+/// 명시한다.
 /// </summary>
 public sealed class NodeLink
 {

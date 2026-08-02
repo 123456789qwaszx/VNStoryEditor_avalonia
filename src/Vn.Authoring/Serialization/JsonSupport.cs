@@ -2,6 +2,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Serialization;
 
@@ -76,13 +78,23 @@ internal static class JsonSupport
     {
         ArgumentNullException.ThrowIfNull(project);
 
+        HashSet<string> scriptIds = new(StringComparer.Ordinal);
         HashSet<string> fileIds = new(StringComparer.Ordinal);
         HashSet<string> nodeIds = new(StringComparer.Ordinal);
         HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> linkIds = new(StringComparer.Ordinal);
         HashSet<(NodeLinkKind Kind, string Source, string Target)> linkPairs = new();
-        HashSet<string> presentationSources = new(StringComparer.Ordinal);
         HashSet<string> presentationCommandIds = new(StringComparer.Ordinal);
+
+        foreach (ScriptDocument script in project.Scripts)
+        {
+            if (!scriptIds.Add(script.Id))
+            {
+                throw new InvalidDataException($"대본 Id '{script.Id}'가 중복됩니다.");
+            }
+
+            ValidateScript(script);
+        }
 
         foreach (StoryFile file in project.Files)
         {
@@ -105,13 +117,17 @@ internal static class JsonSupport
                     throw new InvalidDataException($"노드 Id '{node.Id}'가 프로젝트 전체에서 중복됩니다.");
                 }
 
-                if (node is PresentationNode presentation)
+                switch (node)
                 {
-                    ValidatePresentationNode(presentation, presentationCommandIds);
+                    case DialogueNode dialogue:
+                        ValidateDialogueNode(project, dialogue, scriptIds);
+                        break;
+                    case PresentationNode presentation:
+                        ValidatePresentationNode(presentation, presentationCommandIds);
+                        break;
                 }
             }
         }
-
 
         foreach (NodeLink link in project.Links)
         {
@@ -141,27 +157,14 @@ internal static class JsonSupport
                     $"Settings link '{link.Id}'는 SetNode에서 DialogueNode로만 연결할 수 있습니다.");
             }
 
-            if (link.Kind == NodeLinkKind.Presentation)
-            {
-                if (source is not PresentationNode || target is not DialogueNode)
-                {
-                    throw new InvalidDataException(
-                        $"Presentation link '{link.Id}'는 PresentationNode에서 DialogueNode로만 연결할 수 있습니다.");
-                }
-
-                if (!presentationSources.Add(link.SourceNodeId))
-                {
-                    throw new InvalidDataException(
-                        $"PresentationNode '{link.SourceNodeId}'에는 Presentation link를 하나만 둘 수 있습니다.");
-                }
-            }
-
             if (!linkPairs.Add((link.Kind, link.SourceNodeId, link.TargetNodeId)))
             {
                 throw new InvalidDataException(
                     $"{link.Kind} link '{link.SourceNodeId}' → '{link.TargetNodeId}'가 중복됩니다.");
             }
         }
+
+        ValidateCompositions(project);
 
         if (project.StartNodeId is not null && project.FindNode(project.StartNodeId) is null)
         {
@@ -175,6 +178,89 @@ internal static class JsonSupport
         }
     }
 
+    private static void ValidateScript(ScriptDocument script)
+    {
+        HashSet<string> lineIds = new(StringComparer.Ordinal);
+
+        foreach (ScriptLine line in script.Lines)
+        {
+            if (string.IsNullOrWhiteSpace(line.Id))
+            {
+                throw new InvalidDataException($"대본 '{script.Id}'에 빈 LineId가 있습니다.");
+            }
+
+            if (!lineIds.Add(line.Id))
+            {
+                throw new InvalidDataException($"대본 '{script.Id}'에서 LineId '{line.Id}'가 중복됩니다.");
+            }
+        }
+
+        HashSet<string> locales = new(StringComparer.Ordinal);
+
+        foreach (ScriptLocale locale in script.Locales)
+        {
+            if (!locales.Add(locale.Locale))
+            {
+                throw new InvalidDataException(
+                    $"대본 '{script.Id}'에서 locale '{locale.Locale}'이 중복됩니다.");
+            }
+
+            foreach (string lineId in locale.Entries.Keys)
+            {
+                if (!lineIds.Contains(lineId))
+                {
+                    throw new InvalidDataException(
+                        $"대본 '{script.Id}'의 locale '{locale.Locale}'이 없는 LineId '{lineId}'를 가리킵니다.");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 대사 노드는 대본을 가리키기만 하고 본문을 소유하지 않는다. 여기서 확인하는 것은
+    /// 가리키는 대상이 실제로 있는지와 같은 LineId에 확장이 두 벌 붙지 않았는지다.
+    /// </summary>
+    private static void ValidateDialogueNode(
+        StoryProject project,
+        DialogueNode node,
+        HashSet<string> scriptIds)
+    {
+        if (node.ScriptId is { } scriptId && !scriptIds.Contains(scriptId))
+        {
+            throw new InvalidDataException(
+                $"DialogueNode '{node.Id}'가 없는 대본 '{scriptId}'를 가리킵니다.");
+        }
+
+        HashSet<string> lineIds = new(StringComparer.Ordinal);
+
+        foreach (DialogueLineExtension extension in node.LineExtensions)
+        {
+            if (!lineIds.Add(extension.LineId))
+            {
+                throw new InvalidDataException(
+                    $"DialogueNode '{node.Id}'에서 LineId '{extension.LineId}' 항목이 중복됩니다.");
+            }
+        }
+
+        foreach (string openLineId in node.BranchExits.Keys)
+        {
+            if (!lineIds.Contains(openLineId))
+            {
+                throw new InvalidDataException(
+                    $"DialogueNode '{node.Id}'의 조건 출구가 항목 없는 LineId '{openLineId}'에 매달려 있습니다.");
+            }
+        }
+
+        foreach (string target in node.BranchExits.Values)
+        {
+            if (project.FindNode(target) is null)
+            {
+                throw new InvalidDataException(
+                    $"DialogueNode '{node.Id}'의 조건 출구가 없는 노드 '{target}'를 가리킵니다.");
+            }
+        }
+    }
+
     private static void ValidatePresentationNode(
         PresentationNode node,
         HashSet<string> projectCommandIds)
@@ -183,6 +269,12 @@ internal static class JsonSupport
         {
             throw new InvalidDataException(
                 $"PresentationNode '{node.Id}'는 실행 기본 출구를 가질 수 없습니다.");
+        }
+
+        if (node.Source is { Version: <= 0 })
+        {
+            throw new InvalidDataException(
+                $"PresentationNode '{node.Id}'는 발행되지 않은 대사 결과를 읽을 수 없습니다.");
         }
 
         HashSet<string> lineIds = new(StringComparer.Ordinal);
@@ -208,6 +300,43 @@ internal static class JsonSupport
                     throw new InvalidDataException(
                         $"Presentation command Id '{command.Id}'가 프로젝트에서 중복됩니다.");
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 조합이 없는 결과를 가리키는 것은 저장 자체를 막는다. 합성 시점의 진단으로 미루면
+    /// 파일에 이미 깨진 참조가 들어간 뒤이고, 그것을 고칠 화면이 없다.
+    /// </summary>
+    private static void ValidateCompositions(StoryProject project)
+    {
+        HashSet<string> compositionIds = new(StringComparer.Ordinal);
+
+        foreach (RuntimeComposition composition in project.Compositions)
+        {
+            if (!compositionIds.Add(composition.Id))
+            {
+                throw new InvalidDataException(
+                    $"RuntimeComposition Id '{composition.Id}'가 중복됩니다.");
+            }
+
+            if (project.Results.FindDialogue(
+                    composition.DialogueResultId,
+                    composition.DialogueResultVersion) is null)
+            {
+                throw new InvalidDataException(
+                    $"RuntimeComposition '{composition.Id}'이 없는 대사 결과 " +
+                    $"'{composition.DialogueResultId} v{composition.DialogueResultVersion}'을 가리킵니다.");
+            }
+
+            if (composition.HasPresentation &&
+                project.Results.FindPresentation(
+                    composition.PresentationResultId,
+                    composition.PresentationResultVersion) is null)
+            {
+                throw new InvalidDataException(
+                    $"RuntimeComposition '{composition.Id}'이 없는 연출 결과 " +
+                    $"'{composition.PresentationResultId} v{composition.PresentationResultVersion}'을 가리킵니다.");
             }
         }
     }

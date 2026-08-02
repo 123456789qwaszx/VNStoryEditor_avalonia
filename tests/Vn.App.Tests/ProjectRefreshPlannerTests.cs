@@ -34,6 +34,28 @@ public class ProjectRefreshPlannerTests
         Assert.True(plan.RebuildInspector);
     }
 
+    /// <summary>
+    /// 발행은 편집 행을 바꾸지 않는다. 결과 목록과 그래프 뱃지만 새로 읽으면 된다.
+    /// 발행할 때마다 편집기를 통째로 다시 만들면 입력 중이던 칸이 사라진다.
+    /// </summary>
+    [Fact]
+    public void 발행은_그래프와_결과_목록만_갱신한다()
+    {
+        ProjectRefreshPlan dialogue = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Results,
+            new DialogueNode(name: "장면"));
+        ProjectRefreshPlan set = ProjectRefreshPlanner.Plan(
+            ProjectChangeKind.Results,
+            new SetNode(name: "설정"));
+
+        Assert.True(dialogue.RebuildGraph);
+        Assert.True(dialogue.RebuildInspector);
+
+        // 결과와 무관한 SetNode 편집기는 건드리지 않는다.
+        Assert.True(set.RebuildGraph);
+        Assert.False(set.RebuildInspector);
+    }
+
     [Fact]
     public void assignment_내용_변경은_컨트롤을_재생성하지_않는다()
     {

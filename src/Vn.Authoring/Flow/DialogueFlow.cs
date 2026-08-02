@@ -40,7 +40,7 @@ public sealed record ConditionBranch(
 /// <param name="Depth">첫 버전에서는 0 또는 1이다. <c>elseif</c>로 바뀌어도 늘지 않는다.</param>
 /// <param name="IsBranchExit">이 줄이 자기 갈래의 마지막이고 그 갈래에 출구가 있는지.</param>
 public sealed record ResolvedLine(
-    LineBox Line,
+    DialogueLine Line,
     int Index,
     int Depth,
     ConditionBranch? Branch,
@@ -49,6 +49,12 @@ public sealed record ResolvedLine(
 
 public enum FlowProblemKind
 {
+    /// <summary>이 대사 노드가 읽을 대본을 아직 고르지 않았거나 대본이 사라졌다.</summary>
+    MissingScript,
+
+    /// <summary>대본에 없는 LineId에 조건 전환이 남아 있다. 지우지 않고 알린다.</summary>
+    OrphanedLineExtension,
+
     /// <summary>조건 안에서 다시 <c>if</c>를 열었다. 첫 버전은 중첩을 지원하지 않는다.</summary>
     NestedCondition,
 
@@ -81,14 +87,19 @@ public sealed record FlowProblem(FlowProblemKind Kind, string? LineId, string Me
 public sealed class DialogueFlow
 {
     public DialogueFlow(
+        DialogueScript script,
         IReadOnlyList<ResolvedLine> lines,
         IReadOnlyList<ConditionBranch> branches,
         IReadOnlyList<FlowProblem> problems)
     {
+        Script = script;
         Lines = lines;
         Branches = branches;
         Problems = problems;
     }
+
+    /// <summary>이 흐름을 계산한 대본 투영. 화면은 여기서 화자·대사와 고아 목록을 얻는다.</summary>
+    public DialogueScript Script { get; }
 
     public IReadOnlyList<ResolvedLine> Lines { get; }
 

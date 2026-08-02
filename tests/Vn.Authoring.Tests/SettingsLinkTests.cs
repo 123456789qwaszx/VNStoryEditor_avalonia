@@ -1,6 +1,7 @@
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
+using Vn.Authoring.Script;
 using Vn.Authoring.Model;
 
 namespace Vn.Authoring.Tests;
@@ -81,8 +82,9 @@ public class SettingsLinkTests
         Assert.Contains(choices, choice => choice.ConditionId == linkedCondition.Id);
         Assert.DoesNotContain(choices, choice => choice.ConditionId == unrelatedCondition.Id);
 
-        dialogue.Lines.Clear();
-        LineBox globalLine = editor.AddLine(dialogue.Id);
+        ScriptDocument script = editor.AddScript("전역 조건 대본");
+        editor.SetDialogueScript(dialogue.Id, script.Id);
+        ScriptLine globalLine = editor.InsertScriptLine(script.Id);
         editor.SetLineTransition(
             dialogue.Id,
             globalLine.Id,
@@ -121,29 +123,29 @@ public class SettingsLinkTests
     public void Settings_link를_삭제해도_기존_Transition은_보존되고_사용불가로_표시된다()
     {
         var sample = new Sample();
-        LineBox line = sample.Line(
+        string line = sample.Line(
             "조건 대사",
             LineConditionTransition.BeginIf(sample.ConditionA.Id));
 
         sample.Editor.RemoveLink(sample.SettingsLink.Id);
 
-        Assert.NotNull(line.Transition);
-        Assert.Equal(ConditionTransitionKind.BeginIf, line.Transition!.Kind);
-        Assert.Equal(sample.ConditionA.Id, line.Transition.ConditionId);
+        Assert.NotNull(sample.Dialogue.FindExtension(line)!.Transition);
+        Assert.Equal(ConditionTransitionKind.BeginIf, sample.Dialogue.FindExtension(line)!.Transition!.Kind);
+        Assert.Equal(sample.ConditionA.Id, sample.Dialogue.FindExtension(line)!.Transition!.ConditionId);
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         FlowProblem problem = Assert.Single(
             flow.Problems,
             item => item.Kind == FlowProblemKind.UnavailableCondition);
-        Assert.Equal(line.Id, problem.LineId);
+        Assert.Equal(line, problem.LineId);
 
         IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(
             preceding: null,
             sample.Dialogue,
             sample.Project,
             definition: null,
-            currentTransition: line.Transition);
-        ConditionChoice current = ConditionChoices.Current(choices, line.Transition);
+            currentTransition: sample.Dialogue.FindExtension(line)!.Transition);
+        ConditionChoice current = ConditionChoices.Current(choices, sample.Dialogue.FindExtension(line)!.Transition);
 
         Assert.False(current.IsAvailable);
         Assert.Equal(sample.ConditionA.Id, current.ConditionId);
@@ -158,7 +160,7 @@ public class SettingsLinkTests
     public void Settings_link를_다시_연결하면_기존_Transition이_다시_유효해진다()
     {
         var sample = new Sample();
-        LineBox line = sample.Line(
+        string line = sample.Line(
             "조건 대사",
             LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Editor.RemoveLink(sample.SettingsLink.Id);
@@ -168,7 +170,7 @@ public class SettingsLinkTests
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         Assert.DoesNotContain(flow.Problems, problem =>
             problem.Kind is FlowProblemKind.UnavailableCondition or FlowProblemKind.UnknownCondition);
-        Assert.Equal(sample.ConditionA.Id, line.Transition!.ConditionId);
+        Assert.Equal(sample.ConditionA.Id, sample.Dialogue.FindExtension(line)!.Transition!.ConditionId);
     }
 
     [Fact]

@@ -28,13 +28,18 @@ public readonly record struct GraphPosition(double X, double Y);
 public abstract record GraphItemProjection(string FileId, GraphPosition Position);
 
 /// <summary>펼쳐진 StoryFile 안에서 실제 노드 카드로 표시할 항목.</summary>
+/// <param name="Badge">
+/// 카드에 붙는 짧은 부가 정보. 대사 노드는 발행한 최신 버전을, 연출 노드는 읽고 있는
+/// 대사 결과 버전을 보여 준다. 표시용 문자열이며 여기서 데이터 의미를 역추론하지 않는다.
+/// </param>
 public sealed record ExpandedNodeProjection(
     string FileId,
     string NodeId,
     string NodeName,
     GraphNodeKind NodeKind,
     GraphPosition Position,
-    IReadOnlyList<GraphOutputPortProjection> OutputPorts)
+    IReadOnlyList<GraphOutputPortProjection> OutputPorts,
+    string? Badge = null)
     : GraphItemProjection(FileId, Position);
 
 /// <summary>접힌 StoryFile 하나를 대신하는 회색 프록시.</summary>
@@ -68,7 +73,9 @@ public enum GraphOutputPortKind
     ExecutionDefault,
     ExecutionBranch,
     Settings,
-    Presentation
+
+    /// <summary>이 대사 노드가 발행한 결과. 연출 노드가 그 결과를 입력으로 읽는다.</summary>
+    PublishedResult
 }
 
 /// <summary>펼쳐진 노드 카드가 표시할 출력 포트.</summary>
@@ -86,7 +93,13 @@ public enum GraphConnectionKind
     ExecutionDefault,
     ExecutionBranch,
     Settings,
-    Presentation
+
+    /// <summary>
+    /// 발행된 대사 결과가 연출 노드의 <b>읽기 전용 입력</b>이 되는 관계.
+    /// 실행 흐름이 아니라 저작 의존성이며, 데이터는 링크가 아니라
+    /// <c>PresentationNode.Source</c>가 소유한다.
+    /// </summary>
+    ResultSnapshot
 }
 
 public enum GraphEndpointKind

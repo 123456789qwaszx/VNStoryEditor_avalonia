@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
 
 namespace Vn.Authoring.Serialization;
 
@@ -108,31 +109,38 @@ internal static class StoryNodeJson
         }
     }
 
+    /// <summary>
+    /// 대사 노드는 <b>대본 Id와 LineId별 논리만</b> 쓴다. 화자와 대사는 대본 파일에 있다.
+    /// 조건 갈래 출구는 갈래를 여는 줄의 항목 안에 함께 적어 둔다. 별도 배열로 나누면
+    /// 줄이 사라졌을 때 짝 없는 출구가 파일에 남는다.
+    /// </summary>
     private static void WriteDialogueNode(DialogueNode node, JsonObject json)
     {
+        if (node.ScriptId is not null)
+        {
+            json["script"] = node.ScriptId;
+        }
+
         var lines = new JsonArray();
 
-        foreach (LineBox line in node.Lines)
+        foreach (DialogueLineExtension extension in node.LineExtensions)
         {
-            var lineJson = new JsonObject { ["id"] = line.Id };
+            bool hasExit = extension.Transition?.OpensBranch == true &&
+                node.BranchExits.ContainsKey(extension.LineId);
 
-            if (!string.IsNullOrEmpty(line.Speaker))
+            // 아무것도 담지 않은 확장은 저장하지 않는다. 파일이 조용해야 diff가 읽힌다.
+            if (extension.IsEmpty && !hasExit)
             {
-                lineJson["speaker"] = line.Speaker;
+                continue;
             }
 
-            lineJson["text"] = line.Text;
+            var lineJson = new JsonObject { ["lineId"] = extension.LineId };
 
-            if (line.Transition is { } transition)
+            if (extension.Transition is { } transition)
             {
                 var transitionJson = new JsonObject
                 {
-                    ["kind"] = transition.Kind switch
-                    {
-                        ConditionTransitionKind.BeginIf => "beginIf",
-                        ConditionTransitionKind.BeginElseIf => "beginElseIf",
-                        _ => "endIf"
-                    }
+                    ["kind"] = DialogueResultJson.KindName(transition.Kind)
                 };
 
                 if (transition.ConditionId is not null)
@@ -140,9 +148,9 @@ internal static class StoryNodeJson
                     transitionJson["condition"] = transition.ConditionId;
                 }
 
-                if (transition.OpensBranch && node.BranchExits.TryGetValue(line.Id, out string? exit))
+                if (hasExit)
                 {
-                    transitionJson["exit"] = exit;
+                    transitionJson["exit"] = node.BranchExits[extension.LineId];
                 }
 
                 lineJson["condition"] = transitionJson;
@@ -156,6 +164,16 @@ internal static class StoryNodeJson
 
     private static void WritePresentationNode(PresentationNode node, JsonObject json)
     {
+        if (node.Source is { } source)
+        {
+            json["source"] = new JsonObject
+            {
+                ["resultId"] = source.ResultId,
+                ["version"] = source.Version,
+                ["contentHash"] = source.ContentHash
+            };
+        }
+
         var bindings = new JsonArray();
 
         foreach (PresentationLineBinding binding in node.Bindings)
@@ -239,7 +257,8 @@ internal static class StoryNodeJson
 
     private static DialogueNode ReadDialogueNode(JsonObject json, string id, string name)
     {
-        var node = new DialogueNode(id, name);
+        var node = new DialogueNode(id, name) { ScriptId = (string?)json["script"] };
+        HashSet<string> lineIds = new(StringComparer.Ordinal);
 
         foreach (JsonNode? item in json["lines"]?.AsArray() ?? new JsonArray())
         {
@@ -248,30 +267,30 @@ internal static class StoryNodeJson
                 continue;
             }
 
-            var line = new LineBox((string?)lineJson["id"])
+            string lineId = (string?)lineJson["lineId"]
+                ?? throw new InvalidDataException($"DialogueNode '{id}'의 줄 항목에 lineId가 없습니다.");
+
+            if (!lineIds.Add(lineId))
             {
-                Speaker = (string?)lineJson["speaker"] ?? string.Empty,
-                Text = (string?)lineJson["text"] ?? string.Empty
-            };
+                throw new InvalidDataException(
+                    $"DialogueNode '{id}'에서 LineId '{lineId}' 항목이 중복됩니다.");
+            }
+
+            var extension = new DialogueLineExtension(lineId);
 
             if (lineJson["condition"] is JsonObject transitionJson)
             {
-                ConditionTransitionKind kind = (string?)transitionJson["kind"] switch
-                {
-                    "beginIf" => ConditionTransitionKind.BeginIf,
-                    "beginElseIf" => ConditionTransitionKind.BeginElseIf,
-                    _ => ConditionTransitionKind.EndIf
-                };
+                extension.Transition = new LineConditionTransition(
+                    DialogueResultJson.ParseKind((string?)transitionJson["kind"]),
+                    (string?)transitionJson["condition"]);
 
-                line.Transition = new LineConditionTransition(kind, (string?)transitionJson["condition"]);
-
-                if ((string?)transitionJson["exit"] is { } exit && line.Transition.OpensBranch)
+                if ((string?)transitionJson["exit"] is { } exit && extension.Transition.OpensBranch)
                 {
-                    node.BranchExits[line.Id] = exit;
+                    node.BranchExits[lineId] = exit;
                 }
             }
 
-            node.Lines.Add(line);
+            node.LineExtensions.Add(extension);
         }
 
         return node;
@@ -280,6 +299,17 @@ internal static class StoryNodeJson
     private static PresentationNode ReadPresentationNode(JsonObject json, string id, string name)
     {
         var node = new PresentationNode(id, name);
+
+        if (json["source"] is JsonObject sourceJson)
+        {
+            node.Source = new DialogueResultReference(
+                (string?)sourceJson["resultId"]
+                    ?? throw new InvalidDataException($"PresentationNode '{id}'의 source에 resultId가 없습니다."),
+                (int?)sourceJson["version"]
+                    ?? throw new InvalidDataException($"PresentationNode '{id}'의 source에 version이 없습니다."),
+                (string?)sourceJson["contentHash"]
+                    ?? throw new InvalidDataException($"PresentationNode '{id}'의 source에 contentHash가 없습니다."));
+        }
 
         foreach (JsonNode? item in json["bindings"]?.AsArray() ?? new JsonArray())
         {

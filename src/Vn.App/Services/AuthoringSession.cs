@@ -1,6 +1,7 @@
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 using Vn.Authoring.Serialization;
 
 namespace Vn.App.Services;
@@ -110,13 +111,14 @@ internal sealed class AuthoringSession
         StoryProject project = loaded.Project;
 
         ProjectPath = loaded.ManifestPath;
-        Definition = GameDefinition.LoadBeside(loaded.OpenedPath);
+        Definition = GameDefinition.LoadBeside(loaded.ManifestPath);
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
-        StatusMessage = loaded.WasMigrated
-            ? $"이전 프로젝트를 불러왔습니다. 저장하면 {Path.GetFileName(ProjectPath)}와 파일별 StoryFile로 마이그레이션됩니다."
-            : $"{Path.GetFileName(ProjectPath)} · 노드 {project.EnumerateNodes().Count()}개";
+        StatusMessage =
+            $"{Path.GetFileName(ProjectPath)} · 대본 {project.Scripts.Count}개 · " +
+            $"노드 {project.EnumerateNodes().Count()}개 · " +
+            $"발행 결과 {project.Results.DialogueResults.Count + project.Results.PresentationResults.Count}개";
 
-        AppSettingsService.SaveRecentProject(loaded.OpenedPath);
+        AppSettingsService.SaveRecentProject(loaded.ManifestPath);
 
         string? activeFileId = project.FindFileContainingNode(project.StartNodeId)?.Id
             ?? project.Files.FirstOrDefault()?.Id;
@@ -295,6 +297,12 @@ internal sealed class AuthoringSession
     private static StoryProject NewProjectInstance()
     {
         var project = new StoryProject { Title = "새 프로젝트" };
+        var script = new ScriptDocument(name: "대본 1");
+        script.RequireLocale(script.PrimaryLocale);
+
+        // 대본을 하나 미리 둔다. 대사 노드는 대본 없이는 아무 줄도 보여 줄 수 없고,
+        // 빈 프로젝트에서 무엇을 먼저 해야 하는지 화면만 보고 알 수 있어야 한다.
+        project.Scripts.Add(script);
         project.Files.Add(new StoryFile(name: "기본 파일"));
         return project;
     }

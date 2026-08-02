@@ -4,14 +4,19 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
 using Vn.Authoring.Definition;
+using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
 
 namespace Vn.App.Views;
 
 /// <summary>
-/// 연결된 DialogueNode의 줄을 읽기 전용으로 투영하고 LineId별 연출 Command를 편집한다.
-/// Dialogue의 화자·대사는 복사하지 않으며 모든 변경은 PresentationNode의 binding에만 기록한다.
+/// <b>발행된 대사 결과 하나</b>를 읽기 전용으로 투영하고 LineId별 연출 Command를 편집한다.
+///
+/// 입력은 편집 중인 DialogueNode가 아니다. 편집 중인 노드를 읽으면 연출가가 작업하는 동안
+/// 발밑의 대사가 바뀌고, 완성한 연출표가 어느 대사에 맞는 것인지 아무도 말할 수 없게 된다.
+/// 모든 변경은 이 노드의 binding에만 기록한다.
 /// </summary>
 public partial class PresentationNodeEditor : UserControl
 {
@@ -37,6 +42,9 @@ public partial class PresentationNodeEditor : UserControl
                 _session.Editor.RenameNode(_nodeId, NameBox.Text ?? string.Empty);
             }
         };
+
+        SourceCombo.SelectionChanged += (_, _) => OnSourceSelected();
+        PublishButton.Click += (_, _) => Publish();
     }
 
     internal void Attach(AuthoringSession session) => _session = session;
@@ -51,7 +59,7 @@ public partial class PresentationNodeEditor : UserControl
 
     internal void Rebuild()
     {
-        if (_session is null || _session.Project.FindNode(_nodeId) is not PresentationNode presentation)
+        if (_session is null || _session.Project.FindPresentation(_nodeId) is not { } presentation)
         {
             LineHost.Children.Clear();
             return;
@@ -64,35 +72,39 @@ public partial class PresentationNodeEditor : UserControl
             NameBox.Text = presentation.Name;
             LineHost.Children.Clear();
 
-            DialogueNode? dialogue = PresentationBindingResolver.ResolveTarget(
+            BuildSourcePicker(presentation);
+
+            PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
                 _session.Project,
-                presentation.Id);
+                presentation);
             PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
 
-            if (dialogue is null)
+            if (workspace.Dialogue is not { } dialogue)
             {
-                TargetText.Text = "연결된 DialogueNode가 없습니다. 그래프의 연출 공급 포트를 DialogueNode에 연결하세요.";
+                TargetText.Text = presentation.Source is { } missing
+                    ? $"입력으로 지정한 대사 결과 '{missing.Label}'을 찾을 수 없습니다."
+                    : "읽을 대사 결과가 없습니다. 대사 노드에서 먼저 발행한 뒤 위에서 고르세요.";
             }
             else
             {
-                TargetText.Text = $"대상: {dialogue.Name} · {dialogue.Lines.Count}개 LineBox";
+                TargetText.Text =
+                    $"{dialogue.SourceNodeName} · {dialogue.Identity.Label} · {dialogue.Lines.Count}줄 · " +
+                    $"{dialogue.Locale}" +
+                    (workspace.IsStale ? " · 내용 해시 불일치" : string.Empty);
 
-                for (int index = 0; index < dialogue.Lines.Count; index++)
+                foreach (DialogueResultLine line in dialogue.Lines)
                 {
-                    LineHost.Children.Add(BuildLineCard(presentation, dialogue.Lines[index], index, catalog));
+                    LineHost.Children.Add(BuildLineCard(presentation, line, catalog));
                 }
             }
 
-            IReadOnlyList<ResolvedPresentationBinding> orphaned = PresentationBindingResolver
-                .Resolve(_session.Project, presentation)
-                .Where(item => item.IsOrphan)
-                .ToArray();
+            IReadOnlyList<ResolvedPresentationBinding> orphaned = workspace.Orphans.ToArray();
 
             if (orphaned.Count > 0)
             {
                 LineHost.Children.Add(new TextBlock
                 {
-                    Text = "연결되지 않은 연출",
+                    Text = "이 결과에 붙지 않는 연출",
                     FontWeight = FontWeight.SemiBold,
                     Margin = new Thickness(0, 8, 0, 0)
                 });
@@ -102,6 +114,8 @@ public partial class PresentationNodeEditor : UserControl
                     LineHost.Children.Add(BuildOrphanCard(orphan, catalog));
                 }
             }
+
+            BuildPublishState(presentation);
         }
         finally
         {
@@ -109,31 +123,120 @@ public partial class PresentationNodeEditor : UserControl
         }
     }
 
+    /// <summary>
+    /// 읽을 수 있는 대사 결과 목록. <b>버전을 하나하나 고르게 한다.</b>
+    /// "최신"이라는 선택지를 두면 다음 발행 때 연출가 모르게 대사가 바뀐다.
+    /// </summary>
+    private void BuildSourcePicker(PresentationNode presentation)
+    {
+        List<DialogueResult> results = _session!.Project.Results.DialogueResults
+            .OrderBy(result => result.SourceNodeName, StringComparer.Ordinal)
+            .ThenBy(result => result.Identity.Version)
+            .ToList();
+
+        SourceCombo.ItemsSource = results
+            .Select(result => $"{result.SourceNodeName} · v{result.Identity.Version} · {result.Lines.Count}줄")
+            .ToList();
+        SourceCombo.Tag = results;
+        SourceCombo.SelectedIndex = presentation.Source is { } source
+            ? results.FindIndex(result =>
+                string.Equals(result.Identity.ResultId, source.ResultId, StringComparison.Ordinal) &&
+                result.Identity.Version == source.Version)
+            : -1;
+        SourceCombo.IsEnabled = results.Count > 0;
+        SourceCombo.PlaceholderText = results.Count == 0
+            ? "발행된 대사 결과가 없습니다"
+            : "발행된 대사 결과 선택";
+    }
+
+    private void OnSourceSelected()
+    {
+        if (_building ||
+            _session is null ||
+            _nodeId is null ||
+            SourceCombo.Tag is not List<DialogueResult> results ||
+            SourceCombo.SelectedIndex < 0 ||
+            SourceCombo.SelectedIndex >= results.Count)
+        {
+            return;
+        }
+
+        DialogueResult picked = results[SourceCombo.SelectedIndex];
+
+        try
+        {
+            _session.Editor.SetPresentationSource(
+                _nodeId,
+                picked.Identity.ResultId,
+                picked.Identity.Version);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _session.SetStatus(exception.Message);
+        }
+    }
+
+    private void BuildPublishState(PresentationNode presentation)
+    {
+        PresentationDraft draft = _session!.Editor.InspectPresentationPublish(presentation.Id);
+        PublishButton.IsEnabled = draft.CanPublish;
+
+        PresentationResult? latest = _session.Project.Results
+            .PresentationResultsOf(presentation.Id)
+            .LastOrDefault();
+
+        PublishStatusText.Text = draft.CanPublish
+            ? latest is null
+                ? "아직 발행하지 않았습니다."
+                : $"최신 발행: {latest.Identity.Label} · 대사 {latest.Source.Label}"
+            : draft.BlockingSummary();
+    }
+
+    private void Publish()
+    {
+        if (_session is null || _nodeId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            PublishOutcome<PresentationResult> outcome = _session.Editor.PublishPresentation(_nodeId);
+
+            _session.SetStatus(outcome.Created
+                ? $"{outcome.Result.Identity.Label}을 발행했습니다. 대사 {outcome.Result.Source.Label} 기준입니다."
+                : $"내용이 같아 {outcome.Result.Identity.Label}을 그대로 사용합니다.");
+        }
+        catch (PublishRejectedException exception)
+        {
+            _session.SetStatus(exception.Message.Replace(Environment.NewLine, " ", StringComparison.Ordinal));
+        }
+    }
+
     private Control BuildLineCard(
         PresentationNode presentation,
-        LineBox line,
-        int index,
+        DialogueResultLine line,
         PresentationCommandCatalog catalog)
     {
         var content = new StackPanel { Spacing = 6 };
         content.Children.Add(new TextBlock
         {
-            Text = $"{index + 1}. {line.Id}",
+            Text = $"{line.Index + 1}. {line.LineId}",
             FontSize = 11,
             Opacity = 0.6
         });
         content.Children.Add(new TextBlock
         {
-            Text = string.IsNullOrWhiteSpace(line.Speaker)
+            Text = string.IsNullOrWhiteSpace(line.CharacterName)
                 ? line.Text
-                : $"{line.Speaker}: {line.Text}",
+                : $"{line.CharacterName}: {line.Text}",
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeight.SemiBold
         });
 
         foreach (PresentationCategory category in Categories)
         {
-            content.Children.Add(BuildCategoryEditor(presentation, line.Id, category, catalog));
+            content.Children.Add(BuildCategoryEditor(presentation, line.LineId, category, catalog));
         }
 
         return new Border
@@ -153,8 +256,7 @@ public partial class PresentationNodeEditor : UserControl
         PresentationCommandCatalog catalog)
     {
         IReadOnlyList<PresentationCommandDefinition> choices = catalog.For(category);
-        PresentationLineBinding? binding = presentation.Bindings.FirstOrDefault(item =>
-            string.Equals(item.LineId, lineId, StringComparison.Ordinal));
+        PresentationLineBinding? binding = presentation.FindBinding(lineId);
         PresentationCommandInstance? command = binding?.Commands.FirstOrDefault(item =>
             catalog.Find(item.DefinitionId)?.Category == category);
 

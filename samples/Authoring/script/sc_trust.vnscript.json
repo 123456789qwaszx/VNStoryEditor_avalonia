@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "scriptId": "sc_trust",
+  "name": "신뢰 경로",
+  "primaryLocale": "ko-KR",
+  "sourceRevision": 1,
+  "sourcePath": "raw/sc_trust.txt",
+  "lines": [
+    {
+      "id": "ln_t1",
+      "revision": 1
+    }
+  ],
+  "locales": [
+    {
+      "locale": "ko-KR",
+      "entries": {
+        "ln_t1": {
+          "speaker": "라루",
+          "text": "조건을 하나만 더 붙이겠습니다."
+        }
+      }
+    }
+  ]
+}

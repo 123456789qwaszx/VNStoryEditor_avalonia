@@ -2,6 +2,7 @@ using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Rendering;
+using Vn.Authoring.Results;
 using Vn.Authoring.Serialization;
 
 namespace Vn.Authoring.Tests;
@@ -40,10 +41,7 @@ public class OutputPresetTests
 
         foreach (OutputPreset preset in OutputPresetCatalog.All)
         {
-            _ = DialogueDocumentComposer.ComposePreset(
-                sample.Sample.Project,
-                sample.Sample.Dialogue.Id,
-                preset);
+            _ = Compose(sample, preset);
         }
 
         string after = ProjectSnapshotCodec.Encode(sample.Sample.Project);
@@ -106,7 +104,7 @@ public class OutputPresetTests
 
         string text = DocumentPreviewFormatter.Format(document);
         Assert.Contains("[연기]", text, StringComparison.Ordinal);
-        Assert.Contains($"[LINE {sample.Opening.Id}]", text, StringComparison.Ordinal);
+        Assert.Contains($"[LINE {sample.Opening}]", text, StringComparison.Ordinal);
         Assert.Contains("라루:", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Camera", text, StringComparison.Ordinal);
         Assert.DoesNotContain("ScreenEffect", text, StringComparison.Ordinal);
@@ -124,7 +122,7 @@ public class OutputPresetTests
 
         string text = DocumentPreviewFormatter.Format(document);
         Assert.StartsWith("LineId\tSpeaker\tSourceText\tLocalizedText\n", text, StringComparison.Ordinal);
-        Assert.Contains($"{sample.Opening.Id}\t라루\t첫 대사\t", text, StringComparison.Ordinal);
+        Assert.Contains($"{sample.Opening}\t라루\t첫 대사\t", text, StringComparison.Ordinal);
         Assert.DoesNotContain("<<", text, StringComparison.Ordinal);
     }
 
@@ -154,7 +152,7 @@ public class OutputPresetTests
         Assert.Contains("[Camera]", text, StringComparison.Ordinal);
         Assert.Contains("[ScreenEffect]", text, StringComparison.Ordinal);
         Assert.Contains("[CharacterActing]", text, StringComparison.Ordinal);
-        Assert.Contains($"[LINE {sample.Opening.Id}] 첫 대사", text, StringComparison.Ordinal);
+        Assert.Contains($"[LINE {sample.Opening}] 첫 대사", text, StringComparison.Ordinal);
         Assert.DoesNotContain("라루:", text, StringComparison.Ordinal);
     }
 
@@ -165,17 +163,20 @@ public class OutputPresetTests
         string before = ProjectSnapshotCodec.Encode(sample.Sample.Project);
         var provider = new DictionaryLocalizedLineProvider(new Dictionary<string, string>
         {
-            [sample.Opening.Id] = "First line"
+            [sample.Opening] = "First line"
         });
 
-        RenderedDocument document = DialogueDocumentComposer.ComposePreset(
+        RenderedDocument document = ResultDocumentComposer.Compose(
+            sample.Dialogue,
+            sample.Presentation,
             sample.Sample.Project,
-            sample.Sample.Dialogue.Id,
-            OutputPresetCatalog.LocalizationScript,
-            localization: provider);
+            definition: null,
+            OutputPresetCatalog.LocalizationScript.Options,
+            OutputPresetId.LocalizationScript,
+            provider);
 
         RenderedSegment opening = document.Segments.Single(segment =>
-            segment.Source.LineId == sample.Opening.Id);
+            segment.Source.LineId == sample.Opening);
         Assert.Equal("First line", opening.LocalizedText);
         Assert.Equal(before, ProjectSnapshotCodec.Encode(sample.Sample.Project));
         Assert.Contains("First line", DocumentPreviewFormatter.Format(document), StringComparison.Ordinal);
@@ -199,7 +200,7 @@ public class OutputPresetTests
             {
                 Assert.True(fullSources.TryGetValue(segment.Id, out RenderSourceReference? source));
                 Assert.Equal(source, segment.Source);
-                Assert.False(string.IsNullOrWhiteSpace(segment.Source.StoryFileId));
+                Assert.False(string.IsNullOrWhiteSpace(segment.Source.DialogueResultId));
                 Assert.False(string.IsNullOrWhiteSpace(segment.Source.NodeId));
             }
         }
@@ -207,10 +208,13 @@ public class OutputPresetTests
 
     private static RenderedDocument Compose(PresetSample sample, OutputPreset preset)
     {
-        return DialogueDocumentComposer.ComposePreset(
+        return ResultDocumentComposer.Compose(
+            sample.Dialogue,
+            sample.Presentation,
             sample.Sample.Project,
-            sample.Sample.Dialogue.Id,
-            preset);
+            definition: null,
+            preset.Options,
+            preset.Id);
     }
 
     private static PresetSample BuildPresetSample()
@@ -218,16 +222,16 @@ public class OutputPresetTests
         var sample = new Sample();
         sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
 
-        LineBox opening = sample.Line(
+        string opening = sample.Line(
             "첫 대사",
             LineConditionTransition.BeginIf(sample.ConditionA.Id));
-        sample.Editor.SetLineText(sample.Dialogue.Id, opening.Id, "라루", "첫 대사");
-        LineBox ending = sample.Line("조건 뒤", LineConditionTransition.EndIf());
-        sample.Editor.SetLineText(sample.Dialogue.Id, ending.Id, "윌로", "조건 뒤");
+        sample.Editor.SetScriptLineText(sample.Script.Id, opening, "라루", "첫 대사");
+        string ending = sample.Line("조건 뒤", LineConditionTransition.EndIf());
+        sample.Editor.SetScriptLineText(sample.Script.Id, ending, "윌로", "조건 뒤");
         sample.Editor.SetExitTarget(
             sample.Dialogue.Id,
             ExitPortKind.Branch,
-            opening.Id,
+            opening,
             sample.TargetA.Id);
         sample.Editor.SetExitTarget(
             sample.Dialogue.Id,
@@ -235,18 +239,35 @@ public class OutputPresetTests
             null,
             sample.TargetDefault.Id);
 
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
         PresentationNode presentation = sample.Editor.AddPresentationNode(
             sample.File.Id,
             name: "통합 연출");
-        sample.Editor.SetPresentationTarget(presentation.Id, sample.Dialogue.Id);
-        sample.Editor.AddPresentationCommand(presentation.Id, opening.Id, "camera.closeup");
-        sample.Editor.AddPresentationCommand(presentation.Id, opening.Id, "screen.shake");
-        sample.Editor.AddPresentationCommand(presentation.Id, opening.Id, "acting.smile");
+        sample.Editor.SetPresentationSource(
+            presentation.Id,
+            dialogue.Identity.ResultId,
+            dialogue.Identity.Version);
+        sample.Editor.AddPresentationCommand(presentation.Id, opening, "camera.closeup");
+        sample.Editor.AddPresentationCommand(presentation.Id, opening, "screen.shake");
+        sample.Editor.AddPresentationCommand(presentation.Id, opening, "acting.smile");
 
-        return new PresetSample(sample, opening);
+        PresentationResult published = sample.Editor.PublishPresentation(presentation.Id).Result;
+        sample.Editor.AddComposition(
+            dialogue.Identity.ResultId,
+            dialogue.Identity.Version,
+            published.Identity.ResultId,
+            published.Identity.Version,
+            name: "1장 합성");
+
+        return new PresetSample(sample, opening, dialogue, published);
     }
 
-    private sealed record PresetSample(Sample Sample, LineBox Opening);
+    private sealed record PresetSample(
+        Sample Sample,
+        string Opening,
+        DialogueResult Dialogue,
+        PresentationResult Presentation);
     private sealed class DictionaryLocalizedLineProvider : ILocalizedLineProvider
     {
         private readonly IReadOnlyDictionary<string, string> _lines;

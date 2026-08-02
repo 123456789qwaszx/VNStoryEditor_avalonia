@@ -18,8 +18,8 @@ public class ConnectionTests
         IReadOnlyList<ExitPort> ports = NodeConnections.PortsOf(sample.Dialogue, sample.Project);
 
         Assert.Equal(3, ports.Count);
-        Assert.Equal(l1.Id, ports[0].BranchOpenLineId);
-        Assert.Equal(l3.Id, ports[1].BranchOpenLineId);
+        Assert.Equal(l1, ports[0].BranchOpenLineId);
+        Assert.Equal(l3, ports[1].BranchOpenLineId);
         Assert.Equal(ExitPortKind.Default, ports[2].Kind);
     }
 
@@ -73,7 +73,7 @@ public class ConnectionTests
         ExitPort port = NodeConnections.PortsOf(sample.Dialogue, sample.Project)[0];
         sample.Editor.SetExitTarget(port, sample.TargetA.Id);
 
-        Assert.Equal(sample.TargetA.Id, sample.Dialogue.BranchExits[l1.Id]);
+        Assert.Equal(sample.TargetA.Id, sample.Dialogue.BranchExits[l1]);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class ConnectionTests
         var (_, l1, _, _, _, _, _) = sample.BuildSpecExample();
 
         // 노드 내부 화면이 하는 일
-        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l1.Id, sample.TargetA.Id);
+        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l1, sample.TargetA.Id);
 
         ExitPort fromGraph = NodeConnections.AllConnections(sample.Project)
             .Single(port => port.Kind == ExitPortKind.Branch);
@@ -113,7 +113,7 @@ public class ConnectionTests
         // 그래프가 하는 일
         sample.Editor.SetExitTarget(fromGraph, sample.TargetB.Id);
 
-        Assert.Equal(sample.TargetB.Id, sample.Dialogue.BranchExits[l1.Id]);
+        Assert.Equal(sample.TargetB.Id, sample.Dialogue.BranchExits[l1]);
     }
 
     [Fact]

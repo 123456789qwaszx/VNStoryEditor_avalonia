@@ -1,12 +1,16 @@
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Vn.App.Services;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Rendering;
+using Vn.Authoring.Results;
+using Vn.Authoring.Script;
 
 namespace Vn.App.Views;
 
@@ -17,8 +21,10 @@ namespace Vn.App.Views;
 /// 화면이 조건 상태를 따로 들고 있지 않으므로, 조건 드롭다운을 한 번 바꾸면
 /// 그 아래 줄들의 표시가 전부 알아서 따라온다.
 ///
+/// <b>화자와 대사를 입력하면 대본이 바뀐다.</b> 이 노드는 본문을 소유하지 않는다.
+/// 화면에 보이는 것은 대본과 이 노드의 조건 데이터를 합친 투영이다.
+///
 /// 글자 편집은 카드를 다시 만들지 않는다. 다시 만들면 편집 중이던 칸이 사라진다.
-/// 그래서 <see cref="ProjectChangeKind.Content"/>일 때는 목록을 그대로 둔다.
 /// </summary>
 public partial class DialogueNodeEditor : UserControl
 {
@@ -34,13 +40,10 @@ public partial class DialogueNodeEditor : UserControl
         InitializeComponent();
 
         NameBox.LostFocus += (_, _) => CommitName();
-        AddLineButton.Click += (_, _) =>
-        {
-            if (_session is not null && _nodeId is not null)
-            {
-                _session.Editor.AddLine(_nodeId);
-            }
-        };
+        AddLineButton.Click += (_, _) => AddLine();
+        ImportScriptButton.Click += OnImportScriptClick;
+        ScriptCombo.SelectionChanged += (_, _) => OnScriptSelected();
+        PublishButton.Click += (_, _) => Publish();
 
         DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
         DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
@@ -98,6 +101,7 @@ public partial class DialogueNodeEditor : UserControl
         if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
         {
             LineHost.Children.Clear();
+            ResultHost.Children.Clear();
             ClearPreview();
             return;
         }
@@ -108,16 +112,37 @@ public partial class DialogueNodeEditor : UserControl
         {
             NameBox.Text = node.Name;
 
-            DialogueFlow flow = ConditionFlowResolver.Resolve(node, _session.Project, _session.Definition);
+            BuildScriptPicker(node);
+
+            DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
+            DialogueFlow flow = ConditionFlowResolver.Resolve(
+                node,
+                script,
+                _session.Project,
+                _session.Definition);
 
             LineHost.Children.Clear();
 
             foreach (ResolvedLine line in flow.Lines)
             {
-                LineHost.Children.Add(BuildCard(node, line, flow));
+                LineHost.Children.Add(BuildCard(node, script, line));
             }
 
+            if (flow.Lines.Count == 0)
+            {
+                LineHost.Children.Add(new TextBlock
+                {
+                    Text = script.HasScript
+                        ? "이 대본에는 아직 줄이 없습니다. '줄 추가'로 시작하거나 대본을 가져오세요."
+                        : "대본을 고르거나 새로 가져오면 줄이 여기에 나타납니다.",
+                    Opacity = 0.6,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+
+            AddOrphanCards(node, script);
             BuildDefaultExit(node);
+            BuildResults(node);
             ShowProblems(flow);
             RefreshPreviewCore(node);
         }
@@ -127,10 +152,9 @@ public partial class DialogueNodeEditor : UserControl
         }
     }
 
-
     /// <summary>
     /// 편집 컨트롤을 다시 만들지 않고 읽기 전용 Preview만 재합성한다.
-    /// 화자·대사를 입력하는 동안 ProjectChangeKind.Content가 연속으로 와도 포커스를 잃지 않는다.
+    /// 화자·대사를 입력하는 동안 내용 변경이 연속으로 와도 포커스를 잃지 않는다.
     /// </summary>
     internal void RefreshPreview()
     {
@@ -145,14 +169,15 @@ public partial class DialogueNodeEditor : UserControl
 
     private void RefreshPreviewCore(DialogueNode node)
     {
-        _previewDocument = DialogueDocumentComposer.ComposePreset(
+        _previewDocument = WorkingDialoguePreview.ComposePreset(
             _session!.Project,
             node.Id,
             _selectedOutputPreset,
             _session.Definition);
         PreviewBox.Text = DocumentPreviewFormatter.Format(_previewDocument);
         PreviewSummaryText.Text =
-            $"{_selectedOutputPreset.DisplayName} · {_previewDocument.Segments.Count}개 Segment · StoryProject 변경 없음";
+            $"{_selectedOutputPreset.DisplayName} · {_previewDocument.Segments.Count}개 Segment · " +
+            "작업 중 미리 보기 (발행 결과가 아닙니다)";
     }
 
     private void OnPreviewPresetSelected()
@@ -179,20 +204,136 @@ public partial class DialogueNodeEditor : UserControl
     {
         _previewDocument = null;
         PreviewBox.Text = string.Empty;
-        PreviewSummaryText.Text = "DialogueNode를 선택하면 구조화된 원본을 선택한 출력 프리셋으로 펼쳐 보여 줍니다.";
+        PreviewSummaryText.Text = "DialogueNode를 선택하면 작업 중 상태를 선택한 출력 프리셋으로 펼쳐 보여 줍니다.";
+    }
+
+    // ── 대본 ────────────────────────────────────────────────────────────────
+
+    private void BuildScriptPicker(DialogueNode node)
+    {
+        List<ScriptDocument> scripts = _session!.Project.Scripts.ToList();
+
+        ScriptCombo.ItemsSource = scripts.Select(script => script.Name).ToList();
+        ScriptCombo.Tag = scripts;
+        ScriptCombo.SelectedIndex = scripts.FindIndex(
+            script => string.Equals(script.Id, node.ScriptId, StringComparison.Ordinal));
+
+        ScriptDocument? current = _session.Project.FindScript(node.ScriptId);
+
+        ScriptSummaryText.Text = current is null
+            ? "이 장면이 읽을 대본이 없습니다. 화자와 대사는 대본이 소유합니다."
+            : $"{current.ActiveLines.Count()}줄 · {current.PrimaryLocale} · " +
+              $"동기화 {current.SourceRevision}회" +
+              (current.SourcePath is null ? string.Empty : $" · {Path.GetFileName(current.SourcePath)}");
+
+        AddLineButton.IsEnabled = current is not null;
+        ImportScriptButton.IsEnabled = current is not null;
+    }
+
+    private void OnScriptSelected()
+    {
+        if (_building ||
+            _session is null ||
+            _nodeId is null ||
+            ScriptCombo.Tag is not List<ScriptDocument> scripts ||
+            ScriptCombo.SelectedIndex < 0 ||
+            ScriptCombo.SelectedIndex >= scripts.Count)
+        {
+            return;
+        }
+
+        _session.Editor.SetDialogueScript(_nodeId, scripts[ScriptCombo.SelectedIndex].Id);
+    }
+
+    private void AddLine()
+    {
+        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { ScriptId: { } scriptId })
+        {
+            return;
+        }
+
+        _session.Editor.InsertScriptLine(scriptId);
+    }
+
+    /// <summary>
+    /// 작가의 평평한 대본 파일을 읽어 동기화한다.
+    ///
+    /// 계획을 먼저 세우고 확인이 필요한 항목이 있으면 <b>아무것도 바꾸지 않는다.</b>
+    /// 도구가 대신 이어 붙이면 작가가 쓰지 않은 연출이 다른 대사에 붙는다.
+    /// </summary>
+    private async void OnImportScriptClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            if (_session is null ||
+                _session.Project.FindDialogue(_nodeId) is not { ScriptId: { } scriptId })
+            {
+                return;
+            }
+
+            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+
+            if (storage is null || !storage.CanOpen)
+            {
+                _session.SetStatus("이 환경에서는 파일 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(
+                new FilePickerOpenOptions
+                {
+                    Title = "평평한 대본 가져오기",
+                    AllowMultiple = false,
+                    FileTypeFilter = new[]
+                    {
+                        new FilePickerFileType("대본 텍스트")
+                        {
+                            Patterns = new[] { "*.txt", "*.md", "*" }
+                        }
+                    }
+                });
+
+            if (files.Count == 0)
+            {
+                return;
+            }
+
+            string path = files[0].Path.LocalPath;
+            string text = await File.ReadAllTextAsync(path, new UTF8Encoding(false));
+            ScriptSyncPlan plan = _session.Editor.PlanScriptSync(scriptId, text, path);
+
+            if (plan.HasConflicts)
+            {
+                _session.SetStatus(
+                    $"확인이 필요해 대본을 반영하지 않았습니다. {plan.Summary()} — " +
+                    (plan.Conflicts.First().Message ?? "확인 필요"));
+                return;
+            }
+
+            _session.Editor.ApplyScriptSync(plan);
+
+            string parseNote = plan.ParseProblems.Count == 0
+                ? string.Empty
+                : $" · 확인할 줄 {plan.ParseProblems.Count}개";
+            _session.SetStatus($"{Path.GetFileName(path)}을 반영했습니다. {plan.Summary()}{parseNote}");
+        }
+        catch (Exception exception)
+        {
+            _session?.SetStatus($"대본을 가져오지 못했습니다. {exception.Message}");
+        }
     }
 
     // ── 카드 ────────────────────────────────────────────────────────────────
 
-    private Control BuildCard(DialogueNode node, ResolvedLine resolved, DialogueFlow flow)
+    private Control BuildCard(DialogueNode node, DialogueScript script, ResolvedLine resolved)
     {
         ConditionBranch? branch = resolved.Branch;
         int palette = branch?.PaletteIndex ?? -1;
 
         var body = new StackPanel { Spacing = 6 };
 
-        body.Children.Add(BuildHeader(node, resolved, flow));
-        body.Children.Add(BuildTextRow(node, resolved));
+        body.Children.Add(BuildHeader(node, script, resolved));
+        body.Children.Add(BuildTextRow(script, resolved));
 
         if (resolved.IsBranchExit && branch is not null)
         {
@@ -222,7 +363,7 @@ public partial class DialogueNodeEditor : UserControl
         return card;
     }
 
-    private Control BuildHeader(DialogueNode node, ResolvedLine resolved, DialogueFlow flow)
+    private Control BuildHeader(DialogueNode node, DialogueScript script, ResolvedLine resolved)
     {
         var header = new Grid
         {
@@ -238,6 +379,7 @@ public partial class DialogueNodeEditor : UserControl
             VerticalAlignment = VerticalAlignment.Center
         };
 
+        ToolTip.SetTip(index, $"{resolved.Line.LineId} · rev {resolved.Line.Revision}");
         Grid.SetColumn(index, 0);
         header.Children.Add(index);
 
@@ -283,9 +425,13 @@ public partial class DialogueNodeEditor : UserControl
         Grid.SetColumn(conditionBox, 2);
         header.Children.Add(conditionBox);
 
-        Button up = SmallButton("▲", () => _session!.Editor.MoveLine(node.Id, resolved.Line.Id, -1));
-        Button down = SmallButton("▼", () => _session!.Editor.MoveLine(node.Id, resolved.Line.Id, 1));
-        Button remove = SmallButton("✕", () => _session!.Editor.RemoveLine(node.Id, resolved.Line.Id));
+        string scriptId = script.ScriptId ?? string.Empty;
+        string lineId = resolved.Line.LineId;
+
+        Button up = SmallButton("▲", () => _session!.Editor.MoveScriptLine(scriptId, lineId, -1));
+        Button down = SmallButton("▼", () => _session!.Editor.MoveScriptLine(scriptId, lineId, 1));
+        Button remove = SmallButton("✕", () => _session!.Editor.RetireScriptLine(scriptId, lineId));
+        ToolTip.SetTip(remove, "대본에서 이 줄을 뺍니다. LineId는 은퇴 상태로 남습니다.");
 
         Grid.SetColumn(up, 3);
         Grid.SetColumn(down, 4);
@@ -335,13 +481,13 @@ public partial class DialogueNodeEditor : UserControl
                 return;
             }
 
-            _session.Editor.SetLineTransition(node.Id, resolved.Line.Id, picked.ToTransition());
+            _session.Editor.SetLineTransition(node.Id, resolved.Line.LineId, picked.ToTransition());
         };
 
         return box;
     }
 
-    private Control BuildTextRow(DialogueNode node, ResolvedLine resolved)
+    private Control BuildTextRow(DialogueScript script, ResolvedLine resolved)
     {
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("110,*") };
 
@@ -362,17 +508,20 @@ public partial class DialogueNodeEditor : UserControl
             TextWrapping = TextWrapping.Wrap
         };
 
-        // 글자가 바뀔 때마다 모델에 넣되, 그것이 카드 목록을 다시 만들지는 않는다.
+        string scriptId = script.ScriptId ?? string.Empty;
+
+        // 글자가 바뀔 때마다 대본에 넣되, 그것이 카드 목록을 다시 만들지는 않는다.
         // 편집기가 내용 변경과 구조 변경을 구분해서 알리기 때문에 가능하다.
         void Commit()
         {
-            if (!_building)
+            if (!_building && scriptId.Length > 0)
             {
-                _session!.Editor.SetLineText(
-                    node.Id,
-                    resolved.Line.Id,
+                _session!.Editor.SetScriptLineText(
+                    scriptId,
+                    resolved.Line.LineId,
                     speaker.Text ?? string.Empty,
-                    text.Text ?? string.Empty);
+                    text.Text ?? string.Empty,
+                    script.Locale);
             }
         }
 
@@ -417,12 +566,147 @@ public partial class DialogueNodeEditor : UserControl
         };
     }
 
+    /// <summary>
+    /// 대본에서 사라진 줄에 남은 조건 데이터. 자동으로 지우지 않으므로 눈에 보여야 한다.
+    /// </summary>
+    private void AddOrphanCards(DialogueNode node, DialogueScript script)
+    {
+        IReadOnlyList<OrphanLineExtension> orphans = script.Orphans
+            .Where(orphan => !orphan.Extension.IsEmpty)
+            .ToArray();
+
+        if (orphans.Count == 0)
+        {
+            return;
+        }
+
+        LineHost.Children.Add(new TextBlock
+        {
+            Text = "대본에서 사라진 줄에 남은 조건",
+            FontWeight = FontWeight.SemiBold,
+            Margin = new Thickness(0, 10, 0, 0)
+        });
+
+        foreach (OrphanLineExtension orphan in orphans)
+        {
+            var content = new StackPanel { Spacing = 3 };
+
+            content.Children.Add(new TextBlock
+            {
+                Text = orphan.Extension.LineId,
+                FontSize = 11,
+                Opacity = 0.7
+            });
+
+            content.Children.Add(new TextBlock
+            {
+                Text = orphan.LastKnownText is { } text
+                    ? $"마지막 내용: {text.Speaker}: {text.Text}"
+                    : "이 대본에 없는 LineId입니다.",
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            content.Children.Add(SmallButton(
+                "조건 지우기",
+                () => _session!.Editor.SetLineTransition(node.Id, orphan.Extension.LineId, null)));
+
+            LineHost.Children.Add(new Border
+            {
+                Padding = new Thickness(10),
+                CornerRadius = new CornerRadius(6),
+                Background = new SolidColorBrush(Color.FromArgb(20, 220, 38, 38)),
+                Child = content
+            });
+        }
+    }
+
+    // ── 발행 ────────────────────────────────────────────────────────────────
+
+    private void BuildResults(DialogueNode node)
+    {
+        ResultHost.Children.Clear();
+
+        DialogueDraft draft = _session!.Editor.InspectDialoguePublish(node.Id, _session.Definition);
+        PublishButton.IsEnabled = draft.CanPublish;
+        PublishStatusText.Text = draft.CanPublish
+            ? "발행할 수 있습니다."
+            : draft.BlockingSummary();
+
+        foreach (DialogueResult result in _session.Project.Results.DialogueResultsOf(node.Id).Reverse())
+        {
+            var content = new StackPanel { Spacing = 2 };
+
+            content.Children.Add(new TextBlock
+            {
+                Text = $"v{result.Identity.Version} · {result.Lines.Count}줄 · {result.Locale}",
+                FontWeight = FontWeight.SemiBold
+            });
+
+            content.Children.Add(new TextBlock
+            {
+                Text = $"{result.Identity.ResultId} · {result.Identity.ContentHash[..19]}…",
+                FontSize = 10,
+                Opacity = 0.6
+            });
+
+            content.Children.Add(new TextBlock
+            {
+                Text = result.PublishedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+                FontSize = 10,
+                Opacity = 0.6
+            });
+
+            ResultHost.Children.Add(new Border
+            {
+                Padding = new Thickness(10),
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(45, 128, 128, 128)),
+                Child = content
+            });
+        }
+
+        if (ResultHost.Children.Count == 0)
+        {
+            ResultHost.Children.Add(new TextBlock
+            {
+                Text = "아직 발행한 결과가 없습니다.",
+                Opacity = 0.6
+            });
+        }
+    }
+
+    private void Publish()
+    {
+        if (_session is null || _nodeId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            PublishOutcome<DialogueResult> outcome = _session.Editor.PublishDialogue(
+                _nodeId,
+                _session.Definition);
+
+            _session.SetStatus(outcome.Created
+                ? $"{outcome.Result.Identity.Label}을 발행했습니다."
+                : $"내용이 같아 {outcome.Result.Identity.Label}을 그대로 사용합니다.");
+        }
+        catch (PublishRejectedException exception)
+        {
+            _session.SetStatus(exception.Message.Replace(Environment.NewLine, " ", StringComparison.Ordinal));
+        }
+    }
+
     // ── 기본 출구 ───────────────────────────────────────────────────────────
 
     private void BuildDefaultExit(DialogueNode node)
     {
         List<StoryNode> targets = _session!.Project.EnumerateNodes()
             .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
+            .Where(other => other is not PresentationNode)
             .ToList();
 
         DefaultExitCombo.ItemsSource = targets.Select(target => target.Name).ToList();

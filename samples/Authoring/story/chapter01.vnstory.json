@@ -44,21 +44,10 @@
         "y": 80
       },
       "defaultExit": "nd_normal",
+      "script": "sc_chapter01",
       "lines": [
         {
-          "id": "ln_a1",
-          "speaker": "윌로",
-          "text": "이번 의뢰는 보수의 3분의 1밖에 드릴 수 없겠군요."
-        },
-        {
-          "id": "ln_a2",
-          "speaker": "라루",
-          "text": "3분의 1이요?"
-        },
-        {
-          "id": "ln_b1",
-          "speaker": "라루",
-          "text": "그래도 당신이라면 믿어 보죠.",
+          "lineId": "ln_b1",
           "condition": {
             "kind": "beginIf",
             "condition": "cd_favor",
@@ -66,14 +55,7 @@
           }
         },
         {
-          "id": "ln_b2",
-          "speaker": "윌로",
-          "text": "고맙습니다. 반드시 갚겠습니다."
-        },
-        {
-          "id": "ln_c1",
-          "speaker": "라루",
-          "text": "약속은 지키는 사람이라고 들었습니다.",
+          "lineId": "ln_c1",
           "condition": {
             "kind": "beginElseIf",
             "condition": "cd_trust",
@@ -81,22 +63,10 @@
           }
         },
         {
-          "id": "ln_c2",
-          "speaker": "윌로",
-          "text": "그 말, 잊지 않겠습니다."
-        },
-        {
-          "id": "ln_d1",
-          "speaker": "라루",
-          "text": "생각할 시간을 좀 주세요.",
+          "lineId": "ln_d1",
           "condition": {
             "kind": "endIf"
           }
-        },
-        {
-          "id": "ln_d2",
-          "speaker": "윌로",
-          "text": "천천히 생각해 주십시오."
         }
       ]
     },
@@ -108,13 +78,8 @@
         "x": 700,
         "y": 40
       },
-      "lines": [
-        {
-          "id": "ln_g1",
-          "speaker": "라루",
-          "text": "그럼 계약서에 서명하죠."
-        }
-      ]
+      "script": "sc_good",
+      "lines": []
     },
     {
       "id": "nd_trust",
@@ -124,13 +89,8 @@
         "x": 700,
         "y": 220
       },
-      "lines": [
-        {
-          "id": "ln_t1",
-          "speaker": "라루",
-          "text": "조건을 하나만 더 붙이겠습니다."
-        }
-      ]
+      "script": "sc_trust",
+      "lines": []
     },
     {
       "id": "nd_normal",
@@ -140,13 +100,18 @@
         "x": 700,
         "y": 400
       },
-      "lines": [
-        {
-          "id": "ln_n1",
-          "speaker": "윌로",
-          "text": "연락 기다리겠습니다."
-        }
-      ]
+      "script": "sc_normal",
+      "lines": []
+    },
+    {
+      "id": "nd_scene_direction",
+      "kind": "presentation",
+      "name": "의뢰 장면 연출",
+      "layout": {
+        "x": 360,
+        "y": 420
+      },
+      "bindings": []
     }
   ]
 }

@@ -1,7 +1,17 @@
+using Vn.Authoring.Results;
+using Vn.Authoring.Script;
+
 namespace Vn.Authoring.Model;
 
 /// <summary>
 /// 저작 도구가 다루는 공식 원본.
+///
+/// 세 종류의 데이터가 한 지붕 아래 있고, 서로 겹치지 않는다.
+/// <code>
+/// Scripts       작가의 대본에서 나온 줄 정체성과 locale별 화자·대사   ← 대사 본문의 유일한 원본
+/// Files/Nodes   그 줄들에 얹는 대사 논리와 연출, 그리고 실행 흐름
+/// Results       얼어붙은 발행 결과와 그 조합                        ← 불변, 추가만 가능
+/// </code>
 ///
 /// 프로젝트는 여러 <see cref="StoryFile"/>을 가지고, 각 파일이 노드를 소유한다.
 /// 프로젝트 전체 노드 순서가 필요할 때는 <see cref="EnumerateNodes"/>를 사용한다.
@@ -9,17 +19,35 @@ namespace Vn.Authoring.Model;
 /// </summary>
 public sealed class StoryProject
 {
-    /// <summary>StoryFile 소유 구조를 도입한 형식 버전.</summary>
-    public const int CurrentFormatVersion = 2;
+    /// <summary>
+    /// 대본 산출물·발행 결과·RuntimeComposition을 도입한 형식 버전.
+    ///
+    /// 버전 2 이하는 화자·대사를 DialogueNode가 직접 소유했고 Presentation이 편집 중인
+    /// 노드를 실시간으로 읽었다. 그 데이터를 새 의미로 자동 해석하면 어느 줄이 어느 LineId인지
+    /// 도구가 임의로 정하게 된다. 그래서 <b>읽지 않고 명시적으로 거부한다.</b>
+    /// </summary>
+    public const int CurrentFormatVersion = 3;
+
+    /// <summary>이 버전 이하는 읽지 않는다.</summary>
+    public const int LastUnsupportedFormatVersion = 2;
 
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 
     public string Title { get; set; } = "새 프로젝트";
 
+    /// <summary>작가의 대본에서 나온 산출물. 화자·대사의 유일한 수정 가능한 원본이다.</summary>
+    public List<ScriptDocument> Scripts { get; init; } = new();
+
     public List<StoryFile> Files { get; init; } = new();
 
-    /// <summary>실행 출구가 아닌 Settings·Presentation 공급 관계.</summary>
+    /// <summary>실행 출구가 아닌 조건 공급 관계.</summary>
     public List<NodeLink> Links { get; init; } = new();
+
+    /// <summary>발행된 불변 결과. 추가만 되고 내용이 바뀌지 않는다.</summary>
+    public ResultRepository Results { get; init; } = new();
+
+    /// <summary>대사 결과와 연출 결과를 짝지어 둔 정식 출력 입력.</summary>
+    public List<RuntimeComposition> Compositions { get; init; } = new();
 
     /// <summary>이야기가 시작되는 노드. null이면 아직 정하지 않은 것이다.</summary>
     public string? StartNodeId { get; set; }
@@ -58,6 +86,28 @@ public sealed class StoryProject
 
     public DialogueNode? FindDialogue(string? nodeId) => FindNode(nodeId) as DialogueNode;
 
+    public PresentationNode? FindPresentation(string? nodeId) => FindNode(nodeId) as PresentationNode;
+
+    public ScriptDocument? FindScript(string? scriptId)
+    {
+        return scriptId is null
+            ? null
+            : Scripts.FirstOrDefault(
+                script => string.Equals(script.Id, scriptId, StringComparison.Ordinal));
+    }
+
+    /// <summary>이 대사 노드가 읽는 대본. 노드가 없거나 대본을 고르지 않았으면 null이다.</summary>
+    public ScriptDocument? ScriptOf(string? dialogueNodeId) =>
+        FindScript(FindDialogue(dialogueNodeId)?.ScriptId);
+
+    public RuntimeComposition? FindComposition(string? compositionId)
+    {
+        return compositionId is null
+            ? null
+            : Compositions.FirstOrDefault(
+                item => string.Equals(item.Id, compositionId, StringComparison.Ordinal));
+    }
+
     public NodeLink? FindLink(string? linkId)
     {
         return linkId is null
@@ -95,8 +145,11 @@ public sealed class StoryProject
             FormatVersion = FormatVersion,
             Title = Title,
             StartNodeId = StartNodeId,
+            Scripts = Scripts.Select(script => script.Clone()).ToList(),
             Files = Files.Select(file => file.Clone()).ToList(),
-            Links = Links.Select(link => link.Clone()).ToList()
+            Links = Links.Select(link => link.Clone()).ToList(),
+            Results = Results.Clone(),
+            Compositions = Compositions.Select(item => item.Clone()).ToList()
         };
     }
 }

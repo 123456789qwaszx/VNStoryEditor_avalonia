@@ -74,13 +74,15 @@ public class ConditionChoiceTests
     {
         var sample = new Sample();
         sample.Line("if", LineConditionTransition.BeginIf(sample.ConditionA.Id));
-        LineBox second = sample.Line("elseif", LineConditionTransition.BeginElseIf(sample.ConditionB.Id));
+        string second = sample.Line("elseif", LineConditionTransition.BeginElseIf(sample.ConditionB.Id));
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         IReadOnlyList<ConditionChoice> choices =
             ConditionChoices.For(flow.Lines[1].PrecedingBranch, sample.Dialogue, sample.Project);
 
-        ConditionChoice current = ConditionChoices.Current(choices, second.Transition);
+        ConditionChoice current = ConditionChoices.Current(
+            choices,
+            flow.Script.Find(second)!.Transition);
 
         Assert.Equal(ConditionChoiceKind.BeginElseIf, current.Kind);
         Assert.Equal(sample.ConditionB.Id, current.ConditionId);

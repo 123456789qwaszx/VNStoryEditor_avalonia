@@ -1,10 +1,16 @@
+using Vn.Authoring.Results;
+
 namespace Vn.Authoring.Model;
 
 /// <summary>
-/// DialogueNode의 줄에 카메라·표정·화면 효과 같은 연출 명령을 덧붙이는 노드.
+/// <b>발행된 대사 결과 하나</b>를 읽고 그 줄에 카메라·표정·화면 효과를 덧붙이는 노드.
 ///
-/// 대사와 화자를 복사하지 않는다. 연결된 DialogueNode의 안정된 LineId만 참조하므로
-/// 대사 수정과 줄 순서 이동이 일어나도 같은 줄을 계속 가리킨다.
+/// 입력은 지금 편집 중인 DialogueNode가 아니라 얼어붙은
+/// <see cref="Results.DialogueResult"/>다. 편집 중인 노드를 실시간으로 읽으면 연출가가
+/// 작업하는 동안 발밑의 대사가 바뀌고, 완성한 연출표가 어느 대사에 맞는 것인지 아무도
+/// 말할 수 없게 된다.
+///
+/// 대사와 화자를 복사하지 않는다. 결과의 안정된 LineId만 참조한다.
 /// </summary>
 public sealed class PresentationNode : StoryNode
 {
@@ -14,26 +20,41 @@ public sealed class PresentationNode : StoryNode
     }
 
     /// <summary>
+    /// 읽고 있는 DialogueResult. null이면 아직 입력을 고르지 않은 것이다.
+    /// Id·Version·Hash를 모두 기억하므로 나중에 정확히 같은 입력을 다시 찾을 수 있다.
+    /// </summary>
+    public DialogueResultReference? Source { get; set; }
+
+    /// <summary>
     /// LineId별 연출 데이터. 목록 순서는 사람이 파일에서 읽는 순서일 뿐이고,
-    /// Dialogue 줄과의 결합은 반드시 <see cref="PresentationLineBinding.LineId"/>로 한다.
+    /// 대사 줄과의 결합은 반드시 <see cref="PresentationLineBinding.LineId"/>로 한다.
     /// </summary>
     public List<PresentationLineBinding> Bindings { get; init; } = new();
+
+    public PresentationLineBinding? FindBinding(string? lineId)
+    {
+        return lineId is null
+            ? null
+            : Bindings.FirstOrDefault(
+                binding => string.Equals(binding.LineId, lineId, StringComparison.Ordinal));
+    }
 
     public override StoryNode Clone()
     {
         return new PresentationNode(Id, Name)
         {
             Layout = Layout.Clone(),
+            Source = Source,
             Bindings = Bindings.Select(binding => binding.Clone()).ToList()
         };
     }
 }
 
 /// <summary>
-/// DialogueNode의 한 LineId에 붙는 ordered command 목록.
+/// 대사 결과의 한 LineId에 붙는 ordered command 목록.
 ///
-/// 대상 줄이 삭제되어도 이 객체를 자동 삭제하지 않는다. 현재 연결 대상 Dialogue에서
-/// LineId를 찾을 수 있는지는 <c>PresentationBindingResolver</c>가 파생 상태로 계산한다.
+/// 대상 줄이 없어져도 이 객체를 자동 삭제하지 않는다. 현재 입력 결과에서 LineId를 찾을 수
+/// 있는지는 <c>PresentationBindingResolver</c>가 파생 상태로 계산한다.
 /// </summary>
 public sealed class PresentationLineBinding
 {

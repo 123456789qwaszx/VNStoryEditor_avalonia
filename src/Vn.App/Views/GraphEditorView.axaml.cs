@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Vn.App.Services;
 using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
 
 namespace Vn.App.Views;
 
@@ -197,9 +198,12 @@ public partial class GraphEditorView : UserControl
 
         body.Children.Add(new TextBlock
         {
-            Text = NodeKindLabel(node.NodeKind),
+            Text = node.Badge is null
+                ? NodeKindLabel(node.NodeKind)
+                : $"{NodeKindLabel(node.NodeKind)} · {node.Badge}",
             FontSize = 10,
             Opacity = 0.6,
+            TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(0, 1, 0, 6)
         });
 
@@ -411,7 +415,7 @@ public partial class GraphEditorView : UserControl
     {
         bool branch = port.Kind == GraphOutputPortKind.ExecutionBranch;
         bool settings = port.Kind == GraphOutputPortKind.Settings;
-        bool presentation = port.Kind == GraphOutputPortKind.Presentation;
+        bool presentation = port.Kind == GraphOutputPortKind.PublishedResult;
         IBrush settingsBrush = new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E));
         IBrush presentationBrush = new SolidColorBrush(Color.FromRgb(0x7C, 0x3A, 0xED));
 
@@ -498,7 +502,7 @@ public partial class GraphEditorView : UserControl
             StrokeDashArray = connection.Kind switch
             {
                 GraphConnectionKind.Settings => new AvaloniaList<double> { 5, 3 },
-                GraphConnectionKind.Presentation => new AvaloniaList<double> { 2, 3 },
+                GraphConnectionKind.ResultSnapshot => new AvaloniaList<double> { 2, 3 },
                 _ => null
             }
         };
@@ -506,7 +510,7 @@ public partial class GraphEditorView : UserControl
         bool showLabel = connection.Kind is
             GraphConnectionKind.ExecutionBranch or
             GraphConnectionKind.Settings or
-            GraphConnectionKind.Presentation;
+            GraphConnectionKind.ResultSnapshot;
         var label = new Border
         {
             Padding = new Thickness(5, 1),
@@ -556,7 +560,7 @@ public partial class GraphEditorView : UserControl
         bool showLabel = edge.Connection.Kind is
             GraphConnectionKind.ExecutionBranch or
             GraphConnectionKind.Settings or
-            GraphConnectionKind.Presentation;
+            GraphConnectionKind.ResultSnapshot;
         edge.Label.IsVisible = showLabel;
 
         IReadOnlyList<GraphPosition> route = OrthogonalEdgeRouter.Route(
@@ -709,8 +713,8 @@ public partial class GraphEditorView : UserControl
         {
             GraphOutputPortKind.Settings =>
                 "조건을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요.",
-            GraphOutputPortKind.Presentation =>
-                "연출을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요.",
+            GraphOutputPortKind.PublishedResult =>
+                "이 대사 노드의 최신 발행 결과를 읽을 연출 노드 위에서 놓으세요.",
             _ =>
                 "연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다."
         };
@@ -784,23 +788,9 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        if (port.Kind == GraphOutputPortKind.Presentation)
+        if (port.Kind == GraphOutputPortKind.PublishedResult)
         {
-            if (dropped is { NodeKind: GraphNodeKind.Dialogue } &&
-                !string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal))
-            {
-                _session?.Editor.SetPresentationTarget(port.NodeId, dropped.NodeId);
-            }
-            else if (dropped is null)
-            {
-                _session?.Editor.SetPresentationTarget(port.NodeId, null);
-            }
-            else
-            {
-                _session?.SetStatus(
-                    "Presentation link는 PresentationNode에서 DialogueNode로만 연결할 수 있습니다.");
-            }
-
+            AttachLatestResult(port.NodeId, dropped);
             return;
         }
 
@@ -817,6 +807,57 @@ public partial class GraphEditorView : UserControl
         if (port.ExecutionPort is not null)
         {
             _session?.Editor.SetExitTarget(port.ExecutionPort, target);
+        }
+    }
+
+    /// <summary>
+    /// 대사 노드의 발행 결과 포트를 연출 노드에 끌어다 놓았을 때.
+    ///
+    /// <b>최신 버전을 명시적으로 고정한다.</b> "이 노드의 최신"으로 저장하면 다음 발행 때
+    /// 연출가가 모르는 사이에 발밑의 대사가 바뀐다. 다른 버전으로 옮기는 것은 연출 편집기의
+    /// 버전 목록에서 한다.
+    /// </summary>
+    private void AttachLatestResult(string dialogueNodeId, GraphNodeHit? dropped)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (dropped is null)
+        {
+            _session.SetStatus("연출 노드 위에 놓아야 입력 결과가 연결됩니다.");
+            return;
+        }
+
+        if (dropped.NodeKind != GraphNodeKind.Presentation)
+        {
+            _session.SetStatus("발행 결과는 연출 노드만 읽을 수 있습니다.");
+            return;
+        }
+
+        DialogueResult? latest = _session.Project.Results
+            .DialogueResultsOf(dialogueNodeId)
+            .LastOrDefault();
+
+        if (latest is null)
+        {
+            _session.SetStatus(
+                "이 대사 노드는 아직 발행된 결과가 없습니다. 대사 편집기에서 먼저 발행하세요.");
+            return;
+        }
+
+        try
+        {
+            _session.Editor.SetPresentationSource(
+                dropped.NodeId,
+                latest.Identity.ResultId,
+                latest.Identity.Version);
+            _session.SetStatus($"연출이 '{latest.SourceNodeName} v{latest.Identity.Version}'을 읽습니다.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            _session.SetStatus(exception.Message);
         }
     }
 
@@ -881,7 +922,7 @@ public partial class GraphEditorView : UserControl
         string kind = edge.Connection.Kind switch
         {
             GraphConnectionKind.Settings => "조건 공급",
-            GraphConnectionKind.Presentation => "연출 공급",
+            GraphConnectionKind.ResultSnapshot => "발행 결과 입력",
             GraphConnectionKind.ExecutionBranch => $"조건 '{edge.Connection.Label}'",
             _ => "기본 출구"
         };
@@ -978,7 +1019,7 @@ public partial class GraphEditorView : UserControl
         return connection.Kind switch
         {
             GraphConnectionKind.Settings => new SolidColorBrush(Color.FromRgb(0x0F, 0x76, 0x6E)),
-            GraphConnectionKind.Presentation => new SolidColorBrush(Color.FromRgb(0x7C, 0x3A, 0xED)),
+            GraphConnectionKind.ResultSnapshot => new SolidColorBrush(Color.FromRgb(0x7C, 0x3A, 0xED)),
             GraphConnectionKind.ExecutionBranch => BranchPalette.Accent(connection.PaletteIndex),
             _ => new SolidColorBrush(Color.FromArgb(150, 100, 100, 100))
         };

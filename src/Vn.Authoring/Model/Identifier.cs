@@ -46,4 +46,15 @@ public static class Identifier
     public static string PresentationCommand() => Create("pc");
 
     public static string Condition() => Create("cd");
+
+    /// <summary>대본 산출물 하나. 작가 파일의 이름이나 경로와 독립적이다.</summary>
+    public static string Script() => Create("sc");
+
+    /// <summary>
+    /// 발행 결과의 계보. 같은 노드에서 v1, v2로 이어지는 결과는 이 Id를 공유하고
+    /// 버전 번호로 구분한다.
+    /// </summary>
+    public static string Result() => Create("rs");
+
+    public static string Composition() => Create("rc");
 }

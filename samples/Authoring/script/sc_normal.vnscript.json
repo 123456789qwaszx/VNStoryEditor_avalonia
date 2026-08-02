@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "scriptId": "sc_normal",
+  "name": "보류",
+  "primaryLocale": "ko-KR",
+  "sourceRevision": 1,
+  "sourcePath": "raw/sc_normal.txt",
+  "lines": [
+    {
+      "id": "ln_n1",
+      "revision": 1
+    }
+  ],
+  "locales": [
+    {
+      "locale": "ko-KR",
+      "entries": {
+        "ln_n1": {
+          "speaker": "윌로",
+          "text": "연락 기다리겠습니다."
+        }
+      }
+    }
+  ]
+}

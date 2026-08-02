@@ -7,8 +7,11 @@ namespace Vn.Authoring.Flow;
 /// 줄에 적힌 전환만 보고 "지금 어떤 조건 갈래 안인가"를 앞에서부터 계산한다.
 ///
 /// 이 클래스가 조건 모델의 유일한 해석자다. 화면이 색을 칠할 때도, 그래프가 포트를 만들 때도,
-/// 저장 형식이 검증될 때도 여기를 지난다. 해석이 두 벌 있으면 화면과 그래프가 다른 구조를
+/// 결과를 발행할 때도 여기를 지난다. 해석이 두 벌 있으면 화면과 그래프가 다른 구조를
 /// 보여 주게 되고, 그때 작가는 어느 쪽이 맞는지 알 방법이 없다.
+///
+/// 줄과 그 순서는 대본이 준다. 이 해석기는 <see cref="DialogueScriptResolver"/>가 합친
+/// 투영만 보고, 대본을 직접 열지 않는다.
 ///
 /// 조건의 존재 여부는 프로젝트 전체 목록이 아니라 현재 DialogueNode에 Settings link로 연결된
 /// SetNode와 게임 전역 조건을 합친 카탈로그로 검증한다. 연결이 끊겼을 때 Transition은 보존하고
@@ -19,9 +22,31 @@ public static class ConditionFlowResolver
     public static DialogueFlow Resolve(
         DialogueNode node,
         StoryProject project,
+        GameDefinition? definition = null,
+        string? locale = null)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(project);
+
+        return Resolve(
+            node,
+            DialogueScriptResolver.Resolve(project, node, locale),
+            project,
+            definition);
+    }
+
+    /// <summary>
+    /// 이미 합쳐 놓은 대본 투영으로 계산한다.
+    /// 한 화면에서 대본과 흐름을 모두 쓸 때 같은 join을 두 번 하지 않기 위한 입구다.
+    /// </summary>
+    public static DialogueFlow Resolve(
+        DialogueNode node,
+        DialogueScript script,
+        StoryProject project,
         GameDefinition? definition = null)
     {
         ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(script);
         ArgumentNullException.ThrowIfNull(project);
 
         AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
@@ -31,15 +56,30 @@ public static class ConditionFlowResolver
         var problems = new List<FlowProblem>();
         var builders = new List<BranchBuilder>();
 
+        if (script.ScriptId is null)
+        {
+            problems.Add(new FlowProblem(
+                FlowProblemKind.MissingScript,
+                null,
+                "이 대사 노드가 읽을 대본이 없습니다. 대본을 만들고 노드에 연결하세요."));
+        }
+        else if (!script.IsResolved)
+        {
+            problems.Add(new FlowProblem(
+                FlowProblemKind.MissingScript,
+                null,
+                $"대본 '{script.ScriptId}'를 프로젝트에서 찾을 수 없습니다."));
+        }
+
         // 줄마다 (전환 적용 뒤 갈래, 적용 전 갈래). 아직 완성되지 않은 갈래를 가리킨다.
-        var perLine = new (BranchBuilder? Current, BranchBuilder? Preceding)[node.Lines.Count];
+        var perLine = new (BranchBuilder? Current, BranchBuilder? Preceding)[script.Lines.Count];
 
         BranchBuilder? active = null;
         int chainIndex = -1;
 
-        for (int index = 0; index < node.Lines.Count; index++)
+        for (int index = 0; index < script.Lines.Count; index++)
         {
-            LineBox line = node.Lines[index];
+            DialogueLine line = script.Lines[index];
             BranchBuilder? preceding = active;
 
             if (line.Transition is { } transition)
@@ -64,7 +104,7 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.BeginIf:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.NestedCondition,
-                            line.Id,
+                            line.LineId,
                             "조건 안에서 새 조건을 열었습니다. 첫 버전은 중첩 조건을 지원하지 않아 같은 깊이의 다른 갈래로 다룹니다."));
                         active = Open(
                             line,
@@ -82,7 +122,7 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.BeginElseIf when active is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.ElseIfWithoutIf,
-                            line.Id,
+                            line.LineId,
                             "열린 조건이 없는데 elseif가 있습니다. 새 조건을 여는 것으로 다룹니다."));
                         chainIndex++;
                         active = Open(
@@ -115,7 +155,7 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.EndIf when active is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.EndIfWithoutIf,
-                            line.Id,
+                            line.LineId,
                             "열린 조건이 없는데 조건 종료가 있습니다. 무시합니다."));
                         break;
 
@@ -132,9 +172,9 @@ public static class ConditionFlowResolver
         IReadOnlyList<ConditionBranch> branches = Complete(node, builders);
         var byOpenLine = branches.ToDictionary(branch => branch.OpenLineId, StringComparer.Ordinal);
 
-        var lines = new List<ResolvedLine>(node.Lines.Count);
+        var lines = new List<ResolvedLine>(script.Lines.Count);
 
-        for (int index = 0; index < node.Lines.Count; index++)
+        for (int index = 0; index < script.Lines.Count; index++)
         {
             (BranchBuilder? current, BranchBuilder? preceding) = perLine[index];
 
@@ -142,7 +182,7 @@ public static class ConditionFlowResolver
             ConditionBranch? before = preceding is null ? null : byOpenLine[preceding.OpenLineId];
 
             lines.Add(new ResolvedLine(
-                node.Lines[index],
+                script.Lines[index],
                 index,
                 branch is null ? 0 : 1,
                 branch,
@@ -150,13 +190,14 @@ public static class ConditionFlowResolver
                 branch is not null && branch.HasExit && branch.LastLineIndex == index));
         }
 
+        AddOrphanProblems(script, problems);
         AddExitProblems(node, branches, project, problems);
 
-        return new DialogueFlow(lines, branches, problems);
+        return new DialogueFlow(script, lines, branches, problems);
     }
 
     private static BranchBuilder Open(
-        LineBox line,
+        DialogueLine line,
         LineConditionTransition transition,
         int chainIndex,
         int branchIndexInChain,
@@ -180,20 +221,20 @@ public static class ConditionFlowResolver
             {
                 problems.Add(new FlowProblem(
                     FlowProblemKind.UnknownCondition,
-                    line.Id,
+                    line.LineId,
                     "이 줄이 가리키는 조건 정의를 찾을 수 없습니다. 조건이 삭제되었을 수 있습니다."));
             }
             else
             {
                 problems.Add(new FlowProblem(
                     FlowProblemKind.UnavailableCondition,
-                    line.Id,
+                    line.LineId,
                     $"조건 '{known.DisplayName}'은 이 대사 노드에 연결된 SetNode 또는 게임 전역 조건에 포함되지 않습니다."));
             }
         }
 
         var builder = new BranchBuilder(
-            line.Id,
+            line.LineId,
             conditionId,
             chainIndex,
             branchIndexInChain,
@@ -226,6 +267,24 @@ public static class ConditionFlowResolver
         }
 
         return branches;
+    }
+
+    private static void AddOrphanProblems(DialogueScript script, List<FlowProblem> problems)
+    {
+        foreach (OrphanLineExtension orphan in script.Orphans)
+        {
+            if (orphan.Extension.IsEmpty)
+            {
+                continue;
+            }
+
+            problems.Add(new FlowProblem(
+                FlowProblemKind.OrphanedLineExtension,
+                orphan.Extension.LineId,
+                orphan.IsRetired
+                    ? "대본에서 사라진 줄에 조건 전환이 남아 있습니다. 지우지 않고 그대로 둡니다."
+                    : "이 대본에 없는 LineId에 조건 전환이 남아 있습니다. 대본을 바꾸었을 수 있습니다."));
+        }
     }
 
     private static void AddExitProblems(
