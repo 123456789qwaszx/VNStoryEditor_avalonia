@@ -747,9 +747,32 @@ public sealed partial class ProjectEditor
             }
 
             binding.Commands.Add(command);
+            RecordRecentCommand(definitionId);
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// 갤러리의 "최근" 섹션 재료. 추가와 같은 mutate 안에서 움직이므로 별도 undo 단계를
+    /// 만들지 않고, 되돌리면 최근 목록도 함께 돌아간다.
+    /// </summary>
+    private void RecordRecentCommand(string definitionId)
+    {
+        if (string.IsNullOrWhiteSpace(definitionId))
+        {
+            return;
+        }
+
+        Project.RecentCommandIds.RemoveAll(id => string.Equals(id, definitionId, StringComparison.Ordinal));
+        Project.RecentCommandIds.Insert(0, definitionId);
+
+        if (Project.RecentCommandIds.Count > StoryProject.MaxRecentCommands)
+        {
+            Project.RecentCommandIds.RemoveRange(
+                StoryProject.MaxRecentCommands,
+                Project.RecentCommandIds.Count - StoryProject.MaxRecentCommands);
+        }
     }
 
     /// <summary>
@@ -778,8 +801,57 @@ public sealed partial class ProjectEditor
             }
         }
 
-        Mutate(ProjectChangeKind.PresentationContent, () => node.SetupCommands.Add(command));
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            node.SetupCommands.Add(command);
+            RecordRecentCommand(definitionId);
+        });
         return command;
+    }
+
+    /// <summary>
+    /// 커맨드 인자 하나를 바꾼다. 빈 값은 인자를 지워 카탈로그 기본값으로 되돌린다.
+    /// 칩 편집·직접 조작이 전부 이 통로를 지난다.
+    /// </summary>
+    public void SetPresentationCommandArgument(
+        string presentationNodeId,
+        string commandId,
+        string argumentName,
+        string? value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(argumentName);
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationCommandInstance command = FindPresentationCommand(node, commandId)
+            ?? throw new InvalidOperationException($"커맨드 '{commandId}'를 찾을 수 없습니다.");
+
+        string? next = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        string? current = command.Arguments.TryGetValue(argumentName, out string? existing) ? existing : null;
+
+        if (string.Equals(current, next, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            if (next is null)
+            {
+                command.Arguments.Remove(argumentName);
+            }
+            else
+            {
+                command.Arguments[argumentName] = next;
+            }
+        });
+    }
+
+    private static PresentationCommandInstance? FindPresentationCommand(
+        PresentationNode node,
+        string commandId)
+    {
+        return node.SetupCommands
+            .Concat(node.Bindings.SelectMany(binding => binding.Commands))
+            .FirstOrDefault(command => string.Equals(command.Id, commandId, StringComparison.Ordinal));
     }
 
     /// <summary>

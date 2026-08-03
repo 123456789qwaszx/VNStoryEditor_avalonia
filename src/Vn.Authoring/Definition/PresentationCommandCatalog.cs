@@ -33,7 +33,8 @@ public sealed record PresentationCommandDefinition(
     IReadOnlyList<PresentationCommandParameter> Parameters,
     string Execution = PresentationCommandDefinition.QueuedExecution,
     bool MainLaneOnly = false,
-    string? Notes = null)
+    string? Notes = null,
+    string? Intensity = null)
 {
     public const string ImmediateExecution = "immediate";
     public const string QueuedExecution = "queued";
@@ -204,6 +205,7 @@ public sealed class PresentationCommandCatalog
                 ? PresentationCommandDefinition.QueuedExecution
                 : spec.Execution,
             spec.MainLaneOnly,
-            string.IsNullOrWhiteSpace(spec.Notes) ? null : spec.Notes);
+            string.IsNullOrWhiteSpace(spec.Notes) ? null : spec.Notes,
+            string.IsNullOrWhiteSpace(spec.Intensity) ? null : spec.Intensity);
     }
 }

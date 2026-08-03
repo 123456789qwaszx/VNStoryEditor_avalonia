@@ -152,7 +152,8 @@ public static class ProjectStore
             FormatVersion = StoryProject.CurrentFormatVersion,
             Title = manifest.Title,
             StartNodeId = manifest.StartNodeId,
-            AssetRoots = manifest.AssetRoots.Clone()
+            AssetRoots = manifest.AssetRoots.Clone(),
+            RecentCommandIds = manifest.RecentCommandIds.ToList()
         };
 
         foreach (ScriptFileReference reference in manifest.Scripts)

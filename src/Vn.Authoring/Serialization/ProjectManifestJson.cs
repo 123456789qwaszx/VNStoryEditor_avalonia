@@ -75,6 +75,12 @@ public static class ProjectManifestJson
             root["assetRoots"] = assetRoots;
         }
 
+        if (project.RecentCommandIds.Count > 0)
+        {
+            root["recentCommands"] = new JsonArray(
+                project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -229,11 +235,27 @@ public static class ProjectManifestJson
             (string?)root["title"] ?? "제목 없음",
             (string?)root["startNode"],
             ReadAssetRoots(root["assetRoots"]),
+            ReadRecentCommands(root["recentCommands"]),
             scripts,
             references,
             links,
             compositions,
             (string?)root["results"]);
+    }
+
+    internal static IReadOnlyList<string> ReadRecentCommands(JsonNode? json)
+    {
+        if (json is not JsonArray array)
+        {
+            return Array.Empty<string>();
+        }
+
+        return array
+            .Select(item => (string?)item)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .Take(StoryProject.MaxRecentCommands)
+            .ToArray();
     }
 
     /// <summary>비어 있으면 null — manifest에 빈 객체를 남기지 않는다.</summary>
@@ -400,6 +422,7 @@ public sealed record ProjectManifest(
     string Title,
     string? StartNodeId,
     AssetRootSettings AssetRoots,
+    IReadOnlyList<string> RecentCommandIds,
     IReadOnlyList<ScriptFileReference> Scripts,
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,

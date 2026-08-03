@@ -74,6 +74,12 @@ public static class ProjectSnapshotCodec
             root["assetRoots"] = assetRoots;
         }
 
+        if (project.RecentCommandIds.Count > 0)
+        {
+            root["recentCommands"] = new JsonArray(
+                project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -118,7 +124,8 @@ public static class ProjectSnapshotCodec
             FormatVersion = projectFormatVersion,
             Title = (string?)root["title"] ?? "제목 없음",
             StartNodeId = (string?)root["startNode"],
-            AssetRoots = ProjectManifestJson.ReadAssetRoots(root["assetRoots"])
+            AssetRoots = ProjectManifestJson.ReadAssetRoots(root["assetRoots"]),
+            RecentCommandIds = ProjectManifestJson.ReadRecentCommands(root["recentCommands"]).ToList()
         };
 
         foreach (JsonNode? item in root["scripts"]?.AsArray() ?? new JsonArray())

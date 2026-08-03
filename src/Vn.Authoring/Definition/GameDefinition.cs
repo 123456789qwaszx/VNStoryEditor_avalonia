@@ -228,6 +228,13 @@ public sealed class PresentationCommandSpec
     [JsonPropertyName("mainLaneOnly")]
     public bool MainLaneOnly { get; init; }
 
+    /// <summary>
+    /// 액팅류의 강도 분류(미세/가벼움/보통/강함 — 레퍼런스 §23.3). 갤러리의 부그룹이 된다.
+    /// 어떤 커맨드가 어느 강도인지는 코드가 아니라 이 데이터가 정한다.
+    /// </summary>
+    [JsonPropertyName("intensity")]
+    public string? Intensity { get; init; }
+
     /// <summary><b>순서가 곧 Yarn 포지셔널 인자 순서다.</b></summary>
     [JsonPropertyName("parameters")]
     public List<PresentationParameterSpec> Parameters { get; init; } = new();

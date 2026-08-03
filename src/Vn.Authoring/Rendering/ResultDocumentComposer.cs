@@ -496,44 +496,14 @@ public static class ResultDocumentComposer
             Note: command.Note));
     }
 
-    /// <summary>
-    /// 카탈로그의 파라미터 순서대로 인자 값을 해석한다. 작성 값이 없으면 정의의 기본값을 쓰고,
-    /// 값이 아예 없는 파라미터부터는 트레일링 생략으로 자른다(뒤쪽부터만 생략 규칙).
-    /// 정의를 모르는 명령이나 파라미터 밖의 인자는 버리지 않고 이름순으로 뒤에 붙인다.
-    /// </summary>
+    /// <summary>인자 순서·트레일링 생략 규칙은 <see cref="CommandText.ResolveOrdered"/> 하나다.</summary>
     private static IReadOnlyList<RenderedArgument> ResolveArguments(
         PresentationCommandDefinition? definition,
         PresentationResultCommand command)
     {
-        var arguments = new List<RenderedArgument>();
-        var consumed = new HashSet<string>(StringComparer.Ordinal);
-
-        if (definition is not null)
-        {
-            foreach (PresentationCommandParameter parameter in definition.Parameters)
-            {
-                string? value = command.Arguments.TryGetValue(parameter.Name, out string? provided)
-                    ? provided
-                    : parameter.Default;
-
-                if (value is null)
-                {
-                    break;
-                }
-
-                arguments.Add(new RenderedArgument(parameter.Name, value));
-                consumed.Add(parameter.Name);
-            }
-        }
-
-        foreach ((string key, string value) in command.Arguments
-                     .Where(pair => !consumed.Contains(pair.Key))
-                     .OrderBy(pair => pair.Key, StringComparer.Ordinal))
-        {
-            arguments.Add(new RenderedArgument(key, value));
-        }
-
-        return arguments;
+        return CommandText.ResolveOrdered(definition, command.Arguments)
+            .Select(argument => new RenderedArgument(argument.Name, argument.Value))
+            .ToArray();
     }
 
     private static void AddOrphanWarnings(

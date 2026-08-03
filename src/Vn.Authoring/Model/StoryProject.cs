@@ -56,6 +56,15 @@ public sealed class StoryProject
     public AssetRootSettings AssetRoots { get; init; } = new();
 
     /// <summary>
+    /// 최근 사용한 연출 커맨드 정의 Id, 최신이 앞. 갤러리의 "최근" 섹션이 읽는다.
+    /// 프로젝트에 저장한다 — 이 프로젝트에서 자주 쓰는 어휘는 프로젝트의 것이다.
+    /// </summary>
+    public List<string> RecentCommandIds { get; init; } = new();
+
+    /// <summary>갤러리 "최근" 섹션이 다 보여 줄 수 있는 만큼만 남긴다.</summary>
+    public const int MaxRecentCommands = 8;
+
+    /// <summary>
     /// 프로젝트 전체 노드를 결정적인 순서로 펼친다.
     /// 파일 순서 → 각 파일의 Nodes 순서다.
     /// </summary>
@@ -149,6 +158,7 @@ public sealed class StoryProject
             Title = Title,
             StartNodeId = StartNodeId,
             AssetRoots = AssetRoots.Clone(),
+            RecentCommandIds = new List<string>(RecentCommandIds),
             Scripts = Scripts.Select(script => script.Clone()).ToList(),
             Files = Files.Select(file => file.Clone()).ToList(),
             Links = Links.Select(link => link.Clone()).ToList(),

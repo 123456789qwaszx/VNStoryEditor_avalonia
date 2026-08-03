@@ -31,6 +31,7 @@ public partial class PresentationNodeEditor : UserControl
     private AvailablePresentationCommands? _available;
     private string? _selectedLineId;
     private readonly Dictionary<string, Border> _lineCards = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MiniStageState> _foldCache = new(StringComparer.Ordinal);
 
     /// <summary>MainWindow가 꽂아 주는 공유 하단 무대 프리뷰.</summary>
     internal MiniStagePreview? StagePreview { get; set; }
@@ -84,6 +85,7 @@ public partial class PresentationNodeEditor : UserControl
             NameBox.Text = presentation.Name;
             LineHost.Children.Clear();
             _lineCards.Clear();
+            _foldCache.Clear();
 
             BuildSourcePicker(presentation);
             BuildSupplyPicker(presentation);
@@ -409,34 +411,12 @@ public partial class PresentationNodeEditor : UserControl
             FontWeight = FontWeight.SemiBold
         });
 
-        IReadOnlyList<PresentationCommandDefinition> choices = catalog.Definitions;
-
         foreach (PresentationCommandInstance command in presentation.SetupCommands)
         {
-            content.Children.Add(BuildSetupRow(presentation, command, catalog, choices));
+            content.Children.Add(BuildCommandRow(presentation, lineId: null, command, catalog));
         }
 
-        var add = new Button
-        {
-            Content = "+ Setup 커맨드",
-            FontSize = 11,
-            Padding = new Thickness(8, 3),
-            IsEnabled = choices.Count > 0
-        };
-
-        add.Click += (_, _) =>
-        {
-            if (!_building && _session is not null && choices.Count > 0)
-            {
-                PresentationCommandDefinition definition = choices[0];
-                _session.Editor.AddPresentationSetupCommand(
-                    presentation.Id,
-                    definition.Id,
-                    definition.DefaultArgumentValues());
-            }
-        };
-
-        content.Children.Add(add);
+        content.Children.Add(BuildAddRow(presentation, lineId: null, catalog));
 
         return new Border
         {
@@ -448,57 +428,6 @@ public partial class PresentationNodeEditor : UserControl
         };
     }
 
-    private Control BuildSetupRow(
-        PresentationNode presentation,
-        PresentationCommandInstance command,
-        PresentationCommandCatalog catalog,
-        IReadOnlyList<PresentationCommandDefinition> choices)
-    {
-        var combo = new ComboBox
-        {
-            ItemsSource = choices
-                .Select(item =>
-                    $"{catalog.FindCategory(item.CategoryId)?.DisplayName ?? item.CategoryId} · {item.DisplayName}")
-                .ToArray(),
-            SelectedIndex = FindDefinitionIndex(choices, command.DefinitionId),
-            FontSize = 11,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-
-        combo.SelectionChanged += (_, _) =>
-        {
-            if (_building || _session is null || combo.SelectedIndex < 0 || combo.SelectedIndex >= choices.Count)
-            {
-                return;
-            }
-
-            PresentationCommandDefinition definition = choices[combo.SelectedIndex];
-            _session.Editor.SetPresentationCommandDefinition(
-                presentation.Id,
-                command.Id,
-                definition.Id,
-                definition.DefaultArgumentValues());
-        };
-
-        Button up = SetupButton("▲", () =>
-            _session!.Editor.MovePresentationSetupCommand(presentation.Id, command.Id, -1));
-        Button down = SetupButton("▼", () =>
-            _session!.Editor.MovePresentationSetupCommand(presentation.Id, command.Id, 1));
-        Button remove = SetupButton("✕", () =>
-            _session!.Editor.RemovePresentationCommand(presentation.Id, command.Id));
-
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto") };
-        Grid.SetColumn(combo, 0);
-        Grid.SetColumn(up, 1);
-        Grid.SetColumn(down, 2);
-        Grid.SetColumn(remove, 3);
-        row.Children.Add(combo);
-        row.Children.Add(up);
-        row.Children.Add(down);
-        row.Children.Add(remove);
-        return row;
-    }
-
     private Button SetupButton(string glyph, Action action)
     {
         var button = new Button
@@ -507,7 +436,7 @@ public partial class PresentationNodeEditor : UserControl
             FontSize = 10,
             Padding = new Thickness(6, 2),
             Margin = new Thickness(4, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Top
         };
 
         button.Click += (_, _) =>
@@ -542,10 +471,14 @@ public partial class PresentationNodeEditor : UserControl
             FontWeight = FontWeight.SemiBold
         });
 
-        foreach (PresentationCategoryDefinition category in _available?.Categories ?? catalog.Categories)
+        PresentationLineBinding? binding = presentation.FindBinding(line.LineId);
+
+        foreach (PresentationCommandInstance command in binding?.Commands ?? Enumerable.Empty<PresentationCommandInstance>())
         {
-            content.Children.Add(BuildCategoryEditor(presentation, line.LineId, category, catalog));
+            content.Children.Add(BuildCommandRow(presentation, line.LineId, command, catalog));
         }
+
+        content.Children.Add(BuildAddRow(presentation, line.LineId, catalog));
 
         var card = new Border
         {
@@ -569,156 +502,630 @@ public partial class PresentationNodeEditor : UserControl
         return card;
     }
 
-    /// <summary>드롭다운 항목 하나 — 카탈로그 정의 또는 공급 노드의 프리셋.</summary>
-    private sealed record CommandChoice(
-        string Label,
-        string DefinitionId,
-        string? PresetId,
-        IReadOnlyDictionary<string, string> Arguments);
+    // ── 커맨드 행 — 갤러리·칩·텍스트 입력 (W19) ───────────────────────────
 
-    private Control BuildCategoryEditor(
+    private static readonly FontFamily MonoFont = new("Consolas,Cascadia Mono,monospace");
+
+    /// <summary>
+    /// 커맨드 하나의 편집 행. 이름, 파라미터 칩, 그리고 항상 병기되는
+    /// <c>&lt;&lt;…&gt;&gt;</c> 텍스트 — 어떤 방식으로 만들었든 결과는 텍스트로 보인다.
+    /// 카탈로그 notes(함정)는 ⚠ 툴팁으로 그 자리에서 보인다.
+    /// </summary>
+    private Control BuildCommandRow(
         PresentationNode presentation,
-        string lineId,
-        PresentationCategoryDefinition category,
+        string? lineId,
+        PresentationCommandInstance command,
         PresentationCommandCatalog catalog)
     {
-        var choices = new List<CommandChoice>();
-
-        // 프리셋이 먼저다 — 값이 세팅된 "정확한 연출종류"가 원시 커맨드보다 우선 후보다.
-        foreach (AvailablePreset preset in _available?.PresetsFor(category.Id)
-                     ?? (IReadOnlyList<AvailablePreset>)Array.Empty<AvailablePreset>())
-        {
-            choices.Add(new CommandChoice(
-                $"★ {preset.DisplayName}",
-                preset.Preset.CommandDefinitionId,
-                preset.Preset.Id,
-                new Dictionary<string, string>(StringComparer.Ordinal)));
-        }
-
-        foreach (PresentationCommandDefinition definition in catalog.For(category.Id))
-        {
-            choices.Add(new CommandChoice(
-                definition.DisplayName,
-                definition.Id,
-                PresetId: null,
-                definition.DefaultArgumentValues()));
-        }
-
-        PresentationLineBinding? binding = presentation.FindBinding(lineId);
-        PresentationCommandInstance? command = binding?.Commands.FirstOrDefault(item =>
-            string.Equals(
-                catalog.Find(item.DefinitionId)?.CategoryId,
-                category.Id,
-                StringComparison.Ordinal));
+        PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
 
         var enabled = new CheckBox
         {
-            Content = category.DisplayName,
-            IsChecked = command?.IsEnabled == true,
-            IsEnabled = choices.Count > 0,
-            MinWidth = 128,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        var combo = new ComboBox
-        {
-            ItemsSource = choices.Select(item => item.Label).ToArray(),
-            SelectedIndex = command is null
-                ? (choices.Count > 0 ? 0 : -1)
-                : FindChoiceIndex(choices, command),
-            IsEnabled = enabled.IsChecked == true && choices.Count > 0,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            PlaceholderText = choices.Count == 0 ? "명령 정의 없음" : "명령 선택"
+            IsChecked = command.IsEnabled,
+            VerticalAlignment = VerticalAlignment.Top,
+            Padding = new Thickness(0)
         };
 
         enabled.IsCheckedChanged += (_, _) =>
         {
-            if (_building || _session is null || choices.Count == 0)
-            {
-                return;
-            }
-
-            combo.IsEnabled = enabled.IsChecked == true;
-
-            if (command is null && enabled.IsChecked == true)
-            {
-                int index = Math.Clamp(combo.SelectedIndex, 0, choices.Count - 1);
-                CommandChoice choice = choices[index];
-                command = _session.Editor.AddPresentationCommand(
-                    presentation.Id,
-                    lineId,
-                    choice.DefinitionId,
-                    choice.Arguments,
-                    presetId: choice.PresetId);
-            }
-            else if (command is not null)
+            if (!_building && _session is not null)
             {
                 _session.Editor.SetPresentationCommandEnabled(
-                    presentation.Id,
-                    command.Id,
-                    enabled.IsChecked == true);
+                    presentation.Id, command.Id, enabled.IsChecked == true);
             }
         };
 
-        combo.SelectionChanged += (_, _) =>
+        var body = new StackPanel { Spacing = 3 };
+
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        titleRow.Children.Add(new TextBlock
         {
-            if (_building || _session is null || combo.SelectedIndex < 0 || combo.SelectedIndex >= choices.Count)
-            {
-                return;
-            }
+            Text = definition?.DisplayName ?? command.DefinitionId,
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        });
 
-            CommandChoice choice = choices[combo.SelectedIndex];
+        if (command.PresetId is { } presetId)
+        {
+            titleRow.Children.Add(new TextBlock
+            {
+                Text = $"★ {_available?.FindPreset(presetId)?.DisplayName ?? presetId}",
+                FontSize = 10,
+                Opacity = 0.7,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+        }
 
-            if (command is null)
+        if (!string.IsNullOrWhiteSpace(definition?.Notes))
+        {
+            // 함정 노트 인라인 표출 — 이미 있는 데이터를 화면으로.
+            var warning = new TextBlock
             {
-                if (enabled.IsChecked == true)
-                {
-                    command = _session.Editor.AddPresentationCommand(
-                        presentation.Id,
-                        lineId,
-                        choice.DefinitionId,
-                        choice.Arguments,
-                        presetId: choice.PresetId);
-                }
-            }
-            else
-            {
-                _session.Editor.SetPresentationCommandDefinition(
-                    presentation.Id,
-                    command.Id,
-                    choice.DefinitionId,
-                    choice.Arguments,
-                    choice.PresetId);
-            }
+                Text = "⚠",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.FromRgb(217, 119, 6)),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            ToolTip.SetTip(warning, definition.Notes);
+            titleRow.Children.Add(warning);
+        }
+
+        body.Children.Add(titleRow);
+
+        // 항상 병기되는 텍스트. 칩으로 값이 바뀌면 이 줄도 그 자리에서 따라온다.
+        var commandTextBlock = new TextBlock
+        {
+            FontFamily = MonoFont,
+            FontSize = 10,
+            Opacity = 0.65,
+            TextWrapping = TextWrapping.Wrap
         };
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        void RefreshCommandText() => commandTextBlock.Text =
+            CommandText.Format(definition, command.DefinitionId, EffectiveArguments(command));
+
+        if (definition is not null && definition.Parameters.Count > 0)
+        {
+            var chips = new WrapPanel { Orientation = Orientation.Horizontal };
+
+            foreach (PresentationCommandParameter parameter in definition.Parameters)
+            {
+                chips.Children.Add(BuildArgumentChip(
+                    presentation, lineId, command, parameter, RefreshCommandText));
+            }
+
+            body.Children.Add(chips);
+        }
+
+        RefreshCommandText();
+        body.Children.Add(commandTextBlock);
+
+        Button up = SetupButton("▲", () => MoveCommand(presentation, lineId, command, -1));
+        Button down = SetupButton("▼", () => MoveCommand(presentation, lineId, command, 1));
+        Button remove = SetupButton("✕", () =>
+        {
+            _session!.Editor.RemovePresentationCommand(presentation.Id, command.Id);
+            Rebuild();
+        });
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto") };
+        enabled.Margin = new Thickness(0, 2, 6, 0);
         Grid.SetColumn(enabled, 0);
-        Grid.SetColumn(combo, 1);
-        combo.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(body, 1);
+        Grid.SetColumn(up, 2);
+        Grid.SetColumn(down, 3);
+        Grid.SetColumn(remove, 4);
         row.Children.Add(enabled);
-        row.Children.Add(combo);
+        row.Children.Add(body);
+        row.Children.Add(up);
+        row.Children.Add(down);
+        row.Children.Add(remove);
         return row;
     }
 
-    private static int FindChoiceIndex(IReadOnlyList<CommandChoice> choices, PresentationCommandInstance command)
+    private void MoveCommand(
+        PresentationNode presentation,
+        string? lineId,
+        PresentationCommandInstance command,
+        int delta)
     {
-        for (int index = 0; index < choices.Count; index++)
+        if (lineId is null)
         {
-            CommandChoice choice = choices[index];
+            _session!.Editor.MovePresentationSetupCommand(presentation.Id, command.Id, delta);
+        }
+        else
+        {
+            _session!.Editor.MovePresentationCommand(presentation.Id, command.Id, delta);
+        }
 
-            bool matches = command.PresetId is not null
-                ? string.Equals(choice.PresetId, command.PresetId, StringComparison.Ordinal)
-                : choice.PresetId is null &&
-                  string.Equals(choice.DefinitionId, command.DefinitionId, StringComparison.Ordinal);
+        Rebuild();
+    }
 
-            if (matches)
+    /// <summary>프리셋이 공급한 값 위에 인스턴스 인자가 덮인 유효 인자 — 발행 Freeze와 같은 방향.</summary>
+    private IReadOnlyDictionary<string, string> EffectiveArguments(PresentationCommandInstance command)
+    {
+        var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (command.PresetId is { } presetId &&
+            _available?.FindPreset(presetId) is { } preset)
+        {
+            foreach ((string key, string value) in preset.Preset.ArgumentValues)
             {
-                return index;
+                arguments[key] = value;
             }
         }
 
-        return choices.Count > 0 ? 0 : -1;
+        foreach ((string key, string value) in command.Arguments)
+        {
+            arguments[key] = value;
+        }
+
+        return arguments;
+    }
+
+    /// <summary>
+    /// 파라미터 하나의 칩. 클릭하면 후보 목록 + 직접 입력이 열린다.
+    /// 대상(slot/alias) 타입의 후보는 <b>그 라인까지 접은 무대 상태</b>에서 나오고,
+    /// duration·direction 등 토큰 타입은 카탈로그 type 기준 후보다. 후보는 제약이 아니라
+    /// 제안이다 — 직접 입력은 언제나 허용된다.
+    /// </summary>
+    private Control BuildArgumentChip(
+        PresentationNode presentation,
+        string? lineId,
+        PresentationCommandInstance command,
+        PresentationCommandParameter parameter,
+        Action refreshCommandText)
+    {
+        var chip = new Button
+        {
+            FontSize = 10,
+            Padding = new Thickness(6, 2),
+            Margin = new Thickness(0, 0, 4, 3)
+        };
+
+        void RefreshChip()
+        {
+            string? value = EffectiveArguments(command).TryGetValue(parameter.Name, out string? current)
+                ? current
+                : null;
+            chip.Content = value is null
+                ? $"{parameter.Name}: ({parameter.Default ?? "미지정"})"
+                : $"{parameter.Name}: {value}";
+            chip.Opacity = value is null ? 0.65 : 1.0;
+        }
+
+        RefreshChip();
+
+        chip.Click += (_, _) =>
+        {
+            var panel = new StackPanel { Spacing = 4, MinWidth = 180 };
+            var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+
+            void Commit(string? value)
+            {
+                _session!.Editor.SetPresentationCommandArgument(
+                    presentation.Id, command.Id, parameter.Name, value);
+                RefreshChip();
+                refreshCommandText();
+                RefreshStagePreview();
+                flyout.Hide();
+            }
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"{parameter.Name} ({parameter.Type})" + (parameter.Required ? " · 필수" : string.Empty),
+                FontSize = 10,
+                Opacity = 0.65
+            });
+
+            IEnumerable<string> candidates = ArgumentTokenCandidates.IsStageTargetType(parameter.Type)
+                ? StageTargetCandidates(lineId)
+                : ArgumentTokenCandidates.For(parameter.Type);
+
+            foreach (string candidate in candidates)
+            {
+                var candidateButton = new Button
+                {
+                    Content = candidate,
+                    FontSize = 11,
+                    Padding = new Thickness(8, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+                string value = candidate.Split(' ')[0]; // "c1 (laru)" 표기에서 키만
+                candidateButton.Click += (_, _) => Commit(value);
+                panel.Children.Add(candidateButton);
+            }
+
+            var input = new TextBox
+            {
+                PlaceholderText = "직접 입력",
+                FontSize = 11,
+                Text = command.Arguments.TryGetValue(parameter.Name, out string? existing) ? existing : string.Empty
+            };
+            input.KeyDown += (_, args) =>
+            {
+                if (args.Key == Avalonia.Input.Key.Enter)
+                {
+                    Commit(input.Text);
+                }
+            };
+            panel.Children.Add(input);
+
+            if (parameter.Default is not null || !parameter.Required)
+            {
+                var reset = new Button
+                {
+                    Content = parameter.Default is null ? "지우기" : $"기본값 ({parameter.Default})",
+                    FontSize = 10,
+                    Padding = new Thickness(8, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+                reset.Click += (_, _) => Commit(null);
+                panel.Children.Add(reset);
+            }
+
+            flyout.ShowAt(chip);
+        };
+
+        return chip;
+    }
+
+    /// <summary>그 라인까지 접은 무대의 대상 후보 — 별칭 먼저, 그다음 슬롯(캐스팅 병기).</summary>
+    private IReadOnlyList<string> StageTargetCandidates(string? lineId)
+    {
+        MiniStageState state = FoldStateAt(lineId);
+        var candidates = new List<string>();
+
+        foreach ((string alias, string slotKey) in state.Aliases.OrderBy(item => item.Key, StringComparer.Ordinal))
+        {
+            candidates.Add($"{alias} ({slotKey})");
+        }
+
+        foreach ((string slotKey, MiniStageSlot slot) in state.Slots.OrderBy(item => item.Key, StringComparer.Ordinal))
+        {
+            candidates.Add(slot.CharacterId is null ? slotKey : $"{slotKey} ({slot.CharacterId})");
+        }
+
+        return candidates;
+    }
+
+    /// <summary>칩 후보용 폴드 상태. 라인별로 게으르게 접고 Rebuild마다 비운다.</summary>
+    private MiniStageState FoldStateAt(string? lineId)
+    {
+        string key = lineId ?? string.Empty;
+
+        if (_foldCache.TryGetValue(key, out MiniStageState? cached))
+        {
+            return cached;
+        }
+
+        MiniStageState state = MiniStageState.Empty;
+
+        if (_session?.Project.FindPresentation(_nodeId) is { } presentation)
+        {
+            PresentationDraft draft = _session.Editor.InspectPresentationPublish(presentation.Id);
+            PresentationCommandCatalog catalog = _available?.Catalog
+                ?? PresentationCommandCatalog.For(_session.Definition);
+            PresentationWorkspace workspace = PresentationBindingResolver.Resolve(_session.Project, presentation);
+
+            state = workspace.Dialogue is { } dialogue && lineId is not null
+                ? MiniStageFold.Fold(
+                    catalog,
+                    draft.SetupCommands,
+                    MiniStageFold.LinesUpTo(dialogue, draft.Bindings, lineId))
+                : MiniStageFold.Fold(catalog, draft.SetupCommands, Array.Empty<MiniStageFoldLine>());
+        }
+
+        _foldCache[key] = state;
+        return state;
+    }
+
+    // ── 갤러리와 텍스트 입력 ──────────────────────────────────────────────
+
+    /// <summary>"연출 추가" 갤러리 버튼 + 텍스트 직접 입력 한 줄.</summary>
+    private Control BuildAddRow(
+        PresentationNode presentation,
+        string? lineId,
+        PresentationCommandCatalog catalog)
+    {
+        var gallery = new Button
+        {
+            Content = "+ 연출 추가",
+            FontSize = 11,
+            Padding = new Thickness(8, 3)
+        };
+        gallery.Click += (_, _) => ShowGallery(gallery, presentation, lineId, catalog);
+
+        var error = new TextBlock
+        {
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38)),
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false
+        };
+
+        var input = new TextBox
+        {
+            PlaceholderText = "<<커맨드 인자…>> 직접 입력 후 Enter",
+            FontFamily = MonoFont,
+            FontSize = 11
+        };
+
+        input.KeyDown += (_, args) =>
+        {
+            if (args.Key != Avalonia.Input.Key.Enter || _session is null)
+            {
+                return;
+            }
+
+            // 카탈로그 기준 파싱 — 틀리면 그 자리에서 이유를 말하고, 추측 보정은 없다.
+            CommandTextParseResult parsed = CommandText.Parse(input.Text, catalog);
+
+            if (!parsed.Success)
+            {
+                error.Text = parsed.Error;
+                error.IsVisible = true;
+                return;
+            }
+
+            if (_available is { } available && available.Categories.Count > 0 &&
+                available.Categories.All(category =>
+                    !string.Equals(category.Id, parsed.Definition!.CategoryId, StringComparison.Ordinal)))
+            {
+                error.Text = $"'{parsed.Definition!.OutputCommandName}'의 범주는 연결된 공급 노드의 범위 밖입니다.";
+                error.IsVisible = true;
+                return;
+            }
+
+            AddCommand(presentation, lineId, parsed.Definition!.Id, parsed.Arguments!);
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        Grid.SetColumn(gallery, 0);
+        Grid.SetColumn(input, 1);
+        input.Margin = new Thickness(6, 0, 0, 0);
+        row.Children.Add(gallery);
+        row.Children.Add(input);
+
+        var host = new StackPanel { Spacing = 3 };
+        host.Children.Add(row);
+        host.Children.Add(error);
+        return host;
+    }
+
+    private void AddCommand(
+        PresentationNode presentation,
+        string? lineId,
+        string definitionId,
+        IReadOnlyDictionary<string, string> arguments,
+        string? presetId = null)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (lineId is null)
+        {
+            _session.Editor.AddPresentationSetupCommand(presentation.Id, definitionId, arguments);
+        }
+        else
+        {
+            _session.Editor.AddPresentationCommand(
+                presentation.Id, lineId, definitionId, arguments, presetId: presetId);
+        }
+
+        Rebuild();
+    }
+
+    private static readonly string[] IntensityOrder = ["미세", "가벼움", "보통", "강함"];
+
+    /// <summary>
+    /// 갤러리 팝업: ★프리셋 → 최근 사용(프로젝트 저장) → 카테고리(강도 부그룹) → 검색.
+    /// 후보 범위는 <see cref="AvailablePresentationCommandResolver"/>가 정한 것 그대로다 — 사본 금지.
+    /// </summary>
+    private void ShowGallery(
+        Control anchor,
+        PresentationNode presentation,
+        string? lineId,
+        PresentationCommandCatalog catalog)
+    {
+        var list = new StackPanel { Spacing = 2 };
+        var search = new TextBox { PlaceholderText = "이름 검색…", FontSize = 11 };
+        var scroll = new ScrollViewer
+        {
+            Content = list,
+            MaxHeight = 380,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+        };
+
+        var panel = new StackPanel { Spacing = 6, Width = 340 };
+        panel.Children.Add(search);
+        panel.Children.Add(scroll);
+
+        var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+
+        void Fill()
+        {
+            list.Children.Clear();
+            string query = search.Text?.Trim() ?? string.Empty;
+
+            bool Matches(PresentationCommandDefinition definition) =>
+                query.Length == 0 ||
+                definition.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                definition.OutputCommandName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                definition.Id.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+            void Header(string text) => list.Children.Add(new TextBlock
+            {
+                Text = text,
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.6,
+                Margin = new Thickness(0, 6, 0, 1)
+            });
+
+            void Item(PresentationCommandDefinition definition, string? presetId, string? presetName)
+            {
+                var title = new TextBlock
+                {
+                    Text = presetName is null ? definition.DisplayName : $"★ {presetName}",
+                    FontSize = 11,
+                    FontWeight = FontWeight.SemiBold
+                };
+                var subtitle = new TextBlock
+                {
+                    Text = $"<<{definition.OutputCommandName}>>" +
+                        (definition.Notes is { } notes ? $" — {Summarize(notes)}" : string.Empty),
+                    FontSize = 9,
+                    Opacity = 0.6,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                var body = new StackPanel();
+                body.Children.Add(title);
+                body.Children.Add(subtitle);
+
+                var item = new Button
+                {
+                    Content = body,
+                    Padding = new Thickness(8, 3),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left
+                };
+
+                item.Click += (_, _) =>
+                {
+                    flyout.Hide();
+                    AddCommand(
+                        presentation,
+                        lineId,
+                        definition.Id,
+                        definition.DefaultArgumentValues(),
+                        presetId);
+                };
+
+                list.Children.Add(item);
+            }
+
+            // ① 프리셋 — 값이 세팅된 "정확한 연출"이 언제나 먼저다.
+            AvailablePreset[] presets = (_available?.Presets ?? Array.Empty<AvailablePreset>())
+                .Where(preset => catalog.Find(preset.Preset.CommandDefinitionId) is { } definition &&
+                    (Matches(definition) ||
+                        preset.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+
+            if (presets.Length > 0)
+            {
+                Header("프리셋");
+
+                foreach (AvailablePreset preset in presets)
+                {
+                    Item(catalog.Find(preset.Preset.CommandDefinitionId)!, preset.Preset.Id, preset.DisplayName);
+                }
+            }
+
+            // ② 최근 사용 — 프로젝트에 저장된 목록. 공급 범위 밖 정의는 걸러진다.
+            PresentationCommandDefinition[] recents = _session!.Project.RecentCommandIds
+                .Select(catalog.Find)
+                .Where(definition => definition is not null && Matches(definition) && InScope(definition))
+                .Cast<PresentationCommandDefinition>()
+                .ToArray();
+
+            if (recents.Length > 0)
+            {
+                Header("최근 사용");
+
+                foreach (PresentationCommandDefinition definition in recents)
+                {
+                    Item(definition, null, null);
+                }
+            }
+
+            // ③ 카테고리 — 액팅류는 강도(미세→강함) 부그룹으로.
+            foreach (PresentationCategoryDefinition category in _available?.Categories ?? catalog.Categories)
+            {
+                PresentationCommandDefinition[] commands = catalog.For(category.Id)
+                    .Where(Matches)
+                    .ToArray();
+
+                if (commands.Length == 0)
+                {
+                    continue;
+                }
+
+                Header(category.DisplayName);
+
+                if (commands.Any(definition => definition.Intensity is not null))
+                {
+                    foreach (string intensity in IntensityOrder)
+                    {
+                        PresentationCommandDefinition[] group = commands
+                            .Where(definition => string.Equals(definition.Intensity, intensity, StringComparison.Ordinal))
+                            .ToArray();
+
+                        if (group.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        Header($"  {intensity}");
+
+                        foreach (PresentationCommandDefinition definition in group)
+                        {
+                            Item(definition, null, null);
+                        }
+                    }
+
+                    foreach (PresentationCommandDefinition definition in commands
+                                 .Where(definition => definition.Intensity is null ||
+                                     !IntensityOrder.Contains(definition.Intensity, StringComparer.Ordinal)))
+                    {
+                        Item(definition, null, null);
+                    }
+                }
+                else
+                {
+                    foreach (PresentationCommandDefinition definition in commands)
+                    {
+                        Item(definition, null, null);
+                    }
+                }
+            }
+
+            if (list.Children.Count == 0)
+            {
+                list.Children.Add(new TextBlock
+                {
+                    Text = $"'{query}'에 맞는 커맨드가 없습니다.",
+                    FontSize = 11,
+                    Opacity = 0.6
+                });
+            }
+        }
+
+        bool InScope(PresentationCommandDefinition definition) =>
+            _available is not { } available || available.Categories.Count == 0 ||
+            available.Categories.Any(category =>
+                string.Equals(category.Id, definition.CategoryId, StringComparison.Ordinal));
+
+        search.TextChanged += (_, _) => Fill();
+        Fill();
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>notes 요약 한 줄 — 첫 문장 또는 60자.</summary>
+    private static string Summarize(string notes)
+    {
+        string firstLine = notes.Split('\n')[0].Trim();
+        int sentenceEnd = firstLine.IndexOf(". ", StringComparison.Ordinal);
+
+        if (sentenceEnd > 0)
+        {
+            firstLine = firstLine[..(sentenceEnd + 1)];
+        }
+
+        return firstLine.Length <= 60 ? firstLine : firstLine[..60] + "…";
     }
 
     private static Control BuildOrphanCard(
@@ -741,20 +1148,5 @@ public partial class PresentationNodeEditor : UserControl
                 TextWrapping = TextWrapping.Wrap
             }
         };
-    }
-
-    private static int FindDefinitionIndex(
-        IReadOnlyList<PresentationCommandDefinition> definitions,
-        string definitionId)
-    {
-        for (int index = 0; index < definitions.Count; index++)
-        {
-            if (string.Equals(definitions[index].Id, definitionId, StringComparison.Ordinal))
-            {
-                return index;
-            }
-        }
-
-        return definitions.Count > 0 ? 0 : -1;
     }
 }
