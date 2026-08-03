@@ -27,6 +27,7 @@ public sealed record MiniStageUnhandled(string? LineId, string CommandName);
 /// </param>
 public sealed record MiniStageState(
     string? BackgroundKey,
+    string? BackgroundRigKey,
     IReadOnlyDictionary<string, MiniStageSlot> Slots,
     IReadOnlyDictionary<string, string> Aliases,
     string NamedBoxKind,
@@ -40,6 +41,7 @@ public sealed record MiniStageState(
     public const string DefaultProtagonistBoxKind = "Surface";
 
     public static MiniStageState Empty { get; } = new(
+        null,
         null,
         new Dictionary<string, MiniStageSlot>(StringComparer.Ordinal),
         new Dictionary<string, string>(StringComparer.Ordinal),
@@ -111,6 +113,7 @@ public static class MiniStageFold
 
         return new MiniStageState(
             state.BackgroundKey,
+            state.BackgroundRigKey,
             state.Slots,
             state.Aliases,
             state.NamedBoxKind,
@@ -155,6 +158,7 @@ public static class MiniStageFold
     private sealed class FoldState
     {
         public string? BackgroundKey;
+        public string? BackgroundRigKey;
         public readonly Dictionary<string, MiniStageSlot> Slots = new(StringComparer.Ordinal);
         public readonly Dictionary<string, string> Aliases = new(StringComparer.Ordinal);
         public string NamedBoxKind = MiniStageState.DefaultNamedBoxKind;
@@ -204,6 +208,8 @@ public static class MiniStageFold
             case "bg_spawn" or "bg_sprite" or "bg_slot00" or "bg_slot01" or "bg_slot02"
                 when Arg("spriteKey") is { } spriteKey:
                 state.BackgroundKey = spriteKey;
+                // 리그 키도 접는다 — 직접 조작의 배경 교체(bg_sprite)가 대상 리그를 알아야 한다.
+                state.BackgroundRigKey = Arg("rigKey") ?? state.BackgroundRigKey;
                 break;
 
             case "slot" or "slot00" or "slot01" or "slot02" when Arg("slotKey") is { } slotKey:

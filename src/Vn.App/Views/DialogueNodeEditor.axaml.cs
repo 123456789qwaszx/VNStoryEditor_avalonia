@@ -353,7 +353,12 @@ public partial class DialogueNodeEditor : UserControl
             selected?.Text,
             notice,
             LineIndex: index,
-            LineCount: script.Lines.Count));
+            LineCount: script.Lines.Count,
+            // 여기 보이는 것은 공급된 발행 결과다 — 발행은 불변이므로 직접 조작을 잠근다.
+            EditContext: new StageEditContext(
+                export.Presentation.SourceNodeId,
+                selected?.LineId,
+                DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요.")));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

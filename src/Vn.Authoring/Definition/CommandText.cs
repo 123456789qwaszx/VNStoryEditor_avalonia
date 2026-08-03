@@ -119,10 +119,7 @@ public static class CommandText
 
         string name = tokens[0];
         PresentationCommandDefinition? definition =
-            catalog.Definitions.FirstOrDefault(item =>
-                string.Equals(item.OutputCommandName, name, StringComparison.Ordinal))
-            ?? catalog.Definitions.FirstOrDefault(item =>
-                string.Equals(item.Id, name, StringComparison.Ordinal));
+            catalog.FindByOutputCommand(name) ?? catalog.Find(name);
 
         if (definition is null)
         {

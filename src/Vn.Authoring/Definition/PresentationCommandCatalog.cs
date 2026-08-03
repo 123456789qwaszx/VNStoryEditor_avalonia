@@ -98,6 +98,14 @@ public sealed class PresentationCommandCatalog
         _definitions.FirstOrDefault(item =>
             string.Equals(item.Id, definitionId, StringComparison.Ordinal));
 
+    /// <summary>
+    /// outputCommand 이름으로 정의를 찾는다. 같은 이름이 여럿이면 <b>카탈로그 첫 정의</b> —
+    /// 텍스트 입력 파싱과 직접 조작이 같은 결정 규칙을 쓴다.
+    /// </summary>
+    public PresentationCommandDefinition? FindByOutputCommand(string? outputCommand) =>
+        _definitions.FirstOrDefault(item =>
+            string.Equals(item.OutputCommandName, outputCommand, StringComparison.Ordinal));
+
     public PresentationCategoryDefinition? FindCategory(string? categoryId) =>
         _categories.FirstOrDefault(item =>
             string.Equals(item.Id, categoryId, StringComparison.Ordinal));

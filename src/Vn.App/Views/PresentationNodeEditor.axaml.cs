@@ -188,7 +188,11 @@ public partial class PresentationNodeEditor : UserControl
                 SelectedLineId: null,
                 SpeakerName: null,
                 LineText: null,
-                Notice: "읽을 대사 결과가 없어 Setup만 반영합니다."));
+                Notice: "읽을 대사 결과가 없어 Setup만 반영합니다.",
+                EditContext: new StageEditContext(
+                    presentation.Id,
+                    LineId: null,
+                    DisabledReason: "라인이 없어 직접 조작할 수 없습니다. 대사 결과를 먼저 고르세요.")));
             return;
         }
 
@@ -212,7 +216,9 @@ public partial class PresentationNodeEditor : UserControl
             line?.CharacterName,
             line?.Text,
             LineIndex: index,
-            LineCount: dialogue.Lines.Count));
+            LineCount: dialogue.Lines.Count,
+            // 작업 중 바인딩이므로 직접 조작이 열려 있다 — 조작은 이 라인의 편집이 된다.
+            EditContext: new StageEditContext(presentation.Id, line?.LineId)));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

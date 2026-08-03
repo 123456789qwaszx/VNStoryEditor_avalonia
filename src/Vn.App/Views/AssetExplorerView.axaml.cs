@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
@@ -248,7 +249,31 @@ public partial class AssetExplorerView : UserControl
             });
         }
 
-        // W20에서 이 행이 프리뷰 드래그의 소스가 된다 — 페이로드는 item에 이미 있다.
+        // 프리뷰 드래그 소스 — 페이로드 형식은 StageDragFormats로 드롭 쪽과 공유한다.
+        if (item.BackgroundKey is not null || item.Portrait is not null)
+        {
+            row.Cursor = new Cursor(StandardCursorType.Hand);
+            row.PointerPressed += async (_, args) =>
+            {
+                var item2 = new DataTransferItem();
+
+                if (item.BackgroundKey is { } backgroundKey)
+                {
+                    item2.Set(StageDragFormats.Background, backgroundKey);
+                }
+                else if (item.Portrait is { } portrait)
+                {
+                    item2.Set(
+                        StageDragFormats.Portrait,
+                        $"{portrait.CharacterId}|{portrait.VariantKey}|{portrait.EmotionKey}");
+                }
+
+                var data = new DataTransfer();
+                data.Add(item2);
+                await DragDrop.DoDragDropAsync(args, data, DragDropEffects.Copy);
+            };
+        }
+
         row.Tag = item;
         return row;
     }

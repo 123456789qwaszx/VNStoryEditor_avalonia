@@ -5,6 +5,19 @@ using Vn.Authoring.Flow;
 
 namespace Vn.App.Views;
 
+/// <summary>
+/// 직접 조작의 편집 대상. null이면 조작할 것이 없는 화면이고,
+/// <see cref="DisabledReason"/>이 있으면 보이지만 잠긴 화면이다(발행 결과 등) —
+/// 기능 잠금이 아니라 안내가 함께 간다.
+/// </summary>
+internal sealed record StageEditContext(
+    string PresentationNodeId,
+    string? LineId,
+    string? DisabledReason = null)
+{
+    public bool Editable => DisabledReason is null && LineId is not null;
+}
+
 /// <summary>공유 무대 프리뷰에 밀어 넣는 요청 하나. 폴드는 호출자가 이미 끝냈다.</summary>
 /// <param name="HasPresentation">false면 연출 공급이 없는 것 — 오류가 아니라 화자만 표시한다.</param>
 /// <param name="LineIndex">문서에서 선택 라인의 0기준 위치. 없으면 -1 — 창 하단 표시용.</param>
@@ -18,7 +31,8 @@ internal sealed record MiniStagePreviewRequest(
     string? LineText,
     string? Notice = null,
     int LineIndex = -1,
-    int LineCount = 0);
+    int LineCount = 0,
+    StageEditContext? EditContext = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
@@ -35,11 +49,15 @@ public partial class MiniStagePreview : UserControl
     /// <summary>분리 창의 이전/다음 버튼. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
     internal event Action<int>? LineMoveRequested;
 
+    /// <summary>도킹/분리 무대 어느 쪽이든 직접 조작이 편집을 만들었다 — 편집기가 다시 그린다.</summary>
+    internal event Action? ManipulationApplied;
+
     public MiniStagePreview()
     {
         InitializeComponent();
 
         SceneHost.Content = _scene;
+        _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
 
         RefreshButton.Click += (_, _) =>
         {
@@ -100,6 +118,7 @@ public partial class MiniStagePreview : UserControl
             _window = new StagePreviewWindow();
             _window.Attach(_session);
             _window.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
+            _window.ManipulationApplied += () => ManipulationApplied?.Invoke();
             _window.Closed += (_, _) => _window = null;
 
             if (TopLevel.GetTopLevel(this) is Window owner)

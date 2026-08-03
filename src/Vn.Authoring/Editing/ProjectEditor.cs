@@ -810,6 +810,86 @@ public sealed partial class ProjectEditor
     }
 
     /// <summary>
+    /// 커맨드 여러 개를 한 라인에 <b>한 번의 편집으로</b> 붙인다. 캐스팅 시퀀스처럼
+    /// 하나의 조작이 커맨드 여러 개가 되는 경우다 — 되돌리기 한 번에 전부 원복되어야
+    /// "조작 하나 = 편집 하나"가 지켜진다. 커맨드는 매크로가 아니라 개별로 저장된다.
+    /// </summary>
+    public IReadOnlyList<PresentationCommandInstance> AddPresentationCommands(
+        string presentationNodeId,
+        string lineId,
+        IReadOnlyList<(string DefinitionId, IReadOnlyDictionary<string, string> Arguments)> commands)
+    {
+        ArgumentNullException.ThrowIfNull(commands);
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationLineBinding? existingBinding = node.Bindings.FirstOrDefault(item =>
+            string.Equals(item.LineId, lineId, StringComparison.Ordinal));
+        PresentationLineBinding binding = existingBinding ?? new PresentationLineBinding(lineId);
+
+        var created = new List<PresentationCommandInstance>(commands.Count);
+
+        foreach ((string definitionId, IReadOnlyDictionary<string, string> arguments) in commands)
+        {
+            var command = new PresentationCommandInstance(definitionId: definitionId);
+
+            foreach ((string key, string value) in arguments)
+            {
+                command.Arguments[key] = value;
+            }
+
+            created.Add(command);
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            if (existingBinding is null)
+            {
+                node.Bindings.Add(binding);
+            }
+
+            foreach (PresentationCommandInstance command in created)
+            {
+                binding.Commands.Add(command);
+                RecordRecentCommand(command.DefinitionId);
+            }
+        });
+
+        return created;
+    }
+
+    /// <summary>
+    /// 커맨드의 인자 여러 개를 <b>한 번의 편집으로</b> 덮어쓴다(주지 않은 키는 유지).
+    /// 직접 조작의 "같은 종류는 수정"이 이 통로를 지난다 — 인자마다 undo 단계가
+    /// 쪼개지면 되돌리기 한 번으로 조작 하나가 원복되지 않는다.
+    /// </summary>
+    public void UpdatePresentationCommandArguments(
+        string presentationNodeId,
+        string commandId,
+        IReadOnlyDictionary<string, string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationCommandInstance command = FindPresentationCommand(node, commandId)
+            ?? throw new InvalidOperationException($"커맨드 '{commandId}'를 찾을 수 없습니다.");
+
+        bool same = arguments.All(pair =>
+            command.Arguments.TryGetValue(pair.Key, out string? current) &&
+            string.Equals(current, pair.Value, StringComparison.Ordinal));
+
+        if (same)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            foreach ((string key, string value) in arguments)
+            {
+                command.Arguments[key] = value;
+            }
+        });
+    }
+
+    /// <summary>
     /// 커맨드 인자 하나를 바꾼다. 빈 값은 인자를 지워 카탈로그 기본값으로 되돌린다.
     /// 칩 편집·직접 조작이 전부 이 통로를 지난다.
     /// </summary>

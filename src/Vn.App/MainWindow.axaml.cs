@@ -51,6 +51,14 @@ public partial class MainWindow : Window
                 DialogueEditor.MoveStageLine(delta);
             }
         };
+        StagePreview.ManipulationApplied += () =>
+        {
+            // 직접 조작은 연출 노드의 바인딩을 바꿨다 — 커맨드 행에 즉시 보여야 한다.
+            if (PresentationEditor.IsVisible)
+            {
+                PresentationEditor.Rebuild();
+            }
+        };
         DialogueEditor.StagePreview = StagePreview;
         PresentationEditor.StagePreview = StagePreview;
 

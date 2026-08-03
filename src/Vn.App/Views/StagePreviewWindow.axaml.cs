@@ -24,11 +24,15 @@ public partial class StagePreviewWindow : Window
     /// <summary>이전/다음 요청. delta는 -1/+1이고 활성 편집기의 선택이 움직인다.</summary>
     internal event Action<int>? MoveRequested;
 
+    /// <summary>창 안 무대에서의 직접 조작도 같은 편집 경로를 지나 편집기로 알려진다.</summary>
+    internal event Action? ManipulationApplied;
+
     public StagePreviewWindow()
     {
         InitializeComponent();
 
         SceneHost.Content = _scene;
+        _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
 
         PrevButton.Click += (_, _) => MoveRequested?.Invoke(-1);
         NextButton.Click += (_, _) => MoveRequested?.Invoke(1);
