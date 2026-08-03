@@ -140,6 +140,11 @@ public static class ResultDocumentComposer
 
         int depth = 0;
 
+        // 갈래 출구는 여는 줄이 소유하지만(§4.2) 실행은 갈래의 끝에서 일어난다.
+        // 여는 줄 바로 뒤에 jump를 두면 갈래 본문이 그 아래 묻혀 실행되지 않는다.
+        // 그래서 다음 전환(elseif/endif)이 갈래를 닫는 순간에 내보낸다.
+        (RenderSourceReference Source, string Target)? pendingBranchJump = null;
+
         foreach (DialogueResultLine line in dialogue.Lines)
         {
             var lineSource = new RenderSourceReference(
@@ -150,6 +155,12 @@ public static class ResultDocumentComposer
 
             if (line.Transition is { } transition)
             {
+                if (options.IncludeExecutionJumps && pendingBranchJump is { } pending)
+                {
+                    AddBranchJump(segments, project, pending.Source, pending.Target);
+                }
+
+                pendingBranchJump = null;
                 depth = transition.Kind == ConditionTransitionKind.EndIf ? 0 : 1;
 
                 if (options.IncludeConditions)
@@ -208,19 +219,19 @@ public static class ResultDocumentComposer
                     Speaker: options.IncludeSpeaker ? line.CharacterName : null));
             }
 
-            if (options.IncludeExecutionJumps && line.BranchExitTargetNodeId is { } branchTarget)
+            if (line.BranchExitTargetNodeId is { } branchTarget)
             {
                 // 조건 출구의 소유자는 화면에 보이는 마지막 줄이 아니라 갈래를 여는 LineId다.
                 // 결과에서도 같은 규칙을 지켜야 Preview에서 원본으로 돌아갈 수 있다.
-                segments.Add(new RenderedSegment(
-                    Id: $"branch:{line.LineId}:jump",
-                    Kind: RenderedSegmentKind.BranchJump,
-                    Layer: DocumentLayer.ExecutionJumps,
-                    Source: lineSource,
-                    IndentLevel: 1,
-                    TargetNodeId: branchTarget,
-                    TargetNodeName: project?.FindNode(branchTarget)?.Name));
+                pendingBranchJump = (lineSource, branchTarget);
             }
+        }
+
+        if (options.IncludeExecutionJumps && pendingBranchJump is { } lastPending)
+        {
+            // 구조가 올바르면 endif가 갈래를 닫아 여기 도달하지 않지만,
+            // 잘못된 구조라도 출구를 조용히 버리지는 않는다.
+            AddBranchJump(segments, project, lastPending.Source, lastPending.Target);
         }
 
         if (options.IncludeExecutionJumps && dialogue.DefaultExitTargetNodeId is { } defaultTarget)
@@ -255,6 +266,22 @@ public static class ResultDocumentComposer
             segments,
             options,
             presetId);
+    }
+
+    private static void AddBranchJump(
+        List<RenderedSegment> segments,
+        StoryProject? project,
+        RenderSourceReference source,
+        string targetNodeId)
+    {
+        segments.Add(new RenderedSegment(
+            Id: $"branch:{source.LineId}:jump",
+            Kind: RenderedSegmentKind.BranchJump,
+            Layer: DocumentLayer.ExecutionJumps,
+            Source: source,
+            IndentLevel: 1,
+            TargetNodeId: targetNodeId,
+            TargetNodeName: project?.FindNode(targetNodeId)?.Name));
     }
 
     private static void AddTransition(

@@ -7,11 +7,11 @@ namespace Vn.Authoring.Rendering;
 ///
 /// 이 결과는 Preview일 뿐 저장 원본이나 역파싱 입력이 아니다. 노드 title과 jump에는 이름이
 /// 아니라 안정된 NodeId를 사용하여 같은 이름의 노드가 있어도 참조가 모호해지지 않게 한다.
+/// 실제 런타임 파일은 <see cref="YarnBundleEmitter"/>가 만들되, 표기 조립은
+/// <see cref="YarnSyntax"/>를 함께 쓴다.
 /// </summary>
 public static class YarnPreviewFormatter
 {
-    private const string Indent = "    ";
-
     public static string Format(RenderedDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -28,7 +28,7 @@ public static class YarnPreviewFormatter
 
     private static void AppendSegment(StringBuilder builder, RenderedDocument document, RenderedSegment segment)
     {
-        string indent = string.Concat(Enumerable.Repeat(Indent, Math.Max(0, segment.IndentLevel)));
+        string indent = YarnSyntax.IndentOf(segment.IndentLevel);
 
         switch (segment.Kind)
         {
@@ -48,22 +48,21 @@ public static class YarnPreviewFormatter
                 break;
 
             case RenderedSegmentKind.SetAssignment:
-                builder.Append(indent)
-                    .Append("<<set ")
-                    .Append(NormalizeVariable(segment.Variable))
-                    .Append(' ')
-                    .Append(segment.Operator ?? "=")
-                    .Append(' ')
-                    .Append(segment.Value ?? string.Empty)
-                    .Append(">>\n");
+                builder.Append(indent);
+                YarnSyntax.AppendSet(builder, segment);
+                builder.Append('\n');
                 break;
 
             case RenderedSegmentKind.ConditionBegin:
-                AppendCondition(builder, indent, "if", segment.Expression);
+                builder.Append(indent);
+                YarnSyntax.AppendCondition(builder, "if", segment.Expression);
+                builder.Append('\n');
                 break;
 
             case RenderedSegmentKind.ConditionElseIf:
-                AppendCondition(builder, indent, "elseif", segment.Expression);
+                builder.Append(indent);
+                YarnSyntax.AppendCondition(builder, "elseif", segment.Expression);
+                builder.Append('\n');
                 break;
 
             case RenderedSegmentKind.ConditionEnd:
@@ -71,31 +70,14 @@ public static class YarnPreviewFormatter
                 break;
 
             case RenderedSegmentKind.PresentationCommand:
-                builder.Append(indent)
-                    .Append("<<")
-                    .Append(string.IsNullOrWhiteSpace(segment.CommandName)
-                        ? segment.DefinitionId ?? "presentation"
-                        : segment.CommandName);
-
-                // 런타임 커맨드는 인자를 순서로 읽는다. Segment의 인자 목록이 이미
-                // 카탈로그 파라미터 순서이므로 값만 그 순서대로 잇는다.
-                foreach (RenderedArgument argument in segment.Arguments ?? Array.Empty<RenderedArgument>())
-                {
-                    builder.Append(' ').Append(argument.Value);
-                }
-
-                builder.Append(">>\n");
+                builder.Append(indent);
+                YarnSyntax.AppendCommand(builder, segment);
+                builder.Append('\n');
                 break;
 
             case RenderedSegmentKind.DialogueLine:
                 builder.Append(indent);
-
-                if (!string.IsNullOrWhiteSpace(segment.Speaker))
-                {
-                    builder.Append(segment.Speaker).Append(": ");
-                }
-
-                builder.Append(segment.Text ?? string.Empty);
+                YarnSyntax.AppendDialogue(builder, segment);
 
                 if (document.Options.IncludeLineId && segment.Source.LineId is { Length: > 0 } lineId)
                 {
@@ -107,10 +89,9 @@ public static class YarnPreviewFormatter
 
             case RenderedSegmentKind.BranchJump:
             case RenderedSegmentKind.DefaultJump:
-                builder.Append(indent)
-                    .Append("<<jump ")
-                    .Append(segment.TargetNodeId ?? "missing-target")
-                    .Append(">>\n");
+                builder.Append(indent);
+                YarnSyntax.AppendJump(builder, segment.TargetNodeId ?? "missing-target");
+                builder.Append('\n');
                 break;
 
             case RenderedSegmentKind.Warning:
@@ -127,31 +108,5 @@ public static class YarnPreviewFormatter
             default:
                 throw new ArgumentOutOfRangeException(nameof(segment), segment.Kind, "알 수 없는 문서 Segment 종류입니다.");
         }
-    }
-
-    private static void AppendCondition(
-        StringBuilder builder,
-        string indent,
-        string keyword,
-        string? expression)
-    {
-        builder.Append(indent)
-            .Append("<<")
-            .Append(keyword)
-            .Append(' ')
-            .Append(string.IsNullOrWhiteSpace(expression) ? "false" : expression)
-            .Append(">>\n");
-    }
-
-    private static string NormalizeVariable(string? variable)
-    {
-        string value = variable?.Trim() ?? string.Empty;
-
-        if (value.StartsWith('$'))
-        {
-            return value;
-        }
-
-        return "$" + value;
     }
 }

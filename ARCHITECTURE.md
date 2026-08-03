@@ -288,6 +288,8 @@ ResultSnapshot                       결과 입력     (아무도 소유하지 �
 | `RenderSourceReference` | 이 조각이 어느 결과·노드·줄·조건·명령에서 나왔는지 |
 | `DocumentOutputOptions` | 어떤 레이어와 연출 category를 담을지. 다섯 프리셋이 여기 있다 |
 | `YarnPreviewFormatter` | Runtime Full의 Yarn 스타일 문자열 |
+| `YarnSyntax` | Yarn 표기 조립 규칙의 단일 구현. Preview와 이미터가 공유한다 |
+| `YarnBundleEmitter` | 합성 하나 → 런타임 재생용 .yarn 트리오(Story/Set/Pres) 텍스트와 파일. 사양은 `docs/runtime-contract.md` |
 | `DocumentPreviewFormatter` | 시나리오·녹음·번역·연출 지시서 문자열 |
 | `ILocalizedLineProvider` | LineId로 번역문을 공급하는 바깥 경계 |
 | `ConnectedSetNodeResolver` | 이 Dialogue에 연결된 SetNode와 그 순서를 한 번만 계산 |
