@@ -826,16 +826,7 @@ public partial class GraphEditorView : UserControl
 
         if (port.Kind == GraphOutputPortKind.Settings)
         {
-            if (dropped is { NodeKind: GraphNodeKind.Dialogue } &&
-                !string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal))
-            {
-                _session?.Editor.AddSettingsLink(port.NodeId, dropped.NodeId);
-            }
-            else if (dropped is not null)
-            {
-                _session?.SetStatus("Settings link는 SetNode에서 DialogueNode로만 연결할 수 있습니다.");
-            }
-
+            HandleSupplyDrop(port, dropped);
             return;
         }
 
@@ -858,6 +849,58 @@ public partial class GraphEditorView : UserControl
         if (port.ExecutionPort is not null)
         {
             _session?.Editor.SetExitTarget(port.ExecutionPort, target);
+        }
+    }
+
+    /// <summary>
+    /// 공급 포트(조건·커맨드·연출 — 전부 비실행 연결)를 놓았을 때.
+    /// 어떤 연결이 되는지는 <b>포트를 소유한 노드의 종류</b>가 정한다.
+    /// 잘못된 대상은 상태 표시줄로 알리기만 한다 — 드래그 한 번에 툴이 죽으면 안 된다.
+    /// </summary>
+    private void HandleSupplyDrop(GraphOutputPortProjection port, GraphNodeHit? dropped)
+    {
+        if (_session is null ||
+            dropped is null ||
+            string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            switch (_session.Project.FindNode(port.NodeId))
+            {
+                case SetNode when dropped.NodeKind == GraphNodeKind.Dialogue:
+                    _session.Editor.AddSettingsLink(port.NodeId, dropped.NodeId);
+                    _session.SetStatus("조건 공급을 연결했습니다.");
+                    break;
+
+                case SetNode:
+                    _session.SetStatus("조건 공급은 대사 노드에만 연결할 수 있습니다.");
+                    break;
+
+                case CommandSupplyNode when dropped.NodeKind == GraphNodeKind.Presentation:
+                    _session.Editor.AddCommandSupplyLink(port.NodeId, dropped.NodeId);
+                    _session.SetStatus("커맨드 공급을 연결했습니다.");
+                    break;
+
+                case CommandSupplyNode:
+                    _session.SetStatus("커맨드 공급은 연출 노드에만 연결할 수 있습니다.");
+                    break;
+
+                case PresentationNode when dropped.NodeKind == GraphNodeKind.Dialogue:
+                    _session.Editor.SetPresentationSupplyTarget(port.NodeId, dropped.NodeId);
+                    _session.SetStatus("연출 공급을 연결했습니다. 내보내기가 이 짝을 사용합니다.");
+                    break;
+
+                case PresentationNode:
+                    _session.SetStatus("연출 공급은 대사 노드에만 연결할 수 있습니다.");
+                    break;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            _session.SetStatus(exception.Message);
         }
     }
 
