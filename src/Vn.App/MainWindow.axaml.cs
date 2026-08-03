@@ -39,6 +39,18 @@ public partial class MainWindow : Window
         SupplyEditor.Attach(_session);
         StagePreview.Attach(_session);
         AssetExplorer.Attach(_session);
+        StagePreview.LineMoveRequested += delta =>
+        {
+            // 선택은 활성 편집기의 것 하나뿐이다 — 프리뷰 창은 그걸 움직일 뿐이다.
+            if (PresentationEditor.IsVisible)
+            {
+                PresentationEditor.MoveStageLine(delta);
+            }
+            else if (DialogueEditor.IsVisible)
+            {
+                DialogueEditor.MoveStageLine(delta);
+            }
+        };
         DialogueEditor.StagePreview = StagePreview;
         PresentationEditor.StagePreview = StagePreview;
 

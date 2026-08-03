@@ -54,6 +54,32 @@ public sealed class GameDefinition
     [JsonPropertyName("speakers")]
     public List<SpeakerSpec> Speakers { get; init; } = new();
 
+    /// <summary>프리뷰 표시 설정. 없으면 기본값(1920×1080)이다.</summary>
+    [JsonPropertyName("preview")]
+    public PreviewSpec? Preview { get; init; }
+
+    /// <summary>
+    /// 프리뷰 기준 해상도. <c>preview.resolution</c>("1920x1080" 형식)에서 읽고,
+    /// 없거나 형식이 다르면 기본 1920×1080이다. 게임별 CanvasScaler 해상도가 다르면
+    /// 정의 파일이 교체한다 — 코드에 게임을 박지 않는다.
+    /// </summary>
+    public (double Width, double Height) PreviewResolution
+    {
+        get
+        {
+            string[]? parts = Preview?.Resolution?.Split('x', 'X', '×');
+
+            if (parts is { Length: 2 } &&
+                double.TryParse(parts[0].Trim(), out double width) && width > 0 &&
+                double.TryParse(parts[1].Trim(), out double height) && height > 0)
+            {
+                return (width, height);
+            }
+
+            return (1920, 1080);
+        }
+    }
+
     /// <summary>화자명에 매핑된 characterId. 없으면 null — 프리뷰는 이름만 보여 준다.</summary>
     public string? FindSpeakerCharacterId(string? speakerName)
     {
@@ -151,6 +177,13 @@ public sealed class ConditionSpec
     public string Expression { get; init; } = string.Empty;
 }
 
+
+public sealed class PreviewSpec
+{
+    /// <summary>"1920x1080" 형식. 프리뷰 창의 기준 좌표계가 된다.</summary>
+    [JsonPropertyName("resolution")]
+    public string? Resolution { get; init; }
+}
 
 public sealed class SpeakerSpec
 {

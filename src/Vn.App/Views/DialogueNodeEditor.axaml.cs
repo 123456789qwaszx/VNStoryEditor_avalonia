@@ -314,6 +314,11 @@ public partial class DialogueNodeEditor : UserControl
         string contextLabel = $"대사: {node.Name}";
         NodeExport export = NodeExportResolver.Resolve(_session.Project, node.Id);
 
+        int index = selected is null
+            ? -1
+            : script.Lines.ToList().FindIndex(item =>
+                string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal));
+
         if (export.Presentation is null || export.Dialogue is null)
         {
             StagePreview.Show(new MiniStagePreviewRequest(
@@ -322,7 +327,9 @@ public partial class DialogueNodeEditor : UserControl
                 HasPresentation: false,
                 selected?.LineId,
                 selected?.Speaker,
-                selected?.Text));
+                selected?.Text,
+                LineIndex: index,
+                LineCount: script.Lines.Count));
             return;
         }
 
@@ -344,7 +351,31 @@ public partial class DialogueNodeEditor : UserControl
             selected?.LineId,
             selected?.Speaker,
             selected?.Text,
-            notice));
+            notice,
+            LineIndex: index,
+            LineCount: script.Lines.Count));
+    }
+
+    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>
+    internal void MoveStageLine(int delta)
+    {
+        if (_session?.Project.FindDialogue(_nodeId) is not { } node)
+        {
+            return;
+        }
+
+        IReadOnlyList<DialogueLine> lines = DialogueScriptResolver.Resolve(_session.Project, node).Lines;
+
+        if (lines.Count == 0)
+        {
+            return;
+        }
+
+        int index = lines.ToList().FindIndex(item =>
+            string.Equals(item.LineId, _selectedLineId, StringComparison.Ordinal));
+        int next = Math.Clamp((index < 0 ? 0 : index) + delta, 0, lines.Count - 1);
+
+        SelectStageLine(lines[next].LineId);
     }
 
     private void OnPreviewPresetSelected()

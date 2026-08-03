@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Vn.App.Views.StagePreviewWindow"
+        Title="무대 프리뷰"
+        Width="1024"
+        Height="680"
+        MinWidth="480"
+        MinHeight="320"
+        Background="Black">
+    <Grid RowDefinitions="*,Auto">
+        <ContentControl Grid.Row="0" x:Name="SceneHost" />
+
+        <Border Grid.Row="1"
+                Background="#FF1C1C20"
+                Padding="12,8">
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                    <ToggleButton Grid.Column="0"
+                                  x:Name="FollowToggle"
+                                  Content="따라가기"
+                                  IsChecked="True"
+                                  FontSize="11"
+                                  Padding="8,3" />
+                    <Button Grid.Column="1"
+                            x:Name="PrevButton"
+                            Content="◀ 이전"
+                            FontSize="11"
+                            Padding="8,3"
+                            Margin="10,0,0,0" />
+                    <Button Grid.Column="2"
+                            x:Name="NextButton"
+                            Content="다음 ▶"
+                            FontSize="11"
+                            Padding="8,3"
+                            Margin="4,0,0,0" />
+                    <TextBlock Grid.Column="3"
+                               x:Name="PositionText"
+                               FontSize="11"
+                               Foreground="White"
+                               Opacity="0.85"
+                               Margin="12,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <StackPanel Grid.Column="4"
+                                x:Name="BadgeRow"
+                                Orientation="Horizontal"
+                                Spacing="6" />
+                </Grid>
+
+                <StackPanel x:Name="NoticeHost" Spacing="2" />
+                <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

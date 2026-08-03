@@ -197,13 +197,42 @@ public partial class PresentationNodeEditor : UserControl
             draft.SetupCommands,
             MiniStageFold.LinesUpTo(dialogue, draft.Bindings, line?.LineId));
 
+        int index = line is null
+            ? -1
+            : dialogue.Lines.ToList().FindIndex(item =>
+                string.Equals(item.LineId, line.LineId, StringComparison.Ordinal));
+
         StagePreview.Show(new MiniStagePreviewRequest(
             $"연출: {presentation.Name}",
             state,
             HasPresentation: true,
             line?.LineId,
             line?.CharacterName,
-            line?.Text));
+            line?.Text,
+            LineIndex: index,
+            LineCount: dialogue.Lines.Count));
+    }
+
+    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>
+    internal void MoveStageLine(int delta)
+    {
+        if (_session?.Project.FindPresentation(_nodeId) is not { } presentation)
+        {
+            return;
+        }
+
+        PresentationWorkspace workspace = PresentationBindingResolver.Resolve(_session.Project, presentation);
+
+        if (workspace.Dialogue is not { } dialogue || dialogue.Lines.Count == 0)
+        {
+            return;
+        }
+
+        int index = dialogue.Lines.ToList().FindIndex(item =>
+            string.Equals(item.LineId, _selectedLineId, StringComparison.Ordinal));
+        int next = Math.Clamp((index < 0 ? 0 : index) + delta, 0, dialogue.Lines.Count - 1);
+
+        SelectStageLine(dialogue.Lines[next].LineId);
     }
 
     private void SelectStageLine(string lineId)
