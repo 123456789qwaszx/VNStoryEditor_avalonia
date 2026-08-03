@@ -408,6 +408,25 @@ Vn.App                화면과 비트맵 — MiniStagePreview 패널, PreviewIm
 - v1 폴드는 갈래를 가정하지 않는다. 조건·선택 갈래도 문서 순서대로 전부 접고,
   그 근사가 쓰였음을 표시 하나로 알린다. 갈래 인식 폴드는 2b에서.
 
+2a-v2(W17–W20)에서 이 계층 위에 얹힌 것:
+
+```
+Vn.Authoring/Assets     AssetExplorerModel — 탐색기 트리(배경=폴더 구조, 초상화=키 구조) 순수 계산
+Vn.Authoring/Definition CommandText — 병기 텍스트 조립·텍스트 입력 파싱의 단일 구현(이미터와 같은 규칙)
+                        ArgumentTokenCandidates — 파라미터 type별 후보 토큰(제약이 아니라 제안)
+Vn.Authoring/Editing    PresentationStageActions — 직접 조작→편집 변환(같은 종류는 수정, 시퀀스는 개별 커맨드)
+Vn.App                  AssetExplorerView(드래그 소스) · StageSceneComposer(기준 해상도 배치 계산, 순수)
+                        StageSceneView(도킹·분리 창 공용 렌더러+직접 조작) · StagePreviewWindow(따라가기·라인 이동)
+```
+
+**편집 경로 수렴 원칙 — 세 입력 경로, 한 통로.** 연출 커맨드를 만드는 길은 셋이다:
+갤러리/직접 추가, 텍스트 입력(`CommandText.Parse`), 프리뷰 직접 조작(클릭·드래그 →
+`PresentationStageActions`). 어느 길이든 결과는 같은 `ProjectEditor` 편집 명령으로
+수렴한다 — 프리뷰용 별도 쓰기 경로는 없고, 되돌리기 한 번이 조작 하나를 원복하며
+(배치 추가·병합 갱신이 한 mutate다), 발행→이미터 출력은 경로와 무관하게 같다
+(`InputPathEquivalenceTests`가 못박는다). 텍스트가 진실이므로 어떤 방식으로 만들었든
+커맨드에는 `<<이름 인자…>>` 텍스트가 병기된다.
+
 ---
 
 ## 4. 핵심 설계 판단
@@ -771,6 +790,11 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
     폴드가 인식 못 한 커맨드는 `Unhandled`로, 못 찾은 에셋 키는 플레이스홀더와
     `Problems`로 반드시 화면에 남는다 (§3.10). 조용히 버리면 나중에
     "왜 이 장면만 다르지"로 돌아온다 — 그때는 어디서 사라졌는지 아무도 모른다.
+
+15. **연출 커맨드를 만드는 새 길을 낼 때는 ProjectEditor로 수렴시킨다 (§3.10).**
+    직접 조작이든 파서든 프리뷰용 별도 쓰기 경로를 만들면 되돌리기·알림·발행이
+    그 길만 비켜 가고, 이미터 출력이 입력 방법에 따라 달라진다. 커맨드 텍스트의
+    조립·파싱 규칙도 `CommandText` 하나다 — 화면과 파일이 다른 문장을 만들면 안 된다.
 
 ---
 
