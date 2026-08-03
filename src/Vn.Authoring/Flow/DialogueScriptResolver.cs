@@ -15,7 +15,12 @@ public sealed record DialogueLine(
     int Revision,
     string Speaker,
     string Text,
-    LineConditionTransition? Transition);
+    LineConditionTransition? Transition,
+    IReadOnlyList<SetOperation>? SetOperations = null)
+{
+    /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 없으면 빈 목록이다.</summary>
+    public IReadOnlyList<SetOperation> Sets => SetOperations ?? Array.Empty<SetOperation>();
+}
 
 /// <summary>대본에 더 이상 없는 LineId에 남아 있는 대사 논리.</summary>
 /// <param name="IsRetired">대본에서 사라진 줄인지. false면 대본 자체에 없는 Id다.</param>
@@ -129,7 +134,8 @@ public static class DialogueScriptResolver
                 scriptLine.Revision,
                 text.Speaker,
                 text.Text,
-                extension?.Transition));
+                extension?.Transition,
+                extension?.SetOperations));
         }
 
         var orphans = new List<OrphanLineExtension>();

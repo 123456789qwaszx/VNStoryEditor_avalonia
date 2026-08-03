@@ -11,6 +11,7 @@ namespace Vn.Authoring.Results;
 /// </summary>
 /// <param name="Revision">발행 당시 대본 줄의 개정 번호.</param>
 /// <param name="BranchExitTargetNodeId">이 줄이 연 갈래가 끝났을 때 이동할 노드.</param>
+/// <param name="SetOperations">이 줄에 도달했을 때 실행할 변수 변경. 순서가 실행 순서다.</param>
 public sealed record DialogueResultLine(
     int Index,
     string LineId,
@@ -18,7 +19,18 @@ public sealed record DialogueResultLine(
     string CharacterName,
     string Text,
     DialogueResultTransition? Transition = null,
-    string? BranchExitTargetNodeId = null);
+    string? BranchExitTargetNodeId = null,
+    IReadOnlyList<DialogueResultSetOperation>? SetOperations = null)
+{
+    public IReadOnlyList<DialogueResultSetOperation> Sets =>
+        SetOperations ?? Array.Empty<DialogueResultSetOperation>();
+}
+
+/// <summary>발행 시점에 얼린 변수 변경 하나. Yarn <c>&lt;&lt;set&gt;&gt;</c>이 된다.</summary>
+public sealed record DialogueResultSetOperation(
+    string Variable,
+    SetOperatorKind Operator,
+    string Value);
 
 /// <summary>
 /// 발행 시점의 조건 전환. 조건의 이름과 식까지 함께 얼린다.
@@ -46,7 +58,8 @@ public sealed record DialogueResultAssignment(string Variable, string Value);
 public sealed class DialogueResult
 {
     /// <summary>결과 본문의 구조가 바뀌면 올린다. 해시와 함께 호환성 판정에 쓰인다.</summary>
-    public const int CurrentSchemaVersion = 1;
+    /// <remarks>v2: 줄에 SetOperations가 실린다.</remarks>
+    public const int CurrentSchemaVersion = 2;
 
     public DialogueResult(
         ResultIdentity identity,

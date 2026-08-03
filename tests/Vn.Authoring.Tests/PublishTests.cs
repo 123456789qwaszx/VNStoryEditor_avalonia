@@ -64,6 +64,65 @@ public class PublishTests
         Assert.Equal(2, sample.Project.Results.DialogueResults.Count);
     }
 
+    [Fact]
+    public void 줄의_변수_변경이_발행_결과에_순서대로_실린다()
+    {
+        var sample = new Sample();
+        string line = sample.Line("피곤한 하루");
+        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, line, new[]
+        {
+            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "10" },
+            new SetOperation { Variable = "route", Operator = SetOperatorKind.Assign, Value = "\"a\"" }
+        });
+
+        DialogueResult result = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        Assert.Equal(2, result.Identity.SchemaVersion);
+        Assert.Equal(
+            new[]
+            {
+                ("fatigue", SetOperatorKind.Add, "10"),
+                ("route", SetOperatorKind.Assign, "\"a\"")
+            },
+            result.Lines[0].Sets.Select(operation =>
+                (operation.Variable, operation.Operator, operation.Value)));
+    }
+
+    [Fact]
+    public void 변수_변경이_바뀌면_해시가_바뀌어_v2가_생긴다()
+    {
+        var sample = new Sample();
+        string line = sample.Line("갈림길");
+        DialogueResult v1 = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, line, new[]
+        {
+            new SetOperation { Variable = "favor", Operator = SetOperatorKind.Add, Value = "1" }
+        });
+        PublishOutcome<DialogueResult> outcome = sample.Editor.PublishDialogue(sample.Dialogue.Id);
+
+        Assert.True(outcome.Created);
+        Assert.Equal(2, outcome.Result.Identity.Version);
+        Assert.NotEqual(v1.Identity.ContentHash, outcome.Result.Identity.ContentHash);
+
+        // v1은 여전히 변수 변경이 없다. 발행 결과는 불변이다.
+        Assert.Empty(v1.Lines[0].Sets);
+    }
+
+    [Fact]
+    public void 변수_이름이_빈_변수_변경은_발행을_막는다()
+    {
+        var sample = new Sample();
+        string line = sample.Line("잘못된 set");
+        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, line, new[]
+        {
+            new SetOperation { Variable = "  ", Operator = SetOperatorKind.Add, Value = "1" }
+        });
+
+        Assert.Throws<PublishRejectedException>(
+            () => sample.Editor.PublishDialogue(sample.Dialogue.Id));
+    }
+
     /// <summary>
     /// 저장 버튼을 두 번 눌렀다는 이유로 v2, v3이 쌓이면 어느 것이 의미 있는 버전인지
     /// 알 수 없게 된다. 판정 기준은 내용 해시 하나다.

@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
 
@@ -156,6 +156,23 @@ internal static class StoryNodeJson
                 lineJson["condition"] = transitionJson;
             }
 
+            if (extension.SetOperations.Count > 0)
+            {
+                var operations = new JsonArray();
+
+                foreach (SetOperation operation in extension.SetOperations)
+                {
+                    operations.Add(new JsonObject
+                    {
+                        ["variable"] = operation.Variable,
+                        ["operator"] = SetOperators.Symbol(operation.Operator),
+                        ["value"] = operation.Value
+                    });
+                }
+
+                lineJson["set"] = operations;
+            }
+
             lines.Add(lineJson);
         }
 
@@ -287,6 +304,19 @@ internal static class StoryNodeJson
                 if ((string?)transitionJson["exit"] is { } exit && extension.Transition.OpensBranch)
                 {
                     node.BranchExits[lineId] = exit;
+                }
+            }
+
+            foreach (JsonNode? operationItem in lineJson["set"]?.AsArray() ?? new JsonArray())
+            {
+                if (operationItem is JsonObject operationJson)
+                {
+                    extension.SetOperations.Add(new SetOperation
+                    {
+                        Variable = (string?)operationJson["variable"] ?? string.Empty,
+                        Operator = SetOperators.Parse((string?)operationJson["operator"]),
+                        Value = (string?)operationJson["value"] ?? string.Empty
+                    });
                 }
             }
 

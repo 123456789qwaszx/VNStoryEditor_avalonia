@@ -171,7 +171,7 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `StoryNode` (추상) | Id, 이름, 그래프 좌표, **기본 출구**. 종류를 가리지 않는 공통부 |
 | `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리** |
 | `DialogueNode` | `ScriptId` + `DialogueLineExtension` 목록 + `BranchExits`. **본문은 없다** |
-| `DialogueLineExtension` | LineId 하나에 얹는 대사 논리. 지금은 조건 전환뿐 |
+| `DialogueLineExtension` | LineId 하나에 얹는 대사 논리. 조건 전환과 변수 변경(`SetOperation`) |
 | `PresentationNode` | `Source`(대사 결과 참조) + `LineId`별 binding. **대사를 복사하지 않는다** |
 | `PresentationCommandInstance` | 명령 하나. 정의 Id, 인자, 사용 여부, 메모. 순서를 보존한다 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
@@ -734,7 +734,7 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | StoryFile | `StoryFileJson.CurrentFormatVersion` = 1 | `*.vnstory.json` |
 | 발행 결과 | `ResultStoreJson.CurrentFormatVersion` = 1 | `results.vnresults.json` |
 | 되돌리기 스냅샷 | `ProjectSnapshotCodec.CurrentSnapshotVersion` = 2 | (메모리) |
-| 대사 결과 스키마 | `DialogueResult.CurrentSchemaVersion` = 1 | 결과 안의 `schemaVersion` |
+| 대사 결과 스키마 | `DialogueResult.CurrentSchemaVersion` = 2 | 결과 안의 `schemaVersion` |
 | 연출 결과 스키마 | `PresentationResult.CurrentSchemaVersion` = 1 | 결과 안의 `schemaVersion` |
 
 **형식 버전과 결과 스키마 버전은 다르다.** 앞의 것은 파일을 열 수 있는지, 뒤의 것은

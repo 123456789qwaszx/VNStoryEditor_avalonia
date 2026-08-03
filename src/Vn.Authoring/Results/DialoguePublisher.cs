@@ -24,6 +24,9 @@ public enum PublishProblemKind
     /// <summary>출구가 없는 노드를 가리킨다.</summary>
     MissingExitTarget,
 
+    /// <summary>변수 이름이 비어 있는 등 성립하지 않는 변수 변경.</summary>
+    InvalidSetOperation,
+
     /// <summary>대본에서 사라진 줄에 대사 논리나 연출이 남아 있다. 발행은 막지 않는다.</summary>
     OrphanData,
 
@@ -146,6 +149,18 @@ public static class DialoguePublisher
 
             node.BranchExits.TryGetValue(line.LineId, out string? branchExit);
 
+            foreach (SetOperation operation in line.Sets)
+            {
+                if (string.IsNullOrWhiteSpace(operation.Variable))
+                {
+                    problems.Add(new PublishProblem(
+                        PublishProblemKind.InvalidSetOperation,
+                        line.LineId,
+                        $"LineId '{line.LineId}'의 변수 변경에 변수 이름이 없습니다.",
+                        IsBlocking: true));
+                }
+            }
+
             lines.Add(new DialogueResultLine(
                 resolved.Index,
                 line.LineId,
@@ -153,7 +168,15 @@ public static class DialoguePublisher
                 line.Speaker,
                 line.Text,
                 Freeze(line.Transition, project, definition, available),
-                line.Transition?.OpensBranch == true ? branchExit : null));
+                line.Transition?.OpensBranch == true ? branchExit : null,
+                line.Sets.Count == 0
+                    ? null
+                    : line.Sets
+                        .Select(operation => new DialogueResultSetOperation(
+                            operation.Variable,
+                            operation.Operator,
+                            operation.Value))
+                        .ToArray()));
         }
 
         AddFlowProblems(flow, problems);

@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
 
@@ -75,7 +75,8 @@ internal static class DialogueResultJson
                 (string?)lineJson["speaker"] ?? string.Empty,
                 (string?)lineJson["text"] ?? string.Empty,
                 ReadTransition(lineJson["condition"] as JsonObject),
-                (string?)lineJson["branchExit"]));
+                (string?)lineJson["branchExit"],
+                ReadSetOperations(lineJson["set"] as JsonArray)));
         }
 
         var assignments = new List<DialogueResultAssignment>();
@@ -158,6 +159,23 @@ internal static class DialogueResultJson
                 item["branchExit"] = line.BranchExitTargetNodeId;
             }
 
+            if (line.Sets.Count > 0)
+            {
+                var operations = new JsonArray();
+
+                foreach (DialogueResultSetOperation operation in line.Sets)
+                {
+                    operations.Add(new JsonObject
+                    {
+                        ["variable"] = operation.Variable,
+                        ["operator"] = SetOperators.Symbol(operation.Operator),
+                        ["value"] = operation.Value
+                    });
+                }
+
+                item["set"] = operations;
+            }
+
             lineArray.Add(item);
         }
 
@@ -198,6 +216,29 @@ internal static class DialogueResultJson
         }
 
         return json;
+    }
+
+    private static IReadOnlyList<DialogueResultSetOperation>? ReadSetOperations(JsonArray? json)
+    {
+        if (json is null || json.Count == 0)
+        {
+            return null;
+        }
+
+        var operations = new List<DialogueResultSetOperation>();
+
+        foreach (JsonNode? item in json)
+        {
+            if (item is JsonObject operation)
+            {
+                operations.Add(new DialogueResultSetOperation(
+                    (string?)operation["variable"] ?? string.Empty,
+                    SetOperators.Parse((string?)operation["operator"]),
+                    (string?)operation["value"] ?? string.Empty));
+            }
+        }
+
+        return operations;
     }
 
     private static DialogueResultTransition? ReadTransition(JsonObject? json)

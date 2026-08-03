@@ -52,6 +52,63 @@ public sealed class LineConditionTransition
     public LineConditionTransition Clone() => new(Kind, ConditionId);
 }
 
+/// <summary>변수를 어떻게 바꾸는지. Yarn의 <c>&lt;&lt;set&gt;&gt;</c> 연산자에 대응한다.</summary>
+public enum SetOperatorKind
+{
+    /// <summary><c>$x = value</c></summary>
+    Assign,
+
+    /// <summary><c>$x += value</c></summary>
+    Add,
+
+    /// <summary><c>$x -= value</c></summary>
+    Subtract
+}
+
+/// <summary>set 연산자의 표기 문자열은 여기 하나뿐이다. Yarn 표기와 같게 둔다.</summary>
+public static class SetOperators
+{
+    public static string Symbol(SetOperatorKind kind) => kind switch
+    {
+        SetOperatorKind.Add => "+=",
+        SetOperatorKind.Subtract => "-=",
+        _ => "="
+    };
+
+    public static SetOperatorKind Parse(string? symbol) => symbol switch
+    {
+        "+=" => SetOperatorKind.Add,
+        "-=" => SetOperatorKind.Subtract,
+        _ => SetOperatorKind.Assign
+    };
+}
+
+/// <summary>
+/// 이 줄에 도달했을 때 실행할 변수 변경 하나.
+///
+/// 변수 이름 후보는 게임 정의의 variables가 공급하지만, 후보에 없는 이름도 막지 않는다
+/// (편의 기능이 없다고 원고를 못 쓰게 하지 않는다). 값은 문자열 그대로 실어 나른다 —
+/// 숫자인지 불리언인지는 게임이 해석한다.
+///
+/// 세이브 리플레이가 <c>&lt;&lt;set&gt;&gt;</c>을 재실행해 변수를 재구축하므로(계약서 C5)
+/// 값은 결정적이어야 한다. 랜덤·외부 상태 참조를 여기 넣지 않는다.
+/// </summary>
+public sealed class SetOperation
+{
+    public string Variable { get; set; } = string.Empty;
+
+    public SetOperatorKind Operator { get; set; } = SetOperatorKind.Assign;
+
+    public string Value { get; set; } = string.Empty;
+
+    public SetOperation Clone() => new()
+    {
+        Variable = Variable,
+        Operator = Operator,
+        Value = Value
+    };
+}
+
 /// <summary>
 /// DialogueNode가 <b>대본 한 줄에 덧붙이는 대사 논리</b>.
 ///
@@ -80,9 +137,16 @@ public sealed class DialogueLineExtension
     /// </summary>
     public LineConditionTransition? Transition { get; set; }
 
+    /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 목록 순서가 곧 실행 순서다.</summary>
+    public List<SetOperation> SetOperations { get; init; } = new();
+
     /// <summary>이 확장이 아무것도 담고 있지 않은지. 빈 확장은 저장하지 않는다.</summary>
-    public bool IsEmpty => Transition is null;
+    public bool IsEmpty => Transition is null && SetOperations.Count == 0;
 
     public DialogueLineExtension Clone() =>
-        new(LineId) { Transition = Transition?.Clone() };
+        new(LineId)
+        {
+            Transition = Transition?.Clone(),
+            SetOperations = SetOperations.Select(operation => operation.Clone()).ToList()
+        };
 }

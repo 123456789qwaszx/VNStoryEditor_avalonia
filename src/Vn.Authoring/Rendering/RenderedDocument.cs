@@ -71,6 +71,7 @@ public sealed record RenderedSegment(
     string? Speaker = null,
     string? Expression = null,
     string? Variable = null,
+    string? Operator = null,
     string? Value = null,
     string? TargetNodeId = null,
     string? TargetNodeName = null,

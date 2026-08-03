@@ -273,6 +273,52 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>
+    /// 이 줄에 도달했을 때 실행할 변수 변경 목록을 통째로 바꾼다. 목록 순서가 실행 순서다.
+    /// 빈 목록이면 지운 것이다. 대본에 없는 LineId를 주면 아무것도 하지 않는다.
+    /// </summary>
+    public void SetLineSetOperations(
+        string nodeId,
+        string lineId,
+        IReadOnlyList<SetOperation>? operations)
+    {
+        DialogueNode node = RequireDialogue(nodeId);
+
+        if (Project.FindScript(node.ScriptId)?.FindLine(lineId) is not { IsRetired: false })
+        {
+            return;
+        }
+
+        DialogueLineExtension? existing = node.FindExtension(lineId);
+        bool empty = operations is null || operations.Count == 0;
+
+        if ((existing is null || existing.SetOperations.Count == 0) && empty)
+        {
+            return;
+        }
+
+        Mutate(() =>
+        {
+            DialogueLineExtension extension = existing ?? new DialogueLineExtension(lineId);
+
+            if (existing is null)
+            {
+                node.LineExtensions.Add(extension);
+            }
+
+            extension.SetOperations.Clear();
+
+            if (operations is not null)
+            {
+                // 호출자의 목록을 그대로 들고 있지 않는다. 밖에서 계속 고치는 목록을
+                // 참조하면 되돌리기 스냅샷 밖에서 모델이 바뀐다.
+                extension.SetOperations.AddRange(operations.Select(operation => operation.Clone()));
+            }
+
+            PruneLineExtensions(node);
+        });
+    }
+
     // ── 출구 ────────────────────────────────────────────────────────────────
 
     /// <summary>

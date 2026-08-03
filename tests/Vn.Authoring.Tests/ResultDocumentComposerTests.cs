@@ -252,6 +252,34 @@ public class ResultDocumentComposerTests
     }
 
     [Fact]
+    public void 줄의_변수_변경은_대사_앞에_set으로_펼쳐진다()
+    {
+        var sample = new Sample();
+        string line = sample.Line("지친 목소리");
+        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, line, new[]
+        {
+            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "10" }
+        });
+
+        DialogueResult result = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+        RenderedDocument document = ResultDocumentComposer.Compose(result, project: sample.Project);
+
+        RenderedSegment set = document.Segments.Single(segment =>
+            segment.Kind == RenderedSegmentKind.SetAssignment && segment.Source.LineId == line);
+        RenderedSegment dialogue = document.Segments.Single(segment =>
+            segment.Kind == RenderedSegmentKind.DialogueLine && segment.Source.LineId == line);
+
+        Assert.Equal("fatigue", set.Variable);
+        Assert.Equal("+=", set.Operator);
+        Assert.Equal("10", set.Value);
+        Assert.True(document.Segments.ToList().IndexOf(set) <
+                    document.Segments.ToList().IndexOf(dialogue));
+
+        string text = YarnPreviewFormatter.Format(document);
+        Assert.Contains("<<set $fatigue += 10>>", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void 비활성_Command는_결과에_들어가지_않으므로_문서에도_없다()
     {
         var context = new CompositionFixture();

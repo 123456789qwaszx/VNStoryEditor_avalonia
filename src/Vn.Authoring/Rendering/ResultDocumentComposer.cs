@@ -142,6 +142,24 @@ public static class ResultDocumentComposer
 
             int indent = options.IncludeConditions ? depth : 0;
 
+            if (options.IncludeSetAssignments)
+            {
+                for (int index = 0; index < line.Sets.Count; index++)
+                {
+                    DialogueResultSetOperation operation = line.Sets[index];
+
+                    segments.Add(new RenderedSegment(
+                        Id: $"set:{line.LineId}:{index}",
+                        Kind: RenderedSegmentKind.SetAssignment,
+                        Layer: DocumentLayer.SetAssignments,
+                        Source: lineSource,
+                        IndentLevel: indent,
+                        Variable: operation.Variable,
+                        Operator: SetOperators.Symbol(operation.Operator),
+                        Value: operation.Value));
+                }
+            }
+
             if (options.IncludePresentation && presentation is not null)
             {
                 AddPresentationCommands(

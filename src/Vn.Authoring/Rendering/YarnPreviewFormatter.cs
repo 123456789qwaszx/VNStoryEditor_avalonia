@@ -51,7 +51,9 @@ public static class YarnPreviewFormatter
                 builder.Append(indent)
                     .Append("<<set ")
                     .Append(NormalizeVariable(segment.Variable))
-                    .Append(" = ")
+                    .Append(' ')
+                    .Append(segment.Operator ?? "=")
+                    .Append(' ')
                     .Append(segment.Value ?? string.Empty)
                     .Append(">>\n");
                 break;
