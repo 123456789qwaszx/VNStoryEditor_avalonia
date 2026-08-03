@@ -38,6 +38,7 @@ public partial class MainWindow : Window
         PresentationEditor.Attach(_session);
         SupplyEditor.Attach(_session);
         StagePreview.Attach(_session);
+        AssetExplorer.Attach(_session);
         DialogueEditor.StagePreview = StagePreview;
         PresentationEditor.StagePreview = StagePreview;
 

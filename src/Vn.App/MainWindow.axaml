@@ -47,7 +47,7 @@
             <Border Grid.Column="0"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,Auto,2*,Auto,3*">
+                <Grid RowDefinitions="Auto,Auto,2*,Auto,3*,Auto">
                     <Border Grid.Row="0"
                             Padding="12,10"
                             BorderBrush="{DynamicResource ThemeBorderLowBrush}"
@@ -97,6 +97,10 @@
                                     Margin="10,8,10,10"
                                     Spacing="10" />
                     </ScrollViewer>
+
+                    <views:AssetExplorerView Grid.Row="5"
+                                             x:Name="AssetExplorer"
+                                             MaxHeight="300" />
                 </Grid>
             </Border>
 

@@ -2,12 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform.Storage;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Flow;
-using Vn.Authoring.Model;
 
 namespace Vn.App.Views;
 
@@ -366,46 +363,11 @@ public partial class MiniStagePreview : UserControl
         });
     }
 
-    /// <summary>
-    /// 폴더를 골라 프로젝트 설정에 저장한다. 가능하면 프로젝트 기준 상대 경로로 —
-    /// 프로젝트를 옮겨도 에셋이 같이 움직이면 설정이 산다. 다른 드라이브면 절대 경로다.
-    /// </summary>
     private async Task PickAssetRoot(bool backgrounds)
     {
-        if (_session is null || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        if (_session is not null && await AssetRootPicker.PickAsync(this, _session, backgrounds))
         {
-            return;
+            Render();
         }
-
-        IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
-            new FolderPickerOpenOptions
-            {
-                Title = backgrounds ? "배경 PNG 폴더" : "초상화 폴더 (portraits.manifest.json 포함)",
-                AllowMultiple = false
-            });
-
-        if (folders.Count == 0 || folders[0].TryGetLocalPath() is not { } picked)
-        {
-            return;
-        }
-
-        string stored = picked;
-
-        if (_session.ProjectPath is { } projectPath)
-        {
-            string projectDirectory = Path.GetDirectoryName(projectPath) ?? projectPath;
-            string relative = Path.GetRelativePath(projectDirectory, picked);
-
-            if (!Path.IsPathRooted(relative))
-            {
-                stored = relative;
-            }
-        }
-
-        AssetRootSettings roots = _session.Project.AssetRoots;
-        _session.Editor.SetAssetRoots(
-            backgrounds ? stored : roots.BackgroundsPath,
-            backgrounds ? roots.PortraitsPath : stored);
-        Render();
     }
 }
