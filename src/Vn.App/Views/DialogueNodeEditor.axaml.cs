@@ -334,6 +334,7 @@ public partial class DialogueNodeEditor : UserControl
 
         body.Children.Add(BuildHeader(node, script, resolved));
         body.Children.Add(BuildTextRow(script, resolved));
+        body.Children.Add(BuildSetRow(node, resolved));
 
         if (resolved.IsBranchExit && branch is not null)
         {
@@ -485,6 +486,76 @@ public partial class DialogueNodeEditor : UserControl
         };
 
         return box;
+    }
+
+    /// <summary>
+    /// 이 줄의 변수 변경. 한 줄에 하나씩 <c>변수 += 값</c> 형태로 적는다 (=, +=, -=).
+    /// 발행하면 결과에 얼어붙고, 이미터가 Story의 <c>&lt;&lt;set&gt;&gt;</c>으로 낸다.
+    /// </summary>
+    private Control BuildSetRow(DialogueNode node, ResolvedLine resolved)
+    {
+        var box = new TextBox
+        {
+            Text = string.Join(
+                Environment.NewLine,
+                resolved.Line.Sets.Select(operation =>
+                    $"{operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}")),
+            PlaceholderText = "set — 한 줄에 하나씩: 변수 += 값",
+            AcceptsReturn = true,
+            FontSize = 11,
+            Opacity = 0.9
+        };
+
+        ToolTip.SetTip(box, "이 줄에 도달했을 때 실행할 <<set>>. 연산자는 =, +=, -= 세 가지입니다.");
+
+        box.LostFocus += (_, _) =>
+        {
+            if (_building)
+            {
+                return;
+            }
+
+            if (!TryParseSetOperations(box.Text, out List<SetOperation> operations))
+            {
+                _session!.SetStatus("set을 읽지 못했습니다. 한 줄에 하나씩 '변수 += 값' 형태로 적어 주세요.");
+                return;
+            }
+
+            _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, operations);
+        };
+
+        return box;
+    }
+
+    private static bool TryParseSetOperations(string? text, out List<SetOperation> operations)
+    {
+        operations = new List<SetOperation>();
+
+        foreach (string raw in (text ?? string.Empty).Split('\n'))
+        {
+            string line = raw.Trim();
+
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            string[] tokens = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (tokens.Length < 3 || tokens[1] is not ("=" or "+=" or "-="))
+            {
+                return false;
+            }
+
+            operations.Add(new SetOperation
+            {
+                Variable = tokens[0].TrimStart('$'),
+                Operator = SetOperators.Parse(tokens[1]),
+                Value = string.Join(' ', tokens.Skip(2))
+            });
+        }
+
+        return true;
     }
 
     private Control BuildTextRow(DialogueScript script, ResolvedLine resolved)

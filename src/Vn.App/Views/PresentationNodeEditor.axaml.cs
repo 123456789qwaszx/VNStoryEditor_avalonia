@@ -72,6 +72,9 @@ public partial class PresentationNodeEditor : UserControl
                 presentation);
             PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
 
+            // Setup은 어느 줄에도 속하지 않는 장면 준비다. 대사 결과가 없어도 편집할 수 있다.
+            LineHost.Children.Add(BuildSetupSection(presentation, catalog));
+
             if (workspace.Dialogue is not { } dialogue)
             {
                 TargetText.Text = presentation.Source is { } missing
@@ -204,6 +207,131 @@ public partial class PresentationNodeEditor : UserControl
         {
             _session.SetStatus(exception.Message.Replace(Environment.NewLine, " ", StringComparison.Ordinal));
         }
+    }
+
+    /// <summary>
+    /// LineId 없는 노드 수준 Setup 커맨드(슬롯·캐스팅·배경 스폰·리셋).
+    /// 이미터에서 Set_ 노드 본문이 된다. 목록 순서가 곧 실행·출력 순서다.
+    /// </summary>
+    private Control BuildSetupSection(PresentationNode presentation, PresentationCommandCatalog catalog)
+    {
+        var content = new StackPanel { Spacing = 6 };
+        content.Children.Add(new TextBlock
+        {
+            Text = "Setup — 장면 준비 (Set 노드 본문)",
+            FontWeight = FontWeight.SemiBold
+        });
+
+        IReadOnlyList<PresentationCommandDefinition> choices = catalog.Definitions;
+
+        foreach (PresentationCommandInstance command in presentation.SetupCommands)
+        {
+            content.Children.Add(BuildSetupRow(presentation, command, catalog, choices));
+        }
+
+        var add = new Button
+        {
+            Content = "+ Setup 커맨드",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            IsEnabled = choices.Count > 0
+        };
+
+        add.Click += (_, _) =>
+        {
+            if (!_building && _session is not null && choices.Count > 0)
+            {
+                PresentationCommandDefinition definition = choices[0];
+                _session.Editor.AddPresentationSetupCommand(
+                    presentation.Id,
+                    definition.Id,
+                    definition.DefaultArgumentValues());
+            }
+        };
+
+        content.Children.Add(add);
+
+        return new Border
+        {
+            Padding = new Thickness(10),
+            CornerRadius = new CornerRadius(7),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(50, 37, 99, 235)),
+            BorderThickness = new Thickness(1),
+            Child = content
+        };
+    }
+
+    private Control BuildSetupRow(
+        PresentationNode presentation,
+        PresentationCommandInstance command,
+        PresentationCommandCatalog catalog,
+        IReadOnlyList<PresentationCommandDefinition> choices)
+    {
+        var combo = new ComboBox
+        {
+            ItemsSource = choices
+                .Select(item =>
+                    $"{catalog.FindCategory(item.CategoryId)?.DisplayName ?? item.CategoryId} · {item.DisplayName}")
+                .ToArray(),
+            SelectedIndex = FindDefinitionIndex(choices, command.DefinitionId),
+            FontSize = 11,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (_building || _session is null || combo.SelectedIndex < 0 || combo.SelectedIndex >= choices.Count)
+            {
+                return;
+            }
+
+            PresentationCommandDefinition definition = choices[combo.SelectedIndex];
+            _session.Editor.SetPresentationCommandDefinition(
+                presentation.Id,
+                command.Id,
+                definition.Id,
+                definition.DefaultArgumentValues());
+        };
+
+        Button up = SetupButton("▲", () =>
+            _session!.Editor.MovePresentationSetupCommand(presentation.Id, command.Id, -1));
+        Button down = SetupButton("▼", () =>
+            _session!.Editor.MovePresentationSetupCommand(presentation.Id, command.Id, 1));
+        Button remove = SetupButton("✕", () =>
+            _session!.Editor.RemovePresentationCommand(presentation.Id, command.Id));
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto") };
+        Grid.SetColumn(combo, 0);
+        Grid.SetColumn(up, 1);
+        Grid.SetColumn(down, 2);
+        Grid.SetColumn(remove, 3);
+        row.Children.Add(combo);
+        row.Children.Add(up);
+        row.Children.Add(down);
+        row.Children.Add(remove);
+        return row;
+    }
+
+    private Button SetupButton(string glyph, Action action)
+    {
+        var button = new Button
+        {
+            Content = glyph,
+            FontSize = 10,
+            Padding = new Thickness(6, 2),
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        button.Click += (_, _) =>
+        {
+            if (!_building && _session is not null)
+            {
+                action();
+            }
+        };
+
+        return button;
     }
 
     private Control BuildLineCard(

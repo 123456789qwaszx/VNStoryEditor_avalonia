@@ -8,6 +8,8 @@ using Avalonia.Threading;
 using Vn.App.Services;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
+using Vn.Authoring.Rendering;
+using Vn.Authoring.Results;
 using Vn.Authoring.Serialization;
 
 namespace Vn.App;
@@ -45,6 +47,7 @@ public partial class MainWindow : Window
         SaveAsButton.Click += OnSaveAsClick;
         UndoButton.Click += (_, _) => _session.Editor.Undo();
         RedoButton.Click += (_, _) => _session.Editor.Redo();
+        ExportButton.Click += OnExportClick;
 
         Opened += OnOpened;
 
@@ -247,6 +250,149 @@ public partial class MainWindow : Window
             _session.Save(file.Path.LocalPath);
             RefreshShell();
         }
+    }
+
+    // ── 내보내기 ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 합성 하나를 골라 런타임 .yarn 트리오로 내보낸다.
+    /// 검증은 전부 <see cref="YarnBundleEmitter"/>가 한다 — 화면은 결과를 전달만 한다.
+    /// </summary>
+    private async void OnExportClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            IReadOnlyList<RuntimeComposition> compositions = _session.Project.Compositions;
+
+            if (compositions.Count == 0)
+            {
+                _session.SetStatus("내보낼 합성이 없습니다. 대사·연출 결과를 발행하고 합성을 먼저 만드세요.");
+                return;
+            }
+
+            RuntimeComposition? composition = compositions.Count == 1
+                ? compositions[0]
+                : await PickCompositionAsync(compositions);
+
+            if (composition is null)
+            {
+                return;
+            }
+
+            ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
+                _session.Project.Results,
+                composition);
+
+            if (!resolved.IsCompatible)
+            {
+                _session.SetStatus($"'{composition.Name}'은 내보낼 수 없습니다. {resolved.ProblemSummary()}");
+                return;
+            }
+
+            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
+
+            if (storage is null || !storage.CanPickFolder)
+            {
+                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
+                new FolderPickerOpenOptions
+                {
+                    Title = ".yarn 트리오를 내보낼 폴더",
+                    AllowMultiple = false
+                });
+
+            if (folders.Count == 0)
+            {
+                return;
+            }
+
+            YarnBundle bundle = YarnBundleEmitter.Emit(
+                resolved,
+                _session.Project,
+                _session.Definition);
+
+            if (bundle.HasBlockingProblems)
+            {
+                _session.SetStatus($"내보내지 못했습니다. {bundle.BlockingSummary()}");
+                return;
+            }
+
+            IReadOnlyList<string> written = YarnBundleEmitter.WriteTo(
+                bundle,
+                folders[0].Path.LocalPath);
+
+            int warnings = bundle.Problems.Count;
+            _session.SetStatus(
+                $"{written.Count}개 파일을 내보냈습니다: " +
+                string.Join(", ", written.Select(Path.GetFileName)) +
+                (warnings > 0 ? $" · 경고 {warnings}건" : string.Empty));
+            RefreshShell();
+        }
+        catch (Exception exception)
+        {
+            Report("내보내기", exception);
+        }
+    }
+
+    private async Task<RuntimeComposition?> PickCompositionAsync(
+        IReadOnlyList<RuntimeComposition> compositions)
+    {
+        var list = new ListBox
+        {
+            ItemsSource = compositions
+                .Select(item => $"{item.Name} · 대사 {item.DialogueResultId} v{item.DialogueResultVersion}" +
+                    (item.HasPresentation ? $" · 연출 v{item.PresentationResultVersion}" : " · 연출 없음"))
+                .ToList(),
+            SelectedIndex = 0
+        };
+
+        var confirm = new Button
+        {
+            Content = "내보내기",
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        var dialog = new Window
+        {
+            Title = "내보낼 합성 선택",
+            Width = 460,
+            Height = 340,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new DockPanel
+            {
+                Margin = new Thickness(12),
+                Children =
+                {
+                    Docked(confirm, Dock.Bottom),
+                    new ScrollViewer { Content = list }
+                }
+            }
+        };
+
+        RuntimeComposition? picked = null;
+
+        confirm.Click += (_, _) =>
+        {
+            if (list.SelectedIndex >= 0 && list.SelectedIndex < compositions.Count)
+            {
+                picked = compositions[list.SelectedIndex];
+            }
+
+            dialog.Close();
+        };
+
+        await dialog.ShowDialog(this);
+        return picked;
+    }
+
+    private static Control Docked(Control control, Dock dock)
+    {
+        control.Margin = new Thickness(0, 10, 0, 0);
+        DockPanel.SetDock(control, dock);
+        return control;
     }
 
     private static FilePickerFileType ProjectFileType()
