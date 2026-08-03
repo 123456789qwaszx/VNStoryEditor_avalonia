@@ -257,45 +257,30 @@ public partial class MainWindow : Window
     // ── 내보내기 ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 합성들을 골라 런타임 .yarn 트리오로 내보낸다. 선언 파일은 폴더당 하나만 나온다.
-    /// 검증은 전부 <see cref="YarnBundleEmitter"/>가 한다 — 화면은 결과를 전달만 한다.
+    /// 대사 노드들을 골라 런타임 .yarn 트리오로 내보낸다. 짝이 되는 연출은 명시적 합성이
+    /// 아니라 <see cref="NodeExportResolver"/>가 연출 공급 연결에서 계산한다.
+    /// 선언 파일은 폴더당 하나만 나온다.
     /// </summary>
     private async void OnExportClick(object? sender, RoutedEventArgs e)
     {
         try
         {
-            IReadOnlyList<RuntimeComposition> compositions = _session.Project.Compositions;
+            IReadOnlyList<NodeExport> exports = await PickNodeExportsAsync();
 
-            if (compositions.Count == 0)
-            {
-                _session.SetStatus("내보낼 합성이 없습니다. 대사·연출 결과를 발행하고 합성을 먼저 만드세요.");
-                return;
-            }
-
-            IReadOnlyList<RuntimeComposition> picked = compositions.Count == 1
-                ? compositions
-                : await PickCompositionsAsync(compositions);
-
-            if (picked.Count == 0)
+            if (exports.Count == 0)
             {
                 return;
             }
 
             var bundles = new List<YarnBundle>();
 
-            foreach (RuntimeComposition composition in picked)
+            foreach (NodeExport export in exports)
             {
-                ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
-                    _session.Project.Results,
-                    composition);
-
-                if (!resolved.IsCompatible)
-                {
-                    _session.SetStatus($"'{composition.Name}'은 내보낼 수 없습니다. {resolved.ProblemSummary()}");
-                    return;
-                }
-
-                bundles.Add(YarnBundleEmitter.Emit(resolved, _session.Project, _session.Definition));
+                bundles.Add(YarnBundleEmitter.Emit(
+                    export.Dialogue!,
+                    export.Presentation,
+                    _session.Project,
+                    _session.Definition));
             }
 
             YarnBundle? blocked = bundles.FirstOrDefault(bundle => bundle.HasBlockingProblems);
@@ -306,31 +291,15 @@ public partial class MainWindow : Window
                 return;
             }
 
-            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
-
-            if (storage is null || !storage.CanPickFolder)
-            {
-                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
-                return;
-            }
-
-            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
-                new FolderPickerOpenOptions
-                {
-                    Title = ".yarn 트리오를 내보낼 폴더",
-                    AllowMultiple = false
-                });
-
-            if (folders.Count == 0)
+            if (await PickExportFolderAsync(".yarn 트리오를 내보낼 폴더") is not { } folder)
             {
                 return;
             }
 
-            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(
-                bundles,
-                folders[0].Path.LocalPath);
+            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(bundles, folder);
 
-            int warnings = bundles.Sum(bundle => bundle.Problems.Count);
+            int warnings = bundles.Sum(bundle => bundle.Problems.Count) +
+                exports.Sum(export => export.Problems.Count);
             _session.SetStatus(
                 $"{written.Count}개 파일을 내보냈습니다: " +
                 string.Join(", ", written.Select(Path.GetFileName)) +
@@ -345,71 +314,34 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// 번역·녹음 / 기획 검수 / 연출 테이블 CSV 3종을 내보낸다.
-    /// .yarn과 같은 입구(발행 결과 합성)를 쓰되, 파일 형식만 다르다.
+    /// .yarn과 같은 입구(대사 노드 + 연출 공급 연결)를 쓰되, 파일 형식만 다르다.
     /// </summary>
     private async void OnCsvExportClick(object? sender, RoutedEventArgs e)
     {
         try
         {
-            IReadOnlyList<RuntimeComposition> compositions = _session.Project.Compositions;
+            IReadOnlyList<NodeExport> exports = await PickNodeExportsAsync();
 
-            if (compositions.Count == 0)
-            {
-                _session.SetStatus("내보낼 합성이 없습니다. 대사·연출 결과를 발행하고 합성을 먼저 만드세요.");
-                return;
-            }
-
-            IReadOnlyList<RuntimeComposition> picked = compositions.Count == 1
-                ? compositions
-                : await PickCompositionsAsync(compositions);
-
-            if (picked.Count == 0)
+            if (exports.Count == 0)
             {
                 return;
             }
 
-            var bundles = new List<CsvBundle>();
-
-            foreach (RuntimeComposition composition in picked)
-            {
-                ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
-                    _session.Project.Results,
-                    composition);
-
-                if (!resolved.IsCompatible)
-                {
-                    _session.SetStatus($"'{composition.Name}'은 내보낼 수 없습니다. {resolved.ProblemSummary()}");
-                    return;
-                }
-
-                bundles.Add(CsvBundleExporter.Export(resolved, _session.Project, _session.Definition));
-            }
-
-            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
-
-            if (storage is null || !storage.CanPickFolder)
-            {
-                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
-                return;
-            }
-
-            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
-                new FolderPickerOpenOptions
-                {
-                    Title = "CSV를 내보낼 폴더",
-                    AllowMultiple = false
-                });
-
-            if (folders.Count == 0)
+            if (await PickExportFolderAsync("CSV를 내보낼 폴더") is not { } folder)
             {
                 return;
             }
 
             var written = new List<string>();
 
-            foreach (CsvBundle bundle in bundles)
+            foreach (NodeExport export in exports)
             {
-                written.AddRange(CsvBundleExporter.WriteTo(bundle, folders[0].Path.LocalPath));
+                CsvBundle bundle = CsvBundleExporter.Export(
+                    export.Dialogue!,
+                    export.Presentation,
+                    _session.Project,
+                    _session.Definition);
+                written.AddRange(CsvBundleExporter.WriteTo(bundle, folder));
             }
 
             _session.SetStatus(
@@ -423,14 +355,42 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<IReadOnlyList<RuntimeComposition>> PickCompositionsAsync(
-        IReadOnlyList<RuntimeComposition> compositions)
+    /// <summary>
+    /// 내보낼 대사 노드를 고른다. 하나뿐이면 바로 그것을 쓴다.
+    /// 내보낼 수 없는 노드(발행 없음 등)는 목록에서 이유와 함께 비활성으로 보인다.
+    /// </summary>
+    private async Task<IReadOnlyList<NodeExport>> PickNodeExportsAsync()
     {
+        List<(DialogueNode Node, NodeExport Export)> candidates = _session.Project.EnumerateNodes()
+            .OfType<DialogueNode>()
+            .Select(node => (Node: node, Export: NodeExportResolver.Resolve(_session.Project, node.Id)))
+            .ToList();
+
+        List<(DialogueNode Node, NodeExport Export)> exportable = candidates
+            .Where(item => item.Export.CanExport)
+            .ToList();
+
+        if (exportable.Count == 0)
+        {
+            _session.SetStatus("내보낼 수 있는 대사 노드가 없습니다. 대사 결과를 먼저 발행하세요.");
+            return Array.Empty<NodeExport>();
+        }
+
+        if (exportable.Count == 1)
+        {
+            return new[] { exportable[0].Export };
+        }
+
         var list = new ListBox
         {
-            ItemsSource = compositions
-                .Select(item => $"{item.Name} · 대사 {item.DialogueResultId} v{item.DialogueResultVersion}" +
-                    (item.HasPresentation ? $" · 연출 v{item.PresentationResultVersion}" : " · 연출 없음"))
+            ItemsSource = exportable
+                .Select(item =>
+                {
+                    string pair = item.Export.Presentation is { } presentation
+                        ? $"대사 v{item.Export.Dialogue!.Identity.Version} + 연출 v{presentation.Identity.Version}"
+                        : $"대사 v{item.Export.Dialogue!.Identity.Version} (연출 공급 없음)";
+                    return $"{item.Node.Name} · {pair}";
+                })
                 .ToList(),
             SelectionMode = SelectionMode.Multiple
         };
@@ -444,7 +404,7 @@ public partial class MainWindow : Window
 
         var dialog = new Window
         {
-            Title = "내보낼 합성 선택 (여러 개 선택 가능)",
+            Title = "내보낼 대사 노드 선택 (여러 개 선택 가능)",
             Width = 460,
             Height = 340,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -459,15 +419,15 @@ public partial class MainWindow : Window
             }
         };
 
-        var picked = new List<RuntimeComposition>();
+        var picked = new List<NodeExport>();
 
         confirm.Click += (_, _) =>
         {
             foreach (object? item in list.Selection.SelectedIndexes.OrderBy(index => index))
             {
-                if (item is int index && index >= 0 && index < compositions.Count)
+                if (item is int index && index >= 0 && index < exportable.Count)
                 {
-                    picked.Add(compositions[index]);
+                    picked.Add(exportable[index].Export);
                 }
             }
 
@@ -476,6 +436,26 @@ public partial class MainWindow : Window
 
         await dialog.ShowDialog(this);
         return picked;
+    }
+
+    private async Task<string?> PickExportFolderAsync(string title)
+    {
+        IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
+
+        if (storage is null || !storage.CanPickFolder)
+        {
+            _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
+            return null;
+        }
+
+        IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = title,
+                AllowMultiple = false
+            });
+
+        return folders.Count == 0 ? null : folders[0].Path.LocalPath;
     }
 
     private static Control Docked(Control control, Dock dock)
@@ -648,9 +628,15 @@ public partial class MainWindow : Window
             .Concat(_session.Project.Results.PresentationResults
                 .Select(result => $"{result.SourceNodeName} · {result.Identity.Label} · 연출")));
 
-        Section("합성", _session.Project.Compositions.Select(composition =>
-            $"{composition.Name} · 대사 v{composition.DialogueResultVersion}" +
-            (composition.HasPresentation ? $" + 연출 v{composition.PresentationResultVersion}" : string.Empty)));
+        // 내보내기 짝은 명시적 합성이 아니라 연출 공급 연결에서 계산된다.
+        Section("연출 공급", _session.Project.Links
+            .Where(link => link.Kind == NodeLinkKind.PresentationSupply && link.IsEnabled)
+            .Select(link =>
+            {
+                string presentation = _session.Project.FindNode(link.SourceNodeId)?.Name ?? link.SourceNodeId;
+                string dialogue = _session.Project.FindNode(link.TargetNodeId)?.Name ?? link.TargetNodeId;
+                return $"{dialogue} ← {presentation}";
+            }));
     }
 
     private void ShowSelectedNode()

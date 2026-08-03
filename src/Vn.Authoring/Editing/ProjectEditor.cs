@@ -367,9 +367,10 @@ public sealed partial class ProjectEditor
             return;
         }
 
-        if (node is PresentationNode)
+        if (node is not DialogueNode)
         {
-            // PresentationNode는 실행 출구가 아니라 Presentation link만 가진다.
+            // 실행 출구는 DialogueNode만 가진다. SetNode·CommandSupplyNode는 공급자이고
+            // PresentationNode는 결과 소비자다 — 어느 쪽도 실행 흐름을 정하지 않는다.
             return;
         }
 
@@ -508,6 +509,67 @@ public sealed partial class ProjectEditor
 
         Mutate(ProjectChangeKind.Connections, () => Project.Links.Add(link));
         return link;
+    }
+
+    /// <summary>
+    /// 이 연출 노드가 발행한 결과를 공급할 대사 노드를 정한다. null이면 연결을 끊는다.
+    ///
+    /// 짝은 한 쌍이다 — 연출 하나가 여러 대사에, 대사 하나가 여러 연출에 걸리면
+    /// 내보내기가 어느 짝을 골라야 할지 답할 수 없으므로 양쪽의 기존 공급을 걷어낸다.
+    /// </summary>
+    public NodeLink? SetPresentationSupplyTarget(string presentationNodeId, string? dialogueNodeId)
+    {
+        if (Project.FindPresentation(presentationNodeId) is null)
+        {
+            throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
+        }
+
+        if (dialogueNodeId is not null && Project.FindDialogue(dialogueNodeId) is null)
+        {
+            throw new InvalidOperationException($"'{dialogueNodeId}'는 대사 노드가 아닙니다.");
+        }
+
+        NodeLink? existing = Project.Links.FirstOrDefault(link =>
+            link.Kind == NodeLinkKind.PresentationSupply &&
+            string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal));
+
+        if (dialogueNodeId is null && existing is null)
+        {
+            return null;
+        }
+
+        if (existing is not null &&
+            string.Equals(existing.TargetNodeId, dialogueNodeId, StringComparison.Ordinal))
+        {
+            if (!existing.IsEnabled)
+            {
+                Mutate(ProjectChangeKind.Connections, () => existing.IsEnabled = true);
+            }
+
+            return existing;
+        }
+
+        NodeLink? created = null;
+
+        Mutate(ProjectChangeKind.Connections, () =>
+        {
+            Project.Links.RemoveAll(link =>
+                link.Kind == NodeLinkKind.PresentationSupply &&
+                (string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal) ||
+                 (dialogueNodeId is not null &&
+                  string.Equals(link.TargetNodeId, dialogueNodeId, StringComparison.Ordinal))));
+
+            if (dialogueNodeId is not null)
+            {
+                created = new NodeLink(
+                    kind: NodeLinkKind.PresentationSupply,
+                    sourceNodeId: presentationNodeId,
+                    targetNodeId: dialogueNodeId);
+                Project.Links.Add(created);
+            }
+        });
+
+        return created;
     }
 
     // ── 연출 공급 노드 ──────────────────────────────────────────────────────

@@ -117,15 +117,28 @@ public class ConnectionTests
     }
 
     [Fact]
-    public void 설정_노드도_기본_출구를_하나_가진다()
+    public void 설정_노드는_실행_출구를_가지지_않는다()
     {
+        // SetNode는 조건 공급자다. 실행 흐름은 DialogueNode만 정한다.
         var sample = new Sample();
 
-        ExitPort port = Assert.Single(NodeConnections.PortsOf(sample.SetNode, sample.Project));
-        Assert.Equal(ExitPortKind.Default, port.Kind);
+        Assert.Empty(NodeConnections.PortsOf(sample.SetNode, sample.Project));
 
-        sample.Editor.SetExitTarget(port, sample.Dialogue.Id);
-        Assert.Equal(sample.Dialogue.Id, sample.SetNode.DefaultExitTargetNodeId);
+        // 실행 출구를 억지로 지정해도 조용히 무시된다.
+        sample.Editor.SetExitTarget(sample.SetNode.Id, ExitPortKind.Default, null, sample.Dialogue.Id);
+        Assert.Null(sample.SetNode.DefaultExitTargetNodeId);
+    }
+
+    [Fact]
+    public void 연출_공급_노드도_실행_출구를_가지지_않는다()
+    {
+        var sample = new Sample();
+        CommandSupplyNode supply = sample.Editor.AddCommandSupplyNode(sample.File.Id, name: "공급");
+
+        Assert.Empty(NodeConnections.PortsOf(supply, sample.Project));
+
+        sample.Editor.SetExitTarget(supply.Id, ExitPortKind.Default, null, sample.Dialogue.Id);
+        Assert.Null(supply.DefaultExitTargetNodeId);
     }
 
     [Fact]

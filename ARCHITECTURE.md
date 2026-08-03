@@ -170,7 +170,7 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `StoryProject` | 대본 · StoryFile · 발행 결과 · 결과 조합을 모은 aggregate root |
 | `StoryFile` | 노드를 **소유하는** 단위. Id는 이름·경로와 분리되어 있다 |
 | `StoryNode` (추상) | Id, 이름, 그래프 좌표, **기본 출구**. 종류를 가리지 않는 공통부 |
-| `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리** |
+| `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리.** 실행 출구가 없다 — 공급자이지 실행 노드가 아니다(공급 노드들도 동일) |
 | `DialogueNode` | `ScriptId` + `DialogueLineExtension` 목록 + `BranchExits`. **본문은 없다** |
 | `DialogueLineExtension` | LineId 하나에 얹는 대사 논리. 조건·선택 전환과 변수 변경(`SetOperation`). 옵션 라벨 전환은 안정 `OptionId`(`op_`)를 가진다 — 선택지 리플레이가 위치 기반이라(계약서 C3) 순서 변경을 이 Id로 감지해 경고한다 |
 | `PresentationNode` | `Source`(대사 결과 참조) + Setup 커맨드(노드 수준, Set_ 노드 본문이 된다) + `LineId`별 binding. binding은 인라인 동기화 마커(`[adv/]` 위치 + 커맨드 그룹 경계)도 가진다. **대사를 복사하지 않는다** |
@@ -179,7 +179,7 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `ConditionDefinition` | Id + 작가용 이름 + 게임이 평가할 식 |
 | `CommandSupplyNode` | PresentationNode에 커맨드 범주·프리셋을 공급하는 노드. 어떤 범주 묶음을 "카메라 노드"라 부를지는 데이터다 |
 | `CommandPreset` | 값이 세팅된 커맨드(`pp_`). 발행 시에는 참조가 아니라 해석된 최종 인자가 얼어붙는다 |
-| `NodeLink` | 실행이 아닌 연결. `Settings`(SetNode→Dialogue)와 `CommandSupply`(공급→연출) |
+| `NodeLink` | 실행이 아닌 연결. `Settings`(SetNode→Dialogue), `CommandSupply`(공급→연출), `PresentationSupply`(연출→Dialogue — **발행된 결과**를 공급하며 내보내기 짝이 된다) |
 | `Identifier` | `sf_` / `nd_` / `ln_` / `cd_` / `lk_` / `sc_` / `rs_` / `rc_` 생성 |
 
 **Id와 이름을 나눈 이유:** 작가는 노드 이름을 바꾸고 줄 순서를 계속 바꾼다.
@@ -203,8 +203,9 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `DialoguePublisher` | 작업 상태 → 초안(검증) → 결과. 작업 중 미리 보기도 같은 초안을 쓴다 |
 | `PresentationPublisher` | 같은 구조. 정확한 대사 결과가 없으면 발행을 막는다 |
 | `ResultRepository` | **추가만 가능한** 결과 보관소 |
-| `RuntimeComposition` | 대사 결과 하나와 연출 결과 하나를 짝지은 정식 출력 입력 |
+| `RuntimeComposition` | 대사 결과 하나와 연출 결과 하나를 짝지은 정식 출력 입력. **화면은 더 이상 이것을 만들지 않는다** — 저장 호환용으로 남아 있다 |
 | `RuntimeCompositionResolver` | 그 짝이 실제로 호환되는지 판정한다 |
+| `NodeExportResolver` | 대사 노드 하나의 내보내기 짝을 **연출 공급 연결에서** 계산한다. 연출 결과가 읽은 대사 결과(Id·버전·해시)가 곧 짝이라 구조적으로 호환된다. 공급이 없으면 Story 단독이다 |
 
 **결과가 본문을 복사하는 것은 §4.3 위반이 아니다.** 결과는 어디에서도 수정할 수 없다.
 대본을 참조만 하면 나중에 대본을 고쳤을 때 v1이 함께 바뀌고, 그러면 버전을 매길 이유가 없다.

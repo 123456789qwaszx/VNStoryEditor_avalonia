@@ -42,8 +42,6 @@ public partial class SetNodeEditor : UserControl
         };
 
         AddAssignmentButton.Click += (_, _) => AddAssignment();
-        DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
-        DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
     }
 
     internal void Attach(AuthoringSession session) => _session = session;
@@ -88,8 +86,6 @@ public partial class SetNodeEditor : UserControl
             VariableHintText.Text = _session.Definition.Variables.Count == 0
                 ? $"{GameDefinition.FileName}이 없으면 변수 이름을 직접 적습니다."
                 : $"{GameDefinition.FileName}이 제안하는 변수 {_session.Definition.Variables.Count}개를 쓸 수 있습니다.";
-
-            BuildDefaultExit(node);
         }
         finally
         {
@@ -212,55 +208,4 @@ public partial class SetNodeEditor : UserControl
         _session.Editor.SetAssignments(node.Id, next);
     }
 
-    private void BuildDefaultExit(SetNode node)
-    {
-        List<StoryNode> targets = _session!.Project.EnumerateNodes()
-            .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
-            .ToList();
-
-        DefaultExitCombo.ItemsSource = targets.Select(target => target.Name).ToList();
-        DefaultExitCombo.Tag = targets;
-
-        bool connected = node.DefaultExitTargetNodeId is not null;
-        DefaultExitCheck.IsChecked = connected;
-        DefaultExitCombo.IsEnabled = connected;
-
-        DefaultExitCombo.SelectedIndex = connected
-            ? targets.FindIndex(target => string.Equals(target.Id, node.DefaultExitTargetNodeId, StringComparison.Ordinal))
-            : -1;
-    }
-
-    private void OnDefaultExitToggled()
-    {
-        if (_building || _session is null || _nodeId is null)
-        {
-            return;
-        }
-
-        DefaultExitCombo.IsEnabled = DefaultExitCheck.IsChecked == true;
-
-        if (DefaultExitCheck.IsChecked != true)
-        {
-            _session.Editor.SetExitTarget(_nodeId, ExitPortKind.Default, null, null);
-        }
-    }
-
-    private void OnDefaultExitSelected()
-    {
-        if (_building ||
-            _session is null ||
-            _nodeId is null ||
-            DefaultExitCombo.Tag is not List<StoryNode> targets ||
-            DefaultExitCombo.SelectedIndex < 0 ||
-            DefaultExitCombo.SelectedIndex >= targets.Count)
-        {
-            return;
-        }
-
-        _session.Editor.SetExitTarget(
-            _nodeId,
-            ExitPortKind.Default,
-            null,
-            targets[DefaultExitCombo.SelectedIndex].Id);
-    }
 }

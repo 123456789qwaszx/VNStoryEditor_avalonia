@@ -38,6 +38,7 @@ public partial class PresentationNodeEditor : UserControl
         };
 
         SourceCombo.SelectionChanged += (_, _) => OnSourceSelected();
+        SupplyCombo.SelectionChanged += (_, _) => OnSupplySelected();
         PublishButton.Click += (_, _) => Publish();
     }
 
@@ -67,6 +68,7 @@ public partial class PresentationNodeEditor : UserControl
             LineHost.Children.Clear();
 
             BuildSourcePicker(presentation);
+            BuildSupplyPicker(presentation);
 
             PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
                 _session.Project,
@@ -151,6 +153,58 @@ public partial class PresentationNodeEditor : UserControl
         SourceCombo.PlaceholderText = results.Count == 0
             ? "발행된 대사 결과가 없습니다"
             : "발행된 대사 결과 선택";
+    }
+
+    /// <summary>
+    /// 발행한 연출 결과를 어느 대사 노드에 공급할지. 내보내기는 이 연결로 짝을 찾는다.
+    /// 첫 항목 "(공급 안 함)"이 연결 해제다.
+    /// </summary>
+    private void BuildSupplyPicker(PresentationNode presentation)
+    {
+        List<DialogueNode> dialogues = _session!.Project.EnumerateNodes()
+            .OfType<DialogueNode>()
+            .ToList();
+
+        var labels = new List<string> { "(공급 안 함)" };
+        labels.AddRange(dialogues.Select(dialogue => dialogue.Name));
+
+        NodeLink? current = _session.Project.Links.FirstOrDefault(link =>
+            link.Kind == NodeLinkKind.PresentationSupply &&
+            link.IsEnabled &&
+            string.Equals(link.SourceNodeId, presentation.Id, StringComparison.Ordinal));
+
+        SupplyCombo.ItemsSource = labels;
+        SupplyCombo.Tag = dialogues;
+        SupplyCombo.SelectedIndex = current is null
+            ? 0
+            : dialogues.FindIndex(dialogue =>
+                  string.Equals(dialogue.Id, current.TargetNodeId, StringComparison.Ordinal)) + 1;
+        SupplyCombo.IsEnabled = dialogues.Count > 0;
+    }
+
+    private void OnSupplySelected()
+    {
+        if (_building ||
+            _session is null ||
+            _nodeId is null ||
+            SupplyCombo.Tag is not List<DialogueNode> dialogues ||
+            SupplyCombo.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _session.Editor.SetPresentationSupplyTarget(
+                _nodeId,
+                SupplyCombo.SelectedIndex == 0
+                    ? null
+                    : dialogues[SupplyCombo.SelectedIndex - 1].Id);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _session.SetStatus(exception.Message);
+        }
     }
 
     private void OnSourceSelected()

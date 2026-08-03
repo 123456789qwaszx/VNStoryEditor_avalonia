@@ -15,20 +15,21 @@ public class SettingsLinkTests
     [Fact]
     public void 실행_출구와_Settings_link는_서로_독립적이다()
     {
+        // 실행 출구는 DialogueNode가, 조건 공급은 link가 소유한다. 링크를 지워도 출구는 남는다.
         var sample = new Sample();
         sample.Editor.SetExitTarget(
-            sample.SetNode.Id,
+            sample.Dialogue.Id,
             ExitPortKind.Default,
             branchOpenLineId: null,
             sample.TargetA.Id);
 
         sample.Editor.RemoveLink(sample.SettingsLink.Id);
 
-        Assert.Equal(sample.TargetA.Id, sample.SetNode.DefaultExitTargetNodeId);
+        Assert.Equal(sample.TargetA.Id, sample.Dialogue.DefaultExitTargetNodeId);
         Assert.Empty(sample.Project.Links);
 
-        ExitPort execution = Assert.Single(NodeConnections.PortsOf(sample.SetNode, sample.Project));
-        Assert.Equal(ExitPortKind.Default, execution.Kind);
+        ExitPort execution = NodeConnections.PortsOf(sample.Dialogue, sample.Project)
+            .Single(port => port.Kind == ExitPortKind.Default);
         Assert.Equal(sample.TargetA.Id, execution.TargetNodeId);
     }
 

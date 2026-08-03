@@ -17,7 +17,16 @@ public enum NodeLinkKind
     Settings,
 
     /// <summary>CommandSupplyNode가 PresentationNode에 커맨드 범주와 프리셋을 공급한다.</summary>
-    CommandSupply
+    CommandSupply,
+
+    /// <summary>
+    /// PresentationNode가 <b>발행한 결과</b>를 DialogueNode에 공급한다.
+    /// 내보내기는 이 연결로 짝을 찾는다 — 명시적 합성 레코드를 따로 만들지 않는다.
+    /// 형식 버전 2의 live Presentation link와 다르다: 여기서 흐르는 것은 편집 중인
+    /// 노드가 아니라 얼어붙은 PresentationResult이고, 그 결과의 Source가 어느 대사
+    /// 결과와 짝인지를 이미 못박고 있다.
+    /// </summary>
+    PresentationSupply
 }
 
 /// <summary>

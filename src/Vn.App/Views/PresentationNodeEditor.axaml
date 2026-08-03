@@ -19,6 +19,19 @@
                           PlaceholderText="발행된 대사 결과 선택" />
             </Grid>
 
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0"
+                           Text="공급 대상"
+                           FontSize="11"
+                           Opacity="0.7"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          x:Name="SupplyCombo"
+                          Margin="8,0,0,0"
+                          HorizontalAlignment="Stretch"
+                          PlaceholderText="발행한 연출을 공급할 대사 노드" />
+            </Grid>
+
             <TextBlock x:Name="TargetText" FontSize="11" Opacity="0.65" TextWrapping="Wrap" />
         </StackPanel>
 

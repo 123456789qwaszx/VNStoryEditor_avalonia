@@ -136,11 +136,11 @@ public class SampleProjectTests
             .Select(port => (port.NodeId, port.Kind, port.Label, port.TargetNodeId))
             .ToList();
 
-        Assert.Contains(("nd_setup", ExitPortKind.Default, "기본", "nd_scene"), connections);
+        // SetNode(nd_setup)는 조건 공급자라 실행 간선을 만들지 않는다.
         Assert.Contains(("nd_scene", ExitPortKind.Branch, "호감 높음", "nd_good"), connections);
         Assert.Contains(("nd_scene", ExitPortKind.Branch, "신뢰 높음 (elseif)", "nd_trust"), connections);
         Assert.Contains(("nd_scene", ExitPortKind.Default, "기본", "nd_normal"), connections);
-        Assert.Equal(4, connections.Count);
+        Assert.Equal(3, connections.Count);
     }
 
     [Fact]

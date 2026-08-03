@@ -35,20 +35,6 @@
                     <StackPanel x:Name="AssignmentHost" Spacing="6" />
                 </StackPanel>
 
-                <StackPanel Spacing="6">
-                    <TextBlock Text="기본 출구" FontWeight="SemiBold" />
-                    <Grid ColumnDefinitions="Auto,*">
-                        <CheckBox Grid.Column="0"
-                                  x:Name="DefaultExitCheck"
-                                  Content="다음 노드로 이동"
-                                  VerticalAlignment="Center" />
-                        <ComboBox Grid.Column="1"
-                                  x:Name="DefaultExitCombo"
-                                  Margin="10,0,0,0"
-                                  HorizontalAlignment="Stretch"
-                                  PlaceholderText="대상 노드" />
-                    </Grid>
-                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

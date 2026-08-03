@@ -52,10 +52,11 @@ public static class NodeConnections
 
         var ports = new List<ExitPort>();
 
-        if (node is PresentationNode)
+        if (node is not DialogueNode)
         {
-            // PresentationNode는 실행 순서를 결정하지 않는다. Dialogue에 연출 데이터를
-            // 공급하는 Presentation link만 GraphProjection에서 별도 포트로 계산한다.
+            // 실행 출구는 DialogueNode만 가진다. SetNode·CommandSupplyNode는 공급자이고
+            // (조건·커맨드를 주는 쪽), PresentationNode는 결과 소비자다 — 셋 다
+            // 실행 순서를 결정하지 않는다. 공급 포트는 GraphProjection이 별도로 계산한다.
             return ports;
         }
 
@@ -87,17 +88,7 @@ public static class NodeConnections
                 "기본",
                 dialogue.DefaultExitTargetNodeId,
                 -1));
-
-            return ports;
         }
-
-        ports.Add(new ExitPort(
-            ExitPortKind.Default,
-            node.Id,
-            null,
-            "기본",
-            node.DefaultExitTargetNodeId,
-            -1));
 
         return ports;
     }

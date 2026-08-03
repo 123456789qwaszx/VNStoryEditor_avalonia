@@ -44,6 +44,8 @@ public partial class DialogueNodeEditor : UserControl
         ImportScriptButton.Click += OnImportScriptClick;
         ScriptCombo.SelectionChanged += (_, _) => OnScriptSelected();
         PublishButton.Click += (_, _) => Publish();
+        ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
+        ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
 
         DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
         DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
@@ -123,9 +125,53 @@ public partial class DialogueNodeEditor : UserControl
 
             LineHost.Children.Clear();
 
+            // 선택 블록은 조건과 달리 들여쓰기·색이 아니라 블록 전체를 감싸는 박스로 보여 준다.
+            // 옵션 라벨과 본문 카드가 같은 박스 안에 순서대로 쌓인다.
+            StackPanel? choiceBox = null;
+            int choiceChain = -1;
+
             foreach (ResolvedLine line in flow.Lines)
             {
-                LineHost.Children.Add(BuildCard(node, script, line));
+                bool inChoice = line.Branch is { IsChoice: true };
+
+                if (inChoice && (choiceBox is null || line.Branch!.ChainIndex != choiceChain))
+                {
+                    choiceBox = new StackPanel { Spacing = 6 };
+                    choiceChain = line.Branch!.ChainIndex;
+                    choiceBox.Children.Add(new TextBlock
+                    {
+                        Text = "선택지",
+                        FontSize = 11,
+                        FontWeight = FontWeight.Bold,
+                        Opacity = 0.75
+                    });
+
+                    LineHost.Children.Add(new Border
+                    {
+                        Padding = new Thickness(10),
+                        CornerRadius = new CornerRadius(8),
+                        BorderThickness = new Thickness(2),
+                        BorderBrush = new SolidColorBrush(Color.FromArgb(150, 217, 119, 6)),
+                        Background = new SolidColorBrush(Color.FromArgb(14, 217, 119, 6)),
+                        Child = choiceBox
+                    });
+                }
+                else if (!inChoice)
+                {
+                    choiceBox = null;
+                    choiceChain = -1;
+                }
+
+                Control card = BuildCard(node, script, line);
+
+                if (inChoice && choiceBox is not null)
+                {
+                    choiceBox.Children.Add(card);
+                }
+                else
+                {
+                    LineHost.Children.Add(card);
+                }
             }
 
             if (flow.Lines.Count == 0)
@@ -143,6 +189,7 @@ public partial class DialogueNodeEditor : UserControl
             AddOrphanCards(node, script);
             BuildDefaultExit(node);
             BuildResults(node);
+            RefreshExportState(node);
             ShowProblems(flow);
             RefreshPreviewCore(node);
         }
@@ -339,6 +386,26 @@ public partial class DialogueNodeEditor : UserControl
         if (resolved.IsBranchExit && branch is not null)
         {
             body.Children.Add(BuildExitBadge(branch));
+        }
+
+        if (branch is { IsChoice: true })
+        {
+            bool isLabel = resolved.Line.Transition?.OpensOption == true;
+
+            // 선택 블록은 바깥 박스가 감싼다. 카드 자체는 조건식 들여쓰기·팔레트 없이,
+            // 라벨(버튼 문구)만 살짝 강조하고 본문은 라벨 아래로 조금 들어간다.
+            return new Border
+            {
+                Margin = new Thickness(isLabel ? 0 : 18, 0, 0, 0),
+                Padding = new Thickness(10, 8),
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(70, 217, 119, 6)),
+                Background = isLabel
+                    ? new SolidColorBrush(Color.FromArgb(26, 217, 119, 6))
+                    : null,
+                Child = body
+            };
         }
 
         var card = new Border
@@ -870,6 +937,110 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         return 0;
+    }
+
+    // ── 노드 단위 내보내기 ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// 이 대사 노드의 내보내기 짝(연출 공급 연결에서 계산) 상태를 보여 준다.
+    /// </summary>
+    private void RefreshExportState(DialogueNode node)
+    {
+        NodeExport export = NodeExportResolver.Resolve(_session!.Project, node.Id);
+
+        ExportNodeButton.IsEnabled = export.CanExport;
+        ExportNodeCsvButton.IsEnabled = export.CanExport;
+
+        if (!export.CanExport)
+        {
+            ExportPairText.Text = export.ProblemSummary();
+            return;
+        }
+
+        string pair = export.Presentation is { } presentation
+            ? $"대사 v{export.Dialogue!.Identity.Version} + 연출 v{presentation.Identity.Version}"
+            : $"대사 v{export.Dialogue!.Identity.Version} (연출 공급 없음)";
+        string warnings = export.Problems.Count > 0
+            ? " · " + export.ProblemSummary()
+            : string.Empty;
+        ExportPairText.Text = pair + warnings;
+    }
+
+    /// <summary>이 노드 하나만 폴더로 내보낸다. 전체 내보내기와 같은 길(NodeExportResolver)을 지난다.</summary>
+    private async Task ExportNodeAsync(bool csv)
+    {
+        if (_session is null || _nodeId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            NodeExport export = NodeExportResolver.Resolve(_session.Project, _nodeId);
+
+            if (!export.CanExport)
+            {
+                _session.SetStatus($"내보낼 수 없습니다. {export.ProblemSummary()}");
+                return;
+            }
+
+            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
+
+            if (storage is null || !storage.CanPickFolder)
+            {
+                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
+                new FolderPickerOpenOptions
+                {
+                    Title = csv ? "이 노드의 CSV를 내보낼 폴더" : "이 노드의 .yarn을 내보낼 폴더",
+                    AllowMultiple = false
+                });
+
+            if (folders.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> written;
+
+            if (csv)
+            {
+                written = CsvBundleExporter.WriteTo(
+                    CsvBundleExporter.Export(
+                        export.Dialogue!,
+                        export.Presentation,
+                        _session.Project,
+                        _session.Definition),
+                    folders[0].Path.LocalPath);
+            }
+            else
+            {
+                YarnBundle bundle = YarnBundleEmitter.Emit(
+                    export.Dialogue!,
+                    export.Presentation,
+                    _session.Project,
+                    _session.Definition);
+
+                if (bundle.HasBlockingProblems)
+                {
+                    _session.SetStatus($"내보내지 못했습니다. {bundle.BlockingSummary()}");
+                    return;
+                }
+
+                written = YarnBundleEmitter.WriteBundles(new[] { bundle }, folders[0].Path.LocalPath);
+            }
+
+            _session.SetStatus(
+                $"{written.Count}개 파일을 내보냈습니다: " +
+                string.Join(", ", written.Select(System.IO.Path.GetFileName)));
+        }
+        catch (Exception exception)
+        {
+            _session.SetStatus($"내보내기에 실패했습니다. {exception.Message}");
+        }
     }
 
     private static Button SmallButton(string glyph, Action action)

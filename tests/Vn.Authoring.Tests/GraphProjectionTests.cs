@@ -40,11 +40,12 @@ public class GraphProjectionTests
         GraphConnectionProjection execution = projection.Connections.Single(
             connection => connection.Kind == GraphConnectionKind.ExecutionDefault);
 
-        Assert.Equal(setA.Id, execution.SourceNodeId);
+        Assert.Equal("nd_a", execution.SourceNodeId);
         Assert.Equal(dialogueB.Id, execution.TargetNodeId);
         Assert.Equal(GraphEndpointKind.ExpandedNodeOutput, execution.Source.Kind);
         Assert.Equal(GraphEndpointKind.CollapsedFileNodeInput, execution.Target.Kind);
         Assert.Equal(0, execution.Target.ProxyRowIndex);
+        _ = setA;
     }
 
     [Fact]
@@ -78,11 +79,12 @@ public class GraphProjectionTests
         GraphConnectionProjection execution = projection.Connections.Single(
             connection => connection.Kind == GraphConnectionKind.ExecutionDefault);
 
-        Assert.Equal(setA.Id, execution.SourceNodeId);
+        Assert.Equal("nd_a", execution.SourceNodeId);
         Assert.Equal(dialogueB.Id, execution.TargetNodeId);
         Assert.Equal(GraphEndpointKind.CollapsedFileNodeOutput, execution.Source.Kind);
-        Assert.Equal(0, execution.Source.ProxyRowIndex);
+        Assert.Equal(1, execution.Source.ProxyRowIndex);
         Assert.Equal(GraphEndpointKind.ExpandedNodeInput, execution.Target.Kind);
+        _ = setA;
     }
 
     [Fact]
@@ -97,15 +99,17 @@ public class GraphProjectionTests
         GraphConnectionProjection execution = projection.Connections.Single(
             connection => connection.Kind == GraphConnectionKind.ExecutionDefault);
 
-        Assert.Equal(setA.Id, execution.Source.NodeId);
+        Assert.Equal("nd_a", execution.Source.NodeId);
         Assert.Equal(dialogueB.Id, execution.Target.NodeId);
         Assert.Equal(GraphEndpointKind.CollapsedFileNodeOutput, execution.Source.Kind);
         Assert.Equal(GraphEndpointKind.CollapsedFileNodeInput, execution.Target.Kind);
+        _ = setA;
     }
 
     [Fact]
-    public void 펼쳐진_SetNode에는_실행_출구와_Settings_출구가_별도_포트로_보인다()
+    public void 펼쳐진_SetNode에는_Settings_공급_포트만_보인다()
     {
+        // SetNode는 조건 공급자다 — 실행 출구 포트는 없다.
         var (project, fileA, _, setA, _, _) = BuildProject();
 
         GraphProjection projection = GraphProjectionBuilder.Build(
@@ -116,10 +120,8 @@ public class GraphProjectionTests
             .OfType<ExpandedNodeProjection>()
             .Single(item => item.NodeId == setA.Id);
 
-        Assert.Collection(
-            node.OutputPorts,
-            port => Assert.Equal(GraphOutputPortKind.ExecutionDefault, port.Kind),
-            port => Assert.Equal(GraphOutputPortKind.Settings, port.Kind));
+        GraphOutputPortProjection port = Assert.Single(node.OutputPorts);
+        Assert.Equal(GraphOutputPortKind.Settings, port.Kind);
     }
 
     [Fact]
@@ -156,14 +158,15 @@ public class GraphProjectionTests
             new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal));
         Assert.Equal(2, all.Connections.Count);
 
-        // SetNode를 숨기면 그 노드에서 나가는 실행·Settings 간선이 전부 사라진다.
+        // SetNode를 숨기면 그 노드가 끝인 Settings 간선은 사라지고, 대사 사이의 실행 간선만 남는다.
         GraphProjection filtered = GraphProjectionBuilder.Build(
             project,
             new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal),
             definition: null,
             new GraphFilter(ShowSet: false));
 
-        Assert.Empty(filtered.Connections);
+        GraphConnectionProjection remaining = Assert.Single(filtered.Connections);
+        Assert.Equal(GraphConnectionKind.ExecutionDefault, remaining.Kind);
     }
 
     [Fact]
@@ -191,8 +194,8 @@ public class GraphProjectionTests
     {
         var (project, _, fileB, setA, _, dialogueB) = BuildProject();
 
-        // fileA를 접는다. 필터로 fileA의 SetNode가 빠지면... SetNode가 간선의 끝이므로
-        // 간선 자체가 사라져야 하고, 남은 행 번호는 필터 후 기준이어야 한다.
+        // 두 파일 모두 접은 채 SetNode를 숨긴다. proxyA에서 SetNode 행이 빠지므로
+        // dialogueA가 0행이 되고, 실행 간선의 끝도 그 새 행 번호에 붙어야 한다.
         GraphProjection projection = GraphProjectionBuilder.Build(
             project,
             new HashSet<string>(StringComparer.Ordinal),
@@ -203,12 +206,14 @@ public class GraphProjectionTests
             .OfType<CollapsedFileProjection>()
             .First();
 
-        // SetNode가 빠졌으므로 dialogueA가 0행이다.
-        Assert.Equal("nd_a", proxyA.Nodes[0].NodeId);
-        Assert.Empty(projection.Connections);
+        Assert.Equal("nd_a", Assert.Single(proxyA.Nodes).NodeId);
+
+        GraphConnectionProjection execution = Assert.Single(projection.Connections);
+        Assert.Equal("nd_a", execution.Source.NodeId);
+        Assert.Equal(0, execution.Source.ProxyRowIndex);
+        Assert.Equal(dialogueB.Id, execution.Target.NodeId);
         _ = fileB;
         _ = setA;
-        _ = dialogueB;
     }
 
     [Fact]
@@ -245,12 +250,13 @@ public class GraphProjectionTests
         var fileB = new StoryFile("sf_b", "B", "story/b.vnstory.json");
         var setA = new SetNode("nd_set", "설정")
         {
-            Layout = new NodeLayout { X = 80, Y = 100 },
-            DefaultExitTargetNodeId = "nd_b"
+            Layout = new NodeLayout { X = 80, Y = 100 }
         };
         var dialogueA = new DialogueNode("nd_a", "대사 A")
         {
-            Layout = new NodeLayout { X = 340, Y = 100 }
+            Layout = new NodeLayout { X = 340, Y = 100 },
+            // 실행 흐름은 DialogueNode만 정한다. SetNode는 조건 공급자일 뿐이다.
+            DefaultExitTargetNodeId = "nd_b"
         };
         var dialogueB = new DialogueNode("nd_b", "대사 B")
         {

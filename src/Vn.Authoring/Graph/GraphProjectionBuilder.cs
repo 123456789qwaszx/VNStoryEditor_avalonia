@@ -221,6 +221,24 @@ public static class GraphProjectionBuilder
                 null));
         }
 
+        // 연출 노드는 발행한 결과를 대사 노드에 되돌려 공급한다. 내보내기 짝은 이 연결이 정한다.
+        if (node is PresentationNode)
+        {
+            bool connected = project.Links.Any(link =>
+                link.Kind == NodeLinkKind.PresentationSupply &&
+                link.IsEnabled &&
+                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
+
+            ports.Add(new GraphOutputPortProjection(
+                PresentationSupplyPortKey(node.Id),
+                GraphOutputPortKind.Settings,
+                node.Id,
+                "연출 공급",
+                -1,
+                connected,
+                null));
+        }
+
         // 발행 결과 포트는 대사 노드 쪽에 붙는다. 연출은 이 결과를 읽는 소비자이지
         // 대사에 무언가를 공급하는 쪽이 아니다. 화살표 방향이 의존 방향과 같아야 한다.
         if (node is DialogueNode)
@@ -346,6 +364,21 @@ public static class GraphProjectionBuilder
                 null));
         }
 
+        foreach (NodeLink link in project.Links.Where(link =>
+                     link.Kind == NodeLinkKind.PresentationSupply && link.IsEnabled))
+        {
+            result.Add(new RawConnection(
+                $"link:{link.Id}",
+                GraphConnectionKind.Settings,
+                link.SourceNodeId,
+                link.TargetNodeId,
+                PresentationSupplyPortKey(link.SourceNodeId),
+                "연출 공급",
+                -1,
+                link.Id,
+                null));
+        }
+
         // 연출이 어느 대사 결과를 읽는지는 링크가 아니라 계산이다. 결과를 낳은 노드가
         // 아직 프로젝트에 있을 때만 간선을 그린다. 없으면 뱃지에 "(없음)"으로 남는다.
         foreach (PresentationNode presentation in project.EnumerateNodes().OfType<PresentationNode>())
@@ -426,6 +459,8 @@ public static class GraphProjectionBuilder
     private static string SettingsPortKey(string nodeId) => $"settings:{nodeId}";
 
     private static string SupplyPortKey(string nodeId) => $"supply:{nodeId}";
+
+    private static string PresentationSupplyPortKey(string nodeId) => $"presSupply:{nodeId}";
 
     private static string ResultPortKey(string nodeId) => $"result:{nodeId}";
 
