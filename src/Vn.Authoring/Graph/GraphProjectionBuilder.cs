@@ -20,13 +20,17 @@ public static class GraphProjectionBuilder
     public static GraphProjection Build(
         StoryProject project,
         IReadOnlySet<string> expandedFileIds,
-        GameDefinition? definition = null)
+        GameDefinition? definition = null,
+        GraphFilter? filter = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(expandedFileIds);
 
+        filter ??= GraphFilter.All;
+
         var fileByNodeId = new Dictionary<string, StoryFile>(StringComparer.Ordinal);
         var rowIndexByNodeId = new Dictionary<string, int>(StringComparer.Ordinal);
+        var kindByNodeId = new Dictionary<string, GraphNodeKind>(StringComparer.Ordinal);
         var portsByNodeId = new Dictionary<string, IReadOnlyList<GraphOutputPortProjection>>(StringComparer.Ordinal);
 
         foreach (StoryFile file in project.Files)
@@ -36,6 +40,7 @@ public static class GraphProjectionBuilder
                 StoryNode node = file.Nodes[index];
                 fileByNodeId[node.Id] = file;
                 rowIndexByNodeId[node.Id] = index;
+                kindByNodeId[node.Id] = KindOf(node);
                 portsByNodeId[node.Id] = BuildPorts(node, project, definition);
             }
         }
@@ -54,6 +59,11 @@ public static class GraphProjectionBuilder
             {
                 foreach (StoryNode node in file.Nodes)
                 {
+                    if (!filter.Shows(KindOf(node)))
+                    {
+                        continue;
+                    }
+
                     items.Add(new ExpandedNodeProjection(
                         file.Id,
                         node.Id,
@@ -68,6 +78,7 @@ public static class GraphProjectionBuilder
             }
 
             IReadOnlyList<CollapsedNodeEntry> entries = file.Nodes
+                .Where(node => filter.Shows(KindOf(node)))
                 .Select(node => new CollapsedNodeEntry(
                     node.Id,
                     node.Name,
@@ -84,12 +95,37 @@ public static class GraphProjectionBuilder
                 entries));
         }
 
+        // 접힌 파일의 행 번호는 필터로 남은 항목 기준이다. 원본 인덱스를 쓰면 간선 끝이
+        // 숨은 행을 가리켜 허공에 붙는다.
+        foreach (GraphItemProjection item in items)
+        {
+            if (item is CollapsedFileProjection proxy)
+            {
+                for (int row = 0; row < proxy.Nodes.Count; row++)
+                {
+                    rowIndexByNodeId[proxy.Nodes[row].NodeId] = row;
+                }
+            }
+        }
+
         var connections = new List<GraphConnectionProjection>();
 
         foreach (RawConnection raw in rawConnections)
         {
             if (!fileByNodeId.TryGetValue(raw.SourceNodeId, out StoryFile? sourceFile) ||
                 !fileByNodeId.TryGetValue(raw.TargetNodeId, out StoryFile? targetFile))
+            {
+                continue;
+            }
+
+            // 간선 정합: 한쪽 끝 노드가 필터로 숨으면 간선도 숨는다.
+            if (!filter.Shows(kindByNodeId[raw.SourceNodeId]) ||
+                !filter.Shows(kindByNodeId[raw.TargetNodeId]))
+            {
+                continue;
+            }
+
+            if (raw.Kind == GraphConnectionKind.ResultSnapshot && !filter.ShowResultConnections)
             {
                 continue;
             }

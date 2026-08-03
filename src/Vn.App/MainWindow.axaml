@@ -47,7 +47,7 @@
             <Border Grid.Column="0"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,Auto,*">
+                <Grid RowDefinitions="Auto,Auto,2*,Auto,3*">
                     <Border Grid.Row="0"
                             Padding="12,10"
                             BorderBrush="{DynamicResource ThemeBorderLowBrush}"
@@ -81,6 +81,21 @@
                         <StackPanel x:Name="FileListPanel"
                                     Margin="8,0,8,10"
                                     Spacing="4" />
+                    </ScrollViewer>
+
+                    <Border Grid.Row="3"
+                            Padding="12,8"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                            BorderThickness="0,1,0,1">
+                        <TextBlock Text="편집 자료" FontWeight="SemiBold" />
+                    </Border>
+
+                    <ScrollViewer Grid.Row="4"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ResourcePanel"
+                                    Margin="10,8,10,10"
+                                    Spacing="10" />
                     </ScrollViewer>
                 </Grid>
             </Border>

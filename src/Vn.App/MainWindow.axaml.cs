@@ -598,6 +598,61 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 좌측의 편집 자료 요약 — 대본 원본·발행 결과·합성 목록. 전부 읽기 전용이다.
+    /// 발행된 것에는 수정 UI가 없다는 원칙 그대로, 여기는 현황판일 뿐이다.
+    /// </summary>
+    private void RebuildResourcePanel()
+    {
+        ResourcePanel.Children.Clear();
+
+        void Section(string title, IEnumerable<string> rows)
+        {
+            var stack = new StackPanel { Spacing = 2 };
+            stack.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.8
+            });
+
+            bool any = false;
+
+            foreach (string row in rows)
+            {
+                any = true;
+                stack.Children.Add(new TextBlock
+                {
+                    Text = row,
+                    FontSize = 11,
+                    Opacity = 0.7,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+            }
+
+            if (!any)
+            {
+                stack.Children.Add(new TextBlock { Text = "없음", FontSize = 11, Opacity = 0.4 });
+            }
+
+            ResourcePanel.Children.Add(stack);
+        }
+
+        Section("대본", _session.Project.Scripts.Select(script =>
+            $"{script.Name} · {script.ActiveLines.Count()}줄" +
+            (string.IsNullOrWhiteSpace(script.SourcePath) ? string.Empty : " · 원본 연결됨")));
+
+        Section("발행 결과", _session.Project.Results.DialogueResults
+            .Select(result => $"{result.SourceNodeName} · {result.Identity.Label} · 대사")
+            .Concat(_session.Project.Results.PresentationResults
+                .Select(result => $"{result.SourceNodeName} · {result.Identity.Label} · 연출")));
+
+        Section("합성", _session.Project.Compositions.Select(composition =>
+            $"{composition.Name} · 대사 v{composition.DialogueResultVersion}" +
+            (composition.HasPresentation ? $" + 연출 v{composition.PresentationResultVersion}" : string.Empty)));
+    }
+
     private void ShowSelectedNode()
     {
         StoryNode? node = _session.SelectedNode;
@@ -664,6 +719,8 @@ public partial class MainWindow : Window
 
     private void RefreshShell()
     {
+        RebuildResourcePanel();
+
         string name = _session.ProjectPath is null
             ? _session.Project.Title
             : ProjectDisplayName(_session.ProjectPath);

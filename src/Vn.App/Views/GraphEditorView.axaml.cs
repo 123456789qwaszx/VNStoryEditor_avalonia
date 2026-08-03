@@ -48,6 +48,36 @@ public partial class GraphEditorView : UserControl
     private Line? _connectingLine;
 
     private EdgeVisual? _selectedEdge;
+    private bool _updatingFilter;
+
+    /// <summary>토글 상태로 만든 필터. 거르는 것은 화면이 아니라 투영이다.</summary>
+    private GraphFilter CurrentFilter => new(
+        ShowDialogue: FilterDialogueCheck.IsChecked == true,
+        ShowSet: FilterSetCheck.IsChecked == true,
+        ShowPresentation: FilterPresentationCheck.IsChecked == true,
+        ShowCommandSupply: FilterSupplyCheck.IsChecked == true,
+        ShowResultConnections: FilterResultCheck.IsChecked == true);
+
+    /// <summary>DialogueNode만 남기는 흐름 보기.</summary>
+    private void ApplyFlowOnlyFilter()
+    {
+        _updatingFilter = true;
+
+        try
+        {
+            FilterDialogueCheck.IsChecked = true;
+            FilterSetCheck.IsChecked = false;
+            FilterPresentationCheck.IsChecked = false;
+            FilterSupplyCheck.IsChecked = false;
+            FilterResultCheck.IsChecked = false;
+        }
+        finally
+        {
+            _updatingFilter = false;
+        }
+
+        Rebuild();
+    }
 
     public GraphEditorView()
     {
@@ -59,6 +89,23 @@ public partial class GraphEditorView : UserControl
         AddSupplyButton.Click += (_, _) => AddNode(GraphNodeKind.CommandSupply);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
         DeleteEdgeButton.Click += (_, _) => DeleteSelectedEdge();
+
+        foreach (CheckBox check in new[]
+                 {
+                     FilterDialogueCheck, FilterSetCheck, FilterPresentationCheck,
+                     FilterSupplyCheck, FilterResultCheck
+                 })
+        {
+            check.IsCheckedChanged += (_, _) =>
+            {
+                if (!_updatingFilter)
+                {
+                    Rebuild();
+                }
+            };
+        }
+
+        FlowOnlyButton.Click += (_, _) => ApplyFlowOnlyFilter();
 
         GraphCanvas.PointerMoved += OnCanvasPointerMoved;
         GraphCanvas.PointerReleased += OnCanvasPointerReleased;
@@ -82,7 +129,8 @@ public partial class GraphEditorView : UserControl
         _projection = GraphProjectionBuilder.Build(
             _session.Project,
             _session.ExpandedFileIds,
-            _session.Definition);
+            _session.Definition,
+            CurrentFilter);
 
         GraphCanvas.Children.Clear();
         _cards.Clear();
@@ -124,7 +172,8 @@ public partial class GraphEditorView : UserControl
         _projection = GraphProjectionBuilder.Build(
             _session.Project,
             _session.ExpandedFileIds,
-            _session.Definition);
+            _session.Definition,
+            CurrentFilter);
 
         foreach (ExpandedNodeProjection node in _projection.Items.OfType<ExpandedNodeProjection>())
         {

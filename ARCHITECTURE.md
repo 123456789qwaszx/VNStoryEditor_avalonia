@@ -240,7 +240,8 @@ JSON을 그대로 쓴다. 해시 전용 표현을 따로 만들면 저장 형식
 
 | 타입 | 역할 |
 |---|---|
-| `GraphProjectionBuilder` | 프로젝트와 펼침 상태로부터 **화면에 그릴 것**을 계산한다 |
+| `GraphProjectionBuilder` | 프로젝트·펼침 상태·`GraphFilter`(노드 종류 토글)로부터 **화면에 그릴 것**을 계산한다. 필터는 화면이 아니라 여기서 거른다 — 간선의 한쪽 끝이 숨으면 간선도 숨는다 |
+| `GraphFilter` | 노드 종류·결과 간선 토글. `FlowOnly`는 DialogueNode만 남기는 흐름 보기다 |
 | `ExpandedNodeProjection` | 펼친 파일의 실제 노드 카드. `Badge`에 대본·발행 버전이 붙는다 |
 | `CollapsedFileProjection` | 접힌 파일 하나. 소유 노드가 `CollapsedNodeEntry` 행으로 들어간다 |
 | `GraphConnectionProjection` | 간선 하나와 그 라벨·색 자리 |

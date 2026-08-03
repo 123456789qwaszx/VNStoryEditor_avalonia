@@ -123,6 +123,95 @@ public class GraphProjectionTests
     }
 
     [Fact]
+    public void 필터로_숨은_노드는_카드에서도_접힌_행에서도_빠진다()
+    {
+        var (project, fileA, _, setA, dialogueA, dialogueB) = BuildProject();
+
+        GraphProjection projection = GraphProjectionBuilder.Build(
+            project,
+            new HashSet<string>(new[] { fileA.Id }, StringComparer.Ordinal),
+            definition: null,
+            new GraphFilter(ShowSet: false));
+
+        // 펼친 파일: SetNode 카드가 빠진다.
+        Assert.DoesNotContain(
+            projection.Items.OfType<ExpandedNodeProjection>(),
+            item => item.NodeId == setA.Id);
+        Assert.Contains(
+            projection.Items.OfType<ExpandedNodeProjection>(),
+            item => item.NodeId == dialogueA.Id);
+
+        // 접힌 파일의 행 목록도 같은 필터를 지난다 (B 파일에는 Dialogue만 있어 그대로).
+        CollapsedFileProjection proxy = projection.Items.OfType<CollapsedFileProjection>().Single();
+        Assert.Equal(dialogueB.Id, Assert.Single(proxy.Nodes).NodeId);
+    }
+
+    [Fact]
+    public void 간선_정합_한쪽_끝이_숨으면_간선도_숨는다()
+    {
+        var (project, fileA, fileB, _, _, _) = BuildProject();
+
+        GraphProjection all = GraphProjectionBuilder.Build(
+            project,
+            new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal));
+        Assert.Equal(2, all.Connections.Count);
+
+        // SetNode를 숨기면 그 노드에서 나가는 실행·Settings 간선이 전부 사라진다.
+        GraphProjection filtered = GraphProjectionBuilder.Build(
+            project,
+            new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal),
+            definition: null,
+            new GraphFilter(ShowSet: false));
+
+        Assert.Empty(filtered.Connections);
+    }
+
+    [Fact]
+    public void 흐름_보기는_대사_노드와_실행_간선만_남긴다()
+    {
+        var (project, fileA, fileB, _, dialogueA, dialogueB) = BuildProject();
+        dialogueA.DefaultExitTargetNodeId = dialogueB.Id;
+
+        GraphProjection projection = GraphProjectionBuilder.Build(
+            project,
+            new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal),
+            definition: null,
+            GraphFilter.FlowOnly);
+
+        Assert.All(
+            projection.Items.OfType<ExpandedNodeProjection>(),
+            item => Assert.Equal(GraphNodeKind.Dialogue, item.NodeKind));
+        GraphConnectionProjection connection = Assert.Single(projection.Connections);
+        Assert.Equal(GraphConnectionKind.ExecutionDefault, connection.Kind);
+        Assert.Equal(dialogueA.Id, connection.SourceNodeId);
+    }
+
+    [Fact]
+    public void 필터로_행이_빠진_FileProxy의_간선은_남은_행_번호로_다시_붙는다()
+    {
+        var (project, _, fileB, setA, _, dialogueB) = BuildProject();
+
+        // fileA를 접는다. 필터로 fileA의 SetNode가 빠지면... SetNode가 간선의 끝이므로
+        // 간선 자체가 사라져야 하고, 남은 행 번호는 필터 후 기준이어야 한다.
+        GraphProjection projection = GraphProjectionBuilder.Build(
+            project,
+            new HashSet<string>(StringComparer.Ordinal),
+            definition: null,
+            new GraphFilter(ShowSet: false));
+
+        CollapsedFileProjection proxyA = projection.Items
+            .OfType<CollapsedFileProjection>()
+            .First();
+
+        // SetNode가 빠졌으므로 dialogueA가 0행이다.
+        Assert.Equal("nd_a", proxyA.Nodes[0].NodeId);
+        Assert.Empty(projection.Connections);
+        _ = fileB;
+        _ = setA;
+        _ = dialogueB;
+    }
+
+    [Fact]
     public void 직교_간선은_수평과_수직_선분만_만든다()
     {
         IReadOnlyList<GraphPosition> points = OrthogonalEdgeRouter.Route(
