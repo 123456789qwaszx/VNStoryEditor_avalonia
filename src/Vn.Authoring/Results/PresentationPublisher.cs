@@ -10,12 +10,14 @@ public sealed class PresentationDraft
         string sourceNodeId,
         string sourceNodeName,
         DialogueResultReference? source,
+        IReadOnlyList<PresentationResultCommand> setupCommands,
         IReadOnlyList<PresentationResultBinding> bindings,
         IReadOnlyList<PublishProblem> problems)
     {
         SourceNodeId = sourceNodeId;
         SourceNodeName = sourceNodeName;
         Source = source;
+        SetupCommands = setupCommands;
         Bindings = bindings;
         Problems = problems;
     }
@@ -25,6 +27,8 @@ public sealed class PresentationDraft
     public string SourceNodeName { get; }
 
     public DialogueResultReference? Source { get; }
+
+    public IReadOnlyList<PresentationResultCommand> SetupCommands { get; }
 
     public IReadOnlyList<PresentationResultBinding> Bindings { get; }
 
@@ -89,6 +93,11 @@ public static class PresentationPublisher
             }
         }
 
+        PresentationResultCommand[] setupCommands = node.SetupCommands
+            .Where(command => command.IsEnabled)
+            .Select(Freeze)
+            .ToArray();
+
         var bindings = new List<PresentationResultBinding>();
 
         foreach (PresentationLineBinding binding in node.Bindings)
@@ -109,16 +118,21 @@ public static class PresentationPublisher
                 binding.LineId,
                 binding.Commands
                     .Where(command => command.IsEnabled)
-                    .Select(command => new PresentationResultCommand(
-                        command.Id,
-                        command.DefinitionId,
-                        new Dictionary<string, string>(command.Arguments, StringComparer.Ordinal),
-                        command.Note))
+                    .Select(Freeze)
                     .ToArray(),
                 orphan));
         }
 
-        return new PresentationDraft(node.Id, node.Name, source, bindings, problems);
+        return new PresentationDraft(node.Id, node.Name, source, setupCommands, bindings, problems);
+    }
+
+    private static PresentationResultCommand Freeze(PresentationCommandInstance command)
+    {
+        return new PresentationResultCommand(
+            command.Id,
+            command.DefinitionId,
+            new Dictionary<string, string>(command.Arguments, StringComparer.Ordinal),
+            command.Note);
     }
 
     public static PresentationResult Publish(
@@ -159,6 +173,7 @@ public static class PresentationPublisher
             draft.SourceNodeId,
             draft.SourceNodeName,
             draft.Source!.Value,
+            draft.SetupCommands,
             draft.Bindings,
             publishedAt);
 

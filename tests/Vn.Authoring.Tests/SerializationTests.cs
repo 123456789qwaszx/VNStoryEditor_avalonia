@@ -71,6 +71,26 @@ public class SerializationTests
     }
 
     [Fact]
+    public void 연출_노드의_Setup_커맨드는_순서대로_왕복한다()
+    {
+        var sample = new Sample();
+        PresentationNode presentation = sample.Editor.AddPresentationNode(sample.File.Id, name: "연출");
+        sample.Editor.AddPresentationSetupCommand(
+            presentation.Id,
+            "char_rig_cast.slot",
+            new Dictionary<string, string> { ["layout"] = "2" });
+        sample.Editor.AddPresentationSetupCommand(presentation.Id, "char_rig_cast.cast");
+
+        StoryProject reloaded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(sample.Project));
+        PresentationNode reloadedNode = reloaded.FindPresentation(presentation.Id)!;
+
+        Assert.Equal(
+            presentation.SetupCommands.Select(command => (command.Id, command.DefinitionId)),
+            reloadedNode.SetupCommands.Select(command => (command.Id, command.DefinitionId)));
+        Assert.Equal("2", reloadedNode.SetupCommands[0].Arguments["layout"]);
+    }
+
+    [Fact]
     public void 스냅샷은_결정적이고_LF이며_한글을_보존한다()
     {
         var sample = new Sample();

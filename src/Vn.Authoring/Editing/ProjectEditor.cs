@@ -515,6 +515,63 @@ public sealed partial class ProjectEditor
         return command;
     }
 
+    /// <summary>
+    /// LineId 없는 노드 수준 Setup 커맨드를 목록 맨 뒤에 붙인다.
+    /// 장면 준비(슬롯·캐스팅·배경 스폰·리셋)는 대사 줄이 아니라 노드에 속한다.
+    /// </summary>
+    public PresentationCommandInstance AddPresentationSetupCommand(
+        string presentationNodeId,
+        string definitionId,
+        IReadOnlyDictionary<string, string>? arguments = null,
+        string? note = null)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        var command = new PresentationCommandInstance(definitionId: definitionId)
+        {
+            Note = note
+        };
+
+        if (arguments is not null)
+        {
+            foreach ((string key, string value) in arguments)
+            {
+                command.Arguments[key] = value;
+            }
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () => node.SetupCommands.Add(command));
+        return command;
+    }
+
+    public void MovePresentationSetupCommand(
+        string presentationNodeId,
+        string commandId,
+        int delta)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        int from = node.SetupCommands.FindIndex(command =>
+            string.Equals(command.Id, commandId, StringComparison.Ordinal));
+
+        if (from < 0)
+        {
+            return;
+        }
+
+        int to = Math.Clamp(from + delta, 0, node.SetupCommands.Count - 1);
+
+        if (to == from)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            PresentationCommandInstance command = node.SetupCommands[from];
+            node.SetupCommands.RemoveAt(from);
+            node.SetupCommands.Insert(to, command);
+        });
+    }
+
     public void MovePresentationCommand(
         string presentationNodeId,
         string commandId,
@@ -555,6 +612,15 @@ public sealed partial class ProjectEditor
     public void RemovePresentationCommand(string presentationNodeId, string commandId)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
+
+        if (node.SetupCommands.Any(command =>
+                string.Equals(command.Id, commandId, StringComparison.Ordinal)))
+        {
+            Mutate(ProjectChangeKind.PresentationContent, () => node.SetupCommands.RemoveAll(
+                command => string.Equals(command.Id, commandId, StringComparison.Ordinal)));
+            return;
+        }
+
         PresentationLineBinding? binding = node.Bindings.FirstOrDefault(item =>
             item.Commands.Any(command => string.Equals(command.Id, commandId, StringComparison.Ordinal)));
 
@@ -573,8 +639,8 @@ public sealed partial class ProjectEditor
         bool enabled)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
-        PresentationCommandInstance? command = node.Bindings
-            .SelectMany(binding => binding.Commands)
+        PresentationCommandInstance? command = node.SetupCommands
+            .Concat(node.Bindings.SelectMany(binding => binding.Commands))
             .FirstOrDefault(item => string.Equals(item.Id, commandId, StringComparison.Ordinal));
 
         if (command is not null && command.IsEnabled != enabled)
@@ -590,8 +656,8 @@ public sealed partial class ProjectEditor
         IReadOnlyDictionary<string, string>? defaultArguments = null)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
-        PresentationCommandInstance? command = node.Bindings
-            .SelectMany(binding => binding.Commands)
+        PresentationCommandInstance? command = node.SetupCommands
+            .Concat(node.Bindings.SelectMany(binding => binding.Commands))
             .FirstOrDefault(item => string.Equals(item.Id, commandId, StringComparison.Ordinal));
 
         if (command is null)

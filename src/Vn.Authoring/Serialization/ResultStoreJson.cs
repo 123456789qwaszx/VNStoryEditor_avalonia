@@ -290,12 +290,18 @@ internal static class PresentationResultJson
             draft.SourceNodeId,
             draft.SourceNodeName,
             draft.Source!.Value,
+            draft.SetupCommands,
             draft.Bindings);
     }
 
     public static JsonObject WriteBody(PresentationResult result)
     {
-        return WriteBody(result.SourceNodeId, result.SourceNodeName, result.Source, result.Bindings);
+        return WriteBody(
+            result.SourceNodeId,
+            result.SourceNodeName,
+            result.Source,
+            result.SetupCommands,
+            result.Bindings);
     }
 
     public static JsonObject Write(PresentationResult result)
@@ -331,6 +337,16 @@ internal static class PresentationResultJson
             (string?)sourceJson["contentHash"]
                 ?? throw new InvalidDataException($"연출 결과 '{identity.Label}'의 source에 contentHash가 없습니다."));
 
+        var setupCommands = new List<PresentationResultCommand>();
+
+        foreach (JsonNode? setupItem in json["setup"]?.AsArray() ?? new JsonArray())
+        {
+            if (setupItem is JsonObject setupJson)
+            {
+                setupCommands.Add(ReadCommand(setupJson, identity));
+            }
+        }
+
         var bindings = new List<PresentationResultBinding>();
 
         foreach (JsonNode? item in json["bindings"]?.AsArray() ?? new JsonArray())
@@ -344,25 +360,10 @@ internal static class PresentationResultJson
 
             foreach (JsonNode? commandItem in bindingJson["commands"]?.AsArray() ?? new JsonArray())
             {
-                if (commandItem is not JsonObject commandJson)
+                if (commandItem is JsonObject commandJson)
                 {
-                    continue;
+                    commands.Add(ReadCommand(commandJson, identity));
                 }
-
-                var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
-
-                foreach ((string key, JsonNode? value) in commandJson["arguments"]?.AsObject()
-                             ?? new JsonObject())
-                {
-                    arguments[key] = (string?)value ?? string.Empty;
-                }
-
-                commands.Add(new PresentationResultCommand(
-                    (string?)commandJson["id"]
-                        ?? throw new InvalidDataException($"연출 결과 '{identity.Label}'의 명령에 id가 없습니다."),
-                    (string?)commandJson["definitionId"] ?? string.Empty,
-                    arguments,
-                    (string?)commandJson["note"]));
             }
 
             bindings.Add(new PresentationResultBinding(
@@ -377,14 +378,34 @@ internal static class PresentationResultJson
             (string?)json["sourceNode"] ?? string.Empty,
             (string?)json["sourceNodeName"] ?? string.Empty,
             source,
+            setupCommands,
             bindings,
             DialogueResultJson.ReadTimestamp(json["publishedAt"]));
+    }
+
+    private static PresentationResultCommand ReadCommand(JsonObject commandJson, ResultIdentity identity)
+    {
+        var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach ((string key, JsonNode? value) in commandJson["arguments"]?.AsObject()
+                     ?? new JsonObject())
+        {
+            arguments[key] = (string?)value ?? string.Empty;
+        }
+
+        return new PresentationResultCommand(
+            (string?)commandJson["id"]
+                ?? throw new InvalidDataException($"연출 결과 '{identity.Label}'의 명령에 id가 없습니다."),
+            (string?)commandJson["definitionId"] ?? string.Empty,
+            arguments,
+            (string?)commandJson["note"]);
     }
 
     private static JsonObject WriteBody(
         string sourceNodeId,
         string sourceNodeName,
         DialogueResultReference source,
+        IReadOnlyList<PresentationResultCommand> setupCommands,
         IReadOnlyList<PresentationResultBinding> bindings)
     {
         var bindingArray = new JsonArray();
@@ -395,32 +416,7 @@ internal static class PresentationResultJson
 
             foreach (PresentationResultCommand command in binding.Commands)
             {
-                var commandJson = new JsonObject
-                {
-                    ["id"] = command.CommandId,
-                    ["definitionId"] = command.DefinitionId
-                };
-
-                if (command.Arguments.Count > 0)
-                {
-                    var arguments = new JsonObject();
-
-                    foreach ((string key, string value) in command.Arguments.OrderBy(
-                                 pair => pair.Key,
-                                 StringComparer.Ordinal))
-                    {
-                        arguments[key] = value;
-                    }
-
-                    commandJson["arguments"] = arguments;
-                }
-
-                if (command.Note is not null)
-                {
-                    commandJson["note"] = command.Note;
-                }
-
-                commands.Add(commandJson);
+                commands.Add(WriteCommand(command));
             }
 
             var bindingJson = new JsonObject
@@ -437,7 +433,7 @@ internal static class PresentationResultJson
             bindingArray.Add(bindingJson);
         }
 
-        return new JsonObject
+        var json = new JsonObject
         {
             ["sourceNode"] = sourceNodeId,
             ["sourceNodeName"] = sourceNodeName,
@@ -446,9 +442,55 @@ internal static class PresentationResultJson
                 ["resultId"] = source.ResultId,
                 ["version"] = source.Version,
                 ["contentHash"] = source.ContentHash
-            },
-            ["bindings"] = bindingArray
+            }
         };
+
+        // 빈 setup은 쓰지 않는다. 본문이 해시 입력이므로 키 하나가 늘면
+        // 이미 발행된 v1 결과의 무결성 검사(IsIntact)가 전부 깨진다.
+        if (setupCommands.Count > 0)
+        {
+            var setup = new JsonArray();
+
+            foreach (PresentationResultCommand command in setupCommands)
+            {
+                setup.Add(WriteCommand(command));
+            }
+
+            json["setup"] = setup;
+        }
+
+        json["bindings"] = bindingArray;
+        return json;
+    }
+
+    private static JsonObject WriteCommand(PresentationResultCommand command)
+    {
+        var commandJson = new JsonObject
+        {
+            ["id"] = command.CommandId,
+            ["definitionId"] = command.DefinitionId
+        };
+
+        if (command.Arguments.Count > 0)
+        {
+            var arguments = new JsonObject();
+
+            foreach ((string key, string value) in command.Arguments.OrderBy(
+                         pair => pair.Key,
+                         StringComparer.Ordinal))
+            {
+                arguments[key] = value;
+            }
+
+            commandJson["arguments"] = arguments;
+        }
+
+        if (command.Note is not null)
+        {
+            commandJson["note"] = command.Note;
+        }
+
+        return commandJson;
     }
 }
 

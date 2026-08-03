@@ -27,13 +27,15 @@ public sealed record PresentationResultBinding(
 /// </summary>
 public sealed class PresentationResult
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <remarks>v2: LineId 없는 노드 수준 Setup 커맨드가 실린다.</remarks>
+    public const int CurrentSchemaVersion = 2;
 
     public PresentationResult(
         ResultIdentity identity,
         string sourceNodeId,
         string sourceNodeName,
         DialogueResultReference source,
+        IReadOnlyList<PresentationResultCommand> setupCommands,
         IReadOnlyList<PresentationResultBinding> bindings,
         DateTimeOffset publishedAt)
     {
@@ -41,6 +43,7 @@ public sealed class PresentationResult
         SourceNodeId = sourceNodeId;
         SourceNodeName = sourceNodeName;
         Source = source;
+        SetupCommands = setupCommands;
         Bindings = bindings;
         PublishedAt = publishedAt;
     }
@@ -53,6 +56,9 @@ public sealed class PresentationResult
 
     /// <summary>이 연출이 읽은 DialogueResult. 합성할 때 이것과 정확히 맞는지 검사한다.</summary>
     public DialogueResultReference Source { get; }
+
+    /// <summary>장면 준비용 노드 수준 커맨드. 이미터에서 Set_ 노드 본문이 된다.</summary>
+    public IReadOnlyList<PresentationResultCommand> SetupCommands { get; }
 
     public IReadOnlyList<PresentationResultBinding> Bindings { get; }
 

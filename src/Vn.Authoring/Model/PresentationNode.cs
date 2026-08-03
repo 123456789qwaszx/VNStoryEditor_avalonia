@@ -26,6 +26,13 @@ public sealed class PresentationNode : StoryNode
     public DialogueResultReference? Source { get; set; }
 
     /// <summary>
+    /// LineId 없는 노드 수준 커맨드. 슬롯·캐스팅·배경 스폰·리셋처럼 장면에 들어가기 전에
+    /// 한 번 실행할 준비 작업이다. 이미터에서 Set_ 노드 본문이 된다(계약서 A1·A2).
+    /// 목록 순서가 곧 실행·출력 순서다.
+    /// </summary>
+    public List<PresentationCommandInstance> SetupCommands { get; init; } = new();
+
+    /// <summary>
     /// LineId별 연출 데이터. 목록 순서는 사람이 파일에서 읽는 순서일 뿐이고,
     /// 대사 줄과의 결합은 반드시 <see cref="PresentationLineBinding.LineId"/>로 한다.
     /// </summary>
@@ -45,6 +52,7 @@ public sealed class PresentationNode : StoryNode
         {
             Layout = Layout.Clone(),
             Source = Source,
+            SetupCommands = SetupCommands.Select(command => command.Clone()).ToList(),
             Bindings = Bindings.Select(binding => binding.Clone()).ToList()
         };
     }

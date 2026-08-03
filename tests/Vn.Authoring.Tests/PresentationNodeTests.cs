@@ -139,6 +139,76 @@ public class PresentationNodeTests
     }
 
     [Fact]
+    public void Setup_커맨드는_순서를_지키고_이동과_삭제가_된다()
+    {
+        PresentationContext context = BuildContext();
+
+        PresentationCommandInstance slot = context.Editor.AddPresentationSetupCommand(
+            context.PresentationA.Id,
+            "char_rig_cast.slot");
+        PresentationCommandInstance cast = context.Editor.AddPresentationSetupCommand(
+            context.PresentationA.Id,
+            "char_rig_cast.cast");
+
+        Assert.Equal(
+            new[] { slot.Id, cast.Id },
+            context.PresentationA.SetupCommands.Select(item => item.Id));
+
+        context.Editor.MovePresentationSetupCommand(context.PresentationA.Id, cast.Id, -1);
+        Assert.Equal(
+            new[] { cast.Id, slot.Id },
+            context.PresentationA.SetupCommands.Select(item => item.Id));
+
+        context.Editor.RemovePresentationCommand(context.PresentationA.Id, slot.Id);
+        Assert.Equal(cast.Id, Assert.Single(context.PresentationA.SetupCommands).Id);
+    }
+
+    [Fact]
+    public void Setup_커맨드가_발행_결과에_실리고_비활성은_빠진다()
+    {
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
+
+        PresentationCommandInstance kept = context.Editor.AddPresentationSetupCommand(
+            context.PresentationA.Id,
+            "char_rig_cast.slot",
+            new Dictionary<string, string> { ["layout"] = "2" });
+        PresentationCommandInstance disabled = context.Editor.AddPresentationSetupCommand(
+            context.PresentationA.Id,
+            "char_rig_cast.cast");
+        context.Editor.SetPresentationCommandEnabled(
+            context.PresentationA.Id,
+            disabled.Id,
+            enabled: false);
+
+        PresentationResult result = context.Editor.PublishPresentation(context.PresentationA.Id).Result;
+
+        Assert.Equal(2, result.Identity.SchemaVersion);
+        PresentationResultCommand frozen = Assert.Single(result.SetupCommands);
+        Assert.Equal(kept.Id, frozen.CommandId);
+        Assert.Equal("2", frozen.Arguments["layout"]);
+    }
+
+    [Fact]
+    public void Setup_커맨드가_바뀌면_연출_결과_해시가_바뀐다()
+    {
+        PresentationContext context = BuildContext();
+        AttachLatest(context);
+        PresentationResult v1 = context.Editor.PublishPresentation(context.PresentationA.Id).Result;
+
+        context.Editor.AddPresentationSetupCommand(context.PresentationA.Id, "char_rig_cast.slot");
+        PublishOutcome<PresentationResult> outcome =
+            context.Editor.PublishPresentation(context.PresentationA.Id);
+
+        Assert.True(outcome.Created);
+        Assert.Equal(2, outcome.Result.Identity.Version);
+        Assert.NotEqual(v1.Identity.ContentHash, outcome.Result.Identity.ContentHash);
+
+        // v1은 여전히 Setup이 없다. 발행 결과는 불변이다.
+        Assert.Empty(v1.SetupCommands);
+    }
+
+    [Fact]
     public void PresentationResult는_대상_대사_결과의_Id와_버전과_해시를_보존한다()
     {
         PresentationContext context = BuildContext();

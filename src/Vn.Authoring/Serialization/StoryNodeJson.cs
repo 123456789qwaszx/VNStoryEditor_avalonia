@@ -191,6 +191,18 @@ internal static class StoryNodeJson
             };
         }
 
+        if (node.SetupCommands.Count > 0)
+        {
+            var setup = new JsonArray();
+
+            foreach (PresentationCommandInstance command in node.SetupCommands)
+            {
+                setup.Add(WriteCommand(command));
+            }
+
+            json["setup"] = setup;
+        }
+
         var bindings = new JsonArray();
 
         foreach (PresentationLineBinding binding in node.Bindings)
@@ -199,36 +211,7 @@ internal static class StoryNodeJson
 
             foreach (PresentationCommandInstance command in binding.Commands)
             {
-                var commandJson = new JsonObject
-                {
-                    ["id"] = command.Id,
-                    ["definitionId"] = command.DefinitionId
-                };
-
-                if (!command.IsEnabled)
-                {
-                    commandJson["enabled"] = false;
-                }
-
-                if (command.Arguments.Count > 0)
-                {
-                    var arguments = new JsonObject();
-                    foreach ((string key, string value) in command.Arguments.OrderBy(
-                                 pair => pair.Key,
-                                 StringComparer.Ordinal))
-                    {
-                        arguments[key] = value;
-                    }
-
-                    commandJson["arguments"] = arguments;
-                }
-
-                if (command.Note is not null)
-                {
-                    commandJson["note"] = command.Note;
-                }
-
-                commands.Add(commandJson);
+                commands.Add(WriteCommand(command));
             }
 
             bindings.Add(new JsonObject
@@ -239,6 +222,40 @@ internal static class StoryNodeJson
         }
 
         json["bindings"] = bindings;
+    }
+
+    private static JsonObject WriteCommand(PresentationCommandInstance command)
+    {
+        var commandJson = new JsonObject
+        {
+            ["id"] = command.Id,
+            ["definitionId"] = command.DefinitionId
+        };
+
+        if (!command.IsEnabled)
+        {
+            commandJson["enabled"] = false;
+        }
+
+        if (command.Arguments.Count > 0)
+        {
+            var arguments = new JsonObject();
+            foreach ((string key, string value) in command.Arguments.OrderBy(
+                         pair => pair.Key,
+                         StringComparer.Ordinal))
+            {
+                arguments[key] = value;
+            }
+
+            commandJson["arguments"] = arguments;
+        }
+
+        if (command.Note is not null)
+        {
+            commandJson["note"] = command.Note;
+        }
+
+        return commandJson;
     }
 
     private static SetNode ReadSetNode(JsonObject json, string id, string name)
@@ -341,6 +358,14 @@ internal static class StoryNodeJson
                     ?? throw new InvalidDataException($"PresentationNode '{id}'의 source에 contentHash가 없습니다."));
         }
 
+        foreach (JsonNode? setupItem in json["setup"]?.AsArray() ?? new JsonArray())
+        {
+            if (setupItem is JsonObject setupJson)
+            {
+                node.SetupCommands.Add(ReadCommand(setupJson, id));
+            }
+        }
+
         foreach (JsonNode? item in json["bindings"]?.AsArray() ?? new JsonArray())
         {
             if (item is not JsonObject bindingJson)
@@ -354,35 +379,38 @@ internal static class StoryNodeJson
 
             foreach (JsonNode? commandItem in bindingJson["commands"]?.AsArray() ?? new JsonArray())
             {
-                if (commandItem is not JsonObject commandJson)
+                if (commandItem is JsonObject commandJson)
                 {
-                    continue;
+                    binding.Commands.Add(ReadCommand(commandJson, id));
                 }
-
-                string commandId = (string?)commandJson["id"]
-                    ?? throw new InvalidDataException(
-                        $"PresentationNode '{id}'의 command에 id가 없습니다.");
-                string definitionId = (string?)commandJson["definitionId"] ?? string.Empty;
-                var command = new PresentationCommandInstance(commandId, definitionId)
-                {
-                    IsEnabled = (bool?)commandJson["enabled"] ?? true,
-                    Note = (string?)commandJson["note"]
-                };
-
-                if (commandJson["arguments"] is JsonObject arguments)
-                {
-                    foreach ((string key, JsonNode? value) in arguments)
-                    {
-                        command.Arguments[key] = (string?)value ?? string.Empty;
-                    }
-                }
-
-                binding.Commands.Add(command);
             }
 
             node.Bindings.Add(binding);
         }
 
         return node;
+    }
+
+    private static PresentationCommandInstance ReadCommand(JsonObject commandJson, string nodeId)
+    {
+        string commandId = (string?)commandJson["id"]
+            ?? throw new InvalidDataException(
+                $"PresentationNode '{nodeId}'의 command에 id가 없습니다.");
+        string definitionId = (string?)commandJson["definitionId"] ?? string.Empty;
+        var command = new PresentationCommandInstance(commandId, definitionId)
+        {
+            IsEnabled = (bool?)commandJson["enabled"] ?? true,
+            Note = (string?)commandJson["note"]
+        };
+
+        if (commandJson["arguments"] is JsonObject arguments)
+        {
+            foreach ((string key, JsonNode? value) in arguments)
+            {
+                command.Arguments[key] = (string?)value ?? string.Empty;
+            }
+        }
+
+        return command;
     }
 }

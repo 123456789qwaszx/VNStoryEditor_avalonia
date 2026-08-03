@@ -120,6 +120,24 @@ public static class ResultDocumentComposer
             }
         }
 
+        if (options.IncludePresentation && presentation is not null)
+        {
+            // Setup은 어느 줄에도 속하지 않는 장면 준비다. 이미터에서 Set_ 노드 본문이 되고,
+            // Preview에서도 첫 줄보다 앞에 놓는다.
+            foreach (PresentationResultCommand command in presentation.SetupCommands)
+            {
+                AddCommandSegment(
+                    segments,
+                    dialogue,
+                    presentation,
+                    lineId: null,
+                    command,
+                    indentLevel: 0,
+                    catalog,
+                    options);
+            }
+        }
+
         int depth = 0;
 
         foreach (DialogueResultLine line in dialogue.Lines)
@@ -286,34 +304,56 @@ public static class ResultDocumentComposer
 
         foreach (PresentationResultCommand command in binding.Commands)
         {
-            PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
-
-            if (!options.IncludesPresentation(definition?.CategoryId))
-            {
-                continue;
-            }
-
-            segments.Add(new RenderedSegment(
-                Id: $"presentation:{presentation.Identity.ResultId}:{command.CommandId}",
-                Kind: RenderedSegmentKind.PresentationCommand,
-                Layer: DocumentLayer.Presentation,
-                // 연출 Segment도 대사 결과 Id를 함께 들고 있다. 프리셋 필터로 대사가 빠져도
-                // 이 명령이 어느 결과의 어느 줄에 붙는 것인지 잃지 않아야 한다.
-                Source: new RenderSourceReference(
-                    NodeId: presentation.SourceNodeId,
-                    LineId: line.LineId,
-                    DialogueResultId: dialogue.Identity.ResultId,
-                    PresentationResultId: presentation.Identity.ResultId,
-                    PresentationNodeId: presentation.SourceNodeId,
-                    PresentationCommandId: command.CommandId),
-                IndentLevel: indentLevel,
-                Text: definition?.DisplayName,
-                DefinitionId: command.DefinitionId,
-                CommandName: definition?.OutputCommandName ?? command.DefinitionId,
-                PresentationCategoryId: definition?.CategoryId,
-                PresentationCategoryName: catalog.FindCategory(definition?.CategoryId)?.DisplayName,
-                Arguments: ResolveArguments(definition, command)));
+            AddCommandSegment(
+                segments,
+                dialogue,
+                presentation,
+                line.LineId,
+                command,
+                indentLevel,
+                catalog,
+                options);
         }
+    }
+
+    private static void AddCommandSegment(
+        List<RenderedSegment> segments,
+        DialogueResult dialogue,
+        PresentationResult presentation,
+        string? lineId,
+        PresentationResultCommand command,
+        int indentLevel,
+        PresentationCommandCatalog catalog,
+        DocumentOutputOptions options)
+    {
+        PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
+
+        if (!options.IncludesPresentation(definition?.CategoryId))
+        {
+            return;
+        }
+
+        segments.Add(new RenderedSegment(
+            Id: $"presentation:{presentation.Identity.ResultId}:{command.CommandId}",
+            Kind: RenderedSegmentKind.PresentationCommand,
+            Layer: DocumentLayer.Presentation,
+            // 연출 Segment도 대사 결과 Id를 함께 들고 있다. 프리셋 필터로 대사가 빠져도
+            // 이 명령이 어느 결과의 어느 줄에 붙는 것인지 잃지 않아야 한다.
+            // Setup 커맨드는 어느 줄의 것도 아니므로 LineId가 없다.
+            Source: new RenderSourceReference(
+                NodeId: presentation.SourceNodeId,
+                LineId: lineId,
+                DialogueResultId: dialogue.Identity.ResultId,
+                PresentationResultId: presentation.Identity.ResultId,
+                PresentationNodeId: presentation.SourceNodeId,
+                PresentationCommandId: command.CommandId),
+            IndentLevel: indentLevel,
+            Text: definition?.DisplayName,
+            DefinitionId: command.DefinitionId,
+            CommandName: definition?.OutputCommandName ?? command.DefinitionId,
+            PresentationCategoryId: definition?.CategoryId,
+            PresentationCategoryName: catalog.FindCategory(definition?.CategoryId)?.DisplayName,
+            Arguments: ResolveArguments(definition, command)));
     }
 
     /// <summary>

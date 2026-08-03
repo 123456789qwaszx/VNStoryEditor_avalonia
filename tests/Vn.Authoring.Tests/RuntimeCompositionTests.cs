@@ -139,6 +139,7 @@ public class RuntimeCompositionTests
                 fixture.Dialogue.Identity.ResultId,
                 fixture.Dialogue.Identity.Version,
                 "sha256:손으로바꾼값"),
+            fixture.Presentation.SetupCommands,
             fixture.Presentation.Bindings,
             fixture.Presentation.PublishedAt);
 

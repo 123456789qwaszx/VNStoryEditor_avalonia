@@ -280,6 +280,32 @@ public class ResultDocumentComposerTests
     }
 
     [Fact]
+    public void Setup_커맨드는_첫_줄보다_앞에_LineId_없이_펼쳐진다()
+    {
+        var context = new CompositionFixture();
+        context.Sample.Editor.AddPresentationSetupCommand(
+            context.Presentation.Id,
+            "camera.wide");
+
+        RenderedDocument document = ResultDocumentComposer.Compose(
+            context.Dialogue,
+            context.PublishPresentation(),
+            context.Sample.Project,
+            Sample.Definition);
+
+        RenderedSegment setup = document.Segments.Single(segment =>
+            segment.Kind == RenderedSegmentKind.PresentationCommand);
+        RenderedSegment firstLine = document.Segments.First(segment =>
+            segment.Kind == RenderedSegmentKind.DialogueLine);
+
+        Assert.Null(setup.Source.LineId);
+        Assert.Equal(context.Presentation.Id, setup.Source.PresentationNodeId);
+        Assert.True(document.Segments.ToList().IndexOf(setup) <
+                    document.Segments.ToList().IndexOf(firstLine));
+        Assert.Contains("<<camera wide>>", YarnPreviewFormatter.Format(document), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void 비활성_Command는_결과에_들어가지_않으므로_문서에도_없다()
     {
         var context = new CompositionFixture();
