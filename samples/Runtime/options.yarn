@@ -1,0 +1,45 @@
+title: options
+---
+<<set $fatigue = 0>>
+<<set $common_ingredient = 0>>
+<<set $rare_ingredient = 0>>
+<<set $risk = 0>>
+
+숲 입구에 도착했다.
+어디를 조사할까?
+
+-> s1안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15
+    <<set $fatigue = $fatigue + 10>>
+    <<set $common_ingredient = $common_ingredient + 15>>
+    안전한 길에서 평범한 재료를 얻었다.
+-> s1깊은 숲으로 들어간다 #fatigue:+30 #rare_ingredient:+10~20 #risk:+1
+    <<set $fatigue = $fatigue + 30>>
+    <<set $rare_ingredient = $rare_ingredient + 10>>
+    <<set $risk = $risk + 1>>
+    숲 깊은 곳에서 희귀한 향신료를 발견했다.
+-> s1오늘은 무리하지 않는다 #fatigue:+0
+    오늘은 입구 근처만 살펴보기로 했다.
+
+좋아.
+가보자.
+
+-> s2안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15
+    <<set $fatigue = $fatigue + 10>>
+    <<set $common_ingredient = $common_ingredient + 15>>
+    안전한 길에서 평범한 재료를 얻었다.
+-> s2깊은 숲으로 들어간다 #fatigue:+30 #rare_ingredient:+10~20 #risk:+1
+    <<set $fatigue = $fatigue + 30>>
+    <<set $rare_ingredient = $rare_ingredient + 10>>
+    <<set $risk = $risk + 1>>
+    숲 깊은 곳에서 희귀한 향신료를 발견했다.
+    
+혹시 이거?    
+결과: 피로도 {$fatigue}위험도 {$risk}
+
+..
+
+.
+
+.
+
+===
