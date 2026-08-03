@@ -1,10 +1,12 @@
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Vn.App.Services;
+using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
@@ -28,12 +30,19 @@ namespace Vn.App.Views;
 /// </summary>
 public partial class DialogueNodeEditor : UserControl
 {
+    private static readonly SolidColorBrush StageSelectionBrush = new(Color.FromArgb(200, 37, 99, 235));
+
     private AuthoringSession? _session;
     private string? _nodeId;
     private bool _building;
     private RenderedDocument? _previewDocument;
     private readonly IReadOnlyList<OutputPreset> _outputPresets = OutputPresetCatalog.All;
     private OutputPreset _selectedOutputPreset = OutputPresetCatalog.RuntimeFull;
+    private string? _selectedLineId;
+    private readonly Dictionary<string, Border> _stageLineCards = new(StringComparer.Ordinal);
+
+    /// <summary>MainWindow가 꽂아 주는 공유 하단 무대 프리뷰.</summary>
+    internal MiniStagePreview? StagePreview { get; set; }
 
     public DialogueNodeEditor()
     {
@@ -66,6 +75,11 @@ public partial class DialogueNodeEditor : UserControl
     /// <summary>어떤 노드를 편집할지 정하고 화면을 만든다.</summary>
     internal void Show(string? nodeId)
     {
+        if (!string.Equals(_nodeId, nodeId, StringComparison.Ordinal))
+        {
+            _selectedLineId = null;
+        }
+
         _nodeId = nodeId;
         Rebuild();
     }
@@ -124,6 +138,13 @@ public partial class DialogueNodeEditor : UserControl
                 _session.Definition);
 
             LineHost.Children.Clear();
+            _stageLineCards.Clear();
+
+            if (_selectedLineId is null ||
+                flow.Lines.All(item => !string.Equals(item.Line.LineId, _selectedLineId, StringComparison.Ordinal)))
+            {
+                _selectedLineId = flow.Lines.FirstOrDefault()?.Line.LineId;
+            }
 
             // 선택 블록은 조건과 달리 들여쓰기·색이 아니라 블록 전체를 감싸는 박스로 보여 준다.
             // 옵션 라벨과 본문 카드가 같은 박스 안에 순서대로 쌓인다.
@@ -162,7 +183,7 @@ public partial class DialogueNodeEditor : UserControl
                     choiceChain = -1;
                 }
 
-                Control card = BuildCard(node, script, line);
+                Control card = WrapForStageSelection(BuildCard(node, script, line), line.Line.LineId);
 
                 if (inChoice && choiceBox is not null)
                 {
@@ -225,6 +246,105 @@ public partial class DialogueNodeEditor : UserControl
         PreviewSummaryText.Text =
             $"{_selectedOutputPreset.DisplayName} · {_previewDocument.Segments.Count}개 Segment · " +
             "작업 중 미리 보기 (발행 결과가 아닙니다)";
+
+        UpdateStagePreview(node);
+    }
+
+    /// <summary>클릭한 라인이 무대 프리뷰의 기준이 되도록 왼쪽 강조 띠로 감싼다.</summary>
+    private Control WrapForStageSelection(Control card, string lineId)
+    {
+        var wrapper = new Border
+        {
+            BorderThickness = new Thickness(3, 0, 0, 0),
+            BorderBrush = string.Equals(lineId, _selectedLineId, StringComparison.Ordinal)
+                ? StageSelectionBrush
+                : Brushes.Transparent,
+            Padding = new Thickness(4, 0, 0, 0),
+            Child = card
+        };
+
+        wrapper.AddHandler(
+            PointerPressedEvent,
+            (_, _) => SelectStageLine(lineId),
+            RoutingStrategies.Bubble,
+            handledEventsToo: true);
+        _stageLineCards[lineId] = wrapper;
+
+        return wrapper;
+    }
+
+    private void SelectStageLine(string lineId)
+    {
+        if (string.Equals(_selectedLineId, lineId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _selectedLineId = lineId;
+
+        foreach ((string cardLineId, Border card) in _stageLineCards)
+        {
+            card.BorderBrush = string.Equals(cardLineId, lineId, StringComparison.Ordinal)
+                ? StageSelectionBrush
+                : Brushes.Transparent;
+        }
+
+        if (_session?.Project.FindDialogue(_nodeId) is { } node)
+        {
+            UpdateStagePreview(node);
+        }
+    }
+
+    /// <summary>
+    /// 공급된 연출(내보내기와 같은 <see cref="NodeExportResolver"/> 규칙으로 찾는다)을
+    /// 선택 라인까지 접어 하단 무대 프리뷰에 민다. 공급이 없으면 화자만 표시한다.
+    /// </summary>
+    private void UpdateStagePreview(DialogueNode node)
+    {
+        if (StagePreview is null || _session is null)
+        {
+            return;
+        }
+
+        DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
+        DialogueLine? selected = script.Lines.FirstOrDefault(line =>
+                string.Equals(line.LineId, _selectedLineId, StringComparison.Ordinal))
+            ?? script.Lines.FirstOrDefault();
+
+        string contextLabel = $"대사: {node.Name}";
+        NodeExport export = NodeExportResolver.Resolve(_session.Project, node.Id);
+
+        if (export.Presentation is null || export.Dialogue is null)
+        {
+            StagePreview.Show(new MiniStagePreviewRequest(
+                contextLabel,
+                MiniStageState.Empty,
+                HasPresentation: false,
+                selected?.LineId,
+                selected?.Speaker,
+                selected?.Text));
+            return;
+        }
+
+        // 연출은 자신이 읽은 발행본 기준으로 접는다. 지금 편집 중인 줄이 그 발행본에
+        // 없다면(발행 후 추가된 줄 등) 그 사실을 숨기지 않고 알린다.
+        string? notice = selected is not null && !export.Dialogue.ContainsLine(selected.LineId)
+            ? "이 줄은 공급된 연출이 읽은 발행본에 없습니다. 문서 전체 기준 상태를 표시합니다."
+            : null;
+
+        MiniStageState state = MiniStageFold.Fold(
+            PresentationCommandCatalog.For(_session.Definition),
+            export.Presentation.SetupCommands,
+            MiniStageFold.LinesUpTo(export.Dialogue, export.Presentation.Bindings, selected?.LineId));
+
+        StagePreview.Show(new MiniStagePreviewRequest(
+            contextLabel,
+            state,
+            HasPresentation: true,
+            selected?.LineId,
+            selected?.Speaker,
+            selected?.Text,
+            notice));
     }
 
     private void OnPreviewPresetSelected()
@@ -252,6 +372,7 @@ public partial class DialogueNodeEditor : UserControl
         _previewDocument = null;
         PreviewBox.Text = string.Empty;
         PreviewSummaryText.Text = "DialogueNode를 선택하면 작업 중 상태를 선택한 출력 프리셋으로 펼쳐 보여 줍니다.";
+        StagePreview?.Show(null);
     }
 
     // ── 대본 ────────────────────────────────────────────────────────────────

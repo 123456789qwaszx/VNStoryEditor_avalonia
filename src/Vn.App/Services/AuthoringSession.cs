@@ -1,3 +1,5 @@
+using Avalonia.Media.Imaging;
+using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
@@ -60,6 +62,57 @@ internal sealed class AuthoringSession
     public StoryNode? SelectedNode => Project.FindNode(SelectedNodeId);
 
     public string StatusMessage { get; private set; } = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
+
+    // ── 프리뷰 에셋 ────────────────────────────────────────────────────────
+
+    private PreviewAssetLibrary? _assetLibrary;
+    private string _assetLibrarySignature = string.Empty;
+
+    /// <summary>
+    /// 프리뷰 에셋 인덱스. 에셋 루트 설정이 바뀌면(편집·되돌리기·열기) 자동으로 다시
+    /// 읽지만, 폴더 <b>내용</b>의 변경은 감지하지 않는다 — 그건 <see cref="RefreshAssets"/>
+    /// (명시적 새로 고침)만 반영한다.
+    /// </summary>
+    public PreviewAssetLibrary AssetLibrary
+    {
+        get
+        {
+            (string? backgrounds, string? portraits) = ResolveAssetRoots();
+            string signature = $"{backgrounds}{portraits}";
+
+            if (_assetLibrary is null ||
+                !string.Equals(_assetLibrarySignature, signature, StringComparison.Ordinal))
+            {
+                _assetLibrary = PreviewAssetLibrary.Load(backgrounds, portraits);
+                _assetLibrarySignature = signature;
+                ImageCache.Clear();
+            }
+
+            return _assetLibrary;
+        }
+    }
+
+    /// <summary>프리뷰 비트맵 캐시. 해석이 끝난 절대 경로가 키다.</summary>
+    public PreviewImageCache<Bitmap> ImageCache { get; } = new(path => new Bitmap(path));
+
+    public void RefreshAssets()
+    {
+        _assetLibrary = null;
+        ImageCache.Clear();
+        SetStatus("프리뷰 에셋을 다시 읽었습니다.");
+    }
+
+    private (string? Backgrounds, string? Portraits) ResolveAssetRoots()
+    {
+        // 저장 전 프로젝트는 기준 디렉터리가 없어 상대 루트를 해석할 수 없다.
+        // 절대 경로 루트는 그대로 동작한다.
+        string basePath = ProjectPath
+            ?? Path.Combine(Environment.CurrentDirectory, "unsaved" + ProjectManifestJson.FileExtension);
+
+        return (
+            AssetRootSettings.ResolveFrom(basePath, Project.AssetRoots.BackgroundsPath),
+            AssetRootSettings.ResolveFrom(basePath, Project.AssetRoots.PortraitsPath));
+    }
 
     /// <summary>저장한 뒤로 바뀐 것이 있는지. 실제 내용을 비교하므로 되돌리기로 원상복구하면 깨끗해진다.</summary>
     public bool IsDirty => !string.Equals(_savedSnapshot, ProjectSnapshotCodec.Encode(Project), StringComparison.Ordinal);

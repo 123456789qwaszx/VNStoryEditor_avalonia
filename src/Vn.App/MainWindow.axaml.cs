@@ -37,6 +37,9 @@ public partial class MainWindow : Window
         SetEditor.Attach(_session);
         PresentationEditor.Attach(_session);
         SupplyEditor.Attach(_session);
+        StagePreview.Attach(_session);
+        DialogueEditor.StagePreview = StagePreview;
+        PresentationEditor.StagePreview = StagePreview;
 
         _session.Changed += OnSessionChanged;
         _session.SelectionChanged += OnSelectionChanged;
@@ -112,6 +115,11 @@ public partial class MainWindow : Window
                 // 화자·대사 내용 변경은 편집 컨트롤을 유지해야 하지만 Script Preview는
                 // 현재 모델을 곧바로 반영해야 한다. Preview만 다시 합성한다.
                 DialogueEditor.RefreshPreview();
+            }
+
+            if (plan.RefreshStagePreview)
+            {
+                PresentationEditor.RefreshStagePreview();
             }
 
             RefreshShell();
@@ -665,6 +673,12 @@ public partial class MainWindow : Window
         else if (node is CommandSupplyNode)
         {
             SupplyEditor.Show(node.Id);
+        }
+
+        // 무대 프리뷰는 대사·연출 편집기만 채운다. 다른 노드에서는 빈 상태로 돌린다.
+        if (node is not DialogueNode && node is not PresentationNode)
+        {
+            StagePreview.Show(null);
         }
     }
 

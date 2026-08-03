@@ -1,5 +1,7 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
@@ -20,10 +22,18 @@ namespace Vn.App.Views;
 /// </summary>
 public partial class PresentationNodeEditor : UserControl
 {
+    private static readonly SolidColorBrush SelectedLineBrush = new(Color.FromArgb(160, 37, 99, 235));
+    private static readonly SolidColorBrush NormalLineBrush = new(Color.FromArgb(35, 128, 128, 128));
+
     private AuthoringSession? _session;
     private string? _nodeId;
     private bool _building;
     private AvailablePresentationCommands? _available;
+    private string? _selectedLineId;
+    private readonly Dictionary<string, Border> _lineCards = new(StringComparer.Ordinal);
+
+    /// <summary>MainWindow가 꽂아 주는 공유 하단 무대 프리뷰.</summary>
+    internal MiniStagePreview? StagePreview { get; set; }
 
     public PresentationNodeEditor()
     {
@@ -48,6 +58,11 @@ public partial class PresentationNodeEditor : UserControl
 
     internal void Show(string? nodeId)
     {
+        if (!string.Equals(_nodeId, nodeId, StringComparison.Ordinal))
+        {
+            _selectedLineId = null;
+        }
+
         _nodeId = nodeId;
         Rebuild();
     }
@@ -57,6 +72,8 @@ public partial class PresentationNodeEditor : UserControl
         if (_session is null || _session.Project.FindPresentation(_nodeId) is not { } presentation)
         {
             LineHost.Children.Clear();
+            _lineCards.Clear();
+            StagePreview?.Show(null);
             return;
         }
 
@@ -66,6 +83,7 @@ public partial class PresentationNodeEditor : UserControl
         {
             NameBox.Text = presentation.Name;
             LineHost.Children.Clear();
+            _lineCards.Clear();
 
             BuildSourcePicker(presentation);
             BuildSupplyPicker(presentation);
@@ -98,6 +116,11 @@ public partial class PresentationNodeEditor : UserControl
                     $"{dialogue.Locale}" +
                     (workspace.IsStale ? " · 내용 해시 불일치" : string.Empty);
 
+                if (_selectedLineId is null || dialogue.FindLine(_selectedLineId) is null)
+                {
+                    _selectedLineId = dialogue.Lines.FirstOrDefault()?.LineId;
+                }
+
                 foreach (DialogueResultLine line in dialogue.Lines)
                 {
                     LineHost.Children.Add(BuildLineCard(presentation, line, catalog));
@@ -122,11 +145,84 @@ public partial class PresentationNodeEditor : UserControl
             }
 
             BuildPublishState(presentation);
+            RefreshStagePreview();
         }
         finally
         {
             _building = false;
         }
+    }
+
+    /// <summary>
+    /// 지금 편집 중인(발행 전) 상태를 선택 라인까지 접어 하단 무대 프리뷰에 민다.
+    /// 커맨드 행 컨트롤은 그대로 두고 프리뷰만 갱신할 때도 이 진입점 하나를 쓴다.
+    /// </summary>
+    internal void RefreshStagePreview()
+    {
+        if (StagePreview is null || _session is null)
+        {
+            return;
+        }
+
+        if (_session.Project.FindPresentation(_nodeId) is not { } presentation)
+        {
+            StagePreview.Show(null);
+            return;
+        }
+
+        // 프리셋 해석은 발행 Freeze와 같은 길을 지난다 — 프리뷰용 두 번째 해석 규칙을 만들지 않는다.
+        PresentationDraft draft = _session.Editor.InspectPresentationPublish(presentation.Id);
+        PresentationCommandCatalog catalog = AvailablePresentationCommandResolver
+            .Resolve(_session.Project, presentation.Id, _session.Definition)
+            .Catalog;
+        PresentationWorkspace workspace = PresentationBindingResolver.Resolve(_session.Project, presentation);
+
+        if (workspace.Dialogue is not { } dialogue)
+        {
+            StagePreview.Show(new MiniStagePreviewRequest(
+                $"연출: {presentation.Name}",
+                MiniStageFold.Fold(catalog, draft.SetupCommands, Array.Empty<MiniStageFoldLine>()),
+                HasPresentation: true,
+                SelectedLineId: null,
+                SpeakerName: null,
+                LineText: null,
+                Notice: "읽을 대사 결과가 없어 Setup만 반영합니다."));
+            return;
+        }
+
+        DialogueResultLine? line = dialogue.FindLine(_selectedLineId) ?? dialogue.Lines.FirstOrDefault();
+
+        MiniStageState state = MiniStageFold.Fold(
+            catalog,
+            draft.SetupCommands,
+            MiniStageFold.LinesUpTo(dialogue, draft.Bindings, line?.LineId));
+
+        StagePreview.Show(new MiniStagePreviewRequest(
+            $"연출: {presentation.Name}",
+            state,
+            HasPresentation: true,
+            line?.LineId,
+            line?.CharacterName,
+            line?.Text));
+    }
+
+    private void SelectStageLine(string lineId)
+    {
+        if (string.Equals(_selectedLineId, lineId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _selectedLineId = lineId;
+
+        foreach ((string cardLineId, Border card) in _lineCards)
+        {
+            card.BorderBrush = string.Equals(cardLineId, lineId, StringComparison.Ordinal)
+                ? SelectedLineBrush
+                : NormalLineBrush;
+        }
+
+        RefreshStagePreview();
     }
 
     /// <summary>
@@ -422,14 +518,26 @@ public partial class PresentationNodeEditor : UserControl
             content.Children.Add(BuildCategoryEditor(presentation, line.LineId, category, catalog));
         }
 
-        return new Border
+        var card = new Border
         {
             Padding = new Thickness(10),
             CornerRadius = new CornerRadius(7),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(35, 128, 128, 128)),
+            BorderBrush = string.Equals(line.LineId, _selectedLineId, StringComparison.Ordinal)
+                ? SelectedLineBrush
+                : NormalLineBrush,
             BorderThickness = new Thickness(1),
             Child = content
         };
+
+        // 카드 어디를 만져도(내부 콤보 포함) 그 라인이 무대 프리뷰의 기준이 된다.
+        card.AddHandler(
+            PointerPressedEvent,
+            (_, _) => SelectStageLine(line.LineId),
+            RoutingStrategies.Bubble,
+            handledEventsToo: true);
+        _lineCards[line.LineId] = card;
+
+        return card;
     }
 
     /// <summary>드롭다운 항목 하나 — 카탈로그 정의 또는 공급 노드의 프리셋.</summary>

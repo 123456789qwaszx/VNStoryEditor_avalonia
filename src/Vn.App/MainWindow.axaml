@@ -113,17 +113,22 @@
             <Border Grid.Column="4"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1,0,0,0">
-                <Panel>
-                    <views:DialogueNodeEditor x:Name="DialogueEditor" />
-                    <views:SetNodeEditor x:Name="SetEditor" />
-                    <views:PresentationNodeEditor x:Name="PresentationEditor" />
-                    <views:CommandSupplyNodeEditor x:Name="SupplyEditor" />
-                    <TextBlock x:Name="EmptyText"
-                               Text="노드를 선택하면 여기서 편집합니다."
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Opacity="0.5" />
-                </Panel>
+                <Grid RowDefinitions="*,Auto">
+                    <Panel Grid.Row="0">
+                        <views:DialogueNodeEditor x:Name="DialogueEditor" />
+                        <views:SetNodeEditor x:Name="SetEditor" />
+                        <views:PresentationNodeEditor x:Name="PresentationEditor" />
+                        <views:CommandSupplyNodeEditor x:Name="SupplyEditor" />
+                        <TextBlock x:Name="EmptyText"
+                                   Text="노드를 선택하면 여기서 편집합니다."
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.5" />
+                    </Panel>
+
+                    <!-- 대사·연출 편집기가 공유하는 하단 무대 프리뷰. 읽기 전용 소비자다. -->
+                    <views:MiniStagePreview Grid.Row="1" x:Name="StagePreview" />
+                </Grid>
             </Border>
         </Grid>
     </DockPanel>
