@@ -166,6 +166,25 @@ public static class GraphProjectionBuilder
                 null));
         }
 
+        // 공급 간선은 Settings와 같은 비실행 연결이다. 포트 종류도 같은 것을 쓴다 —
+        // 화면이 새 종류를 몰라도 그려진다.
+        if (node is CommandSupplyNode)
+        {
+            bool connected = project.Links.Any(link =>
+                link.Kind == NodeLinkKind.CommandSupply &&
+                link.IsEnabled &&
+                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
+
+            ports.Add(new GraphOutputPortProjection(
+                SupplyPortKey(node.Id),
+                GraphOutputPortKind.Settings,
+                node.Id,
+                "커맨드 공급",
+                -1,
+                connected,
+                null));
+        }
+
         // 발행 결과 포트는 대사 노드 쪽에 붙는다. 연출은 이 결과를 읽는 소비자이지
         // 대사에 무언가를 공급하는 쪽이 아니다. 화살표 방향이 의존 방향과 같아야 한다.
         if (node is DialogueNode)
@@ -220,6 +239,9 @@ public static class GraphProjectionBuilder
                     : $"{dialogueResult.SourceNodeName} v{source.Version} 읽는 중";
             }
 
+            case CommandSupplyNode supply:
+                return $"{supply.Categories.Count}개 범주 · {supply.Presets.Count}개 프리셋";
+
             default:
                 return null;
         }
@@ -268,6 +290,21 @@ public static class GraphProjectionBuilder
                 link.TargetNodeId,
                 SettingsPortKey(link.SourceNodeId),
                 "조건 공급",
+                -1,
+                link.Id,
+                null));
+        }
+
+        foreach (NodeLink link in project.Links.Where(link =>
+                     link.Kind == NodeLinkKind.CommandSupply && link.IsEnabled))
+        {
+            result.Add(new RawConnection(
+                $"link:{link.Id}",
+                GraphConnectionKind.Settings,
+                link.SourceNodeId,
+                link.TargetNodeId,
+                SupplyPortKey(link.SourceNodeId),
+                "커맨드 공급",
                 -1,
                 link.Id,
                 null));
@@ -323,6 +360,7 @@ public static class GraphProjectionBuilder
             DialogueNode => GraphNodeKind.Dialogue,
             SetNode => GraphNodeKind.Set,
             PresentationNode => GraphNodeKind.Presentation,
+            CommandSupplyNode => GraphNodeKind.CommandSupply,
             _ => throw new NotSupportedException($"지원하지 않는 노드 타입입니다: {node.GetType().Name}")
         };
     }
@@ -350,6 +388,8 @@ public static class GraphProjectionBuilder
     }
 
     private static string SettingsPortKey(string nodeId) => $"settings:{nodeId}";
+
+    private static string SupplyPortKey(string nodeId) => $"supply:{nodeId}";
 
     private static string ResultPortKey(string nodeId) => $"result:{nodeId}";
 

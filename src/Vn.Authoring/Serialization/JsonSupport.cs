@@ -157,6 +157,13 @@ internal static class JsonSupport
                     $"Settings link '{link.Id}'는 SetNode에서 DialogueNode로만 연결할 수 있습니다.");
             }
 
+            if (link.Kind == NodeLinkKind.CommandSupply &&
+                (source is not CommandSupplyNode || target is not PresentationNode))
+            {
+                throw new InvalidDataException(
+                    $"CommandSupply link '{link.Id}'는 CommandSupplyNode에서 PresentationNode로만 연결할 수 있습니다.");
+            }
+
             if (!linkPairs.Add((link.Kind, link.SourceNodeId, link.TargetNodeId)))
             {
                 throw new InvalidDataException(

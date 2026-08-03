@@ -77,6 +77,86 @@ public sealed class SetNode : StoryNode
     }
 }
 
+/// <summary>
+/// PresentationNode에 커맨드 범주와 프리셋을 공급하는 노드.
+///
+/// 커맨드 전체를 평평한 드롭다운으로 주지 않고, "카메라 노드"·"캐릭터 연출 노드"처럼
+/// 역할 묶음을 연결해야 해당 커맨드군이 보이게 한다. 어떤 범주 묶음을 무엇이라 부를지는
+/// 데이터다 — 이 노드가 담는 것은 카탈로그의 범주 Id 집합이지 코드가 아는 이름이 아니다.
+///
+/// 조건이 SetNode에서 태어나듯, 커맨드 프리셋은 이 노드에서 태어난다.
+/// </summary>
+public sealed class CommandSupplyNode : StoryNode
+{
+    public CommandSupplyNode(string? id = null, string name = "새 연출 공급")
+        : base(id, name)
+    {
+    }
+
+    /// <summary>공급하는 범주 Id 집합(게임 정의의 presentationCommandCategories 참조).</summary>
+    public List<string> Categories { get; init; } = new();
+
+    /// <summary>이 노드가 소유한 커맨드 프리셋. 목록 순서가 드롭다운 순서다.</summary>
+    public List<CommandPreset> Presets { get; init; } = new();
+
+    public CommandPreset? FindPreset(string? presetId)
+    {
+        return presetId is null
+            ? null
+            : Presets.FirstOrDefault(preset =>
+                string.Equals(preset.Id, presetId, StringComparison.Ordinal));
+    }
+
+    public override StoryNode Clone()
+    {
+        return new CommandSupplyNode(Id, Name)
+        {
+            Layout = Layout.Clone(),
+            DefaultExitTargetNodeId = DefaultExitTargetNodeId,
+            Categories = new List<string>(Categories),
+            Presets = Presets.Select(preset => preset.Clone()).ToList()
+        };
+    }
+}
+
+/// <summary>
+/// 값이 세팅된 "정확한 연출종류" 하나. Yarn 인자로 노출되지 않는 하드코딩 기본값
+/// (계약서 E3의 b′층)의 이주지다. PresentationNode는 이것을 참조해 완성된 커맨드를 쓴다.
+///
+/// 발행 시에는 참조가 아니라 <b>해석된 최종 인자 값</b>이 결과에 얼어붙는다.
+/// 프리셋을 나중에 고쳐도 발행된 결과는 불변이다.
+/// </summary>
+public sealed class CommandPreset
+{
+    public CommandPreset(string? id = null)
+    {
+        Id = id ?? Identifier.Preset();
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>카탈로그의 커맨드 정의 Id.</summary>
+    public string CommandDefinitionId { get; set; } = string.Empty;
+
+    /// <summary>파라미터 이름 → 값. 출력 순서는 언제나 카탈로그의 파라미터 순서다.</summary>
+    public Dictionary<string, string> ArgumentValues { get; init; } = new(StringComparer.Ordinal);
+
+    public string? Note { get; set; }
+
+    public CommandPreset Clone()
+    {
+        return new CommandPreset(Id)
+        {
+            DisplayName = DisplayName,
+            CommandDefinitionId = CommandDefinitionId,
+            ArgumentValues = new Dictionary<string, string>(ArgumentValues, StringComparer.Ordinal),
+            Note = Note
+        };
+    }
+}
+
 /// <summary>변수 하나에 값을 넣는다. 값은 게임이 해석하므로 문자열로 들고 있는다.</summary>
 public sealed class VariableAssignment
 {

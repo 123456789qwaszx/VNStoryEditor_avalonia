@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -56,6 +56,7 @@ public partial class GraphEditorView : UserControl
         AddDialogueButton.Click += (_, _) => AddNode(GraphNodeKind.Dialogue);
         AddSetButton.Click += (_, _) => AddNode(GraphNodeKind.Set);
         AddPresentationButton.Click += (_, _) => AddNode(GraphNodeKind.Presentation);
+        AddSupplyButton.Click += (_, _) => AddNode(GraphNodeKind.CommandSupply);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
         DeleteEdgeButton.Click += (_, _) => DeleteSelectedEdge();
 
@@ -216,6 +217,7 @@ public partial class GraphEditorView : UserControl
             {
                 GraphNodeKind.Set => new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF)),
                 GraphNodeKind.Presentation => new SolidColorBrush(Color.FromRgb(0xFA, 0xF5, 0xFF)),
+                GraphNodeKind.CommandSupply => new SolidColorBrush(Color.FromRgb(0xF0, 0xFD, 0xF4)),
                 _ => new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF))
             },
             BorderThickness = new Thickness(1),
@@ -972,6 +974,7 @@ public partial class GraphEditorView : UserControl
             GraphNodeKind.Dialogue => _session.Editor.AddDialogueNode(fileId, x, y),
             GraphNodeKind.Set => _session.Editor.AddSetNode(fileId, x, y),
             GraphNodeKind.Presentation => _session.Editor.AddPresentationNode(fileId, x, y),
+            GraphNodeKind.CommandSupply => _session.Editor.AddCommandSupplyNode(fileId, x, y),
             _ => throw new NotSupportedException($"지원하지 않는 그래프 노드 종류 '{kind}'입니다.")
         };
 
@@ -1031,6 +1034,7 @@ public partial class GraphEditorView : UserControl
         {
             GraphNodeKind.Set => "설정",
             GraphNodeKind.Presentation => "연출",
+            GraphNodeKind.CommandSupply => "연출 공급",
             _ => "대사"
         };
     }

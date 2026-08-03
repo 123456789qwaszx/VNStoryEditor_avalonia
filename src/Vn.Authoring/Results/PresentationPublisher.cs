@@ -1,3 +1,4 @@
+using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Serialization;
 
@@ -93,9 +94,13 @@ public static class PresentationPublisher
             }
         }
 
+        // 프리셋 범위는 연결된 공급 노드가 정한다 (AvailableConditionResolver와 같은 원칙).
+        AvailablePresentationCommands availableCommands =
+            AvailablePresentationCommandResolver.Resolve(project, node.Id);
+
         PresentationResultCommand[] setupCommands = node.SetupCommands
             .Where(command => command.IsEnabled)
-            .Select(Freeze)
+            .Select(command => Freeze(command, project, availableCommands, problems))
             .ToArray();
 
         var bindings = new List<PresentationResultBinding>();
@@ -118,7 +123,7 @@ public static class PresentationPublisher
                 binding.LineId,
                 binding.Commands
                     .Where(command => command.IsEnabled)
-                    .Select(Freeze)
+                    .Select(command => Freeze(command, project, availableCommands, problems, binding.LineId))
                     .ToArray(),
                 orphan));
         }
@@ -126,12 +131,57 @@ public static class PresentationPublisher
         return new PresentationDraft(node.Id, node.Name, source, setupCommands, bindings, problems);
     }
 
-    private static PresentationResultCommand Freeze(PresentationCommandInstance command)
+    /// <summary>
+    /// 커맨드 하나를 <b>해석된 최종 값</b>으로 얼린다. 프리셋 참조는 결과에 남지 않는다 —
+    /// 프리셋이 커맨드 정의와 인자를 공급하고, 인스턴스의 인자가 그 위를 덮는다.
+    /// 프리셋을 나중에 고치거나 지워도 발행된 결과는 불변이다.
+    /// </summary>
+    private static PresentationResultCommand Freeze(
+        PresentationCommandInstance command,
+        StoryProject project,
+        AvailablePresentationCommands available,
+        List<PublishProblem> problems,
+        string? lineId = null)
     {
+        string definitionId = command.DefinitionId;
+        var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (command.PresetId is { } presetId)
+        {
+            AvailablePreset? preset = available.FindPreset(presetId);
+
+            if (preset is null)
+            {
+                AvailablePreset? known = AvailablePresentationCommandResolver.FindKnown(project, presetId);
+
+                problems.Add(new PublishProblem(
+                    PublishProblemKind.UnknownPreset,
+                    lineId,
+                    known is null
+                        ? $"커맨드가 참조하는 프리셋 '{presetId}'를 찾을 수 없습니다. 프리셋이 삭제되었을 수 있습니다."
+                        : $"프리셋 '{known.DisplayName}'은 이 연출 노드에 연결된 공급 노드에 없습니다.",
+                    IsBlocking: true));
+            }
+            else
+            {
+                definitionId = preset.Preset.CommandDefinitionId;
+
+                foreach ((string key, string value) in preset.Preset.ArgumentValues)
+                {
+                    arguments[key] = value;
+                }
+            }
+        }
+
+        foreach ((string key, string value) in command.Arguments)
+        {
+            arguments[key] = value;
+        }
+
         return new PresentationResultCommand(
             command.Id,
-            command.DefinitionId,
-            new Dictionary<string, string>(command.Arguments, StringComparer.Ordinal),
+            definitionId,
+            arguments,
             command.Note);
     }
 

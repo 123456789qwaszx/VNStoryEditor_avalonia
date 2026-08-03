@@ -23,6 +23,7 @@ public partial class PresentationNodeEditor : UserControl
     private AuthoringSession? _session;
     private string? _nodeId;
     private bool _building;
+    private AvailablePresentationCommands? _available;
 
     public PresentationNodeEditor()
     {
@@ -70,7 +71,14 @@ public partial class PresentationNodeEditor : UserControl
             PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
                 _session.Project,
                 presentation);
-            PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
+
+            // 드롭다운 범위는 연결된 공급 노드가 정한다. 없으면 전체 카탈로그 폴백이다.
+            AvailablePresentationCommands available = AvailablePresentationCommandResolver.Resolve(
+                _session.Project,
+                presentation.Id,
+                _session.Definition);
+            PresentationCommandCatalog catalog = available.Catalog;
+            _available = available;
 
             // Setup은 어느 줄에도 속하지 않는 장면 준비다. 대사 결과가 없어도 편집할 수 있다.
             LineHost.Children.Add(BuildSetupSection(presentation, catalog));
@@ -355,7 +363,7 @@ public partial class PresentationNodeEditor : UserControl
             FontWeight = FontWeight.SemiBold
         });
 
-        foreach (PresentationCategoryDefinition category in catalog.Categories)
+        foreach (PresentationCategoryDefinition category in _available?.Categories ?? catalog.Categories)
         {
             content.Children.Add(BuildCategoryEditor(presentation, line.LineId, category, catalog));
         }
@@ -370,13 +378,41 @@ public partial class PresentationNodeEditor : UserControl
         };
     }
 
+    /// <summary>드롭다운 항목 하나 — 카탈로그 정의 또는 공급 노드의 프리셋.</summary>
+    private sealed record CommandChoice(
+        string Label,
+        string DefinitionId,
+        string? PresetId,
+        IReadOnlyDictionary<string, string> Arguments);
+
     private Control BuildCategoryEditor(
         PresentationNode presentation,
         string lineId,
         PresentationCategoryDefinition category,
         PresentationCommandCatalog catalog)
     {
-        IReadOnlyList<PresentationCommandDefinition> choices = catalog.For(category.Id);
+        var choices = new List<CommandChoice>();
+
+        // 프리셋이 먼저다 — 값이 세팅된 "정확한 연출종류"가 원시 커맨드보다 우선 후보다.
+        foreach (AvailablePreset preset in _available?.PresetsFor(category.Id)
+                     ?? (IReadOnlyList<AvailablePreset>)Array.Empty<AvailablePreset>())
+        {
+            choices.Add(new CommandChoice(
+                $"★ {preset.DisplayName}",
+                preset.Preset.CommandDefinitionId,
+                preset.Preset.Id,
+                new Dictionary<string, string>(StringComparer.Ordinal)));
+        }
+
+        foreach (PresentationCommandDefinition definition in catalog.For(category.Id))
+        {
+            choices.Add(new CommandChoice(
+                definition.DisplayName,
+                definition.Id,
+                PresetId: null,
+                definition.DefaultArgumentValues()));
+        }
+
         PresentationLineBinding? binding = presentation.FindBinding(lineId);
         PresentationCommandInstance? command = binding?.Commands.FirstOrDefault(item =>
             string.Equals(
@@ -395,10 +431,10 @@ public partial class PresentationNodeEditor : UserControl
 
         var combo = new ComboBox
         {
-            ItemsSource = choices.Select(item => item.DisplayName).ToArray(),
+            ItemsSource = choices.Select(item => item.Label).ToArray(),
             SelectedIndex = command is null
                 ? (choices.Count > 0 ? 0 : -1)
-                : FindDefinitionIndex(choices, command.DefinitionId),
+                : FindChoiceIndex(choices, command),
             IsEnabled = enabled.IsChecked == true && choices.Count > 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             PlaceholderText = choices.Count == 0 ? "명령 정의 없음" : "명령 선택"
@@ -416,12 +452,13 @@ public partial class PresentationNodeEditor : UserControl
             if (command is null && enabled.IsChecked == true)
             {
                 int index = Math.Clamp(combo.SelectedIndex, 0, choices.Count - 1);
-                PresentationCommandDefinition definition = choices[index];
+                CommandChoice choice = choices[index];
                 command = _session.Editor.AddPresentationCommand(
                     presentation.Id,
                     lineId,
-                    definition.Id,
-                    definition.DefaultArgumentValues());
+                    choice.DefinitionId,
+                    choice.Arguments,
+                    presetId: choice.PresetId);
             }
             else if (command is not null)
             {
@@ -439,7 +476,7 @@ public partial class PresentationNodeEditor : UserControl
                 return;
             }
 
-            PresentationCommandDefinition definition = choices[combo.SelectedIndex];
+            CommandChoice choice = choices[combo.SelectedIndex];
 
             if (command is null)
             {
@@ -448,8 +485,9 @@ public partial class PresentationNodeEditor : UserControl
                     command = _session.Editor.AddPresentationCommand(
                         presentation.Id,
                         lineId,
-                        definition.Id,
-                        definition.DefaultArgumentValues());
+                        choice.DefinitionId,
+                        choice.Arguments,
+                        presetId: choice.PresetId);
                 }
             }
             else
@@ -457,8 +495,9 @@ public partial class PresentationNodeEditor : UserControl
                 _session.Editor.SetPresentationCommandDefinition(
                     presentation.Id,
                     command.Id,
-                    definition.Id,
-                    definition.DefaultArgumentValues());
+                    choice.DefinitionId,
+                    choice.Arguments,
+                    choice.PresetId);
             }
         };
 
@@ -469,6 +508,26 @@ public partial class PresentationNodeEditor : UserControl
         row.Children.Add(enabled);
         row.Children.Add(combo);
         return row;
+    }
+
+    private static int FindChoiceIndex(IReadOnlyList<CommandChoice> choices, PresentationCommandInstance command)
+    {
+        for (int index = 0; index < choices.Count; index++)
+        {
+            CommandChoice choice = choices[index];
+
+            bool matches = command.PresetId is not null
+                ? string.Equals(choice.PresetId, command.PresetId, StringComparison.Ordinal)
+                : choice.PresetId is null &&
+                  string.Equals(choice.DefinitionId, command.DefinitionId, StringComparison.Ordinal);
+
+            if (matches)
+            {
+                return index;
+            }
+        }
+
+        return choices.Count > 0 ? 0 : -1;
     }
 
     private static Control BuildOrphanCard(

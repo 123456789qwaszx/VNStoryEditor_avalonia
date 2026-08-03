@@ -65,7 +65,10 @@ public enum GraphNodeKind
 {
     Dialogue,
     Set,
-    Presentation
+    Presentation,
+
+    /// <summary>PresentationNode에 커맨드 범주·프리셋을 공급하는 노드.</summary>
+    CommandSupply
 }
 
 public enum GraphOutputPortKind

@@ -36,6 +36,7 @@ public partial class MainWindow : Window
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
         PresentationEditor.Attach(_session);
+        SupplyEditor.Attach(_session);
 
         _session.Changed += OnSessionChanged;
         _session.SelectionChanged += OnSelectionChanged;
@@ -604,6 +605,7 @@ public partial class MainWindow : Window
         DialogueEditor.IsVisible = node is DialogueNode;
         SetEditor.IsVisible = node is SetNode;
         PresentationEditor.IsVisible = node is PresentationNode;
+        SupplyEditor.IsVisible = node is CommandSupplyNode;
         EmptyText.IsVisible = node is null;
         EmptyText.Text = "노드를 선택하면 여기서 편집합니다.";
 
@@ -618,6 +620,10 @@ public partial class MainWindow : Window
         else if (node is PresentationNode)
         {
             PresentationEditor.Show(node.Id);
+        }
+        else if (node is CommandSupplyNode)
+        {
+            SupplyEditor.Show(node.Id);
         }
     }
 
@@ -644,6 +650,12 @@ public partial class MainWindow : Window
         if (node is PresentationNode && PresentationEditor.NodeId == node.Id)
         {
             PresentationEditor.Rebuild();
+            return;
+        }
+
+        if (node is CommandSupplyNode && SupplyEditor.NodeId == node.Id)
+        {
+            SupplyEditor.Rebuild();
             return;
         }
 

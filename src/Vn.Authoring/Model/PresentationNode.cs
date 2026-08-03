@@ -102,6 +102,13 @@ public sealed class PresentationCommandInstance
 
     public string DefinitionId { get; set; }
 
+    /// <summary>
+    /// 연결된 공급 노드의 커맨드 프리셋을 쓴다면 그 Id. 프리셋이 커맨드 정의와 인자를
+    /// 공급하고, <see cref="Arguments"/>는 그 위의 부분 오버라이드가 된다.
+    /// 발행 시에는 해석된 최종 값만 결과에 얼어붙는다 — 이 참조는 저작 데이터다.
+    /// </summary>
+    public string? PresetId { get; set; }
+
     public bool IsEnabled { get; set; } = true;
 
     /// <summary>명령 정의가 요구하는 이름별 인자. JSON에서는 키를 정렬해 저장한다.</summary>
@@ -113,6 +120,7 @@ public sealed class PresentationCommandInstance
     {
         return new PresentationCommandInstance(Id, DefinitionId)
         {
+            PresetId = PresetId,
             IsEnabled = IsEnabled,
             Arguments = new Dictionary<string, string>(Arguments, StringComparer.Ordinal),
             Note = Note

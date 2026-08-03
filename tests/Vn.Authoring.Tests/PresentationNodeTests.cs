@@ -183,7 +183,7 @@ public class PresentationNodeTests
 
         PresentationResult result = context.Editor.PublishPresentation(context.PresentationA.Id).Result;
 
-        Assert.Equal(2, result.Identity.SchemaVersion);
+        Assert.Equal(PresentationResult.CurrentSchemaVersion, result.Identity.SchemaVersion);
         PresentationResultCommand frozen = Assert.Single(result.SetupCommands);
         Assert.Equal(kept.Id, frozen.CommandId);
         Assert.Equal("2", frozen.Arguments["layout"]);

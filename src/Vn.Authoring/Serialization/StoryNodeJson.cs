@@ -13,6 +13,7 @@ internal static class StoryNodeJson
             SetNode => "set",
             DialogueNode => "dialogue",
             PresentationNode => "presentation",
+            CommandSupplyNode => "commandSupply",
             _ => throw new InvalidDataException($"지원하지 않는 노드 종류 '{node.GetType().Name}'입니다.")
         };
 
@@ -44,6 +45,9 @@ internal static class StoryNodeJson
             case PresentationNode presentation:
                 WritePresentationNode(presentation, json);
                 break;
+            case CommandSupplyNode supply:
+                WriteCommandSupplyNode(supply, json);
+                break;
         }
 
         return json;
@@ -60,6 +64,7 @@ internal static class StoryNodeJson
             "set" => ReadSetNode(json, id, name),
             "dialogue" => ReadDialogueNode(json, id, name),
             "presentation" => ReadPresentationNode(json, id, name),
+            "commandSupply" => ReadCommandSupplyNode(json, id, name),
             _ => throw new InvalidDataException($"지원하지 않는 노드 종류 '{kind}'입니다.")
         };
 
@@ -229,6 +234,101 @@ internal static class StoryNodeJson
         json["bindings"] = bindings;
     }
 
+    private static void WriteCommandSupplyNode(CommandSupplyNode node, JsonObject json)
+    {
+        if (node.Categories.Count > 0)
+        {
+            var categories = new JsonArray();
+
+            foreach (string categoryId in node.Categories)
+            {
+                categories.Add(categoryId);
+            }
+
+            json["categories"] = categories;
+        }
+
+        if (node.Presets.Count > 0)
+        {
+            var presets = new JsonArray();
+
+            foreach (CommandPreset preset in node.Presets)
+            {
+                var presetJson = new JsonObject
+                {
+                    ["id"] = preset.Id,
+                    ["name"] = preset.DisplayName,
+                    ["command"] = preset.CommandDefinitionId
+                };
+
+                if (preset.ArgumentValues.Count > 0)
+                {
+                    var arguments = new JsonObject();
+
+                    foreach ((string key, string value) in preset.ArgumentValues.OrderBy(
+                                 pair => pair.Key,
+                                 StringComparer.Ordinal))
+                    {
+                        arguments[key] = value;
+                    }
+
+                    presetJson["arguments"] = arguments;
+                }
+
+                if (preset.Note is not null)
+                {
+                    presetJson["note"] = preset.Note;
+                }
+
+                presets.Add(presetJson);
+            }
+
+            json["presets"] = presets;
+        }
+    }
+
+    private static CommandSupplyNode ReadCommandSupplyNode(JsonObject json, string id, string name)
+    {
+        var node = new CommandSupplyNode(id, name);
+
+        foreach (JsonNode? item in json["categories"]?.AsArray() ?? new JsonArray())
+        {
+            if ((string?)item is { Length: > 0 } categoryId)
+            {
+                node.Categories.Add(categoryId);
+            }
+        }
+
+        foreach (JsonNode? item in json["presets"]?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject presetJson)
+            {
+                continue;
+            }
+
+            string presetId = (string?)presetJson["id"]
+                ?? throw new InvalidDataException($"CommandSupplyNode '{id}'의 프리셋에 id가 없습니다.");
+            var preset = new CommandPreset(presetId)
+            {
+                DisplayName = (string?)presetJson["name"] ?? string.Empty,
+                CommandDefinitionId = (string?)presetJson["command"] ?? string.Empty,
+                Note = (string?)presetJson["note"]
+            };
+
+            if (presetJson["arguments"] is JsonObject arguments)
+            {
+                foreach ((string key, JsonNode? value) in arguments)
+                {
+                    preset.ArgumentValues[key] = (string?)value ?? string.Empty;
+                }
+            }
+
+            node.Presets.Add(preset);
+        }
+
+        return node;
+    }
+
     private static JsonObject WriteCommand(PresentationCommandInstance command)
     {
         var commandJson = new JsonObject
@@ -236,6 +336,11 @@ internal static class StoryNodeJson
             ["id"] = command.Id,
             ["definitionId"] = command.DefinitionId
         };
+
+        if (command.PresetId is not null)
+        {
+            commandJson["preset"] = command.PresetId;
+        }
 
         if (!command.IsEnabled)
         {
@@ -405,6 +510,7 @@ internal static class StoryNodeJson
         string definitionId = (string?)commandJson["definitionId"] ?? string.Empty;
         var command = new PresentationCommandInstance(commandId, definitionId)
         {
+            PresetId = (string?)commandJson["preset"],
             IsEnabled = (bool?)commandJson["enabled"] ?? true,
             Note = (string?)commandJson["note"]
         };

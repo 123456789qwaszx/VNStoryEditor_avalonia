@@ -27,8 +27,12 @@ public sealed record PresentationResultBinding(
 /// </summary>
 public sealed class PresentationResult
 {
-    /// <remarks>v2: LineId 없는 노드 수준 Setup 커맨드가 실린다.</remarks>
-    public const int CurrentSchemaVersion = 2;
+    /// <remarks>
+    /// v2: LineId 없는 노드 수준 Setup 커맨드가 실린다.
+    /// v3: 프리셋 참조가 해석된 최종 커맨드·인자로 동결된다(본문 구조는 같지만
+    /// 같은 저작 상태의 해석 규칙이 달라졌으므로 스키마를 올린다).
+    /// </remarks>
+    public const int CurrentSchemaVersion = 3;
 
     public PresentationResult(
         ResultIdentity identity,

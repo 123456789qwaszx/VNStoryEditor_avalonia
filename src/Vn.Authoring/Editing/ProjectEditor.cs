@@ -143,6 +143,20 @@ public sealed partial class ProjectEditor
         return AddNode(fileId, node);
     }
 
+    public CommandSupplyNode AddCommandSupplyNode(
+        string fileId,
+        double x = 0,
+        double y = 0,
+        string? name = null)
+    {
+        var node = new CommandSupplyNode(name: name ?? NextName("연출 공급"))
+        {
+            Layout = new NodeLayout { X = x, Y = y }
+        };
+
+        return AddNode(fileId, node);
+    }
+
     public void RemoveNode(string nodeId)
     {
         StoryFile? owner = Project.FindFileContainingNode(nodeId);
@@ -445,6 +459,156 @@ public sealed partial class ProjectEditor
         return link;
     }
 
+    /// <summary>
+    /// CommandSupplyNode가 PresentationNode에 커맨드 범주와 프리셋을 공급하는 link를 만든다.
+    /// Settings link와 동형이다. 같은 소스와 대상의 링크가 이미 있으면 그것을 돌려준다.
+    /// </summary>
+    public NodeLink AddCommandSupplyLink(string supplyNodeId, string presentationNodeId)
+    {
+        if (Project.FindNode(supplyNodeId) is not CommandSupplyNode)
+        {
+            throw new InvalidOperationException($"'{supplyNodeId}'는 연출 공급 노드가 아닙니다.");
+        }
+
+        if (Project.FindNode(presentationNodeId) is not PresentationNode)
+        {
+            throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
+        }
+
+        NodeLink? existing = Project.Links.FirstOrDefault(link =>
+            link.Kind == NodeLinkKind.CommandSupply &&
+            string.Equals(link.SourceNodeId, supplyNodeId, StringComparison.Ordinal) &&
+            string.Equals(link.TargetNodeId, presentationNodeId, StringComparison.Ordinal));
+
+        if (existing is not null)
+        {
+            if (!existing.IsEnabled)
+            {
+                Mutate(ProjectChangeKind.Connections, () => existing.IsEnabled = true);
+            }
+
+            return existing;
+        }
+
+        int nextOrder = Project.Links
+            .Where(link =>
+                link.Kind == NodeLinkKind.CommandSupply &&
+                string.Equals(link.TargetNodeId, presentationNodeId, StringComparison.Ordinal))
+            .Select(link => link.Order)
+            .DefaultIfEmpty(-1)
+            .Max() + 1;
+
+        var link = new NodeLink(
+            kind: NodeLinkKind.CommandSupply,
+            sourceNodeId: supplyNodeId,
+            targetNodeId: presentationNodeId)
+        {
+            Order = nextOrder
+        };
+
+        Mutate(ProjectChangeKind.Connections, () => Project.Links.Add(link));
+        return link;
+    }
+
+    // ── 연출 공급 노드 ──────────────────────────────────────────────────────
+
+    /// <summary>공급 범주 집합을 통째로 바꾼다. 어떤 묶음을 무엇이라 부를지는 데이터다.</summary>
+    public void SetSupplyCategories(string supplyNodeId, IReadOnlyList<string> categoryIds)
+    {
+        CommandSupplyNode node = RequireSupply(supplyNodeId);
+
+        if (node.Categories.SequenceEqual(categoryIds, StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            node.Categories.Clear();
+            node.Categories.AddRange(categoryIds);
+        });
+    }
+
+    public CommandPreset AddCommandPreset(
+        string supplyNodeId,
+        string commandDefinitionId,
+        string? displayName = null,
+        IReadOnlyDictionary<string, string>? argumentValues = null,
+        string? note = null)
+    {
+        CommandSupplyNode node = RequireSupply(supplyNodeId);
+        var preset = new CommandPreset
+        {
+            DisplayName = displayName ?? string.Empty,
+            CommandDefinitionId = commandDefinitionId,
+            Note = note
+        };
+
+        if (argumentValues is not null)
+        {
+            foreach ((string key, string value) in argumentValues)
+            {
+                preset.ArgumentValues[key] = value;
+            }
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () => node.Presets.Add(preset));
+        return preset;
+    }
+
+    public void UpdateCommandPreset(
+        string supplyNodeId,
+        string presetId,
+        string? displayName = null,
+        string? commandDefinitionId = null,
+        IReadOnlyDictionary<string, string>? argumentValues = null,
+        string? note = null)
+    {
+        CommandSupplyNode node = RequireSupply(supplyNodeId);
+
+        if (node.FindPreset(presetId) is not { } preset)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            preset.DisplayName = displayName ?? preset.DisplayName;
+            preset.CommandDefinitionId = commandDefinitionId ?? preset.CommandDefinitionId;
+            preset.Note = note ?? preset.Note;
+
+            if (argumentValues is not null)
+            {
+                preset.ArgumentValues.Clear();
+
+                foreach ((string key, string value) in argumentValues)
+                {
+                    preset.ArgumentValues[key] = value;
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// 프리셋을 지운다. 이 프리셋을 참조하던 연출 binding은 건드리지 않는다 —
+    /// 발행 검증이 "프리셋을 찾을 수 없음"으로 알린다. 말없이 다른 값으로 갈아 끼우지 않는다.
+    /// </summary>
+    public void RemoveCommandPreset(string supplyNodeId, string presetId)
+    {
+        CommandSupplyNode node = RequireSupply(supplyNodeId);
+
+        if (node.FindPreset(presetId) is { } preset)
+        {
+            Mutate(ProjectChangeKind.PresentationContent, () => node.Presets.Remove(preset));
+        }
+    }
+
+    private CommandSupplyNode RequireSupply(string nodeId)
+    {
+        return Project.FindNode(nodeId) as CommandSupplyNode
+            ?? throw new InvalidOperationException($"'{nodeId}'는 연출 공급 노드가 아닙니다.");
+    }
+
     public void RemoveLink(string linkId)
     {
         NodeLink? link = Project.FindLink(linkId);
@@ -492,7 +656,8 @@ public sealed partial class ProjectEditor
         string lineId,
         string definitionId,
         IReadOnlyDictionary<string, string>? arguments = null,
-        string? note = null)
+        string? note = null,
+        string? presetId = null)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
         PresentationLineBinding? existingBinding = node.Bindings.FirstOrDefault(item =>
@@ -500,7 +665,8 @@ public sealed partial class ProjectEditor
         PresentationLineBinding binding = existingBinding ?? new PresentationLineBinding(lineId);
         var command = new PresentationCommandInstance(definitionId: definitionId)
         {
-            Note = note
+            Note = note,
+            PresetId = presetId
         };
 
         if (arguments is not null)
@@ -532,12 +698,14 @@ public sealed partial class ProjectEditor
         string presentationNodeId,
         string definitionId,
         IReadOnlyDictionary<string, string>? arguments = null,
-        string? note = null)
+        string? note = null,
+        string? presetId = null)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
         var command = new PresentationCommandInstance(definitionId: definitionId)
         {
-            Note = note
+            Note = note,
+            PresetId = presetId
         };
 
         if (arguments is not null)
@@ -662,7 +830,8 @@ public sealed partial class ProjectEditor
         string presentationNodeId,
         string commandId,
         string definitionId,
-        IReadOnlyDictionary<string, string>? defaultArguments = null)
+        IReadOnlyDictionary<string, string>? defaultArguments = null,
+        string? presetId = null)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
         PresentationCommandInstance? command = node.SetupCommands
@@ -675,13 +844,14 @@ public sealed partial class ProjectEditor
         }
 
         bool sameDefinition = string.Equals(command.DefinitionId, definitionId, StringComparison.Ordinal);
+        bool samePreset = string.Equals(command.PresetId, presetId, StringComparison.Ordinal);
         bool sameArguments = defaultArguments is null ||
             (command.Arguments.Count == defaultArguments.Count &&
              command.Arguments.All(pair =>
                  defaultArguments.TryGetValue(pair.Key, out string? value) &&
                  string.Equals(value, pair.Value, StringComparison.Ordinal)));
 
-        if (sameDefinition && sameArguments)
+        if (sameDefinition && samePreset && sameArguments)
         {
             return;
         }
@@ -689,6 +859,7 @@ public sealed partial class ProjectEditor
         Mutate(ProjectChangeKind.PresentationContent, () =>
         {
             command.DefinitionId = definitionId;
+            command.PresetId = presetId;
 
             if (defaultArguments is not null)
             {

@@ -177,7 +177,9 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `PresentationCommandInstance` | 명령 하나. 정의 Id, 인자, 사용 여부, 메모. 순서를 보존한다 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
 | `ConditionDefinition` | Id + 작가용 이름 + 게임이 평가할 식 |
-| `NodeLink` | 실행이 아닌 연결. `Settings` 하나뿐이다 |
+| `CommandSupplyNode` | PresentationNode에 커맨드 범주·프리셋을 공급하는 노드. 어떤 범주 묶음을 "카메라 노드"라 부를지는 데이터다 |
+| `CommandPreset` | 값이 세팅된 커맨드(`pp_`). 발행 시에는 참조가 아니라 해석된 최종 인자가 얼어붙는다 |
+| `NodeLink` | 실행이 아닌 연결. `Settings`(SetNode→Dialogue)와 `CommandSupply`(공급→연출) |
 | `Identifier` | `sf_` / `nd_` / `ln_` / `cd_` / `lk_` / `sc_` / `rs_` / `rc_` 생성 |
 
 **Id와 이름을 나눈 이유:** 작가는 노드 이름을 바꾸고 줄 순서를 계속 바꾼다.
@@ -225,6 +227,7 @@ JSON을 그대로 쓴다. 해시 전용 표현을 따로 만들면 저장 형식
 | `ResolvedLine` | 줄 하나의 갈래·깊이·출구 여부, 그리고 **전환 적용 전** 갈래 |
 | `ConditionChoices` | 조건 드롭다운에 무엇을 보여 줄지 |
 | `AvailableConditionResolver` | **이 DialogueNode가 쓸 수 있는 조건**의 카탈로그 |
+| `AvailablePresentationCommandResolver` | **이 PresentationNode가 쓸 수 있는 커맨드 범주·프리셋**. 공급 노드 미연결 시 전체 카탈로그 폴백 |
 | `PresentationBindingResolver` | binding이 입력 결과의 어느 줄에 붙는지, 고아인지 |
 | `NodeConnections` | 노드의 실행 출력 포트와 프로젝트 전체 간선 |
 
@@ -739,7 +742,7 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | 발행 결과 | `ResultStoreJson.CurrentFormatVersion` = 1 | `results.vnresults.json` |
 | 되돌리기 스냅샷 | `ProjectSnapshotCodec.CurrentSnapshotVersion` = 2 | (메모리) |
 | 대사 결과 스키마 | `DialogueResult.CurrentSchemaVersion` = 3 | 결과 안의 `schemaVersion` |
-| 연출 결과 스키마 | `PresentationResult.CurrentSchemaVersion` = 2 | 결과 안의 `schemaVersion` |
+| 연출 결과 스키마 | `PresentationResult.CurrentSchemaVersion` = 3 | 결과 안의 `schemaVersion` |
 
 **형식 버전과 결과 스키마 버전은 다르다.** 앞의 것은 파일을 열 수 있는지, 뒤의 것은
 이미 발행된 결과를 지금 도구가 이해할 수 있는지를 말한다. 스키마 버전이 미래이면

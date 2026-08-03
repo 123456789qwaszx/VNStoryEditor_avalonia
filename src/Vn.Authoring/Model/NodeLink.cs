@@ -14,7 +14,10 @@ namespace Vn.Authoring.Model;
 public enum NodeLinkKind
 {
     /// <summary>SetNode가 DialogueNode에 조건과 assignment를 공급한다.</summary>
-    Settings
+    Settings,
+
+    /// <summary>CommandSupplyNode가 PresentationNode에 커맨드 범주와 프리셋을 공급한다.</summary>
+    CommandSupply
 }
 
 /// <summary>

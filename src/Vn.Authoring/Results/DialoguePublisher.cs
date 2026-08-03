@@ -46,6 +46,9 @@ public enum PublishProblemKind
     /// <summary>연출이 읽을 대사 결과를 아직 고르지 않았다.</summary>
     MissingSourceResult,
 
+    /// <summary>커맨드가 참조하는 프리셋을 찾을 수 없거나 연결된 공급 범위에 없다.</summary>
+    UnknownPreset,
+
     /// <summary>고른 대사 결과를 찾을 수 없거나 내용이 달라졌다.</summary>
     StaleSourceResult
 }

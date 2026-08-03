@@ -248,6 +248,7 @@ public static class ProjectManifestJson
             ["kind"] = link.Kind switch
             {
                 NodeLinkKind.Settings => "settings",
+                NodeLinkKind.CommandSupply => "commandSupply",
                 _ => throw new InvalidDataException($"지원하지 않는 NodeLink 종류 '{link.Kind}'입니다.")
             },
             ["source"] = link.SourceNodeId,
@@ -270,6 +271,7 @@ public static class ProjectManifestJson
         NodeLinkKind kind = (string?)json["kind"] switch
         {
             "settings" => NodeLinkKind.Settings,
+            "commandSupply" => NodeLinkKind.CommandSupply,
             "presentation" => throw new InvalidDataException(
                 $"NodeLink '{id}'는 연출 link입니다. 연출은 이제 발행된 대사 결과를 읽으므로 " +
                 "link로 저장하지 않습니다."),
