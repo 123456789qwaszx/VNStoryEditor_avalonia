@@ -231,6 +231,7 @@ JSON을 그대로 쓴다. 해시 전용 표현을 따로 만들면 저장 형식
 | `AvailablePresentationCommandResolver` | **이 PresentationNode가 쓸 수 있는 커맨드 범주·프리셋**. 공급 노드 미연결 시 전체 카탈로그 폴백 |
 | `PresentationBindingResolver` | binding이 입력 결과의 어느 줄에 붙는지, 고아인지 |
 | `NodeConnections` | 노드의 실행 출력 포트와 프로젝트 전체 간선 |
+| `MiniStageFold` | 무대 프리뷰의 순수 폴드 — 선택 라인까지 접은 배경·슬롯·별칭·대사창 상태와 **미반영 커맨드 목록**(§3.10) |
 
 `ResolvedLine`에 "전환 적용 전 갈래"(`PrecedingBranch`)가 함께 있는 이유는,
 드롭다운의 의미가 **바로 앞 줄까지의 상태**로 정해지기 때문이다.
@@ -359,11 +360,13 @@ aggregate 하나로 독립되어 있어야 한다.
 
 | 타입 | 역할 |
 |---|---|
-| `AuthoringSession` | 열린 프로젝트 경로, 저장 여부, 선택 상태, `ActiveFileId`와 `ExpandedFileIds`. 편집은 도메인이 한다 |
+| `AuthoringSession` | 열린 프로젝트 경로, 저장 여부, 선택 상태, `ActiveFileId`와 `ExpandedFileIds`, 프리뷰 에셋 인덱스·비트맵 캐시. 편집은 도메인이 한다 |
 | `GraphEditorView` | 노드 추가·이동·선택, 포트 드래그 연결, 간선 선택·삭제 |
 | `DialogueNodeEditor` | 대본 선택·가져오기, 줄 카드, 조건 드롭다운, 발행 탭, 출력 미리 보기 |
 | `SetNodeEditor` | 조건과 변수 값 정의 |
 | `PresentationNodeEditor` | 입력 결과 선택, 읽기 전용 대사 미러, LineId별 연출 명령, 발행 |
+| `MiniStagePreview` | 대사·연출 편집기가 공유하는 무대 프리뷰 패널(§3.10). 에셋 루트 설정과 명시적 새로 고침도 여기 |
+| `PreviewImageCache<T>` | 경로 키(Ordinal) 비트맵 캐시. 로더 주입식 — 무효화는 명시적 `Clear`뿐 |
 | `BranchPalette` | 갈래 색 표. 데이터가 아니라 표시 수단 |
 | `MainWindow` | 도구 모음, 열기·저장, 세션을 화면들에 물려준다 |
 | `ProjectRefreshPlanner` | 변경 알림 하나가 어느 화면을 다시 만들게 할지 정하는 유일한 자리 |
@@ -372,6 +375,38 @@ aggregate 하나로 독립되어 있어야 한다.
 
 **발행된 것에는 수정 UI가 없다.** 연출 편집기의 대사 미러는 `TextBlock`이지 `TextBox`가
 아니다. 발행 결과 목록도 읽기 전용 카드다.
+
+### 3.10 프리뷰 계층 — 무대 프리뷰 (Phase 2a-v1)
+
+"무슨 배경에서 누가 말하는가"만 답하는 읽기 전용 소비자다. 장면 재현이 아니라 정보가
+목표라서 좌표·크기·이펙트·시간은 다루지 않는다(그건 2b 정지 프레임 렌더러의 일).
+이미터·발행·계약서에는 손대지 않는다.
+
+책임은 세 겹으로 나뉜다.
+
+```
+Vn.Authoring/Assets   에셋 해석 — 파일 경로 수준까지만. 비트맵을 모른다
+   PortraitManifest      런타임 U12-v1 덤프(formatVersion 1, 불일치는 명시 거부)
+   PortraitKey           키 정규화·폴백 — 런타임 PortraitResolver 규칙 이식
+   PreviewAssetLibrary   배경 파일명=spriteKey(Ordinal)·초상화 키 인덱스, Problems
+Vn.Authoring/Flow     MiniStageFold — 순수 함수 폴드. 계산은 저장하지 않는다
+Vn.App                화면과 비트맵 — MiniStagePreview 패널, PreviewImageCache
+```
+
+지켜야 하는 것:
+
+- **폴드는 Flow의 계산이다.** 접은 상태를 어디에도 저장하지 않는다. 입력은 발행
+  Freeze와 같은 길로 해석된 커맨드(프리셋은 이미 최종 값)이므로 프리뷰용 두 번째
+  해석 규칙이 없다. 대사 편집기의 공급 짝도 내보내기와 같은 `NodeExportResolver`로 찾는다.
+- **에셋은 App 경계다.** Authoring은 경로와 해석 결과(정확/폴백/누락)까지만 알고,
+  Avalonia 비트맵·캐시·화면은 Vn.App에 있다. 파일 변경 감지는 없다 — 새로 고침은
+  명시적 동작 하나뿐이다.
+- **미처리 가시화 규칙.** 폴드가 인식하지 못한(또는 적용하지 못한) 커맨드는 조용히
+  버리지 않고 커맨드명·라인째로 `Unhandled`에 남겨 "반영 안 된 연출 N" 뱃지로 보인다.
+  누락 에셋도 키 문자열이 보이는 플레이스홀더와 `Problems`로 남는다. 이 목록이
+  2b 확장의 백로그다 — **조용히 버리는 코드는 리뷰 반려 사유다.**
+- v1 폴드는 갈래를 가정하지 않는다. 조건·선택 갈래도 문서 순서대로 전부 접고,
+  그 근사가 쓰였음을 표시 하나로 알린다. 갈래 인식 폴드는 2b에서.
 
 ---
 
@@ -731,6 +766,11 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 
 13. **골든 파일은 언제나 UTF-8로 읽는다.** PowerShell 5.1은 BOM이 없으면 ANSI로 읽는다.
     한국어를 담은 `.ps1`은 UTF-8 BOM으로 저장해야 한다.
+
+14. **프리뷰가 다루지 못하는 것을 조용히 버리지 않는다.**
+    폴드가 인식 못 한 커맨드는 `Unhandled`로, 못 찾은 에셋 키는 플레이스홀더와
+    `Problems`로 반드시 화면에 남는다 (§3.10). 조용히 버리면 나중에
+    "왜 이 장면만 다르지"로 돌아온다 — 그때는 어디서 사라졌는지 아무도 모른다.
 
 ---
 
