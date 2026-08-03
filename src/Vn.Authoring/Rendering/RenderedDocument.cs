@@ -50,10 +50,15 @@ public sealed record RenderSourceReference(
     string? PresentationNodeId = null,
     string? PresentationCommandId = null);
 
+/// <summary>연출 명령 인자 하나. 목록에서의 위치가 곧 Yarn 포지셔널 인자 순서다.</summary>
+public sealed record RenderedArgument(string Name, string Value);
+
 /// <summary>
 /// Formatter에 종속되지 않은 평면 문서 조각.
 /// Text는 대사·표시 이름·경고처럼 사람이 읽는 내용이고, Expression/Variable/TargetNodeId는
 /// Yarn뿐 아니라 다른 출력 형식도 다시 사용할 수 있는 의미 값이다.
+/// 연출 범주는 게임 정의가 공급하는 문자열 Id이며, 표시 이름을 함께 실어
+/// Formatter가 카탈로그 없이도 사람이 읽는 라벨을 만들 수 있게 한다.
 /// </summary>
 public sealed record RenderedSegment(
     string Id,
@@ -71,8 +76,9 @@ public sealed record RenderedSegment(
     string? TargetNodeName = null,
     string? DefinitionId = null,
     string? CommandName = null,
-    Vn.Authoring.Definition.PresentationCategory? PresentationCategory = null,
-    IReadOnlyDictionary<string, string>? Arguments = null);
+    string? PresentationCategoryId = null,
+    string? PresentationCategoryName = null,
+    IReadOnlyList<RenderedArgument>? Arguments = null);
 
 /// <summary>
 /// 결과 하나(또는 결과 조합 하나)를 평평하게 합성한 결과.

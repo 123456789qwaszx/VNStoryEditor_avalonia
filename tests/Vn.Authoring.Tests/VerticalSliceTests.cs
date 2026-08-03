@@ -1,4 +1,5 @@
 using System.Text;
+using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
 using Vn.Authoring.Rendering;
@@ -38,6 +39,29 @@ public class VerticalSliceTests
         string rawPath = Path.Combine(directory, "raw", "chapter.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(rawPath)!);
         File.WriteAllText(rawPath, RawScript, new UTF8Encoding(false));
+
+        // 게임 정의도 프로젝트 옆의 파일이다. 왕복에 함께 실어 실제 배치와 같은 길을 지난다.
+        File.WriteAllText(
+            Path.Combine(directory, GameDefinition.FileName),
+            """
+            {
+              "presentationCommandCategories": [
+                { "id": "camera", "name": "Camera" }
+              ],
+              "presentationCommands": [
+                {
+                  "id": "camera.closeup",
+                  "name": "클로즈업",
+                  "category": "camera",
+                  "outputCommand": "camera",
+                  "parameters": [
+                    { "name": "preset", "type": "string", "required": false, "default": "closeup" }
+                  ]
+                }
+              ]
+            }
+            """,
+            new UTF8Encoding(false));
 
         try
         {
@@ -97,9 +121,10 @@ public class VerticalSliceTests
                 presentation.Identity.Version,
                 name: "1장 Runtime");
 
-            Dictionary<OutputPresetId, string> outputs = RenderAll(project, composition);
+            GameDefinition definition = GameDefinition.LoadBeside(manifestPath);
+            Dictionary<OutputPresetId, string> outputs = RenderAll(project, composition, definition);
 
-            Assert.Contains("<<camera preset=closeup>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
+            Assert.Contains("<<camera closeup>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
             Assert.Contains($"<<if {favor.Expression}>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
             Assert.Contains($"<<jump {ending.Id}>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
 
@@ -134,7 +159,10 @@ public class VerticalSliceTests
 
             // ── 7. 다시 만든 출력이 글자 하나까지 같다 ────────────────────────
             RuntimeComposition reloadedComposition = reloaded.FindComposition(composition.Id)!;
-            Dictionary<OutputPresetId, string> again = RenderAll(reloaded, reloadedComposition);
+            Dictionary<OutputPresetId, string> again = RenderAll(
+                reloaded,
+                reloadedComposition,
+                GameDefinition.LoadBeside(manifestPath));
 
             foreach (OutputPresetId preset in outputs.Keys)
             {
@@ -223,7 +251,8 @@ public class VerticalSliceTests
 
     private static Dictionary<OutputPresetId, string> RenderAll(
         StoryProject project,
-        RuntimeComposition composition)
+        RuntimeComposition composition,
+        GameDefinition definition)
     {
         ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
             project.Results,
@@ -233,7 +262,7 @@ public class VerticalSliceTests
         return OutputPresetCatalog.All.ToDictionary(
             preset => preset.Id,
             preset => DocumentPreviewFormatter.Format(
-                ResultDocumentComposer.ComposePreset(resolved, preset, project)));
+                ResultDocumentComposer.ComposePreset(resolved, preset, project, definition)));
     }
 
     private static DialogueNode AddEndNode(ProjectEditor editor, StoryFile file, string name)

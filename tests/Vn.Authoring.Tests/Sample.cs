@@ -1,3 +1,4 @@
+using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
 using Vn.Authoring.Script;
@@ -102,4 +103,51 @@ internal sealed class Sample
     }
 
     private string NextLineId() => $"ln_{++_nextLineNumber:D3}";
+
+    /// <summary>
+    /// 테스트가 공유하는 작은 게임 정의. samples/Authoring의 3범주 정의와 같은 모양이다.
+    /// 범주와 파라미터 순서는 전부 데이터에서 온다 — 테스트도 그 원칙 위에서 쓴다.
+    /// </summary>
+    public static GameDefinition Definition { get; } = new()
+    {
+        PresentationCommandCategories =
+        {
+            new PresentationCategorySpec { Id = "camera", Name = "Camera" },
+            new PresentationCategorySpec { Id = "screen_effect", Name = "ScreenEffect" },
+            new PresentationCategorySpec { Id = "character_acting", Name = "CharacterActing" }
+        },
+        PresentationCommands =
+        {
+            Command("camera.closeup", "클로즈업", "camera", "camera", "closeup"),
+            Command("camera.wide", "와이드", "camera", "camera", "wide"),
+            Command("screen.shake", "화면 흔들림", "screen_effect", "screen_effect", "shake"),
+            Command("screen.flash", "플래시", "screen_effect", "screen_effect", "flash"),
+            Command("acting.smile", "미소", "character_acting", "character_acting", "smile")
+        }
+    };
+
+    private static PresentationCommandSpec Command(
+        string id,
+        string name,
+        string category,
+        string output,
+        string presetDefault)
+    {
+        return new PresentationCommandSpec
+        {
+            Id = id,
+            Name = name,
+            Category = category,
+            OutputCommand = output,
+            Parameters =
+            {
+                new PresentationParameterSpec
+                {
+                    Name = "preset",
+                    Type = "string",
+                    Default = presetDefault
+                }
+            }
+        };
+    }
 }

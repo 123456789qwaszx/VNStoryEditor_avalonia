@@ -6,4 +6,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Vn.Authoring.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 기본 연출 카탈로그. docs의 검증본이 유일한 원본이고, 여기서는 내장 리소스로 링크만 한다. -->
+    <EmbeddedResource Include="..\..\docs\game.definition.json" Link="Definition\game.definition.default.json" LogicalName="Vn.Authoring.Definition.game.definition.default.json" />
+  </ItemGroup>
 </Project>

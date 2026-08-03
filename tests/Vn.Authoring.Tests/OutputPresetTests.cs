@@ -88,22 +88,17 @@ public class OutputPresetTests
     }
 
     [Fact]
-    public void Recording_Script는_CharacterActing과_LineId_대사만_남긴다()
+    public void Recording_Script는_LineId_화자_대사만_남긴다()
     {
+        // 소유자 4형식 매핑의 2번(LineId+대본). 연출은 Direction Sheet의 몫이다.
         PresetSample sample = BuildPresetSample();
 
         RenderedDocument document = Compose(sample, OutputPresetCatalog.RecordingScript);
-        RenderedSegment[] commands = document.Segments
-            .Where(segment => segment.Kind == RenderedSegmentKind.PresentationCommand)
-            .ToArray();
 
-        RenderedSegment command = Assert.Single(commands);
-        Assert.Equal(PresentationCategory.CharacterActing, command.PresentationCategory);
-        Assert.All(document.Segments, segment => Assert.True(
-            segment.Kind is RenderedSegmentKind.PresentationCommand or RenderedSegmentKind.DialogueLine));
+        Assert.All(document.Segments, segment =>
+            Assert.Equal(RenderedSegmentKind.DialogueLine, segment.Kind));
 
         string text = DocumentPreviewFormatter.Format(document);
-        Assert.Contains("[연기]", text, StringComparison.Ordinal);
         Assert.Contains($"[LINE {sample.Opening}]", text, StringComparison.Ordinal);
         Assert.Contains("라루:", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Camera", text, StringComparison.Ordinal);
@@ -127,23 +122,18 @@ public class OutputPresetTests
     }
 
     [Fact]
-    public void Direction_Sheet는_세_연출_범주와_LineId_참고_대사를_남긴다()
+    public void Direction_Sheet는_모든_연출_범주와_LineId_참고_대사를_남긴다()
     {
         PresetSample sample = BuildPresetSample();
 
         RenderedDocument document = Compose(sample, OutputPresetCatalog.DirectionSheet);
-        PresentationCategory?[] categories = document.Segments
+        string?[] categories = document.Segments
             .Where(segment => segment.Kind == RenderedSegmentKind.PresentationCommand)
-            .Select(segment => segment.PresentationCategory)
+            .Select(segment => segment.PresentationCategoryId)
             .ToArray();
 
         Assert.Equal(
-            new PresentationCategory?[]
-            {
-                PresentationCategory.Camera,
-                PresentationCategory.ScreenEffect,
-                PresentationCategory.CharacterActing
-            },
+            new[] { "camera", "screen_effect", "character_acting" },
             categories);
         Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.SetAssignment);
         Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.ConditionBegin);
@@ -170,7 +160,7 @@ public class OutputPresetTests
             sample.Dialogue,
             sample.Presentation,
             sample.Sample.Project,
-            definition: null,
+            Sample.Definition,
             OutputPresetCatalog.LocalizationScript.Options,
             OutputPresetId.LocalizationScript,
             provider);
@@ -212,7 +202,7 @@ public class OutputPresetTests
             sample.Dialogue,
             sample.Presentation,
             sample.Sample.Project,
-            definition: null,
+            Sample.Definition,
             preset.Options,
             preset.Id);
     }

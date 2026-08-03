@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -20,13 +20,6 @@ namespace Vn.App.Views;
 /// </summary>
 public partial class PresentationNodeEditor : UserControl
 {
-    private static readonly PresentationCategory[] Categories =
-    {
-        PresentationCategory.Camera,
-        PresentationCategory.ScreenEffect,
-        PresentationCategory.CharacterActing
-    };
-
     private AuthoringSession? _session;
     private string? _nodeId;
     private bool _building;
@@ -234,7 +227,7 @@ public partial class PresentationNodeEditor : UserControl
             FontWeight = FontWeight.SemiBold
         });
 
-        foreach (PresentationCategory category in Categories)
+        foreach (PresentationCategoryDefinition category in catalog.Categories)
         {
             content.Children.Add(BuildCategoryEditor(presentation, line.LineId, category, catalog));
         }
@@ -252,17 +245,20 @@ public partial class PresentationNodeEditor : UserControl
     private Control BuildCategoryEditor(
         PresentationNode presentation,
         string lineId,
-        PresentationCategory category,
+        PresentationCategoryDefinition category,
         PresentationCommandCatalog catalog)
     {
-        IReadOnlyList<PresentationCommandDefinition> choices = catalog.For(category);
+        IReadOnlyList<PresentationCommandDefinition> choices = catalog.For(category.Id);
         PresentationLineBinding? binding = presentation.FindBinding(lineId);
         PresentationCommandInstance? command = binding?.Commands.FirstOrDefault(item =>
-            catalog.Find(item.DefinitionId)?.Category == category);
+            string.Equals(
+                catalog.Find(item.DefinitionId)?.CategoryId,
+                category.Id,
+                StringComparison.Ordinal));
 
         var enabled = new CheckBox
         {
-            Content = CategoryName(category),
+            Content = category.DisplayName,
             IsChecked = command?.IsEnabled == true,
             IsEnabled = choices.Count > 0,
             MinWidth = 128,
@@ -297,7 +293,7 @@ public partial class PresentationNodeEditor : UserControl
                     presentation.Id,
                     lineId,
                     definition.Id,
-                    definition.DefaultArguments);
+                    definition.DefaultArgumentValues());
             }
             else if (command is not null)
             {
@@ -325,7 +321,7 @@ public partial class PresentationNodeEditor : UserControl
                         presentation.Id,
                         lineId,
                         definition.Id,
-                        definition.DefaultArguments);
+                        definition.DefaultArgumentValues());
                 }
             }
             else
@@ -334,7 +330,7 @@ public partial class PresentationNodeEditor : UserControl
                     presentation.Id,
                     command.Id,
                     definition.Id,
-                    definition.DefaultArguments);
+                    definition.DefaultArgumentValues());
             }
         };
 
@@ -383,12 +379,4 @@ public partial class PresentationNodeEditor : UserControl
 
         return definitions.Count > 0 ? 0 : -1;
     }
-
-    private static string CategoryName(PresentationCategory category) => category switch
-    {
-        PresentationCategory.Camera => "Camera",
-        PresentationCategory.ScreenEffect => "ScreenEffect",
-        PresentationCategory.CharacterActing => "CharacterActing",
-        _ => category.ToString()
-    };
 }

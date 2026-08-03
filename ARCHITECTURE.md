@@ -317,8 +317,8 @@ Segment는 문자열만 들고 있지 않다. 어디서 나왔는지를 함께 �
 | `ProjectStore` | 경로 해석, 전체 읽기·쓰기, 임시 파일 교체 |
 | `ProjectSnapshotCodec` | 되돌리기와 저장 여부 비교용 aggregate 문자열 |
 | `JsonSupport` | 공통 읽기 도우미와 형식 검증 |
-| `GameDefinition` | 게임별 변수·이벤트 후보. 없으면 빈 정의로 계속 |
-| `PresentationCommandCatalog` | 게임별 연출 명령 정의. 정의 파일이 없으면 기본 카탈로그 |
+| `GameDefinition` | 게임별 변수·이벤트·연출 범주·명령 후보. 없으면 빈 정의로 계속 |
+| `PresentationCommandCatalog` | 게임별 연출 명령 정의. 범주는 문자열 Id, 파라미터는 **순서 있는 목록**(순서가 곧 Yarn 포지셔널 인자 순서). 정의 파일이 없으면 내장 기본 카탈로그(`docs/game.definition.json`을 리소스로 링크한 런타임 교차 검증본, 201 커맨드) |
 
 디스크 배치:
 
@@ -335,6 +335,9 @@ results.vnresults.json      발행된 불변 결과
 
 **연출 명령을 C# enum에 박지 않는다.** 게임마다 명령과 프리셋이 다르다. 코드가 특정
 게임의 명령 이름을 알기 시작하면 그 게임 전용 도구가 된다. 변수·이벤트와 같은 이유다.
+편집 범주도 마찬가지다 — "카메라 노드"가 어떤 범주 묶음인지는 `presentationCommandCategories`
+데이터가 정하고, 코드는 문자열 Id로만 다룬다. 기본 프리셋도 범주를 열거하지 않는다
+(null = 전체 포함). 특정 범주만 고르는 것은 사용자 정의 옵션의 몫이다.
 
 **디스크 배치와 되돌리기 형식을 나눈 이유:** 되돌리기 한 번에 여러 실제 파일을 다시
 조립할 이유가 없다. 파일 구조가 앞으로 또 바뀌어도 편집 기록은 `ProjectSnapshotCodec`의

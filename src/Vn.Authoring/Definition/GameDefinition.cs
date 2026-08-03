@@ -33,6 +33,13 @@ public sealed class GameDefinition
     [JsonPropertyName("conditions")]
     public List<ConditionSpec> Conditions { get; init; } = new();
 
+    /// <summary>
+    /// 연출 명령의 편집 범주. 목록 순서가 편집기의 표시 순서다.
+    /// "캐릭터 연출"이 무엇을 묶는지는 게임마다 다르므로 코드가 아니라 여기서 정의한다.
+    /// </summary>
+    [JsonPropertyName("presentationCommandCategories")]
+    public List<PresentationCategorySpec> PresentationCommandCategories { get; init; } = new();
+
     /// <summary>연출 편집기의 드롭다운과 Yarn Preview Formatter가 공유하는 명령 정의.</summary>
     [JsonPropertyName("presentationCommands")]
     public List<PresentationCommandSpec> PresentationCommands { get; init; } = new();
@@ -60,15 +67,7 @@ public sealed class GameDefinition
                 return Empty;
             }
 
-            return JsonSerializer.Deserialize<GameDefinition>(
-                       File.ReadAllText(path, new UTF8Encoding(false)),
-                       new JsonSerializerOptions
-                       {
-                           PropertyNameCaseInsensitive = true,
-                           ReadCommentHandling = JsonCommentHandling.Skip,
-                           AllowTrailingCommas = true
-                       })
-                   ?? Empty;
+            return Parse(File.ReadAllText(path, new UTF8Encoding(false))) ?? Empty;
         }
         catch (Exception exception) when (
             exception is IOException or
@@ -79,6 +78,19 @@ public sealed class GameDefinition
         {
             return Empty;
         }
+    }
+
+    /// <summary>정의 JSON 파싱 규칙의 단일 구현. 파일과 내장 기본 카탈로그가 같은 길을 지난다.</summary>
+    public static GameDefinition? Parse(string json)
+    {
+        return JsonSerializer.Deserialize<GameDefinition>(
+            json,
+            new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                ReadCommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
     }
 }
 
@@ -117,6 +129,15 @@ public sealed class ConditionSpec
 }
 
 
+public sealed class PresentationCategorySpec
+{
+    [JsonPropertyName("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+}
+
 public sealed class PresentationCommandSpec
 {
     [JsonPropertyName("id")]
@@ -125,12 +146,44 @@ public sealed class PresentationCommandSpec
     [JsonPropertyName("name")]
     public string Name { get; init; } = string.Empty;
 
+    /// <summary><see cref="PresentationCategorySpec.Id"/> 참조. 도구는 문자열로만 다룬다.</summary>
     [JsonPropertyName("category")]
     public string Category { get; init; } = string.Empty;
 
     [JsonPropertyName("outputCommand")]
     public string OutputCommand { get; init; } = string.Empty;
 
-    [JsonPropertyName("arguments")]
-    public Dictionary<string, string> Arguments { get; init; } = new(StringComparer.Ordinal);
+    /// <summary>런타임 실행 방식(immediate/queued). 도구는 해석하지 않고 실어 나른다.</summary>
+    [JsonPropertyName("execution")]
+    public string Execution { get; init; } = string.Empty;
+
+    /// <summary>메인 레인 전용 커맨드. Pres/Set 노드에 출력하면 런타임이 unknown command로 깨진다.</summary>
+    [JsonPropertyName("mainLaneOnly")]
+    public bool MainLaneOnly { get; init; }
+
+    /// <summary><b>순서가 곧 Yarn 포지셔널 인자 순서다.</b></summary>
+    [JsonPropertyName("parameters")]
+    public List<PresentationParameterSpec> Parameters { get; init; } = new();
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+}
+
+public sealed class PresentationParameterSpec
+{
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>게임이 해석하는 타입 이름(int, aliasOrSlot 등). VnTool은 그대로 보여 주기만 한다.</summary>
+    [JsonPropertyName("type")]
+    public string Type { get; init; } = string.Empty;
+
+    [JsonPropertyName("required")]
+    public bool Required { get; init; }
+
+    [JsonPropertyName("default")]
+    public string? Default { get; init; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
 }

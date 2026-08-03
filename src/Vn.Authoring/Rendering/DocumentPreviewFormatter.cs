@@ -1,5 +1,4 @@
 using System.Text;
-using Vn.Authoring.Definition;
 
 namespace Vn.Authoring.Rendering;
 
@@ -125,7 +124,7 @@ public static class DocumentPreviewFormatter
             {
                 case RenderedSegmentKind.PresentationCommand:
                     builder.Append('[')
-                        .Append(CategoryLabel(segment.PresentationCategory))
+                        .Append(CategoryLabel(segment))
                         .Append("] ")
                         .Append(CommandDisplay(segment))
                         .Append('\n');
@@ -204,24 +203,19 @@ public static class DocumentPreviewFormatter
             builder.Append(" (")
                 .Append(string.Join(
                     ", ",
-                    segment.Arguments
-                        .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                        .Select(pair => $"{pair.Key}={pair.Value}")))
+                    segment.Arguments.Select(argument => $"{argument.Name}={argument.Value}")))
                 .Append(')');
         }
 
         return builder.ToString();
     }
 
-    private static string CategoryLabel(PresentationCategory? category)
+    private static string CategoryLabel(RenderedSegment segment)
     {
-        return category switch
-        {
-            PresentationCategory.Camera => "Camera",
-            PresentationCategory.ScreenEffect => "ScreenEffect",
-            PresentationCategory.CharacterActing => "CharacterActing",
-            _ => "Presentation"
-        };
+        // 범주 어휘는 게임 정의가 공급한다. 표시 이름 → Id → 중립 라벨 순서로 고른다.
+        return segment.PresentationCategoryName
+            ?? segment.PresentationCategoryId
+            ?? "Presentation";
     }
 
     private static string EscapeTabular(string? value)

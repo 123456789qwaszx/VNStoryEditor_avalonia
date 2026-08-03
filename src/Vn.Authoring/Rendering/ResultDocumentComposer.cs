@@ -270,24 +270,9 @@ public static class ResultDocumentComposer
         {
             PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
 
-            if (!options.IncludesPresentation(definition?.Category))
+            if (!options.IncludesPresentation(definition?.CategoryId))
             {
                 continue;
-            }
-
-            var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
-
-            if (definition is not null)
-            {
-                foreach ((string key, string value) in definition.DefaultArguments)
-                {
-                    arguments[key] = value;
-                }
-            }
-
-            foreach ((string key, string value) in command.Arguments)
-            {
-                arguments[key] = value;
             }
 
             segments.Add(new RenderedSegment(
@@ -307,9 +292,50 @@ public static class ResultDocumentComposer
                 Text: definition?.DisplayName,
                 DefinitionId: command.DefinitionId,
                 CommandName: definition?.OutputCommandName ?? command.DefinitionId,
-                PresentationCategory: definition?.Category,
-                Arguments: arguments));
+                PresentationCategoryId: definition?.CategoryId,
+                PresentationCategoryName: catalog.FindCategory(definition?.CategoryId)?.DisplayName,
+                Arguments: ResolveArguments(definition, command)));
         }
+    }
+
+    /// <summary>
+    /// 카탈로그의 파라미터 순서대로 인자 값을 해석한다. 작성 값이 없으면 정의의 기본값을 쓰고,
+    /// 값이 아예 없는 파라미터부터는 트레일링 생략으로 자른다(뒤쪽부터만 생략 규칙).
+    /// 정의를 모르는 명령이나 파라미터 밖의 인자는 버리지 않고 이름순으로 뒤에 붙인다.
+    /// </summary>
+    private static IReadOnlyList<RenderedArgument> ResolveArguments(
+        PresentationCommandDefinition? definition,
+        PresentationResultCommand command)
+    {
+        var arguments = new List<RenderedArgument>();
+        var consumed = new HashSet<string>(StringComparer.Ordinal);
+
+        if (definition is not null)
+        {
+            foreach (PresentationCommandParameter parameter in definition.Parameters)
+            {
+                string? value = command.Arguments.TryGetValue(parameter.Name, out string? provided)
+                    ? provided
+                    : parameter.Default;
+
+                if (value is null)
+                {
+                    break;
+                }
+
+                arguments.Add(new RenderedArgument(parameter.Name, value));
+                consumed.Add(parameter.Name);
+            }
+        }
+
+        foreach ((string key, string value) in command.Arguments
+                     .Where(pair => !consumed.Contains(pair.Key))
+                     .OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            arguments.Add(new RenderedArgument(key, value));
+        }
+
+        return arguments;
     }
 
     private static void AddOrphanWarnings(

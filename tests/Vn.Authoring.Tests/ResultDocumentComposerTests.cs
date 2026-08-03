@@ -220,7 +220,8 @@ public class ResultDocumentComposerTests
         RenderedDocument document = ResultDocumentComposer.Compose(
             context.Dialogue,
             presentation,
-            context.Sample.Project);
+            context.Sample.Project,
+            Sample.Definition);
 
         RenderedSegment[] commands = document.Segments
             .Where(segment => segment.Kind == RenderedSegmentKind.PresentationCommand)
@@ -240,8 +241,10 @@ public class ResultDocumentComposerTests
                     Array.IndexOf(document.Segments.ToArray(), dialogue));
 
         string text = YarnPreviewFormatter.Format(document);
-        int cameraIndex = text.IndexOf("<<camera preset=closeup>>", StringComparison.Ordinal);
-        int actingIndex = text.IndexOf("<<character_acting preset=smile>>", StringComparison.Ordinal);
+
+        // 런타임 문법은 포지셔널이다 — 파라미터 순서대로 값만 잇는다.
+        int cameraIndex = text.IndexOf("<<camera closeup>>", StringComparison.Ordinal);
+        int actingIndex = text.IndexOf("<<character_acting smile>>", StringComparison.Ordinal);
         int dialogueIndex = text.IndexOf("연출 대사 #line:", StringComparison.Ordinal);
         Assert.True(cameraIndex >= 0 && cameraIndex < actingIndex);
         Assert.True(actingIndex < dialogueIndex);

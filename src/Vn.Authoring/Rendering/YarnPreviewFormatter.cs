@@ -75,15 +75,11 @@ public static class YarnPreviewFormatter
                         ? segment.DefinitionId ?? "presentation"
                         : segment.CommandName);
 
-                foreach ((string key, string value) in (segment.Arguments ??
-                             new Dictionary<string, string>()).OrderBy(
-                                 pair => pair.Key,
-                                 StringComparer.Ordinal))
+                // 런타임 커맨드는 인자를 순서로 읽는다. Segment의 인자 목록이 이미
+                // 카탈로그 파라미터 순서이므로 값만 그 순서대로 잇는다.
+                foreach (RenderedArgument argument in segment.Arguments ?? Array.Empty<RenderedArgument>())
                 {
-                    builder.Append(' ')
-                        .Append(key)
-                        .Append('=')
-                        .Append(value);
+                    builder.Append(' ').Append(argument.Value);
                 }
 
                 builder.Append(">>\n");

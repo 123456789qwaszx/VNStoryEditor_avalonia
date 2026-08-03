@@ -32,87 +32,155 @@
     }
   ],
   "conditions": [],
+  "presentationCommandCategories": [
+    {
+      "id": "camera",
+      "name": "Camera"
+    },
+    {
+      "id": "screen_effect",
+      "name": "ScreenEffect"
+    },
+    {
+      "id": "character_acting",
+      "name": "CharacterActing"
+    }
+  ],
   "presentationCommands": [
     {
       "id": "camera.closeup",
       "name": "클로즈업",
-      "category": "Camera",
+      "category": "camera",
       "outputCommand": "camera",
-      "arguments": {
-        "preset": "closeup"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "closeup"
+        }
+      ]
     },
     {
       "id": "camera.medium",
       "name": "미디엄",
-      "category": "Camera",
+      "category": "camera",
       "outputCommand": "camera",
-      "arguments": {
-        "preset": "medium"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "medium"
+        }
+      ]
     },
     {
       "id": "camera.wide",
       "name": "와이드",
-      "category": "Camera",
+      "category": "camera",
       "outputCommand": "camera",
-      "arguments": {
-        "preset": "wide"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "wide"
+        }
+      ]
     },
     {
       "id": "screen.fade",
       "name": "페이드",
-      "category": "ScreenEffect",
+      "category": "screen_effect",
       "outputCommand": "screen_effect",
-      "arguments": {
-        "preset": "fade"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "fade"
+        }
+      ]
     },
     {
       "id": "screen.shake",
       "name": "화면 흔들림",
-      "category": "ScreenEffect",
+      "category": "screen_effect",
       "outputCommand": "screen_effect",
-      "arguments": {
-        "preset": "shake"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "shake"
+        }
+      ]
     },
     {
       "id": "screen.flash",
       "name": "플래시",
-      "category": "ScreenEffect",
+      "category": "screen_effect",
       "outputCommand": "screen_effect",
-      "arguments": {
-        "preset": "flash"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "flash"
+        }
+      ]
     },
     {
       "id": "acting.neutral",
       "name": "기본 표정",
-      "category": "CharacterActing",
+      "category": "character_acting",
       "outputCommand": "character_acting",
-      "arguments": {
-        "preset": "neutral"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "neutral"
+        }
+      ]
     },
     {
       "id": "acting.smile",
       "name": "미소",
-      "category": "CharacterActing",
+      "category": "character_acting",
       "outputCommand": "character_acting",
-      "arguments": {
-        "preset": "smile"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "smile"
+        }
+      ]
     },
     {
       "id": "acting.surprised",
       "name": "놀람",
-      "category": "CharacterActing",
+      "category": "character_acting",
       "outputCommand": "character_acting",
-      "arguments": {
-        "preset": "surprised"
-      }
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "preset",
+          "type": "string",
+          "required": false,
+          "default": "surprised"
+        }
+      ]
     }
   ]
 }
