@@ -1,0 +1,5 @@
+title: _declarations
+---
+<<declare $fatigue = 0>>
+<<declare $favor = 0>>
+===

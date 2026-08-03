@@ -9,6 +9,13 @@ namespace Vn.Authoring.Rendering;
 public sealed record YarnBundleProblem(string Message, bool IsBlocking, string? LineId = null);
 
 /// <summary>
+/// 이 번들이 필요로 하는 변수 선언 하나. 선언은 번들 텍스트가 아니라
+/// 폴더당 하나뿐인 선언 파일에 실린다 — 여러 번들을 한 유니티 프로젝트로 컴파일할 때
+/// 같은 변수를 두 번 선언하면 컴파일 전체가 깨지기 때문이다.
+/// </summary>
+public sealed record YarnDeclaration(string Variable, string InitialValue);
+
+/// <summary>
 /// 합성 하나에서 나온 .yarn 트리오. 파일로 쓰기 전의 순수 문자열이다.
 /// Set·Pres는 연출 결과 없이 합성했으면 null이다 — 레인이 없는 Story는 혼자 재생된다.
 /// </summary>
@@ -19,12 +26,14 @@ public sealed class YarnBundle
         string storyText,
         string? setText,
         string? presText,
+        IReadOnlyList<YarnDeclaration> declarations,
         IReadOnlyList<YarnBundleProblem> problems)
     {
         BundleName = bundleName;
         StoryText = storyText;
         SetText = setText;
         PresText = presText;
+        Declarations = declarations;
         Problems = problems;
     }
 
@@ -35,6 +44,9 @@ public sealed class YarnBundle
     public string? SetText { get; }
 
     public string? PresText { get; }
+
+    /// <summary>이 번들이 쓰는 변수와 초기값. 선언 파일 합집합의 재료다.</summary>
+    public IReadOnlyList<YarnDeclaration> Declarations { get; }
 
     public IReadOnlyList<YarnBundleProblem> Problems { get; }
 
@@ -90,8 +102,7 @@ public static class YarnBundleEmitter
         ResolvedComposition composition,
         StoryProject? project = null,
         GameDefinition? definition = null,
-        string? bundleName = null,
-        bool emitDeclarations = true)
+        string? bundleName = null)
     {
         ArgumentNullException.ThrowIfNull(composition);
 
@@ -105,8 +116,7 @@ public static class YarnBundleEmitter
             composition.Presentation,
             project,
             definition,
-            bundleName,
-            emitDeclarations);
+            bundleName);
     }
 
     public static YarnBundle Emit(
@@ -114,8 +124,7 @@ public static class YarnBundleEmitter
         PresentationResult? presentation = null,
         StoryProject? project = null,
         GameDefinition? definition = null,
-        string? bundleName = null,
-        bool emitDeclarations = true)
+        string? bundleName = null)
     {
         ArgumentNullException.ThrowIfNull(dialogue);
 
@@ -141,12 +150,6 @@ public static class YarnBundleEmitter
 
         // ── 헤더 ────────────────────────────────────────────────────────────
         story.Append("title: Story_").Append(name).Append("\n---\n");
-
-        if (emitDeclarations)
-        {
-            AppendDeclarations(story, dialogue, definition);
-        }
-
         pres?.Append("title: Pres_").Append(name).Append("\n---\n\n");
         setup?.Append("title: Set_").Append(name).Append("\n---\n");
 
@@ -252,30 +255,121 @@ public static class YarnBundleEmitter
             story.ToString(),
             setup?.ToString(),
             pres?.ToString(),
+            CollectDeclarations(dialogue, definition),
             problems);
     }
 
+    /// <summary>선언 파일 이름. 폴더당 하나다.</summary>
+    public const string DeclarationsFileName = "declarations.yarn";
+
+    /// <summary>선언 전용 노드의 타이틀. 런타임은 이 노드에 진입하지 않는다.</summary>
+    public const string DeclarationsNodeTitle = "_declarations";
+
     /// <summary>
-    /// 트리오를 폴더에 쓴다. 결정적 출력: UTF-8 BOM 없음, LF, 임시 파일 교체.
-    /// 막는 문제가 있으면 아무 파일도 쓰지 않는다 — 어긋난 출력은 컴파일이 되어도
-    /// 런타임에서 조용히 깨진다.
+    /// 여러 번들의 선언 합집합을 선언 파일 텍스트로 만든다. 선언이 하나도 없으면 null이다.
+    ///
+    /// 런타임 C#에는 <c>&lt;&lt;declare&gt;&gt;</c>도 스마트 변수도 없다 — 컴파일을 위해
+    /// 이미터가 선언을 내되(D4), Story 노드마다 내면 여러 번들을 한 프로그램으로 컴파일할 때
+    /// 중복 선언으로 깨진다. 그래서 선언은 전용 파일 하나에만 낸다.
+    /// 같은 변수의 초기값이 번들 간에 다르면 합집합이 성립하지 않으므로 거부한다.
     /// </summary>
+    public static string? ComposeDeclarationsText(IReadOnlyList<YarnBundle> bundles)
+    {
+        ArgumentNullException.ThrowIfNull(bundles);
+
+        // 번들 목록의 순서와 무관하게 같은 파일이 나오도록 변수 이름순으로 정렬한다.
+        var union = new SortedDictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (YarnBundle bundle in bundles)
+        {
+            foreach (YarnDeclaration declaration in bundle.Declarations)
+            {
+                if (union.TryGetValue(declaration.Variable, out string? existing))
+                {
+                    if (!string.Equals(existing, declaration.InitialValue, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException(
+                            $"변수 '{declaration.Variable}'의 초기값이 합성 간에 다릅니다 " +
+                            $"({existing} vs {declaration.InitialValue}). " +
+                            "같은 폴더로 내보내는 합성들은 같은 게임 정의를 써야 합니다.");
+                    }
+
+                    continue;
+                }
+
+                union[declaration.Variable] = declaration.InitialValue;
+            }
+        }
+
+        if (union.Count == 0)
+        {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        builder.Append("title: ").Append(DeclarationsNodeTitle).Append("\n---\n");
+
+        foreach ((string variable, string initialValue) in union)
+        {
+            builder.Append("<<declare ")
+                .Append(YarnSyntax.NormalizeVariable(variable))
+                .Append(" = ")
+                .Append(initialValue)
+                .Append(">>\n");
+        }
+
+        builder.Append("===\n");
+        return builder.ToString();
+    }
+
+    /// <summary>트리오 하나를 폴더에 쓴다. 선언 파일도 함께 나온다.</summary>
     public static IReadOnlyList<string> WriteTo(YarnBundle bundle, string directory)
     {
         ArgumentNullException.ThrowIfNull(bundle);
+        return WriteBundles(new[] { bundle }, directory);
+    }
+
+    /// <summary>
+    /// 여러 트리오를 한 폴더에 쓴다. 결정적 출력: UTF-8 BOM 없음, LF, 임시 파일 교체.
+    /// 선언 파일은 <b>합집합으로 한 번만</b> 쓴다. 막는 문제나 이름 충돌, 선언 충돌이
+    /// 있으면 아무 파일도 쓰지 않는다 — 어긋난 출력은 컴파일이 되어도 런타임에서 조용히 깨진다.
+    /// </summary>
+    public static IReadOnlyList<string> WriteBundles(
+        IReadOnlyList<YarnBundle> bundles,
+        string directory)
+    {
+        ArgumentNullException.ThrowIfNull(bundles);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
 
-        if (bundle.HasBlockingProblems)
+        var blocked = bundles.Where(bundle => bundle.HasBlockingProblems).ToArray();
+
+        if (blocked.Length > 0)
         {
             throw new InvalidOperationException(
-                $"'{bundle.BundleName}'을 내보낼 수 없습니다.{Environment.NewLine}{bundle.BlockingSummary()}");
+                string.Join(
+                    Environment.NewLine,
+                    blocked.Select(bundle =>
+                        $"'{bundle.BundleName}'을 내보낼 수 없습니다.{Environment.NewLine}{bundle.BlockingSummary()}")));
         }
+
+        string? duplicate = bundles
+            .GroupBy(bundle => bundle.BundleName, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1)?.Key;
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException(
+                $"번들 이름 '{duplicate}'이 겹칩니다. 같은 폴더에서 서로를 덮어쓰게 됩니다.");
+        }
+
+        // 선언 충돌은 파일을 하나라도 쓰기 전에 확인한다.
+        string? declarations = ComposeDeclarationsText(bundles);
 
         Directory.CreateDirectory(directory);
         var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var written = new List<string>();
 
-        foreach ((string fileName, string text) in bundle.Files)
+        void Write(string fileName, string text)
         {
             string path = Path.Combine(directory, fileName);
             string temporary = path + ".tmp";
@@ -285,22 +379,42 @@ public static class YarnBundleEmitter
             written.Add(path);
         }
 
+        foreach (YarnBundle bundle in bundles)
+        {
+            foreach ((string fileName, string text) in bundle.Files)
+            {
+                Write(fileName, text);
+            }
+        }
+
+        if (declarations is not null)
+        {
+            Write(DeclarationsFileName, declarations);
+        }
+
         return written;
     }
 
     /// <summary>
-    /// 런타임 C#에는 <c>&lt;&lt;declare&gt;&gt;</c>도 스마트 변수도 없다 — 컴파일을 위해
-    /// 이미터가 선언을 낸다 (D4). 위치는 각 Story 노드 상단(Phase 0 결정).
-    /// 초기값 타입은 게임 정의의 variables가 정하고, 모르면 숫자다
-    /// (런타임이 스탯을 float으로 읽는다).
+    /// 이 번들이 쓰는 변수를 등장 순서대로 모은다. 초기값 타입은 게임 정의의
+    /// variables가 정하고, 모르면 숫자다(런타임이 스탯을 float으로 읽는다).
     /// </summary>
-    private static void AppendDeclarations(
-        StringBuilder story,
+    private static IReadOnlyList<YarnDeclaration> CollectDeclarations(
         DialogueResult dialogue,
         GameDefinition? definition)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var names = new List<string>();
+        var declarations = new List<YarnDeclaration>();
+
+        void Collect(string variable)
+        {
+            string trimmed = variable.TrimStart('$').Trim();
+
+            if (trimmed.Length > 0 && seen.Add(trimmed))
+            {
+                declarations.Add(new YarnDeclaration(trimmed, InitialValueOf(trimmed, definition)));
+            }
+        }
 
         foreach (DialogueResultAssignment assignment in dialogue.Assignments)
         {
@@ -315,24 +429,7 @@ public static class YarnBundleEmitter
             }
         }
 
-        foreach (string variable in names)
-        {
-            story.Append("<<declare ")
-                .Append(YarnSyntax.NormalizeVariable(variable))
-                .Append(" = ")
-                .Append(InitialValueOf(variable, definition))
-                .Append(">>\n");
-        }
-
-        void Collect(string variable)
-        {
-            string trimmed = variable.TrimStart('$').Trim();
-
-            if (trimmed.Length > 0 && seen.Add(trimmed))
-            {
-                names.Add(trimmed);
-            }
-        }
+        return declarations;
     }
 
     private static string InitialValueOf(string variable, GameDefinition? definition)

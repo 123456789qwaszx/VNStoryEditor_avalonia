@@ -1,7 +1,5 @@
 title: Story_golden_ep
 ---
-<<declare $favor = 0>>
-<<declare $fatigue = 0>>
 <<set $favor = 0>>
 <<beat Set_golden_ep>>
 <<pres_start Pres_golden_ep>>

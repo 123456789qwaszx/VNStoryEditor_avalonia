@@ -255,7 +255,7 @@ public partial class MainWindow : Window
     // ── 내보내기 ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 합성 하나를 골라 런타임 .yarn 트리오로 내보낸다.
+    /// 합성들을 골라 런타임 .yarn 트리오로 내보낸다. 선언 파일은 폴더당 하나만 나온다.
     /// 검증은 전부 <see cref="YarnBundleEmitter"/>가 한다 — 화면은 결과를 전달만 한다.
     /// </summary>
     private async void OnExportClick(object? sender, RoutedEventArgs e)
@@ -270,22 +270,37 @@ public partial class MainWindow : Window
                 return;
             }
 
-            RuntimeComposition? composition = compositions.Count == 1
-                ? compositions[0]
-                : await PickCompositionAsync(compositions);
+            IReadOnlyList<RuntimeComposition> picked = compositions.Count == 1
+                ? compositions
+                : await PickCompositionsAsync(compositions);
 
-            if (composition is null)
+            if (picked.Count == 0)
             {
                 return;
             }
 
-            ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
-                _session.Project.Results,
-                composition);
+            var bundles = new List<YarnBundle>();
 
-            if (!resolved.IsCompatible)
+            foreach (RuntimeComposition composition in picked)
             {
-                _session.SetStatus($"'{composition.Name}'은 내보낼 수 없습니다. {resolved.ProblemSummary()}");
+                ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
+                    _session.Project.Results,
+                    composition);
+
+                if (!resolved.IsCompatible)
+                {
+                    _session.SetStatus($"'{composition.Name}'은 내보낼 수 없습니다. {resolved.ProblemSummary()}");
+                    return;
+                }
+
+                bundles.Add(YarnBundleEmitter.Emit(resolved, _session.Project, _session.Definition));
+            }
+
+            YarnBundle? blocked = bundles.FirstOrDefault(bundle => bundle.HasBlockingProblems);
+
+            if (blocked is not null)
+            {
+                _session.SetStatus($"내보내지 못했습니다. {blocked.BlockingSummary()}");
                 return;
             }
 
@@ -309,22 +324,11 @@ public partial class MainWindow : Window
                 return;
             }
 
-            YarnBundle bundle = YarnBundleEmitter.Emit(
-                resolved,
-                _session.Project,
-                _session.Definition);
-
-            if (bundle.HasBlockingProblems)
-            {
-                _session.SetStatus($"내보내지 못했습니다. {bundle.BlockingSummary()}");
-                return;
-            }
-
-            IReadOnlyList<string> written = YarnBundleEmitter.WriteTo(
-                bundle,
+            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(
+                bundles,
                 folders[0].Path.LocalPath);
 
-            int warnings = bundle.Problems.Count;
+            int warnings = bundles.Sum(bundle => bundle.Problems.Count);
             _session.SetStatus(
                 $"{written.Count}개 파일을 내보냈습니다: " +
                 string.Join(", ", written.Select(Path.GetFileName)) +
@@ -337,7 +341,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<RuntimeComposition?> PickCompositionAsync(
+    private async Task<IReadOnlyList<RuntimeComposition>> PickCompositionsAsync(
         IReadOnlyList<RuntimeComposition> compositions)
     {
         var list = new ListBox
@@ -346,8 +350,9 @@ public partial class MainWindow : Window
                 .Select(item => $"{item.Name} · 대사 {item.DialogueResultId} v{item.DialogueResultVersion}" +
                     (item.HasPresentation ? $" · 연출 v{item.PresentationResultVersion}" : " · 연출 없음"))
                 .ToList(),
-            SelectedIndex = 0
+            SelectionMode = SelectionMode.Multiple
         };
+        list.SelectAll();
 
         var confirm = new Button
         {
@@ -357,7 +362,7 @@ public partial class MainWindow : Window
 
         var dialog = new Window
         {
-            Title = "내보낼 합성 선택",
+            Title = "내보낼 합성 선택 (여러 개 선택 가능)",
             Width = 460,
             Height = 340,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -372,13 +377,16 @@ public partial class MainWindow : Window
             }
         };
 
-        RuntimeComposition? picked = null;
+        var picked = new List<RuntimeComposition>();
 
         confirm.Click += (_, _) =>
         {
-            if (list.SelectedIndex >= 0 && list.SelectedIndex < compositions.Count)
+            foreach (object? item in list.Selection.SelectedIndexes.OrderBy(index => index))
             {
-                picked = compositions[list.SelectedIndex];
+                if (item is int index && index >= 0 && index < compositions.Count)
+                {
+                    picked.Add(compositions[index]);
+                }
             }
 
             dialog.Close();

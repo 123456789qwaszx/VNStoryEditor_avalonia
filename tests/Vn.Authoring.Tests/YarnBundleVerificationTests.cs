@@ -27,10 +27,13 @@ public class YarnBundleVerificationTests
     [InlineData("Story_golden_ep.yarn")]
     [InlineData("Set_golden_ep.yarn")]
     [InlineData("Pres_golden_ep.yarn")]
+    [InlineData("declarations.yarn")]
     public void 골든_트리오와_글자_하나까지_같다(string fileName)
     {
         YarnBundle bundle = EmitGoldenBundle();
-        string actual = bundle.Files.Single(file => file.FileName == fileName).Text;
+        string actual = fileName == YarnBundleEmitter.DeclarationsFileName
+            ? YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!
+            : bundle.Files.Single(file => file.FileName == fileName).Text;
         string goldenPath = Path.Combine(GoldenDirectory, fileName);
 
         if (!File.Exists(goldenPath))
@@ -99,16 +102,17 @@ public class YarnBundleVerificationTests
 
         try
         {
-            YarnBundleEmitter.WriteTo(bundle, directory);
+            // jump 대상 노드들도 함께 내보낸다. 실제 익스포트 폴더의 모양 그대로 —
+            // 여러 번들을 한 번에 쓰고 선언 파일은 합집합으로 한 번만 나온다.
+            var bundles = new List<YarnBundle> { bundle };
 
-            // jump 대상 노드들도 함께 내보낸다. 실제 익스포트 폴더의 모양 그대로다.
             foreach (DialogueNode target in new[] { world.Sample.TargetA, world.Sample.TargetDefault })
             {
                 DialogueResult result = world.Sample.Editor.PublishDialogue(target.Id).Result;
-                YarnBundleEmitter.WriteTo(
-                    YarnBundleEmitter.Emit(result, project: world.Sample.Project),
-                    directory);
+                bundles.Add(YarnBundleEmitter.Emit(result, project: world.Sample.Project));
             }
+
+            YarnBundleEmitter.WriteBundles(bundles, directory);
 
             AnalysisReport report = Analyze(directory);
 
@@ -125,6 +129,62 @@ public class YarnBundleVerificationTests
             Assert.Contains("Story_golden_ep", titles);
             Assert.Contains("Set_golden_ep", titles);
             Assert.Contains("Pres_golden_ep", titles);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 두_합성을_같은_폴더로_내보내면_선언은_합집합_한_번이고_컴파일된다()
+    {
+        BundleWorld world = BuildWorld();
+        YarnBundle first = Emit(world);
+
+        // 두 번째 합성 — 같은 변수(favor)를 쓰고 새 변수(trust)도 하나 쓴다.
+        DialogueNode second = world.Sample.TargetB;
+        string secondLine = world.Sample.Project.FindScript(second.ScriptId)!.ActiveLines.First().Id;
+        world.Sample.Editor.SetLineSetOperations(second.Id, secondLine, new[]
+        {
+            new SetOperation { Variable = "favor", Operator = SetOperatorKind.Add, Value = "1" },
+            new SetOperation { Variable = "trust", Operator = SetOperatorKind.Subtract, Value = "2" }
+        });
+        DialogueResult secondResult = world.Sample.Editor.PublishDialogue(second.Id).Result;
+        YarnBundle secondBundle = YarnBundleEmitter.Emit(
+            secondResult,
+            project: world.Sample.Project,
+            definition: Sample.Definition);
+
+        string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Compile.{Guid.NewGuid():N}");
+
+        try
+        {
+            var bundles = new List<YarnBundle> { first, secondBundle };
+
+            foreach (DialogueNode target in new[] { world.Sample.TargetA, world.Sample.TargetDefault })
+            {
+                DialogueResult result = world.Sample.Editor.PublishDialogue(target.Id).Result;
+                bundles.Add(YarnBundleEmitter.Emit(result, project: world.Sample.Project));
+            }
+
+            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(bundles, directory);
+
+            // 선언 파일은 폴더당 하나이고, 같은 변수(favor)는 한 번만 선언된다.
+            string declarationsPath = Assert.Single(written, path =>
+                Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
+            string declarations = File.ReadAllText(declarationsPath, Encoding.UTF8);
+            Assert.Single(Regex.Matches(declarations, Regex.Escape("<<declare $favor")));
+            Assert.Contains("<<declare $trust = 0>>", declarations, StringComparison.Ordinal);
+
+            AnalysisReport report = Analyze(directory);
+            IReadOnlyList<VnDiagnostic> errors = report.Diagnostics
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
+                Environment.NewLine,
+                errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
         }
         finally
         {

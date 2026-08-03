@@ -123,18 +123,48 @@ public class YarnBundleEmitterTests
     }
 
     [Fact]
-    public void 변수_선언을_Story_상단에_낸다()
+    public void 변수_선언은_Story가_아니라_선언_파일_하나에_모인다()
     {
         BundleFixture fixture = BuildFixture();
 
         YarnBundle bundle = Emit(fixture);
 
-        // D4 — 런타임에는 declare도 스마트 변수도 없다. 컴파일을 위해 이미터가 선언한다.
-        int declare = bundle.StoryText.IndexOf("<<declare $favor = 0>>", StringComparison.Ordinal);
-        int beat = bundle.StoryText.IndexOf("<<beat", StringComparison.Ordinal);
+        // D4 — 런타임에는 declare도 스마트 변수도 없다. 컴파일을 위해 이미터가 선언하되,
+        // Story 노드마다 내면 여러 번들을 한 프로그램으로 컴파일할 때 중복 선언으로 깨진다.
+        Assert.DoesNotContain("<<declare", bundle.StoryText, StringComparison.Ordinal);
+        Assert.Equal(
+            new[] { ("favor", "0"), ("fatigue", "0") },
+            bundle.Declarations.Select(declaration => (declaration.Variable, declaration.InitialValue)));
 
-        Assert.True(declare >= 0 && declare < beat, "선언은 레인 시작보다 앞에 있어야 한다");
-        Assert.Contains("<<declare $fatigue = 0>>", bundle.StoryText, StringComparison.Ordinal);
+        string declarations = YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!;
+        Assert.StartsWith("title: _declarations\n---\n", declarations, StringComparison.Ordinal);
+        Assert.Contains("<<declare $favor = 0>>", declarations, StringComparison.Ordinal);
+        Assert.Contains("<<declare $fatigue = 0>>", declarations, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 같은_변수의_초기값이_합성_간에_다르면_선언_합집합을_거부한다()
+    {
+        BundleFixture fixture = BuildFixture();
+        YarnBundle numberTyped = Emit(fixture);
+
+        // favor를 string으로 선언하는 다른 게임 정의 — 초기값이 ""가 된다.
+        var conflicting = new Vn.Authoring.Definition.GameDefinition
+        {
+            Variables =
+            {
+                new Vn.Authoring.Definition.VariableSpec { Name = "favor", Type = "string" }
+            }
+        };
+        YarnBundle stringTyped = YarnBundleEmitter.Emit(
+            fixture.Dialogue,
+            fixture.Presentation,
+            fixture.Sample.Project,
+            conflicting,
+            bundleName: "other_ep");
+
+        Assert.Throws<InvalidOperationException>(() =>
+            YarnBundleEmitter.ComposeDeclarationsText(new[] { numberTyped, stringTyped }));
     }
 
     [Fact]
@@ -203,7 +233,10 @@ public class YarnBundleEmitterTests
         {
             IReadOnlyList<string> written = YarnBundleEmitter.WriteTo(bundle, directory);
 
-            Assert.Equal(3, written.Count);
+            // 트리오 3파일 + 선언 파일 하나.
+            Assert.Equal(4, written.Count);
+            Assert.Contains(written, path =>
+                Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
             Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
 
             foreach (string path in written)
