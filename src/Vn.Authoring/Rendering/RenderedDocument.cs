@@ -86,6 +86,7 @@ public sealed record RenderedSegment(
     string? PresentationCategoryId = null,
     string? PresentationCategoryName = null,
     IReadOnlyList<RenderedArgument>? Arguments = null,
+    string? Note = null,
     string? OptionId = null,
     int? ChoiceBlockOrdinal = null,
     int? ChoiceOptionIndex = null,

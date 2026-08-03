@@ -492,7 +492,8 @@ public static class ResultDocumentComposer
             CommandName: definition?.OutputCommandName ?? command.DefinitionId,
             PresentationCategoryId: definition?.CategoryId,
             PresentationCategoryName: catalog.FindCategory(definition?.CategoryId)?.DisplayName,
-            Arguments: ResolveArguments(definition, command)));
+            Arguments: ResolveArguments(definition, command),
+            Note: command.Note));
     }
 
     /// <summary>

@@ -292,6 +292,7 @@ ResultSnapshot                       결과 입력     (아무도 소유하지 �
 | `YarnSyntax` | Yarn 표기 조립 규칙의 단일 구현. Preview와 이미터가 공유한다 |
 | `YarnBundleEmitter` | 합성 하나 → 런타임 재생용 .yarn 트리오(Story/Set/Pres) 텍스트와 파일. 변수 선언은 폴더당 하나뿐인 `declarations.yarn`에 합집합으로 낸다(같은 변수의 초기값이 합성 간에 다르면 거부). 사양은 `docs/runtime-contract.md` |
 | `DocumentPreviewFormatter` | 시나리오·녹음·번역·연출 지시서 문자열 |
+| `CsvBundleExporter` | 합성 하나 → CSV 3종(번역·녹음 / 기획 검수 / 연출 테이블). **UTF-8 BOM 포함**(엑셀 한글 호환 — .yarn의 no-BOM과 의도적으로 다름), CRLF, RFC 4180 |
 | `ILocalizedLineProvider` | LineId로 번역문을 공급하는 바깥 경계 |
 | `ConnectedSetNodeResolver` | 이 Dialogue에 연결된 SetNode와 그 순서를 한 번만 계산 |
 

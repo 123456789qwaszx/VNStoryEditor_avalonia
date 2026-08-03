@@ -48,6 +48,7 @@ public partial class MainWindow : Window
         UndoButton.Click += (_, _) => _session.Editor.Undo();
         RedoButton.Click += (_, _) => _session.Editor.Redo();
         ExportButton.Click += OnExportClick;
+        CsvExportButton.Click += OnCsvExportClick;
 
         Opened += OnOpened;
 
@@ -338,6 +339,86 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             Report("내보내기", exception);
+        }
+    }
+
+    /// <summary>
+    /// 번역·녹음 / 기획 검수 / 연출 테이블 CSV 3종을 내보낸다.
+    /// .yarn과 같은 입구(발행 결과 합성)를 쓰되, 파일 형식만 다르다.
+    /// </summary>
+    private async void OnCsvExportClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            IReadOnlyList<RuntimeComposition> compositions = _session.Project.Compositions;
+
+            if (compositions.Count == 0)
+            {
+                _session.SetStatus("내보낼 합성이 없습니다. 대사·연출 결과를 발행하고 합성을 먼저 만드세요.");
+                return;
+            }
+
+            IReadOnlyList<RuntimeComposition> picked = compositions.Count == 1
+                ? compositions
+                : await PickCompositionsAsync(compositions);
+
+            if (picked.Count == 0)
+            {
+                return;
+            }
+
+            var bundles = new List<CsvBundle>();
+
+            foreach (RuntimeComposition composition in picked)
+            {
+                ResolvedComposition resolved = RuntimeCompositionResolver.Resolve(
+                    _session.Project.Results,
+                    composition);
+
+                if (!resolved.IsCompatible)
+                {
+                    _session.SetStatus($"'{composition.Name}'은 내보낼 수 없습니다. {resolved.ProblemSummary()}");
+                    return;
+                }
+
+                bundles.Add(CsvBundleExporter.Export(resolved, _session.Project, _session.Definition));
+            }
+
+            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
+
+            if (storage is null || !storage.CanPickFolder)
+            {
+                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
+                new FolderPickerOpenOptions
+                {
+                    Title = "CSV를 내보낼 폴더",
+                    AllowMultiple = false
+                });
+
+            if (folders.Count == 0)
+            {
+                return;
+            }
+
+            var written = new List<string>();
+
+            foreach (CsvBundle bundle in bundles)
+            {
+                written.AddRange(CsvBundleExporter.WriteTo(bundle, folders[0].Path.LocalPath));
+            }
+
+            _session.SetStatus(
+                $"CSV {written.Count}개를 내보냈습니다: " +
+                string.Join(", ", written.Select(Path.GetFileName)));
+            RefreshShell();
+        }
+        catch (Exception exception)
+        {
+            Report("CSV 내보내기", exception);
         }
     }
 
