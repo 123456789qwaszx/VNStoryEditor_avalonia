@@ -148,6 +148,11 @@ internal static class StoryNodeJson
                     transitionJson["condition"] = transition.ConditionId;
                 }
 
+                if (transition.OptionId is not null)
+                {
+                    transitionJson["option"] = transition.OptionId;
+                }
+
                 if (hasExit)
                 {
                     transitionJson["exit"] = node.BranchExits[extension.LineId];
@@ -316,7 +321,8 @@ internal static class StoryNodeJson
             {
                 extension.Transition = new LineConditionTransition(
                     DialogueResultJson.ParseKind((string?)transitionJson["kind"]),
-                    (string?)transitionJson["condition"]);
+                    (string?)transitionJson["condition"],
+                    (string?)transitionJson["option"]);
 
                 if ((string?)transitionJson["exit"] is { } exit && extension.Transition.OpensBranch)
                 {

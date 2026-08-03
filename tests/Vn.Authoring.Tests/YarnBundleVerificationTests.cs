@@ -192,6 +192,132 @@ public class YarnBundleVerificationTests
         }
     }
 
+    // ── 선택지 번들 (W8) ────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Story_choices_ep.yarn")]
+    [InlineData("Pres_choices_ep.yarn")]
+    public void 선택지_골든과_글자_하나까지_같다(string fileName)
+    {
+        YarnBundle bundle = EmitChoicesBundle(ChoiceTests.BuildChoiceWorld());
+        string actual = bundle.Files.Single(file => file.FileName == fileName).Text;
+        string goldenPath = Path.Combine(GoldenDirectory, fileName);
+
+        if (!File.Exists(goldenPath))
+        {
+            Directory.CreateDirectory(GoldenDirectory);
+            File.WriteAllText(goldenPath, actual, new UTF8Encoding(false));
+            Assert.Fail($"골든 파일이 없어 새로 기록했습니다. 내용을 검토하고 커밋하세요: {goldenPath}");
+        }
+
+        Assert.Equal(
+            File.ReadAllText(goldenPath, Encoding.UTF8).Replace("\r\n", "\n", StringComparison.Ordinal),
+            actual);
+    }
+
+    [Fact]
+    public void 선택지_번들도_실컴파일된다()
+    {
+        ChoiceTests.ChoiceWorld world = ChoiceTests.BuildChoiceWorld();
+        YarnBundle bundle = EmitChoicesBundle(world);
+        string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Compile.{Guid.NewGuid():N}");
+
+        try
+        {
+            var bundles = new List<YarnBundle> { bundle };
+
+            foreach (DialogueNode target in new[] { world.Sample.TargetA, world.Sample.TargetDefault })
+            {
+                DialogueResult result = world.Sample.Editor.PublishDialogue(target.Id).Result;
+                bundles.Add(YarnBundleEmitter.Emit(result, project: world.Sample.Project));
+            }
+
+            YarnBundleEmitter.WriteBundles(bundles, directory);
+            AnalysisReport report = Analyze(directory);
+
+            IReadOnlyList<VnDiagnostic> errors = report.Diagnostics
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
+                Environment.NewLine,
+                errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 라벨_수정_재발행_재출력에서_OptionId와_순서와_동기_변수는_불변이다()
+    {
+        ChoiceTests.ChoiceWorld world = ChoiceTests.BuildChoiceWorld();
+        YarnBundle before = EmitChoicesBundle(world);
+
+        world.Sample.Editor.SetScriptLineText(
+            world.Sample.Script.Id,
+            world.Label1,
+            string.Empty,
+            "완전히 고친 라벨");
+
+        DialogueResult v2 = world.Sample.Editor.PublishDialogue(world.Sample.Dialogue.Id).Result;
+        Assert.Equal(2, v2.Identity.Version);
+
+        // 라벨 문구만 고쳤으므로 순서 경고가 없어야 한다.
+        Assert.DoesNotContain(
+            DialoguePublisher.Draft(world.Sample.Project, world.Sample.Dialogue.Id).Problems,
+            problem => problem.Kind == PublishProblemKind.ChoiceOrderChanged);
+
+        world.Sample.Editor.SetPresentationSource(
+            world.PresentationNode.Id,
+            v2.Identity.ResultId,
+            v2.Identity.Version);
+        PresentationResult presentation =
+            world.Sample.Editor.PublishPresentation(world.PresentationNode.Id).Result;
+
+        YarnBundle after = YarnBundleEmitter.Emit(
+            v2,
+            presentation,
+            world.Sample.Project,
+            Sample.Definition,
+            bundleName: "choices_ep");
+
+        // OptionId(= 라벨 라인의 LineId 태그 순서)와 $__ch 번호가 그대로다.
+        Assert.Contains($"-> 완전히 고친 라벨 #fatigue:+10 #common_ingredient:+15 #line:{world.Label1}",
+            after.StoryText, StringComparison.Ordinal);
+        Assert.Equal(OptionLineTags(before.StoryText), OptionLineTags(after.StoryText));
+        Assert.Equal(SyncSets(before.StoryText), SyncSets(after.StoryText));
+        Assert.Equal(
+            v2.FindLine(world.Label1)!.Transition!.OptionId,
+            world.Dialogue.FindLine(world.Label1)!.Transition!.OptionId);
+    }
+
+    private static YarnBundle EmitChoicesBundle(ChoiceTests.ChoiceWorld world)
+    {
+        return YarnBundleEmitter.Emit(
+            world.Dialogue,
+            world.Presentation,
+            world.Sample.Project,
+            Sample.Definition,
+            bundleName: "choices_ep");
+    }
+
+    private static IReadOnlyList<string> OptionLineTags(string yarn)
+    {
+        return yarn.Split('\n')
+            .Where(line => line.TrimStart().StartsWith("-> ", StringComparison.Ordinal))
+            .Select(line => Regex.Match(line, "#line:(\\S+)").Groups[1].Value)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> SyncSets(string yarn)
+    {
+        return Regex.Matches(yarn, @"<<set \$__ch_\d+ = \d+>>")
+            .Select(match => match.Value)
+            .ToArray();
+    }
+
     [Fact]
     public void 같은_line_태그를_두_번_내면_컴파일러가_잡는다()
     {

@@ -1,0 +1,36 @@
+title: Story_choices_ep
+---
+<<beat Set_choices_ep>>
+<<pres_start Pres_choices_ep>>
+
+숲 입구에 도착했다. #line:ln_004
+
+-> 안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15 #line:ln_005
+    <<set $__ch_0 = 0>>
+    <<set $fatigue += 10>>
+    <<set $common_ingredient += 15>>
+    안전한 길에서 평범한 재료를 얻었다. #line:ln_006
+
+-> 깊은 숲으로 들어간다 #fatigue:+30 #risk:+1 #line:ln_007
+    <<set $__ch_0 = 1>>
+    <<set $fatigue += 30>>
+    <<set $risk += 1>>
+    숲 깊은 곳에서 희귀한 향신료를 발견했다. #line:ln_008
+
+좋아. 가보자. #line:ln_009
+
+-> 바로 돌아간다 #line:ln_010
+    <<set $__ch_1 = 0>>
+    돌아가는 길. #line:ln_011
+
+    <<pres_end>>
+    <<jump Story_A로_간다>>
+-> 조금 더 머문다 #line:ln_012
+    <<set $__ch_1 = 1>>
+    조금 더 머물렀다. #line:ln_013
+
+끝. #line:ln_014
+
+<<pres_end>>
+<<jump Story_기본으로_간다>>
+===

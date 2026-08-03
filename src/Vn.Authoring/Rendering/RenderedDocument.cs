@@ -12,6 +12,12 @@ public enum RenderedSegmentKind
     ConditionEnd,
     PresentationCommand,
     DialogueLine,
+
+    /// <summary>선택 블록의 옵션 라벨 하나. Text가 버튼 문구이고, 뒤따르는 조각들이 본문이다.</summary>
+    ChoiceOption,
+
+    /// <summary>선택 블록의 끝. 이 조각 자체는 아무 문구도 만들지 않을 수 있다.</summary>
+    ChoiceEnd,
     BranchJump,
     DefaultJump,
     Warning,
@@ -79,7 +85,11 @@ public sealed record RenderedSegment(
     string? CommandName = null,
     string? PresentationCategoryId = null,
     string? PresentationCategoryName = null,
-    IReadOnlyList<RenderedArgument>? Arguments = null);
+    IReadOnlyList<RenderedArgument>? Arguments = null,
+    string? OptionId = null,
+    int? ChoiceBlockOrdinal = null,
+    int? ChoiceOptionIndex = null,
+    IReadOnlyList<string>? Tags = null);
 
 /// <summary>
 /// 결과 하나(또는 결과 조합 하나)를 평평하게 합성한 결과.

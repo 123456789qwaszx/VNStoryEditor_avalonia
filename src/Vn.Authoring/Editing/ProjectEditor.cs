@@ -255,6 +255,15 @@ public sealed partial class ProjectEditor
             return;
         }
 
+        // 옵션 라벨 전환은 안정 Id를 가져야 한다. 이미 이 줄이 옵션이었다면 그 Id를 잇는다 —
+        // 라벨 전환 종류를 바꿨다고 정체성이 바뀌면 순서 경고(C3)가 성립하지 않는다.
+        if (transition is { OpensOption: true, OptionId: null })
+        {
+            transition = new LineConditionTransition(
+                transition.Kind,
+                optionId: existing?.Transition?.OptionId ?? Identifier.Option());
+        }
+
         Mutate(() =>
         {
             DialogueLineExtension extension = existing ?? new DialogueLineExtension(lineId);

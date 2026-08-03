@@ -84,6 +84,20 @@ public static class ConditionFlowResolver
 
             if (line.Transition is { } transition)
             {
+                // 조건 체인과 선택 체인은 같은 기계로 계산되지만 섞이지 않는다.
+                // 겹치면 MixedChain으로 알리고, 열려 있던 체인을 닫고 새 체인을 연다 —
+                // 화면은 계속 그릴 수 있어야 하고, 발행은 검증이 막는다.
+                if (active is not null && transition.IsChoiceKind != active.IsChoice)
+                {
+                    problems.Add(new FlowProblem(
+                        FlowProblemKind.MixedChain,
+                        line.LineId,
+                        active.IsChoice
+                            ? "선택 블록 안에서 조건 전환이 나왔습니다. 조건과 선택의 중첩은 지원하지 않습니다."
+                            : "조건 갈래 안에서 선택 전환이 나왔습니다. 조건과 선택의 중첩은 지원하지 않습니다."));
+                    active = null;
+                }
+
                 switch (transition.Kind)
                 {
                     case ConditionTransitionKind.BeginIf when active is null:
@@ -162,6 +176,56 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.EndIf:
                         active = null;
                         break;
+
+                    case ConditionTransitionKind.BeginChoice when active is null:
+                        chainIndex++;
+                        active = OpenOption(line, transition, chainIndex, 0, index, builders);
+                        break;
+
+                    case ConditionTransitionKind.BeginChoice:
+                        // 선택 블록 안에서 다시 블록을 열었다. 다음 옵션으로 다루되 알린다.
+                        problems.Add(new FlowProblem(
+                            FlowProblemKind.NestedCondition,
+                            line.LineId,
+                            "선택 블록 안에서 새 선택 블록을 열었습니다. 같은 블록의 다음 옵션으로 다룹니다."));
+                        active = OpenOption(
+                            line,
+                            transition,
+                            active.ChainIndex,
+                            active.BranchIndexInChain + 1,
+                            index,
+                            builders);
+                        break;
+
+                    case ConditionTransitionKind.BeginNextOption when active is null:
+                        problems.Add(new FlowProblem(
+                            FlowProblemKind.OptionWithoutChoice,
+                            line.LineId,
+                            "열린 선택 블록이 없는데 다음 옵션이 있습니다. 새 블록을 여는 것으로 다룹니다."));
+                        chainIndex++;
+                        active = OpenOption(line, transition, chainIndex, 0, index, builders);
+                        break;
+
+                    case ConditionTransitionKind.BeginNextOption:
+                        active = OpenOption(
+                            line,
+                            transition,
+                            active.ChainIndex,
+                            active.BranchIndexInChain + 1,
+                            index,
+                            builders);
+                        break;
+
+                    case ConditionTransitionKind.EndChoice when active is null:
+                        problems.Add(new FlowProblem(
+                            FlowProblemKind.OptionWithoutChoice,
+                            line.LineId,
+                            "열린 선택 블록이 없는데 선택 종료가 있습니다. 무시합니다."));
+                        break;
+
+                    case ConditionTransitionKind.EndChoice:
+                        active = null;
+                        break;
                 }
             }
 
@@ -236,6 +300,34 @@ public static class ConditionFlowResolver
         var builder = new BranchBuilder(
             line.LineId,
             conditionId,
+            optionId: null,
+            chainIndex,
+            branchIndexInChain,
+            builders.Count,
+            lineIndex);
+
+        builders.Add(builder);
+        return builder;
+    }
+
+    /// <summary>
+    /// 옵션 갈래를 연다. 조건과 달리 카탈로그 검증이 없다 — 옵션의 정체성은
+    /// 밖에서 공급되는 것이 아니라 이 줄이 소유하는 OptionId다.
+    /// </summary>
+    private static BranchBuilder OpenOption(
+        DialogueLine line,
+        LineConditionTransition transition,
+        int chainIndex,
+        int branchIndexInChain,
+        int lineIndex,
+        List<BranchBuilder> builders)
+    {
+        var builder = new BranchBuilder(
+            line.LineId,
+            conditionId: string.Empty,
+            // 손으로 고친 파일이라 OptionId가 없을 수 있다. 빈 값으로 두면
+            // 발행 검증이 잡는다 — 여기서 새로 발급하면 열 때마다 Id가 달라진다.
+            optionId: transition.OptionId ?? string.Empty,
             chainIndex,
             branchIndexInChain,
             builders.Count,
@@ -263,7 +355,8 @@ public static class ConditionFlowResolver
                 builder.PaletteIndex,
                 builder.FirstLineIndex,
                 builder.LastLineIndex,
-                target));
+                target,
+                builder.OptionId));
         }
 
         return branches;
@@ -332,6 +425,7 @@ public static class ConditionFlowResolver
         public BranchBuilder(
             string openLineId,
             string conditionId,
+            string? optionId,
             int chainIndex,
             int branchIndexInChain,
             int paletteIndex,
@@ -339,6 +433,7 @@ public static class ConditionFlowResolver
         {
             OpenLineId = openLineId;
             ConditionId = conditionId;
+            OptionId = optionId;
             ChainIndex = chainIndex;
             BranchIndexInChain = branchIndexInChain;
             PaletteIndex = paletteIndex;
@@ -348,6 +443,8 @@ public static class ConditionFlowResolver
 
         public string OpenLineId { get; }
         public string ConditionId { get; }
+        public string? OptionId { get; }
+        public bool IsChoice => OptionId is not null;
         public int ChainIndex { get; }
         public int BranchIndexInChain { get; }
         public int PaletteIndex { get; }

@@ -33,14 +33,16 @@ public sealed record DialogueResultSetOperation(
     string Value);
 
 /// <summary>
-/// 발행 시점의 조건 전환. 조건의 이름과 식까지 함께 얼린다.
+/// 발행 시점의 조건·선택 전환. 조건의 이름과 식까지 함께 얼린다.
 /// 나중에 SetNode에서 조건을 지워도 이미 발행한 결과는 그대로 재현되어야 한다.
 /// </summary>
+/// <param name="OptionId">옵션 라벨 전환에만 있다. 순서 안정성 경고(계약서 C3)의 기준이다.</param>
 public sealed record DialogueResultTransition(
     ConditionTransitionKind Kind,
     string? ConditionId,
     string? ConditionName,
-    string? Expression);
+    string? Expression,
+    string? OptionId = null);
 
 /// <summary>발행 시점에 연결되어 있던 SetNode의 변수 값.</summary>
 public sealed record DialogueResultAssignment(string Variable, string Value);
@@ -58,8 +60,8 @@ public sealed record DialogueResultAssignment(string Variable, string Value);
 public sealed class DialogueResult
 {
     /// <summary>결과 본문의 구조가 바뀌면 올린다. 해시와 함께 호환성 판정에 쓰인다.</summary>
-    /// <remarks>v2: 줄에 SetOperations가 실린다.</remarks>
-    public const int CurrentSchemaVersion = 2;
+    /// <remarks>v2: 줄에 SetOperations가 실린다. v3: 선택 전환(OptionId)이 실린다.</remarks>
+    public const int CurrentSchemaVersion = 3;
 
     public DialogueResult(
         ResultIdentity identity,

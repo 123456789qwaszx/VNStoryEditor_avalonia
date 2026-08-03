@@ -87,6 +87,26 @@ public static class YarnPreviewFormatter
                 builder.Append('\n');
                 break;
 
+            case RenderedSegmentKind.ChoiceOption:
+                // 라벨은 접두 없이 순수 텍스트다 (계약서 D6 결정). 식별은 내부 OptionId로만 한다.
+                builder.Append(indent).Append("-> ").Append(segment.Text ?? string.Empty);
+
+                foreach (string tag in segment.Tags ?? Array.Empty<string>())
+                {
+                    builder.Append(' ').Append(tag);
+                }
+
+                if (document.Options.IncludeLineId && segment.Source.LineId is { Length: > 0 } optionLineId)
+                {
+                    builder.Append(" #line:").Append(optionLineId);
+                }
+
+                builder.Append('\n');
+                break;
+
+            case RenderedSegmentKind.ChoiceEnd:
+                break;
+
             case RenderedSegmentKind.BranchJump:
             case RenderedSegmentKind.DefaultJump:
                 builder.Append(indent);

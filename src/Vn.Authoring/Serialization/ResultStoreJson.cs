@@ -151,6 +151,11 @@ internal static class DialogueResultJson
                     conditionJson["expression"] = transition.Expression;
                 }
 
+                if (transition.OptionId is not null)
+                {
+                    conditionJson["option"] = transition.OptionId;
+                }
+
                 item["condition"] = conditionJson;
             }
 
@@ -252,13 +257,17 @@ internal static class DialogueResultJson
             ParseKind((string?)json["kind"]),
             (string?)json["condition"],
             (string?)json["name"],
-            (string?)json["expression"]);
+            (string?)json["expression"],
+            (string?)json["option"]);
     }
 
     internal static string KindName(ConditionTransitionKind kind) => kind switch
     {
         ConditionTransitionKind.BeginIf => "beginIf",
         ConditionTransitionKind.BeginElseIf => "beginElseIf",
+        ConditionTransitionKind.BeginChoice => "beginChoice",
+        ConditionTransitionKind.BeginNextOption => "beginNextOption",
+        ConditionTransitionKind.EndChoice => "endChoice",
         _ => "endIf"
     };
 
@@ -266,6 +275,9 @@ internal static class DialogueResultJson
     {
         "beginIf" => ConditionTransitionKind.BeginIf,
         "beginElseIf" => ConditionTransitionKind.BeginElseIf,
+        "beginChoice" => ConditionTransitionKind.BeginChoice,
+        "beginNextOption" => ConditionTransitionKind.BeginNextOption,
+        "endChoice" => ConditionTransitionKind.EndChoice,
         _ => ConditionTransitionKind.EndIf
     };
 

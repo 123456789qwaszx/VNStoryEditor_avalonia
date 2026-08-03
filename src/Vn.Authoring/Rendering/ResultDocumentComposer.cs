@@ -139,10 +139,16 @@ public static class ResultDocumentComposer
         }
 
         int depth = 0;
+        int choiceBlockOrdinal = -1;
+        int choiceOptionIndex = -1;
+        bool showDialogue = options.IncludeDialogueText ||
+            options.IncludeLocalizedDialogue ||
+            options.IncludeSpeaker ||
+            options.IncludeLineId;
 
         // 갈래 출구는 여는 줄이 소유하지만(§4.2) 실행은 갈래의 끝에서 일어난다.
         // 여는 줄 바로 뒤에 jump를 두면 갈래 본문이 그 아래 묻혀 실행되지 않는다.
-        // 그래서 다음 전환(elseif/endif)이 갈래를 닫는 순간에 내보낸다.
+        // 그래서 다음 전환(elseif/endif, 다음 옵션/선택 끝)이 갈래를 닫는 순간에 내보낸다.
         (RenderSourceReference Source, string Target)? pendingBranchJump = null;
 
         foreach (DialogueResultLine line in dialogue.Lines)
@@ -153,6 +159,8 @@ public static class ResultDocumentComposer
                 ConditionId: line.Transition?.ConditionId,
                 DialogueResultId: dialogue.Identity.ResultId);
 
+            bool isOptionLabel = false;
+
             if (line.Transition is { } transition)
             {
                 if (options.IncludeExecutionJumps && pendingBranchJump is { } pending)
@@ -161,15 +169,74 @@ public static class ResultDocumentComposer
                 }
 
                 pendingBranchJump = null;
-                depth = transition.Kind == ConditionTransitionKind.EndIf ? 0 : 1;
+                depth = transition.Kind is ConditionTransitionKind.EndIf
+                    or ConditionTransitionKind.EndChoice
+                    ? 0
+                    : 1;
 
-                if (options.IncludeConditions)
+                switch (transition.Kind)
                 {
-                    AddTransition(segments, line, transition, lineSource);
+                    case ConditionTransitionKind.BeginChoice:
+                    case ConditionTransitionKind.BeginNextOption:
+                        isOptionLabel = true;
+
+                        if (transition.Kind == ConditionTransitionKind.BeginChoice)
+                        {
+                            choiceBlockOrdinal++;
+                            choiceOptionIndex = 0;
+                        }
+                        else
+                        {
+                            choiceOptionIndex++;
+                        }
+
+                        if (showDialogue)
+                        {
+                            // 라벨 라인은 일반 대사가 아니라 버튼이다. 본문 줄 수를 세는
+                            // 규칙(계약서 B)에서 빠지도록 별도 종류로 낸다.
+                            segments.Add(new RenderedSegment(
+                                Id: $"choice:{line.LineId}",
+                                Kind: RenderedSegmentKind.ChoiceOption,
+                                Layer: DocumentLayer.Dialogue,
+                                Source: lineSource,
+                                IndentLevel: 0,
+                                Text: options.IncludeDialogueText ? line.Text : null,
+                                LocalizedText: options.IncludeLocalizedDialogue
+                                    ? localization?.GetLocalizedText(line.LineId)
+                                    : null,
+                                Speaker: options.IncludeSpeaker ? line.CharacterName : null,
+                                OptionId: transition.OptionId,
+                                ChoiceBlockOrdinal: choiceBlockOrdinal,
+                                ChoiceOptionIndex: choiceOptionIndex,
+                                Tags: BuildEffectTags(line.Sets)));
+                        }
+
+                        break;
+
+                    case ConditionTransitionKind.EndChoice:
+                        if (showDialogue)
+                        {
+                            segments.Add(new RenderedSegment(
+                                Id: $"choice:{line.LineId}:end",
+                                Kind: RenderedSegmentKind.ChoiceEnd,
+                                Layer: DocumentLayer.Dialogue,
+                                Source: lineSource,
+                                ChoiceBlockOrdinal: choiceBlockOrdinal));
+                        }
+
+                        break;
+
+                    default:
+                        if (options.IncludeConditions)
+                        {
+                            AddTransition(segments, line, transition, lineSource);
+                        }
+
+                        break;
                 }
             }
 
-            int indent = options.IncludeConditions ? depth : 0;
+            int indent = options.IncludeConditions || isOptionLabel ? depth : 0;
 
             if (options.IncludeSetAssignments)
             {
@@ -191,20 +258,35 @@ public static class ResultDocumentComposer
 
             if (options.IncludePresentation && presentation is not null)
             {
-                AddPresentationCommands(
-                    segments,
-                    dialogue,
-                    presentation,
-                    line,
-                    indent,
-                    catalog,
-                    options);
+                if (isOptionLabel)
+                {
+                    // 옵션 라벨은 메인 레인에서 advance를 소비하지 않으므로(계약서 B)
+                    // 서브 레인에 짝지을 자리가 없다. 붙은 연출은 조용히 버리지 않고 알린다.
+                    if (options.IncludeDiagnostics &&
+                        presentation.FindBinding(line.LineId) is { IsOrphan: false, Commands.Count: > 0 })
+                    {
+                        segments.Add(new RenderedSegment(
+                            Id: $"warning:{presentation.Identity.ResultId}:{line.LineId}:label",
+                            Kind: RenderedSegmentKind.Warning,
+                            Layer: DocumentLayer.Diagnostics,
+                            Source: lineSource,
+                            Text: $"옵션 라벨 라인 '{line.LineId}'의 연출은 서브 레인에 짝지을 자리가 없어 출력에서 빠집니다."));
+                    }
+                }
+                else
+                {
+                    AddPresentationCommands(
+                        segments,
+                        dialogue,
+                        presentation,
+                        line,
+                        indent,
+                        catalog,
+                        options);
+                }
             }
 
-            if (options.IncludeDialogueText ||
-                options.IncludeLocalizedDialogue ||
-                options.IncludeSpeaker ||
-                options.IncludeLineId)
+            if (showDialogue && !isOptionLabel)
             {
                 segments.Add(new RenderedSegment(
                     Id: $"line:{line.LineId}",
@@ -221,7 +303,7 @@ public static class ResultDocumentComposer
 
             if (line.BranchExitTargetNodeId is { } branchTarget)
             {
-                // 조건 출구의 소유자는 화면에 보이는 마지막 줄이 아니라 갈래를 여는 LineId다.
+                // 갈래 출구의 소유자는 화면에 보이는 마지막 줄이 아니라 갈래를 여는 LineId다.
                 // 결과에서도 같은 규칙을 지켜야 Preview에서 원본으로 돌아갈 수 있다.
                 pendingBranchJump = (lineSource, branchTarget);
             }
@@ -266,6 +348,36 @@ public static class ResultDocumentComposer
             segments,
             options,
             presetId);
+    }
+
+    /// <summary>
+    /// 옵션 라벨의 표시용 스탯 미리보기 태그 (계약서 D5). 실제 효과가 아니라 표시 전용이다.
+    /// 정수 증감(+=/-=)만 태그가 되고, 대입(=)과 비정수는 만들지 않는다(런타임 파서가 버린다).
+    /// 키는 소문자 — 런타임 누적 표시 조회가 소문자 키로 일어난다.
+    /// </summary>
+    private static IReadOnlyList<string>? BuildEffectTags(
+        IReadOnlyList<DialogueResultSetOperation> sets)
+    {
+        List<string>? tags = null;
+
+        foreach (DialogueResultSetOperation operation in sets)
+        {
+            if (operation.Operator == SetOperatorKind.Assign ||
+                !int.TryParse(
+                    operation.Value.Trim(),
+                    System.Globalization.NumberStyles.AllowLeadingSign,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out int value))
+            {
+                continue;
+            }
+
+            int signed = operation.Operator == SetOperatorKind.Add ? value : -value;
+            tags ??= new List<string>();
+            tags.Add($"#{operation.Variable.ToLowerInvariant()}:{(signed < 0 ? "-" : "+")}{Math.Abs(signed)}");
+        }
+
+        return tags;
     }
 
     private static void AddBranchJump(

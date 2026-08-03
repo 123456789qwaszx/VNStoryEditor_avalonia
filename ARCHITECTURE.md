@@ -115,7 +115,8 @@ PresentationResult              ← 어느 대사 결과 위에서 만들었는�
 ### 더 이상 지원하지 않는 것
 
 - Yarn 원문 직접 편집, 원문 서식·주석 보존
-- Yarn 선택지(`->`)와 중첩 조건 — 새 모델에 대응물이 아직 없다
+- 중첩 조건, 조건 체인과 선택 체인의 중첩 — 발행 검증이 거부한다
+  (선택지 자체는 선택 전환 체인 `BeginChoice/BeginNextOption/EndChoice`로 지원한다)
 - `.yarnproject` 열기 — 열려고 하면 **거부하고 알린다** (관대하게 읽으면 저장 시 원본이 덮어써진다)
 - 형식 버전 1·2 프로젝트 열기 — **거부하고 이유를 알린다** (§8)
 
@@ -171,7 +172,7 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `StoryNode` (추상) | Id, 이름, 그래프 좌표, **기본 출구**. 종류를 가리지 않는 공통부 |
 | `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리** |
 | `DialogueNode` | `ScriptId` + `DialogueLineExtension` 목록 + `BranchExits`. **본문은 없다** |
-| `DialogueLineExtension` | LineId 하나에 얹는 대사 논리. 조건 전환과 변수 변경(`SetOperation`) |
+| `DialogueLineExtension` | LineId 하나에 얹는 대사 논리. 조건·선택 전환과 변수 변경(`SetOperation`). 옵션 라벨 전환은 안정 `OptionId`(`op_`)를 가진다 — 선택지 리플레이가 위치 기반이라(계약서 C3) 순서 변경을 이 Id로 감지해 경고한다 |
 | `PresentationNode` | `Source`(대사 결과 참조) + Setup 커맨드(노드 수준, Set_ 노드 본문이 된다) + `LineId`별 binding. **대사를 복사하지 않는다** |
 | `PresentationCommandInstance` | 명령 하나. 정의 Id, 인자, 사용 여부, 메모. 순서를 보존한다 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
@@ -736,7 +737,7 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | StoryFile | `StoryFileJson.CurrentFormatVersion` = 1 | `*.vnstory.json` |
 | 발행 결과 | `ResultStoreJson.CurrentFormatVersion` = 1 | `results.vnresults.json` |
 | 되돌리기 스냅샷 | `ProjectSnapshotCodec.CurrentSnapshotVersion` = 2 | (메모리) |
-| 대사 결과 스키마 | `DialogueResult.CurrentSchemaVersion` = 2 | 결과 안의 `schemaVersion` |
+| 대사 결과 스키마 | `DialogueResult.CurrentSchemaVersion` = 3 | 결과 안의 `schemaVersion` |
 | 연출 결과 스키마 | `PresentationResult.CurrentSchemaVersion` = 2 | 결과 안의 `schemaVersion` |
 
 **형식 버전과 결과 스키마 버전은 다르다.** 앞의 것은 파일을 열 수 있는지, 뒤의 것은

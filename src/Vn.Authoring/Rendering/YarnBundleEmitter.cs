@@ -216,6 +216,19 @@ public static class YarnBundleEmitter
 
                     break;
 
+                case RenderedSegmentKind.ChoiceOption:
+                    CloseStoryHeader();
+                    AppendChoiceOption(segment, story, pres, hasLane, problems);
+                    break;
+
+                case RenderedSegmentKind.ChoiceEnd:
+                    CloseStoryHeader();
+
+                    // Story에서 선택 블록은 마지막 옵션 본문이 끝나면 저절로 닫힌다.
+                    // Pres 사본의 합성 조건만 명시적으로 닫는다.
+                    pres?.Append("<<endif>>\n");
+                    break;
+
                 case RenderedSegmentKind.DialogueLine:
                     CloseStoryHeader();
                     AppendDialogue(segment, story, pres, indent, problems);
@@ -255,7 +268,7 @@ public static class YarnBundleEmitter
             story.ToString(),
             setup?.ToString(),
             pres?.ToString(),
-            CollectDeclarations(dialogue, definition),
+            CollectDeclarations(dialogue, definition, hasLane),
             problems);
     }
 
@@ -401,7 +414,8 @@ public static class YarnBundleEmitter
     /// </summary>
     private static IReadOnlyList<YarnDeclaration> CollectDeclarations(
         DialogueResult dialogue,
-        GameDefinition? definition)
+        GameDefinition? definition,
+        bool hasLane)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var declarations = new List<YarnDeclaration>();
@@ -421,8 +435,18 @@ public static class YarnBundleEmitter
             Collect(assignment.Variable);
         }
 
+        int choiceBlockOrdinal = -1;
+
         foreach (DialogueResultLine line in dialogue.Lines)
         {
+            // 합성 추적 변수도 선언이 필요하다. 블록 서수는 노드마다 0부터라 다른 노드와
+            // 이름이 겹치지만, 초기값이 같아(0) 선언 합집합에서 충돌하지 않는다.
+            if (hasLane && line.Transition?.Kind == ConditionTransitionKind.BeginChoice)
+            {
+                choiceBlockOrdinal++;
+                Collect($"__ch_{choiceBlockOrdinal}");
+            }
+
             foreach (DialogueResultSetOperation operation in line.Sets)
             {
                 Collect(operation.Variable);
@@ -484,6 +508,72 @@ public static class YarnBundleEmitter
             pres.Append(YarnSyntax.IndentOf(segment.IndentLevel));
             YarnSyntax.AppendCommand(pres, segment);
             pres.Append('\n');
+        }
+    }
+
+    /// <summary>
+    /// 옵션 라벨 하나를 낸다. 선택은 변수가 아니라 플레이어 입력이므로 Pres 사본이
+    /// <c>&lt;&lt;if&gt;&gt;</c>로 그대로 재현할 수 없다 — 그래서 Story가 각 옵션 본문의 첫 문장으로
+    /// 합성 추적 변수 <c>$__ch_N</c>을 기록하고, Pres는 그 변수로 같은 갈래를 탄다.
+    /// 저장소는 공유이고(D1) 서브 레인은 메인이 본문 첫 라인에 진입한 뒤에만 평가하므로
+    /// 그 시점에 set은 이미 실행되어 있다. 시킹 리플레이도 저장된 선택 기록으로 같은 옵션을
+    /// 다시 고르므로 결정적이다(C5).
+    /// </summary>
+    private static void AppendChoiceOption(
+        RenderedSegment segment,
+        StringBuilder story,
+        StringBuilder? pres,
+        bool hasLane,
+        List<YarnBundleProblem> problems)
+    {
+        if (segment.ChoiceBlockOrdinal is not { } ordinal || segment.ChoiceOptionIndex is not { } index)
+        {
+            problems.Add(new YarnBundleProblem(
+                $"옵션 라벨 '{segment.Text}'에 블록 서수가 없습니다.",
+                IsBlocking: true,
+                segment.Source.LineId));
+            return;
+        }
+
+        // 라벨은 접두 없이 순수 텍스트로 낸다 (계약서 D6 결정 — 런타임은 라벨을 원문 그대로 렌더한다).
+        // 미리보기 태그(D5)는 표시 전용이고, 실제 효과는 뒤따르는 본문의 <<set>>이다.
+        story.Append("-> ").Append(segment.Text ?? string.Empty);
+
+        foreach (string tag in segment.Tags ?? Array.Empty<string>())
+        {
+            story.Append(' ').Append(tag);
+        }
+
+        if (segment.Source.LineId is { Length: > 0 } lineId)
+        {
+            story.Append(" #line:").Append(lineId);
+        }
+        else
+        {
+            problems.Add(new YarnBundleProblem(
+                $"옵션 라벨 '{segment.Text}'에 LineId가 없어 #line: 태그를 만들 수 없습니다.",
+                IsBlocking: true));
+        }
+
+        story.Append('\n');
+
+        if (hasLane)
+        {
+            story.Append(YarnSyntax.Indent)
+                .Append("<<set $__ch_").Append(ordinal)
+                .Append(" = ").Append(index)
+                .Append(">>\n");
+        }
+
+        if (pres is not null)
+        {
+            // 라벨 라인은 advance를 소비하지 않으므로(계약서 B) Pres에 사본을 만들지 않는다.
+            // 합성 조건만 낸다. 갈래별 본문 라인 수는 같은 결과에서 나오므로 일치한다.
+            pres.Append(index == 0 ? "<<if $__ch_" : "<<elseif $__ch_")
+                .Append(ordinal)
+                .Append(" == ")
+                .Append(index)
+                .Append(">>\n");
         }
     }
 

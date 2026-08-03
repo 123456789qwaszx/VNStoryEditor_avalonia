@@ -387,20 +387,29 @@ public partial class DialogueNodeEditor : UserControl
         // 지금 어느 갈래인지는 색이 아니라 글자로도 반드시 알 수 있어야 한다.
         if (resolved.Branch is { } branch)
         {
-            AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
-                _session!.Project,
-                node.Id,
-                _session.Definition);
-            AvailableCondition? condition = available.Find(branch.ConditionId);
-            AvailableCondition? known = condition ?? AvailableConditionResolver.FindKnown(
-                _session.Project,
-                _session.Definition,
-                branch.ConditionId);
-            string conditionLabel = condition is not null
-                ? condition.DisplayName
-                : known is not null
-                    ? AvailableConditionResolver.UnavailableLabel(known, branch.ConditionId)
-                    : "알 수 없는 조건";
+            string conditionLabel;
+
+            if (branch.IsChoice)
+            {
+                conditionLabel = $"옵션 {branch.BranchIndexInChain + 1}";
+            }
+            else
+            {
+                AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
+                    _session!.Project,
+                    node.Id,
+                    _session.Definition);
+                AvailableCondition? condition = available.Find(branch.ConditionId);
+                AvailableCondition? known = condition ?? AvailableConditionResolver.FindKnown(
+                    _session.Project,
+                    _session.Definition,
+                    branch.ConditionId);
+                conditionLabel = condition is not null
+                    ? condition.DisplayName
+                    : known is not null
+                        ? AvailableConditionResolver.UnavailableLabel(known, branch.ConditionId)
+                        : "알 수 없는 조건";
+            }
 
             var label = new Border
             {

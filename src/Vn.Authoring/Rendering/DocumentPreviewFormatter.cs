@@ -58,6 +58,17 @@ public static class DocumentPreviewFormatter
                     AppendDialogue(builder, document.Options, segment, lineIdPrefix: null);
                     break;
 
+                case RenderedSegmentKind.ChoiceOption:
+                    builder.Append("-> ").Append(segment.Text ?? string.Empty);
+
+                    if (segment.Tags is { Count: > 0 })
+                    {
+                        builder.Append(" (").Append(string.Join(' ', segment.Tags)).Append(')');
+                    }
+
+                    builder.Append('\n');
+                    break;
+
                 case RenderedSegmentKind.Warning:
                     builder.Append("[주의] ").Append(segment.Text).Append('\n');
                     break;
@@ -98,8 +109,9 @@ public static class DocumentPreviewFormatter
         var builder = new StringBuilder();
         builder.Append("LineId\tSpeaker\tSourceText\tLocalizedText\n");
 
+        // 옵션 라벨도 번역 대상이다. 버튼 문구가 원문 그대로 남으면 번역본에서 빠진다.
         foreach (RenderedSegment segment in document.Segments.Where(item =>
-                     item.Kind == RenderedSegmentKind.DialogueLine))
+                     item.Kind is RenderedSegmentKind.DialogueLine or RenderedSegmentKind.ChoiceOption))
         {
             builder.Append(EscapeTabular(segment.Source.LineId))
                 .Append('\t')

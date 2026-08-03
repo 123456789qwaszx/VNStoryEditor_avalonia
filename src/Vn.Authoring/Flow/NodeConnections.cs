@@ -73,7 +73,9 @@ public static class NodeConnections
                     ExitPortKind.Branch,
                     dialogue.Id,
                     branch.OpenLineId,
-                    LabelFor(branch, project, definition, available),
+                    branch.IsChoice
+                        ? ChoiceLabelFor(branch, flow)
+                        : LabelFor(branch, project, definition, available),
                     branch.ExitTargetNodeId,
                     branch.PaletteIndex));
             }
@@ -111,6 +113,16 @@ public static class NodeConnections
             .SelectMany(node => PortsOf(node, project, definition))
             .Where(port => port.IsConnected)
             .ToList();
+    }
+
+    /// <summary>옵션 포트의 라벨은 버튼 문구다. 문구가 비어 있으면 옵션 순번으로 보여 준다.</summary>
+    private static string ChoiceLabelFor(ConditionBranch branch, DialogueFlow flow)
+    {
+        string? text = flow.Script.Find(branch.OpenLineId)?.Text;
+
+        return string.IsNullOrWhiteSpace(text)
+            ? $"옵션 {branch.BranchIndexInChain + 1}"
+            : $"→ {text}";
     }
 
     private static string LabelFor(

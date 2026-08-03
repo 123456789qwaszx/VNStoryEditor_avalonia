@@ -10,10 +10,11 @@ namespace Vn.Authoring.Flow;
 /// 같은 사실을 두 벌 들고 있게 되어 편집할 때마다 어긋나기 때문이다.
 /// </summary>
 /// <param name="OpenLineId">이 갈래를 여는 줄의 Id. 갈래의 정체성이자 출구를 매다는 자리다.</param>
-/// <param name="ChainIndex">노드 안에서 몇 번째 if 체인인지.</param>
-/// <param name="BranchIndexInChain">체인 안에서 몇 번째 갈래인지. 0이 <c>if</c>, 1부터 <c>elseif</c>.</param>
+/// <param name="ChainIndex">노드 안에서 몇 번째 체인인지(조건·선택 공용 일련번호).</param>
+/// <param name="BranchIndexInChain">체인 안에서 몇 번째 갈래인지. 0이 <c>if</c>(또는 첫 옵션), 1부터 <c>elseif</c>(다음 옵션).</param>
 /// <param name="PaletteIndex">노드 안에서 몇 번째로 나타난 갈래인지. 색을 고르는 데 쓴다.</param>
 /// <param name="LastLineIndex">이 갈래의 마지막 줄. 출구가 있다면 이 줄에 표시된다.</param>
+/// <param name="OptionId">선택 갈래일 때만 있는 옵션의 안정 식별자.</param>
 public sealed record ConditionBranch(
     string OpenLineId,
     string ConditionId,
@@ -22,9 +23,13 @@ public sealed record ConditionBranch(
     int PaletteIndex,
     int FirstLineIndex,
     int LastLineIndex,
-    string? ExitTargetNodeId)
+    string? ExitTargetNodeId,
+    string? OptionId = null)
 {
     public bool HasExit => ExitTargetNodeId is not null;
+
+    /// <summary>선택 블록의 옵션 갈래인지. 조건 갈래와 같은 기계로 계산되지만 의미가 다르다.</summary>
+    public bool IsChoice => OptionId is not null;
 }
 
 /// <summary>
@@ -74,7 +79,13 @@ public enum FlowProblemKind
     OrphanedBranchExit,
 
     /// <summary>출구가 가리키는 노드가 프로젝트에 없다.</summary>
-    MissingExitTarget
+    MissingExitTarget,
+
+    /// <summary>조건 체인과 선택 체인이 겹쳤다. Phase 1은 두 체인의 중첩을 지원하지 않는다.</summary>
+    MixedChain,
+
+    /// <summary>열린 선택 블록이 없는데 다음 옵션·선택 종료가 나왔다.</summary>
+    OptionWithoutChoice
 }
 
 /// <param name="LineId">문제가 걸린 줄. 노드 전체의 문제면 null이다.</param>

@@ -15,7 +15,16 @@ public enum ConditionChoiceKind
     BeginElseIf,
 
     /// <summary>조건 체인을 닫는다.</summary>
-    EndIf
+    EndIf,
+
+    /// <summary>이 줄을 첫 옵션 라벨로 삼아 선택 블록을 연다.</summary>
+    BeginChoice,
+
+    /// <summary>이 줄을 같은 블록의 다음 옵션 라벨로 삼는다.</summary>
+    BeginNextOption,
+
+    /// <summary>선택 블록을 닫는다.</summary>
+    EndChoice
 }
 
 /// <param name="Label">드롭다운에 그대로 보이는 문구.</param>
@@ -26,6 +35,11 @@ public sealed record ConditionChoice(
     string Label,
     bool IsAvailable = true)
 {
+    /// <summary>
+    /// 선택 전환의 OptionId는 여기서 만들지 않는다 — 드롭다운 항목은 여러 줄이 공유하는
+    /// 정적 목록이라, 여기서 발급하면 서로 다른 줄이 같은 Id를 받는다.
+    /// null로 두면 <c>ProjectEditor.SetLineTransition</c>이 기존 Id를 잇거나 새로 발급한다.
+    /// </summary>
     public LineConditionTransition? ToTransition()
     {
         return Kind switch
@@ -33,6 +47,9 @@ public sealed record ConditionChoice(
             ConditionChoiceKind.BeginIf => LineConditionTransition.BeginIf(ConditionId!),
             ConditionChoiceKind.BeginElseIf => LineConditionTransition.BeginElseIf(ConditionId!),
             ConditionChoiceKind.EndIf => LineConditionTransition.EndIf(),
+            ConditionChoiceKind.BeginChoice => LineConditionTransition.BeginChoice(),
+            ConditionChoiceKind.BeginNextOption => LineConditionTransition.BeginNextOption(),
+            ConditionChoiceKind.EndChoice => LineConditionTransition.EndChoice(),
             _ => null
         };
     }
@@ -51,6 +68,10 @@ public static class ConditionChoices
     public const string InheritOutsideLabel = "조건 없음";
     public const string InheritInsideLabel = "현재 조건 유지";
     public const string EndIfLabel = "조건 종료";
+    public const string BeginChoiceLabel = "선택지 시작 (이 줄이 첫 옵션)";
+    public const string InheritInsideChoiceLabel = "현재 옵션 유지";
+    public const string NextOptionLabel = "다음 옵션 (이 줄이 라벨)";
+    public const string EndChoiceLabel = "선택지 끝";
 
     /// <summary>
     /// <paramref name="preceding"/>는 이 줄의 전환을 적용하기 전의 갈래다.
@@ -75,7 +96,7 @@ public static class ConditionChoices
 
         if (preceding is null)
         {
-            // 바깥이다. 조건을 고르면 새 갈래가 열린다.
+            // 바깥이다. 조건을 고르면 새 갈래가 열리고, 선택지 시작을 고르면 블록이 열린다.
             choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritOutsideLabel));
 
             foreach (AvailableCondition condition in catalog.Conditions)
@@ -85,6 +106,15 @@ public static class ConditionChoices
                     condition.Id,
                     condition.DisplayName));
             }
+
+            choices.Add(new ConditionChoice(ConditionChoiceKind.BeginChoice, null, BeginChoiceLabel));
+        }
+        else if (preceding.IsChoice)
+        {
+            // 선택 블록 안이다. 조건 항목은 제시하지 않는다 — 두 체인의 중첩은 지원하지 않는다.
+            choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritInsideChoiceLabel));
+            choices.Add(new ConditionChoice(ConditionChoiceKind.BeginNextOption, null, NextOptionLabel));
+            choices.Add(new ConditionChoice(ConditionChoiceKind.EndChoice, null, EndChoiceLabel));
         }
         else
         {
@@ -190,6 +220,9 @@ public static class ConditionChoices
         {
             ConditionTransitionKind.BeginIf => ConditionChoiceKind.BeginIf,
             ConditionTransitionKind.BeginElseIf => ConditionChoiceKind.BeginElseIf,
+            ConditionTransitionKind.BeginChoice => ConditionChoiceKind.BeginChoice,
+            ConditionTransitionKind.BeginNextOption => ConditionChoiceKind.BeginNextOption,
+            ConditionTransitionKind.EndChoice => ConditionChoiceKind.EndChoice,
             _ => ConditionChoiceKind.EndIf
         };
     }

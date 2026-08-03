@@ -77,7 +77,7 @@ public class PublishTests
 
         DialogueResult result = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
 
-        Assert.Equal(2, result.Identity.SchemaVersion);
+        Assert.Equal(DialogueResult.CurrentSchemaVersion, result.Identity.SchemaVersion);
         Assert.Equal(
             new[]
             {
