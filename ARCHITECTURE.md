@@ -800,6 +800,8 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 | `PresentationNodeTests` | 연출이 얼어붙은 결과를 읽는다 · orphan 보존 |
 | `RuntimeCompositionTests` | 호환되지 않는 조합을 정상 출력으로 만들지 않는다 |
 | `ResultDocumentComposerTests` | Segment 순서와 원본 매핑 |
+| `YarnBundleEmitterTests` | 트리오 구조 · 계약 규칙(A2·A5·B·C1·C4·D2·D3·D4·E2) · 원자적 쓰기 |
+| `YarnBundleVerificationTests` | 골든 트리오 비교 · 수정→재발행→재출력 왕복 · **Vn.Core 실컴파일** |
 | `OutputPresetTests` | 다섯 프리셋이 같은 결과에서 나오고 원본 매핑을 잃지 않는다 |
 | `SerializationTests` | 결정적 JSON · 원자적 저장 · 이전 형식 거부 |
 | `VerticalSliceTests` | **대본 → 출력 → 저장 → 다시 열기 → 같은 문자열** |

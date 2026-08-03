@@ -1,0 +1,22 @@
+title: Story_golden_ep
+---
+<<declare $favor = 0>>
+<<declare $fatigue = 0>>
+<<set $favor = 0>>
+<<beat Set_golden_ep>>
+<<pres_start Pres_golden_ep>>
+
+<<set $fatigue += 10>>
+라루: 첫 줄 그대로 #line:ln_004
+
+<<if $favor >= 5>>
+    윌로: 갈래 안 대사 #line:ln_005
+
+    <<pres_end>>
+    <<jump Story_A로_간다>>
+<<endif>>
+갈래 뒤 대사 #line:ln_006
+
+<<pres_end>>
+<<jump Story_기본으로_간다>>
+===

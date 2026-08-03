@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Vn.Authoring\Vn.Authoring.csproj" />
+    <!-- 이미터 산출물 검증용. Vn.Core는 저작 경로에 관여하지 않고 출력 검증기로만 쓴다. -->
+    <ProjectReference Include="..\..\src\Vn.Core\Vn.Core.csproj" />
   </ItemGroup>
 
 </Project>
