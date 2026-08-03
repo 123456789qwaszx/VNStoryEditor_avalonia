@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "entries": [
+    { "characterId": "laru", "variantKey": "a", "emotionKey": "01", "file": "laru/a_01.png" },
+    { "characterId": "laru", "variantKey": "a", "emotionKey": "02", "file": "laru/a_02.png" },
+    { "characterId": "laru", "variantKey": "b", "emotionKey": "03", "file": "laru/b_03.png" },
+    { "characterId": "willo", "variantKey": "a", "emotionKey": "01", "file": "willo/a_01.png" },
+    { "characterId": "ghost", "variantKey": "a", "emotionKey": "01", "file": "ghost/a_01.png" }
+  ]
+}

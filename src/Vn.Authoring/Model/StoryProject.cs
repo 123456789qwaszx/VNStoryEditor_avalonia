@@ -52,6 +52,9 @@ public sealed class StoryProject
     /// <summary>이야기가 시작되는 노드. null이면 아직 정하지 않은 것이다.</summary>
     public string? StartNodeId { get; set; }
 
+    /// <summary>프리뷰 에셋 폴더 설정. 미설정이어도 저작은 계속된다.</summary>
+    public AssetRootSettings AssetRoots { get; init; } = new();
+
     /// <summary>
     /// 프로젝트 전체 노드를 결정적인 순서로 펼친다.
     /// 파일 순서 → 각 파일의 Nodes 순서다.
@@ -145,6 +148,7 @@ public sealed class StoryProject
             FormatVersion = FormatVersion,
             Title = Title,
             StartNodeId = StartNodeId,
+            AssetRoots = AssetRoots.Clone(),
             Scripts = Scripts.Select(script => script.Clone()).ToList(),
             Files = Files.Select(file => file.Clone()).ToList(),
             Links = Links.Select(link => link.Clone()).ToList(),

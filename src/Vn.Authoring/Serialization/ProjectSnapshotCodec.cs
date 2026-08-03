@@ -69,6 +69,11 @@ public static class ProjectSnapshotCodec
             root["startNode"] = project.StartNodeId;
         }
 
+        if (ProjectManifestJson.WriteAssetRoots(project.AssetRoots) is { } assetRoots)
+        {
+            root["assetRoots"] = assetRoots;
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -112,7 +117,8 @@ public static class ProjectSnapshotCodec
         {
             FormatVersion = projectFormatVersion,
             Title = (string?)root["title"] ?? "제목 없음",
-            StartNodeId = (string?)root["startNode"]
+            StartNodeId = (string?)root["startNode"],
+            AssetRoots = ProjectManifestJson.ReadAssetRoots(root["assetRoots"])
         };
 
         foreach (JsonNode? item in root["scripts"]?.AsArray() ?? new JsonArray())

@@ -70,6 +70,11 @@ public static class ProjectManifestJson
             root["startNode"] = project.StartNodeId;
         }
 
+        if (WriteAssetRoots(project.AssetRoots) is { } assetRoots)
+        {
+            root["assetRoots"] = assetRoots;
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -223,11 +228,49 @@ public static class ProjectManifestJson
         return new ProjectManifest(
             (string?)root["title"] ?? "제목 없음",
             (string?)root["startNode"],
+            ReadAssetRoots(root["assetRoots"]),
             scripts,
             references,
             links,
             compositions,
             (string?)root["results"]);
+    }
+
+    /// <summary>비어 있으면 null — manifest에 빈 객체를 남기지 않는다.</summary>
+    internal static JsonObject? WriteAssetRoots(AssetRootSettings assetRoots)
+    {
+        if (assetRoots.IsEmpty)
+        {
+            return null;
+        }
+
+        var json = new JsonObject();
+
+        if (AssetRootSettings.NormalizePath(assetRoots.BackgroundsPath) is { } backgrounds)
+        {
+            json["backgrounds"] = backgrounds;
+        }
+
+        if (AssetRootSettings.NormalizePath(assetRoots.PortraitsPath) is { } portraits)
+        {
+            json["portraits"] = portraits;
+        }
+
+        return json.Count > 0 ? json : null;
+    }
+
+    internal static AssetRootSettings ReadAssetRoots(JsonNode? json)
+    {
+        if (json is not JsonObject assetRoots)
+        {
+            return new AssetRootSettings();
+        }
+
+        return new AssetRootSettings
+        {
+            BackgroundsPath = AssetRootSettings.NormalizePath((string?)assetRoots["backgrounds"]),
+            PortraitsPath = AssetRootSettings.NormalizePath((string?)assetRoots["portraits"])
+        };
     }
 
     internal static IReadOnlyList<ScriptFileReference> ScriptReferencesOf(StoryProject project)
@@ -356,6 +399,7 @@ public static class ProjectManifestJson
 public sealed record ProjectManifest(
     string Title,
     string? StartNodeId,
+    AssetRootSettings AssetRoots,
     IReadOnlyList<ScriptFileReference> Scripts,
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,

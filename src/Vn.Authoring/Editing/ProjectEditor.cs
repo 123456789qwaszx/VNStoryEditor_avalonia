@@ -1072,6 +1072,31 @@ public sealed partial class ProjectEditor
         });
     }
 
+    // ── 프로젝트 설정 ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 프리뷰 에셋 루트 두 곳을 바꾼다. null은 미설정이다.
+    /// 프로젝트 이동 내성을 위해 상대 경로를 권장하지만 강제하지는 않는다 —
+    /// 에셋이 다른 드라이브에 있으면 상대 경로가 존재하지 않는다.
+    /// </summary>
+    public void SetAssetRoots(string? backgroundsPath, string? portraitsPath)
+    {
+        string? backgrounds = AssetRootSettings.NormalizePath(backgroundsPath);
+        string? portraits = AssetRootSettings.NormalizePath(portraitsPath);
+
+        if (string.Equals(Project.AssetRoots.BackgroundsPath, backgrounds, StringComparison.Ordinal) &&
+            string.Equals(Project.AssetRoots.PortraitsPath, portraits, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            Project.AssetRoots.BackgroundsPath = backgrounds;
+            Project.AssetRoots.PortraitsPath = portraits;
+        });
+    }
+
     // ── 되돌리기 ────────────────────────────────────────────────────────────
 
     public void Undo()

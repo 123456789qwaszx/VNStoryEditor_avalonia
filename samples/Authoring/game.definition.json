@@ -32,6 +32,16 @@
     }
   ],
   "conditions": [],
+  "speakers": [
+    {
+      "name": "윌로",
+      "characterId": "willo"
+    },
+    {
+      "name": "라루",
+      "characterId": "laru"
+    }
+  ],
   "presentationCommandCategories": [
     {
       "id": "camera",

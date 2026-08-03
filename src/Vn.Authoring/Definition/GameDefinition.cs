@@ -44,6 +44,29 @@ public sealed class GameDefinition
     [JsonPropertyName("presentationCommands")]
     public List<PresentationCommandSpec> PresentationCommands { get; init; } = new();
 
+    /// <summary>
+    /// 대본의 화자명 ↔ 초상화 characterId 매핑. 프리뷰가 화자 강조에 쓴다.
+    ///
+    /// 런타임의 화자 정책 DBSO는 화자명→표시명/대사창만 알고 캐릭터 키를 모르므로
+    /// 이 매핑은 어차피 신규 저작 데이터다. 게임별 어휘는 정의 파일이 공급한다는
+    /// 원칙 그대로 여기 둔다. 매핑이 없는 화자는 이름만 표시된다 — 오류가 아니다.
+    /// </summary>
+    [JsonPropertyName("speakers")]
+    public List<SpeakerSpec> Speakers { get; init; } = new();
+
+    /// <summary>화자명에 매핑된 characterId. 없으면 null — 프리뷰는 이름만 보여 준다.</summary>
+    public string? FindSpeakerCharacterId(string? speakerName)
+    {
+        if (string.IsNullOrWhiteSpace(speakerName))
+        {
+            return null;
+        }
+
+        return Speakers
+            .FirstOrDefault(speaker => string.Equals(speaker.Name, speakerName.Trim(), StringComparison.Ordinal))
+            ?.CharacterId;
+    }
+
     public static string PathFor(string projectPath)
     {
         string directory = Path.GetDirectoryName(Path.GetFullPath(projectPath))
@@ -128,6 +151,17 @@ public sealed class ConditionSpec
     public string Expression { get; init; } = string.Empty;
 }
 
+
+public sealed class SpeakerSpec
+{
+    /// <summary>대본에 적히는 화자명 그대로. Ordinal 정확 일치로 찾는다.</summary>
+    [JsonPropertyName("name")]
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>초상화 매니페스트의 characterId.</summary>
+    [JsonPropertyName("characterId")]
+    public string CharacterId { get; init; } = string.Empty;
+}
 
 public sealed class PresentationCategorySpec
 {
