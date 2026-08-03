@@ -224,11 +224,29 @@ internal static class StoryNodeJson
                 commands.Add(WriteCommand(command));
             }
 
-            bindings.Add(new JsonObject
+            var bindingJson = new JsonObject
             {
                 ["lineId"] = binding.LineId,
                 ["commands"] = commands
-            });
+            };
+
+            if (binding.Markers.Count > 0)
+            {
+                var markers = new JsonArray();
+
+                foreach (PresentationLineMarker marker in binding.Markers)
+                {
+                    markers.Add(new JsonObject
+                    {
+                        ["offset"] = marker.CharacterOffset,
+                        ["firstCommand"] = marker.FirstCommandIndex
+                    });
+                }
+
+                bindingJson["markers"] = markers;
+            }
+
+            bindings.Add(bindingJson);
         }
 
         json["bindings"] = bindings;
@@ -493,6 +511,18 @@ internal static class StoryNodeJson
                 if (commandItem is JsonObject commandJson)
                 {
                     binding.Commands.Add(ReadCommand(commandJson, id));
+                }
+            }
+
+            foreach (JsonNode? markerItem in bindingJson["markers"]?.AsArray() ?? new JsonArray())
+            {
+                if (markerItem is JsonObject markerJson)
+                {
+                    binding.Markers.Add(new PresentationLineMarker
+                    {
+                        CharacterOffset = (int?)markerJson["offset"] ?? 0,
+                        FirstCommandIndex = (int?)markerJson["firstCommand"] ?? 0
+                    });
                 }
             }
 

@@ -157,6 +157,10 @@ public static class YarnBundleEmitter
         // 헤더가 닫히는 시점은 첫 본문 Segment를 만났을 때다.
         bool storyHeaderClosed = false;
 
+        // 마커가 있는 라인의 커맨드 버퍼. 커맨드 Segment가 언제나 자기 라인보다 먼저 오므로
+        // 리스트 하나면 된다 — 라인을 쓰는 순간 비운다.
+        var bufferedLineCommands = new List<RenderedSegment>();
+
         void CloseStoryHeader()
         {
             if (storyHeaderClosed)
@@ -198,6 +202,20 @@ public static class YarnBundleEmitter
                     break;
 
                 case RenderedSegmentKind.PresentationCommand:
+                    // 마커가 있는 라인의 커맨드는 곧바로 쓰지 않고 모아 둔다 —
+                    // 그룹 경계에 따라 사본 라인들 사이에 나뉘어 들어가야 한다.
+                    if (segment.Source.LineId is { } commandLineId &&
+                        presentation?.FindBinding(commandLineId)?.MarkerList.Count > 0)
+                    {
+                        if (!IsMainLaneOnly(segment, catalog, problems))
+                        {
+                            CloseStoryHeader();
+                            bufferedLineCommands.Add(segment);
+                        }
+
+                        break;
+                    }
+
                     AppendPresentationCommand(segment, setup, pres, catalog, problems, CloseStoryHeader);
                     break;
 
@@ -231,7 +249,16 @@ public static class YarnBundleEmitter
 
                 case RenderedSegmentKind.DialogueLine:
                     CloseStoryHeader();
-                    AppendDialogue(segment, story, pres, indent, problems);
+                    AppendDialogue(
+                        segment,
+                        story,
+                        pres,
+                        indent,
+                        problems,
+                        presentation?.FindBinding(segment.Source.LineId)?.MarkerList
+                            ?? Array.Empty<PresentationResultMarker>(),
+                        bufferedLineCommands);
+                    bufferedLineCommands.Clear();
                     break;
 
                 case RenderedSegmentKind.BranchJump:
@@ -469,6 +496,28 @@ public static class YarnBundleEmitter
         };
     }
 
+    /// <summary>
+    /// 메인 레인 전용 커맨드인지 (계약서 E2). 서브 러너들에 등록되어 있지 않아
+    /// unknown command로 즉시 깨지므로 출력 자체를 막는다.
+    /// </summary>
+    private static bool IsMainLaneOnly(
+        RenderedSegment segment,
+        PresentationCommandCatalog catalog,
+        List<YarnBundleProblem> problems)
+    {
+        if (catalog.Find(segment.DefinitionId)?.MainLaneOnly != true)
+        {
+            return false;
+        }
+
+        problems.Add(new YarnBundleProblem(
+            $"메인 레인 전용 커맨드 '{segment.CommandName ?? segment.DefinitionId}'는 " +
+            "Set·Pres 노드에 출력할 수 없습니다.",
+            IsBlocking: true,
+            segment.Source.LineId));
+        return true;
+    }
+
     private static void AppendPresentationCommand(
         RenderedSegment segment,
         StringBuilder? setup,
@@ -477,15 +526,8 @@ public static class YarnBundleEmitter
         List<YarnBundleProblem> problems,
         Action closeStoryHeader)
     {
-        // 메인 레인 전용 커맨드는 서브 러너들에 등록되어 있지 않다 — unknown command로
-        // 즉시 깨지므로 출력 자체를 막는다 (E2).
-        if (catalog.Find(segment.DefinitionId)?.MainLaneOnly == true)
+        if (IsMainLaneOnly(segment, catalog, problems))
         {
-            problems.Add(new YarnBundleProblem(
-                $"메인 레인 전용 커맨드 '{segment.CommandName ?? segment.DefinitionId}'는 " +
-                "Set·Pres 노드에 출력할 수 없습니다.",
-                IsBlocking: true,
-                segment.Source.LineId));
             return;
         }
 
@@ -602,22 +644,35 @@ public static class YarnBundleEmitter
         StringBuilder story,
         StringBuilder? pres,
         string indent,
-        List<YarnBundleProblem> problems)
+        List<YarnBundleProblem> problems,
+        IReadOnlyList<PresentationResultMarker> markers,
+        IReadOnlyList<RenderedSegment> bufferedCommands)
     {
-        if (segment.Text?.Contains("[adv/]", StringComparison.Ordinal) == true)
+        string text = segment.Text ?? string.Empty;
+
+        if (text.Contains("[adv/]", StringComparison.Ordinal))
         {
-            // 인라인 동기화 마커는 Phase 0 미지원 — 라인 예산이 어긋난다 (B).
+            // 본문에 직접 입력한 마커는 동기화 그룹이 없다 — 라인 예산이 어긋난다 (B).
             problems.Add(new YarnBundleProblem(
-                $"LineId '{segment.Source.LineId}'의 본문에 [adv/] 마커가 있습니다. " +
-                "Phase 0에서는 지원하지 않으며 서브 레인 동기화가 어긋납니다.",
+                $"LineId '{segment.Source.LineId}'의 본문에 직접 입력한 [adv/] 마커가 있습니다. " +
+                "연출 바인딩의 마커 기능을 사용해야 서브 레인 예산이 맞습니다.",
                 IsBlocking: false,
                 segment.Source.LineId));
         }
 
+        string[] parts = SplitByMarkers(text, markers);
+
         // Story 라인에는 #line: 태그가 필수다 (C1). 없으면 implicit ID가 익스포트마다
-        // 바뀌고, 세이브 로드가 조용히 행에 빠진다.
+        // 바뀌고, 세이브 로드가 조용히 행에 빠진다. 마커는 본문 오프셋 위치에 삽입된다.
+        // 마커명은 `adv` 고정 — InlineAdvanceManifest.DefaultMarkerName.
         story.Append(indent);
-        YarnSyntax.AppendDialogue(story, segment);
+
+        if (!string.IsNullOrWhiteSpace(segment.Speaker))
+        {
+            story.Append(segment.Speaker).Append(": ");
+        }
+
+        story.Append(string.Join("[adv/]", parts));
 
         if (segment.Source.LineId is { Length: > 0 } lineId)
         {
@@ -632,15 +687,64 @@ public static class YarnBundleEmitter
 
         story.Append("\n\n");
 
-        if (pres is not null)
+        if (pres is null)
         {
-            // Pres 사본은 무태그다 — Story와 같은 #line:을 내면 전역 유일성 위반으로
-            // 컴파일이 깨진다 (C4). 라인 수·순서는 Story와 같다 (B).
+            return;
+        }
+
+        // Pres 사본은 무태그다 — Story와 같은 #line:을 내면 전역 유일성 위반으로
+        // 컴파일이 깨진다 (C4). 마커가 있으면 이 라인 자리에 1 + 마커 수 개의 라인을 내
+        // 라인 예산(B: 대사 라인 + [adv/] 마커 수)을 정확히 맞춘다. 그룹 k의 커맨드가
+        // k번째 사본 라인 앞에 붙는다.
+        for (int part = 0; part < parts.Length; part++)
+        {
+            int groupStart = part == 0 ? 0 : ClampIndex(markers[part - 1].FirstCommandIndex, bufferedCommands.Count);
+            int groupEnd = part < markers.Count
+                ? ClampIndex(markers[part].FirstCommandIndex, bufferedCommands.Count)
+                : bufferedCommands.Count;
+
+            for (int index = groupStart; index < Math.Max(groupStart, groupEnd); index++)
+            {
+                pres.Append(indent);
+                YarnSyntax.AppendCommand(pres, bufferedCommands[index]);
+                pres.Append('\n');
+            }
+
             pres.Append(indent);
-            YarnSyntax.AppendDialogue(pres, segment);
+
+            if (part == 0 && !string.IsNullOrWhiteSpace(segment.Speaker))
+            {
+                pres.Append(segment.Speaker).Append(": ");
+            }
+
+            // 사본 라인의 문구는 표시되지 않는 동기화 앵커다. 빈 조각은 자리 표시로 채운다.
+            pres.Append(string.IsNullOrWhiteSpace(parts[part]) ? "…" : parts[part]);
             pres.Append("\n\n");
         }
     }
+
+    private static string[] SplitByMarkers(string text, IReadOnlyList<PresentationResultMarker> markers)
+    {
+        if (markers.Count == 0)
+        {
+            return new[] { text };
+        }
+
+        var parts = new string[markers.Count + 1];
+        int previous = 0;
+
+        for (int index = 0; index < markers.Count; index++)
+        {
+            int offset = Math.Clamp(markers[index].CharacterOffset, previous, text.Length);
+            parts[index] = text[previous..offset];
+            previous = offset;
+        }
+
+        parts[markers.Count] = text[previous..];
+        return parts;
+    }
+
+    private static int ClampIndex(int value, int count) => Math.Clamp(value, 0, count);
 
     private static string JumpTargetOf(RenderedSegment segment)
     {

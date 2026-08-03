@@ -720,6 +720,51 @@ public sealed partial class ProjectEditor
         return command;
     }
 
+    /// <summary>
+    /// 라인 하나의 인라인 동기화 마커 목록을 통째로 바꾼다. 문자 오프셋 순으로 정렬해 둔다.
+    /// 빈 목록이면 마커 없는 기존 동작이다.
+    /// </summary>
+    public void SetPresentationLineMarkers(
+        string presentationNodeId,
+        string lineId,
+        IReadOnlyList<PresentationLineMarker>? markers)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+        PresentationLineBinding? existing = node.Bindings.FirstOrDefault(item =>
+            string.Equals(item.LineId, lineId, StringComparison.Ordinal));
+        bool empty = markers is null || markers.Count == 0;
+
+        if ((existing is null || existing.Markers.Count == 0) && empty)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            PresentationLineBinding binding = existing ?? new PresentationLineBinding(lineId);
+
+            if (existing is null)
+            {
+                node.Bindings.Add(binding);
+            }
+
+            binding.Markers.Clear();
+
+            if (markers is not null)
+            {
+                binding.Markers.AddRange(markers
+                    .OrderBy(marker => marker.CharacterOffset)
+                    .ThenBy(marker => marker.FirstCommandIndex)
+                    .Select(marker => marker.Clone()));
+            }
+
+            if (binding.Commands.Count == 0 && binding.Markers.Count == 0)
+            {
+                node.Bindings.Remove(binding);
+            }
+        });
+    }
+
     public void MovePresentationSetupCommand(
         string presentationNodeId,
         string commandId,

@@ -77,13 +77,41 @@ public sealed class PresentationLineBinding
     /// <summary>작성한 순서가 곧 출력·실행 순서다.</summary>
     public List<PresentationCommandInstance> Commands { get; init; } = new();
 
+    /// <summary>
+    /// 인라인 동기화 마커(<c>[adv/]</c>)의 위치. 마커는 커맨드 목록을 그룹으로 나눈다 —
+    /// 첫 마커 앞의 커맨드는 라인 시작에, 이후 그룹은 타자기 도중 해당 마커 시점에 재생된다.
+    /// 비어 있으면 기존 동작 그대로다(기존 프로젝트의 출력·해시 불변).
+    /// </summary>
+    public List<PresentationLineMarker> Markers { get; init; } = new();
+
     public PresentationLineBinding Clone()
     {
         return new PresentationLineBinding(LineId)
         {
-            Commands = Commands.Select(command => command.Clone()).ToList()
+            Commands = Commands.Select(command => command.Clone()).ToList(),
+            Markers = Markers.Select(marker => marker.Clone()).ToList()
         };
     }
+}
+
+/// <summary>
+/// 인라인 동기화 마커 하나. Story 본문의 <see cref="CharacterOffset"/> 위치에
+/// <c>[adv/]</c>가 삽입되고, <see cref="FirstCommandIndex"/>부터의 커맨드들이
+/// 그 마커의 그룹이 된다(다음 마커 전까지).
+/// </summary>
+public sealed class PresentationLineMarker
+{
+    /// <summary>라인 본문에서 마커가 삽입될 문자 오프셋.</summary>
+    public int CharacterOffset { get; set; }
+
+    /// <summary>이 마커 그룹이 시작하는 커맨드 인덱스(binding.Commands 기준).</summary>
+    public int FirstCommandIndex { get; set; }
+
+    public PresentationLineMarker Clone() => new()
+    {
+        CharacterOffset = CharacterOffset,
+        FirstCommandIndex = FirstCommandIndex
+    };
 }
 
 /// <summary>

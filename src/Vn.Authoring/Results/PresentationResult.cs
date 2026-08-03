@@ -7,6 +7,9 @@ public sealed record PresentationResultCommand(
     IReadOnlyDictionary<string, string> Arguments,
     string? Note = null);
 
+/// <summary>발행 시점에 얼린 인라인 동기화 마커 하나.</summary>
+public sealed record PresentationResultMarker(int CharacterOffset, int FirstCommandIndex);
+
 /// <summary>
 /// LineId 하나에 붙은 연출. 목록 순서가 곧 실행·출력 순서다.
 /// </summary>
@@ -14,10 +17,16 @@ public sealed record PresentationResultCommand(
 /// 대상 DialogueResult에 이 LineId가 없다. 자동으로 지우지 않고 그대로 발행한다.
 /// 지워 버리면 연출가가 쓴 것이 말없이 사라지고, 왜 사라졌는지 물을 수도 없다.
 /// </param>
+/// <param name="Markers">인라인 동기화 마커. 비어 있으면 본문에서 아예 빠진다(해시 불변).</param>
 public sealed record PresentationResultBinding(
     string LineId,
     IReadOnlyList<PresentationResultCommand> Commands,
-    bool IsOrphan);
+    bool IsOrphan,
+    IReadOnlyList<PresentationResultMarker>? Markers = null)
+{
+    public IReadOnlyList<PresentationResultMarker> MarkerList =>
+        Markers ?? Array.Empty<PresentationResultMarker>();
+}
 
 /// <summary>
 /// PresentationNode의 작업 상태를 얼린 <b>불변</b> 결과.

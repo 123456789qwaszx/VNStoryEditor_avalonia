@@ -378,11 +378,25 @@ internal static class PresentationResultJson
                 }
             }
 
+            List<PresentationResultMarker>? markers = null;
+
+            foreach (JsonNode? markerItem in bindingJson["markers"]?.AsArray() ?? new JsonArray())
+            {
+                if (markerItem is JsonObject markerJson)
+                {
+                    markers ??= new List<PresentationResultMarker>();
+                    markers.Add(new PresentationResultMarker(
+                        (int?)markerJson["offset"] ?? 0,
+                        (int?)markerJson["firstCommand"] ?? 0));
+                }
+            }
+
             bindings.Add(new PresentationResultBinding(
                 (string?)bindingJson["lineId"]
                     ?? throw new InvalidDataException($"연출 결과 '{identity.Label}'의 binding에 lineId가 없습니다."),
                 commands,
-                (bool?)bindingJson["orphan"] ?? false));
+                (bool?)bindingJson["orphan"] ?? false,
+                markers));
         }
 
         return new PresentationResult(
@@ -440,6 +454,24 @@ internal static class PresentationResultJson
             if (binding.IsOrphan)
             {
                 bindingJson["orphan"] = true;
+            }
+
+            // 마커가 없으면 키를 쓰지 않는다. 본문이 해시 입력이므로(마커 없는
+            // 기존 결과의 무결성 검사가 그대로 성립해야 한다).
+            if (binding.MarkerList.Count > 0)
+            {
+                var markers = new JsonArray();
+
+                foreach (PresentationResultMarker marker in binding.MarkerList)
+                {
+                    markers.Add(new JsonObject
+                    {
+                        ["offset"] = marker.CharacterOffset,
+                        ["firstCommand"] = marker.FirstCommandIndex
+                    });
+                }
+
+                bindingJson["markers"] = markers;
             }
 
             bindingArray.Add(bindingJson);

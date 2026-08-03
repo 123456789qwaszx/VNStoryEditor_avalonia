@@ -173,7 +173,7 @@ tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시�
 | `SetNode` | 조건 정의와 변수 값. **조건이 태어나는 유일한 자리** |
 | `DialogueNode` | `ScriptId` + `DialogueLineExtension` 목록 + `BranchExits`. **본문은 없다** |
 | `DialogueLineExtension` | LineId 하나에 얹는 대사 논리. 조건·선택 전환과 변수 변경(`SetOperation`). 옵션 라벨 전환은 안정 `OptionId`(`op_`)를 가진다 — 선택지 리플레이가 위치 기반이라(계약서 C3) 순서 변경을 이 Id로 감지해 경고한다 |
-| `PresentationNode` | `Source`(대사 결과 참조) + Setup 커맨드(노드 수준, Set_ 노드 본문이 된다) + `LineId`별 binding. **대사를 복사하지 않는다** |
+| `PresentationNode` | `Source`(대사 결과 참조) + Setup 커맨드(노드 수준, Set_ 노드 본문이 된다) + `LineId`별 binding. binding은 인라인 동기화 마커(`[adv/]` 위치 + 커맨드 그룹 경계)도 가진다. **대사를 복사하지 않는다** |
 | `PresentationCommandInstance` | 명령 하나. 정의 Id, 인자, 사용 여부, 메모. 순서를 보존한다 |
 | `LineConditionTransition` | `BeginIf` / `BeginElseIf` / `EndIf` |
 | `ConditionDefinition` | Id + 작가용 이름 + 게임이 평가할 식 |

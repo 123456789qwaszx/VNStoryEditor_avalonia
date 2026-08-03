@@ -119,13 +119,33 @@ public static class PresentationPublisher
                     IsBlocking: false));
             }
 
+            // 마커의 커맨드 인덱스는 활성 커맨드 기준으로 다시 센다 — 비활성 커맨드는
+            // 결과에서 빠지므로 발행 시점의 인덱스가 실제 그룹 경계다.
+            PresentationCommandInstance[] enabledCommands = binding.Commands
+                .Where(command => command.IsEnabled)
+                .ToArray();
+
+            List<PresentationResultMarker>? markers = null;
+
+            foreach (PresentationLineMarker marker in binding.Markers.OrderBy(item => item.CharacterOffset))
+            {
+                int enabledIndex = binding.Commands
+                    .Take(Math.Clamp(marker.FirstCommandIndex, 0, binding.Commands.Count))
+                    .Count(command => command.IsEnabled);
+
+                markers ??= new List<PresentationResultMarker>();
+                markers.Add(new PresentationResultMarker(
+                    Math.Max(0, marker.CharacterOffset),
+                    Math.Clamp(enabledIndex, 0, enabledCommands.Length)));
+            }
+
             bindings.Add(new PresentationResultBinding(
                 binding.LineId,
-                binding.Commands
-                    .Where(command => command.IsEnabled)
+                enabledCommands
                     .Select(command => Freeze(command, project, availableCommands, problems, binding.LineId))
                     .ToArray(),
-                orphan));
+                orphan,
+                markers));
         }
 
         return new PresentationDraft(node.Id, node.Name, source, setupCommands, bindings, problems);
