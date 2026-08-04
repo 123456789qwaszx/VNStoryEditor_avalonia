@@ -134,13 +134,11 @@ public partial class SetNodeEditor : UserControl
         return row;
     }
 
-    /// <summary>
-    /// 타입 드롭다운 항목. 지금은 float 하나지만 목록 구조라 타입이 늘어도
-    /// 이 배열에 줄 하나를 더하면 된다 — 코드 구조는 이미 드롭다운이다 (X2).
-    /// </summary>
+    /// <summary>타입 드롭다운 항목 — X2가 만든 배열에 X7이 bool 한 줄을 더했다.</summary>
     private static readonly (string Type, string Label)[] VariableTypes =
     [
-        (VariableAssignment.FloatType, "float (숫자)")
+        (VariableAssignment.FloatType, "float (숫자)"),
+        (VariableAssignment.BoolType, "bool (플래그)")
     ];
 
     private Control BuildAssignmentRow(SetNode node, int index)
@@ -171,12 +169,27 @@ public partial class SetNodeEditor : UserControl
             MinimumPrefixLength = 0
         };
 
+        // Bool 플래그의 값은 수치가 아니라 On/Off다 (X7). 저장 값은 Yarn 문법 그대로
+        // true/false 문자열이라 출력은 바뀌지 않는다.
+        bool isBool = assignment.IsBool;
+
+        var boolValue = new CheckBox
+        {
+            IsChecked = string.Equals(assignment.Value, "true", StringComparison.OrdinalIgnoreCase),
+            Content = string.Equals(assignment.Value, "true", StringComparison.OrdinalIgnoreCase) ? "On" : "Off",
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12,
+            IsVisible = isBool,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
         var value = new TextBox
         {
             Text = assignment.Value,
             PlaceholderText = "초기값",
             Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12
+            FontSize = 12,
+            IsVisible = !isBool
         };
 
         // Set 편집 슬라이더의 변수별 범위 (X6). 비우면 기본 -5~+5다.
@@ -216,12 +229,17 @@ public partial class SetNodeEditor : UserControl
                 return;
             }
 
+            string nextType = VariableTypes[Math.Max(0, type.SelectedIndex)].Type;
+            bool nextIsBool = string.Equals(nextType, VariableAssignment.BoolType, StringComparison.Ordinal);
+
             List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
             next[index] = new VariableAssignment
             {
                 Variable = variable.Text ?? string.Empty,
-                Value = value.Text ?? string.Empty,
-                Type = VariableTypes[Math.Max(0, type.SelectedIndex)].Type,
+                Value = nextIsBool
+                    ? (boolValue.IsChecked == true ? "true" : "false")
+                    : value.Text ?? string.Empty,
+                Type = nextType,
                 SliderMin = ParseRange(sliderMin.Text),
                 SliderMax = ParseRange(sliderMax.Text)
             };
@@ -232,6 +250,11 @@ public partial class SetNodeEditor : UserControl
         type.SelectionChanged += (_, _) => Commit();
         variable.LostFocus += (_, _) => Commit();
         value.LostFocus += (_, _) => Commit();
+        boolValue.IsCheckedChanged += (_, _) =>
+        {
+            boolValue.Content = boolValue.IsChecked == true ? "On" : "Off";
+            Commit();
+        };
         sliderMin.LostFocus += (_, _) => Commit();
         sliderMax.LostFocus += (_, _) => Commit();
 
@@ -244,16 +267,24 @@ public partial class SetNodeEditor : UserControl
             _session!.Editor.SetAssignments(node.Id, next);
         };
 
+        // Bool 플래그에는 슬라이더 범위가 의미 없다.
+        sliderMin.IsVisible = !isBool;
+        sliderMax.IsVisible = !isBool;
+
+        var valueHost = new Panel();
+        valueHost.Children.Add(value);
+        valueHost.Children.Add(boolValue);
+
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,*,Auto,Auto,Auto") };
         Grid.SetColumn(type, 0);
         Grid.SetColumn(variable, 1);
-        Grid.SetColumn(value, 2);
+        Grid.SetColumn(valueHost, 2);
         Grid.SetColumn(sliderMin, 3);
         Grid.SetColumn(sliderMax, 4);
         Grid.SetColumn(remove, 5);
         row.Children.Add(type);
         row.Children.Add(variable);
-        row.Children.Add(value);
+        row.Children.Add(valueHost);
         row.Children.Add(sliderMin);
         row.Children.Add(sliderMax);
         row.Children.Add(remove);

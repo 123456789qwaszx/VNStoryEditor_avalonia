@@ -160,8 +160,13 @@ public sealed class CommandPreset
 /// <summary>변수 하나에 값을 넣는다. 값은 게임이 해석하므로 문자열로 들고 있는다.</summary>
 public sealed class VariableAssignment
 {
-    /// <summary>현재 지원하는 유일한 타입. 스탯은 숫자로 선언 출력된다(계약서 D4).</summary>
+    /// <summary>기본 타입. 스탯은 숫자로 선언 출력된다(계약서 D4).</summary>
     public const string FloatType = "float";
+
+    /// <summary>플래그 타입 (X7). 값은 Yarn 문법 그대로 <c>true</c>/<c>false</c> 문자열이다.</summary>
+    public const string BoolType = "bool";
+
+    public bool IsBool => string.Equals(Type, BoolType, StringComparison.Ordinal);
 
     public string Variable { get; set; } = string.Empty;
 

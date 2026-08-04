@@ -902,6 +902,67 @@ public partial class DialogueNodeEditor : UserControl
             }
         };
 
+        // Bool 플래그는 수치 슬라이더가 아니라 On/Off 토글이다 (X7).
+        // 저장 값은 Yarn 문법 그대로 true/false 문자열 — 출력 불변.
+        bool isBool = registration?.IsBool == true ||
+            _session!.Definition.Variables.Any(spec =>
+                string.Equals(spec.Name, operation.Variable, StringComparison.Ordinal) &&
+                string.Equals(spec.Type, "bool", StringComparison.OrdinalIgnoreCase));
+
+        if (isBool)
+        {
+            var toggle = new CheckBox
+            {
+                IsChecked = string.Equals(operation.Value, "true", StringComparison.OrdinalIgnoreCase),
+                Content = string.Equals(operation.Value, "true", StringComparison.OrdinalIgnoreCase) ? "On" : "Off",
+                Margin = new Thickness(6, 0, 0, 0),
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            toggle.IsCheckedChanged += (_, _) =>
+            {
+                if (!_building)
+                {
+                    toggle.Content = toggle.IsChecked == true ? "On" : "Off";
+                    Commit(target => target.Value = toggle.IsChecked == true ? "true" : "false");
+                }
+            };
+
+            var removeBool = new Button
+            {
+                Content = "✕",
+                FontSize = 10,
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            removeBool.Click += (_, _) =>
+            {
+                if (!_building)
+                {
+                    List<SetOperation> nextOps = CurrentSets(node, lineId);
+
+                    if (operationIndex < nextOps.Count)
+                    {
+                        nextOps.RemoveAt(operationIndex);
+                        _session!.Editor.SetLineSetOperations(node.Id, lineId, nextOps);
+                    }
+                }
+            };
+
+            var boolRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto") };
+            Grid.SetColumn(variableBox, 0);
+            Grid.SetColumn(operatorBox, 1);
+            Grid.SetColumn(toggle, 2);
+            Grid.SetColumn(removeBool, 3);
+            boolRow.Children.Add(variableBox);
+            boolRow.Children.Add(operatorBox);
+            boolRow.Children.Add(toggle);
+            boolRow.Children.Add(removeBool);
+            return boolRow;
+        }
+
         double min = registration?.EffectiveSliderMin ?? VariableAssignment.DefaultSliderMin;
         double max = registration?.EffectiveSliderMax ?? VariableAssignment.DefaultSliderMax;
         bool syncing = false;
