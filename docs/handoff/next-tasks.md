@@ -90,10 +90,17 @@
   **엉킴 질문은 빗나갔다** — `MonoBehaviour`가 아니라 `RectTransform`(402회)이 상태 담지체였다.
   **새 관문: asmdef가 0개**라 코어를 어셈블리로 뽑으려면 경계부터 그어야 하고, 그때 숨은 순환 참조가 드러난다.
 
-**다음 행동 — 런타임 지시 U13-a**(asmdef 도입 + 순환 참조 해소, **코드 로직 변경 0**).
-Phase 2 전체 일정의 가장 큰 편차가 여기 있고 **규모를 재는 유일한 방법이 실제로 그어 보는 것**이다.
-로직을 안 건드리므로 다른 결정과 독립이라 **지금 바로 나갈 수 있고**, U12-전체와 병행 가능하다.
-그 뒤 U13-b(코어 추출 + `ClaimTarget` 51곳 표준화)에 §6.2 제약을 실어 지시한다.
+**다음 행동 — 런타임 지시 두 건이 나갈 준비가 됐다.**
+순서와 **붙여넣을 프롬프트 전문**은 [`ked-presentation-runtime/phase2-runtime-orders.md`](../ked-presentation-runtime/phase2-runtime-orders.md).
+
+```
+U13-a (asmdef 경계)  ∥  U12-전체 (스키마·프리셋 덤프)  →  U13-b (코어 추출)  →  U14 (등가성)
+```
+
+- **U13-a**와 **U12-전체**는 서로 독립이라 **병행해서 지금 바로** 나갈 수 있다.
+- ⚠ **U12-전체가 U13-b보다 앞이다** — 코어의 `Tuning/`이 곧 U12-전체가 내보내는 것의 스키마다.
+  뒤집히면 U13-b가 모양을 지어내고 U12-전체가 거기 맞추거나, 둘이 어긋난다.
+- **U14 초록불이 VnTool 2b의 착수 조건**이다.
 
 초안이 제안한 순서: D-2b-1 결정 → U12-전체 지시 → 2a 지시서 → U13·U14 지시 → 2b 지시서 → 2c.
 
@@ -104,7 +111,9 @@ Phase 2 전체 일정의 가장 큰 편차가 여기 있고 **규모를 재는 �
 거기서 계약 위반이 나오면 원인 후보 1번이다([known-issues.md](known-issues.md) K7).
 
 ### T5. 런타임 저장소 지시 (다른 저장소)
-`docs/ked-presentation-runtime/runtime-work-orders.md`(U1–U17)와 세션 프롬프트(`runtime-parallel-orders.md`).
+`docs/ked-presentation-runtime/runtime-work-orders.md`(U1–U17), 세션 프롬프트는
+**Phase 2 계열은 [`phase2-runtime-orders.md`](../ked-presentation-runtime/phase2-runtime-orders.md)**,
+그 밖은 `runtime-parallel-orders.md`.
 - **U12-v1**(초상화 덤프) — 2026-08-04 개정본(**규약 경로 직접 출력**)으로 지시할 것. 완료되면 VnTool 쪽은 픽스처→실덤프 교체 리허설만.
 - **U12-전체** — Phase 2a의 입력이다(DBSO 프리셋 일습·리그 스키마 4종·기준 해상도). U13-a와 병행 가능.
 - **U13-a** (신설, 조사 결과에 따라 U13에서 분할) — **asmdef 도입 + 순환 참조 해소, 로직 변경 0.**
