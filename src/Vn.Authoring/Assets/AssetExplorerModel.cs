@@ -140,7 +140,7 @@ public static class AssetExplorerModel
                         AssetExplorerItemKind.Portrait,
                         entry.Key.EmotionKey,
                         entry.FilePath,
-                        entry.FileExists ? null : $"파일 없음: {entry.ManifestFile}",
+                        entry.FileExists ? null : $"파일 없음: {entry.SourceFile}",
                         Array.Empty<AssetExplorerItem>())
                     {
                         Portrait = entry.Key

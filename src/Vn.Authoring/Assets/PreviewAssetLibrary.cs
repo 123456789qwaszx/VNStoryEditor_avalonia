@@ -28,10 +28,11 @@ public sealed record PortraitResolution(
 public sealed record BackgroundAssetEntry(string SpriteKey, string RelativePath, string FilePath);
 
 /// <summary>
-/// 초상화 매니페스트 항목 하나. 파일이 없어도 항목은 남는다 —
-/// 탐색기가 "매니페스트에 있는데 파일 없음"을 그 자리에 표시해야 하기 때문이다.
+/// 초상화 항목 하나. <see cref="SourceFile"/>은 루트 기준 상대 경로 —
+/// 규약 경로 항목이면 규약 경로 자신, 매니페스트 항목이면 매니페스트의 file 값이다.
+/// 파일이 없어도 항목은 남는다 — 탐색기가 그 자리에 "파일 없음"을 표시해야 한다.
 /// </summary>
-public sealed record PortraitAssetEntry(PortraitKey Key, string ManifestFile, string? FilePath)
+public sealed record PortraitAssetEntry(PortraitKey Key, string SourceFile, string? FilePath)
 {
     public bool FileExists => FilePath is not null;
 }
@@ -202,6 +203,15 @@ public sealed class PreviewAssetLibrary
         return (index, entries);
     }
 
+    /// <summary>
+    /// 초상화 해석 순서 (W-asset-02 §3.1) — <b>연결의 권위는 폴더 규약이다.</b>
+    ///
+    /// 1순위: 규약 경로 스캔 <c>{root}/{characterId}/{variantKey}/{emotionKey}.png</c> —
+    ///        파일을 규약 이름으로 넣는 것만으로 등록된다(툴·JSON 불필요).
+    /// 2순위: 매니페스트 — 규약 경로에 없는 키만 채운다. 런타임 구버전 덤프·자유 경로의
+    ///        <b>수입 통로</b>로 남는 보조이지 권위가 아니다. 없어도 문제가 아니다.
+    /// 해석 실패 시 폴백((characterId,"a","01"))→Missing은 ResolvePortrait 그대로.
+    /// </summary>
     private static (
         Dictionary<PortraitKey, string> Index,
         List<PortraitAssetEntry> Entries,
@@ -216,67 +226,100 @@ public sealed class PreviewAssetLibrary
             return (index, entries, orphans);
         }
 
-        string manifestPath = Path.Combine(directory, PortraitManifest.FileName);
-
-        if (!File.Exists(manifestPath))
+        if (!Directory.Exists(directory))
         {
-            problems.Add(
-                Directory.Exists(directory)
-                    ? $"초상화 매니페스트가 없습니다: {manifestPath}"
-                    : $"초상화 폴더가 없습니다: {directory}");
-            return (index, entries, orphans);
-        }
-
-        PortraitManifest manifest;
-
-        try
-        {
-            manifest = PortraitManifest.Parse(File.ReadAllText(manifestPath));
-        }
-        catch (Exception exception) when (exception is InvalidDataException or System.Text.Json.JsonException)
-        {
-            problems.Add($"초상화 매니페스트를 읽지 못했습니다: {exception.Message}");
+            problems.Add($"초상화 폴더가 없습니다: {directory}");
             return (index, entries, orphans);
         }
 
         string root = Path.GetFullPath(directory);
-        HashSet<string> referencedFiles = new(StringComparer.OrdinalIgnoreCase);
+        string[] allFiles = Directory
+            .EnumerateFiles(root, "*.png", SearchOption.AllDirectories)
+            .Select(Path.GetFullPath)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
-        foreach (PortraitManifestEntry entry in manifest.Entries)
+        // 1순위 — 규약 경로. 등록에 다른 어떤 것도 필요 없다.
+        var registeredFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string file in allFiles)
         {
-            if (string.IsNullOrWhiteSpace(entry.CharacterId) || string.IsNullOrWhiteSpace(entry.File))
+            string relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
+
+            if (!TryParseConventionPath(relativePath, out PortraitKey key))
             {
-                problems.Add("초상화 매니페스트에 characterId나 file이 빈 항목이 있습니다.");
                 continue;
             }
 
-            PortraitKey key = PortraitKey.Normalize(entry.CharacterId, entry.VariantKey, entry.EmotionKey);
-            string manifestFile = entry.File.Replace('\\', '/');
-            string fullPath = Path.GetFullPath(Path.Combine(root, manifestFile));
-            referencedFiles.Add(fullPath);
+            registeredFiles.Add(file);
 
-            if (!File.Exists(fullPath))
+            if (index.TryAdd(key, file))
             {
-                // 항목은 버리지 않는다 — 탐색기가 그 자리에서 "파일 없음"을 보여야 한다.
-                problems.Add($"초상화 파일이 없습니다: {key} → {entry.File}");
-                entries.Add(new PortraitAssetEntry(key, manifestFile, null));
-                continue;
+                entries.Add(new PortraitAssetEntry(key, relativePath, file));
             }
-
-            entries.Add(new PortraitAssetEntry(key, manifestFile, fullPath));
-
-            if (!index.TryAdd(key, fullPath))
+            else
             {
-                problems.Add($"초상화 키 '{key}'가 매니페스트에서 중복됩니다.");
+                // 예: a/7.png와 a/07.png — 정규화 후 같은 키. 조용히 한쪽을 고르지 않는다.
+                problems.Add($"규약 경로의 키 '{key}'가 중복됩니다: {relativePath}");
             }
         }
 
-        foreach (string file in Directory
-                     .EnumerateFiles(root, "*.png", SearchOption.AllDirectories)
-                     .Select(Path.GetFullPath)
-                     .Order(StringComparer.Ordinal))
+        // 2순위 — 매니페스트(있으면). 규약이 이미 답한 키는 건드리지 않는다.
+        string manifestPath = Path.Combine(root, PortraitManifest.FileName);
+
+        if (File.Exists(manifestPath))
         {
-            if (!referencedFiles.Contains(file))
+            PortraitManifest manifest;
+
+            try
+            {
+                manifest = PortraitManifest.Parse(File.ReadAllText(manifestPath));
+            }
+            catch (Exception exception) when (exception is InvalidDataException or System.Text.Json.JsonException)
+            {
+                problems.Add($"초상화 매니페스트를 읽지 못했습니다: {exception.Message}");
+                // 참조 집합을 모르면 고아 판정이 과잉 신고가 되므로 여기서 멈춘다.
+                return (index, entries, orphans);
+            }
+
+            foreach (PortraitManifestEntry entry in manifest.Entries)
+            {
+                if (string.IsNullOrWhiteSpace(entry.CharacterId) || string.IsNullOrWhiteSpace(entry.File))
+                {
+                    problems.Add("초상화 매니페스트에 characterId나 file이 빈 항목이 있습니다.");
+                    continue;
+                }
+
+                PortraitKey key = PortraitKey.Normalize(entry.CharacterId, entry.VariantKey, entry.EmotionKey);
+                string manifestFile = entry.File.Replace('\\', '/');
+                string fullPath = Path.GetFullPath(Path.Combine(root, manifestFile));
+                registeredFiles.Add(fullPath);
+
+                if (index.ContainsKey(key))
+                {
+                    continue; // 규약 경로가 이미 답했다 — 규약이 권위다.
+                }
+
+                if (!File.Exists(fullPath))
+                {
+                    // 항목은 버리지 않는다 — 탐색기가 그 자리에서 "파일 없음"을 보여야 한다.
+                    problems.Add($"초상화 파일이 없습니다: {key} → {entry.File}");
+                    entries.Add(new PortraitAssetEntry(key, manifestFile, null));
+                    continue;
+                }
+
+                entries.Add(new PortraitAssetEntry(key, manifestFile, fullPath));
+
+                if (!index.TryAdd(key, fullPath))
+                {
+                    problems.Add($"초상화 키 '{key}'가 매니페스트에서 중복됩니다.");
+                }
+            }
+        }
+
+        foreach (string file in allFiles)
+        {
+            if (!registeredFiles.Contains(file))
             {
                 string orphan = Path.GetRelativePath(root, file).Replace('\\', '/');
                 orphans.Add(orphan);
@@ -285,5 +328,31 @@ public sealed class PreviewAssetLibrary
         }
 
         return (index, entries, orphans);
+    }
+
+    /// <summary>규약 경로 판정 — {characterId}/{variantKey}/{emotionKey}.png (§3.3에서 PortraitKey로 이동 예정).</summary>
+    private static bool TryParseConventionPath(string relativePath, out PortraitKey key)
+    {
+        key = default;
+        string[] segments = relativePath.Split('/');
+
+        if (segments.Length != 3 ||
+            !segments[2].EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string emotion = segments[2][..^".png".Length];
+
+        if (string.IsNullOrWhiteSpace(segments[0]) ||
+            string.IsNullOrWhiteSpace(segments[1]) ||
+            string.IsNullOrWhiteSpace(emotion))
+        {
+            return false;
+        }
+
+        // 해석(ResolvePortrait)과 같은 정규화를 지나야 "7.png"와 요청 "7"이 같은 키가 된다.
+        key = PortraitKey.Normalize(segments[0], segments[1], emotion);
+        return true;
     }
 }

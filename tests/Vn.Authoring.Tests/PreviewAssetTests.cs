@@ -122,15 +122,20 @@ public class PreviewAssetTests
     }
 
     [Fact]
-    public void 없는_폴더와_없는_매니페스트는_Problems로_보인다()
+    public void 없는_폴더는_Problems로_보이고_매니페스트_부재는_문제가_아니다()
     {
         PreviewAssetLibrary library = PreviewAssetLibrary.Load(
             Path.Combine(FixtureDirectory, "no_such_backgrounds"),
-            BackgroundsDirectory); // 배경 폴더에는 매니페스트가 없다
+            Path.Combine(FixtureDirectory, "no_such_portraits"));
 
         Assert.Equal(2, library.Problems.Count);
-        Assert.Contains(library.Problems, problem => problem.Contains("배경 폴더", StringComparison.Ordinal));
-        Assert.Contains(library.Problems, problem => problem.Contains("매니페스트", StringComparison.Ordinal));
+        Assert.All(library.Problems, problem =>
+            Assert.Contains("폴더가 없습니다", problem, StringComparison.Ordinal));
+
+        // 규약이 권위이므로(W-asset-02) 매니페스트가 없다는 것 자체는 문제가 아니다.
+        Assert.DoesNotContain(
+            PreviewAssetLibrary.Load(null, PortraitsDirectory).Problems,
+            problem => problem.Contains("매니페스트가 없습니다", StringComparison.Ordinal));
     }
 
     // ── 프로젝트 설정 저장 ─────────────────────────────────────────────────
