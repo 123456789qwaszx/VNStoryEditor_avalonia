@@ -42,16 +42,21 @@ public static class DocumentPreviewFormatter
                         .Append('\n');
                     break;
 
+                // 조건은 실제 Yarn 문법으로 쓴다 (X11). ScenarioOnly가 편집·붙여넣기
+                // 입력면이 되므로(X12) 표기 문법과 파싱 문법이 같아야 왕복이 성립한다.
+                // 조립은 YarnSyntax 재사용 — Preview·이미터와 같은 규칙 하나다.
                 case RenderedSegmentKind.ConditionBegin:
-                    AppendConditionLabel(builder, "조건", segment);
+                    YarnSyntax.AppendCondition(builder, "if", segment.Expression);
+                    builder.Append('\n');
                     break;
 
                 case RenderedSegmentKind.ConditionElseIf:
-                    AppendConditionLabel(builder, "다른 조건", segment);
+                    YarnSyntax.AppendCondition(builder, "elseif", segment.Expression);
+                    builder.Append('\n');
                     break;
 
                 case RenderedSegmentKind.ConditionEnd:
-                    builder.Append("[조건 끝]\n");
+                    builder.Append("<<endif>>\n");
                     break;
 
                 case RenderedSegmentKind.DialogueLine:
@@ -150,22 +155,6 @@ public static class DocumentPreviewFormatter
         }
 
         return builder.ToString();
-    }
-
-    private static void AppendConditionLabel(
-        StringBuilder builder,
-        string prefix,
-        RenderedSegment segment)
-    {
-        string description = !string.IsNullOrWhiteSpace(segment.Text)
-            ? segment.Text
-            : segment.Expression ?? segment.Source.ConditionId ?? "알 수 없는 조건";
-
-        builder.Append('[')
-            .Append(prefix)
-            .Append(": ")
-            .Append(description)
-            .Append("]\n");
     }
 
     private static void AppendDialogue(

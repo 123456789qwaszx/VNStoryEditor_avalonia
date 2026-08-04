@@ -82,7 +82,11 @@ public class OutputPresetTests
 
         string text = DocumentPreviewFormatter.Format(document);
         Assert.Contains("[장면]", text, StringComparison.Ordinal);
-        Assert.Contains("[조건:", text, StringComparison.Ordinal);
+
+        // X11 — 조건은 대괄호 표기가 아니라 실제 Yarn 문법이다(표기=파싱 문법, X12 왕복 전제).
+        Assert.Contains("<<if ", text, StringComparison.Ordinal);
+        Assert.Contains("<<endif>>", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("[조건", text, StringComparison.Ordinal);
         Assert.DoesNotContain("#line:", text, StringComparison.Ordinal);
         Assert.DoesNotContain("<<set", text, StringComparison.Ordinal);
     }
