@@ -1,5 +1,6 @@
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 using Vn.Authoring.Serialization;
 
 namespace Vn.Authoring.Editing;
@@ -99,6 +100,11 @@ public sealed partial class ProjectEditor
         return node;
     }
 
+    /// <summary>
+    /// 대사 노드를 만든다. scriptId를 주지 않으면 <b>전용 대본을 함께 만들어 잇는다</b> (X4, D-3)
+    /// — 노드는 생성 즉시 편집 대상이고, 첫 빈 줄까지 준비되어 바로 타이핑할 수 있다.
+    /// 노드·대본·첫 줄이 한 번의 편집이라 되돌리기 한 번에 함께 사라진다.
+    /// </summary>
     public DialogueNode AddDialogueNode(
         string fileId,
         double x = 0,
@@ -106,6 +112,35 @@ public sealed partial class ProjectEditor
         string? name = null,
         string? scriptId = null)
     {
+        if (scriptId is null)
+        {
+            StoryFile file = RequireFile(fileId);
+            var created = new DialogueNode(name: name ?? NextName("장면"))
+            {
+                Layout = new NodeLayout { X = x, Y = y }
+            };
+
+            if (Project.FindNode(created.Id) is not null)
+            {
+                throw new InvalidOperationException($"노드 Id '{created.Id}'가 프로젝트 안에서 중복됩니다.");
+            }
+
+            var script = new ScriptDocument(name: $"{created.Name} 대본");
+            var firstLine = new ScriptLine(_newLineId());
+            created.ScriptId = script.Id;
+
+            Mutate(() =>
+            {
+                script.Lines.Add(firstLine);
+                script.RequireLocale(script.PrimaryLocale).Entries[firstLine.Id] = LocalizedLine.Empty;
+                Project.Scripts.Add(script);
+                file.Nodes.Add(created);
+                Project.StartNodeId ??= created.Id;
+            });
+
+            return created;
+        }
+
         var node = new DialogueNode(name: name ?? NextName("장면"))
         {
             Layout = new NodeLayout { X = x, Y = y },

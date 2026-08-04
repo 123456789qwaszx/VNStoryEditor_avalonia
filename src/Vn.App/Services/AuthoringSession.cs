@@ -368,13 +368,9 @@ internal sealed class AuthoringSession
 
     private static StoryProject NewProjectInstance()
     {
+        // 대본을 미리 만들지 않는다 (X4, D-3) — 대사 노드가 생성될 때 전용 대본이
+        // 함께 태어나므로, 미리 둔 대본은 아무도 안 읽는 빈 파일로 남을 뿐이다.
         var project = new StoryProject { Title = "새 프로젝트" };
-        var script = new ScriptDocument(name: "대본 1");
-        script.RequireLocale(script.PrimaryLocale);
-
-        // 대본을 하나 미리 둔다. 대사 노드는 대본 없이는 아무 줄도 보여 줄 수 없고,
-        // 빈 프로젝트에서 무엇을 먼저 해야 하는지 화면만 보고 알 수 있어야 한다.
-        project.Scripts.Add(script);
         project.Files.Add(new StoryFile(name: "기본 파일"));
         return project;
     }

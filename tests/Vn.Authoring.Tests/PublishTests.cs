@@ -169,7 +169,10 @@ public class PublishTests
     public void 대본이_없으면_발행하지_않는다()
     {
         var sample = new Sample();
-        DialogueNode empty = sample.Editor.AddDialogueNode(sample.File.Id, name: "대본 없음");
+
+        // X4 이후 새 노드는 전용 대본과 함께 태어난다. 대본 없는 노드는
+        // 가져오기 시절 프로젝트를 로드했을 때만 존재하므로 그 상태를 직접 만든다.
+        DialogueNode empty = sample.Editor.AddNode(sample.File.Id, new DialogueNode(name: "대본 없음"));
 
         PublishRejectedException error = Assert.Throws<PublishRejectedException>(
             () => sample.Editor.PublishDialogue(empty.Id));

@@ -21,6 +21,31 @@ public sealed partial class ProjectEditor
         return script;
     }
 
+    /// <summary>
+    /// 대본 없는 대사 노드(가져오기 시절의 옛 프로젝트)에 전용 대본을 만들어 잇는다 (X4).
+    /// 이미 대본이 있으면 그대로 돌려준다.
+    /// </summary>
+    public ScriptDocument EnsureDialogueScript(string dialogueNodeId)
+    {
+        DialogueNode node = RequireDialogue(dialogueNodeId);
+
+        if (Project.FindScript(node.ScriptId) is { } existing)
+        {
+            return existing;
+        }
+
+        var script = new ScriptDocument(name: $"{node.Name} 대본");
+        script.RequireLocale(script.PrimaryLocale);
+
+        Mutate(() =>
+        {
+            Project.Scripts.Add(script);
+            node.ScriptId = script.Id;
+        });
+
+        return script;
+    }
+
     public void RenameScript(string scriptId, string name)
     {
         if (Project.FindScript(scriptId) is { } script &&

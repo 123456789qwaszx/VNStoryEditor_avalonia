@@ -50,8 +50,6 @@ public partial class DialogueNodeEditor : UserControl
 
         NameBox.LostFocus += (_, _) => CommitName();
         AddLineButton.Click += (_, _) => AddLine();
-        ImportScriptButton.Click += OnImportScriptClick;
-        ScriptCombo.SelectionChanged += (_, _) => OnScriptSelected();
         PublishButton.Click += (_, _) => Publish();
         ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
         ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
@@ -128,7 +126,7 @@ public partial class DialogueNodeEditor : UserControl
         {
             NameBox.Text = node.Name;
 
-            BuildScriptPicker(node);
+            BuildScriptSummary(node);
 
             DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
             DialogueFlow flow = ConditionFlowResolver.Resolve(
@@ -199,9 +197,7 @@ public partial class DialogueNodeEditor : UserControl
             {
                 LineHost.Children.Add(new TextBlock
                 {
-                    Text = script.HasScript
-                        ? "이 대본에는 아직 줄이 없습니다. '줄 추가'로 시작하거나 대본을 가져오세요."
-                        : "대본을 고르거나 새로 가져오면 줄이 여기에 나타납니다.",
+                    Text = "'줄 추가'를 누르면 바로 타이핑할 수 있습니다. 긴 대본은 Script Preview의 붙여넣기가 맡습니다.",
                     Opacity = 0.6,
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -433,118 +429,30 @@ public partial class DialogueNodeEditor : UserControl
 
     // ── 대본 ────────────────────────────────────────────────────────────────
 
-    private void BuildScriptPicker(DialogueNode node)
+    /// <summary>
+    /// 대본은 노드가 생성될 때 함께 만들어진다 (X4, D-3). 여기는 표시만 한다 —
+    /// 가져오기·대본 선택 진입점은 제거됐고, 긴 외부 대본은 X12의 붙여넣기 경로가 맡는다.
+    /// </summary>
+    private void BuildScriptSummary(DialogueNode node)
     {
-        List<ScriptDocument> scripts = _session!.Project.Scripts.ToList();
-
-        ScriptCombo.ItemsSource = scripts.Select(script => script.Name).ToList();
-        ScriptCombo.Tag = scripts;
-        ScriptCombo.SelectedIndex = scripts.FindIndex(
-            script => string.Equals(script.Id, node.ScriptId, StringComparison.Ordinal));
-
-        ScriptDocument? current = _session.Project.FindScript(node.ScriptId);
+        ScriptDocument? current = _session!.Project.FindScript(node.ScriptId);
 
         ScriptSummaryText.Text = current is null
-            ? "이 장면이 읽을 대본이 없습니다. 화자와 대사는 대본이 소유합니다."
-            : $"{current.ActiveLines.Count()}줄 · {current.PrimaryLocale} · " +
-              $"동기화 {current.SourceRevision}회" +
+            ? "대본이 아직 없습니다. '줄 추가'를 누르면 전용 대본이 함께 만들어집니다."
+            : $"{current.ActiveLines.Count()}줄 · {current.PrimaryLocale}" +
               (current.SourcePath is null ? string.Empty : $" · {Path.GetFileName(current.SourcePath)}");
-
-        AddLineButton.IsEnabled = current is not null;
-        ImportScriptButton.IsEnabled = current is not null;
-    }
-
-    private void OnScriptSelected()
-    {
-        if (_building ||
-            _session is null ||
-            _nodeId is null ||
-            ScriptCombo.Tag is not List<ScriptDocument> scripts ||
-            ScriptCombo.SelectedIndex < 0 ||
-            ScriptCombo.SelectedIndex >= scripts.Count)
-        {
-            return;
-        }
-
-        _session.Editor.SetDialogueScript(_nodeId, scripts[ScriptCombo.SelectedIndex].Id);
     }
 
     private void AddLine()
     {
-        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { ScriptId: { } scriptId })
+        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
         {
             return;
         }
 
+        // 가져오기로 만들었던 옛 프로젝트의 대본 없는 노드도 여기서 처음 쓸 수 있게 된다.
+        string scriptId = node.ScriptId ?? _session.Editor.EnsureDialogueScript(node.Id).Id;
         _session.Editor.InsertScriptLine(scriptId);
-    }
-
-    /// <summary>
-    /// 작가의 평평한 대본 파일을 읽어 동기화한다.
-    ///
-    /// 계획을 먼저 세우고 확인이 필요한 항목이 있으면 <b>아무것도 바꾸지 않는다.</b>
-    /// 도구가 대신 이어 붙이면 작가가 쓰지 않은 연출이 다른 대사에 붙는다.
-    /// </summary>
-    private async void OnImportScriptClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        try
-        {
-            if (_session is null ||
-                _session.Project.FindDialogue(_nodeId) is not { ScriptId: { } scriptId })
-            {
-                return;
-            }
-
-            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
-
-            if (storage is null || !storage.CanOpen)
-            {
-                _session.SetStatus("이 환경에서는 파일 선택 창을 열 수 없습니다.");
-                return;
-            }
-
-            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(
-                new FilePickerOpenOptions
-                {
-                    Title = "평평한 대본 가져오기",
-                    AllowMultiple = false,
-                    FileTypeFilter = new[]
-                    {
-                        new FilePickerFileType("대본 텍스트")
-                        {
-                            Patterns = new[] { "*.txt", "*.md", "*" }
-                        }
-                    }
-                });
-
-            if (files.Count == 0)
-            {
-                return;
-            }
-
-            string path = files[0].Path.LocalPath;
-            string text = await File.ReadAllTextAsync(path, new UTF8Encoding(false));
-            ScriptSyncPlan plan = _session.Editor.PlanScriptSync(scriptId, text, path);
-
-            if (plan.HasConflicts)
-            {
-                _session.SetStatus(
-                    $"확인이 필요해 대본을 반영하지 않았습니다. {plan.Summary()} — " +
-                    (plan.Conflicts.First().Message ?? "확인 필요"));
-                return;
-            }
-
-            _session.Editor.ApplyScriptSync(plan);
-
-            string parseNote = plan.ParseProblems.Count == 0
-                ? string.Empty
-                : $" · 확인할 줄 {plan.ParseProblems.Count}개";
-            _session.SetStatus($"{Path.GetFileName(path)}을 반영했습니다. {plan.Summary()}{parseNote}");
-        }
-        catch (Exception exception)
-        {
-            _session?.SetStatus($"대본을 가져오지 못했습니다. {exception.Message}");
-        }
     }
 
     // ── 카드 ────────────────────────────────────────────────────────────────
