@@ -1,7 +1,39 @@
+using Vn.Authoring.Definition;
+using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Results;
 using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Editing;
+
+/// <summary>
+/// ScenarioOnly 붙여넣기 한 번의 결과 (X12a). 적용 여부와 이유가 전부 담긴다 —
+/// 적용하지 않았다면 왜인지(충돌·삭제 확인 대기), 적용했다면 무엇이 어떻게 이어졌는지.
+/// </summary>
+public sealed record ScenarioPasteOutcome(
+    ScenarioParseResult Parsed,
+    ScriptSyncPlan? Plan,
+    bool Applied,
+    bool NeedsDeleteConfirmation,
+    IReadOnlyList<string> Problems)
+{
+    public string Summary()
+    {
+        if (Plan is null)
+        {
+            return "반영할 대사 줄이 없습니다.";
+        }
+
+        if (!Applied)
+        {
+            return NeedsDeleteConfirmation
+                ? $"삭제 {Plan.Count(ScriptSyncKind.Deleted)}줄이 있어 확인이 필요합니다. {Plan.Summary()}"
+                : $"확인이 필요해 반영하지 않았습니다. {Plan.Summary()}";
+        }
+
+        return Plan.Summary();
+    }
+}
 
 /// <summary>
 /// 대본을 바꾸는 편집 명령.
@@ -19,6 +51,140 @@ public sealed partial class ProjectEditor
 
         Mutate(() => Project.Scripts.Add(script));
         return script;
+    }
+
+    /// <summary>
+    /// ScenarioOnly 텍스트를 대사 노드에 반영한다 (X12a). <b>전량 재생성은 없다</b> —
+    /// 라인 매칭은 원본 대본 재동기화와 같은 <see cref="ScriptSynchronizer"/>를 지나므로
+    /// 기존 라인의 LineId는 보존되고(불변식 1), 확신 없는 연결(Ambiguous)이 하나라도
+    /// 있으면 아무것도 바꾸지 않는다. 삭제는 <paramref name="confirmDeletes"/>로 확인받는다.
+    ///
+    /// 조건 구조(<c>&lt;&lt;if&gt;&gt;</c>…)는 diff 뒤 해당 라인의 전환으로 반영하되, 식은 이 노드가
+    /// 쓸 수 있는 조건과 <b>정확 일치</b>로만 역조회한다(보정 금지). 선택 전환은 파서
+    /// 비범위이므로 건드리지 않는다. 해석 못 한 것은 전부 Problems로 남는다(규칙 14).
+    /// </summary>
+    public ScenarioPasteOutcome ApplyScenarioText(
+        string dialogueNodeId,
+        string text,
+        GameDefinition definition,
+        bool confirmDeletes = false)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        DialogueNode node = RequireDialogue(dialogueNodeId);
+        ScriptDocument script = EnsureDialogueScript(node.Id);
+
+        ScenarioParseResult parsed = ScenarioTextParser.Parse(text, definition);
+        var problems = new List<string>(parsed.UnparsedLines);
+
+        if (parsed.Lines.Count == 0)
+        {
+            return new ScenarioPasteOutcome(parsed, null, Applied: false, NeedsDeleteConfirmation: false, problems);
+        }
+
+        var parsedScript = new ParsedScript(
+            parsed.Lines
+                .Select((line, index) => new ParsedScriptLine(index + 1, line.Speaker, line.Text))
+                .ToList(),
+            Array.Empty<ScriptParseProblem>(),
+            Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(text ?? string.Empty))));
+
+        ScriptSyncPlan plan = ScriptSynchronizer.Plan(script, parsedScript, newLineId: _newLineId);
+
+        if (plan.HasConflicts)
+        {
+            problems.AddRange(plan.Conflicts.Select(entry => entry.Message ?? "확인 필요"));
+            return new ScenarioPasteOutcome(parsed, plan, Applied: false, NeedsDeleteConfirmation: false, problems);
+        }
+
+        if (plan.Count(ScriptSyncKind.Deleted) > 0 && !confirmDeletes)
+        {
+            return new ScenarioPasteOutcome(parsed, plan, Applied: false, NeedsDeleteConfirmation: true, problems);
+        }
+
+        ApplyScriptSync(plan);
+        ApplyScenarioTransitions(node, parsed, plan, definition, problems);
+
+        return new ScenarioPasteOutcome(parsed, plan, Applied: true, NeedsDeleteConfirmation: false, problems);
+    }
+
+    /// <summary>diff가 확정한 LineId 위로 조건 전환을 맞춘다. 선택 전환은 보호한다.</summary>
+    private void ApplyScenarioTransitions(
+        DialogueNode node,
+        ScenarioParseResult parsed,
+        ScriptSyncPlan plan,
+        GameDefinition definition,
+        List<string> problems)
+    {
+        AvailableConditionCatalog conditions = AvailableConditionResolver.Resolve(Project, node.Id, definition);
+
+        // 새 순서 인덱스 → 확정 LineId (사라진 줄 항목은 NewIndex가 없다).
+        Dictionary<int, string> lineIdByNewIndex = plan.Entries
+            .Where(entry => entry is { NewIndex: not null, LineId: not null })
+            .ToDictionary(entry => entry.NewIndex!.Value, entry => entry.LineId!);
+
+        for (int index = 0; index < parsed.Lines.Count; index++)
+        {
+            if (!lineIdByNewIndex.TryGetValue(index, out string? lineId))
+            {
+                continue;
+            }
+
+            ScenarioStructureIntent? intent = parsed.Lines[index].Transition;
+            LineConditionTransition? current = node.FindExtension(lineId)?.Transition;
+
+            // 선택 전환은 이 입력면의 어휘가 아니다 — 텍스트에 안 보였다고 지우면
+            // 붙여넣기 한 번에 선택지 구조가 조용히 무너진다.
+            if (current?.IsChoiceKind == true)
+            {
+                if (intent is not null)
+                {
+                    problems.Add(
+                        $"'{parsed.Lines[index].Text}' 줄은 선택 전환을 갖고 있어 조건 전환을 얹을 수 없습니다.");
+                }
+
+                continue;
+            }
+
+            LineConditionTransition? desired = null;
+
+            if (intent is not null)
+            {
+                if (intent.Kind == ConditionTransitionKind.EndIf)
+                {
+                    desired = LineConditionTransition.EndIf();
+                }
+                else
+                {
+                    AvailableCondition? condition = conditions.Conditions.FirstOrDefault(item =>
+                        string.Equals(item.Expression.Trim(), intent.Expression, StringComparison.Ordinal));
+
+                    if (condition is null)
+                    {
+                        // 비슷한 식을 추측해 잇지 않는다. 조건은 설정노드에서 먼저 만들어야 한다.
+                        problems.Add(
+                            $"<<{(intent.Kind == ConditionTransitionKind.BeginIf ? "if" : "elseif")} {intent.Expression}>> — " +
+                            "이 노드가 쓸 수 있는 조건 중에 같은 식이 없습니다. 전환은 반영하지 않았습니다.");
+                        continue;
+                    }
+
+                    desired = intent.Kind == ConditionTransitionKind.BeginIf
+                        ? LineConditionTransition.BeginIf(condition.Id)
+                        : LineConditionTransition.BeginElseIf(condition.Id);
+                }
+            }
+
+            bool same = (current is null && desired is null) ||
+                (current is not null && desired is not null &&
+                 current.Kind == desired.Kind &&
+                 string.Equals(current.ConditionId, desired.ConditionId, StringComparison.Ordinal));
+
+            if (!same)
+            {
+                SetLineTransition(node.Id, lineId, desired);
+            }
+        }
     }
 
     /// <summary>

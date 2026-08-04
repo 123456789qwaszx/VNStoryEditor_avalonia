@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private const string BaseTitle = "VnTool";
 
     private readonly AuthoringSession _session = new();
+    private LiveOutputService? _liveOutput;
     private bool _restoredRecent;
     private bool _rebuildingFileList;
 
@@ -48,6 +49,7 @@ public partial class MainWindow : Window
         SupplyEditor.Attach(_session);
         StagePreview.Attach(_session);
         AssetExplorer.Attach(_session);
+        _liveOutput = new LiveOutputService(_session);
         StagePreview.LineMoveRequested += delta =>
         {
             // 선택은 활성 편집기의 것 하나뿐이다 — 프리뷰 창은 그걸 움직일 뿐이다.
@@ -335,6 +337,59 @@ public partial class MainWindow : Window
         AddToggle("Review CSV (기획 검수)", current.ReviewCsv, (f, v) => f.ReviewCsv = v);
         AddToggle("Direction CSV (연출 테이블)", current.DirectionCsv, (f, v) => f.DirectionCsv = v);
 
+        // 라이브 출력 폴더 (X12c, D-1) — 지정하면 편집마다 자동 재합성·재저장된다.
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"라이브 출력: {_session.Project.OutputPath ?? "(미지정 — 자동 산출 없음)"}",
+            FontSize = 10,
+            Opacity = 0.7,
+            Margin = new Avalonia.Thickness(0, 8, 0, 0),
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "클라우드 동기화 폴더는 쓰기 충돌이 날 수 있습니다.",
+            FontSize = 9,
+            Opacity = 0.5
+        });
+
+        var pickOutput = new Button { Content = "라이브 출력 폴더 지정…", FontSize = 11 };
+        pickOutput.Click += async (_, _) => await UiGuard.RunAsync(_session, "출력 폴더 지정", async () =>
+        {
+            if (StorageProvider is not { CanPickFolder: true } storage)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
+                new FolderPickerOpenOptions { Title = "라이브 출력 폴더", AllowMultiple = false });
+
+            if (folders.Count == 0 || folders[0].TryGetLocalPath() is not { } picked)
+            {
+                return;
+            }
+
+            string stored = picked;
+
+            if (_session.ProjectPath is { } projectPath)
+            {
+                string relative = Path.GetRelativePath(Path.GetDirectoryName(projectPath) ?? projectPath, picked);
+
+                if (!Path.IsPathRooted(relative))
+                {
+                    stored = relative;
+                }
+            }
+
+            _session.Editor.SetOutputPath(stored);
+            _liveOutput?.WriteNow();
+        });
+        panel.Children.Add(pickOutput);
+
+        var clearOutput = new Button { Content = "라이브 출력 해제", FontSize = 11 };
+        clearOutput.Click += (_, _) => _session.Editor.SetOutputPath(null);
+        panel.Children.Add(clearOutput);
+
         new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(ExportFormatsButton);
     }
 
@@ -348,31 +403,14 @@ public partial class MainWindow : Window
                 return;
             }
 
-            IReadOnlyList<NodeExport> exports = await PickNodeExportsAsync();
+            IReadOnlyList<LiveComposition> exports = await PickNodeExportsAsync();
 
             if (exports.Count == 0)
             {
                 return;
             }
 
-            var bundles = new List<YarnBundle>();
-
-            foreach (NodeExport export in exports)
-            {
-                bundles.Add(YarnBundleEmitter.Emit(
-                    export.Dialogue!,
-                    export.Presentation,
-                    _session.Project,
-                    _session.Definition));
-            }
-
-            YarnBundle? blocked = bundles.FirstOrDefault(bundle => bundle.HasBlockingProblems);
-
-            if (blocked is not null)
-            {
-                _session.SetStatus($"내보내지 못했습니다. {blocked.BlockingSummary()}");
-                return;
-            }
+            List<YarnBundle> bundles = exports.Select(export => export.Bundle!).ToList();
 
             if (await PickExportFolderAsync(".yarn 트리오를 내보낼 폴더") is not { } folder)
             {
@@ -382,7 +420,7 @@ public partial class MainWindow : Window
             IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(bundles, folder);
 
             int warnings = bundles.Sum(bundle => bundle.Problems.Count) +
-                exports.Sum(export => export.Problems.Count);
+                exports.Sum(export => export.Warnings.Count);
             _session.SetStatus(
                 $"{written.Count}개 파일을 내보냈습니다: " +
                 string.Join(", ", written.Select(Path.GetFileName)) +
@@ -409,7 +447,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            IReadOnlyList<NodeExport> exports = await PickNodeExportsAsync();
+            IReadOnlyList<LiveComposition> exports = await PickNodeExportsAsync();
 
             if (exports.Count == 0)
             {
@@ -423,11 +461,11 @@ public partial class MainWindow : Window
 
             var written = new List<string>();
 
-            foreach (NodeExport export in exports)
+            foreach (LiveComposition export in exports)
             {
                 CsvBundle bundle = CsvBundleExporter.Export(
-                    export.Dialogue!,
-                    export.Presentation,
+                    export.WorkingDialogue!,
+                    export.WorkingPresentation,
                     _session.Project,
                     _session.Definition);
                 // 선택한 양식만 산출된다 (X13).
@@ -449,26 +487,32 @@ public partial class MainWindow : Window
     /// 내보낼 대사 노드를 고른다. 하나뿐이면 바로 그것을 쓴다.
     /// 내보낼 수 없는 노드(발행 없음 등)는 목록에서 이유와 함께 비활성으로 보인다.
     /// </summary>
-    private async Task<IReadOnlyList<NodeExport>> PickNodeExportsAsync()
+    /// <summary>
+    /// 내보낼 노드를 고른다. 발행은 게이트가 아니다 (D-2) — 합성은 라이브 출력과 같은
+    /// <see cref="LiveNodeComposer"/>(현재 작업 상태의 Freeze)를 지나므로 바이트가 같다.
+    /// </summary>
+    private async Task<IReadOnlyList<LiveComposition>> PickNodeExportsAsync()
     {
-        List<(DialogueNode Node, NodeExport Export)> candidates = _session.Project.EnumerateNodes()
+        List<LiveComposition> candidates = _session.Project.EnumerateNodes()
             .OfType<DialogueNode>()
-            .Select(node => (Node: node, Export: NodeExportResolver.Resolve(_session.Project, node.Id)))
+            .Select(node => LiveNodeComposer.Compose(
+                _session.Project, node.Id, _session.Definition, DateTimeOffset.UtcNow))
             .ToList();
 
-        List<(DialogueNode Node, NodeExport Export)> exportable = candidates
-            .Where(item => item.Export.CanExport)
-            .ToList();
+        List<LiveComposition> exportable = candidates.Where(item => item.CanWrite).ToList();
 
         if (exportable.Count == 0)
         {
-            _session.SetStatus("내보낼 수 있는 대사 노드가 없습니다. 대사 결과를 먼저 발행하세요.");
-            return Array.Empty<NodeExport>();
+            LiveComposition? firstBlocked = candidates.FirstOrDefault(item => item.BlockingProblems.Count > 0);
+            _session.SetStatus(firstBlocked is null
+                ? "내보낼 대사 노드가 없습니다."
+                : $"내보낼 수 있는 노드가 없습니다 — {firstBlocked.DialogueNodeName}: {firstBlocked.BlockingProblems[0]}");
+            return Array.Empty<LiveComposition>();
         }
 
         if (exportable.Count == 1)
         {
-            return new[] { exportable[0].Export };
+            return new[] { exportable[0] };
         }
 
         var list = new ListBox
@@ -476,10 +520,11 @@ public partial class MainWindow : Window
             ItemsSource = exportable
                 .Select(item =>
                 {
-                    string pair = item.Export.Presentation is { } presentation
-                        ? $"대사 v{item.Export.Dialogue!.Identity.Version} + 연출 v{presentation.Identity.Version}"
-                        : $"대사 v{item.Export.Dialogue!.Identity.Version} (연출 공급 없음)";
-                    return $"{item.Node.Name} · {pair}";
+                    string pair = item.WorkingPresentation is not null
+                        ? "현재 대사 + 연출"
+                        : "현재 대사 (연출 공급 없음)";
+                    string warning = item.Warnings.Count > 0 ? $" · 경고 {item.Warnings.Count}" : string.Empty;
+                    return $"{item.DialogueNodeName} · {pair}{warning}";
                 })
                 .ToList(),
             SelectionMode = SelectionMode.Multiple
@@ -509,7 +554,7 @@ public partial class MainWindow : Window
             }
         };
 
-        var picked = new List<NodeExport>();
+        var picked = new List<LiveComposition>();
 
         confirm.Click += (_, _) =>
         {
@@ -517,7 +562,7 @@ public partial class MainWindow : Window
             {
                 if (item is int index && index >= 0 && index < exportable.Count)
                 {
-                    picked.Add(exportable[index].Export);
+                    picked.Add(exportable[index]);
                 }
             }
 

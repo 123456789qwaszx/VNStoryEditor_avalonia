@@ -154,7 +154,8 @@ public static class ProjectStore
             StartNodeId = manifest.StartNodeId,
             AssetRoots = manifest.AssetRoots.Clone(),
             RecentCommandIds = manifest.RecentCommandIds.ToList(),
-            ExportFormats = manifest.ExportFormats.Clone()
+            ExportFormats = manifest.ExportFormats.Clone(),
+            OutputPath = manifest.OutputPath
         };
 
         foreach (ScriptFileReference reference in manifest.Scripts)

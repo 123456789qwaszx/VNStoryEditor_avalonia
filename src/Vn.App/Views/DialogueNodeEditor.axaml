@@ -73,8 +73,8 @@
             <TabItem Header="발행">
                 <Grid RowDefinitions="Auto,Auto,*" Margin="12">
                     <StackPanel Grid.Row="0" Spacing="4">
-                        <TextBlock Text="발행 결과" FontWeight="SemiBold" />
-                        <TextBlock Text="발행하면 지금 상태가 얼어붙습니다. 연출은 편집 중인 노드가 아니라 이 결과를 읽습니다."
+                        <TextBlock Text="발행 결과 (연출 바인딩용 스냅샷)" FontWeight="SemiBold" />
+                        <TextBlock Text="발행은 내보내기 게이트가 아닙니다. 연출노드가 읽을 읽기전용 스냅샷(LineId·화자·대사·선택지·조건)을 얼릴 뿐이며, 출력은 편집 즉시 현재 상태로 합성됩니다."
                                    FontSize="11"
                                    Opacity="0.65"
                                    TextWrapping="Wrap" />
@@ -108,7 +108,7 @@
             </TabItem>
 
             <TabItem Header="Script Preview">
-                <Grid RowDefinitions="Auto,*" Margin="12">
+                <Grid RowDefinitions="Auto,*,Auto" Margin="12">
                     <Grid Grid.Row="0"
                           ColumnDefinitions="*,220"
                           Margin="0,0,0,8">
@@ -133,6 +133,26 @@
                              AcceptsReturn="True"
                              TextWrapping="NoWrap"
                              VerticalContentAlignment="Top" />
+
+                    <!-- ScenarioOnly만 편집면이다 (X12a). 나머지 양식은 읽기 전용 라이브 미러. -->
+                    <StackPanel Grid.Row="2" Spacing="4" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="ApplyScenarioButton"
+                                    Content="텍스트 반영"
+                                    FontSize="11"
+                                    IsVisible="False" />
+                            <TextBlock x:Name="ScenarioApplyHintText"
+                                       FontSize="10"
+                                       Opacity="0.6"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBlock x:Name="ScenarioProblemsText"
+                                   FontSize="10"
+                                   Foreground="#C2410C"
+                                   TextWrapping="Wrap"
+                                   IsVisible="False" />
+                    </StackPanel>
                 </Grid>
             </TabItem>
         </TabControl>

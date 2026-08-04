@@ -51,6 +51,7 @@ public partial class DialogueNodeEditor : UserControl
         NameBox.LostFocus += (_, _) => CommitName();
         AddLineButton.Click += (_, _) => AddLine();
         PublishButton.Click += (_, _) => Publish();
+        ApplyScenarioButton.Click += (_, _) => UiGuard.Run(_session, "텍스트 반영", ApplyScenario);
         ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
         ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
 
@@ -238,12 +239,65 @@ public partial class DialogueNodeEditor : UserControl
             node.Id,
             _selectedOutputPreset,
             _session.Definition);
-        PreviewBox.Text = DocumentPreviewFormatter.Format(_previewDocument);
+
+        bool scenarioEditable = _selectedOutputPreset.Id == OutputPresetId.ScenarioOnly;
+
+        // ScenarioOnly는 편집면이다 (X12a). 사용자가 그 안에서 쓰는 중이면 라이브 미러가
+        // 붙여넣던 텍스트를 덮어쓰지 않는다 — 반영 버튼이 정식 반영 경로다.
+        if (!(scenarioEditable && PreviewBox.IsFocused))
+        {
+            PreviewBox.Text = DocumentPreviewFormatter.Format(_previewDocument);
+        }
+
+        PreviewBox.IsReadOnly = !scenarioEditable;
+        ApplyScenarioButton.IsVisible = scenarioEditable;
+        ScenarioApplyHintText.Text = scenarioEditable
+            ? "붙여넣거나 고친 뒤 [텍스트 반영] — 기존 줄의 LineId는 보존됩니다(diff 기반)."
+            : string.Empty;
+
         PreviewSummaryText.Text =
             $"{_selectedOutputPreset.DisplayName} · {_previewDocument.Segments.Count}개 Segment · " +
-            "작업 중 미리 보기 (발행 결과가 아닙니다)";
+            (scenarioEditable ? "편집 가능 — 저장 상태와 라이브 동기화" : "작업 중 미리 보기 (읽기 전용 라이브 미러)");
 
         UpdateStagePreview(node);
+    }
+
+    private string? _pendingDeleteText;
+
+    /// <summary>
+    /// ScenarioOnly 텍스트를 라인으로 반영한다 (X12a). 전량 재생성 없음 —
+    /// diff는 ScriptSynchronizer, 삭제는 같은 텍스트로 한 번 더 눌러 확인한다.
+    /// </summary>
+    private void ApplyScenario()
+    {
+        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
+        {
+            return;
+        }
+
+        string text = PreviewBox.Text ?? string.Empty;
+        bool confirmDeletes = string.Equals(_pendingDeleteText, text, StringComparison.Ordinal);
+
+        ScenarioPasteOutcome outcome = _session.Editor.ApplyScenarioText(
+            node.Id, text, _session.Definition, confirmDeletes);
+
+        ScenarioProblemsText.IsVisible = outcome.Problems.Count > 0;
+        ScenarioProblemsText.Text = string.Join(
+            Environment.NewLine,
+            outcome.Problems.Select(problem => $"• {problem}"));
+
+        if (outcome.NeedsDeleteConfirmation && !confirmDeletes)
+        {
+            _pendingDeleteText = text;
+            _session.SetStatus($"{outcome.Summary()} — 같은 텍스트로 [텍스트 반영]을 한 번 더 누르면 적용합니다.");
+            return;
+        }
+
+        _pendingDeleteText = null;
+        _session.SetStatus(outcome.Applied
+            ? $"텍스트를 반영했습니다. {outcome.Summary()}" +
+              (outcome.Problems.Count > 0 ? $" · 확인할 항목 {outcome.Problems.Count}개" : string.Empty)
+            : outcome.Summary());
     }
 
     /// <summary>클릭한 라인이 무대 프리뷰의 기준이 되도록 왼쪽 강조 띠로 감싼다.</summary>
@@ -1349,27 +1403,29 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private void RefreshExportState(DialogueNode node)
     {
-        NodeExport export = NodeExportResolver.Resolve(_session!.Project, node.Id);
+        // 발행은 게이트가 아니다 (D-2). 내보내기 상태는 라이브 합성과 같은 계산이다.
+        LiveComposition composition = LiveNodeComposer.Compose(
+            _session!.Project, node.Id, _session.Definition, DateTimeOffset.UtcNow);
 
-        ExportNodeButton.IsEnabled = export.CanExport;
-        ExportNodeCsvButton.IsEnabled = export.CanExport;
+        ExportNodeButton.IsEnabled = composition.CanWrite;
+        ExportNodeCsvButton.IsEnabled = composition.CanWrite;
 
-        if (!export.CanExport)
+        if (!composition.CanWrite)
         {
-            ExportPairText.Text = export.ProblemSummary();
+            ExportPairText.Text = string.Join(" / ", composition.BlockingProblems);
             return;
         }
 
-        string pair = export.Presentation is { } presentation
-            ? $"대사 v{export.Dialogue!.Identity.Version} + 연출 v{presentation.Identity.Version}"
-            : $"대사 v{export.Dialogue!.Identity.Version} (연출 공급 없음)";
-        string warnings = export.Problems.Count > 0
-            ? " · " + export.ProblemSummary()
+        string pair = composition.WorkingPresentation is not null
+            ? "현재 대사 + 공급된 연출 (작업 중 상태)"
+            : "현재 대사 (연출 공급 없음)";
+        string warnings = composition.Warnings.Count > 0
+            ? " · " + string.Join(" / ", composition.Warnings)
             : string.Empty;
         ExportPairText.Text = pair + warnings;
     }
 
-    /// <summary>이 노드 하나만 폴더로 내보낸다. 전체 내보내기와 같은 길(NodeExportResolver)을 지난다.</summary>
+    /// <summary>이 노드 하나만 폴더로 내보낸다. 전체·라이브 출력과 같은 길(LiveNodeComposer)을 지난다.</summary>
     private async Task ExportNodeAsync(bool csv)
     {
         if (_session is null || _nodeId is null)
@@ -1392,11 +1448,13 @@ public partial class DialogueNodeEditor : UserControl
                 return;
             }
 
-            NodeExport export = NodeExportResolver.Resolve(_session.Project, _nodeId);
+            // 발행은 게이트가 아니다 (D-2) — 라이브 출력과 같은 합성(현재 작업 상태 Freeze)이다.
+            LiveComposition composition = LiveNodeComposer.Compose(
+                _session.Project, _nodeId, _session.Definition, DateTimeOffset.UtcNow);
 
-            if (!export.CanExport)
+            if (!composition.CanWrite)
             {
-                _session.SetStatus($"내보낼 수 없습니다. {export.ProblemSummary()}");
+                _session.SetStatus($"내보낼 수 없습니다. {string.Join(" / ", composition.BlockingProblems)}");
                 return;
             }
 
@@ -1426,8 +1484,8 @@ public partial class DialogueNodeEditor : UserControl
             {
                 written = CsvBundleExporter.WriteTo(
                     CsvBundleExporter.Export(
-                        export.Dialogue!,
-                        export.Presentation,
+                        composition.WorkingDialogue!,
+                        composition.WorkingPresentation,
                         _session.Project,
                         _session.Definition),
                     folders[0].Path.LocalPath,
@@ -1435,19 +1493,9 @@ public partial class DialogueNodeEditor : UserControl
             }
             else
             {
-                YarnBundle bundle = YarnBundleEmitter.Emit(
-                    export.Dialogue!,
-                    export.Presentation,
-                    _session.Project,
-                    _session.Definition);
-
-                if (bundle.HasBlockingProblems)
-                {
-                    _session.SetStatus($"내보내지 못했습니다. {bundle.BlockingSummary()}");
-                    return;
-                }
-
-                written = YarnBundleEmitter.WriteBundles(new[] { bundle }, folders[0].Path.LocalPath);
+                written = YarnBundleEmitter.WriteBundles(
+                    new[] { composition.Bundle! },
+                    folders[0].Path.LocalPath);
             }
 
             _session.SetStatus(

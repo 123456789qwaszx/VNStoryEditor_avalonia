@@ -1287,6 +1287,19 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>라이브 출력 폴더를 바꾼다 (X12c). null은 라이브 출력 없음이다.</summary>
+    public void SetOutputPath(string? outputPath)
+    {
+        string? next = AssetRootSettings.NormalizePath(outputPath);
+
+        if (string.Equals(Project.OutputPath, next, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () => Project.OutputPath = next);
+    }
+
     /// <summary>내보내기 양식 선택을 바꾼다 (X13). 프로젝트에 저장되고 되돌릴 수 있다.</summary>
     public void SetExportFormats(ExportFormatSelection formats)
     {

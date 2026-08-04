@@ -85,6 +85,11 @@ public static class ProjectSnapshotCodec
             root["exportFormats"] = exportFormats;
         }
 
+        if (AssetRootSettings.NormalizePath(project.OutputPath) is { } outputPath)
+        {
+            root["outputPath"] = outputPath;
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -131,7 +136,8 @@ public static class ProjectSnapshotCodec
             StartNodeId = (string?)root["startNode"],
             AssetRoots = ProjectManifestJson.ReadAssetRoots(root["assetRoots"]),
             RecentCommandIds = ProjectManifestJson.ReadRecentCommands(root["recentCommands"]).ToList(),
-            ExportFormats = ProjectManifestJson.ReadExportFormats(root["exportFormats"])
+            ExportFormats = ProjectManifestJson.ReadExportFormats(root["exportFormats"]),
+            OutputPath = AssetRootSettings.NormalizePath((string?)root["outputPath"])
         };
 
         foreach (JsonNode? item in root["scripts"]?.AsArray() ?? new JsonArray())

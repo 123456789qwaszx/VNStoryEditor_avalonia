@@ -205,6 +205,32 @@ public static class PresentationPublisher
             command.Note);
     }
 
+    /// <summary>
+    /// 발행하지 않은 채 결과 모양으로 감싼다. 라이브 합성(D-1)이 정식 출력과 <b>같은
+    /// 이미터</b>를 지나게 하려는 것이다 — 대사 쪽 <see cref="DialoguePublisher.AsWorkingResult"/>와 짝.
+    /// 입력 대사 결과를 아직 고르지 않았으면 감쌀 수 없다(null).
+    /// </summary>
+    public static PresentationResult? AsWorkingResult(PresentationDraft draft, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        if (draft.Source is not { } source)
+        {
+            return null;
+        }
+
+        return new PresentationResult(
+            ResultIdentity.Working(
+                PresentationResult.CurrentSchemaVersion,
+                ResultHash.Compute(Serialization.PresentationResultJson.WriteBody(draft))),
+            draft.SourceNodeId,
+            draft.SourceNodeName,
+            source,
+            draft.SetupCommands,
+            draft.Bindings,
+            now);
+    }
+
     public static PresentationResult Publish(
         ResultRepository results,
         PresentationDraft draft,

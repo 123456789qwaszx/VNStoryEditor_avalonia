@@ -86,6 +86,11 @@ public static class ProjectManifestJson
             root["exportFormats"] = exportFormats;
         }
 
+        if (AssetRootSettings.NormalizePath(project.OutputPath) is { } outputPath)
+        {
+            root["outputPath"] = outputPath;
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -242,6 +247,7 @@ public static class ProjectManifestJson
             ReadAssetRoots(root["assetRoots"]),
             ReadRecentCommands(root["recentCommands"]),
             ReadExportFormats(root["exportFormats"]),
+            AssetRootSettings.NormalizePath((string?)root["outputPath"]),
             scripts,
             references,
             links,
@@ -463,6 +469,7 @@ public sealed record ProjectManifest(
     AssetRootSettings AssetRoots,
     IReadOnlyList<string> RecentCommandIds,
     ExportFormatSelection ExportFormats,
+    string? OutputPath,
     IReadOnlyList<ScriptFileReference> Scripts,
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,
