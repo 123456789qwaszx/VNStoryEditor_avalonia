@@ -21,7 +21,13 @@ internal sealed class LiveOutputService
 
     private readonly AuthoringSession _session;
     private readonly DispatcherTimer _timer;
-    private string? _lastFailure;
+    private string? _lastReport;
+
+    /// <summary>
+    /// 직전 저장에서 발견한 낡은 산출 파일. 지우지 않고 보여 주기만 한다(K1 ②안) —
+    /// 목록 화면은 [양식…]이 읽는다.
+    /// </summary>
+    public OrphanOutputScan Orphans { get; private set; } = OrphanOutputScan.Empty;
 
     public LiveOutputService(AuthoringSession session)
     {
@@ -62,7 +68,9 @@ internal sealed class LiveOutputService
                     _session.ProjectPath ?? Path.Combine(Environment.CurrentDirectory, "unsaved.vnproject.json"),
                     _session.Project.OutputPath) is not { } directory)
             {
-                return; // 출력 폴더 미지정 — 라이브 출력 없음.
+                // 출력 폴더 미지정 — 라이브 출력 없음. 볼 폴더가 없으니 고아 목록도 없다.
+                Orphans = OrphanOutputScan.Empty;
+                return;
             }
 
             var bundles = new List<YarnBundle>();
@@ -86,33 +94,81 @@ internal sealed class LiveOutputService
                 }
             }
 
-            if (bundles.Count > 0)
+            IReadOnlyList<string> written = bundles.Count > 0
+                ? YarnBundleEmitter.WriteBundles(bundles, directory)
+                : [];
+
+            // 낡은 파일 판정은 이번에 쓴 것이 아니라 "지금 프로젝트가 만들 수 있는 것"과
+            // 견준다. 막혀서 못 쓴 노드의 파일까지 고아로 몰지 않기 위해서다.
+            Orphans = OutputManifest.Scan(
+                directory,
+                OutputManifest.ExpectedFileNames(_session.Project));
+
+            if (written.Count > 0)
             {
-                YarnBundleEmitter.WriteBundles(bundles, directory);
+                OutputManifest.Record(directory, written);
             }
 
-            // 같은 실패를 키 입력마다 반복해서 알리지 않는다 — 바뀔 때만.
-            string failure = string.Join(" / ", blocked);
+            var parts = new List<string>();
 
-            if (!string.Equals(_lastFailure, failure, StringComparison.Ordinal))
+            if (blocked.Count > 0)
             {
-                _lastFailure = failure;
-
-                if (failure.Length > 0)
-                {
-                    _session.SetStatus($"라이브 출력에서 제외된 노드: {failure}");
-                }
+                parts.Add($"라이브 출력에서 제외된 노드: {string.Join(" / ", blocked)}");
             }
+
+            if (OrphanReport(Orphans) is { } orphanReport)
+            {
+                parts.Add(orphanReport);
+            }
+
+            Report(string.Join("  ·  ", parts));
         }
         catch (Exception exception)
         {
-            string failure = exception.Message;
-
-            if (!string.Equals(_lastFailure, failure, StringComparison.Ordinal))
-            {
-                _lastFailure = failure;
-                _session.SetStatus($"라이브 출력에 실패했습니다: {failure}");
-            }
+            Report($"라이브 출력에 실패했습니다: {exception.Message}");
         }
+    }
+
+    /// <summary>같은 알림을 키 입력마다 반복하지 않는다 — 내용이 바뀔 때만 상태줄에 올린다.</summary>
+    private void Report(string message)
+    {
+        if (string.Equals(_lastReport, message, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastReport = message;
+
+        if (message.Length > 0)
+        {
+            _session.SetStatus(message);
+        }
+    }
+
+    /// <summary>
+    /// 고아 목록을 한 줄로. 전부 나열하면 상태줄을 덮으므로 앞의 셋만 적고
+    /// 나머지는 [양식…] 목록으로 넘긴다 — 숨기는 것이 아니라 자리를 옮기는 것이다.
+    /// </summary>
+    internal static string? OrphanReport(OrphanOutputScan scan)
+    {
+        if (scan.Orphans.Count == 0)
+        {
+            return scan.Note;
+        }
+
+        const int shown = 3;
+        string names = string.Join(", ", scan.Orphans.Take(shown).Select(orphan => orphan.FileName));
+
+        if (scan.Orphans.Count > shown)
+        {
+            names += $" 외 {scan.Orphans.Count - shown}개";
+        }
+
+        string message =
+            $"출력 폴더에 낡은 산출 파일 {scan.Orphans.Count}개가 남아 있습니다({names}). " +
+            "유니티가 폴더를 통째로 읽으면 없어진 노드의 옛 대사가 재생될 수 있습니다 — " +
+            "[양식…]에서 목록을 보고 직접 지우세요.";
+
+        return scan.Note is null ? message : $"{message} {scan.Note}";
     }
 }

@@ -1,6 +1,6 @@
 # 현재 실제 구현 상태
 
-기준 커밋 `439a82c` (2026-08-04) · 테스트 **463개 전원 통과** (Core 60 / Authoring 343 / App 60) · 작업 트리 clean.
+기준: T1·T3 완료 시점 (2026-08-04) · 테스트 **475개 전원 통과** (Core 60 / Authoring 351 / App 64) · 작업 트리 clean.
 이 문서는 **실제 코드**를 기준으로 쓴다. 계획 문서와 어긋나면 이쪽이 사실이다.
 
 ---
@@ -31,6 +31,8 @@ src/Vn.Authoring/
                    + 기존 조건/공급/바인딩 해석기들
   Results/         LiveNodeComposer(라이브 합성 — X12c의 심장)
                    Dialogue/PresentationPublisher(Freeze) · NodeExportResolver(공급 짝)
+  Rendering/       YarnBundleEmitter(+BundleNameOf — 이름 규칙 한 곳)
+                   OutputManifest(출력 기록 + 고아 판정 — 지우지 않는다)
   Script/          ScriptSynchronizer(diff 엔진 — 붙여넣기가 재사용)
                    ScenarioTextParser(붙여넣기 파싱) · ScriptParser · ScriptDocument
   Definition/      CommandText(텍스트↔커맨드 단일 구현) · ArgumentTokenCandidates
@@ -71,6 +73,8 @@ src/Vn.App/
 - 라이브: 출력 폴더를 지정하면 편집 후 600ms 디바운스로 자동 재합성·재저장.
 - 수동: [내보내기…] / [CSV 내보내기…] / 노드 단위. **발행은 게이트가 아니다** — 라이브와 같은 `LiveNodeComposer`를 지나므로 바이트가 같다.
 - [양식…]에서 산출 양식 선택(Yarn 트리오 / Script·Review·Direction CSV), 선택은 프로젝트에 저장.
+- **고아 출력**: 노드를 지우거나 이름을 바꿔 쓸모없어진 `.yarn`이 출력 폴더에 남으면 상태줄 요약 +
+  [양식…] 전체 목록으로 보인다. **VnTool은 지우지 않는다** — 지우는 건 사람이 한다.
 
 ## 4. 저장 형식
 

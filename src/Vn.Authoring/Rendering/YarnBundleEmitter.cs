@@ -52,11 +52,11 @@ public sealed class YarnBundle
 
     public bool HasBlockingProblems => Problems.Any(problem => problem.IsBlocking);
 
-    public string StoryFileName => $"Story_{BundleName}.yarn";
+    public string StoryFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.StoryPrefix, BundleName);
 
-    public string SetFileName => $"Set_{BundleName}.yarn";
+    public string SetFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.SetPrefix, BundleName);
 
-    public string PresFileName => $"Pres_{BundleName}.yarn";
+    public string PresFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.PresPrefix, BundleName);
 
     /// <summary>파일 이름 → 내용. 쓰는 순서도 이 순서다.</summary>
     public IEnumerable<(string FileName, string Text)> Files
@@ -136,11 +136,9 @@ public static class YarnBundleEmitter
             OutputPresetCatalog.RuntimeFull.Options);
 
         PresentationCommandCatalog catalog = PresentationCommandCatalog.For(definition);
-        string name = YarnSyntax.SanitizeNodeName(
-            bundleName
-            ?? (string.IsNullOrWhiteSpace(dialogue.SourceNodeName)
-                ? dialogue.SourceNodeId
-                : dialogue.SourceNodeName));
+        string name = bundleName is not null
+            ? YarnSyntax.SanitizeNodeName(bundleName)
+            : BundleNameOf(dialogue.SourceNodeName, dialogue.SourceNodeId);
 
         bool hasLane = presentation is not null;
         var problems = new List<YarnBundleProblem>();
@@ -301,6 +299,40 @@ public static class YarnBundleEmitter
 
     /// <summary>선언 파일 이름. 폴더당 하나다.</summary>
     public const string DeclarationsFileName = "declarations.yarn";
+
+    public const string StoryPrefix = "Story_";
+
+    public const string SetPrefix = "Set_";
+
+    public const string PresPrefix = "Pres_";
+
+    /// <summary>
+    /// 번들 이름을 만드는 <b>단 하나의 규칙</b>. 이 이름은 파일 이름이자 Yarn 타이틀이고
+    /// 곧 세이브 키·에피소드 진입 키다(계약서 C2) — 같은 입력은 언제나 같은 이름이어야 한다.
+    /// 이미터·점프 대상 재현·고아 출력 판정이 모두 여기를 지난다(규칙 사본 금지).
+    /// </summary>
+    public static string BundleNameOf(string? nodeName, string? nodeId)
+    {
+        string source = string.IsNullOrWhiteSpace(nodeName)
+            ? (string.IsNullOrWhiteSpace(nodeId) ? "missing_target" : nodeId)
+            : nodeName;
+
+        return YarnSyntax.SanitizeNodeName(source);
+    }
+
+    /// <summary>번들 이름 하나가 만들 파일 이름.</summary>
+    public static string FileNameOf(string prefix, string bundleName) => $"{prefix}{bundleName}.yarn";
+
+    /// <summary>
+    /// 번들 이름 하나가 만들 수 있는 파일 이름 셋. Set·Pres는 연출이 없으면 실제로는
+    /// 쓰이지 않지만, "이 이름은 이 노드의 것"을 판정할 때는 셋 다 포함해야 한다.
+    /// </summary>
+    public static IEnumerable<string> FileNamesOf(string bundleName)
+    {
+        yield return FileNameOf(StoryPrefix, bundleName);
+        yield return FileNameOf(SetPrefix, bundleName);
+        yield return FileNameOf(PresPrefix, bundleName);
+    }
 
     /// <summary>선언 전용 노드의 타이틀. 런타임은 이 노드에 진입하지 않는다.</summary>
     public const string DeclarationsNodeTitle = "_declarations";
@@ -749,8 +781,7 @@ public static class YarnBundleEmitter
     private static string JumpTargetOf(RenderedSegment segment)
     {
         // 타이틀은 세이브 키이자 에피소드 진입 키다 (C2). 대상 노드의 이름에서
-        // 이 이미터가 만들 타이틀(Story_이름)을 그대로 재현한다.
-        return "Story_" + YarnSyntax.SanitizeNodeName(
-            segment.TargetNodeName ?? segment.TargetNodeId ?? "missing_target");
+        // 이 이미터가 만들 타이틀(Story_이름)을 그대로 재현한다 — 규칙은 BundleNameOf 하나다.
+        return StoryPrefix + BundleNameOf(segment.TargetNodeName, segment.TargetNodeId);
     }
 }

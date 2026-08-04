@@ -390,7 +390,64 @@ public partial class MainWindow : Window
         clearOutput.Click += (_, _) => _session.Editor.SetOutputPath(null);
         panel.Children.Add(clearOutput);
 
+        AddOrphanOutputs(panel);
+
         new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(ExportFormatsButton);
+    }
+
+    /// <summary>
+    /// 고아 출력 목록 (K1 ②안) — 노드를 지우거나 이름을 바꾸면 옛 파일이 출력 폴더에 남고,
+    /// 유니티가 폴더를 통째로 읽으면 그 옛 대사가 재생된다. VnTool은 <b>지우지 않고 보여 준다</b>:
+    /// 출력 폴더는 사용자의 폴더이지 도구의 소유물이 아니다.
+    /// </summary>
+    private void AddOrphanOutputs(StackPanel panel)
+    {
+        OrphanOutputScan scan = _liveOutput?.Orphans ?? OrphanOutputScan.Empty;
+
+        if (scan.Orphans.Count == 0 && scan.Note is null)
+        {
+            return;
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"낡은 산출 파일 {scan.Orphans.Count}개",
+            FontWeight = Avalonia.Media.FontWeight.SemiBold,
+            FontSize = 11,
+            Margin = new Avalonia.Thickness(0, 10, 0, 0)
+        });
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "지금 프로젝트가 만들지 않는 파일입니다. VnTool은 지우지 않습니다 — "
+                + "탐색기에서 직접 지우세요.",
+            FontSize = 9,
+            Opacity = 0.6,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
+
+        foreach (OrphanOutput orphan in scan.Orphans)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = orphan.Source == OrphanOutputSource.Recorded
+                    ? $"• {orphan.FileName}"
+                    : $"• {orphan.FileName} (기록 없음 — 이름 형식만 같습니다)",
+                FontSize = 10,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap
+            });
+        }
+
+        if (scan.Note is { } note)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = note,
+                FontSize = 9,
+                Opacity = 0.6,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap
+            });
+        }
     }
 
     private async void OnExportClick(object? sender, RoutedEventArgs e)
