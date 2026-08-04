@@ -549,18 +549,45 @@ public partial class DialogueNodeEditor : UserControl
         {
             bool isLabel = resolved.Line.Transition?.OpensOption == true;
 
-            // 선택 블록은 바깥 박스가 감싼다. 카드 자체는 조건식 들여쓰기·팔레트 없이,
-            // 라벨(버튼 문구)만 살짝 강조하고 본문은 라벨 아래로 조금 들어간다.
+            if (isLabel)
+            {
+                // 라벨은 대사가 아니라 플레이어가 누르는 버튼이다 (X10).
+                // 버튼처럼 그린다 — 아이콘 + 채워진 배경 + 둥근 모서리. 대사 줄과 한눈에 갈린다.
+                var labelRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+                var icon = new TextBlock
+                {
+                    Text = "▶",
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(Color.FromRgb(217, 119, 6)),
+                    Margin = new Thickness(2, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                ToolTip.SetTip(icon, "선택지 버튼 텍스트 — 대사가 아닙니다.");
+                Grid.SetColumn(icon, 0);
+                Grid.SetColumn(body, 1);
+                labelRow.Children.Add(icon);
+                labelRow.Children.Add(body);
+
+                return new Border
+                {
+                    Padding = new Thickness(10, 8),
+                    CornerRadius = new CornerRadius(16),
+                    BorderThickness = new Thickness(2),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(170, 217, 119, 6)),
+                    Background = new SolidColorBrush(Color.FromArgb(45, 217, 119, 6)),
+                    Child = labelRow
+                };
+            }
+
+            // 선택 후 분기 대사는 일반 대사 줄과 똑같이 생겼다(화자 편집 포함).
+            // 라벨 아래로 들여쓰기만 되어 소속을 보여 준다.
             return new Border
             {
-                Margin = new Thickness(isLabel ? 0 : 18, 0, 0, 0),
+                Margin = new Thickness(18, 0, 0, 0),
                 Padding = new Thickness(10, 8),
                 CornerRadius = new CornerRadius(6),
                 BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(70, 217, 119, 6)),
-                Background = isLabel
-                    ? new SolidColorBrush(Color.FromArgb(26, 217, 119, 6))
-                    : null,
+                BorderBrush = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)),
                 Child = body
             };
         }
