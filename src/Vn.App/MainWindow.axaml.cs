@@ -32,6 +32,15 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // 마지막 안전망 (공통 불변식 4). 개별 핸들러의 포획을 놓친 예외가 여기까지 오면
+        // 로그와 상태줄에 남기고 앱은 계속 산다 — 클릭 하나가 미저장 원고를 끝내지 않는다.
+        // 개별 경로의 포획을 대신하는 장치가 아니라, 새 코드가 실수했을 때의 바닥이다.
+        Dispatcher.UIThread.UnhandledException += (_, e) =>
+        {
+            e.Handled = true;
+            UiGuard.Report(_session, "화면 동작", e.Exception);
+        };
+
         Graph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);

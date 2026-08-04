@@ -61,6 +61,17 @@ public class PreviewImageCacheTests
     }
 
     [Fact]
+    public void 디코더의_어떤_예외도_밖으로_새지_않는다()
+    {
+        // X1 회귀 — 이미지 하나가 앱을 끝내면 안 된다. IO 계열만 잡던 목록을
+        // 전체 포획으로 바꿨다: 깨진 파일에서 디코더가 무슨 예외를 던질지는
+        // 우리가 열거할 수 있는 목록이 아니다.
+        var cache = new PreviewImageCache<FakeImage>(_ => throw new NullReferenceException("디코더 내부"));
+
+        Assert.Null(cache.Get(@"C:\assets\weird.png"));
+    }
+
+    [Fact]
     public void Clear가_명시적_새로_고침이다()
     {
         int loads = 0;

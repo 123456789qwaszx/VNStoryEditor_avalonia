@@ -28,11 +28,11 @@ public partial class AssetExplorerView : UserControl
     {
         InitializeComponent();
 
-        RefreshButton.Click += (_, _) =>
+        RefreshButton.Click += (_, _) => UiGuard.Run(_session, "에셋 새로 고침", () =>
         {
             _session?.RefreshAssets();
             Rebuild();
-        };
+        });
         CollapseToggle.IsCheckedChanged += (_, _) =>
         {
             TreeScroll.IsVisible = CollapseToggle.IsChecked == true;
@@ -134,13 +134,13 @@ public partial class AssetExplorerView : UserControl
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
-        button.Click += async (_, _) =>
+        button.Click += async (_, _) => await UiGuard.RunAsync(_session, "에셋 폴더 지정", async () =>
         {
             if (_session is not null && await AssetRootPicker.PickAsync(this, _session, backgrounds))
             {
                 Rebuild();
             }
-        };
+        });
 
         return button;
     }
@@ -253,25 +253,31 @@ public partial class AssetExplorerView : UserControl
         if (item.BackgroundKey is not null || item.Portrait is not null)
         {
             row.Cursor = new Cursor(StandardCursorType.Hand);
-            row.PointerPressed += async (_, args) =>
+            // async void 핸들러다 — 포획 없이 새어 나간 예외는 곧 앱 종료다(X1, 불변식 4).
+            row.PointerPressed += async (_, args) => await UiGuard.RunAsync(_session, "에셋 드래그", async () =>
             {
-                var item2 = new DataTransferItem();
+                if (!args.GetCurrentPoint(row).Properties.IsLeftButtonPressed)
+                {
+                    return;
+                }
+
+                var payload = new DataTransferItem();
 
                 if (item.BackgroundKey is { } backgroundKey)
                 {
-                    item2.Set(StageDragFormats.Background, backgroundKey);
+                    payload.Set(StageDragFormats.Background, backgroundKey);
                 }
                 else if (item.Portrait is { } portrait)
                 {
-                    item2.Set(
+                    payload.Set(
                         StageDragFormats.Portrait,
                         $"{portrait.CharacterId}|{portrait.VariantKey}|{portrait.EmotionKey}");
                 }
 
                 var data = new DataTransfer();
-                data.Add(item2);
+                data.Add(payload);
                 await DragDrop.DoDragDropAsync(args, data, DragDropEffects.Copy);
-            };
+            });
         }
 
         row.Tag = item;

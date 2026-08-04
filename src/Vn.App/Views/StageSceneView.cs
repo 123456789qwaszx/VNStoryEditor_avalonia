@@ -62,24 +62,25 @@ internal sealed class StageSceneView : UserControl
         Content = new Border { Background = Brushes.Black, Child = _viewbox };
 
         // 무대 빈 곳(=배경) 클릭 → 배경 선택. 초상화 클릭은 자기 핸들러가 먼저 잡는다.
+        // 클릭·드롭 경로는 전부 UiGuard 아래다 — 예외는 무동작 + 상태줄이 된다(X1, 불변식 4).
         _canvas.PointerPressed += (_, args) =>
         {
             if (!args.Handled && CanManipulate())
             {
-                ShowBackgroundPopover(this);
+                UiGuard.Run(_session, "배경 선택", () => ShowBackgroundPopover(this));
                 args.Handled = true;
             }
         };
 
         DragDrop.SetAllowDrop(this, true);
-        AddHandler(DragDrop.DragOverEvent, (_, args) =>
+        AddHandler(DragDrop.DragOverEvent, (_, args) => UiGuard.Run(_session, "드래그 판정", () =>
         {
             args.DragEffects = CanManipulate() && args.DataTransfer is { } transfer &&
                 (transfer.Contains(StageDragFormats.Background) || transfer.Contains(StageDragFormats.Portrait))
                 ? DragDropEffects.Copy
                 : DragDropEffects.None;
-        });
-        AddHandler(DragDrop.DropEvent, (_, args) => OnDrop(args));
+        }));
+        AddHandler(DragDrop.DropEvent, (_, args) => UiGuard.Run(_session, "에셋 드롭", () => OnDrop(args)));
     }
 
     internal void Attach(AuthoringSession session) => _session = session;
@@ -276,7 +277,10 @@ internal sealed class StageSceneView : UserControl
             image.Cursor = new Cursor(StandardCursorType.Hand);
             image.PointerPressed += (_, args) =>
             {
-                ShowCharacterPopover(image, portrait.SlotKey, portrait.Slot);
+                UiGuard.Run(
+                    _session,
+                    "캐릭터 조작",
+                    () => ShowCharacterPopover(image, portrait.SlotKey, portrait.Slot));
                 args.Handled = true;
             };
         }
@@ -429,14 +433,17 @@ internal sealed class StageSceneView : UserControl
             return;
         }
 
-        PresentationStageActions.Apply(
-            _session.Editor,
-            ManipulationCatalog,
-            context.PresentationNodeId,
-            context.LineId!,
-            outputCommand,
-            arguments);
-        ManipulationApplied?.Invoke();
+        UiGuard.Run(_session, "무대 조작", () =>
+        {
+            PresentationStageActions.Apply(
+                _session.Editor,
+                ManipulationCatalog,
+                context.PresentationNodeId,
+                context.LineId!,
+                outputCommand,
+                arguments);
+            ManipulationApplied?.Invoke();
+        });
     }
 
     /// <summary>
@@ -724,17 +731,20 @@ internal sealed class StageSceneView : UserControl
         void Commit(string slotKey)
         {
             flyout.Hide();
-            PresentationStageActions.ApplyCastingSequence(
-                _session.Editor,
-                ManipulationCatalog,
-                _request!.State,
-                context.PresentationNodeId,
-                context.LineId!,
-                slotKey,
-                characterId,
-                variantKey,
-                emotionKey);
-            ManipulationApplied?.Invoke();
+            UiGuard.Run(_session, "캐스팅", () =>
+            {
+                PresentationStageActions.ApplyCastingSequence(
+                    _session.Editor,
+                    ManipulationCatalog,
+                    _request!.State,
+                    context.PresentationNodeId,
+                    context.LineId!,
+                    slotKey,
+                    characterId,
+                    variantKey,
+                    emotionKey);
+                ManipulationApplied?.Invoke();
+            });
         }
 
         // 비어 있는 기존 슬롯이 먼저, 그다음 새 슬롯 이름.

@@ -59,14 +59,16 @@ public partial class MiniStagePreview : UserControl
         SceneHost.Content = _scene;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
 
-        RefreshButton.Click += (_, _) =>
+        RefreshButton.Click += (_, _) => UiGuard.Run(_session, "에셋 새로 고침", () =>
         {
             _session?.RefreshAssets();
             Render();
-        };
-        OpenWindowButton.Click += (_, _) => OpenWindow();
-        BackgroundsRootButton.Click += async (_, _) => await PickAssetRoot(backgrounds: true);
-        PortraitsRootButton.Click += async (_, _) => await PickAssetRoot(backgrounds: false);
+        });
+        OpenWindowButton.Click += (_, _) => UiGuard.Run(_session, "프리뷰 창 열기", OpenWindow);
+        BackgroundsRootButton.Click += async (_, _) =>
+            await UiGuard.RunAsync(_session, "에셋 폴더 지정", () => PickAssetRoot(backgrounds: true));
+        PortraitsRootButton.Click += async (_, _) =>
+            await UiGuard.RunAsync(_session, "에셋 폴더 지정", () => PickAssetRoot(backgrounds: false));
     }
 
     internal void Attach(AuthoringSession session)

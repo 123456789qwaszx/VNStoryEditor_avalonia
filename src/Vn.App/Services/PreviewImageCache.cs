@@ -43,8 +43,11 @@ public sealed class PreviewImageCache<TImage> where TImage : class
         {
             image = _load(filePath);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception)
         {
+            // 어떤 파일이 와도(깨진 PNG·거대 파일·디코더의 별난 예외) 이미지 하나가
+            // 앱을 끝내면 안 된다(X1, 불변식 4). 실패는 null = 플레이스홀더가 되고,
+            // 어느 키가 없는지는 해석 단계가 이미 화면에 보여 주고 있다.
             image = null;
         }
 
