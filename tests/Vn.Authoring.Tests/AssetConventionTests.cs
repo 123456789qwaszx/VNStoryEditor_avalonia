@@ -151,6 +151,35 @@ public class AssetConventionTests
     }
 
     [Fact]
+    public void 안내문은_규약_경로를_말하고_JSON을_말하지_않는다()
+    {
+        // §3.4 — 빈칸의 안내문이 사용자 접점 전부다. 경로 모양은 PortraitKey에서 나온다.
+        Assert.Contains(
+            new PortraitKey("bandi", "a", "07").ToRelativePath(),
+            AssetExplorerModel.PortraitPlacementGuide,
+            StringComparison.Ordinal);
+        Assert.Contains("night/alley", AssetExplorerModel.BackgroundPlacementGuide, StringComparison.Ordinal);
+
+        // 비전공자 기준(§2): 안내 어디에도 JSON·매니페스트 편집이 없다.
+        foreach (string guide in (string[])[
+            AssetExplorerModel.PortraitPlacementGuide,
+            AssetExplorerModel.BackgroundPlacementGuide])
+        {
+            Assert.DoesNotContain("JSON", guide, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("매니페스트", guide, StringComparison.Ordinal);
+        }
+
+        // 파일 없음 항목에도 "어디에 넣으면 되는지"가 그 자리에 보인다.
+        AssetExplorerTree tree = AssetExplorerModel.Build(
+            LoadFixtureLibrary(),
+            Vn.Authoring.Definition.GameDefinition.Empty);
+        AssetExplorerItem ghostLeaf = tree.PortraitItems
+            .Single(item => item.Label.StartsWith("ghost", StringComparison.Ordinal))
+            .Children.Single().Children.Single();
+        Assert.Contains("ghost/a/01.png 위치에 넣어도 됩니다", ghostLeaf.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void 경로와_키는_한_함수로_왕복한다()
     {
         // §3.3 — 조립은 ToRelativePath, 해석은 TryParseRelativePath. 사본 없음.

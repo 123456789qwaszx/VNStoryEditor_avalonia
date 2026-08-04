@@ -62,6 +62,19 @@ public sealed record AssetExplorerTree(
 /// </summary>
 public static class AssetExplorerModel
 {
+    /// <summary>
+    /// 빈칸에 보이는 배치 안내 (W-asset-02 §3.4) — 이 문자열이 이 설계의 사용자 접점
+    /// 전부다. 드래그·툴 기능은 이 문자열대로 복사해 주는 편의일 뿐이다.
+    /// 경로 모양은 <see cref="PortraitKey.ToRelativePath"/> 한 곳에서 나온다.
+    /// </summary>
+    public static string PortraitPlacementGuide { get; } =
+        $"초상화는 {new PortraitKey("캐릭터ID", "변형", "표정번호").ToRelativePath()} 이름으로 " +
+        $"넣으면 그것만으로 등록됩니다. 예: {new PortraitKey("bandi", "a", "07").ToRelativePath()}";
+
+    public static string BackgroundPlacementGuide { get; } =
+        "배경은 PNG 파일명이 곧 키입니다. 예: room_night.png → room_night. " +
+        "하위 폴더까지가 키입니다: night/alley.png → night/alley";
+
     public static AssetExplorerTree Build(PreviewAssetLibrary library, GameDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(library);
@@ -140,7 +153,10 @@ public static class AssetExplorerModel
                         AssetExplorerItemKind.Portrait,
                         entry.Key.EmotionKey,
                         entry.FilePath,
-                        entry.FileExists ? null : $"파일 없음: {entry.SourceFile}",
+                        entry.FileExists
+                            ? null
+                            // 안내문(§3.4): 어디에 어떤 이름으로 넣으면 되는지가 그 자리에 보인다.
+                            : $"파일 없음: {entry.SourceFile} — {entry.Key.ToRelativePath()} 위치에 넣어도 됩니다",
                         Array.Empty<AssetExplorerItem>())
                     {
                         Portrait = entry.Key

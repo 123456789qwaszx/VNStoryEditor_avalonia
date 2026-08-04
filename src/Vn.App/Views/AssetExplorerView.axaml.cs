@@ -89,7 +89,8 @@ public partial class AssetExplorerView : UserControl
         }
         else if (tree.BackgroundItems.Count == 0)
         {
-            TreeHost.Children.Add(EmptyLabel("PNG 파일이 없습니다"));
+            // 빈칸에는 어디에 어떤 이름으로 넣으면 되는지가 보인다 (W-asset-02 §3.4).
+            TreeHost.Children.Add(EmptyLabel(AssetExplorerModel.BackgroundPlacementGuide));
         }
         else
         {
@@ -104,7 +105,7 @@ public partial class AssetExplorerView : UserControl
         }
         else if (tree.PortraitItems.Count == 0)
         {
-            TreeHost.Children.Add(EmptyLabel("매니페스트 항목이 없습니다"));
+            TreeHost.Children.Add(EmptyLabel(AssetExplorerModel.PortraitPlacementGuide));
         }
         else
         {
@@ -155,6 +156,10 @@ public partial class AssetExplorerView : UserControl
         });
         TreeHost.Children.Add(ConfigureRow("배경 폴더 지정…", backgrounds: true));
         TreeHost.Children.Add(ConfigureRow("초상화 폴더 지정…", backgrounds: false));
+
+        // 지정한 뒤 무엇을 하면 되는지도 같은 자리에서 미리 알려 준다 (W-asset-02 §3.4).
+        TreeHost.Children.Add(EmptyLabel(AssetExplorerModel.BackgroundPlacementGuide));
+        TreeHost.Children.Add(EmptyLabel(AssetExplorerModel.PortraitPlacementGuide));
     }
 
     private Control ConfigureRow(string label, bool backgrounds)
@@ -329,6 +334,7 @@ public partial class AssetExplorerView : UserControl
     {
         Text = text,
         FontSize = 11,
-        Opacity = 0.6
+        Opacity = 0.6,
+        TextWrapping = TextWrapping.Wrap
     };
 }

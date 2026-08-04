@@ -71,9 +71,10 @@
 
 ### 2.6 프리뷰 계층 (2a-v1 신설 — ARCHITECTURE §3.10)
 
-- 에셋: 배경 = 폴더 규약(파일명=spriteKey, Ordinal), 초상화 = `portraits.manifest.json` v1(명시 검증) + PortraitResolver 규칙 이식(variant `a`·emotion 2자리·폴백 (char,a,01)), 누락은 문자 보이는 플레이스홀더. 에셋 루트는 프로젝트 상대 경로, 미설정도 저작 계속.
-  > 초상화 연결 권위를 매니페스트 → 폴더 규약으로 옮기는 교정이 진행 중이다(W-asset-02, `work-orders/vntool-asset-convention-order.md`).
-  > **§6 결정 확정(2026-08-04)**: ① 초상화 해석은 규약 경로 1순위(`{portraitsRoot}/{char}/{variant}/{emotion}.png`, emotion 2자리) + 매니페스트는 수입 보조. 런타임 U12 덤프도 규약 경로로 직접 출력. ② 배경 하위 폴더 허용, 키 = 상대경로(예: `room/night`) — 런타임 `Resources/Backgrounds/{key}`와 동형. 구현 완료 시 이 항목 본문을 갱신할 것.
+- 에셋: **연결의 권위는 폴더 규약이다** (W-asset-02 구현 완료).
+  초상화 = 규약 경로 1순위(`{portraitsRoot}/{char}/{variant}/{emotion}.png`, 해석과 같은 정규화 — variant 기본 `a`·emotion 2자리·폴백 (char,a,01)), `portraits.manifest.json` v1은 구버전 덤프·자유 경로의 **수입 보조**(없어도 문제 아님). 경로↔키 변환은 `PortraitKey.ToRelativePath/TryParseRelativePath` 한 곳. 고아 = 규약도 매니페스트도 아닌 파일뿐.
+  배경 = 파일명이 곧 키(Ordinal), 하위 폴더까지 키(`night/alley`) — 런타임 `Resources/Backgrounds/{key}`와 동형. 런타임 U12 덤프도 규약 경로로 직접 출력(§6-1).
+  누락은 문자 보이는 플레이스홀더, 빈칸에는 배치 안내문(어디에 어떤 이름으로). 에셋 루트는 프로젝트 상대 경로, 미설정도 저작 계속.
 - **화자 매핑 원천 = `game.definition.json`의 `speakers[{name, characterId}]`** (D-4, X5로 구현 완료).
   설정노드의 Speaker 등록 UI는 **편집 창구일 뿐 자체 사본을 갖지 않는다.**
   대사노드 Speaker 입력은 이 목록의 콤보박스(드롭다운+자유 입력)이며, **미매핑 화자는 오류가 아니다**(이름만 표시).

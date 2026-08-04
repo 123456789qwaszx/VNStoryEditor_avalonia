@@ -145,6 +145,33 @@ public static bool TryParseRelativePath(string relativePath, out PortraitKey key
 
 ## 7. 연쇄 반영 (이 지시 완료 후)
 
-- 마스터 플랜 §2.6 개정 (6차): "초상화 = portraits.manifest.json v1(명시 검증)" → "초상화 = 규약 경로 1순위(`{char}/{variant}/{emotion}.png`), 매니페스트는 수입 보조. 배경 키 = 상대경로(하위 폴더 허용)".
+- 마스터 플랜 §2.6 개정 (6차): "초상화 = portraits.manifest.json v1(명시 검증)" → "초상화 = 규약 경로 1순위(`{char}/{variant}/{emotion}.png`), 매니페스트는 수입 보조. 배경 키 = 상대경로(하위 폴더 허용)". — **반영 완료 (2026-08-04)**
 - `runtime-parallel-orders.md` U12-v1 프롬프트 — 개정 완료 (2026-08-04).
 - U17(스프라이트 포트 보드)과 철학 동형임을 확인: 이름이 곧 연결, 자동 추측 금지, 규약 한 곳(`PortraitKey`), 툴 없이도 같은 결과.
+
+---
+
+## 8. 완료 기록 (2026-08-04, W-asset-02 구현 완료)
+
+### §2 시나리오 답
+
+```
+S1: portraits/bandi/a/07.png 로 이름 바꿔서 복사. 끝.
+    (툴을 켜면 탐색기에 bandi > a > 07로 떠 있고, 프리뷰가 바로 그린다.)
+S2: backgrounds/room_night.png 로 이름 바꿔서 복사. 끝.
+    (하위 폴더에 넣으면 폴더까지가 키다: backgrounds/room/night.png → room/night.)
+S3: portraits/mina/a/ 폴더 만들고 01~12.png 로 넣기. 끝.
+```
+
+세 답 모두 파일 복사뿐이다. 다른 어떤 것도 열지 않는다.
+
+### §5 완료 기준 확인
+
+1. 위 시나리오 답 기록 — 충족.
+2. `portraits/bandi/a/07.png` 수동 배치(테스트 픽스처가 그 상태): 탐색기 정상 항목(고아 아님),
+   `ResolvePortrait("bandi","a","07")` = `Exact`, 매니페스트 무변경 — `AssetConventionTests`로 고정.
+3. 매니페스트 전용 항목(laru 자유 경로) 회귀 없음 — 테스트로 고정.
+4. 경로 조립 문자열은 `PortraitKey`(ToString/ToRelativePath) 한 곳 — grep 확인.
+
+구현 커밋: §3.1 351b9b7 · §3.2 52bc93d · §3.3 6162c97 · §3.4 (안내문·연쇄 반영).
+§4 금지 목록(매니페스트 편집 UI·유사 이름 매칭·일괄 rename·형식 확장·런타임 수정)은 만들지 않았다.
