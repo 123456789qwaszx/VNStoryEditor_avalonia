@@ -367,6 +367,55 @@ VnTool 쪽 입력 이음매는 이미 맞는다 — 발행 Freeze가 프리셋�
 **코어로 옮길 수 없다.** 코어에 가는 것은 커맨드 클래스가 아니라 **"스펙 → 상태 변환" 부분**이다.
 이 경계를 U13 지시서가 명시해야 한다.
 
+### 6.7 코어 첫 실물에서 나온 확인 사항 (2026-08-05)
+
+U13-a(asmdef) 완료. `Assets/Ked.Presentation.Core/`가 생겼고 첫 산출물은 숫자 토큰 파서 셋
+(`DurationToken`·`UnitToken`·`NumberToken`)이다. asmdef가 **`noEngineReferences: true` · `references: []`**로
+§6.2의 "UnityEngine 참조 0"을 빌드 시스템이 강제한다 — 규약이 문서가 아니라 컴파일러에 걸렸다.
+`DurationToken` 주석이 이미 "실패를 로그로 흘리지 않고 false로 돌려준다 … 저작 도구는 화면에 표시한다"로
+두 호스트를 상정하고 있다. 방향이 맞다.
+
+**VnTool 쪽 중복은 없다.** `ArgumentTokenCandidates`는 칩에 띄울 **후보 문자열 목록**일 뿐이고
+파서가 아니다(`["duration"] = ["0fr","4fr",…]`). 즉 이 셋은 **코어가 VnTool에 처음으로 주는 실물**이고,
+동시에 VnTool이 지금 `-3u`를 못 그리는 이유이기도 하다 — 해석기가 없어서다.
+
+#### ⚠ D-core-1. `1u`는 절대 40px인가, 기준 폭의 1/48인가 — **U13-b 전에 답할 것**
+
+```csharp
+// 코어 UnitToken
+public const float ReferenceStageWidth = 1920f;
+public const float StageWidthDivisor  = 48f;
+public const float UnitPixels = ReferenceStageWidth / StageWidthDivisor; // 40px
+```
+```csharp
+// VnTool GameDefinition.PreviewResolution — 주석 그대로
+/// 게임별 CanvasScaler 해상도가 다르면 정의 파일이 교체한다 — 코드에 게임을 박지 않는다.
+```
+
+**둘이 어긋난다.** 코어는 기준 폭을 `const`로 박았고, VnTool은 게임별 교체를 전제한다.
+그리고 U12-전체는 "CanvasScaler 기준 해상도"를 **데이터로 내보내기로** 되어 있다 —
+기준 해상도를 데이터로 내면서 `1u` 환산을 코드에 박으면 데이터로 낸 의미가 반감된다.
+코어 계약 3(§6.2 "게임별 값은 코드가 아니라 `tuning` 인자로 온다")과도 충돌한다.
+
+| 안 | 뜻 | 대가 |
+|---|---|---|
+| (가) `1u` = 절대 40px | 기준 해상도와 무관 | `const` 유지로 가장 싸다. 다른 기준 해상도 게임에서 `-3u`가 화면 비율상 다른 크기가 된다 |
+| (나) `1u` = 기준 폭 ÷ 48 | 해상도에 비례 | `UnitPixels`가 `const`가 아니라 **`tuning` 인자**가 되어야 한다 |
+
+이름이 `ReferenceStageWidth`이고 식이 `1920/48`인 걸 보면 **(나)의 의도로 보이는데 구현은 (가)**다.
+**지금 잡아야 하는 이유**: U13-b에서 51개 커맨드가 이 상수를 참조하기 시작하면 되돌리기가 훨씬 비싸진다.
+지금은 파일 하나, 상수 둘이다.
+
+#### D-core-2. 좌표 정밀도 — 코어는 `float`, VnTool은 `double`
+
+코어 토큰은 `float`, VnTool의 `StageRect`·`StageSceneComposer`는 `double`이다.
+`float → double`은 무손실이라 **받는 것 자체는 문제가 없다.** 문제는 VnTool이 받은 뒤
+**자체 계산을 double로 이어가면** 런타임과 미세하게 갈린다는 것이고, 그 차이는 U14 ε 비교에
+잡히지 않는 자리(툴 안)에서 생긴다.
+
+**권고**: 좌표 계산은 **전부 코어에서 끝내고**, VnTool은 렌더 직전 스케일에서만 `double`로 올린다.
+`StageSceneComposer`가 자체 배치 산수를 갖지 않게 되는 것이 §6.5 2단계의 목표이기도 하다.
+
 ## 7. 이 초안이 대체된 자리
 
 *(지시서가 생기면 여기 링크를 남기고 이 문서는 읽기 전용 기록이 된다.)*

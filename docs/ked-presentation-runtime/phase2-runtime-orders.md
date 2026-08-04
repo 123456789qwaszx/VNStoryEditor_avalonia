@@ -24,7 +24,13 @@ U12-전체 (스키마·프리셋 덤프) ─┴─> U13-b (코어 추출) ─┴
 - **U14가 2b의 초록불이다.** 런타임에도 아직 리듀서가 없었으므로(조사 §2),
   코어가 옳은지를 판정할 수 있는 것은 U14뿐이다.
 
-## 1. U13-a — 어셈블리 경계 긋기 (다음에 나갈 지시)
+> **2026-08-05 진행 상황**: U13-a **완료**. `Assets/Ked.Presentation.Core/`가 생겼고
+> asmdef가 `noEngineReferences: true` · `references: []`로 "UnityEngine 참조 0"을 강제한다.
+> 첫 산출물은 숫자 토큰 파서 셋(`DurationToken`·`UnitToken`·`NumberToken`).
+> **U13-b 착수 전에 [`phase2-design-brief.md`](../work-orders/phase2-design-brief.md) §6.7의
+> D-core-1(`1u`의 정의)을 답해야 한다** — 51개 커맨드가 상수를 참조하기 시작하면 되돌리기가 비싸진다.
+
+## 1. ~~U13-a — 어셈블리 경계 긋기~~ ✅ 완료
 
 > 소유자 예상: 코드를 신경 써서 만들었으니 순환 참조는 없고 경계만 그으면 된다.
 > 그래도 **발견 건수는 보고하게 한다** — 0이면 0이라고 적으면 되고, 0이 아니면 그게 일정 신호다.
@@ -90,8 +96,11 @@ Ked.Presentation.Core의 Tuning 타입 모양이 되므로, 스키마를 문서�
 
 ## 3. U13-b — 코어 추출 + 리듀서 표준화 (U13-a·U12-전체 후)
 
-> **착수 전에 `ClaimTarget` 표본 5~10개를 읽고 작업량을 재추정할 것.**
-> 조사는 51곳의 개수만 셌고 본문 편차는 확인하지 않았다(조사 §6-3).
+> **착수 전에 둘을 먼저 할 것.**
+> ① `ClaimTarget` 표본 5~10개를 읽고 작업량 재추정 — 조사는 개수만 셌고 편차는 확인하지 않았다(조사 §6-3).
+> ② **D-core-1 답하기**([`phase2-design-brief.md`](../work-orders/phase2-design-brief.md) §6.7):
+> `UnitToken.UnitPixels`가 `const 40px`인데 VnTool은 기준 해상도를 게임별 데이터로 다룬다.
+> `1u`가 절대 40px인지, 기준 폭 ÷ 48인지에 따라 이 값이 상수인지 `tuning` 인자인지 갈린다.
 
 ```
 런타임 저장소 작업 U13-b를 수행해줘. 근거: runtime-work-orders.md의 U13,
@@ -107,6 +116,9 @@ core-extraction-survey.md, 그리고 VnTool 쪽 설계 확정
 제약 (어기면 공유가 성립하지 않는다):
 1. 타깃 netstandard2.1, 외부 의존성 0, **UnityEngine 참조 0**.
    Vector2/Vector3/Color 대신 코어 자체 값 타입(Vec2/Rgba 등)을 쓴다.
+   (U13-a에서 asmdef의 noEngineReferences로 이미 강제됨 — 유지할 것)
+1-b. 좌표 산수는 코어에서 끝낸다. 호스트가 받아서 자체 배치 계산을 이어가면
+   런타임과 미세하게 갈리고, 그 차이는 U14 ε 비교에 잡히지 않는 자리에서 생긴다.
 2. 리듀서는 순수 함수다: Apply(state, command, catalog, tuning) -> state.
    시간·랜덤·IO·전역 상태 없음. 같은 입력은 언제나 같은 상태.
 3. 게임별 값(리그 스키마·프리셋·기준 해상도)은 코드가 아니라 tuning 인자로 온다.
