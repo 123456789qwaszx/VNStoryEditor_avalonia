@@ -567,8 +567,9 @@ internal sealed class StageSceneView : UserControl
         pairs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
     /// <summary>
-    /// 캐릭터 클릭 팝오버 — 표정 그리드·등장/퇴장·미러·variant.
+    /// 캐릭터 클릭 팝오버 — 표정 교체·variant·위치 이동·등장/퇴장·미러.
     /// 표정은 보이는 캐릭터면 face_swap, 캐스팅만 된 캐릭터면 face다.
+    /// 전부 이 라인의 커맨드가 되고, 같은 대상의 재조작은 값만 바뀐다.
     /// </summary>
     private void ShowCharacterPopover(Control anchor, string slotKey, MiniStageSlot slot)
     {
@@ -578,7 +579,7 @@ internal sealed class StageSceneView : UserControl
         }
 
         PreviewAssetLibrary library = _session.AssetLibrary;
-        var panel = new StackPanel { Spacing = 6, MinWidth = 200 };
+        var panel = new StackPanel { Spacing = 6, MinWidth = 210 };
         var flyout = new Flyout { Content = panel, Placement = PlacementMode.Pointer };
 
         void Commit(string outputCommand, params (string Key, string Value)[] args)
@@ -598,6 +599,10 @@ internal sealed class StageSceneView : UserControl
 
         if (slot.CharacterId is { } characterId)
         {
+            // 보이면 face_swap(파라미터 emotion), 캐스팅만 됐으면 face(파라미터 emotionKey).
+            string faceOutput = slot.Visible ? "face_swap" : "face";
+            string faceParameter = slot.Visible ? "emotion" : "emotionKey";
+
             // 표정 그리드 — 이 캐릭터의 현재 variant가 가진 emotion 썸네일.
             string variant = string.IsNullOrWhiteSpace(slot.VariantKey) ? PortraitKey.DefaultVariantKey : slot.VariantKey;
             PortraitAssetEntry[] emotions = library.PortraitEntries
@@ -606,6 +611,10 @@ internal sealed class StageSceneView : UserControl
                     entry.FileExists)
                 .OrderBy(entry => entry.Key.EmotionKey, StringComparer.Ordinal)
                 .ToArray();
+
+            // 표정 섹션은 <b>항상</b> 있다. 썸네일이 없다고 스프라이트 교체 자체가 사라지면,
+            // 에셋을 아직 안 넣은 사람에게는 기능이 없는 것과 같다.
+            panel.Children.Add(new TextBlock { Text = "표정 (스프라이트 교체)", FontSize = 10, Opacity = 0.6 });
 
             if (emotions.Length > 0)
             {
@@ -627,19 +636,49 @@ internal sealed class StageSceneView : UserControl
                         HorizontalAlignment = HorizontalAlignment.Center
                     });
 
-                    // 보이면 face_swap(파라미터 emotion), 캐스팅만 됐으면 face(파라미터 emotionKey).
-                    string output = slot.Visible ? "face_swap" : "face";
-                    string parameterName = slot.Visible ? "emotion" : "emotionKey";
                     string emotionKey = entry.Key.EmotionKey;
+                    bool current = string.Equals(emotionKey, slot.EmotionKey, StringComparison.Ordinal);
 
-                    var cellButton = new Button { Content = cell, Padding = new Thickness(2) };
-                    cellButton.Click += (_, _) => Commit(output, ("slot", slotKey), (parameterName, emotionKey));
+                    var cellButton = new Button
+                    {
+                        Content = cell,
+                        Padding = new Thickness(2),
+                        BorderThickness = new Thickness(current ? 2 : 0),
+                        BorderBrush = current ? SpeakerHighlight : Brushes.Transparent
+                    };
+                    cellButton.Click += (_, _) => Commit(faceOutput, ("slot", slotKey), (faceParameter, emotionKey));
                     grid.Children.Add(cellButton);
                 }
 
-                panel.Children.Add(new TextBlock { Text = "표정", FontSize = 10, Opacity = 0.6 });
                 panel.Children.Add(grid);
             }
+            else
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"'{characterId}'의 초상화 파일을 찾지 못했습니다. 키를 직접 적으면 커맨드는 그대로 나갑니다.",
+                    FontSize = 9,
+                    Opacity = 0.55,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 240
+                });
+            }
+
+            // 썸네일에 없는 표정 키도 쓸 수 있어야 한다. 비슷한 이름을 추측해 고쳐 주지는 않는다(원칙 §2.3).
+            var emotionInput = new TextBox
+            {
+                PlaceholderText = "표정 키 직접 입력 후 Enter",
+                FontSize = 10,
+                MinHeight = 24
+            };
+            emotionInput.KeyDown += (_, keyArgs) =>
+            {
+                if (keyArgs.Key == Key.Enter && !string.IsNullOrWhiteSpace(emotionInput.Text))
+                {
+                    Commit(faceOutput, ("slot", slotKey), (faceParameter, emotionInput.Text.Trim()));
+                }
+            };
+            panel.Children.Add(emotionInput);
 
             // variant 전환 — pose.
             string[] variants = library.PortraitEntries
@@ -676,6 +715,11 @@ internal sealed class StageSceneView : UserControl
                 panel.Children.Add(variantRow);
             }
         }
+
+        // 위치 이동은 캐스팅 여부와 무관하다 — 빈 슬롯도 자리를 정할 수 있다.
+        panel.Children.Add(new TextBlock { Text = "위치 (place)", FontSize = 10, Opacity = 0.6 });
+        panel.Children.Add(BuildScreenPointGrid(() => slotKey, flyout));
+        panel.Children.Add(PlaceApproximationNote());
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
 
@@ -856,17 +900,33 @@ internal sealed class StageSceneView : UserControl
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
         panel.Children.Add(slotCombo);
+        panel.Children.Add(BuildScreenPointGrid(
+            () => slotCombo.SelectedIndex >= 0 && slotCombo.SelectedIndex < slots.Length
+                ? slots[slotCombo.SelectedIndex]
+                : null,
+            flyout));
+        panel.Children.Add(PlaceApproximationNote());
 
-        // 런타임 screenPoint 프리셋을 화면 배열 그대로 3×3으로 놓는다.
-        string[][] pointRows =
-        [
-            ["tl", "top", "tr"],
-            ["left", "center", "right"],
-            ["bl", "bottom", "br"]
-        ];
+        return panel;
+    }
+
+    /// <summary>런타임 screenPoint 프리셋을 화면 배열 그대로 놓은 3×3.</summary>
+    private static readonly string[][] ScreenPointRows =
+    [
+        ["tl", "top", "tr"],
+        ["left", "center", "right"],
+        ["bl", "bottom", "br"]
+    ];
+
+    /// <summary>
+    /// 위치 이동 격자. 슬롯 탭과 캐릭터 팝오버가 <b>같은 격자 하나</b>를 쓴다(사본 금지).
+    /// 누르면 이 라인의 <c>place</c>가 되고, 같은 슬롯을 여러 번 옮겨도 커맨드는 하나가 수정된다.
+    /// </summary>
+    private Control BuildScreenPointGrid(Func<string?> resolveSlotKey, Flyout flyout)
+    {
         var pointGrid = new StackPanel { Spacing = 2 };
 
-        foreach (string[] pointRow in pointRows)
+        foreach (string[] pointRow in ScreenPointRows)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
 
@@ -883,12 +943,10 @@ internal sealed class StageSceneView : UserControl
 
                 pointButton.Click += (_, _) =>
                 {
-                    if (slotCombo.SelectedIndex >= 0 && slotCombo.SelectedIndex < slots.Length)
+                    if (resolveSlotKey() is { } slotKey)
                     {
                         flyout.Hide();
-                        ApplyStageCommand(
-                            "place",
-                            StageArgs(("slot", slots[slotCombo.SelectedIndex]), ("screenPoint", point)));
+                        ApplyStageCommand("place", StageArgs(("slot", slotKey), ("screenPoint", point)));
                     }
                 };
 
@@ -898,18 +956,18 @@ internal sealed class StageSceneView : UserControl
             pointGrid.Children.Add(row);
         }
 
-        panel.Children.Add(pointGrid);
-        panel.Children.Add(new TextBlock
-        {
-            Text = "위치는 커맨드로 기록되지만 v1 프리뷰 배치에는 아직 반영되지 않습니다(뱃지로 표시).",
-            FontSize = 9,
-            Opacity = 0.55,
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 250
-        });
-
-        return panel;
+        return pointGrid;
     }
+
+    /// <summary>v1 폴드는 배치를 그리지 않는다 — 그 사실을 숨기지 않는다(규칙 14).</summary>
+    private static TextBlock PlaceApproximationNote() => new()
+    {
+        Text = "위치는 커맨드로 기록되지만 v1 프리뷰 배치에는 아직 반영되지 않습니다(뱃지로 표시).",
+        FontSize = 9,
+        Opacity = 0.55,
+        TextWrapping = TextWrapping.Wrap,
+        MaxWidth = 250
+    };
 
     /// <summary>
     /// 캐릭터 탭 — 기존 슬롯에 캐스팅(Setup), variant·표정 변경(Setup cast 수정),

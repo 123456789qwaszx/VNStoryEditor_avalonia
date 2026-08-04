@@ -240,6 +240,37 @@ public class StageActionsTests
         Assert.True(moved.Updated);
         Assert.Single(node.FindBinding("ln_x")!.Commands);
         Assert.Equal("right", moved.Command.Arguments["screenPoint"]);
+
+        // 다른 슬롯은 자기 place를 갖는다.
+        PresentationStageActions.Apply(
+            editor, Catalog, node.Id, "ln_x", "place", Args(("slot", "c2"), ("screenPoint", "center")));
+        Assert.Equal(2, node.FindBinding("ln_x")!.Commands.Count);
+    }
+
+    [Fact]
+    public void 표정_교체는_무대_위_여부로_face_swap과_face를_가르고_각각_하나만_남는다()
+    {
+        // 캐릭터 팝오버의 표정 교체 — 썸네일이든 키 직접 입력이든 같은 규칙을 지난다.
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        // 보이는 캐릭터: face_swap(emotion). 여러 번 골라도 커맨드는 하나다.
+        PresentationStageActions.Apply(
+            editor, Catalog, node.Id, "ln_x", "face_swap", Args(("slot", "c1"), ("emotion", "2")));
+        PresentationStageActions.Applied swapped = PresentationStageActions.Apply(
+            editor, Catalog, node.Id, "ln_x", "face_swap", Args(("slot", "c1"), ("emotion", "9")));
+
+        Assert.True(swapped.Updated);
+        Assert.Single(node.FindBinding("ln_x")!.Commands);
+        Assert.Equal("9", swapped.Command.Arguments["emotion"]);
+        Assert.Equal("9", FoldOf(node).Slots["c1"].EmotionKey);
+
+        // 캐스팅만 된 캐릭터: face(emotionKey). 파라미터 이름이 다르므로 별개 커맨드다.
+        PresentationStageActions.Applied faced = PresentationStageActions.Apply(
+            editor, Catalog, node.Id, "ln_x", "face", Args(("slot", "c2"), ("emotionKey", "3")));
+
+        Assert.False(faced.Updated);
+        Assert.Equal("char_rig_cast.face", faced.Command.DefinitionId);
+        Assert.Equal("3", FoldOf(node).Slots["c2"].EmotionKey);
     }
 
     [Fact]
