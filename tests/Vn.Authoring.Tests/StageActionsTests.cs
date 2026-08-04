@@ -161,6 +161,88 @@ public class StageActionsTests
     }
 
     [Fact]
+    public void Setup_조작은_노드_Setup에_담기고_같은_대상은_수정된다()
+    {
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        // 슬롯 생성 — 어느 라인에서 조작했든 장면 준비는 Setup에 속한다.
+        PresentationStageActions.Applied slot = PresentationStageActions.ApplyToSetup(
+            editor, Catalog, node.Id, "slot", Args(("slotKey", "c1")));
+
+        Assert.False(slot.Updated);
+        Assert.Single(node.SetupCommands);
+        Assert.Empty(node.Bindings); // 라인 바인딩에는 아무것도 없다
+
+        // 같은 슬롯을 다시 만들면 커맨드가 쌓이지 않는다.
+        PresentationStageActions.ApplyToSetup(
+            editor, Catalog, node.Id, "slot", Args(("slotKey", "c1")));
+        Assert.Single(node.SetupCommands);
+
+        // 캐스팅 → Setup. 같은 슬롯 재캐스팅은 값 교체다.
+        PresentationStageActions.ApplyToSetup(
+            editor, Catalog, node.Id, "cast", Args(("slot", "c1"), ("characterKey", "laru")));
+        PresentationStageActions.Applied recast = PresentationStageActions.ApplyToSetup(
+            editor, Catalog, node.Id, "cast",
+            Args(("slot", "c1"), ("characterKey", "laru"), ("variantKey", "b"), ("emotionKey", "3")));
+
+        Assert.True(recast.Updated);
+        Assert.Equal(2, node.SetupCommands.Count); // slot + cast — 세 번 조작해도 두 개다
+        Assert.Equal("b", recast.Command.Arguments["variantKey"]);
+
+        // 다른 슬롯의 캐스팅은 별개다.
+        PresentationStageActions.ApplyToSetup(
+            editor, Catalog, node.Id, "slot", Args(("slotKey", "c2")));
+        PresentationStageActions.ApplyToSetup(
+            editor, Catalog, node.Id, "cast", Args(("slot", "c2"), ("characterKey", "willo")));
+        Assert.Equal(4, node.SetupCommands.Count);
+    }
+
+    [Fact]
+    public void 표시_상태_전환은_반대_방향_fade를_걷어낸다()
+    {
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        // 숨김 → 표시 → 숨김을 반복해도 라인에는 마지막 방향 하나만 남는다.
+        PresentationStageActions.ApplyVisibility(editor, Catalog, node.Id, "ln_x", "c1", visible: false);
+        Assert.Equal(
+            ["char_rig_presentation.fade_out"],
+            node.FindBinding("ln_x")!.Commands.Select(command => command.DefinitionId));
+
+        PresentationStageActions.ApplyVisibility(editor, Catalog, node.Id, "ln_x", "c1", visible: true);
+        Assert.Equal(
+            ["char_rig_presentation.fade_in"],
+            node.FindBinding("ln_x")!.Commands.Select(command => command.DefinitionId));
+
+        PresentationStageActions.ApplyVisibility(editor, Catalog, node.Id, "ln_x", "c1", visible: false);
+        Assert.Equal(
+            ["char_rig_presentation.fade_out"],
+            node.FindBinding("ln_x")!.Commands.Select(command => command.DefinitionId));
+
+        // 폴드도 마지막 선택을 말한다.
+        Assert.False(FoldOf(node).Slots["c1"].Visible);
+
+        // 다른 슬롯의 fade는 건드리지 않는다.
+        PresentationStageActions.ApplyVisibility(editor, Catalog, node.Id, "ln_x", "c2", visible: true);
+        Assert.Equal(2, node.FindBinding("ln_x")!.Commands.Count);
+    }
+
+    [Fact]
+    public void 위치_지정은_place_하나가_수정된다()
+    {
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        PresentationStageActions.Apply(
+            editor, Catalog, node.Id, "ln_x", "place", Args(("slot", "c1"), ("screenPoint", "left")));
+        PresentationStageActions.Applied moved = PresentationStageActions.Apply(
+            editor, Catalog, node.Id, "ln_x", "place", Args(("slot", "c1"), ("screenPoint", "right")));
+
+        // 위치를 여러 번 바꿔도 place는 슬롯당 하나다.
+        Assert.True(moved.Updated);
+        Assert.Single(node.FindBinding("ln_x")!.Commands);
+        Assert.Equal("right", moved.Command.Arguments["screenPoint"]);
+    }
+
+    [Fact]
     public void 폴드가_bg_리그_키를_기억한다()
     {
         MiniStageState state = MiniStageFold.Fold(

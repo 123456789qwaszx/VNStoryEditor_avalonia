@@ -42,11 +42,11 @@ public static class PresentationStageActions
             ?? throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
 
         string? target = TargetOf(definition, arguments);
-        PresentationCommandInstance? existing = node.FindBinding(lineId)?.Commands
-            .FirstOrDefault(command =>
-                catalog.Find(command.DefinitionId) is { } commandDefinition &&
-                string.Equals(commandDefinition.OutputCommandName, outputCommand, StringComparison.Ordinal) &&
-                string.Equals(TargetOf(commandDefinition, command.Arguments), target, StringComparison.Ordinal));
+        PresentationCommandInstance? existing = FindMatch(
+            catalog,
+            node.FindBinding(lineId)?.Commands ?? Enumerable.Empty<PresentationCommandInstance>(),
+            outputCommand,
+            target);
 
         if (existing is not null)
         {
@@ -57,6 +57,94 @@ public static class PresentationStageActions
         PresentationCommandInstance added = editor.AddPresentationCommand(
             presentationNodeId, lineId, definition.Id, arguments);
         return new Applied(added, Updated: false);
+    }
+
+    /// <summary>
+    /// outputCommand 하나를 노드 수준 Setup 블록에 반영한다. 장면 준비(슬롯 생성·캐스팅)는
+    /// 대사 줄이 아니라 노드에 속한다 — 어느 라인의 프리뷰에서 조작했든 같은 자리에 담긴다.
+    /// Setup에 <b>같은 outputCommand + 같은 대상</b>이 이미 있으면 추가하지 않고 인자를
+    /// 수정한다 — 같은 슬롯을 다시 캐스팅하면 cast가 쌓이는 게 아니라 값이 바뀐다.
+    /// </summary>
+    public static Applied ApplyToSetup(
+        ProjectEditor editor,
+        PresentationCommandCatalog catalog,
+        string presentationNodeId,
+        string outputCommand,
+        IReadOnlyDictionary<string, string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(arguments);
+
+        PresentationCommandDefinition definition = catalog.FindByOutputCommand(outputCommand)
+            ?? throw new InvalidOperationException($"카탈로그에 없는 커맨드입니다: '{outputCommand}'");
+
+        PresentationNode node = editor.Project.FindPresentation(presentationNodeId)
+            ?? throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
+
+        string? target = TargetOf(definition, arguments);
+        PresentationCommandInstance? existing = FindMatch(
+            catalog, node.SetupCommands, outputCommand, target);
+
+        if (existing is not null)
+        {
+            editor.UpdatePresentationCommandArguments(presentationNodeId, existing.Id, arguments);
+            return new Applied(existing, Updated: true);
+        }
+
+        PresentationCommandInstance added = editor.AddPresentationSetupCommand(
+            presentationNodeId, definition.Id, arguments);
+        return new Applied(added, Updated: false);
+    }
+
+    /// <summary>
+    /// 슬롯의 보이는 상태를 라인에 반영한다 — 원하는 방향은 <c>fade_in</c>/<c>fade_out</c>.
+    /// 같은 라인에 <b>반대 방향</b> 커맨드가 남아 있으면 먼저 지운다: 둘이 한 라인에 쌓이면
+    /// 저장된 순서가 사용자의 마지막 선택과 어긋날 수 있다(라인 안 커맨드는 순서 재생).
+    /// 반대 방향 제거와 반영이 각각 편집 하나라, 그때는 되돌리기가 두 단계다.
+    /// </summary>
+    public static Applied ApplyVisibility(
+        ProjectEditor editor,
+        PresentationCommandCatalog catalog,
+        string presentationNodeId,
+        string lineId,
+        string slotKey,
+        bool visible)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentException.ThrowIfNullOrWhiteSpace(slotKey);
+
+        string desired = visible ? "fade_in" : "fade_out";
+        string opposite = visible ? "fade_out" : "fade_in";
+
+        PresentationNode node = editor.Project.FindPresentation(presentationNodeId)
+            ?? throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
+        PresentationCommandInstance? conflicting = FindMatch(
+            catalog,
+            node.FindBinding(lineId)?.Commands ?? Enumerable.Empty<PresentationCommandInstance>(),
+            opposite,
+            slotKey);
+
+        if (conflicting is not null)
+        {
+            editor.RemovePresentationCommand(presentationNodeId, conflicting.Id);
+        }
+
+        return Apply(editor, catalog, presentationNodeId, lineId, desired, Args(("slot", slotKey)));
+    }
+
+    /// <summary>목록에서 같은 outputCommand + 같은 대상인 커맨드를 찾는다 — dedupe 판정의 단일 구현.</summary>
+    private static PresentationCommandInstance? FindMatch(
+        PresentationCommandCatalog catalog,
+        IEnumerable<PresentationCommandInstance> commands,
+        string outputCommand,
+        string? target)
+    {
+        return commands.FirstOrDefault(command =>
+            catalog.Find(command.DefinitionId) is { } commandDefinition &&
+            string.Equals(commandDefinition.OutputCommandName, outputCommand, StringComparison.Ordinal) &&
+            string.Equals(TargetOf(commandDefinition, command.Arguments), target, StringComparison.Ordinal));
     }
 
     /// <summary>
