@@ -42,13 +42,27 @@ public partial class SetNodeEditor : UserControl
         };
 
         AddAssignmentButton.Click += (_, _) => AddAssignment();
+
+        AddSpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 추가", () =>
+        {
+            List<SpeakerSpec> next = _session!.Definition.Speakers.ToList();
+            next.Add(new SpeakerSpec());
+
+            // 빈 항목은 파일에 저장되지 않으므로 행만 즉시 보여 준다.
+            _pendingSpeakers = next;
+            RebuildSpeakers(next);
+        });
     }
+
+    /// <summary>저장 전(이름이 비어 파일에 못 들어간) 행을 포함한 편집 중 목록.</summary>
+    private List<SpeakerSpec>? _pendingSpeakers;
 
     internal void Attach(AuthoringSession session) => _session = session;
 
     internal void Show(string? nodeId)
     {
         _nodeId = nodeId;
+        _pendingSpeakers = null;
         Rebuild();
     }
 
@@ -86,11 +100,112 @@ public partial class SetNodeEditor : UserControl
             VariableHintText.Text = _session.Definition.Variables.Count == 0
                 ? $"{GameDefinition.FileName}이 없으면 변수 이름을 직접 적습니다."
                 : $"{GameDefinition.FileName}이 제안하는 변수 {_session.Definition.Variables.Count}개를 쓸 수 있습니다.";
+
+            RebuildSpeakers(_pendingSpeakers ?? _session.Definition.Speakers.ToList());
         }
         finally
         {
             _building = false;
         }
+    }
+
+    // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
+
+    private void RebuildSpeakers(List<SpeakerSpec> speakers)
+    {
+        SpeakerHost.Children.Clear();
+
+        for (int index = 0; index < speakers.Count; index++)
+        {
+            SpeakerHost.Children.Add(BuildSpeakerRow(speakers, index));
+        }
+
+        if (speakers.Count == 0)
+        {
+            SpeakerHost.Children.Add(new TextBlock
+            {
+                Text = "화자를 등록하면 대사 노드에서 드롭다운으로 고를 수 있습니다.",
+                FontSize = 11,
+                Opacity = 0.6
+            });
+        }
+    }
+
+    private Control BuildSpeakerRow(List<SpeakerSpec> speakers, int index)
+    {
+        SpeakerSpec speaker = speakers[index];
+
+        var name = new TextBox
+        {
+            Text = speaker.Name,
+            PlaceholderText = "대본에 적히는 화자명",
+            FontSize = 12
+        };
+
+        var characterId = new TextBox
+        {
+            Text = speaker.CharacterId,
+            PlaceholderText = "초상화 characterId",
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12
+        };
+
+        void Commit()
+        {
+            if (_building)
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, "화자 저장", () =>
+            {
+                var next = speakers.ToList();
+                next[index] = new SpeakerSpec
+                {
+                    Name = name.Text ?? string.Empty,
+                    CharacterId = characterId.Text ?? string.Empty
+                };
+                _pendingSpeakers = next;
+
+                if (_session!.SaveSpeakers(next))
+                {
+                    _pendingSpeakers = null;
+                    RebuildSpeakers(_session.Definition.Speakers.ToList());
+                }
+            });
+        }
+
+        name.LostFocus += (_, _) => Commit();
+        characterId.LostFocus += (_, _) => Commit();
+
+        var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+
+        remove.Click += (_, _) => UiGuard.Run(_session, "화자 삭제", () =>
+        {
+            var next = speakers.ToList();
+            next.RemoveAt(index);
+            _pendingSpeakers = next;
+
+            if (_session!.SaveSpeakers(next))
+            {
+                _pendingSpeakers = null;
+                RebuildSpeakers(_session.Definition.Speakers.ToList());
+            }
+            else
+            {
+                RebuildSpeakers(next);
+            }
+        });
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(characterId, 1);
+        Grid.SetColumn(remove, 2);
+        row.Children.Add(name);
+        row.Children.Add(characterId);
+        row.Children.Add(remove);
+
+        return row;
     }
 
     private Control BuildConditionRow(ConditionDefinition condition)

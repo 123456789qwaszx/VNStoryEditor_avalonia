@@ -207,6 +207,25 @@ internal sealed class AuthoringSession
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
     }
 
+    /// <summary>
+    /// 화자 목록을 <c>game.definition.json</c>에 쓴다 (X5, D-4 — 원천은 파일 하나다).
+    /// 설정노드 UI는 이걸 부를 뿐 자체 사본을 갖지 않는다. 쓰고 나면 정의를 다시 읽어
+    /// 대사노드 드롭다운·프리뷰 초상화 해석이 같은 원천의 새 값을 본다.
+    /// </summary>
+    public bool SaveSpeakers(IReadOnlyList<SpeakerSpec> speakers)
+    {
+        if (ProjectPath is null)
+        {
+            SetStatus("화자 목록은 game.definition.json에 저장됩니다. 프로젝트를 먼저 저장해 주세요.");
+            return false;
+        }
+
+        GameDefinitionStore.SaveSpeakers(ProjectPath, speakers);
+        Definition = GameDefinition.LoadBeside(ProjectPath);
+        SetStatus($"{GameDefinition.FileName}에 화자 {Definition.Speakers.Count}명을 저장했습니다.");
+        return true;
+    }
+
     public bool IsFileExpanded(string fileId)
     {
         return _expandedFileIds.Contains(fileId);

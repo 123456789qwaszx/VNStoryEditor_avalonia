@@ -1096,7 +1096,7 @@ public partial class DialogueNodeEditor : UserControl
             ColumnDefinitions = new ColumnDefinitions(isOptionLabel ? "*" : "110,*")
         };
 
-        TextBox? speaker = null;
+        AutoCompleteBox? speaker = null;
 
         var text = new TextBox
         {
@@ -1130,12 +1130,19 @@ public partial class DialogueNodeEditor : UserControl
         }
         else
         {
-            speaker = new TextBox
+            // 화자는 등록 목록(game.definition speakers)의 드롭다운 + 자유 입력 겸용이다 (X5).
+            // 미등록 화자도 오류가 아니다 — 이름만 표시되는 기존 정책 그대로.
+            speaker = new AutoCompleteBox
             {
                 Text = resolved.Line.Speaker,
                 PlaceholderText = "화자",
-                FontWeight = FontWeight.SemiBold,
-                FontSize = 12
+                FontSize = 12,
+                ItemsSource = _session!.Definition.Speakers
+                    .Select(item => item.Name)
+                    .Where(item => item.Length > 0)
+                    .ToList(),
+                FilterMode = AutoCompleteFilterMode.Contains,
+                MinimumPrefixLength = 0
             };
             speaker.TextChanged += (_, _) => Commit();
             text.Margin = new Thickness(6, 0, 0, 0);

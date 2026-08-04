@@ -35,6 +35,18 @@
                     <StackPanel x:Name="AssignmentHost" Spacing="6" />
                 </StackPanel>
 
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="화자" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" x:Name="AddSpeakerButton" Content="화자 추가" FontSize="11" />
+                    </Grid>
+                    <TextBlock Text="여기는 편집 창구일 뿐, 저장은 game.definition.json의 speakers입니다. 대사 노드 드롭다운과 프리뷰 초상화가 같은 원천을 읽습니다."
+                               FontSize="11"
+                               Opacity="0.65"
+                               TextWrapping="Wrap" />
+                    <StackPanel x:Name="SpeakerHost" Spacing="6" />
+                </StackPanel>
+
             </StackPanel>
         </ScrollViewer>
     </Grid>
