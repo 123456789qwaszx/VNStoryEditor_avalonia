@@ -319,6 +319,24 @@ public partial class DialogueNodeEditor : UserControl
             : script.Lines.ToList().FindIndex(item =>
                 string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal));
 
+        // 스탯 HUD (X3): 작업 중 문서 기준 — 등록 초기값 + 선택 라인까지의 set 누적(문서 순서 근사).
+        var setsUpToLine = new List<(string Variable, SetOperatorKind Operator, string Value)>();
+
+        foreach (DialogueLine item in script.Lines)
+        {
+            setsUpToLine.AddRange(item.Sets.Select(operation =>
+                (operation.Variable, operation.Operator, operation.Value)));
+
+            if (selected is not null && string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal))
+            {
+                break;
+            }
+        }
+
+        IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
+            RegisteredVariables(node).Select(assignment => (assignment.Variable, assignment.Value)),
+            setsUpToLine);
+
         if (export.Presentation is null || export.Dialogue is null)
         {
             StagePreview.Show(new MiniStagePreviewRequest(
@@ -329,7 +347,8 @@ public partial class DialogueNodeEditor : UserControl
                 selected?.Speaker,
                 selected?.Text,
                 LineIndex: index,
-                LineCount: script.Lines.Count));
+                LineCount: script.Lines.Count,
+                Stats: stats));
             return;
         }
 
@@ -358,7 +377,8 @@ public partial class DialogueNodeEditor : UserControl
             EditContext: new StageEditContext(
                 export.Presentation.SourceNodeId,
                 selected?.LineId,
-                DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요.")));
+                DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요."),
+            Stats: stats));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

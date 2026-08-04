@@ -43,6 +43,7 @@ internal sealed class StageSceneView : UserControl
     private MiniStagePreviewRequest? _request;
     private readonly Canvas _canvas;
     private readonly Viewbox _viewbox;
+    private bool _statsVisible = true; // 스탯 HUD 토글 (X3) — 기본 표시
 
     /// <summary>직접 조작이 편집을 만들었다. 편집기 카드가 새 커맨드 행을 그려야 한다.</summary>
     internal event Action? ManipulationApplied;
@@ -165,6 +166,8 @@ internal sealed class StageSceneView : UserControl
                 }
             }, new StageRect(width * 0.02, height * 0.03, width * 0.4, em * 1.6));
         }
+
+        RenderStatsHud(request, width, em);
     }
 
     private void RenderBackground(
@@ -374,6 +377,76 @@ internal sealed class StageSceneView : UserControl
                 }
             }, new StageRect(badgeAnchor.Right - em * 6, badgeAnchor.Y - em * 0.9, em * 5.7, em * 1.1));
         }
+    }
+
+    /// <summary>
+    /// 스탯 HUD (X3) — 등록 변수의 "이 라인까지" 누적 값. 갈래를 가리지 않는
+    /// 문서 순서 근사이므로 그 사실을 라벨에 그대로 쓴다(규칙 14).
+    /// </summary>
+    private void RenderStatsHud(MiniStagePreviewRequest request, double width, double em)
+    {
+        if (request.Stats is not { Count: > 0 } stats)
+        {
+            return;
+        }
+
+        var toggle = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
+            CornerRadius = new CornerRadius(em * 0.2),
+            Padding = new Thickness(em * 0.35, em * 0.12),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = new TextBlock
+            {
+                Text = _statsVisible ? "스탯 ▾" : "스탯 ▸",
+                FontSize = em * 0.6,
+                Foreground = Brushes.White,
+                Opacity = 0.9
+            }
+        };
+        ToolTip.SetTip(toggle, "플레이어 스탯 HUD를 켜고 끕니다.");
+
+        toggle.PointerPressed += (_, args) =>
+        {
+            _statsVisible = !_statsVisible;
+            Render(_request);
+            args.Handled = true;
+        };
+
+        Add(toggle, new StageRect(width - em * 3.4, em * 0.5, em * 2.9, em * 1.2));
+
+        if (!_statsVisible)
+        {
+            return;
+        }
+
+        var rows = new StackPanel { Spacing = em * 0.08 };
+
+        foreach (StatFold.StatValue stat in stats)
+        {
+            rows.Children.Add(new TextBlock
+            {
+                Text = $"{stat.Variable}  {stat.Display}",
+                FontSize = em * 0.62,
+                Foreground = Brushes.White
+            });
+        }
+
+        rows.Children.Add(new TextBlock
+        {
+            Text = "문서 순서 근사 — 갈래 미반영",
+            FontSize = em * 0.45,
+            Foreground = Brushes.White,
+            Opacity = 0.55
+        });
+
+        Add(new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(150, 0, 0, 0)),
+            CornerRadius = new CornerRadius(em * 0.2),
+            Padding = new Thickness(em * 0.4, em * 0.25),
+            Child = rows
+        }, new StageRect(width - em * 8.4, em * 1.9, em * 7.9, em * (stats.Count + 2)));
     }
 
     private Control PlaceholderPortrait(string label, StageRect rect, double em)

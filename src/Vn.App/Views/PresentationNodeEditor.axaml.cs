@@ -208,6 +208,24 @@ public partial class PresentationNodeEditor : UserControl
             : dialogue.Lines.ToList().FindIndex(item =>
                 string.Equals(item.LineId, line.LineId, StringComparison.Ordinal));
 
+        // 스탯 HUD (X3): 발행 시점 설정값에서 시작해 선택 라인까지의 set을 문서 순서로 누적.
+        var setsUpToLine = new List<(string Variable, SetOperatorKind Operator, string Value)>();
+
+        foreach (DialogueResultLine item in dialogue.Lines)
+        {
+            setsUpToLine.AddRange(item.Sets.Select(operation =>
+                (operation.Variable, operation.Operator, operation.Value)));
+
+            if (line is not null && string.Equals(item.LineId, line.LineId, StringComparison.Ordinal))
+            {
+                break;
+            }
+        }
+
+        IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
+            dialogue.Assignments.Select(assignment => (assignment.Variable, assignment.Value)),
+            setsUpToLine);
+
         StagePreview.Show(new MiniStagePreviewRequest(
             $"연출: {presentation.Name}",
             state,
@@ -218,7 +236,8 @@ public partial class PresentationNodeEditor : UserControl
             LineIndex: index,
             LineCount: dialogue.Lines.Count,
             // 작업 중 바인딩이므로 직접 조작이 열려 있다 — 조작은 이 라인의 편집이 된다.
-            EditContext: new StageEditContext(presentation.Id, line?.LineId)));
+            EditContext: new StageEditContext(presentation.Id, line?.LineId),
+            Stats: stats));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

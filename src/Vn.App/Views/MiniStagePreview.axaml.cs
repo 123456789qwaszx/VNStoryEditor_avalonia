@@ -32,7 +32,8 @@ internal sealed record MiniStagePreviewRequest(
     string? Notice = null,
     int LineIndex = -1,
     int LineCount = 0,
-    StageEditContext? EditContext = null);
+    StageEditContext? EditContext = null,
+    IReadOnlyList<StatFold.StatValue>? Stats = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
