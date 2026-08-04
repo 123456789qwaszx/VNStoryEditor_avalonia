@@ -151,6 +151,27 @@ public class AssetConventionTests
     }
 
     [Fact]
+    public void 경로와_키는_한_함수로_왕복한다()
+    {
+        // §3.3 — 조립은 ToRelativePath, 해석은 TryParseRelativePath. 사본 없음.
+        var key = new PortraitKey("bandi", "a", "07");
+        Assert.Equal("bandi/a/07.png", key.ToRelativePath());
+        Assert.Equal("bandi/a/07", key.ToRelativePath(""));
+
+        Assert.True(PortraitKey.TryParseRelativePath(key.ToRelativePath(), out PortraitKey parsed));
+        Assert.Equal(key, parsed);
+
+        // 역슬래시·정규화도 해석기와 같은 규칙 하나를 지난다.
+        Assert.True(PortraitKey.TryParseRelativePath(@"mina\b\7.PNG", out PortraitKey windows));
+        Assert.Equal(new PortraitKey("mina", "b", "07"), windows);
+
+        Assert.False(PortraitKey.TryParseRelativePath("mina/01.png", out _));      // 2구획
+        Assert.False(PortraitKey.TryParseRelativePath("a/b/c/01.png", out _));     // 4구획
+        Assert.False(PortraitKey.TryParseRelativePath("mina/a/01.jpg", out _));    // 확장자
+        Assert.False(PortraitKey.TryParseRelativePath(null, out _));
+    }
+
+    [Fact]
     public void 규약_경로도_해석의_정규화를_지난다()
     {
         // a/7.png 로 넣어도 요청 "7"(→"07")과 같은 키가 된다 — 해석기와 같은 규칙 하나.

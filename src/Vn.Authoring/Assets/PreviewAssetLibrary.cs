@@ -246,7 +246,7 @@ public sealed class PreviewAssetLibrary
         {
             string relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
 
-            if (!TryParseConventionPath(relativePath, out PortraitKey key))
+            if (!PortraitKey.TryParseRelativePath(relativePath, out PortraitKey key))
             {
                 continue;
             }
@@ -334,29 +334,4 @@ public sealed class PreviewAssetLibrary
         return (index, entries, orphans);
     }
 
-    /// <summary>규약 경로 판정 — {characterId}/{variantKey}/{emotionKey}.png (§3.3에서 PortraitKey로 이동 예정).</summary>
-    private static bool TryParseConventionPath(string relativePath, out PortraitKey key)
-    {
-        key = default;
-        string[] segments = relativePath.Split('/');
-
-        if (segments.Length != 3 ||
-            !segments[2].EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        string emotion = segments[2][..^".png".Length];
-
-        if (string.IsNullOrWhiteSpace(segments[0]) ||
-            string.IsNullOrWhiteSpace(segments[1]) ||
-            string.IsNullOrWhiteSpace(emotion))
-        {
-            return false;
-        }
-
-        // 해석(ResolvePortrait)과 같은 정규화를 지나야 "7.png"와 요청 "7"이 같은 키가 된다.
-        key = PortraitKey.Normalize(segments[0], segments[1], emotion);
-        return true;
-    }
 }

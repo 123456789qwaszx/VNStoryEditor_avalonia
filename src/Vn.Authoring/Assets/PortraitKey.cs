@@ -29,7 +29,49 @@ public readonly record struct PortraitKey(string CharacterId, string VariantKey,
     /// <summary>키가 실패했을 때 시도하는 폴백 — 같은 캐릭터의 기본 초상화.</summary>
     public PortraitKey Fallback => new(CharacterId, DefaultVariantKey, DefaultEmotionKey);
 
+    /// <summary>
+    /// 경로 조립의 유일한 자리 (W-asset-02 §3.3 · 원칙 §2.4 규약 사본 금지).
+    /// 키 표현과 폴더 규약은 원래 같은 모양이다 — <c>bandi/a/01</c>.
+    /// </summary>
     public override string ToString() => $"{CharacterId}/{VariantKey}/{EmotionKey}";
+
+    /// <summary>폴더 규약 상대 경로 — 스캔·안내문·덤프 출력이 전부 이 함수를 지난다.</summary>
+    public string ToRelativePath(string extension = ".png") => $"{ToString()}{extension}";
+
+    /// <summary>
+    /// 규약 상대 경로를 키로 해석한다: 정확히 세 구획 + .png.
+    /// 해석기(<c>ResolvePortrait</c>)와 같은 정규화를 지나므로 <c>a/7.png</c>와
+    /// 요청 <c>"7"</c>이 같은 키가 된다.
+    /// </summary>
+    public static bool TryParseRelativePath(string? relativePath, out PortraitKey key)
+    {
+        key = default;
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return false;
+        }
+
+        string[] segments = relativePath.Replace('\\', '/').Split('/');
+
+        if (segments.Length != 3 ||
+            !segments[2].EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string emotion = segments[2][..^".png".Length];
+
+        if (string.IsNullOrWhiteSpace(segments[0]) ||
+            string.IsNullOrWhiteSpace(segments[1]) ||
+            string.IsNullOrWhiteSpace(emotion))
+        {
+            return false;
+        }
+
+        key = Normalize(segments[0], segments[1], emotion);
+        return true;
+    }
 
     private static string NormalizeEmotion(string? emotionKey)
     {
