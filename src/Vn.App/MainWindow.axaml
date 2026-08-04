@@ -12,7 +12,7 @@
                 Padding="12,10"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,16,Auto,Auto,16,Auto,Auto,16,*,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,16,Auto,Auto,16,Auto,Auto,Auto,16,*,Auto">
                 <Button Grid.Column="0" x:Name="NewButton" Content="새 프로젝트" />
                 <Button Grid.Column="1" x:Name="OpenButton" Content="열기…" Margin="6,0,0,0" />
                 <Button Grid.Column="2" x:Name="SaveButton" Content="저장" Margin="6,0,0,0" />
@@ -23,13 +23,14 @@
 
                 <Button Grid.Column="8" x:Name="ExportButton" Content="내보내기…" />
                 <Button Grid.Column="9" x:Name="CsvExportButton" Content="CSV 내보내기…" Margin="6,0,0,0" />
+                <Button Grid.Column="10" x:Name="ExportFormatsButton" Content="양식…" Margin="6,0,0,0" />
 
-                <StackPanel Grid.Column="11" VerticalAlignment="Center" Margin="8,0">
+                <StackPanel Grid.Column="12" VerticalAlignment="Center" Margin="8,0">
                     <TextBlock x:Name="ProjectNameText" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="ProjectPathText" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <TextBlock Grid.Column="12"
+                <TextBlock Grid.Column="13"
                            x:Name="DirtyText"
                            VerticalAlignment="Center"
                            FontWeight="SemiBold" />

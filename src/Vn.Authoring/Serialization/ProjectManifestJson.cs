@@ -81,6 +81,11 @@ public static class ProjectManifestJson
                 project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
         }
 
+        if (WriteExportFormats(project.ExportFormats) is { } exportFormats)
+        {
+            root["exportFormats"] = exportFormats;
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -236,11 +241,45 @@ public static class ProjectManifestJson
             (string?)root["startNode"],
             ReadAssetRoots(root["assetRoots"]),
             ReadRecentCommands(root["recentCommands"]),
+            ReadExportFormats(root["exportFormats"]),
             scripts,
             references,
             links,
             compositions,
             (string?)root["results"]);
+    }
+
+    /// <summary>기본(전부 켬)이면 null — 기존 프로젝트 파일이 바뀌지 않는다.</summary>
+    internal static JsonObject? WriteExportFormats(ExportFormatSelection formats)
+    {
+        if (formats.IsDefault)
+        {
+            return null;
+        }
+
+        return new JsonObject
+        {
+            ["yarnTrio"] = formats.YarnTrio,
+            ["scriptCsv"] = formats.ScriptCsv,
+            ["reviewCsv"] = formats.ReviewCsv,
+            ["directionCsv"] = formats.DirectionCsv
+        };
+    }
+
+    internal static ExportFormatSelection ReadExportFormats(JsonNode? json)
+    {
+        if (json is not JsonObject formats)
+        {
+            return new ExportFormatSelection();
+        }
+
+        return new ExportFormatSelection
+        {
+            YarnTrio = (bool?)formats["yarnTrio"] ?? true,
+            ScriptCsv = (bool?)formats["scriptCsv"] ?? true,
+            ReviewCsv = (bool?)formats["reviewCsv"] ?? true,
+            DirectionCsv = (bool?)formats["directionCsv"] ?? true
+        };
     }
 
     internal static IReadOnlyList<string> ReadRecentCommands(JsonNode? json)
@@ -423,6 +462,7 @@ public sealed record ProjectManifest(
     string? StartNodeId,
     AssetRootSettings AssetRoots,
     IReadOnlyList<string> RecentCommandIds,
+    ExportFormatSelection ExportFormats,
     IReadOnlyList<ScriptFileReference> Scripts,
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,

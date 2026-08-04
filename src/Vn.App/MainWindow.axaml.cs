@@ -83,6 +83,8 @@ public partial class MainWindow : Window
         RedoButton.Click += (_, _) => _session.Editor.Redo();
         ExportButton.Click += OnExportClick;
         CsvExportButton.Click += OnCsvExportClick;
+        ExportFormatsButton.Click += (_, _) =>
+            UiGuard.Run(_session, "내보내기 양식 선택", ShowExportFormatsFlyout);
 
         Opened += OnOpened;
 
@@ -299,10 +301,53 @@ public partial class MainWindow : Window
     /// 아니라 <see cref="NodeExportResolver"/>가 연출 공급 연결에서 계산한다.
     /// 선언 파일은 폴더당 하나만 나온다.
     /// </summary>
+    /// <summary>
+    /// 내보내기 양식 선택 (X13). 프로젝트에 저장되고, 내보내기 버튼들이 이 선택을 따른다.
+    /// </summary>
+    private void ShowExportFormatsFlyout()
+    {
+        var panel = new StackPanel { Spacing = 4, MinWidth = 180 };
+        ExportFormatSelection current = _session.Project.ExportFormats;
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "내보내기에서 산출할 양식",
+            FontSize = 11,
+            FontWeight = Avalonia.Media.FontWeight.SemiBold
+        });
+
+        void AddToggle(string label, bool value, Action<ExportFormatSelection, bool> assign)
+        {
+            var toggle = new CheckBox { Content = label, IsChecked = value, FontSize = 11 };
+
+            toggle.IsCheckedChanged += (_, _) =>
+            {
+                ExportFormatSelection next = _session.Project.ExportFormats.Clone();
+                assign(next, toggle.IsChecked == true);
+                _session.Editor.SetExportFormats(next);
+            };
+
+            panel.Children.Add(toggle);
+        }
+
+        AddToggle("Yarn 트리오 (Story·Set·Pres + 선언)", current.YarnTrio, (f, v) => f.YarnTrio = v);
+        AddToggle("Script CSV (번역·녹음)", current.ScriptCsv, (f, v) => f.ScriptCsv = v);
+        AddToggle("Review CSV (기획 검수)", current.ReviewCsv, (f, v) => f.ReviewCsv = v);
+        AddToggle("Direction CSV (연출 테이블)", current.DirectionCsv, (f, v) => f.DirectionCsv = v);
+
+        new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(ExportFormatsButton);
+    }
+
     private async void OnExportClick(object? sender, RoutedEventArgs e)
     {
         try
         {
+            if (!_session.Project.ExportFormats.YarnTrio)
+            {
+                _session.SetStatus("양식 선택에서 Yarn 트리오가 꺼져 있습니다. [양식…]에서 켜세요.");
+                return;
+            }
+
             IReadOnlyList<NodeExport> exports = await PickNodeExportsAsync();
 
             if (exports.Count == 0)
@@ -358,6 +403,12 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (!_session.Project.ExportFormats.AnyCsv)
+            {
+                _session.SetStatus("양식 선택에서 CSV가 전부 꺼져 있습니다. [양식…]에서 켜세요.");
+                return;
+            }
+
             IReadOnlyList<NodeExport> exports = await PickNodeExportsAsync();
 
             if (exports.Count == 0)
@@ -379,7 +430,8 @@ public partial class MainWindow : Window
                     export.Presentation,
                     _session.Project,
                     _session.Definition);
-                written.AddRange(CsvBundleExporter.WriteTo(bundle, folder));
+                // 선택한 양식만 산출된다 (X13).
+                written.AddRange(CsvBundleExporter.WriteTo(bundle, folder, _session.Project.ExportFormats));
             }
 
             _session.SetStatus(

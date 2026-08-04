@@ -29,12 +29,25 @@ public sealed class CsvBundle
     /// <summary>(4) 연출 테이블 — 한 줄 = 커맨드 하나. 대사는 참조용이다.</summary>
     public string DirectionCsv { get; }
 
-    public IEnumerable<(string FileName, string Text)> Files
+    public IEnumerable<(string FileName, string Text)> Files => FilesFor(new ExportFormatSelection());
+
+    /// <summary>선택된 양식만 (X13). 기본 선택이면 3종 전부다.</summary>
+    public IEnumerable<(string FileName, string Text)> FilesFor(ExportFormatSelection formats)
     {
-        get
+        ArgumentNullException.ThrowIfNull(formats);
+
+        if (formats.ScriptCsv)
         {
             yield return ($"Script_{BundleName}.csv", ScriptCsv);
+        }
+
+        if (formats.ReviewCsv)
+        {
             yield return ($"Review_{BundleName}.csv", ReviewCsv);
+        }
+
+        if (formats.DirectionCsv)
+        {
             yield return ($"Direction_{BundleName}.csv", DirectionCsv);
         }
     }
@@ -89,7 +102,10 @@ public static class CsvBundleExporter
     }
 
     /// <summary>UTF-8 BOM 포함으로 폴더에 쓴다. 임시 파일 교체는 .yarn 쓰기와 같다.</summary>
-    public static IReadOnlyList<string> WriteTo(CsvBundle bundle, string directory)
+    public static IReadOnlyList<string> WriteTo(
+        CsvBundle bundle,
+        string directory,
+        ExportFormatSelection? formats = null)
     {
         ArgumentNullException.ThrowIfNull(bundle);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
@@ -98,7 +114,7 @@ public static class CsvBundleExporter
         var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
         var written = new List<string>();
 
-        foreach ((string fileName, string text) in bundle.Files)
+        foreach ((string fileName, string text) in bundle.FilesFor(formats ?? new ExportFormatSelection()))
         {
             string path = Path.Combine(directory, fileName);
             string temporary = path + ".tmp";

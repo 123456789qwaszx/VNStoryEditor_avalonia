@@ -80,6 +80,11 @@ public static class ProjectSnapshotCodec
                 project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
         }
 
+        if (ProjectManifestJson.WriteExportFormats(project.ExportFormats) is { } exportFormats)
+        {
+            root["exportFormats"] = exportFormats;
+        }
+
         root["scripts"] = scripts;
         root["files"] = files;
 
@@ -125,7 +130,8 @@ public static class ProjectSnapshotCodec
             Title = (string?)root["title"] ?? "제목 없음",
             StartNodeId = (string?)root["startNode"],
             AssetRoots = ProjectManifestJson.ReadAssetRoots(root["assetRoots"]),
-            RecentCommandIds = ProjectManifestJson.ReadRecentCommands(root["recentCommands"]).ToList()
+            RecentCommandIds = ProjectManifestJson.ReadRecentCommands(root["recentCommands"]).ToList(),
+            ExportFormats = ProjectManifestJson.ReadExportFormats(root["exportFormats"])
         };
 
         foreach (JsonNode? item in root["scripts"]?.AsArray() ?? new JsonArray())

@@ -64,6 +64,9 @@ public sealed class StoryProject
     /// <summary>갤러리 "최근" 섹션이 다 보여 줄 수 있는 만큼만 남긴다.</summary>
     public const int MaxRecentCommands = 8;
 
+    /// <summary>내보내기 양식 선택 (X13). 기본 전부 켬.</summary>
+    public ExportFormatSelection ExportFormats { get; init; } = new();
+
     /// <summary>
     /// 프로젝트 전체 노드를 결정적인 순서로 펼친다.
     /// 파일 순서 → 각 파일의 Nodes 순서다.
@@ -159,6 +162,7 @@ public sealed class StoryProject
             StartNodeId = StartNodeId,
             AssetRoots = AssetRoots.Clone(),
             RecentCommandIds = new List<string>(RecentCommandIds),
+            ExportFormats = ExportFormats.Clone(),
             Scripts = Scripts.Select(script => script.Clone()).ToList(),
             Files = Files.Select(file => file.Clone()).ToList(),
             Links = Links.Select(link => link.Clone()).ToList(),

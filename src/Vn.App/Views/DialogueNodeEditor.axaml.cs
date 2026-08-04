@@ -1471,6 +1471,19 @@ public partial class DialogueNodeEditor : UserControl
 
         try
         {
+            // 선택한 양식만 산출된다 (X13) — 노드 단위 내보내기도 같은 선택을 따른다.
+            if (csv && !_session.Project.ExportFormats.AnyCsv)
+            {
+                _session.SetStatus("양식 선택에서 CSV가 전부 꺼져 있습니다. [양식…]에서 켜세요.");
+                return;
+            }
+
+            if (!csv && !_session.Project.ExportFormats.YarnTrio)
+            {
+                _session.SetStatus("양식 선택에서 Yarn 트리오가 꺼져 있습니다. [양식…]에서 켜세요.");
+                return;
+            }
+
             NodeExport export = NodeExportResolver.Resolve(_session.Project, _nodeId);
 
             if (!export.CanExport)
@@ -1509,7 +1522,8 @@ public partial class DialogueNodeEditor : UserControl
                         export.Presentation,
                         _session.Project,
                         _session.Definition),
-                    folders[0].Path.LocalPath);
+                    folders[0].Path.LocalPath,
+                    _session.Project.ExportFormats);
             }
             else
             {

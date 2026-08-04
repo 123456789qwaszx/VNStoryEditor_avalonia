@@ -1252,6 +1252,31 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>내보내기 양식 선택을 바꾼다 (X13). 프로젝트에 저장되고 되돌릴 수 있다.</summary>
+    public void SetExportFormats(ExportFormatSelection formats)
+    {
+        ArgumentNullException.ThrowIfNull(formats);
+        ExportFormatSelection current = Project.ExportFormats;
+
+        if (current.YarnTrio == formats.YarnTrio &&
+            current.ScriptCsv == formats.ScriptCsv &&
+            current.ReviewCsv == formats.ReviewCsv &&
+            current.DirectionCsv == formats.DirectionCsv)
+        {
+            return;
+        }
+
+        ExportFormatSelection next = formats.Clone();
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            Project.ExportFormats.YarnTrio = next.YarnTrio;
+            Project.ExportFormats.ScriptCsv = next.ScriptCsv;
+            Project.ExportFormats.ReviewCsv = next.ReviewCsv;
+            Project.ExportFormats.DirectionCsv = next.DirectionCsv;
+        });
+    }
+
     // ── 되돌리기 ────────────────────────────────────────────────────────────
 
     public void Undo()
