@@ -129,7 +129,15 @@ internal sealed class StageSceneView : UserControl
             AddCenteredText(width, height * 0.7, em * 0.8, "무대 위에 표시된 캐릭터가 없습니다.");
         }
 
-        RenderDialogueBox(layout, request, em);
+        // 옵션 라벨은 대사가 아니다 — 대사창에 흘리는 대신 블록의 버튼 묶음을 중앙에 제시한다.
+        if (request.ChoiceOptions is { Count: > 0 } choices)
+        {
+            RenderChoiceOptions(choices, width, height, em);
+        }
+        else
+        {
+            RenderDialogueBox(layout, request, em);
+        }
 
         // 발행 결과처럼 잠긴 화면임을 숨기지 않는다 — 조작이 안 되는 이유가 그 자리에 있다.
         if (request.EditContext is { DisabledReason: { } reason })
@@ -376,6 +384,51 @@ internal sealed class StageSceneView : UserControl
                     Foreground = Brushes.White
                 }
             }, new StageRect(badgeAnchor.Right - em * 6, badgeAnchor.Y - em * 0.9, em * 5.7, em * 1.1));
+        }
+    }
+
+    /// <summary>
+    /// 선택지 제시 — 블록의 옵션 전부를 화면 중앙에 세로로 쌓는다. 지금 선택된 라벨은
+    /// 노란 테두리다. 실제 배치·전이는 런타임의 것이고 이것은 "무엇이 함께 제시되는가"의 근사다.
+    /// </summary>
+    private void RenderChoiceOptions(
+        IReadOnlyList<StageChoiceOption> options,
+        double width,
+        double height,
+        double em)
+    {
+        double optionWidth = width * 0.46;
+        double optionHeight = em * 1.8;
+        double gap = em * 0.45;
+        double totalHeight = options.Count * optionHeight + (options.Count - 1) * gap;
+        double y = Math.Max(em, (height - totalHeight) / 2);
+
+        foreach (StageChoiceOption option in options)
+        {
+            Add(new Border
+            {
+                Width = optionWidth,
+                Height = optionHeight,
+                Background = BoxBackground,
+                CornerRadius = new CornerRadius(optionHeight / 2),
+                BorderThickness = new Thickness(em * 0.09),
+                BorderBrush = option.IsSelected
+                    ? SpeakerHighlight
+                    : new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)),
+                Child = new TextBlock
+                {
+                    Text = option.Text.Length == 0 ? "(빈 라벨)" : option.Text,
+                    FontSize = em * 0.85,
+                    Foreground = Brushes.White,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    MaxWidth = optionWidth - em
+                }
+            }, new StageRect((width - optionWidth) / 2, y, optionWidth, optionHeight));
+
+            y += optionHeight + gap;
         }
     }
 

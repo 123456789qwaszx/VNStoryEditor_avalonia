@@ -226,6 +226,16 @@ public partial class PresentationNodeEditor : UserControl
             dialogue.Assignments.Select(assignment => (assignment.Variable, assignment.Value)),
             setsUpToLine);
 
+        // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다 —
+        // 작업 대본 쪽 프리뷰와 같은 판정 하나(ChoiceOptionBundle)를 지난다.
+        IReadOnlyList<StageChoiceOption>? choices = ChoiceOptionBundle.At(
+                dialogue.Lines,
+                index,
+                resultLine => resultLine.Transition?.Kind,
+                resultLine => resultLine.Text)
+            ?.Select(option => new StageChoiceOption(option.Text, option.IsSelected))
+            .ToArray();
+
         StagePreview.Show(new MiniStagePreviewRequest(
             $"연출: {presentation.Name}",
             state,
@@ -237,7 +247,8 @@ public partial class PresentationNodeEditor : UserControl
             LineCount: dialogue.Lines.Count,
             // 작업 중 바인딩이므로 직접 조작이 열려 있다 — 조작은 이 라인의 편집이 된다.
             EditContext: new StageEditContext(presentation.Id, line?.LineId),
-            Stats: stats));
+            Stats: stats,
+            ChoiceOptions: choices));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

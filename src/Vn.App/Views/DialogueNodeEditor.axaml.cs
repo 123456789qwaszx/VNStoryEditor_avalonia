@@ -393,6 +393,15 @@ public partial class DialogueNodeEditor : UserControl
             RegisteredVariables(node).Select(assignment => (assignment.Variable, assignment.Value)),
             setsUpToLine);
 
+        // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다.
+        IReadOnlyList<StageChoiceOption>? choices = ChoiceOptionBundle.At(
+                script.Lines,
+                index,
+                line => line.Transition?.Kind,
+                line => line.Text)
+            ?.Select(option => new StageChoiceOption(option.Text, option.IsSelected))
+            .ToArray();
+
         if (export.Presentation is null || export.Dialogue is null)
         {
             StagePreview.Show(new MiniStagePreviewRequest(
@@ -404,7 +413,8 @@ public partial class DialogueNodeEditor : UserControl
                 selected?.Text,
                 LineIndex: index,
                 LineCount: script.Lines.Count,
-                Stats: stats));
+                Stats: stats,
+                ChoiceOptions: choices));
             return;
         }
 
@@ -434,7 +444,8 @@ public partial class DialogueNodeEditor : UserControl
                 export.Presentation.SourceNodeId,
                 selected?.LineId,
                 DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요."),
-            Stats: stats));
+            Stats: stats,
+            ChoiceOptions: choices));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

@@ -18,10 +18,17 @@ internal sealed record StageEditContext(
     public bool Editable => DisabledReason is null && LineId is not null;
 }
 
+/// <summary>선택지 제시 화면의 옵션 버튼 하나.</summary>
+internal sealed record StageChoiceOption(string Text, bool IsSelected);
+
 /// <summary>공유 무대 프리뷰에 밀어 넣는 요청 하나. 폴드는 호출자가 이미 끝냈다.</summary>
 /// <param name="HasPresentation">false면 연출 공급이 없는 것 — 오류가 아니라 화자만 표시한다.</param>
 /// <param name="LineIndex">문서에서 선택 라인의 0기준 위치. 없으면 -1 — 창 하단 표시용.</param>
 /// <param name="Notice">선택 라인이 발행본에 없다는 등 호출자가 덧붙이는 알림.</param>
+/// <param name="ChoiceOptions">
+/// 선택 라인이 옵션 라벨이면 그 블록의 옵션 전부. 라벨은 대사가 아니므로 대사창 대신
+/// 화면 중앙에 버튼 묶음으로 제시된다 — 런타임의 선택지 제시 근사.
+/// </param>
 internal sealed record MiniStagePreviewRequest(
     string ContextLabel,
     MiniStageState State,
@@ -33,7 +40,8 @@ internal sealed record MiniStagePreviewRequest(
     int LineIndex = -1,
     int LineCount = 0,
     StageEditContext? EditContext = null,
-    IReadOnlyList<StatFold.StatValue>? Stats = null);
+    IReadOnlyList<StatFold.StatValue>? Stats = null,
+    IReadOnlyList<StageChoiceOption>? ChoiceOptions = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
