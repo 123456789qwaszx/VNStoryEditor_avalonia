@@ -752,71 +752,277 @@ public partial class DialogueNodeEditor : UserControl
     /// 이 줄의 변수 변경. 한 줄에 하나씩 <c>변수 += 값</c> 형태로 적는다 (=, +=, -=).
     /// 발행하면 결과에 얼어붙고, 이미터가 Story의 <c>&lt;&lt;set&gt;&gt;</c>으로 낸다.
     /// </summary>
+    /// <summary>
+    /// 이 대사 노드가 쓸 수 있는 변수 — 연결된 설정노드(Settings link)의 등록 목록이다.
+    /// 조건 드롭다운과 같은 해석기(<see cref="ConnectedSetNodeResolver"/>)를 지난다.
+    /// </summary>
+    private IReadOnlyList<VariableAssignment> RegisteredVariables(DialogueNode node)
+    {
+        return ConnectedSetNodeResolver.Resolve(_session!.Project, node.Id)
+            .SelectMany(connected => connected.Node.Assignments)
+            .Where(assignment => assignment.Variable.Length > 0)
+            .GroupBy(assignment => assignment.Variable, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToList();
+    }
+
+    private List<SetOperation> CurrentSets(DialogueNode node, string lineId)
+    {
+        return node.LineExtensions
+            .FirstOrDefault(extension => string.Equals(extension.LineId, lineId, StringComparison.Ordinal))
+            ?.SetOperations.Select(operation => operation.Clone()).ToList() ?? new List<SetOperation>();
+    }
+
+    /// <summary>
+    /// set 편집 (X6) — 타이핑 대신 등록 변수 드롭다운 + 슬라이더.
+    /// 슬라이더 범위는 설정노드의 변수별 등록(기본 -5~+5)이고 편의일 뿐이라
+    /// 옆의 직접 입력으로 범위 밖 값도 넣을 수 있다. 저장되는 것은 값 문자열
+    /// 그대로이므로 <c>&lt;&lt;set&gt;&gt;</c> 출력은 바이트 단위로 불변이다.
+    /// </summary>
     private Control BuildSetRow(DialogueNode node, ResolvedLine resolved)
     {
-        var box = new TextBox
+        var host = new StackPanel { Spacing = 3 };
+        IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
+        IReadOnlyList<SetOperation> sets = resolved.Line.Sets;
+
+        for (int index = 0; index < sets.Count; index++)
         {
-            Text = string.Join(
-                Environment.NewLine,
-                resolved.Line.Sets.Select(operation =>
-                    $"{operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}")),
-            PlaceholderText = "set — 한 줄에 하나씩: 변수 += 값",
-            AcceptsReturn = true,
-            FontSize = 11,
-            Opacity = 0.9
-        };
+            host.Children.Add(BuildSetOperationRow(node, resolved.Line.LineId, registered, index, sets[index]));
+        }
 
-        ToolTip.SetTip(box, "이 줄에 도달했을 때 실행할 <<set>>. 연산자는 =, +=, -= 세 가지입니다.");
+        var add = new Button { Content = "+ set", FontSize = 10, Padding = new Thickness(7, 2) };
+        ToolTip.SetTip(add, "이 줄에 도달했을 때 실행할 <<set>>을 더합니다.");
 
-        box.LostFocus += (_, _) =>
+        add.Click += (_, _) =>
         {
             if (_building)
             {
                 return;
             }
 
-            if (!TryParseSetOperations(box.Text, out List<SetOperation> operations))
+            List<SetOperation> next = CurrentSets(node, resolved.Line.LineId);
+            next.Add(new SetOperation
             {
-                _session!.SetStatus("set을 읽지 못했습니다. 한 줄에 하나씩 '변수 += 값' 형태로 적어 주세요.");
+                Variable = registered.FirstOrDefault()?.Variable ?? string.Empty,
+                Operator = SetOperatorKind.Add,
+                Value = "1"
+            });
+            _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, next);
+        };
+
+        if (sets.Count == 0 && registered.Count == 0)
+        {
+            var hint = new TextBlock
+            {
+                Text = "설정노드를 연결하고 변수를 등록하면 여기서 드롭다운으로 고릅니다.",
+                FontSize = 10,
+                Opacity = 0.55,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            var addRow = new StackPanel { Orientation = Orientation.Horizontal };
+            addRow.Children.Add(add);
+            addRow.Children.Add(hint);
+            host.Children.Add(addRow);
+        }
+        else
+        {
+            host.Children.Add(add);
+        }
+
+        return host;
+    }
+
+    private Control BuildSetOperationRow(
+        DialogueNode node,
+        string lineId,
+        IReadOnlyList<VariableAssignment> registered,
+        int operationIndex,
+        SetOperation operation)
+    {
+        // 드롭다운에는 등록 변수만 나온다 (X6 수용). 이미 적혀 있는 미등록 변수는
+        // 그 행에서만 '(미등록)'으로 보인다 — 조용히 지우지 않는다.
+        var choices = registered.Select(item => (item.Variable, Label: item.Variable)).ToList();
+        VariableAssignment? registration = registered.FirstOrDefault(item =>
+            string.Equals(item.Variable, operation.Variable, StringComparison.Ordinal));
+
+        if (registration is null && operation.Variable.Length > 0)
+        {
+            choices.Insert(0, (operation.Variable, Label: $"{operation.Variable} (미등록)"));
+        }
+
+        void Commit(Action<SetOperation> mutate)
+        {
+            if (_building)
+            {
                 return;
             }
 
-            _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, operations);
-        };
+            List<SetOperation> next = CurrentSets(node, lineId);
 
-        return box;
-    }
-
-    private static bool TryParseSetOperations(string? text, out List<SetOperation> operations)
-    {
-        operations = new List<SetOperation>();
-
-        foreach (string raw in (text ?? string.Empty).Split('\n'))
-        {
-            string line = raw.Trim();
-
-            if (line.Length == 0)
+            if (operationIndex < next.Count)
             {
-                continue;
+                mutate(next[operationIndex]);
+                _session!.Editor.SetLineSetOperations(node.Id, lineId, next);
             }
-
-            string[] tokens = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (tokens.Length < 3 || tokens[1] is not ("=" or "+=" or "-="))
-            {
-                return false;
-            }
-
-            operations.Add(new SetOperation
-            {
-                Variable = tokens[0].TrimStart('$'),
-                Operator = SetOperators.Parse(tokens[1]),
-                Value = string.Join(' ', tokens.Skip(2))
-            });
         }
 
-        return true;
+        var variableBox = new ComboBox
+        {
+            ItemsSource = choices.Select(choice => choice.Label).ToList(),
+            SelectedIndex = choices.FindIndex(choice =>
+                string.Equals(choice.Variable, operation.Variable, StringComparison.Ordinal)),
+            FontSize = 11,
+            MinWidth = 110,
+            PlaceholderText = choices.Count == 0 ? "등록 변수 없음" : "변수"
+        };
+
+        variableBox.SelectionChanged += (_, _) =>
+        {
+            if (variableBox.SelectedIndex >= 0 && variableBox.SelectedIndex < choices.Count)
+            {
+                Commit(target => target.Variable = choices[variableBox.SelectedIndex].Variable);
+            }
+        };
+
+        string[] operators = ["=", "+=", "-="];
+        var operatorBox = new ComboBox
+        {
+            ItemsSource = operators,
+            SelectedIndex = Array.IndexOf(operators, SetOperators.Symbol(operation.Operator)),
+            FontSize = 11,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+
+        operatorBox.SelectionChanged += (_, _) =>
+        {
+            if (operatorBox.SelectedIndex >= 0)
+            {
+                Commit(target => target.Operator = SetOperators.Parse(operators[operatorBox.SelectedIndex]));
+            }
+        };
+
+        double min = registration?.EffectiveSliderMin ?? VariableAssignment.DefaultSliderMin;
+        double max = registration?.EffectiveSliderMax ?? VariableAssignment.DefaultSliderMax;
+        bool syncing = false;
+
+        var slider = new Slider
+        {
+            Minimum = min,
+            Maximum = max,
+            TickFrequency = 1,
+            IsSnapToTickEnabled = true,
+            Margin = new Thickness(6, 0, 0, 0),
+            MinWidth = 90,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var valueBox = new TextBox
+        {
+            Text = operation.Value,
+            FontSize = 11,
+            Width = 56,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+        ToolTip.SetTip(valueBox, $"직접 입력 — 슬라이더 범위({FormatNumber(min)}~{FormatNumber(max)}) 밖 값도 됩니다.");
+
+        if (double.TryParse(
+                operation.Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double numeric))
+        {
+            slider.Value = Math.Clamp(numeric, min, max);
+        }
+
+        // 드래그 중에는 숫자 표시만 따라오고, 커밋은 놓는 순간 한 번이다 —
+        // 커밋이 편집 행을 다시 만들므로(Structure) 틱마다 커밋하면 드래그가 끊긴다.
+        slider.ValueChanged += (_, args) =>
+        {
+            if (!syncing && !_building)
+            {
+                syncing = true;
+                valueBox.Text = FormatNumber(args.NewValue);
+                syncing = false;
+            }
+        };
+
+        slider.PointerCaptureLost += (_, _) =>
+        {
+            if (!syncing && !_building)
+            {
+                syncing = true;
+                string formatted = FormatNumber(slider.Value);
+                valueBox.Text = formatted;
+                Commit(target => target.Value = formatted);
+                syncing = false;
+            }
+        };
+
+        valueBox.LostFocus += (_, _) =>
+        {
+            if (syncing || _building)
+            {
+                return;
+            }
+
+            syncing = true;
+            string text = valueBox.Text ?? string.Empty;
+
+            if (double.TryParse(
+                    text,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double typed))
+            {
+                slider.Value = Math.Clamp(typed, min, max); // 슬라이더는 편의 — 값은 그대로 저장
+            }
+
+            Commit(target => target.Value = text);
+            syncing = false;
+        };
+
+        var remove = new Button
+        {
+            Content = "✕",
+            FontSize = 10,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        remove.Click += (_, _) =>
+        {
+            if (_building)
+            {
+                return;
+            }
+
+            List<SetOperation> next = CurrentSets(node, lineId);
+
+            if (operationIndex < next.Count)
+            {
+                next.RemoveAt(operationIndex);
+                _session!.Editor.SetLineSetOperations(node.Id, lineId, next);
+            }
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto") };
+        Grid.SetColumn(variableBox, 0);
+        Grid.SetColumn(operatorBox, 1);
+        Grid.SetColumn(slider, 2);
+        Grid.SetColumn(valueBox, 3);
+        Grid.SetColumn(remove, 4);
+        row.Children.Add(variableBox);
+        row.Children.Add(operatorBox);
+        row.Children.Add(slider);
+        row.Children.Add(valueBox);
+        row.Children.Add(remove);
+
+        return row;
     }
+
+    private static string FormatNumber(double value) =>
+        value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     private Control BuildTextRow(DialogueScript script, ResolvedLine resolved)
     {

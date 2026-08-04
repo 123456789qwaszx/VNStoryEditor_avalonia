@@ -101,6 +101,17 @@ internal static class StoryNodeJson
                     entry["type"] = assignment.Type;
                 }
 
+                // 슬라이더 범위도 등록했을 때만 쓴다(기본 -5~+5는 생략).
+                if (assignment.SliderMin is { } sliderMin)
+                {
+                    entry["sliderMin"] = sliderMin;
+                }
+
+                if (assignment.SliderMax is { } sliderMax)
+                {
+                    entry["sliderMax"] = sliderMax;
+                }
+
                 assignments.Add(entry);
             }
             json["assignments"] = assignments;
@@ -406,7 +417,9 @@ internal static class StoryNodeJson
                 {
                     Variable = (string?)assignment["variable"] ?? string.Empty,
                     Value = (string?)assignment["value"] ?? string.Empty,
-                    Type = (string?)assignment["type"] ?? VariableAssignment.FloatType
+                    Type = (string?)assignment["type"] ?? VariableAssignment.FloatType,
+                    SliderMin = (double?)assignment["sliderMin"],
+                    SliderMax = (double?)assignment["sliderMax"]
                 });
             }
         }

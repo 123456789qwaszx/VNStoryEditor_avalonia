@@ -175,7 +175,31 @@ public sealed class VariableAssignment
     /// </summary>
     public string Type { get; set; } = FloatType;
 
-    public VariableAssignment Clone() => new() { Variable = Variable, Value = Value, Type = Type };
+    /// <summary>슬라이더 기본 범위 (X6). 등록하지 않은 변수는 이 범위를 쓴다.</summary>
+    public const double DefaultSliderMin = -5;
+
+    public const double DefaultSliderMax = 5;
+
+    /// <summary>
+    /// Set 편집 슬라이더의 변수별 범위. null이면 기본 -5~+5다.
+    /// 범위는 슬라이더 편의지 검증 제약이 아니다 — 직접 입력은 범위 밖도 허용된다.
+    /// </summary>
+    public double? SliderMin { get; set; }
+
+    public double? SliderMax { get; set; }
+
+    public double EffectiveSliderMin => SliderMin ?? DefaultSliderMin;
+
+    public double EffectiveSliderMax => Math.Max(EffectiveSliderMin + 1, SliderMax ?? DefaultSliderMax);
+
+    public VariableAssignment Clone() => new()
+    {
+        Variable = Variable,
+        Value = Value,
+        Type = Type,
+        SliderMin = SliderMin,
+        SliderMax = SliderMax
+    };
 }
 
 /// <summary>

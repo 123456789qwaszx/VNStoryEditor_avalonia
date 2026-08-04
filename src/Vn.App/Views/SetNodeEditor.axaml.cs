@@ -179,6 +179,36 @@ public partial class SetNodeEditor : UserControl
             FontSize = 12
         };
 
+        // Set 편집 슬라이더의 변수별 범위 (X6). 비우면 기본 -5~+5다.
+        var sliderMin = new TextBox
+        {
+            Text = assignment.SliderMin?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            PlaceholderText = VariableAssignment.DefaultSliderMin.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 11,
+            Width = 44
+        };
+        ToolTip.SetTip(sliderMin, "슬라이더 최솟값 — 편의 범위이며 직접 입력은 범위 밖도 됩니다.");
+
+        var sliderMax = new TextBox
+        {
+            Text = assignment.SliderMax?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            PlaceholderText = "+" + VariableAssignment.DefaultSliderMax.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Margin = new Thickness(2, 0, 0, 0),
+            FontSize = 11,
+            Width = 44
+        };
+        ToolTip.SetTip(sliderMax, "슬라이더 최댓값");
+
+        static double? ParseRange(string? text) =>
+            double.TryParse(
+                text,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double parsed)
+                ? parsed
+                : null;
+
         void Commit()
         {
             if (_building)
@@ -191,7 +221,9 @@ public partial class SetNodeEditor : UserControl
             {
                 Variable = variable.Text ?? string.Empty,
                 Value = value.Text ?? string.Empty,
-                Type = VariableTypes[Math.Max(0, type.SelectedIndex)].Type
+                Type = VariableTypes[Math.Max(0, type.SelectedIndex)].Type,
+                SliderMin = ParseRange(sliderMin.Text),
+                SliderMax = ParseRange(sliderMax.Text)
             };
 
             _session!.Editor.SetAssignments(node.Id, next);
@@ -200,6 +232,8 @@ public partial class SetNodeEditor : UserControl
         type.SelectionChanged += (_, _) => Commit();
         variable.LostFocus += (_, _) => Commit();
         value.LostFocus += (_, _) => Commit();
+        sliderMin.LostFocus += (_, _) => Commit();
+        sliderMax.LostFocus += (_, _) => Commit();
 
         var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
 
@@ -210,14 +244,18 @@ public partial class SetNodeEditor : UserControl
             _session!.Editor.SetAssignments(node.Id, next);
         };
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,*,Auto") };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,*,Auto,Auto,Auto") };
         Grid.SetColumn(type, 0);
         Grid.SetColumn(variable, 1);
         Grid.SetColumn(value, 2);
-        Grid.SetColumn(remove, 3);
+        Grid.SetColumn(sliderMin, 3);
+        Grid.SetColumn(sliderMax, 4);
+        Grid.SetColumn(remove, 5);
         row.Children.Add(type);
         row.Children.Add(variable);
         row.Children.Add(value);
+        row.Children.Add(sliderMin);
+        row.Children.Add(sliderMax);
         row.Children.Add(remove);
 
         return row;

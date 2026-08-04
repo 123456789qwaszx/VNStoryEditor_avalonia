@@ -48,6 +48,46 @@ public class VariableModelTests
     }
 
     [Fact]
+    public void 슬라이더_범위는_등록했을_때만_저장되고_왕복한다()
+    {
+        (ProjectEditor editor, SetNode node) = BuildEditor();
+
+        // 미등록 범위 → 저장 파일에 키 없음 + 기본 -5~+5.
+        editor.SetAssignments(node.Id, [new VariableAssignment { Variable = "favor", Value = "0" }]);
+        string saved = StoryFileJson.Write(editor.Project.Files[0]);
+        Assert.DoesNotContain("sliderMin", saved, StringComparison.Ordinal);
+        Assert.Equal(-5, node.Assignments[0].EffectiveSliderMin);
+        Assert.Equal(5, node.Assignments[0].EffectiveSliderMax);
+
+        // 등록하면 왕복한다.
+        editor.SetAssignments(
+            node.Id,
+            [new VariableAssignment { Variable = "favor", Value = "0", SliderMin = 0, SliderMax = 100 }]);
+        StoryFile reloaded = StoryFileJson.Read(StoryFileJson.Write(editor.Project.Files[0]));
+        VariableAssignment readBack = ((SetNode)reloaded.Nodes[0]).Assignments[0];
+        Assert.Equal(0, readBack.SliderMin);
+        Assert.Equal(100, readBack.SliderMax);
+        Assert.Equal(0, readBack.EffectiveSliderMin);
+        Assert.Equal(100, readBack.EffectiveSliderMax);
+    }
+
+    [Fact]
+    public void set_출력은_슬라이더_도입과_무관하게_그대로다()
+    {
+        // X6 수용 — 값 문자열이 그대로 저장되므로 <<set>> 출력은 바이트 단위 불변.
+        // 여기서는 저장 계층을 못박고, 이미터 바이트는 골든(Story_golden_ep)이 지킨다.
+        (ProjectEditor editor, SetNode node) = BuildEditor();
+        editor.SetAssignments(
+            node.Id,
+            [new VariableAssignment { Variable = "favor", Value = "0", SliderMin = -10, SliderMax = 10 }]);
+
+        var file = editor.Project.Files[0];
+        StoryFile reloaded = StoryFileJson.Read(StoryFileJson.Write(file));
+
+        Assert.Equal("0", ((SetNode)reloaded.Nodes[0]).Assignments[0].Value);
+    }
+
+    [Fact]
     public void 타입만_바뀌어도_편집으로_인식된다()
     {
         (ProjectEditor editor, SetNode node) = BuildEditor();

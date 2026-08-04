@@ -1203,7 +1203,9 @@ public sealed partial class ProjectEditor
             sameValues =
                 string.Equals(current.Variable, replacement.Variable, StringComparison.Ordinal) &&
                 string.Equals(current.Value, replacement.Value, StringComparison.Ordinal) &&
-                string.Equals(current.Type, replacement.Type, StringComparison.Ordinal);
+                string.Equals(current.Type, replacement.Type, StringComparison.Ordinal) &&
+                Nullable.Equals(current.SliderMin, replacement.SliderMin) &&
+                Nullable.Equals(current.SliderMax, replacement.SliderMax);
         }
 
         if (sameValues)
