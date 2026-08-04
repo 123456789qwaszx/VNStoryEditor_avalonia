@@ -317,13 +317,17 @@ public sealed class PreviewAssetLibrary
             }
         }
 
+        // 고아 = 규약 경로로도 해석되지 않고 매니페스트에도 없는 파일 (W-asset-02 §3.2).
+        // 규약 위치의 파일은 고아가 아니라 정상 등록이다.
         foreach (string file in allFiles)
         {
             if (!registeredFiles.Contains(file))
             {
                 string orphan = Path.GetRelativePath(root, file).Replace('\\', '/');
                 orphans.Add(orphan);
-                problems.Add($"매니페스트에 없는 초상화 파일(고아): {orphan}");
+                problems.Add(
+                    $"어디에도 속하지 않는 초상화 파일(고아): {orphan} — " +
+                    "규약 경로(캐릭터/변형/표정.png)도 아니고 매니페스트에도 없습니다.");
             }
         }
 

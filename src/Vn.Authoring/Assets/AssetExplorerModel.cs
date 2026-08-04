@@ -175,7 +175,7 @@ public static class AssetExplorerModel
                 AssetExplorerItemKind.Orphan,
                 orphan,
                 FilePath: null,
-                "매니페스트에 없는 파일",
+                "규약 경로도 매니페스트도 아닌 파일",
                 Array.Empty<AssetExplorerItem>()));
         }
 

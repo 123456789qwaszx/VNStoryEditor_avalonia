@@ -114,6 +114,43 @@ public class AssetConventionTests
     }
 
     [Fact]
+    public void 고아는_규약도_매니페스트도_아닌_파일뿐이다()
+    {
+        // §3.2 — 규약 위치의 파일(bandi/a/07.png)은 고아가 아니라 정상 등록이다.
+        PreviewAssetLibrary library = LoadFixtureLibrary();
+
+        Assert.DoesNotContain("bandi/a/07.png", library.OrphanPortraitFiles);
+        Assert.DoesNotContain(
+            library.Problems,
+            problem => problem.Contains("bandi", StringComparison.Ordinal));
+
+        // 2세그먼트 자유 경로 + 매니페스트 미참조(willo/stray.png)는 여전히 고아다.
+        Assert.Contains("willo/stray.png", library.OrphanPortraitFiles);
+    }
+
+    [Fact]
+    public void 세_구획이_아닌_경로는_규약이_아니다()
+    {
+        string root = TempPortraitsRoot();
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "mina", "a", "extra"));
+            File.WriteAllBytes(Path.Combine(root, "mina", "a", "extra", "01.png"), [1]); // 4구획
+            File.WriteAllBytes(Path.Combine(root, "loose.png"), [1]); // 1구획
+
+            PreviewAssetLibrary library = PreviewAssetLibrary.Load(null, root);
+
+            Assert.Equal(["loose.png", "mina/a/extra/01.png"], library.OrphanPortraitFiles.Order());
+            Assert.Empty(library.PortraitEntries);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void 규약_경로도_해석의_정규화를_지난다()
     {
         // a/7.png 로 넣어도 요청 "7"(→"07")과 같은 키가 된다 — 해석기와 같은 규칙 하나.
