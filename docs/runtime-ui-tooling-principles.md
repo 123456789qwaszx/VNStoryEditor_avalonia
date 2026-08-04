@@ -190,15 +190,17 @@ UI 스프라이트 교체는 두 경로가 있어야 한다.
 
 ### 3.5 에셋 파이프라인은 두 종류다
 
-| 종류 | 예 | 툴이 필요한 것 |
-|---|---|---|
-| **문자열 규약형** | 배경 — `Resources.Load<Sprite>($"Backgrounds/{key}")` | **매니페스트 불필요.** 파일만 복사하면 이름으로 찾는다 |
-| **키 매핑형** | 초상화 — `(characterId, variantSuffix, emotionKey)` → Sprite | 매핑 덤프 필요 |
+아래 표는 **런타임의 저장 방식**을 서술한 것이다 — 툴에게 무엇이 필요한지가 아니다.
+(과거 이 표를 "초상화 = 매핑 덤프 필요"로 읽은 오독이 있었다. 반복하지 말 것.)
 
-초상화 쪽은 이미 준비돼 있다. `PortraitGeneratedDbSo.Entry`가
-`characterId` / `variantKey` / `emotionKey` / `assetPath`를 들고 있다.
-`assetPath`는 "디버깅용"이라 적혀 있지만 **내보내기가 요구하는 바로 그 값**이다.
-내보내기 작업이 이 SO를 JSON으로 덤프하는 것으로 끝난다.
+| 종류 | 예 | 런타임의 저장 방식 |
+|---|---|---|
+| **문자열 규약형** | 배경 — `Resources.Load<Sprite>($"Backgrounds/{key}")` | 파일명 = 키. 매니페스트 없음 |
+| **키 매핑형** | 초상화 — `(characterId, variantSuffix, emotionKey)` → Sprite | `PortraitGeneratedDbSo`(DBSO)가 키→에셋을 매핑 |
+
+**런타임과 툴이 공유하는 것은 키 공간(`PortraitKey(char, variant, emotion)`)이지
+저장 방식이 아니다.** 런타임은 DBSO에, 툴은 폴더 규약(`{char}/{variant}/{emotion}.png`)에
+담는다. 매핑 덤프는 필요 없으며, 덤프는 규약 경로로 직접 출력한다(W-asset-02 §6 확정).
 
 무대 위 캐릭터와 대사창 얼굴이 **같은 스프라이트**를 쓴다
 (`fade_in`의 타겟이 `CharacterPortraitSprite_Root`). DB 하나가 양쪽을 덮는다.
