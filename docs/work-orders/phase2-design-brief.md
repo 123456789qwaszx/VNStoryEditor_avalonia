@@ -379,7 +379,12 @@ U13-a(asmdef) 완료. `Assets/Ked.Presentation.Core/`가 생겼고 첫 산출물
 파서가 아니다(`["duration"] = ["0fr","4fr",…]`). 즉 이 셋은 **코어가 VnTool에 처음으로 주는 실물**이고,
 동시에 VnTool이 지금 `-3u`를 못 그리는 이유이기도 하다 — 해석기가 없어서다.
 
-#### ⚠ D-core-1. `1u`는 절대 40px인가, 기준 폭의 1/48인가 — **U13-b 전에 답할 것**
+#### ✅ D-core-1. `1u`는 **기준 폭 ÷ 48**이다 (확정 2026-08-05, 소유자)
+
+**답: (나).** `1u`는 절대 40px이 아니라 **가로 해상도에 정확히 대응하는 단위**다.
+따라서 `UnitToken.UnitPixels`는 `const`가 아니라 **기준 폭에서 파생되는 값**이어야 하고,
+기준 폭은 U12-전체가 내보내는 `tuning` 데이터에서 온다(코어 계약 3).
+지금 코어가 파일 하나·상수 둘일 때 고치는 것이 가장 싸다 — 아래는 그 결정에 이른 경위다.
 
 ```csharp
 // 코어 UnitToken
@@ -402,9 +407,26 @@ public const float UnitPixels = ReferenceStageWidth / StageWidthDivisor; // 40px
 | (가) `1u` = 절대 40px | 기준 해상도와 무관 | `const` 유지로 가장 싸다. 다른 기준 해상도 게임에서 `-3u`가 화면 비율상 다른 크기가 된다 |
 | (나) `1u` = 기준 폭 ÷ 48 | 해상도에 비례 | `UnitPixels`가 `const`가 아니라 **`tuning` 인자**가 되어야 한다 |
 
-이름이 `ReferenceStageWidth`이고 식이 `1920/48`인 걸 보면 **(나)의 의도로 보이는데 구현은 (가)**다.
-**지금 잡아야 하는 이유**: U13-b에서 51개 커맨드가 이 상수를 참조하기 시작하면 되돌리기가 훨씬 비싸진다.
-지금은 파일 하나, 상수 둘이다.
+이름이 `ReferenceStageWidth`이고 식이 `1920/48`인 걸 보면 **(나)의 의도로 보이는데 구현은 (가)**였고,
+소유자가 (나)로 확정했다.
+
+#### ⚠ D-core-3. `RectTransform`은 단순 TRS가 아니다 — 리그 스키마가 담아야 할 것
+
+`CharacterPlacementTargetLedger`를 순수화하려면 `TransformPoint`/`InverseTransformPoint`를
+코어에서 계산할 수 있어야 하는데, 이건 **부모 사슬을 타고 올라가는 계산**이다(코드가 `current.parent`로
+그렇게 하고 있다). 즉 코어의 `StageState`는 슬롯 딕셔너리가 아니라 **노드 트리**여야 한다.
+
+그리고 `anchoredPosition`은 평범한 `localPosition`이 아니다 —
+**`anchorMin`/`anchorMax`/`pivot`/`sizeDelta`와 부모 rect 크기**가 실제 위치 계산에 들어간다.
+리그가 앵커를 고정으로 쓰는지 스트레치로 쓰는지에 따라 필요한 데이터가 달라진다.
+**U12-전체의 "리그 스키마 4종"이 이것을 담아야 한다** — 안 담기면 코어가 위치를 재현할 수 없다.
+
+#### 💡 부수 이득: "적용 → 측정 → 복원" 트릭이 사라진다
+
+`MeasureSettledWorldPoint`는 정착 상태를 알기 위해 **유니티를 잠깐 오염시켰다가 되돌린다.**
+상태 모델이 없어서 나온 우회로이고, `try/finally`가 없어 측정 중 예외가 나면 리그가 더럽게 남는다.
+코어가 트리 위에서 직접 계산하게 되면 이 트릭 자체가 필요 없어진다 —
+**이건 VnTool을 위한 일이 아니라 런타임 자신의 견고함**이다.
 
 #### D-core-2. 좌표 정밀도 — 코어는 `float`, VnTool은 `double`
 
