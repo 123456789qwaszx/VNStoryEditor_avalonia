@@ -145,6 +145,12 @@ public partial class DialogueNodeEditor : UserControl
                 _selectedLineId = flow.Lines.FirstOrDefault()?.Line.LineId;
             }
 
+            if (flow.Lines.Count > 0)
+            {
+                // 목록 위에 한 번만 나오는 얇은 열 헤더 — 카드에는 열 이름이 없다.
+                LineHost.Children.Add(BuildColumnHeader());
+            }
+
             // 선택 블록은 조건과 달리 들여쓰기·색이 아니라 블록 전체를 감싸는 박스로 보여 준다.
             // 옵션 라벨과 본문 카드가 같은 박스 안에 순서대로 쌓인다.
             StackPanel? choiceBox = null;
@@ -156,19 +162,19 @@ public partial class DialogueNodeEditor : UserControl
 
                 if (inChoice && (choiceBox is null || line.Branch!.ChainIndex != choiceChain))
                 {
-                    choiceBox = new StackPanel { Spacing = 6 };
+                    choiceBox = new StackPanel { Spacing = 3 };
                     choiceChain = line.Branch!.ChainIndex;
                     choiceBox.Children.Add(new TextBlock
                     {
                         Text = "선택지",
-                        FontSize = 11,
+                        FontSize = 10,
                         FontWeight = FontWeight.Bold,
                         Opacity = 0.75
                     });
 
                     LineHost.Children.Add(new Border
                     {
-                        Padding = new Thickness(10),
+                        Padding = new Thickness(6, 4),
                         CornerRadius = new CornerRadius(8),
                         BorderThickness = new Thickness(2),
                         BorderBrush = new SolidColorBrush(Color.FromArgb(150, 217, 119, 6)),
@@ -506,83 +512,119 @@ public partial class DialogueNodeEditor : UserControl
 
         // 가져오기로 만들었던 옛 프로젝트의 대본 없는 노드도 여기서 처음 쓸 수 있게 된다.
         string scriptId = node.ScriptId ?? _session.Editor.EnsureDialogueScript(node.Id).Id;
-        _session.Editor.InsertScriptLine(scriptId);
+
+        // 선택한 줄이 있으면 그 바로 아래에 끼워 넣는다. 없으면 맨 끝, 비어 있으면 첫 줄.
+        int? at = null;
+
+        if (_selectedLineId is not null && _session.Project.FindScript(scriptId) is { } document)
+        {
+            int index = document.Lines.FindIndex(line =>
+                string.Equals(line.Id, _selectedLineId, StringComparison.Ordinal));
+
+            if (index >= 0)
+            {
+                at = index + 1;
+            }
+        }
+
+        ScriptLine line = _session.Editor.InsertScriptLine(scriptId, at);
+
+        // 새 줄이 새 선택이다 — 프리뷰 기준도 함께 옮긴다.
+        SelectStageLine(line.Id);
     }
 
     // ── 카드 ────────────────────────────────────────────────────────────────
+    //
+    // 고밀도 개편: 평범한 대사는 딱 한 줄(34~42px)이다. 조건·선택·Set은 메인 행 위의
+    // 태그 레일, 출구는 아래의 출구 레일로만 나타난다 — 태그가 없으면 레일도 없다.
+    // 태그는 표시가 아니라 편집 진입점이다: 누르면 기존 편집 컨트롤이 Flyout으로 열린다.
+
+    /// <summary>헤더와 모든 카드가 공유하는 열 구성 — Index | LineId | Character | 대사 | ＋.</summary>
+    private const string RowColumns = "30,64,96,*,28";
+
+    /// <summary>목록 위에 한 번만 나오는 얇은 열 헤더.</summary>
+    private Control BuildColumnHeader()
+    {
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions(RowColumns),
+            // 카드 왼쪽의 선택 띠(3) + 여백(4) + 카드 안쪽 여백(6)만큼 맞춰 들어간다.
+            Margin = new Thickness(13, 0, 0, 2)
+        };
+
+        void Add(string text, int column)
+        {
+            var block = new TextBlock { Text = text, FontSize = 9, Opacity = 0.45 };
+            Grid.SetColumn(block, column);
+            header.Children.Add(block);
+        }
+
+        Add("#", 0);
+        Add("LineId", 1);
+        Add("화자", 2);
+        Add("대사", 3);
+        return header;
+    }
 
     private Control BuildCard(DialogueNode node, DialogueScript script, ResolvedLine resolved)
     {
         ConditionBranch? branch = resolved.Branch;
         int palette = branch?.PaletteIndex ?? -1;
+        bool isLabel = resolved.Line.Transition?.OpensOption == true;
 
-        var body = new StackPanel { Spacing = 6 };
+        var body = new StackPanel { Spacing = 1 };
 
-        body.Children.Add(BuildHeader(node, script, resolved));
-        body.Children.Add(BuildTextRow(script, resolved));
-        body.Children.Add(BuildSetRow(node, resolved));
+        if (BuildTagRail(node, resolved) is { } rail)
+        {
+            body.Children.Add(rail);
+        }
+
+        body.Children.Add(BuildMainRow(node, script, resolved));
 
         if (resolved.IsBranchExit && branch is not null)
         {
-            body.Children.Add(BuildExitBadge(branch));
+            body.Children.Add(BuildExitRail(node, branch));
+        }
+
+        if (isLabel)
+        {
+            // 라벨은 대사가 아니라 플레이어가 누르는 버튼이다 (X10) —
+            // 채워진 배경으로 분기 대사와 한눈에 갈린다.
+            return new Border
+            {
+                Padding = new Thickness(6, 3),
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(2),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(170, 217, 119, 6)),
+                Background = new SolidColorBrush(Color.FromArgb(45, 217, 119, 6)),
+                Child = body
+            };
         }
 
         if (branch is { IsChoice: true })
         {
-            bool isLabel = resolved.Line.Transition?.OpensOption == true;
-
-            if (isLabel)
-            {
-                // 라벨은 대사가 아니라 플레이어가 누르는 버튼이다 (X10).
-                // 버튼처럼 그린다 — 아이콘 + 채워진 배경 + 둥근 모서리. 대사 줄과 한눈에 갈린다.
-                var labelRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
-                var icon = new TextBlock
-                {
-                    Text = "▶",
-                    FontSize = 13,
-                    Foreground = new SolidColorBrush(Color.FromRgb(217, 119, 6)),
-                    Margin = new Thickness(2, 0, 8, 0),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                ToolTip.SetTip(icon, "선택지 버튼 텍스트 — 대사가 아닙니다.");
-                Grid.SetColumn(icon, 0);
-                Grid.SetColumn(body, 1);
-                labelRow.Children.Add(icon);
-                labelRow.Children.Add(body);
-
-                return new Border
-                {
-                    Padding = new Thickness(10, 8),
-                    CornerRadius = new CornerRadius(16),
-                    BorderThickness = new Thickness(2),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(170, 217, 119, 6)),
-                    Background = new SolidColorBrush(Color.FromArgb(45, 217, 119, 6)),
-                    Child = labelRow
-                };
-            }
-
             // 선택 후 분기 대사는 일반 대사 줄과 똑같이 생겼다(화자 편집 포함).
             // 라벨 아래로 들여쓰기만 되어 소속을 보여 준다.
             return new Border
             {
                 Margin = new Thickness(18, 0, 0, 0),
-                Padding = new Thickness(10, 8),
-                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(6, 3),
+                CornerRadius = new CornerRadius(4),
                 BorderThickness = new Thickness(1),
                 BorderBrush = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128)),
                 Child = body
             };
         }
 
-        var card = new Border
+        return new Border
         {
-            // 조건 안이면 오른쪽으로 한 단계 들어간다. 첫 버전의 깊이는 0 또는 1뿐이다.
-            Margin = new Thickness(resolved.Depth * 28, 0, 0, 0),
-            Padding = new Thickness(10, 8),
-            CornerRadius = new CornerRadius(6),
+            // 조건 안이면 오른쪽으로 한 단계 들어가고 그 조건 팔레트의 색을 쓴다.
+            Margin = new Thickness(resolved.Depth * 20, 0, 0, 0),
+            Padding = new Thickness(6, 3),
+            CornerRadius = new CornerRadius(4),
             BorderThickness = branch is null
                 ? new Thickness(1)
-                : new Thickness(4, 1, 1, 1),
+                : new Thickness(3, 1, 1, 1),
             BorderBrush = branch is null
                 ? new SolidColorBrush(Color.FromArgb(60, 128, 128, 128))
                 : BranchPalette.Accent(palette),
@@ -593,97 +635,447 @@ public partial class DialogueNodeEditor : UserControl
                     : BranchPalette.Background(palette),
             Child = body
         };
-
-        return card;
     }
 
-    private Control BuildHeader(DialogueNode node, DialogueScript script, ResolvedLine resolved)
+    /// <summary>Index | LineId | 화자 | 대사 | ＋ 의 메인 행. 높이는 한 줄로 고정이다.</summary>
+    private Control BuildMainRow(DialogueNode node, DialogueScript script, ResolvedLine resolved)
     {
-        var header = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto,Auto")
-        };
+        // 선택지 라벨은 화자가 없는 버튼 텍스트다 (X9) — 화자 칸에는 ▶만 놓는다.
+        bool isLabel = resolved.Line.Transition?.OpensOption == true;
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions(RowColumns) };
+        string revisionTip = $"{resolved.Line.LineId} · rev {resolved.Line.Revision}";
 
         var index = new TextBlock
         {
             Text = resolved.Index.ToString(),
-            FontSize = 11,
-            Opacity = 0.5,
-            MinWidth = 18,
+            FontSize = 10,
+            Opacity = 0.45,
             VerticalAlignment = VerticalAlignment.Center
         };
-
-        ToolTip.SetTip(index, $"{resolved.Line.LineId} · rev {resolved.Line.Revision}");
+        ToolTip.SetTip(index, revisionTip);
         Grid.SetColumn(index, 0);
-        header.Children.Add(index);
+        row.Children.Add(index);
 
-        // 지금 어느 갈래인지는 색이 아니라 글자로도 반드시 알 수 있어야 한다.
-        if (resolved.Branch is { } branch)
+        var lineId = new TextBlock
         {
-            string conditionLabel;
+            Text = resolved.Line.LineId,
+            FontSize = 9,
+            Opacity = 0.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        ToolTip.SetTip(lineId, revisionTip);
+        Grid.SetColumn(lineId, 1);
+        row.Children.Add(lineId);
 
-            if (branch.IsChoice)
+        // 긴 대사가 카드 높이를 늘리지 않는다 — 칸 안에서 가로로 흐른다.
+        var text = new TextBox
+        {
+            Text = resolved.Line.Text,
+            PlaceholderText = isLabel ? "선택지 라벨 (버튼 텍스트)" : "대사",
+            AcceptsReturn = false,
+            TextWrapping = TextWrapping.NoWrap,
+            FontSize = 12,
+            MinHeight = 26,
+            Padding = new Thickness(6, 3),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+
+        AutoCompleteBox? speaker = null;
+        string scriptId = script.ScriptId ?? string.Empty;
+
+        // 글자가 바뀔 때마다 대본에 넣되, 그것이 카드 목록을 다시 만들지는 않는다.
+        // 편집기가 내용 변경과 구조 변경을 구분해서 알리기 때문에 가능하다.
+        void Commit()
+        {
+            if (!_building && scriptId.Length > 0)
             {
-                conditionLabel = $"옵션 {branch.BranchIndexInChain + 1}";
+                _session!.Editor.SetScriptLineText(
+                    scriptId,
+                    resolved.Line.LineId,
+                    speaker?.Text ?? resolved.Line.Speaker,
+                    text.Text ?? string.Empty,
+                    script.Locale);
             }
-            else
-            {
-                AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
-                    _session!.Project,
-                    node.Id,
-                    _session.Definition);
-                AvailableCondition? condition = available.Find(branch.ConditionId);
-                AvailableCondition? known = condition ?? AvailableConditionResolver.FindKnown(
-                    _session.Project,
-                    _session.Definition,
-                    branch.ConditionId);
-                conditionLabel = condition is not null
-                    ? condition.DisplayName
-                    : known is not null
-                        ? AvailableConditionResolver.UnavailableLabel(known, branch.ConditionId)
-                        : "알 수 없는 조건";
-            }
-
-            var label = new Border
-            {
-                Margin = new Thickness(6, 0, 0, 0),
-                Padding = new Thickness(6, 1),
-                CornerRadius = new CornerRadius(3),
-                Background = BranchPalette.Accent(branch.PaletteIndex),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = conditionLabel,
-                    FontSize = 10,
-                    FontWeight = FontWeight.Bold,
-                    Foreground = Brushes.White
-                }
-            };
-
-            Grid.SetColumn(label, 1);
-            header.Children.Add(label);
         }
 
-        ComboBox conditionBox = BuildConditionBox(node, resolved);
-        Grid.SetColumn(conditionBox, 2);
-        header.Children.Add(conditionBox);
+        if (isLabel)
+        {
+            var icon = new TextBlock
+            {
+                Text = "▶",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Color.FromRgb(217, 119, 6)),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            ToolTip.SetTip(icon, "선택지 버튼 텍스트 — 대사가 아닙니다.");
+            Grid.SetColumn(icon, 2);
+            row.Children.Add(icon);
+        }
+        else
+        {
+            // 화자는 등록 목록(game.definition speakers)의 드롭다운 + 자유 입력 겸용이다 (X5).
+            speaker = new AutoCompleteBox
+            {
+                Text = resolved.Line.Speaker,
+                PlaceholderText = "화자",
+                FontSize = 11,
+                MinHeight = 26,
+                Margin = new Thickness(4, 0, 0, 0),
+                ItemsSource = _session!.Definition.Speakers
+                    .Select(item => item.Name)
+                    .Where(item => item.Length > 0)
+                    .ToList(),
+                FilterMode = AutoCompleteFilterMode.Contains,
+                MinimumPrefixLength = 0
+            };
+            speaker.TextChanged += (_, _) => Commit();
+            Grid.SetColumn(speaker, 2);
+            row.Children.Add(speaker);
+        }
 
+        text.TextChanged += (_, _) => Commit();
+        Grid.SetColumn(text, 3);
+        row.Children.Add(text);
+
+        Button plus = BuildPlusButton(node, script, resolved);
+        Grid.SetColumn(plus, 4);
+        row.Children.Add(plus);
+
+        return row;
+    }
+
+    // ── 태그 레일 ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 조건 전환·Set이 있는 줄에만 만드는 메타데이터 레일. 태그가 없으면 null —
+    /// 그 줄은 추가 높이를 전혀 갖지 않는다.
+    /// </summary>
+    private Control? BuildTagRail(DialogueNode node, ResolvedLine resolved)
+    {
+        var rail = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(94, 0, 0, 1)
+        };
+
+        if (resolved.Line.Transition is not null)
+        {
+            rail.Children.Add(BuildTransitionTag(node, resolved));
+        }
+
+        IReadOnlyList<SetOperation> sets = resolved.Line.Sets;
+
+        if (sets.Count > 0)
+        {
+            IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
+
+            for (int operationIndex = 0; operationIndex < sets.Count; operationIndex++)
+            {
+                rail.Children.Add(BuildSetTag(
+                    node, resolved.Line.LineId, registered, operationIndex, sets[operationIndex]));
+            }
+        }
+
+        return rail.Children.Count > 0 ? rail : null;
+    }
+
+    private static Button TagButton(string text, IBrush background)
+    {
+        return new Button
+        {
+            Content = new TextBlock
+            {
+                Text = text,
+                FontSize = 9,
+                FontWeight = FontWeight.Bold,
+                Foreground = Brushes.White
+            },
+            Background = background,
+            Padding = new Thickness(6, 1),
+            CornerRadius = new CornerRadius(3),
+            MinHeight = 0,
+            Margin = new Thickness(0, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+    }
+
+    private string ConditionLabelOf(DialogueNode node, string conditionId)
+    {
+        AvailableConditionCatalog available = AvailableConditionResolver.Resolve(
+            _session!.Project, node.Id, _session.Definition);
+        AvailableCondition? condition = available.Find(conditionId);
+        AvailableCondition? known = condition ?? AvailableConditionResolver.FindKnown(
+            _session.Project, _session.Definition, conditionId);
+
+        return condition is not null
+            ? condition.DisplayName
+            : known is not null
+                ? AvailableConditionResolver.UnavailableLabel(known, conditionId)
+                : "알 수 없는 조건";
+    }
+
+    /// <summary>이 줄의 전환 태그. 누르면 기존 조건 드롭다운이 Flyout으로 열린다.</summary>
+    private Control BuildTransitionTag(DialogueNode node, ResolvedLine resolved)
+    {
+        var neutral = new SolidColorBrush(Color.FromArgb(160, 107, 114, 128));
+        var amber = new SolidColorBrush(Color.FromArgb(220, 217, 119, 6));
+
+        (string label, IBrush background) = resolved.Line.Transition!.Kind switch
+        {
+            ConditionTransitionKind.BeginIf or ConditionTransitionKind.BeginElseIf =>
+                (ConditionLabelOf(node, resolved.Branch?.ConditionId ?? string.Empty),
+                    resolved.Branch is { } branch ? BranchPalette.Accent(branch.PaletteIndex) : neutral),
+            ConditionTransitionKind.BeginChoice or ConditionTransitionKind.BeginNextOption =>
+                ($"선택 {(resolved.Branch?.BranchIndexInChain ?? 0) + 1}", (IBrush)amber),
+            ConditionTransitionKind.EndChoice => ("선택지 끝", neutral),
+            _ => ("조건 종료", neutral)
+        };
+
+        Button tag = TagButton(label, background);
+        ToolTip.SetTip(tag, "누르면 이 줄의 조건·선택 전환을 고칩니다.");
+
+        tag.Click += (_, _) =>
+        {
+            var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "이 줄의 조건 / 선택 전환",
+                FontSize = 10,
+                Opacity = 0.6
+            });
+            panel.Children.Add(BuildConditionBox(node, resolved));
+            new Flyout { Content = panel }.ShowAt(tag);
+        };
+
+        return tag;
+    }
+
+    /// <summary>set 태그 하나. 누르면 기존 변수·연산자·값 편집 행이 Flyout으로 열린다.</summary>
+    private Control BuildSetTag(
+        DialogueNode node,
+        string lineId,
+        IReadOnlyList<VariableAssignment> registered,
+        int operationIndex,
+        SetOperation operation)
+    {
+        Button tag = TagButton(
+            $"set {operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}",
+            new SolidColorBrush(Color.FromArgb(200, 37, 99, 235)));
+        ToolTip.SetTip(tag, "누르면 이 <<set>>을 고치거나 지웁니다.");
+
+        tag.Click += (_, _) =>
+        {
+            var panel = new StackPanel { Spacing = 4, MinWidth = 300 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "이 줄에 도달했을 때 실행할 <<set>>",
+                FontSize = 10,
+                Opacity = 0.6
+            });
+            panel.Children.Add(BuildSetOperationRow(node, lineId, registered, operationIndex, operation));
+            new Flyout { Content = panel }.ShowAt(tag);
+        };
+
+        return tag;
+    }
+
+    // ── ＋ (메타데이터 추가) ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// 행 오른쪽의 ＋ — 줄 추가가 아니라 <b>이 줄에</b> 조건·선택지·Set·출구를 더하는
+    /// 버튼이다. 항목은 전부 기존 데이터 구조와 기존 편집 컨트롤을 그대로 쓴다.
+    /// </summary>
+    private Button BuildPlusButton(DialogueNode node, DialogueScript script, ResolvedLine resolved)
+    {
+        var plus = new Button
+        {
+            Content = "＋",
+            FontSize = 11,
+            Padding = new Thickness(5, 1),
+            MinHeight = 0,
+            Margin = new Thickness(2, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        ToolTip.SetTip(plus, "이 줄에 조건·선택지·Set·출구를 더하거나 고칩니다.");
+        plus.Click += (_, _) => OpenLineMetaFlyout(plus, node, script, resolved);
+        return plus;
+    }
+
+    private void OpenLineMetaFlyout(
+        Control anchor,
+        DialogueNode node,
+        DialogueScript script,
+        ResolvedLine resolved)
+    {
+        var panel = new StackPanel { Spacing = 4, MinWidth = 250 };
+
+        void Section(string title)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 10,
+                Opacity = 0.6,
+                Margin = new Thickness(0, panel.Children.Count == 0 ? 0 : 6, 0, 0)
+            });
+        }
+
+        // 조건 추가/변경·선택지 시작 — 무엇이 가능한지는 기존 ConditionChoices가 정한다.
+        Section("조건 / 선택지");
+        panel.Children.Add(BuildConditionBox(node, resolved));
+
+        Section("Set");
+        IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
+        var addSet = new Button { Content = "+ set", FontSize = 10, Padding = new Thickness(7, 2) };
+        ToolTip.SetTip(addSet, "이 줄에 도달했을 때 실행할 <<set>>을 더합니다.");
+
+        addSet.Click += (_, _) =>
+        {
+            if (_building)
+            {
+                return;
+            }
+
+            List<SetOperation> next = CurrentSets(node, resolved.Line.LineId);
+            next.Add(new SetOperation
+            {
+                Variable = registered.FirstOrDefault()?.Variable ?? string.Empty,
+                Operator = SetOperatorKind.Add,
+                Value = "1"
+            });
+            _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, next);
+        };
+
+        if (registered.Count == 0 && resolved.Line.Sets.Count == 0)
+        {
+            var setRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            setRow.Children.Add(addSet);
+            setRow.Children.Add(new TextBlock
+            {
+                Text = "설정노드를 연결하고 변수를 등록하면 드롭다운으로 고릅니다.",
+                FontSize = 10,
+                Opacity = 0.55,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            panel.Children.Add(setRow);
+        }
+        else
+        {
+            panel.Children.Add(addSet);
+        }
+
+        // 출구는 선택·조건 갈래의 마지막 줄에서만 매달 수 있다.
+        if (resolved.Branch is { } branch && resolved.Index == branch.LastLineIndex)
+        {
+            Section("출구 (이 갈래 끝에서 점프)");
+            panel.Children.Add(BuildExitEditor(node, branch));
+        }
+
+        // ▲▼✕ 행 버튼이 사라진 자리의 대체 진입점 — 행에서는 치웠지만 기능은 남긴다.
+        Section("줄");
         string scriptId = script.ScriptId ?? string.Empty;
         string lineId = resolved.Line.LineId;
-
-        Button up = SmallButton("▲", () => _session!.Editor.MoveScriptLine(scriptId, lineId, -1));
-        Button down = SmallButton("▼", () => _session!.Editor.MoveScriptLine(scriptId, lineId, 1));
-        Button remove = SmallButton("✕", () => _session!.Editor.RetireScriptLine(scriptId, lineId));
+        var lineRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        lineRow.Children.Add(SmallButton("▲ 위로", () => _session!.Editor.MoveScriptLine(scriptId, lineId, -1)));
+        lineRow.Children.Add(SmallButton("▼ 아래로", () => _session!.Editor.MoveScriptLine(scriptId, lineId, 1)));
+        Button remove = SmallButton("✕ 삭제", () => _session!.Editor.RetireScriptLine(scriptId, lineId));
         ToolTip.SetTip(remove, "대본에서 이 줄을 뺍니다. LineId는 은퇴 상태로 남습니다.");
+        lineRow.Children.Add(remove);
+        panel.Children.Add(lineRow);
 
-        Grid.SetColumn(up, 3);
-        Grid.SetColumn(down, 4);
-        Grid.SetColumn(remove, 5);
-        header.Children.Add(up);
-        header.Children.Add(down);
-        header.Children.Add(remove);
+        new Flyout { Content = panel }.ShowAt(anchor);
+    }
 
-        return header;
+    // ── 출구 레일 ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 갈래 출구가 있는 줄 아래의 출구 레일. 표시만 하면 기능이 퇴보한다 —
+    /// 누르면 출구 편집이 열린다.
+    /// </summary>
+    private Control BuildExitRail(DialogueNode node, ConditionBranch branch)
+    {
+        StoryNode? target = _session!.Project.FindNode(branch.ExitTargetNodeId);
+
+        var button = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = $"→ 분기 이후: {target?.Name ?? "(사라진 노드)"}",
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = BranchPalette.Accent(branch.PaletteIndex)
+            },
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(2, 0),
+            MinHeight = 0,
+            Margin = new Thickness(92, 0, 0, 0)
+        };
+        ToolTip.SetTip(button, "누르면 이 갈래의 출구를 고칩니다.");
+
+        button.Click += (_, _) =>
+        {
+            var panel = new StackPanel { Spacing = 4, MinWidth = 240 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "출구 (이 갈래 끝에서 점프)",
+                FontSize = 10,
+                Opacity = 0.6
+            });
+            panel.Children.Add(BuildExitEditor(node, branch));
+            new Flyout { Content = panel }.ShowAt(button);
+        };
+
+        return button;
+    }
+
+    /// <summary>갈래 출구 편집 — 그래프의 분기 간선과 같은 SetExitTarget 하나를 부른다.</summary>
+    private Control BuildExitEditor(DialogueNode node, ConditionBranch branch)
+    {
+        List<StoryNode> targets = _session!.Project.EnumerateNodes()
+            .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
+            .Where(other => other is not PresentationNode)
+            .ToList();
+
+        var combo = new ComboBox
+        {
+            ItemsSource = targets.Select(candidate => candidate.Name).ToList(),
+            SelectedIndex = targets.FindIndex(candidate =>
+                string.Equals(candidate.Id, branch.ExitTargetNodeId, StringComparison.Ordinal)),
+            FontSize = 11,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            PlaceholderText = "대상 노드"
+        };
+
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (!_building && combo.SelectedIndex >= 0 && combo.SelectedIndex < targets.Count)
+            {
+                _session.Editor.SetExitTarget(
+                    node.Id, ExitPortKind.Branch, branch.OpenLineId, targets[combo.SelectedIndex].Id);
+            }
+        };
+
+        var clear = new Button
+        {
+            Content = "해제",
+            FontSize = 10,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        clear.Click += (_, _) =>
+            _session!.Editor.SetExitTarget(node.Id, ExitPortKind.Branch, branch.OpenLineId, null);
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(combo, 0);
+        Grid.SetColumn(clear, 1);
+        row.Children.Add(combo);
+        row.Children.Add(clear);
+        return row;
     }
 
     /// <summary>
@@ -731,10 +1123,6 @@ public partial class DialogueNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 이 줄의 변수 변경. 한 줄에 하나씩 <c>변수 += 값</c> 형태로 적는다 (=, +=, -=).
-    /// 발행하면 결과에 얼어붙고, 이미터가 Story의 <c>&lt;&lt;set&gt;&gt;</c>으로 낸다.
-    /// </summary>
-    /// <summary>
     /// 이 대사 노드가 쓸 수 있는 변수 — 연결된 설정노드(Settings link)의 등록 목록이다.
     /// 조건 드롭다운과 같은 해석기(<see cref="ConnectedSetNodeResolver"/>)를 지난다.
     /// </summary>
@@ -760,61 +1148,8 @@ public partial class DialogueNodeEditor : UserControl
     /// 슬라이더 범위는 설정노드의 변수별 등록(기본 -5~+5)이고 편의일 뿐이라
     /// 옆의 직접 입력으로 범위 밖 값도 넣을 수 있다. 저장되는 것은 값 문자열
     /// 그대로이므로 <c>&lt;&lt;set&gt;&gt;</c> 출력은 바이트 단위로 불변이다.
+    /// 고밀도 개편 후에는 태그 Flyout 안에서 열린다.
     /// </summary>
-    private Control BuildSetRow(DialogueNode node, ResolvedLine resolved)
-    {
-        var host = new StackPanel { Spacing = 3 };
-        IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
-        IReadOnlyList<SetOperation> sets = resolved.Line.Sets;
-
-        for (int index = 0; index < sets.Count; index++)
-        {
-            host.Children.Add(BuildSetOperationRow(node, resolved.Line.LineId, registered, index, sets[index]));
-        }
-
-        var add = new Button { Content = "+ set", FontSize = 10, Padding = new Thickness(7, 2) };
-        ToolTip.SetTip(add, "이 줄에 도달했을 때 실행할 <<set>>을 더합니다.");
-
-        add.Click += (_, _) =>
-        {
-            if (_building)
-            {
-                return;
-            }
-
-            List<SetOperation> next = CurrentSets(node, resolved.Line.LineId);
-            next.Add(new SetOperation
-            {
-                Variable = registered.FirstOrDefault()?.Variable ?? string.Empty,
-                Operator = SetOperatorKind.Add,
-                Value = "1"
-            });
-            _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, next);
-        };
-
-        if (sets.Count == 0 && registered.Count == 0)
-        {
-            var hint = new TextBlock
-            {
-                Text = "설정노드를 연결하고 변수를 등록하면 여기서 드롭다운으로 고릅니다.",
-                FontSize = 10,
-                Opacity = 0.55,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0)
-            };
-            var addRow = new StackPanel { Orientation = Orientation.Horizontal };
-            addRow.Children.Add(add);
-            addRow.Children.Add(hint);
-            host.Children.Add(addRow);
-        }
-        else
-        {
-            host.Children.Add(add);
-        }
-
-        return host;
-    }
-
     private Control BuildSetOperationRow(
         DialogueNode node,
         string lineId,
@@ -1066,109 +1401,6 @@ public partial class DialogueNodeEditor : UserControl
 
     private static string FormatNumber(double value) =>
         value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-
-    private Control BuildTextRow(DialogueScript script, ResolvedLine resolved)
-    {
-        // 선택지 라벨은 화자가 없는 버튼 텍스트다 (X9). Speaker 입력 자체를 두지 않는다 —
-        // 출력(`-> 라벨`)도 화자를 쓰지 않으므로 여기서 요구할 이유가 없다.
-        bool isOptionLabel = resolved.Line.Transition?.OpensOption == true;
-
-        var row = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions(isOptionLabel ? "*" : "110,*")
-        };
-
-        AutoCompleteBox? speaker = null;
-
-        var text = new TextBox
-        {
-            Text = resolved.Line.Text,
-            PlaceholderText = isOptionLabel ? "선택지 라벨 (버튼 텍스트)" : "대사",
-            AcceptsReturn = false,
-            TextWrapping = TextWrapping.Wrap
-        };
-
-        string scriptId = script.ScriptId ?? string.Empty;
-
-        // 글자가 바뀔 때마다 대본에 넣되, 그것이 카드 목록을 다시 만들지는 않는다.
-        // 편집기가 내용 변경과 구조 변경을 구분해서 알리기 때문에 가능하다.
-        void Commit()
-        {
-            if (!_building && scriptId.Length > 0)
-            {
-                _session!.Editor.SetScriptLineText(
-                    scriptId,
-                    resolved.Line.LineId,
-                    speaker?.Text ?? resolved.Line.Speaker,
-                    text.Text ?? string.Empty,
-                    script.Locale);
-            }
-        }
-
-        if (isOptionLabel)
-        {
-            Grid.SetColumn(text, 0);
-            row.Children.Add(text);
-        }
-        else
-        {
-            // 화자는 등록 목록(game.definition speakers)의 드롭다운 + 자유 입력 겸용이다 (X5).
-            // 미등록 화자도 오류가 아니다 — 이름만 표시되는 기존 정책 그대로.
-            speaker = new AutoCompleteBox
-            {
-                Text = resolved.Line.Speaker,
-                PlaceholderText = "화자",
-                FontSize = 12,
-                ItemsSource = _session!.Definition.Speakers
-                    .Select(item => item.Name)
-                    .Where(item => item.Length > 0)
-                    .ToList(),
-                FilterMode = AutoCompleteFilterMode.Contains,
-                MinimumPrefixLength = 0
-            };
-            speaker.TextChanged += (_, _) => Commit();
-            text.Margin = new Thickness(6, 0, 0, 0);
-
-            Grid.SetColumn(speaker, 0);
-            Grid.SetColumn(text, 1);
-            row.Children.Add(speaker);
-            row.Children.Add(text);
-        }
-
-        text.TextChanged += (_, _) => Commit();
-
-        return row;
-    }
-
-    /// <summary>
-    /// 조건 출구 카드에 붙는 줄. 어느 조건에서 어디로 가는지 글자로 보여 준다.
-    /// 색만으로는 "출구"라는 사실을 전달하지 않는다.
-    /// </summary>
-    private Control BuildExitBadge(ConditionBranch branch)
-    {
-        StoryNode? target = _session!.Project.FindNode(branch.ExitTargetNodeId);
-
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "⇥",
-                    FontWeight = FontWeight.Bold,
-                    Foreground = BranchPalette.Accent(branch.PaletteIndex)
-                },
-                new TextBlock
-                {
-                    Text = $"분기 이동 → {target?.Name ?? "(사라진 노드)"}",
-                    FontSize = 11,
-                    FontWeight = FontWeight.SemiBold
-                }
-            }
-        };
-    }
 
     /// <summary>
     /// 대본에서 사라진 줄에 남은 조건 데이터. 자동으로 지우지 않으므로 눈에 보여야 한다.

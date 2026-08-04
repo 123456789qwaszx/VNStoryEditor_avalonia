@@ -41,7 +41,7 @@
             <TabItem Header="대사 편집">
                 <Grid RowDefinitions="*,Auto">
                     <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel x:Name="LineHost" Margin="12" Spacing="6" />
+                        <StackPanel x:Name="LineHost" Margin="12" Spacing="3" />
                     </ScrollViewer>
 
                     <Border Grid.Row="1"
