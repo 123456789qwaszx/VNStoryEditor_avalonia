@@ -92,7 +92,10 @@ internal static class StageIndicators
 
         if (includeRootHint && (!library.BackgroundsConfigured || !library.PortraitsConfigured))
         {
-            AddNotice(noticeHost, "에셋 루트가 없어 플레이스홀더로 표시합니다. 폴더 버튼으로 설정하세요.", warning: false);
+            AddNotice(
+                noticeHost,
+                "에셋 루트가 없어 플레이스홀더로 표시합니다. 좌측 에셋 탐색기의 [폴더…]에서 설정하세요.",
+                warning: false);
         }
 
         foreach (string problem in library.Problems)

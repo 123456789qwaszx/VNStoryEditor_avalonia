@@ -45,6 +45,7 @@ public partial class MiniStagePreview : UserControl
     private MiniStagePreviewRequest? _current;
     private readonly StageSceneView _scene = new();
     private StagePreviewWindow? _window;
+    private PreviewAssetLibrary? _renderedLibrary;
 
     /// <summary>분리 창의 이전/다음 버튼. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
     internal event Action<int>? LineMoveRequested;
@@ -59,22 +60,22 @@ public partial class MiniStagePreview : UserControl
         SceneHost.Content = _scene;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
 
-        RefreshButton.Click += (_, _) => UiGuard.Run(_session, "에셋 새로 고침", () =>
-        {
-            _session?.RefreshAssets();
-            Render();
-        });
         OpenWindowButton.Click += (_, _) => UiGuard.Run(_session, "프리뷰 창 열기", OpenWindow);
-        BackgroundsRootButton.Click += async (_, _) =>
-            await UiGuard.RunAsync(_session, "에셋 폴더 지정", () => PickAssetRoot(backgrounds: true));
-        PortraitsRootButton.Click += async (_, _) =>
-            await UiGuard.RunAsync(_session, "에셋 폴더 지정", () => PickAssetRoot(backgrounds: false));
     }
 
     internal void Attach(AuthoringSession session)
     {
         _session = session;
         _scene.Attach(session);
+
+        // 에셋 루트가 바뀌면(탐색기에서 지정·새로 고침·되돌리기) 같은 요청을 새 에셋으로 다시 그린다.
+        session.Changed += (_, _) =>
+        {
+            if (_current is not null && !ReferenceEquals(_renderedLibrary, session.AssetLibrary))
+            {
+                Render();
+            }
+        };
     }
 
     /// <summary>null이면 보여 줄 라인이 없는 상태다(노드 미선택 등).</summary>
@@ -88,6 +89,7 @@ public partial class MiniStagePreview : UserControl
     {
         MiniStagePreviewRequest? request = _current;
         PreviewAssetLibrary library = _session?.AssetLibrary ?? PreviewAssetLibrary.Empty;
+        _renderedLibrary = library;
 
         ContextText.Text = request?.ContextLabel ?? string.Empty;
         _scene.Render(request);
@@ -140,11 +142,4 @@ public partial class MiniStagePreview : UserControl
         _window?.Push(_current);
     }
 
-    private async Task PickAssetRoot(bool backgrounds)
-    {
-        if (_session is not null && await AssetRootPicker.PickAsync(this, _session, backgrounds))
-        {
-            Render();
-        }
-    }
 }

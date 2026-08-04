@@ -33,6 +33,8 @@ public partial class AssetExplorerView : UserControl
             _session?.RefreshAssets();
             Rebuild();
         });
+        // 에셋 루트 변경의 상시 진입점 (X8 — 프리뷰 위 버튼을 걷어낸 자리).
+        RootsButton.Click += (_, _) => UiGuard.Run(_session, "에셋 폴더 설정", ShowRootsFlyout);
         CollapseToggle.IsCheckedChanged += (_, _) =>
         {
             TreeScroll.IsVisible = CollapseToggle.IsChecked == true;
@@ -108,6 +110,37 @@ public partial class AssetExplorerView : UserControl
         {
             AddItems(tree.PortraitItems, depth: 0, parentPath: "pt");
         }
+    }
+
+    /// <summary>현재 루트 경로를 보여 주고 바꿀 수 있는 팝오버 — 지정은 언제나 여기서 가능하다.</summary>
+    private void ShowRootsFlyout()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"배경: {_session.Project.AssetRoots.BackgroundsPath ?? "(미설정)"}",
+            FontSize = 10,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap
+        });
+        panel.Children.Add(ConfigureRow("배경 폴더 지정…", backgrounds: true));
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"초상화: {_session.Project.AssetRoots.PortraitsPath ?? "(미설정)"}",
+            FontSize = 10,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 6, 0, 0)
+        });
+        panel.Children.Add(ConfigureRow("초상화 폴더 지정…", backgrounds: false));
+
+        new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(RootsButton);
     }
 
     /// <summary>빈 상태는 기능 잠금이 아니라 안내다 — 다음 할 일과 이동 버튼을 준다.</summary>
