@@ -793,21 +793,21 @@ public partial class DialogueNodeEditor : UserControl
 
     private Control BuildTextRow(DialogueScript script, ResolvedLine resolved)
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("110,*") };
+        // 선택지 라벨은 화자가 없는 버튼 텍스트다 (X9). Speaker 입력 자체를 두지 않는다 —
+        // 출력(`-> 라벨`)도 화자를 쓰지 않으므로 여기서 요구할 이유가 없다.
+        bool isOptionLabel = resolved.Line.Transition?.OpensOption == true;
 
-        var speaker = new TextBox
+        var row = new Grid
         {
-            Text = resolved.Line.Speaker,
-            PlaceholderText = "화자",
-            FontWeight = FontWeight.SemiBold,
-            FontSize = 12
+            ColumnDefinitions = new ColumnDefinitions(isOptionLabel ? "*" : "110,*")
         };
+
+        TextBox? speaker = null;
 
         var text = new TextBox
         {
             Text = resolved.Line.Text,
-            PlaceholderText = "대사",
-            Margin = new Thickness(6, 0, 0, 0),
+            PlaceholderText = isOptionLabel ? "선택지 라벨 (버튼 텍스트)" : "대사",
             AcceptsReturn = false,
             TextWrapping = TextWrapping.Wrap
         };
@@ -823,19 +823,36 @@ public partial class DialogueNodeEditor : UserControl
                 _session!.Editor.SetScriptLineText(
                     scriptId,
                     resolved.Line.LineId,
-                    speaker.Text ?? string.Empty,
+                    speaker?.Text ?? resolved.Line.Speaker,
                     text.Text ?? string.Empty,
                     script.Locale);
             }
         }
 
-        speaker.TextChanged += (_, _) => Commit();
-        text.TextChanged += (_, _) => Commit();
+        if (isOptionLabel)
+        {
+            Grid.SetColumn(text, 0);
+            row.Children.Add(text);
+        }
+        else
+        {
+            speaker = new TextBox
+            {
+                Text = resolved.Line.Speaker,
+                PlaceholderText = "화자",
+                FontWeight = FontWeight.SemiBold,
+                FontSize = 12
+            };
+            speaker.TextChanged += (_, _) => Commit();
+            text.Margin = new Thickness(6, 0, 0, 0);
 
-        Grid.SetColumn(speaker, 0);
-        Grid.SetColumn(text, 1);
-        row.Children.Add(speaker);
-        row.Children.Add(text);
+            Grid.SetColumn(speaker, 0);
+            Grid.SetColumn(text, 1);
+            row.Children.Add(speaker);
+            row.Children.Add(text);
+        }
+
+        text.TextChanged += (_, _) => Commit();
 
         return row;
     }
