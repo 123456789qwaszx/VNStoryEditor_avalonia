@@ -123,6 +123,10 @@ U13-a (asmdef 경계)  ∥  U12-전체 (스키마·프리셋 덤프)  →  U13-b
 `docs/ked-presentation-runtime/runtime-work-orders.md`(U1–U17), 세션 프롬프트는
 **Phase 2 계열은 [`phase2-runtime-orders.md`](../ked-presentation-runtime/phase2-runtime-orders.md)**,
 그 밖은 `runtime-parallel-orders.md`.
+🚩 **새 런타임 세션을 열 때는 [`runtime-session-onboarding.md`](../ked-presentation-runtime/runtime-session-onboarding.md)를
+먼저 붙여넣는다** — 왜 런타임부터 고치는지·이미 조사된 사실·확정 사항을 담은 브리핑이다.
+⚠ 지시 문서가 전부 **이 저장소**에 있으므로, 런타임 세션에 `java-start/docs/` 읽기 권한을 주거나
+문서를 복사해 주어야 한다.
 - **U12-v1**(초상화 덤프) — 2026-08-04 개정본(**규약 경로 직접 출력**)으로 지시할 것. 완료되면 VnTool 쪽은 픽스처→실덤프 교체 리허설만.
 - **U12-전체** — Phase 2a의 입력이다(DBSO 프리셋 일습·리그 스키마 4종·기준 해상도). U13-a와 병행 가능.
 - **U13-a** (신설, 조사 결과에 따라 U13에서 분할) — **asmdef 도입 + 순환 참조 해소, 로직 변경 0.**
