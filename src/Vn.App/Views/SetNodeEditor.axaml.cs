@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Platform.Storage;
 using Vn.App.Services;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
@@ -178,6 +179,14 @@ public partial class SetNodeEditor : UserControl
         name.LostFocus += (_, _) => Commit();
         characterId.LostFocus += (_, _) => Commit();
 
+        // 저작 중 "이 표정이 필요하다"의 진입점 — 표정을 정의하고, 없으면 이미지를 골라
+        // 규약 경로로 복제해 즉시 등록한다.
+        var expressions = new Button { Content = "표정…", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+        ToolTip.SetTip(expressions, "이 캐릭터의 표정을 확인하고, 없는 표정은 이미지를 골라 추가합니다.");
+        expressions.IsEnabled = !string.IsNullOrWhiteSpace(speaker.CharacterId);
+        expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
+            ShowExpressionsFlyout(expressions, speaker.CharacterId.Trim()));
+
         var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
 
         remove.Click += (_, _) => UiGuard.Run(_session, "화자 삭제", () =>
@@ -197,15 +206,220 @@ public partial class SetNodeEditor : UserControl
             }
         });
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto") };
         Grid.SetColumn(name, 0);
         Grid.SetColumn(characterId, 1);
-        Grid.SetColumn(remove, 2);
+        Grid.SetColumn(expressions, 2);
+        Grid.SetColumn(remove, 3);
         row.Children.Add(name);
         row.Children.Add(characterId);
+        row.Children.Add(expressions);
         row.Children.Add(remove);
 
         return row;
+    }
+
+    // ── 표정 정의 + 스프라이트 복제 ─────────────────────────────────────────
+    //
+    // 초상화 폴더는 참고용이 아니라 복제본을 모으는 자리다: 여기서 이미지를 고르면
+    // {root}/{char}/{variant}/{emotion}.png로 복제되고, 연결 권위가 폴더 규약이므로
+    // (W-asset-02) 복제된 순간 등록도 끝난다. 이미 있으면 그냥 쓴다.
+
+    private void ShowExpressionsFlyout(Control anchor, string characterId)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 6, MinWidth = 250, MaxWidth = 300 };
+        var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{characterId}의 표정",
+            FontSize = 11,
+            FontWeight = Avalonia.Media.FontWeight.SemiBold
+        });
+
+        // 지금 있는 표정 — 폴더 규약 스캔 결과 그대로.
+        Vn.Authoring.Assets.PortraitAssetEntry[] existing = _session.AssetLibrary.PortraitEntries
+            .Where(entry => string.Equals(entry.Key.CharacterId, characterId, StringComparison.Ordinal) &&
+                entry.FileExists)
+            .OrderBy(entry => entry.Key.VariantKey, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Key.EmotionKey, StringComparer.Ordinal)
+            .ToArray();
+
+        if (existing.Length > 0)
+        {
+            foreach (var variantGroup in existing.GroupBy(entry => entry.Key.VariantKey, StringComparer.Ordinal))
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"variant {variantGroup.Key}: " +
+                        string.Join(" ", variantGroup.Select(entry => entry.Key.EmotionKey)),
+                    FontSize = 10,
+                    Opacity = 0.7,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                });
+            }
+        }
+        else
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "아직 등록된 표정이 없습니다.",
+                FontSize = 10,
+                Opacity = 0.6
+            });
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "표정 추가 — 없는 번호를 적고 이미지를 고르면 규약 경로로 복제됩니다.",
+            FontSize = 10,
+            Opacity = 0.6,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        });
+
+        var variantBox = new TextBox
+        {
+            Text = Vn.Authoring.Assets.PortraitKey.DefaultVariantKey,
+            FontSize = 11,
+            MinHeight = 24,
+            Width = 60
+        };
+        ToolTip.SetTip(variantBox, "variant (a, b, c …)");
+
+        var emotionBox = new TextBox
+        {
+            Text = Vn.Authoring.Assets.PortraitSpriteImporter.NextFreeEmotionKey(
+                _session.AssetLibrary.PortraitKeys,
+                characterId,
+                Vn.Authoring.Assets.PortraitKey.DefaultVariantKey),
+            FontSize = 11,
+            MinHeight = 24,
+            Width = 60,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+        ToolTip.SetTip(emotionBox, "표정 번호 (01, 02 …) — 한 자리는 두 자리로 정규화됩니다.");
+
+        var inputRow = new StackPanel { Orientation = Orientation.Horizontal };
+        inputRow.Children.Add(new TextBlock
+        {
+            Text = "variant",
+            FontSize = 10,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0)
+        });
+        inputRow.Children.Add(variantBox);
+        inputRow.Children.Add(new TextBlock
+        {
+            Text = "표정",
+            FontSize = 10,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 4, 0)
+        });
+        inputRow.Children.Add(emotionBox);
+        panel.Children.Add(inputRow);
+
+        var statusText = new TextBlock
+        {
+            FontSize = 10,
+            Opacity = 0.75,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+        };
+        panel.Children.Add(statusText);
+
+        var pickButton = new Button { Content = "이미지 선택해 추가…", FontSize = 10, Padding = new Thickness(7, 2) };
+        panel.Children.Add(pickButton);
+
+        // variant를 바꾸면 다음 빈 번호도 그 variant 기준으로 따라온다.
+        variantBox.LostFocus += (_, _) =>
+        {
+            emotionBox.Text = Vn.Authoring.Assets.PortraitSpriteImporter.NextFreeEmotionKey(
+                _session.AssetLibrary.PortraitKeys, characterId, variantBox.Text);
+            UpdateStatus();
+        };
+        emotionBox.LostFocus += (_, _) => UpdateStatus();
+
+        void UpdateStatus()
+        {
+            if (_session.PortraitsRoot is not { } root)
+            {
+                statusText.Text = "초상화 폴더가 아직 없습니다. 복제본을 모을 폴더를 먼저 지정하세요.";
+                pickButton.Content = "초상화 폴더 지정…";
+                return;
+            }
+
+            var key = Vn.Authoring.Assets.PortraitKey.Normalize(
+                characterId, variantBox.Text, emotionBox.Text);
+            string target = Vn.Authoring.Assets.PortraitSpriteImporter.TargetPathFor(root, key);
+
+            if (File.Exists(target))
+            {
+                statusText.Text = $"'{key}'는 이미 있습니다 — 그대로 쓰면 됩니다.";
+                pickButton.Content = "이미 있는 표정입니다";
+                pickButton.IsEnabled = false;
+            }
+            else
+            {
+                statusText.Text = $"'{key.ToRelativePath()}'가 아직 없습니다. 이미지를 고르면 이 이름으로 복제됩니다.";
+                pickButton.Content = "이미지 선택해 추가…";
+                pickButton.IsEnabled = true;
+            }
+        }
+
+        pickButton.Click += async (_, _) => await UiGuard.RunAsync(_session, "표정 스프라이트 추가", async () =>
+        {
+            if (_session.PortraitsRoot is not { } root)
+            {
+                // 폴더부터 — 지정되면 같은 팝오버를 계속 쓸 수 있게 상태만 다시 계산한다.
+                if (await AssetRootPicker.PickAsync(this, _session, backgrounds: false))
+                {
+                    _session.RefreshAssets();
+                    UpdateStatus();
+                }
+
+                return;
+            }
+
+            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+            {
+                _session.SetStatus("이 환경에서는 파일 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<Avalonia.Platform.Storage.IStorageFile> files = await storage.OpenFilePickerAsync(
+                new Avalonia.Platform.Storage.FilePickerOpenOptions
+                {
+                    Title = "복제할 초상화 이미지 (PNG)",
+                    AllowMultiple = false,
+                    FileTypeFilter =
+                    [
+                        new Avalonia.Platform.Storage.FilePickerFileType("PNG 이미지") { Patterns = ["*.png"] }
+                    ]
+                });
+
+            if (files.Count == 0 || files[0].TryGetLocalPath() is not { } sourcePath)
+            {
+                return;
+            }
+
+            Vn.Authoring.Assets.PortraitSpriteImporter.Imported imported =
+                Vn.Authoring.Assets.PortraitSpriteImporter.Import(
+                    root, sourcePath, characterId, variantBox.Text, emotionBox.Text);
+
+            _session.RefreshAssets();
+            _session.SetStatus(
+                $"'{Path.GetFileName(sourcePath)}'를 '{imported.Key.ToRelativePath()}'로 복제해 등록했습니다.");
+            flyout.Hide();
+        });
+
+        UpdateStatus();
+        flyout.ShowAt(anchor);
     }
 
     private Control BuildConditionRow(ConditionDefinition condition)

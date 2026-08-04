@@ -95,6 +95,9 @@ internal sealed class AuthoringSession
     /// <summary>프리뷰 비트맵 캐시. 해석이 끝난 절대 경로가 키다.</summary>
     public PreviewImageCache<Bitmap> ImageCache { get; } = new(path => new Bitmap(path));
 
+    /// <summary>해석된 초상화 루트 절대 경로 — 표정 스프라이트 복제(설정노드)가 쓴다.</summary>
+    public string? PortraitsRoot => ResolveAssetRoots().Portraits;
+
     public void RefreshAssets()
     {
         _assetLibrary = null;
