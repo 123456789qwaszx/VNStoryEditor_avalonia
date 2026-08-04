@@ -89,11 +89,19 @@ internal static class StoryNodeJson
             var assignments = new JsonArray();
             foreach (VariableAssignment assignment in node.Assignments)
             {
-                assignments.Add(new JsonObject
+                var entry = new JsonObject
                 {
                     ["variable"] = assignment.Variable,
                     ["value"] = assignment.Value
-                });
+                };
+
+                // 기본 타입(float)은 쓰지 않는다 — 기존 프로젝트 파일이 바뀌지 않는다.
+                if (!string.Equals(assignment.Type, VariableAssignment.FloatType, StringComparison.Ordinal))
+                {
+                    entry["type"] = assignment.Type;
+                }
+
+                assignments.Add(entry);
             }
             json["assignments"] = assignments;
         }
@@ -397,7 +405,8 @@ internal static class StoryNodeJson
                 node.Assignments.Add(new VariableAssignment
                 {
                     Variable = (string?)assignment["variable"] ?? string.Empty,
-                    Value = (string?)assignment["value"] ?? string.Empty
+                    Value = (string?)assignment["value"] ?? string.Empty,
+                    Type = (string?)assignment["type"] ?? VariableAssignment.FloatType
                 });
             }
         }

@@ -160,11 +160,22 @@ public sealed class CommandPreset
 /// <summary>변수 하나에 값을 넣는다. 값은 게임이 해석하므로 문자열로 들고 있는다.</summary>
 public sealed class VariableAssignment
 {
+    /// <summary>현재 지원하는 유일한 타입. 스탯은 숫자로 선언 출력된다(계약서 D4).</summary>
+    public const string FloatType = "float";
+
     public string Variable { get; set; } = string.Empty;
 
     public string Value { get; set; } = string.Empty;
 
-    public VariableAssignment Clone() => new() { Variable = Variable, Value = Value };
+    /// <summary>
+    /// 변수 타입. 지금은 <see cref="FloatType"/> 하나지만 드롭다운 구조로 노출해
+    /// 이후 타입 추가(bool 플래그 등)에 대비한다. <c>&lt;&lt;declare&gt;&gt;</c> 출력은
+    /// 값 문자열 그대로라 타입 필드가 출력에 관여하지 않는다 — 정합의 책임은
+    /// 값을 그 타입으로 쓰는 편집 UI에 있다.
+    /// </summary>
+    public string Type { get; set; } = FloatType;
+
+    public VariableAssignment Clone() => new() { Variable = Variable, Value = Value, Type = Type };
 }
 
 /// <summary>

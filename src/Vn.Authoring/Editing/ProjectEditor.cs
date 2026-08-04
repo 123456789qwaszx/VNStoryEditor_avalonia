@@ -1202,7 +1202,8 @@ public sealed partial class ProjectEditor
 
             sameValues =
                 string.Equals(current.Variable, replacement.Variable, StringComparison.Ordinal) &&
-                string.Equals(current.Value, replacement.Value, StringComparison.Ordinal);
+                string.Equals(current.Value, replacement.Value, StringComparison.Ordinal) &&
+                string.Equals(current.Type, replacement.Type, StringComparison.Ordinal);
         }
 
         if (sameValues)

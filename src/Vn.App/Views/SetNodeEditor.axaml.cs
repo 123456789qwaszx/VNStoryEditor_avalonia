@@ -134,15 +134,38 @@ public partial class SetNodeEditor : UserControl
         return row;
     }
 
+    /// <summary>
+    /// 타입 드롭다운 항목. 지금은 float 하나지만 목록 구조라 타입이 늘어도
+    /// 이 배열에 줄 하나를 더하면 된다 — 코드 구조는 이미 드롭다운이다 (X2).
+    /// </summary>
+    private static readonly (string Type, string Label)[] VariableTypes =
+    [
+        (VariableAssignment.FloatType, "float (숫자)")
+    ];
+
     private Control BuildAssignmentRow(SetNode node, int index)
     {
         VariableAssignment assignment = node.Assignments[index];
+
+        // 값보다 타입이 먼저다 — 무엇을 담는 변수인지부터 정한다.
+        var type = new ComboBox
+        {
+            ItemsSource = VariableTypes.Select(item => item.Label).ToList(),
+            SelectedIndex = Math.Max(
+                0,
+                Array.FindIndex(VariableTypes, item =>
+                    string.Equals(item.Type, assignment.Type, StringComparison.Ordinal))),
+            FontSize = 11,
+            MinWidth = 96,
+            VerticalAlignment = VerticalAlignment.Center
+        };
 
         var variable = new AutoCompleteBox
         {
             Text = assignment.Variable,
             PlaceholderText = "변수",
             FontSize = 12,
+            Margin = new Thickness(6, 0, 0, 0),
             ItemsSource = _session!.Definition.Variables.Select(item => item.Name).ToList(),
             FilterMode = AutoCompleteFilterMode.Contains,
             MinimumPrefixLength = 0
@@ -151,7 +174,7 @@ public partial class SetNodeEditor : UserControl
         var value = new TextBox
         {
             Text = assignment.Value,
-            PlaceholderText = "값",
+            PlaceholderText = "초기값",
             Margin = new Thickness(6, 0, 0, 0),
             FontSize = 12
         };
@@ -167,12 +190,14 @@ public partial class SetNodeEditor : UserControl
             next[index] = new VariableAssignment
             {
                 Variable = variable.Text ?? string.Empty,
-                Value = value.Text ?? string.Empty
+                Value = value.Text ?? string.Empty,
+                Type = VariableTypes[Math.Max(0, type.SelectedIndex)].Type
             };
 
             _session!.Editor.SetAssignments(node.Id, next);
         }
 
+        type.SelectionChanged += (_, _) => Commit();
         variable.LostFocus += (_, _) => Commit();
         value.LostFocus += (_, _) => Commit();
 
@@ -185,10 +210,12 @@ public partial class SetNodeEditor : UserControl
             _session!.Editor.SetAssignments(node.Id, next);
         };
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
-        Grid.SetColumn(variable, 0);
-        Grid.SetColumn(value, 1);
-        Grid.SetColumn(remove, 2);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,*,Auto") };
+        Grid.SetColumn(type, 0);
+        Grid.SetColumn(variable, 1);
+        Grid.SetColumn(value, 2);
+        Grid.SetColumn(remove, 3);
+        row.Children.Add(type);
         row.Children.Add(variable);
         row.Children.Add(value);
         row.Children.Add(remove);
