@@ -46,26 +46,57 @@ public partial class SetNodeEditor : UserControl
 
         AddSpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 추가", () =>
         {
-            List<SpeakerSpec> next = _session!.Definition.Speakers.ToList();
-            next.Add(new SpeakerSpec());
+            // 편집 중 목록에 붙인다 — 저장본에서 다시 시작하면 방금 타이핑한(아직 저장 못 한)
+            // 행이 통째로 사라져 "추가가 안 된다"로 보인다.
+            EditingSpeakers().Add(new SpeakerSpec());
 
             // 빈 항목은 파일에 저장되지 않으므로 행만 즉시 보여 준다.
-            _pendingSpeakers = next;
-            RebuildSpeakers(next);
+            RebuildSpeakers();
         });
     }
 
-    /// <summary>저장 전(이름이 비어 파일에 못 들어간) 행을 포함한 편집 중 목록.</summary>
+    /// <summary>
+    /// 편집 중 화자 목록 — 저장 전(이름이 비어 파일에 못 들어간) 행을 포함한다.
+    /// 화자는 노드가 아니라 게임 정의에 속하므로 <b>노드를 옮겨도 유지하고</b>,
+    /// 다른 프로젝트를 열었을 때만 버린다.
+    /// </summary>
     private List<SpeakerSpec>? _pendingSpeakers;
+
+    /// <summary>편집 중 목록이 속한 프로젝트 경로.</summary>
+    private string? _pendingSpeakersProject;
+
+    /// <summary>화자 행을 다시 만드는 중 — 사라지는 칸의 LostFocus가 낡은 위치로 커밋하지 못하게.</summary>
+    private bool _rebuildingSpeakers;
 
     internal void Attach(AuthoringSession session) => _session = session;
 
     internal void Show(string? nodeId)
     {
         _nodeId = nodeId;
-        _pendingSpeakers = null;
+        SyncPendingSpeakerScope();
         Rebuild();
     }
+
+    /// <summary>
+    /// 편집 중 화자 목록의 유효 범위를 맞춘다. 저장 전 프로젝트(null)가 경로를 얻는 것은
+    /// 같은 프로젝트를 저장한 것이므로 유지하고, <b>다른 파일을 열었을 때만</b> 버린다.
+    /// </summary>
+    private void SyncPendingSpeakerScope()
+    {
+        string? path = _session?.ProjectPath;
+
+        if (_pendingSpeakersProject is not null &&
+            !string.Equals(_pendingSpeakersProject, path, StringComparison.Ordinal))
+        {
+            _pendingSpeakers = null;
+        }
+
+        _pendingSpeakersProject = path;
+    }
+
+    /// <summary>화면이 보여 주는 화자 목록. 없으면 저장본에서 한 번 만든다.</summary>
+    private List<SpeakerSpec> EditingSpeakers() =>
+        _pendingSpeakers ??= _session?.Definition.Speakers.ToList() ?? [];
 
     internal string? NodeId => _nodeId;
 
@@ -102,7 +133,7 @@ public partial class SetNodeEditor : UserControl
                 ? $"{GameDefinition.FileName}이 없으면 변수 이름을 직접 적습니다."
                 : $"{GameDefinition.FileName}이 제안하는 변수 {_session.Definition.Variables.Count}개를 쓸 수 있습니다.";
 
-            RebuildSpeakers(_pendingSpeakers ?? _session.Definition.Speakers.ToList());
+            RebuildSpeakers();
         }
         finally
         {
@@ -112,29 +143,39 @@ public partial class SetNodeEditor : UserControl
 
     // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
 
-    private void RebuildSpeakers(List<SpeakerSpec> speakers)
+    private void RebuildSpeakers()
     {
-        SpeakerHost.Children.Clear();
+        List<SpeakerSpec> speakers = EditingSpeakers();
+        _rebuildingSpeakers = true;
 
-        for (int index = 0; index < speakers.Count; index++)
+        try
         {
-            SpeakerHost.Children.Add(BuildSpeakerRow(speakers, index));
-        }
+            SpeakerHost.Children.Clear();
 
-        if (speakers.Count == 0)
-        {
-            SpeakerHost.Children.Add(new TextBlock
+            for (int index = 0; index < speakers.Count; index++)
             {
-                Text = "화자를 등록하면 대사 노드에서 드롭다운으로 고를 수 있습니다.",
-                FontSize = 11,
-                Opacity = 0.6
-            });
+                SpeakerHost.Children.Add(BuildSpeakerRow(index));
+            }
+
+            if (speakers.Count == 0)
+            {
+                SpeakerHost.Children.Add(new TextBlock
+                {
+                    Text = "화자를 등록하면 대사 노드에서 드롭다운으로 고를 수 있습니다.",
+                    FontSize = 11,
+                    Opacity = 0.6
+                });
+            }
+        }
+        finally
+        {
+            _rebuildingSpeakers = false;
         }
     }
 
-    private Control BuildSpeakerRow(List<SpeakerSpec> speakers, int index)
+    private Control BuildSpeakerRow(int index)
     {
-        SpeakerSpec speaker = speakers[index];
+        SpeakerSpec speaker = EditingSpeakers()[index];
 
         var name = new TextBox
         {
@@ -151,59 +192,93 @@ public partial class SetNodeEditor : UserControl
             FontSize = 12
         };
 
+        // 저작 중 "이 표정이 필요하다"의 진입점 — 표정을 정의하고, 없으면 이미지를 골라
+        // 규약 경로로 복제해 즉시 등록한다.
+        var expressions = new Button { Content = "표정…", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+        ToolTip.SetTip(
+            expressions,
+            "이 캐릭터의 표정을 확인하고, 없는 표정은 이미지를 골라 추가합니다. characterId가 있어야 누를 수 있습니다.");
+
+        // 활성 여부는 타이핑 즉시 따라온다. 행을 다시 만들 때까지 잠겨 있으면
+        // 방금 적은 characterId가 무시된 것처럼 보인다.
+        void SyncExpressionsEnabled() =>
+            expressions.IsEnabled = !string.IsNullOrWhiteSpace(characterId.Text);
+
+        SyncExpressionsEnabled();
+        characterId.TextChanged += (_, _) => SyncExpressionsEnabled();
+
+        expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
+            ShowExpressionsFlyout(expressions, (characterId.Text ?? string.Empty).Trim()));
+
         void Commit()
         {
-            if (_building)
+            // 행이 사라지는 중이면 이 위치는 이미 낡았다 — 엉뚱한 행을 덮어쓰지 않는다.
+            if (_building || _rebuildingSpeakers)
             {
                 return;
             }
 
             UiGuard.Run(_session, "화자 저장", () =>
             {
-                var next = speakers.ToList();
-                next[index] = new SpeakerSpec
-                {
-                    Name = name.Text ?? string.Empty,
-                    CharacterId = characterId.Text ?? string.Empty
-                };
-                _pendingSpeakers = next;
+                List<SpeakerSpec> editing = EditingSpeakers();
 
-                if (_session!.SaveSpeakers(next))
+                if (index >= editing.Count)
                 {
-                    _pendingSpeakers = null;
-                    RebuildSpeakers(_session.Definition.Speakers.ToList());
+                    return;
                 }
+
+                var updated = new SpeakerSpec
+                {
+                    Name = (name.Text ?? string.Empty).Trim(),
+                    CharacterId = (characterId.Text ?? string.Empty).Trim()
+                };
+
+                if (string.Equals(updated.Name, editing[index].Name, StringComparison.Ordinal) &&
+                    string.Equals(updated.CharacterId, editing[index].CharacterId, StringComparison.Ordinal))
+                {
+                    return; // 바뀐 게 없으면 파일을 건드리지 않는다
+                }
+
+                // 편집 중 목록을 먼저 갱신한다 — 저장에 실패해도(프로젝트 미저장)
+                // 타이핑이 화면과 목록에 남아 노드를 옮겼다 와도 그대로다.
+                editing[index] = updated;
+
+                // 저장에 성공해도 행을 다시 만들지 않는다. 다시 만들면 지금 쓰던 칸이
+                // 사라져 이름 → characterId 탭 이동이 끊긴다(입력이 씹히는 것처럼 보인다).
+                _session!.SaveSpeakers(editing);
             });
+        }
+
+        void CommitOnEnter(object? sender, Avalonia.Input.KeyEventArgs args)
+        {
+            if (args.Key == Avalonia.Input.Key.Enter)
+            {
+                Commit();
+                args.Handled = true;
+            }
         }
 
         name.LostFocus += (_, _) => Commit();
         characterId.LostFocus += (_, _) => Commit();
-
-        // 저작 중 "이 표정이 필요하다"의 진입점 — 표정을 정의하고, 없으면 이미지를 골라
-        // 규약 경로로 복제해 즉시 등록한다.
-        var expressions = new Button { Content = "표정…", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
-        ToolTip.SetTip(expressions, "이 캐릭터의 표정을 확인하고, 없는 표정은 이미지를 골라 추가합니다.");
-        expressions.IsEnabled = !string.IsNullOrWhiteSpace(speaker.CharacterId);
-        expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
-            ShowExpressionsFlyout(expressions, speaker.CharacterId.Trim()));
+        name.KeyDown += CommitOnEnter;
+        characterId.KeyDown += CommitOnEnter;
 
         var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
 
         remove.Click += (_, _) => UiGuard.Run(_session, "화자 삭제", () =>
         {
-            var next = speakers.ToList();
-            next.RemoveAt(index);
-            _pendingSpeakers = next;
+            List<SpeakerSpec> editing = EditingSpeakers();
 
-            if (_session!.SaveSpeakers(next))
+            if (index >= editing.Count)
             {
-                _pendingSpeakers = null;
-                RebuildSpeakers(_session.Definition.Speakers.ToList());
+                return;
             }
-            else
-            {
-                RebuildSpeakers(next);
-            }
+
+            editing.RemoveAt(index);
+            _session!.SaveSpeakers(editing);
+
+            // 행 개수가 바뀌었으니 여기서는 다시 그려야 한다.
+            RebuildSpeakers();
         });
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto") };
