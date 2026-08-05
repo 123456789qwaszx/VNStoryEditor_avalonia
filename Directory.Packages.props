@@ -13,5 +13,9 @@
     <PackageVersion Include="xunit" Version="2.9.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!-- 코어 복사 테스트 전용 (W22). NUnit 4는 Assert.IsTrue 계열 클래식 API를 걷어냈으므로
+         원본(유니티 NUnit 3계열)과 같은 3.14에 고정한다. -->
+    <PackageVersion Include="NUnit" Version="3.14.0" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="4.6.0" />
   </ItemGroup>
 </Project>

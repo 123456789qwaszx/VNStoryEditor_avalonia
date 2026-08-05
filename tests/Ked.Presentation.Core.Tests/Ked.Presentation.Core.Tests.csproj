@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 복사 반입한 코어의 순수 테스트(원본 Tests/EditMode, UnityParity 제외)를 그대로 돌린다.
+       원본이 NUnit(유니티 테스트 러너)이라 이 프로젝트만 NUnit이다 - 기존 xunit과 섞지 않는다. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ked.Presentation.Core\Ked.Presentation.Core.csproj" />
+  </ItemGroup>
+
+</Project>
