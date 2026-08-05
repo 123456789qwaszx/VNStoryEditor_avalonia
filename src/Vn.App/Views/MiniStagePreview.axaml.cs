@@ -91,6 +91,16 @@ public partial class MiniStagePreview : UserControl
         };
         _playbackTimer.Tick += (_, _) => Playback.Tick(0.05);
         Playback.StateChanged += () => _playbackTimer.IsEnabled = Playback.IsPlaying;
+
+        // 타자기 (W32): 글자 수 변화는 대사창 텍스트 한 곳만 갱신한다 — 전체 재렌더 없이.
+        Playback.TypingProgress += SyncTypewriter;
+    }
+
+    private void SyncTypewriter()
+    {
+        int? visible = Playback.VisibleCharacters;
+        _scene.SetDialogueVisibleCharacters(visible);
+        _window?.SetDialogueVisibleCharacters(visible);
     }
 
     internal void Attach(AuthoringSession session)
@@ -145,7 +155,12 @@ public partial class MiniStagePreview : UserControl
         _window?.Push(request);
 
         // 재생 모델에 현재 라인 위치를 알린다 — 이동 요청이 반영됐다는 신호이기도 하다.
-        Playback.OnRequest(request?.LineIndex ?? -1, request?.LineCount ?? 0, request?.LineText);
+        Playback.OnRequest(
+            request?.LineIndex ?? -1,
+            request?.LineCount ?? 0,
+            request?.LineText,
+            isChoice: request?.ChoiceOptions is { Count: > 0 });
+        SyncTypewriter();
     }
 
     private void OpenWindow()

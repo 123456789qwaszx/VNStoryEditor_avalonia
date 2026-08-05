@@ -55,11 +55,31 @@ internal sealed class StageSceneView : UserControl
     internal event Action? ManipulationApplied;
 
     /// <summary>
-    /// 재생 진행 입력 (W31) — 재생 중이면 true를 돌려주고 클릭을 소비한다(라인 즉시 완료 →
-    /// 다음). false면 클릭은 기존 조작(조절창·캐릭터 팝오버)으로 흐른다. 도킹·분리 창의
-    /// 무대가 같은 재생 모델의 이 판정 하나를 본다.
+    /// 재생 진행 입력 (W31) — 재생 중이면 true를 돌려주고 클릭을 소비한다(타자 중이면 전문
+    /// 완성, 그 뒤면 다음 라인). false면 클릭은 기존 조작(조절창·캐릭터 팝오버)으로 흐른다.
+    /// 도킹·분리 창의 무대가 같은 재생 모델의 이 판정 하나를 본다.
     /// </summary>
     internal Func<bool>? PlaybackAdvance;
+
+    // 타자기 (W32) — 대사창 텍스트만 갱신하기 위한 핸들. 캔버스 재렌더 시 다시 잡힌다.
+    private TextBlock? _dialogueText;
+    private string? _dialogueFullText;
+
+    /// <summary>
+    /// 대사창에 보일 글자 수 (W32). null = 전문. 재생 타이머가 라인 전체를 다시 그리지 않고
+    /// 이 한 곳으로 타자를 찍는다.
+    /// </summary>
+    internal void SetDialogueVisibleCharacters(int? count)
+    {
+        if (_dialogueText is null || _dialogueFullText is null)
+        {
+            return;
+        }
+
+        _dialogueText.Text = count is { } visible
+            ? _dialogueFullText[..Math.Clamp(visible, 0, _dialogueFullText.Length)]
+            : _dialogueFullText;
+    }
 
     public StageSceneView()
     {
@@ -116,6 +136,8 @@ internal sealed class StageSceneView : UserControl
     {
         _request = request;
         _canvas.Children.Clear();
+        _dialogueText = null;
+        _dialogueFullText = null;
 
         (double width, double height) = _session?.Definition.PreviewResolution ?? (1920, 1080);
         _canvas.Width = width;
@@ -464,7 +486,7 @@ internal sealed class StageSceneView : UserControl
             }, nameRect);
         }
 
-        Add(new TextBlock
+        var dialogueText = new TextBlock
         {
             Text = request.LineText ?? string.Empty,
             FontSize = em,
@@ -475,7 +497,12 @@ internal sealed class StageSceneView : UserControl
                 : TextAlignment.Left,
             Width = box.TextRect.Width,
             MaxHeight = box.TextRect.Height
-        }, box.TextRect);
+        };
+        Add(dialogueText, box.TextRect);
+
+        // 타자기(W32)가 이 텍스트만 갱신한다 — 전체 재렌더 없이.
+        _dialogueText = dialogueText;
+        _dialogueFullText = request.LineText ?? string.Empty;
 
         // Speaker 근사로 대신 그린 종류는 뱃지로 정직하게 알린다.
         if (box.Approximated && box.BoxRect is { } badgeAnchor)

@@ -3,102 +3,147 @@ using Vn.App.Services;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// W31 — 재생 진행 모델. 시간의 계산이 UI 없이 옳아야 한다: 자동 진행·클릭 스킵·
-/// 일시정지·끝 도달·처음부터. 이동은 delta 요청으로만 나가고, 반영은 새 요청이 돌아와야
-/// 완성된다(편집기 선택 경로 재사용).
+/// W31·W32 — 재생 진행 모델. 시간의 계산이 UI 없이 옳아야 한다:
+/// 타자(글자 노출) → 여운 → 다음 라인, 클릭 규약(타자 중=전문·그 뒤=다음),
+/// 선택지 정지, 일시정지, 끝 도달, 처음부터. 이동은 delta 요청으로만 나가고,
+/// 반영은 새 요청이 돌아와야 완성된다(편집기 선택 경로 재사용).
 /// </summary>
 public class StagePlaybackTests
 {
-    private static (StagePlayback Playback, List<int> Moves) Build(int lineIndex, int lineCount, string? text = "대사")
+    private static (StagePlayback Playback, List<int> Moves) Build(
+        int lineIndex, int lineCount, string? text = "대사", bool isChoice = false)
     {
         var playback = new StagePlayback();
         var moves = new List<int>();
         playback.MoveRequested += moves.Add;
-        playback.OnRequest(lineIndex, lineCount, text);
+        playback.OnRequest(lineIndex, lineCount, text, isChoice);
         return (playback, moves);
     }
 
     /// <summary>이동 요청 → 편집기가 선택을 옮겼다는 회신(새 프리뷰 요청)을 흉내 낸다.</summary>
-    private static void Arrive(StagePlayback playback, int lineIndex, int lineCount, string? text = "대사")
-        => playback.OnRequest(lineIndex, lineCount, text);
+    private static void Arrive(
+        StagePlayback playback, int lineIndex, int lineCount, string? text = "대사", bool isChoice = false)
+        => playback.OnRequest(lineIndex, lineCount, text, isChoice);
+
+    // ── 타자기 (W32) ──────────────────────────────────────────────────────
 
     [Fact]
-    public void 체류_시간은_대사_길이에_비례하고_최소_최대로_잘린다()
+    public void 타자는_속도대로_글자를_노출하고_완료_후_여운_뒤에_넘어간다()
     {
-        Assert.Equal(StagePlayback.MinDwellSeconds, StagePlayback.DwellFor(null));
-        Assert.Equal(StagePlayback.MinDwellSeconds, StagePlayback.DwellFor(""));
-        Assert.True(StagePlayback.DwellFor("스무 글자쯤 되는 조금 긴 대사입니다") > StagePlayback.MinDwellSeconds);
-        Assert.Equal(StagePlayback.MaxDwellSeconds, StagePlayback.DwellFor(new string('가', 500)));
+        string text = new('가', 30); // 30자 — CharactersPerSecond=30이면 타자에 1초
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 2, text);
+
+        Assert.Null(playback.VisibleCharacters); // 정지 중엔 전문
+
+        playback.Play();
+        Assert.Equal(0, playback.VisibleCharacters); // 재생 시작 — 처음부터 찍는다
+
+        playback.Tick(0.5);
+        Assert.Equal(15, playback.VisibleCharacters);
+
+        playback.Tick(0.6); // 타자 완료 → 여운 시작
+        Assert.Null(playback.VisibleCharacters); // 전문 표시
+        Assert.Empty(moves);
+
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds + 0.01);
+        Assert.Equal([1], moves);
     }
 
     [Fact]
-    public void 재생하면_체류_시간_뒤에_다음_라인을_요청한다()
+    public void 타자_중_클릭은_전문을_완성하고_그_뒤_클릭이_다음이다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: new string('가', 100));
+
+        playback.Play();
+        playback.Tick(0.2); // 타자 중
+
+        Assert.True(playback.TryAdvanceByInput()); // 1차 클릭 = 전문 완성
+        Assert.Null(playback.VisibleCharacters);
+        Assert.Empty(moves);
+
+        Assert.True(playback.TryAdvanceByInput()); // 2차 클릭 = 다음 라인
+        Assert.Equal([1], moves);
+    }
+
+    [Fact]
+    public void 선택지_라인은_시간이_흘러도_멈춰_있고_클릭이_진행이다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: "라벨", isChoice: true);
+
+        playback.Play();
+        playback.Tick(60); // 아무리 기다려도
+
+        Assert.Empty(moves); // 자동 진행 없음
+        Assert.True(playback.IsPlaying);
+        Assert.Null(playback.VisibleCharacters); // 선택지 화면 — 타자 없음
+
+        Assert.True(playback.TryAdvanceByInput());
+        Assert.Equal([1], moves);
+    }
+
+    [Fact]
+    public void 빈_대사는_여운만으로_넘어간다()
     {
         (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: "");
 
         playback.Play();
-        Assert.True(playback.IsPlaying);
+        playback.Tick(0.01); // 타자 즉시 완료 → 여운
+        Assert.Empty(moves);
 
-        playback.Tick(StagePlayback.MinDwellSeconds - 0.1);
-        Assert.Empty(moves); // 아직 체류 중
-
-        playback.Tick(0.2);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
         Assert.Equal([1], moves);
 
         // 이동이 반영되기 전에는 틱이 중복 요청을 만들지 않는다.
         playback.Tick(10);
         Assert.Equal([1], moves);
-
-        Arrive(playback, 1, 3, "");
-        playback.Tick(StagePlayback.MinDwellSeconds + 0.1);
-        Assert.Equal([1, 1], moves);
     }
 
+    // ── 진행·정지 (W31) ───────────────────────────────────────────────────
+
     [Fact]
-    public void 마지막_라인에_도달하면_체류_후_멈춘다()
+    public void 마지막_라인에_도달하면_여운_후_멈춘다()
     {
         (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 2, text: "");
 
         playback.Play();
-        playback.Tick(StagePlayback.MinDwellSeconds + 0.1);
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
         Assert.Equal([1], moves);
 
         Arrive(playback, 1, 2, ""); // 마지막 라인 도착
-        playback.Tick(StagePlayback.MinDwellSeconds + 0.1);
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
 
         Assert.False(playback.IsPlaying); // 끝 도달 — 멈춘다
         Assert.Equal([1], moves);         // 더 갈 곳이 없으니 추가 이동 요청도 없다
     }
 
     [Fact]
-    public void 재생_중_클릭은_즉시_다음이고_아니면_기존_조작이다()
+    public void 재생_중이_아니면_클릭은_기존_조작이다()
     {
         (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3);
 
         Assert.False(playback.TryAdvanceByInput()); // 일시정지 중 클릭 → 조절창 몫
         Assert.Empty(moves);
-
-        playback.Play();
-        Assert.True(playback.TryAdvanceByInput());  // 재생 중 클릭 → 즉시 다음
-        Assert.Equal([1], moves);
     }
 
     [Fact]
-    public void 일시정지는_자리를_지키고_재생을_이어갈_수_있다()
+    public void 일시정지는_전문을_보여주고_재생은_타자를_처음부터_다시_한다()
     {
-        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: "");
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: new string('가', 100));
 
         playback.Play();
         playback.Tick(0.5);
+        Assert.Equal(15, playback.VisibleCharacters);
+
         playback.Pause();
+        Assert.Null(playback.VisibleCharacters); // 조작 모드 = 전문
 
         playback.Tick(100); // 일시정지 중에는 시간이 흐르지 않는다
         Assert.Empty(moves);
-        Assert.Equal(0, playback.LineIndex);
 
-        playback.Play(); // 체류는 처음부터 다시
-        playback.Tick(StagePlayback.MinDwellSeconds + 0.1);
-        Assert.Equal([1], moves);
+        playback.Play(); // 타자를 처음부터
+        Assert.Equal(0, playback.VisibleCharacters);
     }
 
     [Fact]
@@ -123,7 +168,8 @@ public class StagePlaybackTests
         Assert.True(playback.IsPlaying);
 
         Arrive(playback, 0, 3, "");
-        playback.Tick(StagePlayback.MinDwellSeconds + 0.1);
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
         Assert.Equal([-2, 1], moves);
     }
 
