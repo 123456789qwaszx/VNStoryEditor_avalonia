@@ -87,7 +87,11 @@
 `Ked.Presentation.Runtime`을 참조하지만 실제 using은 UnityParity 폴더에만 있음을 확인했다
 (2026-08-05 grep) — 순수 테스트만 복사하면 런타임 어셈블리 없이 컴파일된다. 아니면 그 발견을 보고할 것.
 
-## W23 — tuning 수입 (Phase 2a 잔여의 흡수)
+## W23 — tuning 수입 (Phase 2a 잔여의 흡수) ✅ 완료 (`64ea9f7`, 715 테스트)
+
+`RuntimeTuningLibrary`가 `ExportedTuning/` 규약 폴더(정의 파일 `runtimeTuningPath`로 재지정 가능)를
+코어 DTO 그대로 역직렬화해 `StageReducerTuning`을 조립한다. 실덤프 픽스처로 slot 폴드까지 검증,
+누락 배치 안내·해상도 불일치 경고·상태줄 요약 포함.
 
 > 세션 프롬프트:
 >

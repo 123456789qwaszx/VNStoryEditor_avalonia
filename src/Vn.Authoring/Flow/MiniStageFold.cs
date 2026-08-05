@@ -111,6 +111,11 @@ public static class MiniStageFold
             }
         }
 
+        return Build(state);
+    }
+
+    internal static MiniStageState Build(FoldState state)
+    {
         return new MiniStageState(
             state.BackgroundKey,
             state.BackgroundRigKey,
@@ -155,7 +160,8 @@ public static class MiniStageFold
         return lines;
     }
 
-    private sealed class FoldState
+    /// <summary>폴드 누적 상태. <see cref="CoreStageFold"/>가 보완 폴드로 재사용한다(같은 규칙 한 벌).</summary>
+    internal sealed class FoldState
     {
         public string? BackgroundKey;
         public string? BackgroundRigKey;
@@ -167,7 +173,7 @@ public static class MiniStageFold
         public bool PassedBranch;
     }
 
-    private static void Apply(
+    internal static void Apply(
         FoldState state,
         PresentationCommandCatalog catalog,
         string? lineId,

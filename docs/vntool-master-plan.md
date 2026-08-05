@@ -35,6 +35,7 @@
 | Phase 2a: 전체 에셋 파이프라인 + U12-v1 리허설 | **종료 (소유자 판정 2026-08-05)** | 런타임 `ExportedTuning/` 14파일 실재. VnTool 쪽 tuning 수입은 W23으로 이행 |
 | **Phase 2b: 정지 프레임 렌더러** | **진행 중** | 지시서 `work-orders/phase2b-core-adoption.md` (W22–W26) |
 | W22: 코어 소스 복사 반입 | **완료** | `d1a28f7`, 707 테스트 (코어 복사 220 포함) |
+| W23: tuning 수입 (ExportedTuning 폴더 규약) | **완료** | `64ea9f7`, 715 테스트 |
 | Phase 2c: 실시간 재생 | 대기 | 2b 위에 시간·전이·입력 |
 
 현재 전체 테스트 **707개**(Core 60 / Authoring 363 / App 64 / 코어 복사 220 — NUnit). 표의 테스트 수는 각 커밋 메시지에 남긴 러너 출력이다 — 추정값을 적지 않는다.

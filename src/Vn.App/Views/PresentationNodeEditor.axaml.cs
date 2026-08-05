@@ -183,7 +183,11 @@ public partial class PresentationNodeEditor : UserControl
         {
             StagePreview.Show(new MiniStagePreviewRequest(
                 $"연출: {presentation.Name}",
-                MiniStageFold.Fold(catalog, draft.SetupCommands, Array.Empty<MiniStageFoldLine>()),
+                CoreStageFold.Fold(
+                    catalog,
+                    draft.SetupCommands,
+                    Array.Empty<MiniStageFoldLine>(),
+                    _session.TuningLibrary.Tuning).State,
                 HasPresentation: true,
                 SelectedLineId: null,
                 SpeakerName: null,
@@ -198,10 +202,11 @@ public partial class PresentationNodeEditor : UserControl
 
         DialogueResultLine? line = dialogue.FindLine(_selectedLineId) ?? dialogue.Lines.FirstOrDefault();
 
-        MiniStageState state = MiniStageFold.Fold(
+        MiniStageState state = CoreStageFold.Fold(
             catalog,
             draft.SetupCommands,
-            MiniStageFold.LinesUpTo(dialogue, draft.Bindings, line?.LineId));
+            MiniStageFold.LinesUpTo(dialogue, draft.Bindings, line?.LineId),
+            _session.TuningLibrary.Tuning).State;
 
         int index = line is null
             ? -1
@@ -846,11 +851,16 @@ public partial class PresentationNodeEditor : UserControl
             PresentationWorkspace workspace = PresentationBindingResolver.Resolve(_session.Project, presentation);
 
             state = workspace.Dialogue is { } dialogue && lineId is not null
-                ? MiniStageFold.Fold(
+                ? CoreStageFold.Fold(
                     catalog,
                     draft.SetupCommands,
-                    MiniStageFold.LinesUpTo(dialogue, draft.Bindings, lineId))
-                : MiniStageFold.Fold(catalog, draft.SetupCommands, Array.Empty<MiniStageFoldLine>());
+                    MiniStageFold.LinesUpTo(dialogue, draft.Bindings, lineId),
+                    _session.TuningLibrary.Tuning).State
+                : CoreStageFold.Fold(
+                    catalog,
+                    draft.SetupCommands,
+                    Array.Empty<MiniStageFoldLine>(),
+                    _session.TuningLibrary.Tuning).State;
         }
 
         _foldCache[key] = state;

@@ -424,10 +424,11 @@ public partial class DialogueNodeEditor : UserControl
             ? "이 줄은 공급된 연출이 읽은 발행본에 없습니다. 문서 전체 기준 상태를 표시합니다."
             : null;
 
-        MiniStageState state = MiniStageFold.Fold(
+        MiniStageState state = CoreStageFold.Fold(
             PresentationCommandCatalog.For(_session.Definition),
             export.Presentation.SetupCommands,
-            MiniStageFold.LinesUpTo(export.Dialogue, export.Presentation.Bindings, selected?.LineId));
+            MiniStageFold.LinesUpTo(export.Dialogue, export.Presentation.Bindings, selected?.LineId),
+            _session.TuningLibrary.Tuning).State;
 
         StagePreview.Show(new MiniStagePreviewRequest(
             contextLabel,
