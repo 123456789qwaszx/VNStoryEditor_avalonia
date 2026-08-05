@@ -185,6 +185,31 @@ public class StageSceneComposerCoreTests
     }
 
     [Fact]
+    public void 숨긴_슬롯도_자리가_배치된다_뷰가_고스트로_그린다()
+    {
+        // show 없이 캐스팅만 — 숨김 슬롯. 자리는 계산되고(Visible=false), 뷰가 윤곽+태그로 그린다(W28).
+        StageState core = CoreState(
+            new StageCommand("slot", ["c1"]),
+            new StageCommand("cast", ["c1", "parkeunseol", "a", "1"]));
+
+        MiniStageState projection = MiniStageState.Empty with
+        {
+            Slots = new Dictionary<string, MiniStageSlot>(StringComparer.Ordinal)
+            {
+                ["c1"] = new MiniStageSlot("parkeunseol", "a", "01", Visible: false, Mirrored: false)
+            }
+        };
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            projection, speakerName: null, speakerCharacterId: null, Width, Height, core);
+
+        StagePortraitPlacement ghost = Assert.Single(layout.Portraits);
+        Assert.False(ghost.Slot.Visible);
+        Assert.False(ghost.IsSpeaker);
+        Assert.True(ghost.Rect.Width > 0 && ghost.Rect.Height > 0);
+    }
+
+    [Fact]
     public void 코어_상태가_없으면_기존_균등_나열_그대로다()
     {
         MiniStageState projection = Projection("c1", "c2");

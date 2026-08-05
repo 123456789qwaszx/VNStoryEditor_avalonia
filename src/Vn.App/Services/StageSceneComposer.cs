@@ -132,7 +132,9 @@ internal static class StageSceneComposer
         float cameraScale = ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom);
         Vec2 pan = core.Shot.PanInRigSpace;
 
-        IEnumerable<KeyValuePair<string, MiniStageSlot>> drawOrdered = state.VisibleSlots
+        // 숨김·빈 슬롯도 배치한다 — 뷰가 네모 윤곽 + 슬롯명 태그로 자리를 보여 준다(W28).
+        // 가시성 판정은 뷰의 일이고, 여기는 자리 계산만 한다.
+        IEnumerable<KeyValuePair<string, MiniStageSlot>> drawOrdered = state.Slots
             .OrderBy(entry => core.TryGetAttachment(entry.Key, out SlotAttachment attachment)
                 ? attachment.StageKey ?? "stage00"
                 : "stage00", StringComparer.Ordinal)
@@ -147,7 +149,12 @@ internal static class StageSceneComposer
 
             if (!core.HasSlot(slotKey) || !core.Nodes.Contains(imageKey))
             {
-                uniformLeftovers.Add(new KeyValuePair<string, MiniStageSlot>(slotKey, slot));
+                // 코어가 모르는 슬롯은 자리를 계산할 수 없다 — 보이는 것만 균등 나열로 넘긴다.
+                if (slot.Visible)
+                {
+                    uniformLeftovers.Add(new KeyValuePair<string, MiniStageSlot>(slotKey, slot));
+                }
+
                 continue;
             }
 
@@ -187,7 +194,8 @@ internal static class StageSceneComposer
                 maxX - minX,
                 maxY - minY);
 
-            bool isSpeaker = speakerCharacterId is not null &&
+            // 화자 강조는 보이는 초상의 것이다 — 숨김 슬롯의 윤곽에는 달지 않는다.
+            bool isSpeaker = slot.Visible && speakerCharacterId is not null &&
                 string.Equals(slot.CharacterId, speakerCharacterId, StringComparison.Ordinal);
             speakerOnStage |= isSpeaker;
 
