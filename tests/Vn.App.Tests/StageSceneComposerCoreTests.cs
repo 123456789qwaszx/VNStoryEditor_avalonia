@@ -148,6 +148,43 @@ public class StageSceneComposerCoreTests
     }
 
     [Fact]
+    public void 슬롯의_레이어가_그리기_앞뒤를_가른다()
+    {
+        // c1은 앞(close), c2는 뒤(far) — 슬롯 키 순서가 아니라 부착 레이어가 순서다 (W27).
+        // 캔버스는 나중에 그린 것이 위에 오므로 far(c2)가 먼저, close(c1)가 나중이어야 한다.
+        StageState core = CoreState(
+            new StageCommand("slot", ["c1", "stage00", "close"]),
+            new StageCommand("cast", ["c1", "parkeunseol", "a", "1"]),
+            new StageCommand("show", ["c1"]),
+            new StageCommand("slot", ["c2", "stage00", "far"]),
+            new StageCommand("cast", ["c2", "parkeunseol", "a", "1"]),
+            new StageCommand("show", ["c2"]));
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            Projection("c1", "c2"), speakerName: null, speakerCharacterId: null, Width, Height, core);
+
+        Assert.Equal(["c2", "c1"], layout.Portraits.Select(portrait => portrait.SlotKey));
+    }
+
+    [Fact]
+    public void 무대가_다르면_뒤_무대가_먼저_그려진다()
+    {
+        StageState core = CoreState(
+            new StageCommand("slot", ["c1", "stage01", "mid"]),
+            new StageCommand("cast", ["c1", "parkeunseol", "a", "1"]),
+            new StageCommand("show", ["c1"]),
+            new StageCommand("slot", ["c2", "stage00", "mid"]),
+            new StageCommand("cast", ["c2", "parkeunseol", "a", "1"]),
+            new StageCommand("show", ["c2"]));
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            Projection("c1", "c2"), speakerName: null, speakerCharacterId: null, Width, Height, core);
+
+        // stage00이 stage01보다 뒤(Ordinal 오름차순) — c2가 먼저 그려진다.
+        Assert.Equal(["c2", "c1"], layout.Portraits.Select(portrait => portrait.SlotKey));
+    }
+
+    [Fact]
     public void 코어_상태가_없으면_기존_균등_나열_그대로다()
     {
         MiniStageState projection = Projection("c1", "c2");

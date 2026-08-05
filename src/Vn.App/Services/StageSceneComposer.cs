@@ -84,12 +84,36 @@ internal static class StageSceneComposer
     }
 
     /// <summary>
+    /// 슬롯 부착(stage/layer)의 그리기 순위 (W27). 캔버스는 나중에 그린 것이 위에 오므로
+    /// 뒤(far)부터 앞(close) 순으로 정렬한다. 레이어 어휘와 순서는
+    /// <see cref="ArgumentTokenCandidates"/>의 layerKey 후보(far→close)가 원천이다 —
+    /// 여기 사본을 두지 않는다. 모르는 레이어 토큰은 기본값 mid 자리로 취급한다.
+    /// </summary>
+    private static int LayerRank(string? layerKey)
+    {
+        IReadOnlyList<string> layers = Vn.Authoring.Definition.ArgumentTokenCandidates.For("layerKey");
+
+        for (int index = 0; index < layers.Count; index++)
+        {
+            if (string.Equals(layers[index], layerKey, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return layers.Count / 2; // 기본 레이어 mid의 자리
+    }
+
+    /// <summary>
     /// 코어 확정 상태의 실제 좌표로 배치한다 (W25) — 균등 나열이 아니라 재현이다(H-3).
     ///
     /// rect는 <c>CharacterPortraitSprite_Image</c>의 pivot 기준 네 모서리를 리그 트리로
     /// 루트 공간에 변환한 축 정렬 경계이고, 샷은 적용측 규약(보이는 위치 = 논리 × 배율 + pan)
     /// 그대로 씌운다. 좌표 계산은 전부 코어에서 끝났다 — 여기는 좌표계 변환(중앙 원점·y위 →
     /// 캔버스 좌상 원점·y아래)만 있다(D-core-2).
+    ///
+    /// 그리기 순서 = 슬롯 부착 (stage, layer, 슬롯 키) 오름차순 (W27) — 슬롯 생성 시 고른
+    /// 위치(무대/레이어)가 실제 앞뒤 관계로 보인다. 같은 자리면 슬롯 키 순서(결정적).
     ///
     /// 코어가 모르는 슬롯(보완 폴드의 관대한 생성분·slot_tyrant)은 기존 균등 나열로 함께
     /// 그린다 — 코어에 없다고 화면에서 사라지면 침묵이다.
@@ -108,7 +132,16 @@ internal static class StageSceneComposer
         float cameraScale = ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom);
         Vec2 pan = core.Shot.PanInRigSpace;
 
-        foreach ((string slotKey, MiniStageSlot slot) in state.VisibleSlots)
+        IEnumerable<KeyValuePair<string, MiniStageSlot>> drawOrdered = state.VisibleSlots
+            .OrderBy(entry => core.TryGetAttachment(entry.Key, out SlotAttachment attachment)
+                ? attachment.StageKey ?? "stage00"
+                : "stage00", StringComparer.Ordinal)
+            .ThenBy(entry => core.TryGetAttachment(entry.Key, out SlotAttachment attachment)
+                ? LayerRank(attachment.LayerKey)
+                : LayerRank(null))
+            .ThenBy(entry => entry.Key, StringComparer.Ordinal);
+
+        foreach ((string slotKey, MiniStageSlot slot) in drawOrdered)
         {
             string imageKey = StageState.NodeKeyOf(slotKey, "CharacterPortraitSprite_Image");
 

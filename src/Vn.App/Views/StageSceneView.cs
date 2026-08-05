@@ -774,6 +774,9 @@ internal sealed class StageSceneView : UserControl
         panel.Children.Add(new TextBlock { Text = "위치 (place)", FontSize = 10, Opacity = 0.6 });
         panel.Children.Add(BuildScreenPointGrid(() => slotKey, flyout));
 
+        panel.Children.Add(new TextBlock { Text = "깊이 (size)", FontSize = 10, Opacity = 0.6 });
+        panel.Children.Add(BuildDepthRow(() => slotKey, flyout));
+
         if (PlaceApproximationNote() is { } characterPlaceNote)
         {
             panel.Children.Add(characterPlaceNote);
@@ -914,6 +917,35 @@ internal sealed class StageSceneView : UserControl
         ToolTip.SetTip(keyInput, "새 슬롯 키. 빈 이름은 만들지 않습니다.");
         var addButton = new Button { Content = "추가", FontSize = 10, Margin = new Thickness(4, 0, 0, 0) };
 
+        // 슬롯의 위치(무대/레이어) — 커맨드 인자로 기록되고 프리뷰의 앞뒤 관계로 실반영된다(W27).
+        // 후보 어휘는 카탈로그 타입 후보 한 곳(ArgumentTokenCandidates)에서 온다.
+        var stageCombo = new ComboBox
+        {
+            ItemsSource = ArgumentTokenCandidates.For("stageKey").ToArray(),
+            SelectedIndex = 0,
+            FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        ToolTip.SetTip(stageCombo, "무대(stage) — 뒤 무대일수록 먼저 그려집니다.");
+        var layerCombo = new ComboBox
+        {
+            ItemsSource = ArgumentTokenCandidates.For("layerKey").ToArray(),
+            FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        layerCombo.SelectedItem = "mid"; // slot 커맨드의 카탈로그 기본값
+        ToolTip.SetTip(layerCombo, "레이어 — far(뒤)부터 close(앞) 순으로 겹칩니다.");
+
+        var positionRow = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,4,*"),
+            Margin = new Thickness(0, 2, 0, 0)
+        };
+        Grid.SetColumn(stageCombo, 0);
+        Grid.SetColumn(layerCombo, 2);
+        positionRow.Children.Add(stageCombo);
+        positionRow.Children.Add(layerCombo);
+
         addButton.Click += (_, _) =>
         {
             string key = keyInput.Text?.Trim() ?? string.Empty;
@@ -924,7 +956,11 @@ internal sealed class StageSceneView : UserControl
             }
 
             flyout.Hide();
-            ApplySetupCommand("slot", ("slotKey", key));
+            ApplySetupCommand(
+                "slot",
+                ("slotKey", key),
+                ("stage", stageCombo.SelectedItem as string ?? "stage00"),
+                ("layer", layerCombo.SelectedItem as string ?? "mid"));
         };
 
         Grid.SetColumn(keyInput, 0);
@@ -932,6 +968,7 @@ internal sealed class StageSceneView : UserControl
         addRow.Children.Add(keyInput);
         addRow.Children.Add(addButton);
         panel.Children.Add(addRow);
+        panel.Children.Add(positionRow);
 
         // ── 위치 지정 → 이 라인의 place ──
         string[] slots = _request.State.Slots.Keys.OrderBy(key => key, StringComparer.Ordinal).ToArray();
@@ -956,12 +993,16 @@ internal sealed class StageSceneView : UserControl
             FontSize = 11,
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        panel.Children.Add(slotCombo);
-        panel.Children.Add(BuildScreenPointGrid(
-            () => slotCombo.SelectedIndex >= 0 && slotCombo.SelectedIndex < slots.Length
+        string? SelectedSlot() =>
+            slotCombo.SelectedIndex >= 0 && slotCombo.SelectedIndex < slots.Length
                 ? slots[slotCombo.SelectedIndex]
-                : null,
-            flyout));
+                : null;
+
+        panel.Children.Add(slotCombo);
+        panel.Children.Add(BuildScreenPointGrid(SelectedSlot, flyout));
+
+        panel.Children.Add(new TextBlock { Text = "깊이 (size — 이 라인에 기록)", FontSize = 10, Opacity = 0.6 });
+        panel.Children.Add(BuildDepthRow(SelectedSlot, flyout));
 
         if (PlaceApproximationNote() is { } slotPlaceNote)
         {
@@ -1018,6 +1059,40 @@ internal sealed class StageSceneView : UserControl
         }
 
         return pointGrid;
+    }
+
+    /// <summary>
+    /// 깊이(size) 버튼 행 — 슬롯 탭과 캐릭터 팝오버가 <b>같은 행 하나</b>를 쓴다(사본 금지).
+    /// 누르면 이 라인의 <c>size</c>가 되고, 같은 슬롯을 다시 고르면 커맨드는 하나가 수정된다.
+    /// far(작게·뒤)부터 close(크게·앞)까지 — 스케일·높이 반영은 코어 depth 프리셋의 일이다(W27).
+    /// </summary>
+    private Control BuildDepthRow(Func<string?> resolveSlotKey, Flyout flyout)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+
+        foreach (string preset in ArgumentTokenCandidates.For("depthPreset"))
+        {
+            var presetButton = new Button
+            {
+                Content = preset,
+                FontSize = 10,
+                Padding = new Thickness(6, 2),
+                HorizontalContentAlignment = HorizontalAlignment.Center
+            };
+
+            presetButton.Click += (_, _) =>
+            {
+                if (resolveSlotKey() is { } slotKey)
+                {
+                    flyout.Hide();
+                    ApplyStageCommand("size", StageArgs(("slot", slotKey), ("depth", preset)));
+                }
+            };
+
+            row.Children.Add(presetButton);
+        }
+
+        return row;
     }
 
     /// <summary>
