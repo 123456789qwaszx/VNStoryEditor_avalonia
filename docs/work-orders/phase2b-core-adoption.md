@@ -1,0 +1,215 @@
+# Phase 2b 이행 지시서 — 코어 채택 (W22–W26)
+
+2026-08-05 작성. Phase 2b의 VnTool 쪽 공식 지시서다. 근거:
+[phase2-design-brief.md](phase2-design-brief.md) §6(구체 구조),
+[architecture-decisions.md](../handoff/architecture-decisions.md) **H-2**(코어 한 벌)·**H-3**(등급표)·**H-4**(참조 방식),
+런타임 U14 초록불(`ked-presentation-runtime/EquivalenceReports/equivalence-20260805-211527.json`, 대표 에피소드 193/193 등가).
+
+각 W는 독립 커밋 단위다. 순서대로 간다 — W24까지 화면이 바뀌지 않고, W25에서 처음 바뀐다.
+
+## 0. 수용 등급표 (H-3) — 이 지시서 전체의 판정 기준
+
+| 축 | 등급 | 뜻 |
+|---|---|---|
+| 슬롯 배치(place·staging)·뎁스·샷·대사창 | **재현** | 코어 좌표를 그대로 그린다. 근사 금지 |
+| dim·실루엣·플래시·비네트 | **근사(표시)** | 알파·단색·오버레이 + "(근사)" 뱃지 |
+| 블러·림 라이트·노이즈·마스크 모션 | **미표시(뱃지)** | 상태는 갖되 그리지 않고, 안 그렸다고 화면에 쓴다 |
+
+## 0.5 공통 불변식 (전 단계 적용)
+
+1. **코어 수입본은 편집하지 않는다** (H-4). 코어가 틀렸거나 모자라면 그 발견을 보고하고
+   런타임 저장소 지시로 돌린다. VnTool 커밋에 코어 소스 수정이 섞이면 반려.
+2. **W24까지 화면·출력 불변** — 골든이 지킨다. 골든이 깨지면 그것은 실패가 아니라 발견이다:
+   코어와 기존 폴드의 해석 차이를 라인·커맨드 단위로 보고하고, 매핑(어댑터)을 조정해 맞춘다.
+   맞출 수 없으면(진짜 의미 차이면) 소유자 판정을 기다린다 — U14가 코어 쪽 옳음을 보증하므로
+   대개는 기존 폴드가 틀린 쪽이지만, **조용히 화면을 바꾸지 않는다**.
+3. **규칙 14** — 코어가 접었지만 프리뷰가 아직 그리지 않는 축(W24 시점의 좌표 등)은
+   계속 "반영 안 된 연출"로 표시한다. 상태에 있다는 이유로 뱃지에서 내리지 않는다 —
+   내리는 시점은 실제로 그리기 시작하는 W25/W26이다.
+4. **좌표 계산은 코어에서 끝낸다** (D-core-2). VnTool은 렌더 직전 뷰포트 스케일에서만
+   `double`로 올린다. `StageSceneComposer`에 자체 배치 산수를 남기지 않는 것이 W25의 목표다.
+5. 테스트 수·해시 등 수치는 실행 결과만 적는다. 추정값 금지(마스터 플랜 §1 규율).
+
+---
+
+## W22 — 코어 소스 수입 배선 (동기화 스크립트 + lock + 수입 테스트)
+
+> 세션 프롬프트:
+>
+> W22를 수행해줘. 근거: architecture-decisions.md H-4, phase2b-core-adoption.md §W22.
+>
+> 목표: `ked-presentation-runtime/Assets/Ked.Presentation.Core/`의 소스를 VnTool 저장소로
+> 수입하는 관리된 채널을 만든다. 코드 로직은 한 줄도 새로 쓰지 않는다 — 배선만 한다.
+>
+> 작업:
+> 1. `tools/sync-presentation-core.ps1` — 단방향 동기화 스크립트.
+>    - 원본: 이웃 체크아웃 `..\ked-presentation-runtime\Assets\Ked.Presentation.Core\`
+>      (경로는 파라미터, 기본값은 이 상대 경로).
+>    - 복사 대상: `**/*.cs` 중 `Tests/EditMode/UnityParity/` 제외, `*.meta` 제외.
+>      `Documentation~/*.md`도 같이 온다(코어 규약 문서 — 읽기 전용 참조).
+>    - 산출 위치: 소스는 `src/Ked.Presentation.Core/` (Tests 제외),
+>      순수 테스트는 `tests/Ked.Presentation.Core.Tests/imported/`.
+>    - 스크립트가 `src/Ked.Presentation.Core/core-source.lock.json`을 쓴다:
+>      `{ runtimeCommit, syncedAtUtc, contentHash }`. contentHash = 수입된 전 파일의
+>      (상대경로 + 내용) 정렬 SHA-256. runtimeCommit은 원본 저장소 `git rev-parse HEAD`.
+> 2. `src/Ked.Presentation.Core/Ked.Presentation.Core.csproj` —
+>    **netstandard2.1 · `<LangVersion>9.0</LangVersion>` · 외부 패키지 0.**
+>    유니티(asmdef `noEngineReferences: true`)와 같은 제약을 툴 쪽 컴파일러에도 걸어,
+>    수입본이 유니티에서 안 도는 코드가 될 길을 막는다.
+> 3. `tests/Ked.Presentation.Core.Tests/` — NUnit + NUnit3TestAdapter 프로젝트.
+>    수입된 순수 테스트(UnityParity 제외 전부)가 그대로 돌아야 한다.
+>    여기에 **lock 감시 테스트**를 하나 추가한다(이건 수입본이 아니라 툴 소유 코드):
+>    수입본의 실제 contentHash를 재계산해 lock과 대조 — 다르면 실패 메시지로
+>    "수입본을 편집했거나 동기화가 절반 됐다. tools/sync-presentation-core.ps1을 다시 돌릴 것"을 말한다.
+> 4. `VnTool.sln`에 두 프로젝트 편입. 아직 아무 기존 프로젝트도 코어를 참조하지 않는다.
+>
+> 수용 기준:
+> - `dotnet test` 전체 초록(기존 487 + 수입 테스트 + lock 테스트). 개수는 러너 출력으로 보고.
+> - 스크립트를 두 번 연속 돌려도 diff 0 (멱등).
+> - 수입본 아무 파일이나 한 글자 고치면 lock 테스트가 위 메시지로 실패한다(확인 후 되돌릴 것).
+> - 기존 앱 동작·출력 불변(코어 미참조이므로 자명하지만, 빌드 확인은 한다).
+>
+> 커밋은 W22 단위로.
+
+**메모**: 코어 테스트는 NUnit이고 VnTool 기존 테스트는 xunit이다 — 섞지 않는다.
+수입 테스트는 전용 NUnit 프로젝트에 격리한다. `Ked.Presentation.Core.Tests`의 asmdef가
+`Ked.Presentation.Runtime`을 참조하지만 실제 using은 UnityParity 폴더에만 있음을 확인했다
+(2026-08-05 grep) — 순수 테스트만 수입하면 런타임 어셈블리 없이 컴파일된다. 아니면 그 발견을 보고할 것.
+
+## W23 — tuning 수입 (Phase 2a 잔여의 흡수)
+
+> 세션 프롬프트:
+>
+> W23을 수행해줘. 근거: phase2b-core-adoption.md §W23, phase2-design-brief.md D-2a-1(나),
+> 런타임 `ExportedTuning/schema.md`.
+>
+> 목표: 런타임 U12-전체 덤프(`ExportedTuning/` — rig-schemas·base-resolution·portrait-dimensions·
+> presets/depth·presets/focus-tuning 등)를 읽어 코어 `StageReducerTuning`을 채우는 경로를 만든다.
+> **별도 DTO를 짓지 않는다** — 코어 `Tuning/`의 DTO가 곧 덤프의 스키마다(사본 금지).
+>
+> 작업:
+> 1. 폴더 규약: 프로젝트 상대 경로 `ExportedTuning/`(런타임 내보내기 폴더명 그대로)이 기본.
+>    `game.definition.json`에 경로 재지정 필드(기본값 생략 직렬화 — 기존 파일 바이트 불변).
+> 2. `Vn.Authoring`에 로더: JSON → 코어 DTO 역직렬화 → `StageReducerTuning` 조립.
+>    필드 이름은 덤프가 권위다(코어 DTO와 이미 일치) — 매핑 코드에 이름을 다시 쓰지 말 것.
+> 3. 누락·불일치는 침묵 금지:
+>    - 파일이 없으면 해당 tuning 필드는 null — 코어가 그 축을 Unhandled로 남긴다(이미 그렇게 동작).
+>      프리뷰/상태줄에는 "tuning 없음: 어느 파일을 어디에 놓으면 되는지"를 쓴다(빈칸 안내 철학).
+>    - `base-resolution.json`과 `GameDefinition.PreviewResolution`이 다르면 경고를 표시하고
+>      **리듀서에는 덤프 값을 쓴다**(런타임 재현이 목적이므로) — 단 경고가 화면에 남아야 한다.
+> 4. 이 단계에서 리듀서를 호출하지는 않는다 — 로드와 검증까지다.
+>
+> 수용 기준 (사람의 동작 시나리오로 — 원칙 §2.2):
+> - "런타임 폴더에서 `ExportedTuning` 폴더를 통째로 복사해 프로젝트 폴더에 놓는다. VnTool을 열면
+>   JSON을 한 번도 열지 않고 프리뷰 상태줄이 'tuning 로드됨(리그 N종, 프리셋 M벌)'을 보여 준다."
+> - 폴더를 지우면 오류가 아니라 안내문이 나온다. 저작은 계속된다.
+> - 로더 단위 테스트: 실제 덤프 파일 픽스처로 각 파일 로드 + 누락 케이스 + 해상도 불일치 경고.
+>
+> 커밋은 W23 단위로.
+
+## W24 — 1단계: 폴드 교체 (화면·출력 불변 골든)
+
+> 세션 프롬프트:
+>
+> W24를 수행해줘. 근거: phase2b-core-adoption.md §W24·§0.5, phase2-design-brief.md §6.3·§6.5.
+>
+> 목표: `MiniStageFold`의 커맨드 해석 중 **코어가 접는 축을 코어 `StageReducer`로 갈아 끼운다.**
+> 화면과 출력은 바이트 하나 바뀌지 않는다 — 그것을 골든이 증명한다.
+>
+> 구조 (합성 폴드):
+> 1. `Vn.Authoring/Flow/CoreStageFold.cs`(신규) — 입력은 기존 `MiniStageFold.Fold`와 동형
+>    (카탈로그, Setup 커맨드, `LinesUpTo` 라인들) + `StageReducerTuning`.
+>    발행 커맨드(프리셋 해석 완료)를 `StageCommand(name, args, source: LineId)`로 변환해
+>    `StageReducer.ApplyAll`로 접는다 — §6.3대로 새 변환 층은 필요 없어야 한다.
+> 2. 코어가 Unhandled로 남긴 커맨드만 **툴 보완 폴드**에 넘긴다 — 코어에 없는 축:
+>    배경(bg_*), 대사창(box_*), mirror, face_crossfade, slot_tyrant 매크로, 별칭 표시용 사전.
+>    이 보완 폴드는 기존 `MiniStageFold`에서 해당 case만 남긴 축소판이다(중복 축 제거).
+> 3. 프로젝션: 코어 `StageState` + 보완 상태 → 기존 `MiniStageState`(모양 유지).
+>    - Slots: 코어 `Slots`/`TryGetCharacter`/`TryGetPortrait`/alpha 축에서 파생.
+>    - ⚠ 매핑 명시 지점 둘 — 골든으로 고정할 것:
+>      (a) 표정 키 형식: 코어는 정규화 코드(2자리), 기존 툴은 "1"/"2" — 프로젝션에서 변환.
+>      (b) Visible 의미: 기존은 show/fade_in·fade_out 불리언, 코어는 alpha 축
+>          (리그 루트·초상 루트) — 어느 노드의 alpha가 기존 의미와 일치하는지 대조해 정한다.
+>    - Unhandled 뱃지: 최종 목록 = 코어 Unhandled 중 보완 폴드도 못 접은 것
+>      **+ 코어가 접었지만 v1 프리뷰가 그리지 않는 축(placement·depth·shot 계열)**.
+>      후자를 내리면 규칙 14 위반이다 — 내리는 것은 W25에서 그리기 시작할 때다.
+> 4. 골든: 교체 전후 두 폴드를 같은 입력에 돌려 `MiniStageState` 동등성을 비교하는 테스트.
+>    말뭉치 = 저장소의 샘플 프로젝트 전부 + 기존 MiniStageFold 테스트 케이스 전부.
+>    tuning이 없는 프로젝트도 말뭉치에 넣는다(코어가 slot을 Unhandled로 남겨도
+>    보완 폴드+프로젝션이 기존과 같은 화면 정보를 내는지 — 이 경우가 깨지기 쉽다).
+> 5. 골든 초록 후 호출부(`StageSceneView`·`DialogueNodeEditor`·`PresentationNodeEditor`)를
+>    `CoreStageFold`로 전환하고, 구 `MiniStageFold`에서 코어와 중복되는 축을 지운다.
+>    구 폴드 전체를 지우지 말 것 — 보완 축의 자리다.
+>
+> 수용 기준:
+> - 골든 전 케이스 통과 + 기존 테스트 전부 초록. 실패 케이스가 있었으면 그 목록과
+>   "코어/기존 어느 해석이 맞는지, 어떻게 맞췄는지"를 커밋 메시지에 남긴다.
+> - 수동 확인 1회: 대표 샘플에서 프리뷰 화면·뱃지 수·라이브 출력 바이트가 교체 전과 같다.
+> - 코어 소스 수정 0 (불변식 1).
+>
+> 커밋은 W24 단위로. 골든 하네스와 호출부 전환을 나눠도 좋다(W24-a/W24-b).
+
+## W25 — 2단계: 좌표 배치 (여기서 처음 화면이 바뀐다)
+
+> 세션 프롬프트:
+>
+> W25를 수행해줘. 근거: phase2b-core-adoption.md §W25·§0(H-3 재현 축), D-core-2.
+>
+> 목표: `StageSceneComposer`의 "하단 균등 나열" 근사를 버리고, 코어 `StageState`의
+> 실제 좌표(노드 트리 + 샷 intent)로 초상을 배치한다. H-3 "재현" 축의 구현이다.
+>
+> 작업:
+> 1. `CoreStageFold`가 코어 `StageState`를 프로젝션 결과와 함께 노출하도록 확장한다
+>    (W24에서 이미 계산하고 있다 — 버리지 말고 내보내면 된다).
+> 2. `StageSceneComposer`가 슬롯별로 코어에서 직접 읽는다:
+>    - 초상 rect: `CharacterPortraitSprite_Image` 체인의 `TransformPoint` + `GetRectSize`
+>    - 가시성: alpha 축, 뎁스 순서: attachment/depth 상태
+>    - 샷: `ShotIntentState`를 화면 전체 변환(줌·팬)으로 적용
+>    기준 해상도 캔버스(W23의 base-resolution) 위 픽셀 좌표 그대로 — 자체 배치 산수를 남기지 않는다.
+>    뷰포트 스케일(Viewbox)만 렌더 직전 double로 한다.
+> 3. tuning이 없는 프로젝트는 기존 균등 나열로 폴백하되 "좌표 근사(tuning 없음)" 뱃지를 단다 —
+>    조용한 다운그레이드 금지.
+> 4. 대사창은 surface-layout 프리셋(W23 수입분)이 있으면 그 레이아웃을, 없으면 기존 근사 + 뱃지.
+>
+> 수용 기준:
+> - **유니티 화면과 구도 일치(수동, 소유자 판정)**: 대표 에피소드에서 라인 3곳 이상
+>   (place 이동 후·size 변경 후·shot 줌 후)을 유니티 스크린샷과 나란히 대조한다.
+>   여기서 계약 위반이 보이면 원인 후보 1번은 해제된 유니티 실재생 게이트다(K7) — 보고하고 멈출 것.
+> - U14가 좌표 등가를 이미 보증하므로 툴 쪽 신규 테스트는 "코어 좌표를 왜곡 없이 화면 rect로
+>   옮기는가"에 집중한다(변환 단위 테스트 + 대표 상태 스냅샷).
+> - 갈래 근사(`PassedBranchApproximation`) 표시는 그대로 산다 — 갈래 인식은 이 지시서 범위 밖(D-2b-4).
+>
+> 커밋은 W25 단위로.
+
+## W26 — 3단계: 근사·미표시 뱃지 (H-3 마감)
+
+> 세션 프롬프트:
+>
+> W26을 수행해줘. 근거: phase2b-core-adoption.md §0(H-3), 규칙 14.
+>
+> 목표: H-3 등급표의 아래 두 줄을 화면 언어로 만든다.
+>
+> 작업:
+> 1. Unhandled 뱃지를 두 갈래로 나눈다:
+>    - "반영 안 됨 N" — 코어도 툴도 못 접은 커맨드(기존 의미).
+>    - "미표시 N" — 상태는 접혔지만 그리지 않는 축(블러·림 라이트·노이즈·마스크 모션 등).
+>      W24에서 좌표 축이 잠시 이 자리에 있었다면 W25가 그리기 시작한 축을 여기서 내린다.
+> 2. 근사(표시) 축이 이미 그려지는 것(dim=알파 등)이 있으면 "(근사)" 뱃지를 통일 규약으로.
+> 3. 뱃지는 라인 단위 집계(기존 `UnhandledCountFor` 자리)와 상세 목록(커맨드명+출처) 양쪽.
+>
+> 수용 기준: 대표 에피소드에서 셰이더 축 커맨드가 있는 라인이 "미표시"로, 진짜 미지원이
+> "반영 안 됨"으로 구분돼 보인다. 목록에서 커맨드명·출처가 읽힌다. 테스트로 고정.
+>
+> 커밋은 W26 단위로.
+
+## 범위 밖 (이 지시서에서 하지 않는 것)
+
+- **갈래 인식 폴드(D-2b-4)** — 별도 결정·별도 지시서. MixedChain·`<<else>>`(K10)와 같은 자리.
+- 코어 리듀서 어휘 확장(배경·오버레이·이펙트 리듀서) — 런타임 저장소 백로그(Unhandled 목록이 곧 지시 원료).
+- 2c(시간·전이·타자기) — 2b 종료 후 별도 설계.
+- 코어 수입본·런타임 저장소의 어떤 수정도 — 발견은 보고로.
+
+## 갱신 규약
+
+각 W 완료 시: 이 문서의 해당 절에 완료 표시(커밋 해시·테스트 수 — 러너 출력만),
+마스터 플랜 §1 표에 행 갱신. 골든 불일치 발견은 실패 케이스 목록과 판정 결과를 함께 남긴다.
