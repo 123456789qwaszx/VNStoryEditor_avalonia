@@ -67,11 +67,16 @@ public class CoreStageFoldTests
             composite.Aliases.OrderBy(pair => pair.Key, StringComparer.Ordinal));
 
         // 뱃지 목록은 항목·순서까지 그대로다 — 단, W25부터 코어가 그리는 좌표 축(place·size·샷)은
-        // 실제 배치로 반영되므로 기존 폴드가 뱃지에 남기던 그 항목들만 목록에서 내려간다.
+        // 실제 배치로 반영되므로 기존 폴드가 뱃지에 남기던 그 항목들만 목록에서 내려가고,
+        // W26의 "미표시" 분류 플래그는 비교에서 제외한다(기존 폴드에는 없는 축이다).
         // 그 외의 뱃지가 달라지면 화면이 달라진 것이다.
         Assert.Equal(
-            legacy.Unhandled.Where(entry => !CoreStageFold.DrawnCoreCommands.Contains(entry.CommandName)),
-            composite.Unhandled.Where(entry => !CoreStageFold.DrawnCoreCommands.Contains(entry.CommandName)));
+            legacy.Unhandled
+                .Where(entry => !CoreStageFold.DrawnCoreCommands.Contains(entry.CommandName))
+                .Select(entry => (entry.LineId, entry.CommandName)),
+            composite.Unhandled
+                .Where(entry => !CoreStageFold.DrawnCoreCommands.Contains(entry.CommandName))
+                .Select(entry => (entry.LineId, entry.CommandName)));
 
         Assert.Equal(
             legacy.Slots.Keys.OrderBy(key => key, StringComparer.Ordinal),
@@ -268,6 +273,30 @@ public class CoreStageFoldTests
         CoreStageFoldResult withoutTuning = CoreStageFold.Fold(Catalog, setup, lines, tuning: null);
         Assert.Contains(new MiniStageUnhandled(null, "shot_zoom"), withoutTuning.State.Unhandled);
         Assert.Contains(new MiniStageUnhandled("ln3", "place"), withoutTuning.State.Unhandled);
+    }
+
+    [Fact]
+    public void 미표시_분류_접혔지만_안_그리는_축은_플래그로_갈린다()
+    {
+        // char_to는 코어가 구조 축으로 접지만(v1 컨테이너 항등 가정) 화면에 그릴 것이 없다 —
+        // H-3 "미표시". 코어도 툴도 모르는 커맨드는 "반영 안 됨"(플래그 false)이다.
+        PresentationResultCommand[] setup =
+        [
+            Command("char_rig_cast.slot", ("slotKey", "c1")),
+            Command("char_rig_staging.char_to", ("slot", "c1"), ("stage", "stage01")),
+            Command("custom.mystery", ("x", "1"))
+        ];
+
+        CoreStageFoldResult composite = CoreStageFold.Fold(
+            Catalog, setup, Array.Empty<MiniStageFoldLine>(), LoadTuning());
+
+        MiniStageUnhandled charTo = Assert.Single(
+            composite.State.Unhandled, entry => entry.CommandName == "char_to");
+        Assert.True(charTo.FoldedButNotDrawn);
+
+        MiniStageUnhandled mystery = Assert.Single(
+            composite.State.Unhandled, entry => entry.CommandName == "custom.mystery");
+        Assert.False(mystery.FoldedButNotDrawn);
     }
 
     [Fact]

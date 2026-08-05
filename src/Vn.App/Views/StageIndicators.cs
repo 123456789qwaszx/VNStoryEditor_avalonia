@@ -31,31 +31,64 @@ internal static class StageIndicators
         }
 
         MiniStageState state = request.State;
-        int total = state.Unhandled.Count;
-        int forLine = state.UnhandledCountFor(request.SelectedLineId);
 
-        if (total > 0)
+        // H-3 두 갈래 (W26): "반영 안 됨" = 코어도 툴도 못 접은 커맨드,
+        // "미표시" = 상태로는 접혔지만 아직 그리지 않는 축(구조 기록·셰이더 축).
+        MiniStageUnhandled[] notFolded = state.Unhandled.Where(item => !item.FoldedButNotDrawn).ToArray();
+        MiniStageUnhandled[] notDrawn = state.Unhandled.Where(item => item.FoldedButNotDrawn).ToArray();
+        bool hasDetail = state.Unhandled.Count > 0 ||
+            (request.CoreState?.Unhandled.Count ?? 0) > 0;
+
+        if (notFolded.Length > 0)
         {
-            // 2b 확장의 백로그가 되는 목록이다. 조용히 버려진 연출은 없다.
-            var badge = new Button
-            {
-                Content = $"반영 안 된 연출 {total}" + (forLine > 0 ? $" (이 라인 {forLine})" : string.Empty),
-                FontSize = 10,
-                Padding = new Thickness(6, 2),
-                Background = new SolidColorBrush(Color.FromArgb(40, 220, 38, 38))
-            };
+            int forLine = notFolded.Count(item =>
+                string.Equals(item.LineId, request.SelectedLineId, StringComparison.Ordinal));
 
-            badge.Click += (_, _) => unhandledHost.IsVisible = !unhandledHost.IsVisible;
-            badgeRow.Children.Add(badge);
+            // 확장의 백로그가 되는 목록이다. 조용히 버려진 연출은 없다.
+            AddToggleBadge(
+                badgeRow,
+                unhandledHost,
+                $"반영 안 된 연출 {notFolded.Length}" + (forLine > 0 ? $" (이 라인 {forLine})" : string.Empty),
+                Color.FromArgb(40, 220, 38, 38));
+        }
 
+        if (notDrawn.Length > 0)
+        {
+            AddToggleBadge(
+                badgeRow,
+                unhandledHost,
+                $"미표시 {notDrawn.Length}",
+                Color.FromArgb(40, 120, 120, 128));
+        }
+
+        if (hasDetail)
+        {
             foreach (MiniStageUnhandled unhandled in state.Unhandled)
             {
                 unhandledHost.Children.Add(new TextBlock
                 {
-                    Text = $"• {unhandled.CommandName} — {(unhandled.LineId is null ? "Setup" : unhandled.LineId)}",
+                    Text = $"• {unhandled.CommandName} — " +
+                        $"{(unhandled.LineId is null ? "Setup" : unhandled.LineId)}" +
+                        (unhandled.FoldedButNotDrawn ? " (접힘·미표시)" : string.Empty),
                     FontSize = 10,
                     Opacity = 0.75
                 });
+            }
+
+            // 코어가 남긴 진단(초상 치수 없음 등) — 접다 만 이유가 사람에게 보여야 한다(규칙 14).
+            if (request.CoreState is { Unhandled.Count: > 0 } core)
+            {
+                foreach (Ked.Presentation.Core.UnhandledCommand diagnostic in core.Unhandled)
+                {
+                    unhandledHost.Children.Add(new TextBlock
+                    {
+                        Text = $"◦ 코어 진단: {diagnostic.Command.Name} — {diagnostic.Reason}" +
+                            (diagnostic.Command.Source is { } source ? $" ({source})" : string.Empty),
+                        FontSize = 10,
+                        Opacity = 0.6,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                }
             }
 
             unhandledHost.IsVisible = wasExpanded;
@@ -134,6 +167,20 @@ internal static class StageIndicators
         {
             AddNotice(noticeHost, problem, warning: true);
         }
+    }
+
+    private static void AddToggleBadge(Panel badgeRow, Panel unhandledHost, string text, Color background)
+    {
+        var badge = new Button
+        {
+            Content = text,
+            FontSize = 10,
+            Padding = new Thickness(6, 2),
+            Background = new SolidColorBrush(background)
+        };
+
+        badge.Click += (_, _) => unhandledHost.IsVisible = !unhandledHost.IsVisible;
+        badgeRow.Children.Add(badge);
     }
 
     private static void AddNotice(Panel host, string message, bool warning)

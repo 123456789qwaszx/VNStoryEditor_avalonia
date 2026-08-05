@@ -151,8 +151,8 @@ public static class CoreStageFold
         }
         else
         {
-            // 접혔지만 아직 안 그리는 축 — 기존 뱃지 의미 그대로 남긴다(규칙 14).
-            fold.Unhandled.Add(new MiniStageUnhandled(lineId, outputCommand));
+            // 접혔지만 아직 안 그리는 축 — H-3 "미표시"로 남긴다(규칙 14, W26 뱃지 분리).
+            fold.Unhandled.Add(new MiniStageUnhandled(lineId, outputCommand, FoldedButNotDrawn: true));
         }
 
         return next;

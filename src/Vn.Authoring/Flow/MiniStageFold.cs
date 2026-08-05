@@ -12,11 +12,15 @@ public sealed record MiniStageSlot(
     bool Mirrored);
 
 /// <summary>
-/// 폴드가 반영하지 못한 연출 하나. <b>커맨드명과 라인을 보존한다</b> —
-/// 이 목록이 "이 라인에 반영 안 된 연출 N개" 뱃지가 되고, 2b 확장의 백로그가 된다.
+/// 폴드가 화면에 반영하지 못한 연출 하나. <b>커맨드명과 라인을 보존한다</b> —
+/// 이 목록이 뱃지가 되고, 확장의 백로그가 된다.
 /// </summary>
 /// <param name="LineId">null이면 Setup 블록의 커맨드다.</param>
-public sealed record MiniStageUnhandled(string? LineId, string CommandName);
+/// <param name="FoldedButNotDrawn">
+/// H-3의 "미표시" 등급 (W26): 코어가 상태로는 접었지만 프리뷰가 아직 그리지 않는 축
+/// (구조 기록·셰이더 축). false면 코어도 툴도 못 접은 "반영 안 됨"이다 — 뱃지가 갈린다.
+/// </param>
+public sealed record MiniStageUnhandled(string? LineId, string CommandName, bool FoldedButNotDrawn = false);
 
 /// <summary>
 /// 선택 라인까지 접은 미니 무대 상태. "무슨 배경에서 누가 말하는가"에만 답한다.
