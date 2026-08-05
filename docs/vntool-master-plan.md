@@ -33,10 +33,11 @@
 | 런타임 U13-a·U12-전체·U13-b (코어 추출) | **완료** | 런타임 저장소 af4a9621…cf183be6 외, `Assets/Ked.Presentation.Core/` 실재 |
 | 런타임 U14 (등가성 관문) | **초록불** | 대표 에피소드 193/193 등가, `equivalence-20260805-211527.json` (Unhandled 153 보존). 이후 DungeonDinner 2건 불일치는 선택지 파일 — 하네스 범위(선형 전용) 밖 |
 | Phase 2a: 전체 에셋 파이프라인 + U12-v1 리허설 | **종료 (소유자 판정 2026-08-05)** | 런타임 `ExportedTuning/` 14파일 실재. VnTool 쪽 tuning 수입은 W23으로 이행 |
-| **Phase 2b: 정지 프레임 렌더러** | **다음 작업** | 지시서 `work-orders/phase2b-core-adoption.md` (W22–W26) |
+| **Phase 2b: 정지 프레임 렌더러** | **진행 중** | 지시서 `work-orders/phase2b-core-adoption.md` (W22–W26) |
+| W22: 코어 소스 복사 반입 | **완료** | `d1a28f7`, 707 테스트 (코어 복사 220 포함) |
 | Phase 2c: 실시간 재생 | 대기 | 2b 위에 시간·전이·입력 |
 
-현재 전체 테스트 **487개**(Core 60 / Authoring 363 / App 64). 표의 테스트 수는 각 커밋 메시지에 남긴 러너 출력이다 — 추정값을 적지 않는다.
+현재 전체 테스트 **707개**(Core 60 / Authoring 363 / App 64 / 코어 복사 220 — NUnit). 표의 테스트 수는 각 커밋 메시지에 남긴 러너 출력이다 — 추정값을 적지 않는다.
 
 ## 2. 도메인 설계 (현행 확정 상태)
 

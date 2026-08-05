@@ -1,0 +1,4552 @@
+{
+    "capturedUnderParentSize": {
+        "x": 1920.0,
+        "y": 1080.0
+    },
+    "rigs": [
+        {
+            "rigKind": "character",
+            "sourcePrefab": "Assets/CharacterRig.prefab",
+            "nodes": [
+                {
+                    "id": "__root",
+                    "parent": "",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 1.0
+                },
+                {
+                    "id": "CharSlot_Track_Focus",
+                    "parent": "__root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_DepthY",
+                    "parent": "CharSlot_Track_Focus",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_DepthScale",
+                    "parent": "CharSlot_DepthY",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_Track_Idle",
+                    "parent": "CharSlot_DepthScale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_Track",
+                    "parent": "CharSlot_Track_Idle",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_Track_X",
+                    "parent": "CharSlot_Track",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_Track_Y",
+                    "parent": "CharSlot_Track_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_Rotation",
+                    "parent": "CharSlot_Track_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_SwayPivot",
+                    "parent": "CharSlot_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharSlot_Scale",
+                    "parent": "CharSlot_SwayPivot",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_VisualOffset",
+                    "parent": "CharSlot_Scale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_Track",
+                    "parent": "CharacterPortrait_VisualOffset",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_Rotation",
+                    "parent": "CharacterPortrait_Track",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_Track_Move",
+                    "parent": "CharacterPortrait_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_Track_Move_X",
+                    "parent": "CharacterPortrait_Track_Move",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_Track_Move_Y",
+                    "parent": "CharacterPortrait_Track_Move_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_SwayPivot",
+                    "parent": "CharacterPortrait_Track_Move_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_Shake",
+                    "parent": "CharacterPortrait_SwayPivot",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_ActingScale",
+                    "parent": "CharacterPortrait_Shake",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_ActingScale_X",
+                    "parent": "CharacterPortrait_ActingScale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortrait_ActingScale_Y",
+                    "parent": "CharacterPortrait_ActingScale_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortraitSprite_Root",
+                    "parent": "CharacterPortrait_ActingScale_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortraitSprite_Image",
+                    "parent": "CharacterPortraitSprite_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortraitSpriteOverlay_Root",
+                    "parent": "CharacterPortrait_ActingScale_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortraitSpriteOverlay_Image",
+                    "parent": "CharacterPortraitSpriteOverlay_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Character_ExtensionsRoot",
+                    "parent": "CharacterPortrait_ActingScale_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Root",
+                    "parent": "CharacterPortrait_Shake",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_VisualOffset",
+                    "parent": "EmojiSlot00_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Track",
+                    "parent": "EmojiSlot00_VisualOffset",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_BaseRotation",
+                    "parent": "EmojiSlot00_Track",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Track_Move",
+                    "parent": "EmojiSlot00_BaseRotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Track_Move_X",
+                    "parent": "EmojiSlot00_Track_Move",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Track_Move_Y",
+                    "parent": "EmojiSlot00_Track_Move_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Effect",
+                    "parent": "EmojiSlot00_Track_Move_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_SwayPivot",
+                    "parent": "EmojiSlot00_Effect",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Rotation",
+                    "parent": "EmojiSlot00_SwayPivot",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Size",
+                    "parent": "EmojiSlot00_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Scale",
+                    "parent": "EmojiSlot00_Size",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot00_Image",
+                    "parent": "EmojiSlot00_Scale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Root",
+                    "parent": "CharacterPortrait_Shake",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_VisualOffset",
+                    "parent": "EmojiSlot01_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Track",
+                    "parent": "EmojiSlot01_VisualOffset",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_BaseRotation",
+                    "parent": "EmojiSlot01_Track",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Track_Move",
+                    "parent": "EmojiSlot01_BaseRotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Track_Move_X",
+                    "parent": "EmojiSlot01_Track_Move",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Track_Move_Y",
+                    "parent": "EmojiSlot01_Track_Move_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Effect",
+                    "parent": "EmojiSlot01_Track_Move_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_SwayPivot",
+                    "parent": "EmojiSlot01_Effect",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Rotation",
+                    "parent": "EmojiSlot01_SwayPivot",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Size",
+                    "parent": "EmojiSlot01_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Scale",
+                    "parent": "EmojiSlot01_Size",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot01_Image",
+                    "parent": "EmojiSlot01_Scale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Root",
+                    "parent": "CharacterPortrait_Shake",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_VisualOffset",
+                    "parent": "EmojiSlot02_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Track",
+                    "parent": "EmojiSlot02_VisualOffset",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_BaseRotation",
+                    "parent": "EmojiSlot02_Track",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Track_Move",
+                    "parent": "EmojiSlot02_BaseRotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Track_Move_X",
+                    "parent": "EmojiSlot02_Track_Move",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Track_Move_Y",
+                    "parent": "EmojiSlot02_Track_Move_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Effect",
+                    "parent": "EmojiSlot02_Track_Move_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_SwayPivot",
+                    "parent": "EmojiSlot02_Effect",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.0
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Rotation",
+                    "parent": "EmojiSlot02_SwayPivot",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Size",
+                    "parent": "EmojiSlot02_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Scale",
+                    "parent": "EmojiSlot02_Size",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "EmojiSlot02_Image",
+                    "parent": "EmojiSlot02_Scale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                }
+            ]
+        },
+        {
+            "rigKind": "background",
+            "sourcePrefab": "Assets/BackgroundRig.prefab",
+            "nodes": [
+                {
+                    "id": "__root",
+                    "parent": "",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Root",
+                    "parent": "__root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 1.0
+                },
+                {
+                    "id": "Background_Anchor",
+                    "parent": "Background_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Track_Move",
+                    "parent": "Background_Anchor",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Track_X",
+                    "parent": "Background_Track_Move",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Track_Y",
+                    "parent": "Background_Track_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Original_Rotation",
+                    "parent": "Background_Track_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Rotation",
+                    "parent": "Background_Original_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Shake",
+                    "parent": "Background_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Size",
+                    "parent": "Background_Shake",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Scale",
+                    "parent": "Background_Size",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_DepthScale",
+                    "parent": "Background_Scale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_Mask",
+                    "parent": "Background_DepthScale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_ActingScale",
+                    "parent": "Background_Mask",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_ActingScale_X",
+                    "parent": "Background_ActingScale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_ActingScale_Y",
+                    "parent": "Background_ActingScale_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "BackgroundSprite_Root",
+                    "parent": "Background_ActingScale_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 1.0
+                },
+                {
+                    "id": "BackgroundSprite_Image",
+                    "parent": "BackgroundSprite_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Background_ObjectSlotRoot",
+                    "parent": "Background_ActingScale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 2.0,
+                        "y": 2.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                }
+            ]
+        },
+        {
+            "rigKind": "overlay",
+            "sourcePrefab": "",
+            "nodes": [
+                {
+                    "id": "__root",
+                    "parent": "",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Root",
+                    "parent": "__root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Anchor",
+                    "parent": "Overlay_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Track",
+                    "parent": "Overlay_Anchor",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_BaseRotation",
+                    "parent": "Overlay_Track",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Track_Move",
+                    "parent": "Overlay_BaseRotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Track_X",
+                    "parent": "Overlay_Track_Move",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Track_X_Offset",
+                    "parent": "Overlay_Track_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Track_Y",
+                    "parent": "Overlay_Track_X_Offset",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Track_Y_Offset",
+                    "parent": "Overlay_Track_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Rotation",
+                    "parent": "Overlay_Track_Y_Offset",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Size",
+                    "parent": "Overlay_Rotation",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "anchorMax": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Scale",
+                    "parent": "Overlay_Size",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_ActingScale",
+                    "parent": "Overlay_Scale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_ActingScale_X",
+                    "parent": "Overlay_ActingScale",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_ActingScale_Y",
+                    "parent": "Overlay_ActingScale_X",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Content",
+                    "parent": "Overlay_ActingScale_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_ImageBox",
+                    "parent": "Overlay_Content",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_ImagePad",
+                    "parent": "Overlay_ImageBox",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Image",
+                    "parent": "Overlay_ImagePad",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_TextBox",
+                    "parent": "Overlay_Content",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_TextPad",
+                    "parent": "Overlay_TextBox",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Overlay_Text",
+                    "parent": "Overlay_TextPad",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                }
+            ]
+        },
+        {
+            "rigKind": "screenEffect",
+            "sourcePrefab": "",
+            "nodes": [
+                {
+                    "id": "__root",
+                    "parent": "",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "ScreenOverlay_Root",
+                    "parent": "__root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Vignette_Image",
+                    "parent": "ScreenOverlay_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Noise_Image",
+                    "parent": "ScreenOverlay_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "Flash_Image",
+                    "parent": "ScreenOverlay_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 0.0
+                }
+            ]
+        }
+    ]
+}

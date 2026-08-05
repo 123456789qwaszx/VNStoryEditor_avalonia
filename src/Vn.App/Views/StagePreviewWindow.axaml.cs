@@ -98,6 +98,7 @@ public partial class StagePreviewWindow : Window
         StageIndicators.FillBadges(request, BadgeRow, UnhandledHost);
         StageIndicators.FillNotices(
             _session?.AssetLibrary ?? PreviewAssetLibrary.Empty,
+            _session?.TuningLibrary ?? RuntimeTuningLibrary.Empty,
             request,
             NoticeHost,
             includeRootHint: false);

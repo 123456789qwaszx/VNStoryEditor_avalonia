@@ -7,6 +7,10 @@
     <InternalsVisibleTo Include="Vn.Authoring.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <!-- 런타임에서 복사 반입한 연출 코어 (H-4). 무대 상태 계산은 이 한 벌만 쓴다 (H-2). -->
+    <ProjectReference Include="..\Ked.Presentation.Core\Ked.Presentation.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- 기본 연출 카탈로그. docs의 검증본이 유일한 원본이고, 여기서는 내장 리소스로 링크만 한다. -->
     <EmbeddedResource Include="..\..\docs\game.definition.json" Link="Definition\game.definition.default.json" LogicalName="Vn.Authoring.Definition.game.definition.default.json" />
   </ItemGroup>

@@ -113,7 +113,12 @@ public partial class MiniStagePreview : UserControl
         else
         {
             StageIndicators.FillBadges(request, BadgeRow, UnhandledHost);
-            StageIndicators.FillNotices(library, request, NoticeHost, includeRootHint: true);
+            StageIndicators.FillNotices(
+                library,
+                _session?.TuningLibrary ?? RuntimeTuningLibrary.Empty,
+                request,
+                NoticeHost,
+                includeRootHint: true);
         }
 
         _window?.Push(request);

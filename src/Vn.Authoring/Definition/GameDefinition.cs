@@ -59,6 +59,13 @@ public sealed class GameDefinition
     public PreviewSpec? Preview { get; init; }
 
     /// <summary>
+    /// 런타임 tuning 덤프(ExportedTuning) 폴더 재지정. 프로젝트 상대 또는 절대 경로.
+    /// 없으면 프로젝트 폴더의 <c>ExportedTuning</c>(런타임 내보내기 폴더명 그대로)을 쓴다.
+    /// </summary>
+    [JsonPropertyName("runtimeTuningPath")]
+    public string? RuntimeTuningPath { get; init; }
+
+    /// <summary>
     /// 프리뷰 기준 해상도. <c>preview.resolution</c>("1920x1080" 형식)에서 읽고,
     /// 없거나 형식이 다르면 기본 1920×1080이다. 게임별 CanvasScaler 해상도가 다르면
     /// 정의 파일이 교체한다 — 코드에 게임을 박지 않는다.

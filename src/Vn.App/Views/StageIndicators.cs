@@ -79,6 +79,7 @@ internal static class StageIndicators
 
     public static void FillNotices(
         PreviewAssetLibrary library,
+        RuntimeTuningLibrary tuning,
         MiniStagePreviewRequest? request,
         Panel noticeHost,
         bool includeRootHint)
@@ -98,7 +99,22 @@ internal static class StageIndicators
                 warning: false);
         }
 
+        // 런타임 tuning 미수입은 오류가 아니라 안내다 — 어디에 무엇을 놓으면 되는지 말한다(W23).
+        if (includeRootHint && !tuning.IsLoaded && tuning.Problems.Count == 0)
+        {
+            AddNotice(
+                noticeHost,
+                $"런타임 tuning이 없어 좌표 배치는 근사로 표시됩니다. 런타임에서 내보낸 " +
+                $"{RuntimeTuningLibrary.DefaultFolderName} 폴더를 프로젝트 폴더에 복사하면 됩니다.",
+                warning: false);
+        }
+
         foreach (string problem in library.Problems)
+        {
+            AddNotice(noticeHost, problem, warning: true);
+        }
+
+        foreach (string problem in tuning.Problems)
         {
             AddNotice(noticeHost, problem, warning: true);
         }

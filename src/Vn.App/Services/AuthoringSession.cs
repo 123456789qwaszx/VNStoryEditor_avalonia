@@ -95,14 +95,64 @@ internal sealed class AuthoringSession
     /// <summary>프리뷰 비트맵 캐시. 해석이 끝난 절대 경로가 키다.</summary>
     public PreviewImageCache<Bitmap> ImageCache { get; } = new(path => new Bitmap(path));
 
+    // ── 런타임 tuning (W23) ────────────────────────────────────────────────
+
+    private RuntimeTuningLibrary? _tuningLibrary;
+    private string _tuningLibrarySignature = string.Empty;
+
+    /// <summary>
+    /// 런타임 tuning 덤프 인덱스. 경로 설정·정의 해상도가 바뀌면 다시 읽지만, 폴더
+    /// <b>내용</b>의 변경은 <see cref="RefreshAssets"/>(명시적 새로 고침)만 반영한다 —
+    /// <see cref="AssetLibrary"/>와 같은 규칙이다.
+    /// </summary>
+    public RuntimeTuningLibrary TuningLibrary
+    {
+        get
+        {
+            string? directory = ResolveTuningRoot();
+            (double Width, double Height) fallback = Definition.PreviewResolution;
+            string signature = $"{directory}{fallback.Width}x{fallback.Height}";
+
+            if (_tuningLibrary is null ||
+                !string.Equals(_tuningLibrarySignature, signature, StringComparison.Ordinal))
+            {
+                _tuningLibrary = RuntimeTuningLibrary.Load(directory, fallback);
+                _tuningLibrarySignature = signature;
+            }
+
+            return _tuningLibrary;
+        }
+    }
+
+    /// <summary>
+    /// tuning 폴더 해석 — 정의 파일의 재지정이 있으면 그 경로(없으면 경고가 남도록 그대로 전달),
+    /// 없으면 프로젝트 폴더의 <c>ExportedTuning</c> 규약 폴더(없으면 미수입 상태로 조용히 null —
+    /// 아직 아무것도 약속하지 않은 기본값이므로 경고가 아니라 안내 대상이다).
+    /// </summary>
+    private string? ResolveTuningRoot()
+    {
+        string basePath = ProjectPath
+            ?? Path.Combine(Environment.CurrentDirectory, "unsaved" + ProjectManifestJson.FileExtension);
+
+        if (!string.IsNullOrWhiteSpace(Definition.RuntimeTuningPath))
+        {
+            return AssetRootSettings.ResolveFrom(basePath, Definition.RuntimeTuningPath);
+        }
+
+        string? conventional = AssetRootSettings.ResolveFrom(basePath, RuntimeTuningLibrary.DefaultFolderName);
+        return conventional is not null && Directory.Exists(conventional) ? conventional : null;
+    }
+
     /// <summary>해석된 초상화 루트 절대 경로 — 표정 스프라이트 복제(설정노드)가 쓴다.</summary>
     public string? PortraitsRoot => ResolveAssetRoots().Portraits;
 
     public void RefreshAssets()
     {
         _assetLibrary = null;
+        _tuningLibrary = null;
         ImageCache.Clear();
-        SetStatus("프리뷰 에셋을 다시 읽었습니다.");
+        SetStatus("프리뷰 에셋을 다시 읽었습니다." +
+            (TuningLibrary.IsLoaded ? $" · {TuningLibrary.Summary}" : string.Empty));
     }
 
     private (string? Backgrounds, string? Portraits) ResolveAssetRoots()
@@ -169,10 +219,12 @@ internal sealed class AuthoringSession
         ProjectPath = loaded.ManifestPath;
         Definition = GameDefinition.LoadBeside(loaded.ManifestPath);
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
+        _tuningLibrary = null;
         StatusMessage =
             $"{Path.GetFileName(ProjectPath)} · 대본 {project.Scripts.Count}개 · " +
             $"노드 {project.EnumerateNodes().Count()}개 · " +
-            $"발행 결과 {project.Results.DialogueResults.Count + project.Results.PresentationResults.Count}개";
+            $"발행 결과 {project.Results.DialogueResults.Count + project.Results.PresentationResults.Count}개" +
+            (TuningLibrary.IsLoaded ? $" · {TuningLibrary.Summary}" : string.Empty);
 
         AppSettingsService.SaveRecentProject(loaded.ManifestPath);
 
