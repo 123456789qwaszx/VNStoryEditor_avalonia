@@ -447,5 +447,8 @@ public const float UnitPixels = ReferenceStageWidth / StageWidthDivisor; // 40px
 *(지시서가 생기면 여기 링크를 남기고 이 문서는 읽기 전용 기록이 된다.)*
 
 - Phase 2a 지시서: **작성하지 않음** — 소유자 판정으로 종료(2026-08-05), 잔여(tuning 수입)는 2b 지시서 W23으로 흡수
-- Phase 2b 지시서: [phase2b-core-adoption.md](phase2b-core-adoption.md) (W22–W26, 2026-08-05)
-- Phase 2c 지시서: *(미작성 — 2b 종료 후)*
+- Phase 2b 지시서: [phase2b-core-adoption.md](phase2b-core-adoption.md) (W22–W26, 2026-08-05) — **전체 완료**
+- Phase 2c 지시서: [phase2c-playback-and-authoring.md](phase2c-playback-and-authoring.md) (W31–W36, 2026-08-06)
+  — H-5(유니티 무관) 기준의 툴 안 실시간 재생 + 갈래 인식 프리뷰. D-2c-1("시간을 툴이
+  시뮬레이션하는가")의 답은 H-5로 갈렸다: 코어(상태)와 툴(시간)의 분리 — 유니티 시간 모델
+  재현이 아니라 확인용 재생이다.

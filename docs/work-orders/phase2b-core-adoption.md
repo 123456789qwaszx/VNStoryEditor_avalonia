@@ -1,4 +1,9 @@
-# Phase 2b 이행 지시서 — 코어 채택 (W22–W26)
+# Phase 2b 이행 지시서 — 코어 채택 (W22–W26) ✅ 전체 완료 (읽기 전용 기록)
+
+**W22–W30 전부 완료, Phase 2b 종료** (소유자 수동 확인 2026-08-06). 유니티 구도 대조
+게이트는 H-5(유니티와의 계약은 Text뿐)로 해제됐다 — 이 문서 안의 유니티 대조·재수렴
+서술은 그 결정 이전의 기록이다. 다음 작업은
+[phase2c-playback-and-authoring.md](phase2c-playback-and-authoring.md) (W31–W36).
 
 2026-08-05 작성, 같은 날 소유자 정정 반영(동기화 인프라 제거 — H-4). Phase 2b의 VnTool 쪽 공식 지시서다. 근거:
 [phase2-design-brief.md](phase2-design-brief.md) §6(구체 구조),
