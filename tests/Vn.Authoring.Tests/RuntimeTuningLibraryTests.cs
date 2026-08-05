@@ -44,6 +44,11 @@ public class RuntimeTuningLibraryTests
         Assert.NotNull(tuning.PortraitDimensions);
         Assert.True(library.PortraitDimensionCount > 0);
 
+        // 대사창 surface 레이아웃 — 컴포저(대사창 배치)의 입력 (W30).
+        Assert.NotNull(library.SurfaceLayouts);
+        Assert.True(library.SurfaceLayouts!.TryGet("bottom", out SurfaceLayoutPreset bottom));
+        Assert.True(bottom.UseName);
+
         // 전 파일이 읽혔으므로 배치 안내가 없어야 한다.
         Assert.Empty(library.Problems);
         Assert.StartsWith("tuning 로드됨", library.Summary, StringComparison.Ordinal);

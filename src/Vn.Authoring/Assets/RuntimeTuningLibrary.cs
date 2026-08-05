@@ -34,6 +34,7 @@ public sealed class RuntimeTuningLibrary
         portraitDimensionCount: 0,
         hasDepthPresets: false,
         hasFocusTuning: false,
+        surfaceLayouts: null,
         problems: Array.Empty<string>());
 
     private RuntimeTuningLibrary(
@@ -43,6 +44,7 @@ public sealed class RuntimeTuningLibrary
         int portraitDimensionCount,
         bool hasDepthPresets,
         bool hasFocusTuning,
+        SurfaceLayoutSet? surfaceLayouts,
         IReadOnlyList<string> problems)
     {
         Directory = directory;
@@ -51,6 +53,7 @@ public sealed class RuntimeTuningLibrary
         PortraitDimensionCount = portraitDimensionCount;
         HasDepthPresets = hasDepthPresets;
         HasFocusTuning = hasFocusTuning;
+        SurfaceLayouts = surfaceLayouts;
         Problems = problems;
     }
 
@@ -72,6 +75,12 @@ public sealed class RuntimeTuningLibrary
     public bool HasDepthPresets { get; }
 
     public bool HasFocusTuning { get; }
+
+    /// <summary>
+    /// 대사창 surface 레이아웃 (presets/surface-layout.json). 코어 리듀서의 입력이 아니라
+    /// 컴포저(대사창 배치)의 입력이라 <see cref="Tuning"/> 밖에 산다. null이면 고정 비율 근사.
+    /// </summary>
+    public SurfaceLayoutSet? SurfaceLayouts { get; }
 
     /// <summary>로드 중 발견한 문제 전부 — 없는 파일의 배치 안내 포함. 프리뷰가 그대로 보여 준다.</summary>
     public IReadOnlyList<string> Problems { get; }
@@ -108,6 +117,11 @@ public sealed class RuntimeTuningLibrary
                 parts.Add($"초상 치수 {PortraitDimensionCount}");
             }
 
+            if (SurfaceLayouts is { Count: > 0 })
+            {
+                parts.Add($"대사창 레이아웃 {SurfaceLayouts.Count}종");
+            }
+
             return parts.Count == 0
                 ? "tuning 폴더는 있지만 읽힌 파일이 없음"
                 : "tuning 로드됨 (" + string.Join(" · ", parts) + ")";
@@ -141,6 +155,7 @@ public sealed class RuntimeTuningLibrary
                 portraitDimensionCount: 0,
                 hasDepthPresets: false,
                 hasFocusTuning: false,
+                surfaceLayouts: null,
                 problems);
         }
 
@@ -197,6 +212,30 @@ public sealed class RuntimeTuningLibrary
             guidance: "초상 사이징이 '반영 안 됨'으로 남습니다.");
         tuning.PortraitDimensions = portraits;
 
+        // ── 대사창 surface 레이아웃 (presets/surface-layout.json) — 컴포저 입력 ──
+        SurfaceLayoutFileDto? surfaces = ReadFile<SurfaceLayoutFileDto>(
+            root, Path.Combine("presets", "surface-layout.json"), problems,
+            guidance: "대사창 배치가 고정 비율 근사로 남습니다.");
+
+        SurfaceLayoutSet? surfaceLayouts = null;
+
+        if (surfaces?.MonoBehaviour?.entries is { Count: > 0 } entries)
+        {
+            surfaceLayouts = new SurfaceLayoutSet(entries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry?.key))
+                .Select(entry => new SurfaceLayoutPreset(
+                    entry!.key!.Trim(),
+                    entry.lineAnchorMin?.x ?? 0,
+                    entry.lineAnchorMin?.y ?? 0,
+                    entry.lineAnchorMax?.x ?? 1,
+                    entry.lineAnchorMax?.y ?? 1,
+                    entry.useName,
+                    entry.nameAnchorMin?.x ?? 0,
+                    entry.nameAnchorMin?.y ?? 0,
+                    entry.nameAnchorMax?.x ?? 0,
+                    entry.nameAnchorMax?.y ?? 0)));
+        }
+
         return new RuntimeTuningLibrary(
             root,
             tuning,
@@ -204,6 +243,7 @@ public sealed class RuntimeTuningLibrary
             portraitDimensionCount: portraits?.entries?.Count ?? 0,
             hasDepthPresets: tuning.DepthPresets is not null,
             hasFocusTuning: tuning.FocusTuning is not null,
+            surfaceLayouts,
             problems);
     }
 
@@ -241,12 +281,34 @@ public sealed class RuntimeTuningLibrary
         }
     }
 
-    // base-resolution.json은 코어 리듀서가 직접 읽는 DTO가 아니라(값 둘만 필요)
-    // 코어에 대응 타입이 없다. 여기 로더 전용으로만 둔다 — 규칙 해석이 아니라 모양이다.
+    // base-resolution.json·surface-layout.json은 코어 리듀서의 입력이 아니라 코어에 대응
+    // 타입이 없다. 여기 로더 전용으로만 둔다 — 규칙 해석이 아니라 모양이다.
     private sealed class BaseResolutionFileDto
     {
 #pragma warning disable CS0649 // 역직렬화가 채우는 필드
         public Float2Dto? referenceResolution;
 #pragma warning restore CS0649
     }
+
+#pragma warning disable CS0649 // 역직렬화가 채우는 필드
+    private sealed class SurfaceLayoutFileDto
+    {
+        public SurfaceLayoutBodyDto? MonoBehaviour;
+    }
+
+    private sealed class SurfaceLayoutBodyDto
+    {
+        public List<SurfaceLayoutEntryDto?>? entries;
+    }
+
+    private sealed class SurfaceLayoutEntryDto
+    {
+        public string? key;
+        public Float2Dto? lineAnchorMin;
+        public Float2Dto? lineAnchorMax;
+        public bool useName;
+        public Float2Dto? nameAnchorMin;
+        public Float2Dto? nameAnchorMax;
+    }
+#pragma warning restore CS0649
 }

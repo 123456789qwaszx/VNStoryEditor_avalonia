@@ -1,4 +1,5 @@
 using Ked.Presentation.Core;
+using Vn.Authoring.Assets;
 using Vn.Authoring.Flow;
 
 namespace Vn.App.Services;
@@ -65,7 +66,8 @@ internal static class StageSceneComposer
         string? speakerCharacterId,
         double width,
         double height,
-        StageState? coreState = null)
+        StageState? coreState = null,
+        SurfaceLayoutSet? surfaceLayouts = null)
     {
         ArgumentNullException.ThrowIfNull(state);
 
@@ -79,7 +81,7 @@ internal static class StageSceneComposer
             width,
             height,
             portraits,
-            PlaceDialogueBox(state.BoxKindFor(hasSpeaker), width, height),
+            PlaceDialogueBox(state.BoxKindFor(hasSpeaker), width, height, surfaceLayouts),
             hasSpeaker && !speakerOnStage ? speakerName : null);
     }
 
@@ -102,6 +104,15 @@ internal static class StageSceneComposer
         }
 
         return layers.Count / 2; // 기본 레이어 mid의 자리
+    }
+
+    /// <summary>깊이 스케일 — size 프리셋이 CharSlot_DepthScale에 접은 값. 없으면 1(기본).</summary>
+    private static float DepthScaleOf(StageState core, string slotKey)
+    {
+        return core.Nodes.TryGetState(
+            StageState.NodeKeyOf(slotKey, "CharSlot_DepthScale"), out RectNodeState depthState)
+            ? depthState.LocalScale.X
+            : 1f;
     }
 
     /// <summary>
@@ -134,6 +145,8 @@ internal static class StageSceneComposer
 
         // 숨김·빈 슬롯도 배치한다 — 뷰가 네모 윤곽 + 슬롯명 태그로 자리를 보여 준다(W28).
         // 가시성 판정은 뷰의 일이고, 여기는 자리 계산만 한다.
+        // 같은 무대·레이어 안에서는 깊이(가까울수록 큰 DepthScale)가 앞이다 (W30) —
+        // close로 당긴 캐릭터가 far 캐릭터에 가려지면 화면이 거짓말을 한다.
         IEnumerable<KeyValuePair<string, MiniStageSlot>> drawOrdered = state.Slots
             .OrderBy(entry => core.TryGetAttachment(entry.Key, out SlotAttachment attachment)
                 ? attachment.StageKey ?? "stage00"
@@ -141,6 +154,7 @@ internal static class StageSceneComposer
             .ThenBy(entry => core.TryGetAttachment(entry.Key, out SlotAttachment attachment)
                 ? LayerRank(attachment.LayerKey)
                 : LayerRank(null))
+            .ThenBy(entry => DepthScaleOf(core, entry.Key))
             .ThenBy(entry => entry.Key, StringComparer.Ordinal);
 
         foreach ((string slotKey, MiniStageSlot slot) in drawOrdered)
@@ -278,11 +292,77 @@ internal static class StageSceneComposer
     }
 
     /// <summary>
-    /// boxKind별 레이아웃 근사 — Speaker(하단 박스+이름표), OnlyText(무테 본문),
-    /// LetterBox(상하 밴드+중앙 텍스트). Portrait/Surface/BlackBook과 미지의 종류는
-    /// v1에선 Speaker 근사 + <see cref="StageDialogueBoxPlacement.Approximated"/> 표시다.
+    /// boxKind → surface 레이아웃 덤프 키. <b>이름이 사실상 같은 셋만</b> 잇는다 —
+    /// 정책 DB(화자→대사창 매핑)는 덤프에 없으므로 그 밖의 종류를 추측으로 잇지 않는다
+    /// (원칙 §2.3). 나머지는 기존 근사 + "(근사)" 뱃지가 정직하게 남는다.
     /// </summary>
-    private static StageDialogueBoxPlacement PlaceDialogueBox(string boxKind, double width, double height)
+    private static readonly Dictionary<string, string> SurfaceKeyByBoxKind = new(StringComparer.Ordinal)
+    {
+        ["Speaker"] = "bottom",
+        ["LetterBox"] = "letterbox_bottom",
+        ["BlackBook"] = "blackbook_page",
+    };
+
+    /// <summary>유니티 비율 앵커(y 아래→위) → 캔버스 rect(y 위→아래).</summary>
+    private static StageRect FromAnchors(
+        double minX, double minY, double maxX, double maxY, double width, double height)
+    {
+        return new StageRect(
+            minX * width,
+            (1 - maxY) * height,
+            (maxX - minX) * width,
+            (maxY - minY) * height);
+    }
+
+    /// <summary>
+    /// boxKind별 레이아웃 — surface 레이아웃 덤프가 있고 이름 매핑이 있으면 그 자리
+    /// 그대로(텍스트·이름표 rect = 덤프 앵커), 없으면 기존 고정 비율 근사다.
+    /// Speaker(하단 박스+이름표), OnlyText(무테 본문), LetterBox(상하 밴드+텍스트),
+    /// BlackBook(책장 박스). Portrait/Surface와 미지의 종류는 Speaker 근사 +
+    /// <see cref="StageDialogueBoxPlacement.Approximated"/> 표시다.
+    /// </summary>
+    private static StageDialogueBoxPlacement PlaceDialogueBox(
+        string boxKind, double width, double height, SurfaceLayoutSet? surfaceLayouts = null)
+    {
+        if (surfaceLayouts is not null &&
+            SurfaceKeyByBoxKind.TryGetValue(boxKind, out string? surfaceKey) &&
+            surfaceLayouts.TryGet(surfaceKey, out SurfaceLayoutPreset preset))
+        {
+            StageRect text = FromAnchors(
+                preset.LineMinX, preset.LineMinY, preset.LineMaxX, preset.LineMaxY, width, height);
+
+            StageRect? name = preset.UseName
+                ? FromAnchors(preset.NameMinX, preset.NameMinY, preset.NameMaxX, preset.NameMaxY, width, height)
+                : null;
+
+            if (boxKind == "LetterBox")
+            {
+                double bandHeight = height * 0.12;
+                return new StageDialogueBoxPlacement(
+                    StageDialogueBoxStyle.LetterBox, boxKind, Approximated: false,
+                    text,
+                    BoxRect: null,
+                    name,
+                    new StageRect(0, 0, width, bandHeight),
+                    new StageRect(0, height - bandHeight, width, bandHeight));
+            }
+
+            // 박스 배경은 텍스트 자리 둘레의 여백이다 — 자리(rect)는 덤프, 장식은 툴의 몫.
+            var box = new StageRect(
+                text.X - width * 0.02,
+                text.Y - height * 0.03,
+                text.Width + width * 0.04,
+                text.Height + height * 0.05);
+
+            return new StageDialogueBoxPlacement(
+                StageDialogueBoxStyle.Speaker, boxKind, Approximated: false,
+                text, box, name, TopBand: null, BottomBand: null);
+        }
+
+        return PlaceDialogueBoxFallback(boxKind, width, height);
+    }
+
+    private static StageDialogueBoxPlacement PlaceDialogueBoxFallback(string boxKind, double width, double height)
     {
         switch (boxKind)
         {

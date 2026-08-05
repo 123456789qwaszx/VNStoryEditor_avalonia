@@ -121,7 +121,8 @@ internal sealed class StageSceneView : UserControl
             speakerCharacterId,
             width,
             height,
-            request.CoreState);
+            request.CoreState,
+            _session?.TuningLibrary.SurfaceLayouts);
 
         foreach (StagePortraitPlacement portrait in layout.Portraits)
         {

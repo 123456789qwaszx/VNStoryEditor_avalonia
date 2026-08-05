@@ -210,6 +210,67 @@ public class StageSceneComposerCoreTests
     }
 
     [Fact]
+    public void 같은_레이어에서는_깊이가_가까운_쪽이_위에_그려진다()
+    {
+        // c1은 far(작게·뒤), c2는 close(크게·앞) — 슬롯 키 순서를 깊이가 이긴다 (W30).
+        StageState core = CoreState(
+            new StageCommand("slot", ["c1"]),
+            new StageCommand("cast", ["c1", "parkeunseol", "a", "1"]),
+            new StageCommand("show", ["c1"]),
+            new StageCommand("size_close", ["c1"]),
+            new StageCommand("slot", ["c2"]),
+            new StageCommand("cast", ["c2", "parkeunseol", "a", "1"]),
+            new StageCommand("show", ["c2"]),
+            new StageCommand("size_far", ["c2"]));
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            Projection("c1", "c2"), speakerName: null, speakerCharacterId: null, Width, Height, core);
+
+        // far(c2)가 먼저(뒤), close(c1)가 나중(앞)이다.
+        Assert.Equal(["c2", "c1"], layout.Portraits.Select(portrait => portrait.SlotKey));
+    }
+
+    [Fact]
+    public void 대사창은_surface_레이아웃_덤프_자리로_배치된다()
+    {
+        RuntimeTuningLibrary library = RuntimeTuningLibrary.Load(FixtureDirectory, (Width, Height));
+        SurfaceLayoutSet surfaces = library.SurfaceLayouts!;
+        Assert.True(surfaces.TryGet("bottom", out SurfaceLayoutPreset bottom));
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            MiniStageState.Empty, // 기본 boxKind = Speaker
+            speakerName: "화자",
+            speakerCharacterId: null,
+            Width,
+            Height,
+            coreState: null,
+            surfaces);
+
+        StageDialogueBoxPlacement box = layout.DialogueBox!;
+
+        // 텍스트 자리 = 덤프 앵커 그대로 (비율 → 캔버스, y 반전).
+        Assert.False(box.Approximated);
+        Assert.Equal(bottom.LineMinX * Width, box.TextRect.X, precision: 3);
+        Assert.Equal((1 - bottom.LineMaxY) * Height, box.TextRect.Y, precision: 3);
+        Assert.Equal((bottom.LineMaxX - bottom.LineMinX) * Width, box.TextRect.Width, precision: 3);
+        Assert.NotNull(box.NameRect); // bottom은 useName=true — 이름표 자리도 덤프에서 온다
+    }
+
+    [Fact]
+    public void 매핑_없는_대사창_종류는_기존_근사와_뱃지를_유지한다()
+    {
+        RuntimeTuningLibrary library = RuntimeTuningLibrary.Load(FixtureDirectory, (Width, Height));
+
+        MiniStageState portraitBox = MiniStageState.Empty with { NamedBoxKind = "Portrait" };
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            portraitBox, "화자", null, Width, Height, coreState: null, library.SurfaceLayouts);
+
+        // 정책 DB가 덤프에 없어 Portrait는 잇지 않는다 — 근사를 정확한 척하지 않는다.
+        Assert.True(layout.DialogueBox!.Approximated);
+    }
+
+    [Fact]
     public void 코어_상태가_없으면_기존_균등_나열_그대로다()
     {
         MiniStageState projection = Projection("c1", "c2");
