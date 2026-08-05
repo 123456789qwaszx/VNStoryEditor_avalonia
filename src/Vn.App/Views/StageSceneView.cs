@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -723,10 +723,8 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 캐릭터(또는 빈 슬롯) 클릭 팝오버 — 표정 교체·variant·위치·깊이·등장/퇴장·미러.
-    /// 표정은 보이는 캐릭터면 face_swap, 캐스팅만 된 캐릭터면 face다.
-    /// 전부 이 라인의 커맨드가 되고, 같은 대상의 재조작은 값만 바뀐다.
-    /// 적용해도 닫히지 않는다 — 내용이 새 상태로 다시 그려지고, 우클릭이 닫는다.
+    /// 캐릭터(또는 빈 슬롯) 클릭 — 조절창을 그 슬롯의 [캐릭터] 탭으로 연다.
+    /// 별도 팝오버가 아니라 같은 조절창 하나다 (소유자 지시 2026-08-06 2차).
     /// </summary>
     private void ShowCharacterPopover(string slotKey)
     {
@@ -736,43 +734,42 @@ internal sealed class StageSceneView : UserControl
         }
 
         _popoverSlotKey = slotKey; // 전역 선택도 이 슬롯을 따라간다
-        ShowManipulationFlyout((host, flyout, rebuild) => BuildCharacterPopover(host, rebuild, slotKey));
+        _popoverTabIndex = 2;      // 캐릭터 탭
+        ShowStagePopover();
     }
 
-    private void BuildCharacterPopover(StackPanel panel, Action rebuild, string slotKey)
+    /// <summary>
+    /// 캐릭터 탭 — 캐릭터 클릭 화면 그대로: 표정 교체(스프라이트)·variant(pose)·
+    /// 위치(place)·깊이(size)·미러. 전부 이 라인의 커맨드가 되고, 같은 대상의 재조작은
+    /// 값만 바뀐다. 표정은 보이는 캐릭터면 face_swap, 캐스팅만 된 캐릭터면 face다.
+    /// 캐스팅은 [슬롯] 탭, 등장/퇴장은 탭 아래 전역 줄이 담당한다.
+    /// </summary>
+    private Control BuildCharacterTab(Action onApplied)
     {
+        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0), MinWidth = 210 };
         MiniStageSlot? slot = null;
 
-        if (_session is null || _request?.State.Slots.TryGetValue(slotKey, out slot) != true || slot is null)
+        if (_session is null || _popoverSlotKey is not { } slotKey ||
+            _request?.State.Slots.TryGetValue(slotKey, out slot) != true || slot is null)
         {
             panel.Children.Add(new TextBlock
             {
-                Text = $"슬롯 '{slotKey}'가 현재 상태에 없습니다.",
+                Text = "조작할 슬롯이 없습니다. 상단 [+]로 추가하세요.",
                 FontSize = 10,
                 Opacity = 0.65
             });
-            return;
+            return panel;
         }
 
         PreviewAssetLibrary library = _session.AssetLibrary;
-        panel.Spacing = 6;
-        panel.MinWidth = 210;
 
         void Commit(string outputCommand, params (string Key, string Value)[] args)
         {
             ApplyStageCommand(
                 outputCommand,
                 args.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
-            rebuild();
+            onApplied();
         }
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"{slotKey}" + (slot.CharacterId is null ? " (캐스팅 없음)" : $" · {slot.CharacterId}") +
-                " — 우클릭으로 닫기",
-            FontSize = 11,
-            FontWeight = FontWeight.SemiBold
-        });
 
         if (slot.CharacterId is { } characterId)
         {
@@ -895,10 +892,10 @@ internal sealed class StageSceneView : UserControl
 
         // 위치 이동은 캐스팅 여부와 무관하다 — 빈 슬롯도 자리를 정할 수 있다.
         panel.Children.Add(new TextBlock { Text = "위치 (place)", FontSize = 10, Opacity = 0.6 });
-        panel.Children.Add(BuildScreenPointGrid(() => slotKey, rebuild));
+        panel.Children.Add(BuildScreenPointGrid(() => slotKey, onApplied));
 
         panel.Children.Add(new TextBlock { Text = "깊이 (size)", FontSize = 10, Opacity = 0.6 });
-        panel.Children.Add(BuildDepthRow(() => slotKey, rebuild));
+        panel.Children.Add(BuildDepthRow(() => slotKey, onApplied));
 
         if (PlaceApproximationNote() is { } characterPlaceNote)
         {
@@ -919,13 +916,12 @@ internal sealed class StageSceneView : UserControl
 
         panel.Children.Add(actions);
 
-        // 등장/퇴장 — 우측 아래, 구분 색 (소유자 지시 2026-08-06).
-        panel.Children.Add(BuildVisibilityRow(slotKey, rebuild));
+        return panel;
     }
 
     /// <summary>
-    /// 등장/퇴장 버튼 줄 — 우측 정렬 + 구분 색(등장 초록·퇴장 붉음). 슬롯 조작 영역과
-    /// 캐릭터 팝오버가 같은 줄 하나를 쓴다(사본 금지). 반대 방향 fade는 걷히고 원하는 쪽만 남는다.
+    /// 등장/퇴장 버튼 줄 — 우측 정렬 + 구분 색(등장 초록·퇴장 붉음). 조절창 하단의
+    /// 전역 줄로 어느 탭에서든 보인다(배경 탭 제외). 반대 방향 fade는 걷히고 원하는 쪽만 남는다.
     /// </summary>
     private Control BuildVisibilityRow(string slotKey, Action onApplied)
     {
@@ -1124,15 +1120,33 @@ internal sealed class StageSceneView : UserControl
         });
 
         tabs.SelectedIndex = Math.Clamp(_popoverTabIndex, 0, 2);
+
+        host.Children.Add(tabs);
+
+        // ── 등장/퇴장 — 탭과 무관하게 항상 보이는 전역 줄 (선택 슬롯 대상).
+        //    배경 탭에서만 숨긴다 — 배경은 슬롯이 아니다 (소유자 지시 2026-08-06 2차).
+        Control? visibilityRow = _popoverSlotKey is { } selectedSlotKey
+            ? BuildVisibilityRow(selectedSlotKey, rebuild)
+            : null;
+
+        if (visibilityRow is not null)
+        {
+            visibilityRow.IsVisible = tabs.SelectedIndex != 0;
+            host.Children.Add(visibilityRow);
+        }
+
         tabs.SelectionChanged += (_, _) =>
         {
             if (tabs.SelectedIndex >= 0)
             {
                 _popoverTabIndex = tabs.SelectedIndex;
             }
-        };
 
-        host.Children.Add(tabs);
+            if (visibilityRow is not null)
+            {
+                visibilityRow.IsVisible = tabs.SelectedIndex != 0;
+            }
+        };
     }
 
     /// <summary>배경 탭 — 탐색기와 같은 목록에서 고르면 bg_sprite/bg_spawn이 된다(기존 동작 그대로).</summary>
@@ -1268,20 +1282,63 @@ internal sealed class StageSceneView : UserControl
         positionRow.Children.Add(layerCombo);
         panel.Children.Add(positionRow);
 
-        // ── 위치·깊이 → 이 라인 (버튼 격자 유지) ──
-        panel.Children.Add(new TextBlock { Text = "위치 (place — 이 라인에 기록)", FontSize = 10, Opacity = 0.6 });
-        panel.Children.Add(BuildScreenPointGrid(() => slotKey, onApplied));
+        // ── 캐스팅 → Setup (위치·깊이는 [캐릭터] 탭 — 겹치지 않는다) ──
+        MiniStageSlot slot = _request.State.Slots[slotKey];
+        PreviewAssetLibrary library = _session!.AssetLibrary;
 
-        panel.Children.Add(new TextBlock { Text = "깊이 (size — 이 라인에 기록)", FontSize = 10, Opacity = 0.6 });
-        panel.Children.Add(BuildDepthRow(() => slotKey, onApplied));
+        string[] characters = library.PortraitEntries
+            .Select(entry => entry.Key.CharacterId)
+            .Union(
+                _session.Definition.Speakers
+                    .Select(speaker => speaker.CharacterId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Cast<string>(),
+                StringComparer.Ordinal)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
 
-        if (PlaceApproximationNote() is { } slotPlaceNote)
+        panel.Children.Add(new TextBlock
         {
-            panel.Children.Add(slotPlaceNote);
+            Text = $"'{slotKey}' 캐스팅 (노드 Setup에 기록)",
+            FontSize = 10,
+            Opacity = 0.6
+        });
+
+        if (characters.Length == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "초상화 폴더나 화자 등록에서 캐릭터를 찾지 못했습니다.",
+                FontSize = 10,
+                Opacity = 0.65,
+                TextWrapping = TextWrapping.Wrap
+            });
         }
 
-        // ── 등장/퇴장 — 우측 아래, 구분 색 ──
-        panel.Children.Add(BuildVisibilityRow(slotKey, onApplied));
+        var characterWrap = new WrapPanel { MaxWidth = 260 };
+
+        foreach (string characterId in characters)
+        {
+            var characterButton = new Button
+            {
+                Content = characterId,
+                FontSize = 10,
+                Padding = new Thickness(6, 2),
+                Margin = new Thickness(0, 0, 4, 4),
+                IsEnabled = !string.Equals(characterId, slot.CharacterId, StringComparison.Ordinal)
+            };
+
+            characterButton.Click += (_, _) =>
+            {
+                ApplySetupCommand("cast", ("slot", slotKey), ("characterKey", characterId));
+                onApplied();
+            };
+
+            characterWrap.Children.Add(characterButton);
+        }
+
+        panel.Children.Add(characterWrap);
 
         return panel;
     }
@@ -1389,198 +1446,6 @@ internal sealed class StageSceneView : UserControl
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 250
         };
-    }
-
-    /// <summary>
-    /// 캐릭터 탭 — <b>전역 선택 슬롯</b>에 캐스팅(Setup)과 variant·표정 변경(Setup cast 수정).
-    /// 라인 중간의 표정 변화는 기존처럼 무대 위 캐릭터를 직접 클릭한다.
-    /// 표시/숨김은 [슬롯] 탭 우측 아래의 등장/퇴장이 담당한다.
-    /// </summary>
-    private Control BuildCharacterTab(Action onApplied)
-    {
-        PreviewAssetLibrary library = _session!.AssetLibrary;
-        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0), MaxWidth = 270 };
-
-        if (_popoverSlotKey is not { } slotKey || _request is null ||
-            !_request.State.Slots.TryGetValue(slotKey, out MiniStageSlot? slot) || slot is null)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = "캐스팅할 슬롯이 없습니다. 상단 [+]로 추가하세요.",
-                FontSize = 10,
-                Opacity = 0.65
-            });
-            return panel;
-        }
-
-        // ── 캐스팅 → Setup ──
-        string[] characters = library.PortraitEntries
-            .Select(entry => entry.Key.CharacterId)
-            .Union(
-                _session.Definition.Speakers
-                    .Select(speaker => speaker.CharacterId)
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Cast<string>(),
-                StringComparer.Ordinal)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(id => id, StringComparer.Ordinal)
-            .ToArray();
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = $"'{slotKey}' 캐스팅 (노드 Setup에 기록)",
-            FontSize = 10,
-            Opacity = 0.6
-        });
-
-        if (characters.Length == 0)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = "초상화 폴더나 화자 등록에서 캐릭터를 찾지 못했습니다.",
-                FontSize = 10,
-                Opacity = 0.65,
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-
-        var characterWrap = new WrapPanel { MaxWidth = 260 };
-
-        foreach (string characterId in characters)
-        {
-            var characterButton = new Button
-            {
-                Content = characterId,
-                FontSize = 10,
-                Padding = new Thickness(6, 2),
-                Margin = new Thickness(0, 0, 4, 4),
-                IsEnabled = !string.Equals(characterId, slot.CharacterId, StringComparison.Ordinal)
-            };
-
-            characterButton.Click += (_, _) =>
-            {
-                ApplySetupCommand("cast", ("slot", slotKey), ("characterKey", characterId));
-                onApplied();
-            };
-
-            characterWrap.Children.Add(characterButton);
-        }
-
-        panel.Children.Add(characterWrap);
-
-        // ── variant·표정 변경 → Setup cast 수정 (같은 슬롯이면 값만 바뀐다) ──
-        if (slot.CharacterId is { } castCharacter)
-        {
-            string variant = string.IsNullOrWhiteSpace(slot.VariantKey)
-                ? PortraitKey.DefaultVariantKey
-                : slot.VariantKey;
-
-            (string Key, string Value)[] CastArgs(string? variantKey, string? emotionKey)
-            {
-                var args = new List<(string, string)> { ("slot", slotKey), ("characterKey", castCharacter) };
-                args.Add(("variantKey", variantKey ?? variant));
-
-                if (emotionKey is not null)
-                {
-                    args.Add(("emotionKey", emotionKey));
-                }
-                else if (!string.IsNullOrWhiteSpace(slot.EmotionKey))
-                {
-                    args.Add(("emotionKey", slot.EmotionKey));
-                }
-
-                return args.ToArray();
-            }
-
-            string[] variants = library.PortraitEntries
-                .Where(entry => string.Equals(entry.Key.CharacterId, castCharacter, StringComparison.Ordinal))
-                .Select(entry => entry.Key.VariantKey)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(key => key, StringComparer.Ordinal)
-                .ToArray();
-
-            if (variants.Length > 1)
-            {
-                var variantRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-                variantRow.Children.Add(new TextBlock
-                {
-                    Text = "variant",
-                    FontSize = 10,
-                    Opacity = 0.6,
-                    VerticalAlignment = VerticalAlignment.Center
-                });
-
-                foreach (string variantKey in variants)
-                {
-                    var variantButton = new Button
-                    {
-                        Content = variantKey,
-                        FontSize = 10,
-                        Padding = new Thickness(7, 2),
-                        IsEnabled = !string.Equals(variantKey, variant, StringComparison.Ordinal)
-                    };
-                    variantButton.Click += (_, _) =>
-                    {
-                        ApplySetupCommand("cast", CastArgs(variantKey, emotionKey: null));
-                        onApplied();
-                    };
-                    variantRow.Children.Add(variantButton);
-                }
-
-                panel.Children.Add(variantRow);
-            }
-
-            PortraitAssetEntry[] emotions = library.PortraitEntries
-                .Where(entry => string.Equals(entry.Key.CharacterId, castCharacter, StringComparison.Ordinal) &&
-                    string.Equals(entry.Key.VariantKey, variant, StringComparison.Ordinal) &&
-                    entry.FileExists)
-                .OrderBy(entry => entry.Key.EmotionKey, StringComparer.Ordinal)
-                .ToArray();
-
-            if (emotions.Length > 0)
-            {
-                panel.Children.Add(new TextBlock { Text = "기본 표정", FontSize = 10, Opacity = 0.6 });
-                var emotionGrid = new WrapPanel { MaxWidth = 260 };
-
-                foreach (PortraitAssetEntry entry in emotions)
-                {
-                    var cell = new StackPanel { Margin = new Thickness(0, 0, 4, 4) };
-
-                    if (_session.ImageCache.Get(entry.FilePath!) is { } bitmap)
-                    {
-                        cell.Children.Add(new Image { Source = bitmap, Width = 44, Height = 60, Stretch = Stretch.Uniform });
-                    }
-
-                    cell.Children.Add(new TextBlock
-                    {
-                        Text = entry.Key.EmotionKey,
-                        FontSize = 9,
-                        HorizontalAlignment = HorizontalAlignment.Center
-                    });
-
-                    string emotionKey = entry.Key.EmotionKey;
-                    var cellButton = new Button { Content = cell, Padding = new Thickness(2) };
-                    cellButton.Click += (_, _) =>
-                    {
-                        ApplySetupCommand("cast", CastArgs(variantKey: null, emotionKey));
-                        onApplied();
-                    };
-                    emotionGrid.Children.Add(cellButton);
-                }
-
-                panel.Children.Add(emotionGrid);
-            }
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = "표시/숨김은 [슬롯] 탭의 등장/퇴장, 라인 중간의 표정 변화는 무대 위 캐릭터 클릭.",
-                FontSize = 9,
-                Opacity = 0.55,
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-
-        return panel;
     }
 
     private void ApplyBackground(string spriteKey)
