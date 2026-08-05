@@ -2,7 +2,7 @@
 
 2026-08-03 확정, 이후 단계 완료마다 개정. Claude Code 작업 세션의 최상위 기준 문서. 세부 런타임 규약은 `runtime-contract.md`, 코드 구조 원칙은 저장소 ARCHITECTURE.md가 기준이며 충돌 시 그쪽이 우선한다. 런타임 쪽 작업은 `ked-presentation-runtime/runtime-work-orders.md`(U1–U17). 툴 설계 원칙은 `runtime-ui-tooling-principles.md`.
 
-8차 개정 요지: **Phase 2 관문 통과를 반영하고 2b 이행을 연다.** 런타임 U13-a·U12-전체·U13-b·U14가 완료됐고, **U14 등가성 하네스가 대표 에피소드 193/193 초록불**을 냈다(`equivalence-20260805-211527.json`, Unhandled 153 보존). Phase 2a(에셋 파이프라인)는 소유자 판정으로 종료 — 잔여였던 VnTool 쪽 tuning 수입은 2b 이행의 W23으로 흡수된다. 코어 참조 방식은 submodule을 반려하고 **관리된 소스 수입**으로 확정(`handoff/architecture-decisions.md` H-4). VnTool 이행 지시서 `work-orders/phase2b-core-adoption.md`(W22–W26)가 발행됐다 — **다음 작업은 W22**.
+8차 개정 요지: **Phase 2 관문 통과를 반영하고 2b 이행을 연다.** 런타임 U13-a·U12-전체·U13-b·U14가 완료됐고, **U14 등가성 하네스가 대표 에피소드 193/193 초록불**을 냈다(`equivalence-20260805-211527.json`, Unhandled 153 보존). Phase 2a(에셋 파이프라인)는 소유자 판정으로 종료 — 잔여였던 VnTool 쪽 tuning 수입은 2b 이행의 W23으로 흡수된다. 코어 참조 방식은 **소스 복사 반입** — submodule·패키지·동기화 장치는 만들지 않는다, 소유자 확정(`handoff/architecture-decisions.md` H-4). 우선순위는 **툴 자체 완결성**: 무대 팝오버 저작(배경 좌클릭·슬롯/캐릭터 탭·place 격자)이 기록해 온 커맨드가 코어 좌표로 실제 동작하는 것이 2b의 목표 화면이다. 이행 지시서 `work-orders/phase2b-core-adoption.md`(W22–W26) — **다음 작업은 W22**.
 
 ## 0. 비전과 전제 (불변)
 
@@ -107,8 +107,9 @@ UX 그룹 3(CompositionNode 전환, `work-orders/composition-node.md`)은 **완�
 ### Phase 2b — 정지 프레임 렌더러 ← **지금 여기**
 라인의 완전한 확정 상태(배치·뎁스·카메라 intent·이펙트·대사창) 정적 합성. 전제였던 런타임 U13–U14는
 **충족**(U14 초록불 2026-08-05). 2a-v1 폴드가 코어 리듀서 기반으로 승격, Unhandled 목록이 확장 백로그.
+목표 화면은 저작 루프의 완결이다 — 무대 팝오버로 넣은 place·slot·cast가 실제 좌표로 보인다.
 수용: 유니티 화면과 구도 일치(수동) + U14 등가성 교차 검증.
-**지시서: `work-orders/phase2b-core-adoption.md` (W22 소스 수입 배선 → W23 tuning 수입 → W24 폴드 교체 골든 → W25 좌표 배치 → W26 뱃지).**
+**지시서: `work-orders/phase2b-core-adoption.md` (W22 코어 소스 복사 반입 → W23 tuning 수입 → W24 폴드 교체 골든 → W25 좌표 배치·팝오버 실동작 → W26 뱃지).**
 
 ### Phase 2c — 실시간 재생
 트윈 티커, 전이, 타자기, 진행 입력, 특정 LineId부터 재생. 착수 시 전용 지시서(런타임 F그룹과 맞물림).

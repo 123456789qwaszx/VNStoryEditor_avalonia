@@ -411,10 +411,10 @@ VnTool은 규약 폴더 스캔이 1순위다. 매니페스트는 권위가 아�
 6. 이 지시들이 끝나면 — ✅ 도달 (2026-08-05)
 
 U14 초록불이 확인됐으므로 VnTool 쪽이 이행 순서를 탄다. 참조 방식은 submodule이 아니라
-**관리된 소스 수입**으로 확정됐다(architecture-decisions H-4). 순서와 프롬프트는
-`work-orders/phase2b-core-adoption.md`: W22 소스 수입 배선 → W23 tuning 수입 →
-W24 MiniStageFold 교체(화면·출력 불변 골든) → W25 StageSceneComposer 좌표 사용(여기서 처음
-화면이 바뀐다) → W26 근사·미표시 뱃지.
+**소스 복사 반입 — 동기화·패키지화 없음**으로 확정됐다(architecture-decisions H-4). 순서와 프롬프트는
+`work-orders/phase2b-core-adoption.md`: W22 코어 소스 복사 반입 → W23 tuning 수입 →
+W24 MiniStageFold 교체(화면·출력 불변 골든) → W25 StageSceneComposer 좌표 사용 + 무대 팝오버
+저작 실동작(여기서 처음 화면이 바뀐다) → W26 근사·미표시 뱃지.
 
 런타임 저장소에 남은 것은 M1(U1–U6)·U17 등 2b와 독립한 트랙과, VnTool 쪽 골든/구도 대조에서
 계약 위반이 발견될 때의 재수렴(§4 프롬프트 재사용)뿐이다.
