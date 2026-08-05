@@ -68,6 +68,101 @@ internal sealed class StageSceneView : UserControl
     private TextBlock? _dialogueText;
     private string? _dialogueFullText;
 
+    // 전이 (W33) — 직전 렌더의 자리들과 이번 렌더의 보간 대상. 코어가 낸 두 정지 프레임
+    // 사이를 뷰가 선형 보간으로 잇는다 — 좌표 계산이 아니라 자리 옮기기다(H-5).
+    private Dictionary<string, StageRect> _portraitRects = new(StringComparer.Ordinal);
+    private Dictionary<string, StageRect> _previousPortraitRects = new(StringComparer.Ordinal);
+    private readonly List<(string SlotKey, Control Control, StageRect To)> _transitionEntries = new();
+    private string? _backgroundImagePath;
+    private string? _previousBackgroundImagePath;
+    private Image? _backgroundImage;
+    private Image? _backgroundOverlay;
+
+    /// <summary>
+    /// 전이 진행도 적용 (W33). null/1 이상 = 확정 상태(모든 자리 최종값·오버레이 제거).
+    /// 0..1 = 직전 자리 → 새 자리 선형 보간, 새로 등장한 슬롯은 페이드 인,
+    /// 배경이 바뀌었으면 옛 배경을 위에 얹어 크로스페이드.
+    /// </summary>
+    internal void SetTransitionProgress(double? progress)
+    {
+        if (progress is not { } t || t >= 1)
+        {
+            foreach ((_, Control control, StageRect to) in _transitionEntries)
+            {
+                Canvas.SetLeft(control, to.X);
+                Canvas.SetTop(control, to.Y);
+                control.Width = to.Width;
+                control.Height = to.Height;
+                control.Opacity = 1;
+            }
+
+            if (_backgroundOverlay is not null)
+            {
+                _canvas.Children.Remove(_backgroundOverlay);
+                _backgroundOverlay = null;
+            }
+
+            if (_backgroundImage is not null)
+            {
+                _backgroundImage.Opacity = 1;
+            }
+
+            return;
+        }
+
+        foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
+        {
+            if (_previousPortraitRects.TryGetValue(slotKey, out StageRect? from) && from is not null)
+            {
+                control.Opacity = 1;
+                Canvas.SetLeft(control, Lerp(from.X, to.X, t));
+                Canvas.SetTop(control, Lerp(from.Y, to.Y, t));
+                control.Width = Lerp(from.Width, to.Width, t);
+                control.Height = Lerp(from.Height, to.Height, t);
+            }
+            else
+            {
+                control.Opacity = t; // 새로 등장 — 페이드 인
+            }
+        }
+
+        if (_backgroundImage is not null &&
+            !string.Equals(_previousBackgroundImagePath, _backgroundImagePath, StringComparison.Ordinal))
+        {
+            if (_previousBackgroundImagePath is { } previousPath)
+            {
+                // 배경 교체 — 옛 배경을 새 배경 위에 얹고 서서히 걷는다.
+                if (_backgroundOverlay is null && _session?.ImageCache.Get(previousPath) is { } previousBitmap)
+                {
+                    _backgroundOverlay = new Image
+                    {
+                        Source = previousBitmap,
+                        Stretch = Stretch.UniformToFill,
+                        Width = _canvas.Width,
+                        Height = _canvas.Height,
+                        IsHitTestVisible = false
+                    };
+                    Canvas.SetLeft(_backgroundOverlay, 0);
+                    Canvas.SetTop(_backgroundOverlay, 0);
+
+                    int backgroundIndex = _canvas.Children.IndexOf(_backgroundImage);
+                    _canvas.Children.Insert(Math.Max(backgroundIndex + 1, 0), _backgroundOverlay);
+                }
+
+                if (_backgroundOverlay is not null)
+                {
+                    _backgroundOverlay.Opacity = 1 - t;
+                }
+            }
+            else
+            {
+                _backgroundImage.Opacity = t; // 첫 배경 — 페이드 인
+            }
+        }
+    }
+
+    private static double Lerp(double from, double to, double t) => from + (to - from) * t;
+
     /// <summary>
     /// 대사창에 보일 글자 수 (W32). null = 전문. 재생 타이머가 라인 전체를 다시 그리지 않고
     /// 이 한 곳으로 타자를 찍는다.
@@ -141,6 +236,15 @@ internal sealed class StageSceneView : UserControl
         _canvas.Children.Clear();
         _dialogueText = null;
         _dialogueFullText = null;
+
+        // 전이 (W33): 이번 렌더가 "새 자리"가 되고 직전 렌더의 자리가 "출발점"이 된다.
+        _previousPortraitRects = _portraitRects;
+        _portraitRects = new Dictionary<string, StageRect>(StringComparer.Ordinal);
+        _previousBackgroundImagePath = _backgroundImagePath;
+        _backgroundImagePath = null;
+        _backgroundImage = null;
+        _backgroundOverlay = null;
+        _transitionEntries.Clear();
 
         (double width, double height) = _session?.Definition.PreviewResolution ?? (1920, 1080);
         _canvas.Width = width;
@@ -250,13 +354,18 @@ internal sealed class StageSceneView : UserControl
 
             if (background.FilePath is { } path && _session?.ImageCache.Get(path) is { } bitmap)
             {
-                Add(new Image
+                var backgroundImage = new Image
                 {
                     Source = bitmap,
                     Stretch = Stretch.UniformToFill,
                     Width = width,
                     Height = height
-                }, new StageRect(0, 0, width, height));
+                };
+                Add(backgroundImage, new StageRect(0, 0, width, height));
+
+                // 전이(W33)의 크로스페이드 대상.
+                _backgroundImage = backgroundImage;
+                _backgroundImagePath = path;
                 return;
             }
 
@@ -370,6 +479,10 @@ internal sealed class StageSceneView : UserControl
 
         Add(image, portrait.Rect);
 
+        // 전이(W33) 대상 — 이 슬롯의 자리.
+        _portraitRects[portrait.SlotKey] = portrait.Rect;
+        _transitionEntries.Add((portrait.SlotKey, image, portrait.Rect));
+
         if (caption is not null)
         {
             Add(new TextBlock
@@ -422,6 +535,10 @@ internal sealed class StageSceneView : UserControl
         }
 
         Add(outline, portrait.Rect);
+
+        // 전이(W33) 대상 — 숨김 슬롯의 자리도 미끄러진다.
+        _portraitRects[portrait.SlotKey] = portrait.Rect;
+        _transitionEntries.Add((portrait.SlotKey, outline, portrait.Rect));
 
         string label = portrait.Slot.CharacterId is { } cast
             ? $"{portrait.SlotKey} · {cast} (숨김)"

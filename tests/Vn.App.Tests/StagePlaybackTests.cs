@@ -98,6 +98,71 @@ public class StagePlaybackTests
         Assert.Equal([1], moves);
     }
 
+    // ── 전이 (W33) ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 재생_중_라인이_바뀌면_전이가_흐르고_끝나면_확정_상태다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: "");
+
+        playback.Play();
+        Assert.Null(playback.TransitionProgress); // 첫 표시는 전이 없음
+
+        playback.TryAdvanceByInput(); // 여운 단계에서 클릭 → 다음 라인 요청
+        Assert.Equal([1], moves);
+
+        Arrive2(playback, 1, 3, transitionSeconds: 0.4);
+        Assert.Equal(0, playback.TransitionProgress); // 전이 시작
+
+        playback.Tick(0.2);
+        Assert.Equal(0.5, playback.TransitionProgress!.Value, precision: 3);
+
+        playback.Tick(0.3);
+        Assert.Null(playback.TransitionProgress); // 전이 종료 — 확정 상태
+    }
+
+    [Fact]
+    public void 전이_중에는_여운이_기다리고_클릭은_전이를_즉시_완료한다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: "");
+
+        playback.Play();
+        playback.TryAdvanceByInput();
+        Arrive2(playback, 1, 3, transitionSeconds: 10); // 아주 긴 전이
+
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds + 1);
+        Assert.Equal([1], moves); // 전이가 안 끝났으니 다음 라인으로 못 간다
+
+        Assert.True(playback.TryAdvanceByInput()); // 1차 클릭 = 전이 즉시 완료
+        Assert.Null(playback.TransitionProgress);
+        Assert.Equal([1], moves);
+
+        Assert.True(playback.TryAdvanceByInput()); // 2차 클릭 = 다음 라인
+        Assert.Equal([1, 1], moves);
+    }
+
+    [Fact]
+    public void 일시정지와_정지_상태에서는_전이가_없다()
+    {
+        (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 3, text: "");
+
+        // 정지 중 라인 이동(작가가 라인을 클릭) — 전이 없이 확정 상태.
+        Arrive2(playback, 1, 3, transitionSeconds: 0.4);
+        Assert.Null(playback.TransitionProgress);
+
+        playback.Play();
+        playback.TryAdvanceByInput();
+        Arrive2(playback, 2, 3, transitionSeconds: 0.4);
+        Assert.NotNull(playback.TransitionProgress);
+
+        playback.Pause(); // 일시정지 = 확정 상태로
+        Assert.Null(playback.TransitionProgress);
+    }
+
+    private static void Arrive2(
+        StagePlayback playback, int lineIndex, int lineCount, double transitionSeconds)
+        => playback.OnRequest(lineIndex, lineCount, "", isChoice: false, transitionSeconds);
+
     // ── 진행·정지 (W31) ───────────────────────────────────────────────────
 
     [Fact]

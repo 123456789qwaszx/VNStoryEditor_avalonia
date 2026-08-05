@@ -96,7 +96,8 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<StatFold.StatValue>? Stats = null,
     IReadOnlyList<StageChoiceOption>? ChoiceOptions = null,
     Ked.Presentation.Core.StageState? CoreState = null,
-    IReadOnlyList<BranchFlow.Block>? BranchBlocks = null);
+    IReadOnlyList<BranchFlow.Block>? BranchBlocks = null,
+    double TransitionSeconds = 0);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
@@ -146,6 +147,9 @@ public partial class MiniStagePreview : UserControl
 
         // 타자기 (W32): 글자 수 변화는 대사창 텍스트 한 곳만 갱신한다 — 전체 재렌더 없이.
         Playback.TypingProgress += SyncTypewriter;
+
+        // 전이 (W33): 진행도 변화는 무대 자리 보간만 갱신한다 — 전체 재렌더 없이.
+        Playback.TransitionChanged += SyncTransition;
     }
 
     private void SyncTypewriter()
@@ -153,6 +157,13 @@ public partial class MiniStagePreview : UserControl
         int? visible = Playback.VisibleCharacters;
         _scene.SetDialogueVisibleCharacters(visible);
         _window?.SetDialogueVisibleCharacters(visible);
+    }
+
+    private void SyncTransition()
+    {
+        double? progress = Playback.TransitionProgress;
+        _scene.SetTransitionProgress(progress);
+        _window?.SetTransitionProgress(progress);
     }
 
     internal void Attach(AuthoringSession session)
@@ -216,8 +227,10 @@ public partial class MiniStagePreview : UserControl
             request?.LineIndex ?? -1,
             request?.LineCount ?? 0,
             request?.LineText,
-            isChoice: request?.ChoiceOptions is { Count: > 0 });
+            isChoice: request?.ChoiceOptions is { Count: > 0 },
+            transitionSeconds: request?.TransitionSeconds ?? 0);
         SyncTypewriter();
+        SyncTransition();
     }
 
     private void OpenWindow()

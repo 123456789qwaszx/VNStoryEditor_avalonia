@@ -67,6 +67,9 @@ public partial class StagePreviewWindow : Window
     /// <summary>타자기 (W32) — 도킹 쪽과 같은 글자 수를 창 무대에도 찍는다.</summary>
     internal void SetDialogueVisibleCharacters(int? count) => _scene.SetDialogueVisibleCharacters(count);
 
+    /// <summary>전이 (W33) — 도킹 쪽과 같은 진행도로 창 무대의 자리를 보간한다.</summary>
+    internal void SetTransitionProgress(double? progress) => _scene.SetTransitionProgress(progress);
+
     /// <summary>메인 쪽에서 미는 최신 요청. 따라가기가 꺼져 있으면 장면은 고정된다.</summary>
     internal void Push(MiniStagePreviewRequest? request)
     {

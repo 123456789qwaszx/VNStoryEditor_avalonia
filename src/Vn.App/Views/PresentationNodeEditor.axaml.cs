@@ -254,7 +254,12 @@ public partial class PresentationNodeEditor : UserControl
             Stats: stats,
             ChoiceOptions: choices,
             CoreState: fold.CoreState,
-            BranchBlocks: branch.Blocks));
+            BranchBlocks: branch.Blocks,
+            // 전이(W33): 이 라인으로 넘어가는 시간 = 라인 커맨드 duration의 최댓값.
+            TransitionSeconds: StageTransitions.SecondsFor(
+                catalog,
+                draft.Bindings.FirstOrDefault(item =>
+                    string.Equals(item.LineId, line?.LineId, StringComparison.Ordinal))?.Commands)));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

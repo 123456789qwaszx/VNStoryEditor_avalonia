@@ -41,6 +41,11 @@ internal sealed class StagePlayback
     private bool _isChoice;
     private double _elapsed;
 
+    // 전이 (W33) — 직전 라인의 정지 프레임에서 이 라인의 정지 프레임으로 보간 중인가.
+    private bool _transitionActive;
+    private double _transitionDuration;
+    private double _transitionElapsed;
+
     /// <summary>이동을 요청하고 아직 새 요청이 돌아오지 않은 상태 — 틱을 멈춰 중복 요청을 막는다.</summary>
     private bool _awaitingMove;
 
@@ -62,6 +67,18 @@ internal sealed class StagePlayback
             ? (int)Math.Clamp(_typedCharacters, 0, _textLength)
             : null;
 
+    /// <summary>
+    /// 전이 진행도 (W33). null이면 전이 중이 아니다 — 확정 상태(정지 프레임)만 보인다.
+    /// 값은 0..1이고 뷰가 직전 자리 → 새 자리를 이 비율로 보간한다.
+    /// </summary>
+    public double? TransitionProgress =>
+        IsPlaying && _transitionActive && _transitionDuration > 0
+            ? Math.Clamp(_transitionElapsed / _transitionDuration, 0, 1)
+            : null;
+
+    /// <summary>전이 진행도가 바뀌었다 — 뷰가 무대 자리만 보간해 옮긴다.</summary>
+    public event Action? TransitionChanged;
+
     /// <summary>재생/정지·진행 표시가 바뀌었다 — 컨트롤이 라벨을 다시 그린다.</summary>
     public event Action? StateChanged;
 
@@ -71,16 +88,25 @@ internal sealed class StagePlayback
     /// <summary>라인 이동 요청(delta). 활성 편집기의 선택이 움직인다 — 기존 경로 재사용.</summary>
     public event Action<int>? MoveRequested;
 
-    /// <summary>새 프리뷰 요청이 도착했다 — 라인이 바뀌었으면 타자를 새로 시작한다.</summary>
-    public void OnRequest(int lineIndex, int lineCount, string? lineText, bool isChoice = false)
+    /// <summary>새 프리뷰 요청이 도착했다 — 라인이 바뀌었으면 전이와 타자를 새로 시작한다.</summary>
+    public void OnRequest(
+        int lineIndex, int lineCount, string? lineText, bool isChoice = false, double transitionSeconds = 0)
     {
         LineCount = lineCount;
         _awaitingMove = false;
 
         if (lineIndex != LineIndex)
         {
+            // 전이는 재생 중 "이전 화면이 있던" 라인 이동에만 — 첫 표시·정지 중엔 확정 상태 그대로.
+            bool transition = IsPlaying && LineIndex >= 0 && lineIndex >= 0 && transitionSeconds > 0;
+
             LineIndex = lineIndex;
             BeginLine(lineText, isChoice);
+
+            _transitionActive = transition;
+            _transitionDuration = transitionSeconds;
+            _transitionElapsed = 0;
+            TransitionChanged?.Invoke();
         }
         else
         {
@@ -143,6 +169,8 @@ internal sealed class StagePlayback
     public void Pause()
     {
         IsPlaying = false;
+        _transitionActive = false; // 일시정지 = 확정 상태(정지 프레임)로
+        TransitionChanged?.Invoke();
         TypingProgress?.Invoke(); // 일시정지 = 전문 표시(조작 모드)
         StateChanged?.Invoke();
     }
@@ -153,6 +181,8 @@ internal sealed class StagePlayback
         _elapsed = 0;
         _typedCharacters = 0;
         _phase = _isChoice ? Phase.WaitInput : Phase.Typing;
+        _transitionActive = false;
+        TransitionChanged?.Invoke();
 
         if (LineIndex > 0)
         {
@@ -180,12 +210,25 @@ internal sealed class StagePlayback
             return true; // 이동 반영 대기 중의 연타는 소비만 한다
         }
 
-        if (_phase == Phase.Typing && _typedCharacters < _textLength)
+        // 1차 클릭 = 이 라인의 화면을 즉시 완성한다 — 전이도 타자도 한꺼번에 (W33).
+        bool typingIncomplete = _phase == Phase.Typing && _typedCharacters < _textLength;
+
+        if (_transitionActive || typingIncomplete)
         {
-            _typedCharacters = _textLength;
-            _phase = Phase.Dwell;
-            _elapsed = 0;
-            TypingProgress?.Invoke();
+            if (_transitionActive)
+            {
+                _transitionActive = false;
+                TransitionChanged?.Invoke();
+            }
+
+            if (typingIncomplete || _phase == Phase.Typing)
+            {
+                _typedCharacters = _textLength;
+                _phase = Phase.Dwell;
+                _elapsed = 0;
+                TypingProgress?.Invoke();
+            }
+
             return true;
         }
 
@@ -198,6 +241,19 @@ internal sealed class StagePlayback
         if (!IsPlaying || _awaitingMove)
         {
             return;
+        }
+
+        // 전이는 타자와 나란히 흐른다 — 움직이면서 대사가 찍히는 쪽이 재생답다.
+        if (_transitionActive)
+        {
+            _transitionElapsed += deltaSeconds;
+
+            if (_transitionElapsed >= _transitionDuration)
+            {
+                _transitionActive = false;
+            }
+
+            TransitionChanged?.Invoke();
         }
 
         switch (_phase)
@@ -215,6 +271,11 @@ internal sealed class StagePlayback
                 break;
 
             case Phase.Dwell:
+                if (_transitionActive)
+                {
+                    break; // 아직 움직이는 중 — 자리 잡은 뒤에 여운을 센다
+                }
+
                 _elapsed += deltaSeconds;
 
                 if (_elapsed >= AfterTypeDwellSeconds)
