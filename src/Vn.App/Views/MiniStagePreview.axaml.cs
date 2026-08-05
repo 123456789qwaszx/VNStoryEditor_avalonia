@@ -18,8 +18,57 @@ internal sealed record StageEditContext(
     public bool Editable => DisabledReason is null && LineId is not null;
 }
 
-/// <summary>선택지 제시 화면의 옵션 버튼 하나.</summary>
-internal sealed record StageChoiceOption(string Text, bool IsSelected);
+/// <summary>
+/// 선택지 제시 화면의 옵션 버튼 하나.
+/// <see cref="LineId"/>·<see cref="BlockLineId"/>가 있으면 클릭이 그 갈래 선택이 된다 (W35).
+/// <see cref="IsTakenBranch"/>는 현재 프리뷰가 접고 있는 갈래 표시다(커서 강조와 별개).
+/// </summary>
+internal sealed record StageChoiceOption(
+    string Text,
+    bool IsSelected,
+    string? LineId = null,
+    string? BlockLineId = null,
+    bool IsTakenBranch = false);
+
+/// <summary>
+/// 선택지 버튼 목록 조립의 단일 구현 (W35) — 대사·연출 편집기가 같은 규칙 하나를 쓴다.
+/// 블록 키 = 첫 라벨의 LineId, 현재 접히는 갈래(IsTakenBranch)는 갈래 분석 블록에서 온다.
+/// </summary>
+internal static class StageChoiceOptions
+{
+    public static IReadOnlyList<StageChoiceOption>? Build(
+        IReadOnlyList<ChoiceOptionBundle.Option>? bundle,
+        Func<int, string> lineIdOf,
+        IReadOnlyList<BranchFlow.Block>? branchBlocks)
+    {
+        if (bundle is null || bundle.Count == 0)
+        {
+            return null;
+        }
+
+        string blockLineId = lineIdOf(bundle[0].LineIndex);
+        BranchFlow.Block? block = branchBlocks?.FirstOrDefault(item =>
+            string.Equals(item.BlockLineId, blockLineId, StringComparison.Ordinal));
+
+        string? takenLineId = block is { SelectedBranch: { } selected } &&
+            selected >= 0 && selected < block.Branches.Count
+                ? block.Branches[selected].LineId
+                : null;
+
+        return bundle
+            .Select(option =>
+            {
+                string lineId = lineIdOf(option.LineIndex);
+                return new StageChoiceOption(
+                    option.Text,
+                    option.IsSelected,
+                    lineId,
+                    blockLineId,
+                    IsTakenBranch: string.Equals(lineId, takenLineId, StringComparison.Ordinal));
+            })
+            .ToArray();
+    }
+}
 
 /// <summary>공유 무대 프리뷰에 밀어 넣는 요청 하나. 폴드는 호출자가 이미 끝냈다.</summary>
 /// <param name="HasPresentation">false면 연출 공급이 없는 것 — 오류가 아니라 화자만 표시한다.</param>
@@ -46,7 +95,8 @@ internal sealed record MiniStagePreviewRequest(
     StageEditContext? EditContext = null,
     IReadOnlyList<StatFold.StatValue>? Stats = null,
     IReadOnlyList<StageChoiceOption>? ChoiceOptions = null,
-    Ked.Presentation.Core.StageState? CoreState = null);
+    Ked.Presentation.Core.StageState? CoreState = null,
+    IReadOnlyList<BranchFlow.Block>? BranchBlocks = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
@@ -77,6 +127,8 @@ public partial class MiniStagePreview : UserControl
 
         SceneHost.Content = _scene;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
+        // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
+        _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
 
         OpenWindowButton.Click += (_, _) => UiGuard.Run(_session, "프리뷰 창 열기", OpenWindow);
 
@@ -143,7 +195,12 @@ public partial class MiniStagePreview : UserControl
         }
         else
         {
-            StageIndicators.FillBadges(request, BadgeRow, UnhandledHost);
+            StageIndicators.FillBadges(
+                request,
+                BadgeRow,
+                UnhandledHost,
+                _session?.BranchSelection,
+                () => ManipulationApplied?.Invoke());
             StageIndicators.FillNotices(
                 library,
                 _session?.TuningLibrary ?? RuntimeTuningLibrary.Empty,

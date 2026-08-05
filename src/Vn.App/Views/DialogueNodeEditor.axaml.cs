@@ -375,15 +375,28 @@ public partial class DialogueNodeEditor : UserControl
             : script.Lines.ToList().FindIndex(item =>
                 string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal));
 
-        // 스탯 HUD (X3): 작업 중 문서 기준 — 등록 초기값 + 선택 라인까지의 set 누적(문서 순서 근사).
+        // 스탯 HUD (X3): 작업 중 문서 기준 — 등록 초기값 + 선택 갈래 기준의 set 누적
+        // (W35 — 문서 순서 근사 은퇴. 선택 상태는 발행 쪽과 같은 LineId 키를 쓴다).
+        BranchFlow.Analysis<DialogueLine> scriptAnalysis = BranchFlow.Analyze(
+            script.Lines,
+            line => line.Transition?.Kind,
+            line => line.LineId,
+            line => line.Text,
+            _session.BranchSelection,
+            selected?.LineId);
+
         var setsUpToLine = new List<(string Variable, SetOperatorKind Operator, string Value)>();
 
-        foreach (DialogueLine item in script.Lines)
+        foreach (BranchFlow.AnalyzedLine<DialogueLine> item in scriptAnalysis.Lines)
         {
-            setsUpToLine.AddRange(item.Sets.Select(operation =>
-                (operation.Variable, operation.Operator, operation.Value)));
+            if (item.Taken || item.Unresolved)
+            {
+                setsUpToLine.AddRange(item.Source.Sets.Select(operation =>
+                    (operation.Variable, operation.Operator, operation.Value)));
+            }
 
-            if (selected is not null && string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal))
+            if (selected is not null &&
+                string.Equals(item.Source.LineId, selected.LineId, StringComparison.Ordinal))
             {
                 break;
             }
@@ -394,13 +407,17 @@ public partial class DialogueNodeEditor : UserControl
             setsUpToLine);
 
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다.
-        IReadOnlyList<StageChoiceOption>? choices = ChoiceOptionBundle.At(
+        IReadOnlyList<BranchFlow.Block> scriptBlocks = BranchFlow.PassedBlocks(
+            scriptAnalysis, line => line.LineId, selected?.LineId);
+
+        IReadOnlyList<StageChoiceOption>? choices = StageChoiceOptions.Build(
+            ChoiceOptionBundle.At(
                 script.Lines,
                 index,
                 line => line.Transition?.Kind,
-                line => line.Text)
-            ?.Select(option => new StageChoiceOption(option.Text, option.IsSelected))
-            .ToArray();
+                line => line.Text),
+            optionIndex => script.Lines[optionIndex].LineId,
+            scriptBlocks);
 
         if (export.Presentation is null || export.Dialogue is null)
         {
@@ -414,7 +431,8 @@ public partial class DialogueNodeEditor : UserControl
                 LineIndex: index,
                 LineCount: script.Lines.Count,
                 Stats: stats,
-                ChoiceOptions: choices));
+                ChoiceOptions: choices,
+                BranchBlocks: scriptBlocks));
             return;
         }
 
@@ -424,10 +442,14 @@ public partial class DialogueNodeEditor : UserControl
             ? "이 줄은 공급된 연출이 읽은 발행본에 없습니다. 문서 전체 기준 상태를 표시합니다."
             : null;
 
+        // 갈래 인식 (W35) — 선택된 갈래의 라인만 접는다. 미선택 블록은 문서 순서 근사 + 표시.
+        BranchAwareLines.Result branch = BranchAwareLines.UpTo(
+            export.Dialogue, export.Presentation.Bindings, selected?.LineId, _session.BranchSelection);
+
         CoreStageFoldResult fold = CoreStageFold.Fold(
             PresentationCommandCatalog.For(_session.Definition),
             export.Presentation.SetupCommands,
-            MiniStageFold.LinesUpTo(export.Dialogue, export.Presentation.Bindings, selected?.LineId),
+            branch.FoldLines,
             _session.TuningLibrary.Tuning);
 
         StagePreview.Show(new MiniStagePreviewRequest(
@@ -447,7 +469,8 @@ public partial class DialogueNodeEditor : UserControl
                 DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요."),
             Stats: stats,
             ChoiceOptions: choices,
-            CoreState: fold.CoreState));
+            CoreState: fold.CoreState,
+            BranchBlocks: scriptBlocks));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

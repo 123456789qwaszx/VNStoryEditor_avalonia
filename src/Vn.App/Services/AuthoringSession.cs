@@ -2,6 +2,7 @@ using Avalonia.Media.Imaging;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
+using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Script;
 using Vn.Authoring.Serialization;
@@ -94,6 +95,12 @@ internal sealed class AuthoringSession
 
     /// <summary>프리뷰 비트맵 캐시. 해석이 끝난 절대 경로가 키다.</summary>
     public PreviewImageCache<Bitmap> ImageCache { get; } = new(path => new Bitmap(path));
+
+    /// <summary>
+    /// 프리뷰 갈래 선택 (W35) — "지금 어느 갈래를 보고 있는가". 뷰 상태라 저장하지 않고,
+    /// 프로젝트를 새로 열면 비워진다. 대사·연출 편집기가 같은 선택 하나를 본다(LineId 불변 덕).
+    /// </summary>
+    public StageBranchSelection BranchSelection { get; } = new();
 
     // ── 런타임 tuning (W23) ────────────────────────────────────────────────
 
@@ -199,6 +206,7 @@ internal sealed class AuthoringSession
 
         ProjectPath = null;
         Definition = GameDefinition.Empty;
+        BranchSelection.Clear();
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
         StatusMessage = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
 
@@ -218,6 +226,7 @@ internal sealed class AuthoringSession
 
         ProjectPath = loaded.ManifestPath;
         Definition = GameDefinition.LoadBeside(loaded.ManifestPath);
+        BranchSelection.Clear();
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
         _tuningLibrary = null;
         StatusMessage =

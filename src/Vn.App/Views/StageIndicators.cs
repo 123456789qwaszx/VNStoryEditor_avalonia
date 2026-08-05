@@ -17,7 +17,9 @@ internal static class StageIndicators
     public static void FillBadges(
         MiniStagePreviewRequest request,
         Panel badgeRow,
-        Panel unhandledHost)
+        Panel unhandledHost,
+        StageBranchSelection? branchSelection = null,
+        Action? onBranchSelectionChanged = null)
     {
         badgeRow.Children.Clear();
 
@@ -119,11 +121,60 @@ internal static class StageIndicators
                 Padding = new Thickness(6, 2),
                 Child = new TextBlock
                 {
-                    Text = "지나온 구간에 갈래 있음 — 문서 순서 근사",
+                    Text = "미선택 갈래 — 문서 순서 근사",
                     FontSize = 10
                 }
             });
         }
+
+        // 갈래 칩 (W35): 지나온 블록마다 하나 — 클릭이 갈래를 순환시킨다
+        // (갈래 0 → 1 → … → (조건만) 건너뜀 → 미선택(근사)). 지금 무엇을 보고 있는지 항상 보인다.
+        if (request.BranchBlocks is { Count: > 0 } blocks && branchSelection is not null)
+        {
+            foreach (BranchFlow.Block block in blocks)
+            {
+                string current = block.SelectedBranch switch
+                {
+                    null => "근사(전부)",
+                    StageBranchSelection.SkipAllBranches => "전부 거짓",
+                    { } selected when selected >= 0 && selected < block.Branches.Count =>
+                        Shorten(block.Branches[selected].Label, 12),
+                    _ => "근사(전부)",
+                };
+
+                var chip = new Button
+                {
+                    Content = $"{(block.IsChoice ? "선택지" : "조건")}: {current}",
+                    FontSize = 10,
+                    Padding = new Thickness(6, 2),
+                    Background = new SolidColorBrush(block.SelectedBranch is null
+                        ? Color.FromArgb(40, 217, 119, 6)     // 미선택 = 근사 색
+                        : Color.FromArgb(40, 34, 197, 94))    // 선택됨 = 초록 계열
+                };
+
+                ToolTip.SetTip(chip, string.Join(
+                    "\n",
+                    block.Branches.Select((branch, index) =>
+                        $"{(block.SelectedBranch == index ? "▶ " : "· ")}{Shorten(branch.Label, 40)}")) +
+                    (block.IsChoice ? string.Empty : "\n· (전부 거짓 = 건너뜀)") +
+                    "\n클릭하면 다음 갈래로 순환합니다.");
+
+                BranchFlow.Block captured = block;
+                chip.Click += (_, _) =>
+                {
+                    branchSelection.Cycle(captured);
+                    onBranchSelectionChanged?.Invoke();
+                };
+
+                badgeRow.Children.Add(chip);
+            }
+        }
+    }
+
+    private static string Shorten(string text, int max)
+    {
+        string trimmed = string.IsNullOrWhiteSpace(text) ? "(빈 라벨)" : text.Trim();
+        return trimmed.Length <= max ? trimmed : trimmed[..max] + "…";
     }
 
     public static void FillNotices(

@@ -61,6 +61,9 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     internal Func<bool>? PlaybackAdvance;
 
+    /// <summary>갈래 선택이 바뀌었다 (W35) — 편집이 아니지만 다시 접어야 하므로 편집기가 재렌더한다.</summary>
+    internal event Action? BranchSelectionChanged;
+
     // 타자기 (W32) — 대사창 텍스트만 갱신하기 위한 핸들. 캔버스 재렌더 시 다시 잡힌다.
     private TextBlock? _dialogueText;
     private string? _dialogueFullText;
@@ -540,11 +543,14 @@ internal sealed class StageSceneView : UserControl
 
         foreach (StageChoiceOption option in options)
         {
-            Add(new Border
+            var optionBox = new Border
             {
                 Width = optionWidth,
                 Height = optionHeight,
-                Background = BoxBackground,
+                // 현재 접히는 갈래(W35)는 배경 틴트, 커서 라벨은 노란 테두리 — 두 표시는 별개다.
+                Background = option.IsTakenBranch
+                    ? new SolidColorBrush(Color.FromArgb(205, 20, 55, 35))
+                    : BoxBackground,
                 CornerRadius = new CornerRadius(optionHeight / 2),
                 BorderThickness = new Thickness(em * 0.09),
                 BorderBrush = option.IsSelected
@@ -552,7 +558,8 @@ internal sealed class StageSceneView : UserControl
                     : new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)),
                 Child = new TextBlock
                 {
-                    Text = option.Text.Length == 0 ? "(빈 라벨)" : option.Text,
+                    Text = (option.IsTakenBranch ? "▶ " : string.Empty) +
+                        (option.Text.Length == 0 ? "(빈 라벨)" : option.Text),
                     FontSize = em * 0.85,
                     Foreground = Brushes.White,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -561,15 +568,38 @@ internal sealed class StageSceneView : UserControl
                     VerticalAlignment = VerticalAlignment.Center,
                     MaxWidth = optionWidth - em
                 }
-            }, new StageRect((width - optionWidth) / 2, y, optionWidth, optionHeight));
+            };
+
+            // 옵션 클릭 = 그 갈래 선택 (W35). 재생 중이면 선택 후 곧장 진행이기도 하다(W35-5).
+            if (option is { LineId: { } optionLineId, BlockLineId: { } blockLineId } && _session is not null)
+            {
+                optionBox.Cursor = new Cursor(StandardCursorType.Hand);
+                optionBox.PointerPressed += (_, args) =>
+                {
+                    if (!args.GetCurrentPoint(optionBox).Properties.IsLeftButtonPressed)
+                    {
+                        return;
+                    }
+
+                    UiGuard.Run(_session, "갈래 선택", () =>
+                    {
+                        _session.BranchSelection.SelectChoice(blockLineId, optionLineId);
+                        PlaybackAdvance?.Invoke(); // 재생 중이면 선택지에서 멈춘 진행을 잇는다
+                        BranchSelectionChanged?.Invoke();
+                    });
+                    args.Handled = true;
+                };
+            }
+
+            Add(optionBox, new StageRect((width - optionWidth) / 2, y, optionWidth, optionHeight));
 
             y += optionHeight + gap;
         }
     }
 
     /// <summary>
-    /// 스탯 HUD (X3) — 등록 변수의 "이 라인까지" 누적 값. 갈래를 가리지 않는
-    /// 문서 순서 근사이므로 그 사실을 라벨에 그대로 쓴다(규칙 14).
+    /// 스탯 HUD (X3·W35) — 등록 변수의 "이 라인까지" 누적 값. 선택된 갈래 기준이고,
+    /// 미선택 갈래가 남아 있으면(요청의 근사 뱃지) 그 구간만 문서 순서 근사다(규칙 14).
     /// </summary>
     private void RenderStatsHud(MiniStagePreviewRequest request, double width, double em)
     {
@@ -622,7 +652,9 @@ internal sealed class StageSceneView : UserControl
 
         rows.Children.Add(new TextBlock
         {
-            Text = "문서 순서 근사 — 갈래 미반영",
+            Text = _request?.State.PassedBranchApproximation == true
+                ? "미선택 갈래 있음 — 그 구간은 문서 순서 근사"
+                : "선택된 갈래 기준",
             FontSize = em * 0.45,
             Foreground = Brushes.White,
             Opacity = 0.55

@@ -205,10 +205,14 @@ public partial class PresentationNodeEditor : UserControl
 
         DialogueResultLine? line = dialogue.FindLine(_selectedLineId) ?? dialogue.Lines.FirstOrDefault();
 
+        // 갈래 인식 (W35) — 선택된 갈래의 라인만 접는다. 미선택 블록은 문서 순서 근사 + 표시.
+        BranchAwareLines.Result branch = BranchAwareLines.UpTo(
+            dialogue, draft.Bindings, line?.LineId, _session.BranchSelection);
+
         CoreStageFoldResult fold = CoreStageFold.Fold(
             catalog,
             draft.SetupCommands,
-            MiniStageFold.LinesUpTo(dialogue, draft.Bindings, line?.LineId),
+            branch.FoldLines,
             _session.TuningLibrary.Tuning);
         MiniStageState state = fold.State;
 
@@ -217,33 +221,24 @@ public partial class PresentationNodeEditor : UserControl
             : dialogue.Lines.ToList().FindIndex(item =>
                 string.Equals(item.LineId, line.LineId, StringComparison.Ordinal));
 
-        // 스탯 HUD (X3): 발행 시점 설정값에서 시작해 선택 라인까지의 set을 문서 순서로 누적.
-        var setsUpToLine = new List<(string Variable, SetOperatorKind Operator, string Value)>();
-
-        foreach (DialogueResultLine item in dialogue.Lines)
-        {
-            setsUpToLine.AddRange(item.Sets.Select(operation =>
-                (operation.Variable, operation.Operator, operation.Value)));
-
-            if (line is not null && string.Equals(item.LineId, line.LineId, StringComparison.Ordinal))
-            {
-                break;
-            }
-        }
-
+        // 스탯 HUD (X3): 발행 시점 설정값 + 선택 갈래 기준의 set 누적 (W35 — 문서 순서 근사 은퇴).
         IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
             dialogue.Assignments.Select(assignment => (assignment.Variable, assignment.Value)),
-            setsUpToLine);
+            branch.TakenLines
+                .SelectMany(item => item.Sets.Select(operation =>
+                    (operation.Variable, operation.Operator, operation.Value)))
+                .ToList());
 
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다 —
         // 작업 대본 쪽 프리뷰와 같은 판정 하나(ChoiceOptionBundle)를 지난다.
-        IReadOnlyList<StageChoiceOption>? choices = ChoiceOptionBundle.At(
+        IReadOnlyList<StageChoiceOption>? choices = StageChoiceOptions.Build(
+            ChoiceOptionBundle.At(
                 dialogue.Lines,
                 index,
                 resultLine => resultLine.Transition?.Kind,
-                resultLine => resultLine.Text)
-            ?.Select(option => new StageChoiceOption(option.Text, option.IsSelected))
-            .ToArray();
+                resultLine => resultLine.Text),
+            optionIndex => dialogue.Lines[optionIndex].LineId,
+            branch.Blocks);
 
         StagePreview.Show(new MiniStagePreviewRequest(
             $"연출: {presentation.Name}",
@@ -258,7 +253,8 @@ public partial class PresentationNodeEditor : UserControl
             EditContext: new StageEditContext(presentation.Id, line?.LineId),
             Stats: stats,
             ChoiceOptions: choices,
-            CoreState: fold.CoreState));
+            CoreState: fold.CoreState,
+            BranchBlocks: branch.Blocks));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>
@@ -859,7 +855,7 @@ public partial class PresentationNodeEditor : UserControl
                 ? CoreStageFold.Fold(
                     catalog,
                     draft.SetupCommands,
-                    MiniStageFold.LinesUpTo(dialogue, draft.Bindings, lineId),
+                    BranchAwareLines.UpTo(dialogue, draft.Bindings, lineId, _session.BranchSelection).FoldLines,
                     _session.TuningLibrary.Tuning).State
                 : CoreStageFold.Fold(
                     catalog,

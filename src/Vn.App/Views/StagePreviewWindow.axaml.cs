@@ -33,6 +33,8 @@ public partial class StagePreviewWindow : Window
 
         SceneHost.Content = _scene;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
+        // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
+        _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
 
         PrevButton.Click += (_, _) => MoveRequested?.Invoke(-1);
         NextButton.Click += (_, _) => MoveRequested?.Invoke(1);
@@ -105,7 +107,12 @@ public partial class StagePreviewWindow : Window
 
         PositionText.Text = position;
 
-        StageIndicators.FillBadges(request, BadgeRow, UnhandledHost);
+        StageIndicators.FillBadges(
+            request,
+            BadgeRow,
+            UnhandledHost,
+            _session?.BranchSelection,
+            () => ManipulationApplied?.Invoke());
         StageIndicators.FillNotices(
             _session?.AssetLibrary ?? PreviewAssetLibrary.Empty,
             _session?.TuningLibrary ?? RuntimeTuningLibrary.Empty,
