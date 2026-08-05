@@ -1,3 +1,4 @@
+using Ked.Presentation.Core;
 using Vn.Authoring.Flow;
 
 namespace Vn.App.Services;
@@ -63,13 +64,16 @@ internal static class StageSceneComposer
         string? speakerName,
         string? speakerCharacterId,
         double width,
-        double height)
+        double height,
+        StageState? coreState = null)
     {
         ArgumentNullException.ThrowIfNull(state);
 
         bool hasSpeaker = !string.IsNullOrWhiteSpace(speakerName);
         (IReadOnlyList<StagePortraitPlacement> portraits, bool speakerOnStage) =
-            PlacePortraits(state, speakerCharacterId, width, height);
+            coreState is null
+                ? PlacePortraits(state, speakerCharacterId, width, height)
+                : PlaceCorePortraits(state, coreState, speakerCharacterId, width, height);
 
         return new StageSceneLayout(
             width,
@@ -77,6 +81,95 @@ internal static class StageSceneComposer
             portraits,
             PlaceDialogueBox(state.BoxKindFor(hasSpeaker), width, height),
             hasSpeaker && !speakerOnStage ? speakerName : null);
+    }
+
+    /// <summary>
+    /// 코어 확정 상태의 실제 좌표로 배치한다 (W25) — 균등 나열이 아니라 재현이다(H-3).
+    ///
+    /// rect는 <c>CharacterPortraitSprite_Image</c>의 pivot 기준 네 모서리를 리그 트리로
+    /// 루트 공간에 변환한 축 정렬 경계이고, 샷은 적용측 규약(보이는 위치 = 논리 × 배율 + pan)
+    /// 그대로 씌운다. 좌표 계산은 전부 코어에서 끝났다 — 여기는 좌표계 변환(중앙 원점·y위 →
+    /// 캔버스 좌상 원점·y아래)만 있다(D-core-2).
+    ///
+    /// 코어가 모르는 슬롯(보완 폴드의 관대한 생성분·slot_tyrant)은 기존 균등 나열로 함께
+    /// 그린다 — 코어에 없다고 화면에서 사라지면 침묵이다.
+    /// </summary>
+    private static (IReadOnlyList<StagePortraitPlacement> Portraits, bool SpeakerOnStage) PlaceCorePortraits(
+        MiniStageState state,
+        StageState core,
+        string? speakerCharacterId,
+        double width,
+        double height)
+    {
+        var portraits = new List<StagePortraitPlacement>();
+        var uniformLeftovers = new List<KeyValuePair<string, MiniStageSlot>>();
+        bool speakerOnStage = false;
+
+        float cameraScale = ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom);
+        Vec2 pan = core.Shot.PanInRigSpace;
+
+        foreach ((string slotKey, MiniStageSlot slot) in state.VisibleSlots)
+        {
+            string imageKey = StageState.NodeKeyOf(slotKey, "CharacterPortraitSprite_Image");
+
+            if (!core.HasSlot(slotKey) || !core.Nodes.Contains(imageKey))
+            {
+                uniformLeftovers.Add(new KeyValuePair<string, MiniStageSlot>(slotKey, slot));
+                continue;
+            }
+
+            RectNodeState imageState = core.Nodes.GetState(imageKey);
+            Vec2 size = core.Nodes.GetRectSize(imageKey);
+
+            // 로컬 rect의 네 모서리 (원점 = pivot). 회전·스케일이 섞여도 경계는 보존된다.
+            Span<Vec3> corners =
+            [
+                new Vec3(-imageState.Pivot.X * size.X, -imageState.Pivot.Y * size.Y, 0f),
+                new Vec3((1f - imageState.Pivot.X) * size.X, -imageState.Pivot.Y * size.Y, 0f),
+                new Vec3(-imageState.Pivot.X * size.X, (1f - imageState.Pivot.Y) * size.Y, 0f),
+                new Vec3((1f - imageState.Pivot.X) * size.X, (1f - imageState.Pivot.Y) * size.Y, 0f),
+            ];
+
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
+
+            foreach (Vec3 corner in corners)
+            {
+                Vec3 root = core.Nodes.TransformPoint(imageKey, corner);
+
+                // 샷: 보이는 위치 = 논리 위치 × 배율 + pan (ShotIntentMath 규약).
+                double viewX = root.X * cameraScale + pan.X;
+                double viewY = root.Y * cameraScale + pan.Y;
+
+                minX = Math.Min(minX, viewX);
+                maxX = Math.Max(maxX, viewX);
+                minY = Math.Min(minY, viewY);
+                maxY = Math.Max(maxY, viewY);
+            }
+
+            // 루트 공간(중앙 원점·y 위) → 캔버스(좌상 원점·y 아래).
+            var rect = new StageRect(
+                width / 2 + minX,
+                height / 2 - maxY,
+                maxX - minX,
+                maxY - minY);
+
+            bool isSpeaker = speakerCharacterId is not null &&
+                string.Equals(slot.CharacterId, speakerCharacterId, StringComparison.Ordinal);
+            speakerOnStage |= isSpeaker;
+
+            portraits.Add(new StagePortraitPlacement(slotKey, slot, rect, isSpeaker));
+        }
+
+        if (uniformLeftovers.Count > 0)
+        {
+            (IReadOnlyList<StagePortraitPlacement> uniform, bool uniformSpeaker) =
+                PlaceUniform(uniformLeftovers.ToArray(), speakerCharacterId, width, height);
+            portraits.AddRange(uniform);
+            speakerOnStage |= uniformSpeaker;
+        }
+
+        return (portraits, speakerOnStage);
     }
 
     /// <summary>
@@ -90,8 +183,15 @@ internal static class StageSceneComposer
         double width,
         double height)
     {
-        KeyValuePair<string, MiniStageSlot>[] slots = state.VisibleSlots.ToArray();
+        return PlaceUniform(state.VisibleSlots.ToArray(), speakerCharacterId, width, height);
+    }
 
+    private static (IReadOnlyList<StagePortraitPlacement> Portraits, bool SpeakerOnStage) PlaceUniform(
+        KeyValuePair<string, MiniStageSlot>[] slots,
+        string? speakerCharacterId,
+        double width,
+        double height)
+    {
         if (slots.Length == 0)
         {
             return (Array.Empty<StagePortraitPlacement>(), false);

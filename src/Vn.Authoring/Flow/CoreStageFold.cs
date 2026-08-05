@@ -30,15 +30,33 @@ public sealed record CoreStageFoldResult(MiniStageState State, StageState? CoreS
 public static class CoreStageFold
 {
     /// <summary>
-    /// v1 프리뷰가 화면에 그리는 코어 축의 커맨드 — 커맨드 해석이 아니라 <b>표시 정책</b>이다.
+    /// 프리뷰가 화면에 그리는 코어 축의 커맨드 — 커맨드 해석이 아니라 <b>표시 정책</b>이다.
     /// 여기 없는 코어 처리 커맨드는 상태에는 접히지만 아직 안 그리므로 뱃지에 남는다(규칙 14).
-    /// W25가 좌표를 그리기 시작하면 place·size·shot 계열이 이 목록으로 올라온다.
+    /// W25부터 좌표 축(place·size·이동·샷)이 코어 상태 그대로 그려지므로 이 목록에 있다 —
+    /// 코어가 접었는데 화면에 안 나오는 것은 이제 구조 기록(char_to)과 셰이더 축뿐이다.
     /// </summary>
-    private static readonly HashSet<string> DrawnCoreCommands = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> DrawnCoreCommands = new(StringComparer.Ordinal)
     {
         "slot", "slot00", "slot01", "slot02",
         "cast", "pose", "actor",
         "show", "face", "face_swap", "fade_in", "fade_out",
+
+        // 좌표 축 (W25에서 그리기 시작) — place 14종.
+        "place", "place_left", "place_center", "place_right",
+        "place_tl", "place_top", "place_tr",
+        "place_bl", "place_bottom", "place_br",
+        "place_inner_tl", "place_inner_tr", "place_inner_bl", "place_inner_br",
+
+        // 뎁스 6종.
+        "size", "size_far", "size_back", "size_mid", "size_front", "size_close",
+
+        // 이동·스케일·회전.
+        "left", "right", "up", "down",
+        "left_per", "right_per", "up_per", "down_per",
+        "move_by", "move_reset", "scale_by", "scale_reset", "rotate_by", "rotate_reset",
+
+        // 샷 5종.
+        "shot_focus_to", "shot_zoom", "shot_to", "shot_track", "shot_reset",
     };
 
     public static CoreStageFoldResult Fold(

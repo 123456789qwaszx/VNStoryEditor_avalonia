@@ -61,6 +61,22 @@ internal static class StageIndicators
             unhandledHost.IsVisible = wasExpanded;
         }
 
+        // tuning 미수입이면 배치가 균등 나열 근사다 — 근사를 정확한 척하지 않는다 (W25, 규칙 14).
+        if (request.CoreState is null)
+        {
+            badgeRow.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(40, 217, 119, 6)),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2),
+                Child = new TextBlock
+                {
+                    Text = "좌표 근사 (tuning 없음)",
+                    FontSize = 10
+                }
+            });
+        }
+
         if (state.PassedBranchApproximation)
         {
             badgeRow.Children.Add(new Border

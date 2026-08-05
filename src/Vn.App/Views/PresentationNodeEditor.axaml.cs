@@ -181,13 +181,15 @@ public partial class PresentationNodeEditor : UserControl
 
         if (workspace.Dialogue is not { } dialogue)
         {
+            CoreStageFoldResult setupFold = CoreStageFold.Fold(
+                catalog,
+                draft.SetupCommands,
+                Array.Empty<MiniStageFoldLine>(),
+                _session.TuningLibrary.Tuning);
+
             StagePreview.Show(new MiniStagePreviewRequest(
                 $"연출: {presentation.Name}",
-                CoreStageFold.Fold(
-                    catalog,
-                    draft.SetupCommands,
-                    Array.Empty<MiniStageFoldLine>(),
-                    _session.TuningLibrary.Tuning).State,
+                setupFold.State,
                 HasPresentation: true,
                 SelectedLineId: null,
                 SpeakerName: null,
@@ -196,17 +198,19 @@ public partial class PresentationNodeEditor : UserControl
                 EditContext: new StageEditContext(
                     presentation.Id,
                     LineId: null,
-                    DisabledReason: "라인이 없어 직접 조작할 수 없습니다. 대사 결과를 먼저 고르세요.")));
+                    DisabledReason: "라인이 없어 직접 조작할 수 없습니다. 대사 결과를 먼저 고르세요."),
+                CoreState: setupFold.CoreState));
             return;
         }
 
         DialogueResultLine? line = dialogue.FindLine(_selectedLineId) ?? dialogue.Lines.FirstOrDefault();
 
-        MiniStageState state = CoreStageFold.Fold(
+        CoreStageFoldResult fold = CoreStageFold.Fold(
             catalog,
             draft.SetupCommands,
             MiniStageFold.LinesUpTo(dialogue, draft.Bindings, line?.LineId),
-            _session.TuningLibrary.Tuning).State;
+            _session.TuningLibrary.Tuning);
+        MiniStageState state = fold.State;
 
         int index = line is null
             ? -1
@@ -253,7 +257,8 @@ public partial class PresentationNodeEditor : UserControl
             // 작업 중 바인딩이므로 직접 조작이 열려 있다 — 조작은 이 라인의 편집이 된다.
             EditContext: new StageEditContext(presentation.Id, line?.LineId),
             Stats: stats,
-            ChoiceOptions: choices));
+            ChoiceOptions: choices,
+            CoreState: fold.CoreState));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

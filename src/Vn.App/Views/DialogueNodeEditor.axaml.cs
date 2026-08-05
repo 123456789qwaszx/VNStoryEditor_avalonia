@@ -424,15 +424,15 @@ public partial class DialogueNodeEditor : UserControl
             ? "이 줄은 공급된 연출이 읽은 발행본에 없습니다. 문서 전체 기준 상태를 표시합니다."
             : null;
 
-        MiniStageState state = CoreStageFold.Fold(
+        CoreStageFoldResult fold = CoreStageFold.Fold(
             PresentationCommandCatalog.For(_session.Definition),
             export.Presentation.SetupCommands,
             MiniStageFold.LinesUpTo(export.Dialogue, export.Presentation.Bindings, selected?.LineId),
-            _session.TuningLibrary.Tuning).State;
+            _session.TuningLibrary.Tuning);
 
         StagePreview.Show(new MiniStagePreviewRequest(
             contextLabel,
-            state,
+            fold.State,
             HasPresentation: true,
             selected?.LineId,
             selected?.Speaker,
@@ -446,7 +446,8 @@ public partial class DialogueNodeEditor : UserControl
                 selected?.LineId,
                 DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요."),
             Stats: stats,
-            ChoiceOptions: choices));
+            ChoiceOptions: choices,
+            CoreState: fold.CoreState));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

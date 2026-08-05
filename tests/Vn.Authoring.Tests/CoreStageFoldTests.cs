@@ -66,8 +66,12 @@ public class CoreStageFoldTests
             legacy.Aliases.OrderBy(pair => pair.Key, StringComparer.Ordinal),
             composite.Aliases.OrderBy(pair => pair.Key, StringComparer.Ordinal));
 
-        // 뱃지 목록은 항목·순서까지 그대로다 — "반영 안 된 연출 N"이 달라지면 화면이 달라진 것이다.
-        Assert.Equal(legacy.Unhandled, composite.Unhandled);
+        // 뱃지 목록은 항목·순서까지 그대로다 — 단, W25부터 코어가 그리는 좌표 축(place·size·샷)은
+        // 실제 배치로 반영되므로 기존 폴드가 뱃지에 남기던 그 항목들만 목록에서 내려간다.
+        // 그 외의 뱃지가 달라지면 화면이 달라진 것이다.
+        Assert.Equal(
+            legacy.Unhandled.Where(entry => !CoreStageFold.DrawnCoreCommands.Contains(entry.CommandName)),
+            composite.Unhandled.Where(entry => !CoreStageFold.DrawnCoreCommands.Contains(entry.CommandName)));
 
         Assert.Equal(
             legacy.Slots.Keys.OrderBy(key => key, StringComparer.Ordinal),
@@ -242,22 +246,28 @@ public class CoreStageFoldTests
     }
 
     [Fact]
-    public void 규칙14_코어가_접은_좌표_축은_여전히_뱃지에_남는다()
+    public void 좌표_축은_코어에_접혀_그려지므로_뱃지에서_내려간다()
     {
         (var setup, var lines) = CorePathScene();
 
         CoreStageFoldResult composite = CoreStageFold.Fold(Catalog, setup, lines, LoadTuning());
 
-        // 화면(v1)은 아직 좌표를 그리지 않으므로 place·shot_zoom은 "반영 안 된 연출"이다.
-        Assert.Contains(new MiniStageUnhandled(null, "shot_zoom"), composite.State.Unhandled);
-        Assert.Contains(new MiniStageUnhandled("ln3", "place"), composite.State.Unhandled);
+        // W25: place·shot은 코어 좌표로 실제 배치가 되므로 "반영 안 된 연출"이 아니다.
+        Assert.DoesNotContain(new MiniStageUnhandled(null, "shot_zoom"), composite.State.Unhandled);
+        Assert.DoesNotContain(new MiniStageUnhandled("ln3", "place"), composite.State.Unhandled);
 
-        // 그러나 코어 상태에는 실제로 접혔다 — W25가 이 좌표를 그린다.
+        // 코어 상태에 실제로 접혔다 — StageSceneComposer가 이 좌표를 그린다.
         StageState core = composite.CoreState!;
         Assert.DoesNotContain(core.Unhandled, unhandled => unhandled.Command.Name == "place");
         Assert.DoesNotContain(core.Unhandled, unhandled => unhandled.Command.Name == "shot_zoom");
         Assert.True(core.HasSlot("c1"));
         Assert.NotEqual(ShotIntentState.Default.Zoom, core.Shot.Zoom);
+
+        // 규칙 14는 그대로다: 코어도 툴도 못 접는 커맨드는 여전히 뱃지에 남는다.
+        // (tuning 없이 접으면 좌표 축도 도로 뱃지로 돌아온다 — 폴백 골든이 그 경로를 지킨다.)
+        CoreStageFoldResult withoutTuning = CoreStageFold.Fold(Catalog, setup, lines, tuning: null);
+        Assert.Contains(new MiniStageUnhandled(null, "shot_zoom"), withoutTuning.State.Unhandled);
+        Assert.Contains(new MiniStageUnhandled("ln3", "place"), withoutTuning.State.Unhandled);
     }
 
     [Fact]

@@ -112,7 +112,8 @@ internal sealed class StageSceneView : UserControl
             request.SpeakerName,
             speakerCharacterId,
             width,
-            height);
+            height,
+            request.CoreState);
 
         foreach (StagePortraitPlacement portrait in layout.Portraits)
         {
@@ -772,7 +773,11 @@ internal sealed class StageSceneView : UserControl
         // 위치 이동은 캐스팅 여부와 무관하다 — 빈 슬롯도 자리를 정할 수 있다.
         panel.Children.Add(new TextBlock { Text = "위치 (place)", FontSize = 10, Opacity = 0.6 });
         panel.Children.Add(BuildScreenPointGrid(() => slotKey, flyout));
-        panel.Children.Add(PlaceApproximationNote());
+
+        if (PlaceApproximationNote() is { } characterPlaceNote)
+        {
+            panel.Children.Add(characterPlaceNote);
+        }
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
 
@@ -889,9 +894,8 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 슬롯 탭 — 슬롯 추가(Setup)와 위치 지정(place, 이 라인). 위치는 정식 커맨드로
-    /// 기록되지만 v1 폴드는 배치를 그리지 않으므로 "반영 안 된 연출" 뱃지에 남는다 —
-    /// 그 사실을 숨기지 않고 탭 안에 쓴다(규칙 14).
+    /// 슬롯 탭 — 슬롯 추가(Setup)와 위치 지정(place, 이 라인). tuning이 수입돼 있으면
+    /// place는 코어 좌표로 실제 배치가 되고(W25), 없으면 근사임을 탭 안에 쓴다(규칙 14).
     /// </summary>
     private Control BuildSlotTab(Flyout flyout)
     {
@@ -958,7 +962,11 @@ internal sealed class StageSceneView : UserControl
                 ? slots[slotCombo.SelectedIndex]
                 : null,
             flyout));
-        panel.Children.Add(PlaceApproximationNote());
+
+        if (PlaceApproximationNote() is { } slotPlaceNote)
+        {
+            panel.Children.Add(slotPlaceNote);
+        }
 
         return panel;
     }
@@ -1012,15 +1020,27 @@ internal sealed class StageSceneView : UserControl
         return pointGrid;
     }
 
-    /// <summary>v1 폴드는 배치를 그리지 않는다 — 그 사실을 숨기지 않는다(규칙 14).</summary>
-    private static TextBlock PlaceApproximationNote() => new()
+    /// <summary>
+    /// 코어 좌표가 있으면(tuning 수입됨) place는 실제로 그려지므로 안내가 필요 없다 (W25).
+    /// 없으면 기존 근사임을 숨기지 않는다(규칙 14).
+    /// </summary>
+    private TextBlock? PlaceApproximationNote()
     {
-        Text = "위치는 커맨드로 기록되지만 v1 프리뷰 배치에는 아직 반영되지 않습니다(뱃지로 표시).",
-        FontSize = 9,
-        Opacity = 0.55,
-        TextWrapping = TextWrapping.Wrap,
-        MaxWidth = 250
-    };
+        if (_request?.CoreState is not null)
+        {
+            return null;
+        }
+
+        return new TextBlock
+        {
+            Text = "tuning 미수입이라 위치는 커맨드로만 기록됩니다(균등 나열 근사 + 뱃지). " +
+                "ExportedTuning 폴더를 프로젝트에 넣으면 실제 배치로 그려집니다.",
+            FontSize = 9,
+            Opacity = 0.55,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 250
+        };
+    }
 
     /// <summary>
     /// 캐릭터 탭 — 기존 슬롯에 캐스팅(Setup), variant·표정 변경(Setup cast 수정),

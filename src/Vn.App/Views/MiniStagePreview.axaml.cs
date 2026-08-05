@@ -29,6 +29,10 @@ internal sealed record StageChoiceOption(string Text, bool IsSelected);
 /// 선택 라인이 옵션 라벨이면 그 블록의 옵션 전부. 라벨은 대사가 아니므로 대사창 대신
 /// 화면 중앙에 버튼 묶음으로 제시된다 — 런타임의 선택지 제시 근사.
 /// </param>
+/// <param name="CoreState">
+/// 코어 리듀서가 접은 확정 무대 상태 (W25). 있으면 배치가 실제 좌표(리그 트리 + 샷)로
+/// 그려지고, 없으면(tuning 미수입) 기존 균등 나열 근사 + "좌표 근사" 뱃지다.
+/// </param>
 internal sealed record MiniStagePreviewRequest(
     string ContextLabel,
     MiniStageState State,
@@ -41,7 +45,8 @@ internal sealed record MiniStagePreviewRequest(
     int LineCount = 0,
     StageEditContext? EditContext = null,
     IReadOnlyList<StatFold.StatValue>? Stats = null,
-    IReadOnlyList<StageChoiceOption>? ChoiceOptions = null);
+    IReadOnlyList<StageChoiceOption>? ChoiceOptions = null,
+    Ked.Presentation.Core.StageState? CoreState = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
