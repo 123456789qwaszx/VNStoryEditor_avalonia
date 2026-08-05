@@ -55,6 +55,13 @@ public partial class StagePreviewWindow : Window
         _scene.Attach(session);
     }
 
+    /// <summary>도킹 패널과 같은 재생 모델 하나에 붙는다 (W31) — 창 무대 클릭도 진행이 된다.</summary>
+    internal void AttachPlayback(StagePlayback playback)
+    {
+        PlaybackHost.Content = StagePlaybackControls.Build(playback);
+        _scene.PlaybackAdvance = playback.TryAdvanceByInput;
+    }
+
     /// <summary>메인 쪽에서 미는 최신 요청. 따라가기가 꺼져 있으면 장면은 고정된다.</summary>
     internal void Push(MiniStagePreviewRequest? request)
     {

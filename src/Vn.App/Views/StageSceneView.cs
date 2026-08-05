@@ -54,6 +54,13 @@ internal sealed class StageSceneView : UserControl
     /// <summary>직접 조작이 편집을 만들었다. 편집기 카드가 새 커맨드 행을 그려야 한다.</summary>
     internal event Action? ManipulationApplied;
 
+    /// <summary>
+    /// 재생 진행 입력 (W31) — 재생 중이면 true를 돌려주고 클릭을 소비한다(라인 즉시 완료 →
+    /// 다음). false면 클릭은 기존 조작(조절창·캐릭터 팝오버)으로 흐른다. 도킹·분리 창의
+    /// 무대가 같은 재생 모델의 이 판정 하나를 본다.
+    /// </summary>
+    internal Func<bool>? PlaybackAdvance;
+
     public StageSceneView()
     {
         _canvas = new Canvas { Background = StageBackground, ClipToBounds = true };
@@ -73,8 +80,19 @@ internal sealed class StageSceneView : UserControl
         // 클릭·드롭 경로는 전부 UiGuard 아래다 — 예외는 무동작 + 상태줄이 된다(X1, 불변식 4).
         _canvas.PointerPressed += (_, args) =>
         {
-            if (!args.Handled && CanManipulate() &&
-                args.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed)
+            if (args.Handled || !args.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
+            // 재생 중에는 클릭이 진행이다 — 조작 대신 이 라인 즉시 완료 → 다음 (W31).
+            if (PlaybackAdvance?.Invoke() == true)
+            {
+                args.Handled = true;
+                return;
+            }
+
+            if (CanManipulate())
             {
                 UiGuard.Run(_session, "무대 조절창", ShowStagePopover);
                 args.Handled = true;
@@ -306,14 +324,22 @@ internal sealed class StageSceneView : UserControl
             image.Cursor = new Cursor(StandardCursorType.Hand);
             image.PointerPressed += (_, args) =>
             {
-                if (args.GetCurrentPoint(image).Properties.IsLeftButtonPressed)
+                if (!args.GetCurrentPoint(image).Properties.IsLeftButtonPressed)
                 {
-                    UiGuard.Run(
-                        _session,
-                        "캐릭터 조작",
-                        () => ShowCharacterPopover(portrait.SlotKey));
-                    args.Handled = true;
+                    return;
                 }
+
+                if (PlaybackAdvance?.Invoke() == true)
+                {
+                    args.Handled = true;
+                    return;
+                }
+
+                UiGuard.Run(
+                    _session,
+                    "캐릭터 조작",
+                    () => ShowCharacterPopover(portrait.SlotKey));
+                args.Handled = true;
             };
         }
 
@@ -354,11 +380,19 @@ internal sealed class StageSceneView : UserControl
             outline.Cursor = new Cursor(StandardCursorType.Hand);
             outline.PointerPressed += (_, args) =>
             {
-                if (args.GetCurrentPoint(outline).Properties.IsLeftButtonPressed)
+                if (!args.GetCurrentPoint(outline).Properties.IsLeftButtonPressed)
                 {
-                    UiGuard.Run(_session, "슬롯 조작", () => ShowCharacterPopover(portrait.SlotKey));
-                    args.Handled = true;
+                    return;
                 }
+
+                if (PlaybackAdvance?.Invoke() == true)
+                {
+                    args.Handled = true;
+                    return;
+                }
+
+                UiGuard.Run(_session, "슬롯 조작", () => ShowCharacterPopover(portrait.SlotKey));
+                args.Handled = true;
             };
         }
 

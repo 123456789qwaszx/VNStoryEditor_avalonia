@@ -60,8 +60,12 @@ public partial class MiniStagePreview : UserControl
     private readonly StageSceneView _scene = new();
     private StagePreviewWindow? _window;
     private PreviewAssetLibrary? _renderedLibrary;
+    private readonly Avalonia.Threading.DispatcherTimer _playbackTimer;
 
-    /// <summary>분리 창의 이전/다음 버튼. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
+    /// <summary>재생 진행 모델 (W31). 도킹·분리 창의 컨트롤과 무대 클릭이 전부 이 하나를 본다.</summary>
+    internal StagePlayback Playback { get; } = new();
+
+    /// <summary>분리 창의 이전/다음 버튼과 재생 자동 진행. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
     internal event Action<int>? LineMoveRequested;
 
     /// <summary>도킹/분리 무대 어느 쪽이든 직접 조작이 편집을 만들었다 — 편집기가 다시 그린다.</summary>
@@ -75,6 +79,18 @@ public partial class MiniStagePreview : UserControl
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
 
         OpenWindowButton.Click += (_, _) => UiGuard.Run(_session, "프리뷰 창 열기", OpenWindow);
+
+        // 재생 배선 — 시간의 원천은 이 타이머 하나, 라인 이동은 기존 선택 경로다.
+        Playback.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
+        _scene.PlaybackAdvance = Playback.TryAdvanceByInput;
+        PlaybackHost.Content = StagePlaybackControls.Build(Playback);
+
+        _playbackTimer = new Avalonia.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(50)
+        };
+        _playbackTimer.Tick += (_, _) => Playback.Tick(0.05);
+        Playback.StateChanged += () => _playbackTimer.IsEnabled = Playback.IsPlaying;
     }
 
     internal void Attach(AuthoringSession session)
@@ -127,6 +143,9 @@ public partial class MiniStagePreview : UserControl
         }
 
         _window?.Push(request);
+
+        // 재생 모델에 현재 라인 위치를 알린다 — 이동 요청이 반영됐다는 신호이기도 하다.
+        Playback.OnRequest(request?.LineIndex ?? -1, request?.LineCount ?? 0, request?.LineText);
     }
 
     private void OpenWindow()
@@ -140,6 +159,7 @@ public partial class MiniStagePreview : UserControl
         {
             _window = new StagePreviewWindow();
             _window.Attach(_session);
+            _window.AttachPlayback(Playback);
             _window.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
             _window.ManipulationApplied += () => ManipulationApplied?.Invoke();
             _window.Closed += (_, _) => _window = null;

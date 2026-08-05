@@ -14,7 +14,7 @@
                 Background="#FF1C1C20"
                 Padding="12,8">
             <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
                     <ToggleButton Grid.Column="0"
                                   x:Name="FollowToggle"
                                   Content="따라가기"
@@ -33,7 +33,11 @@
                             FontSize="11"
                             Padding="8,3"
                             Margin="4,0,0,0" />
-                    <TextBlock Grid.Column="3"
+                    <!-- 재생 컨트롤 (W31) — 도킹 패널과 같은 StagePlayback 하나를 본다. -->
+                    <ContentControl Grid.Column="3"
+                                    x:Name="PlaybackHost"
+                                    Margin="10,0,0,0" />
+                    <TextBlock Grid.Column="4"
                                x:Name="PositionText"
                                FontSize="11"
                                Foreground="White"

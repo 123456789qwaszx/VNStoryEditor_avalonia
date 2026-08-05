@@ -6,7 +6,7 @@
             Padding="10,8">
         <Grid RowDefinitions="Auto,Auto,Auto,Auto">
             <!-- 에셋 루트 지정·새로 고침은 좌측 에셋 탐색기가 맡는다 (X8). -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
                 <TextBlock Grid.Column="0"
                            Text="무대 프리뷰"
                            FontWeight="SemiBold"
@@ -18,7 +18,11 @@
                            Margin="8,0"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
-                <Button Grid.Column="2"
+                <!-- 재생 컨트롤 (W31) — 분리 창과 같은 StagePlayback 하나를 본다. -->
+                <ContentControl Grid.Column="2"
+                                x:Name="PlaybackHost"
+                                Margin="0,0,8,0" />
+                <Button Grid.Column="3"
                         x:Name="OpenWindowButton"
                         Content="창으로 열기"
                         FontSize="10"
