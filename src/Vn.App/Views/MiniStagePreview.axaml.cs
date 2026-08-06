@@ -142,6 +142,8 @@ public partial class MiniStagePreview : UserControl
     private readonly StageSceneView _scene = new();
     private StagePreviewWindow? _window;
     private PreviewAssetLibrary? _renderedLibrary;
+    private bool _windowed;
+    private bool _collapsed;
     private readonly Avalonia.Threading.DispatcherTimer _playbackTimer;
 
     /// <summary>재생 진행 모델 (W31). 도킹·분리 창의 컨트롤과 무대 클릭이 전부 이 하나를 본다.</summary>
@@ -163,6 +165,17 @@ public partial class MiniStagePreview : UserControl
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
 
         OpenWindowButton.Click += (_, _) => UiGuard.Run(_session, "프리뷰 창 열기", OpenWindow);
+
+        // 아래로 접기 (W38) — 헤더만 남긴다. 창 표시 중 숨김과 같은 자리를 쓴다.
+        CollapseButton.Click += (_, _) =>
+        {
+            _collapsed = !_collapsed;
+            UpdatePanelVisibility();
+            if (!_collapsed)
+            {
+                Render(); // 펼치면 최신 상태로 되살아난다
+            }
+        };
 
         // 재생 배선 — 시간의 원천은 이 타이머 하나, 라인 이동은 기존 선택 경로다.
         Playback.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
@@ -263,6 +276,8 @@ public partial class MiniStagePreview : UserControl
                 includeRootHint: true);
         }
 
+        UpdatePanelVisibility(); // FillBadges가 되살린 표시를 숨김 상태가 덮는다
+
         _window?.Push(request);
 
         // 재생 모델에 현재 라인 위치를 알린다 — 이동 요청이 반영됐다는 신호이기도 하다.
@@ -320,20 +335,32 @@ public partial class MiniStagePreview : UserControl
     /// </summary>
     private void SetWindowedMode(bool windowed)
     {
-        SceneHost.IsVisible = !windowed;
-        BadgeRow.IsVisible = !windowed;
-        NoticeHost.IsVisible = !windowed;
-
-        if (windowed)
-        {
-            UnhandledHost.IsVisible = false;
-        }
-
+        _windowed = windowed;
         OpenWindowButton.Content = windowed ? "창으로 보는 중" : "창으로 열기";
+        UpdatePanelVisibility();
 
         if (!windowed)
         {
             Render(); // 창을 닫으면 도킹 무대가 최신 상태로 되살아난다
         }
+    }
+
+    /// <summary>
+    /// 창 표시(W37)·접기(W38)를 한 자리에서 본다 — 어느 쪽이든 무대·뱃지·알림을 숨기고
+    /// 헤더 줄만 남긴다. Render가 끝날 때마다 다시 적용해 숨김이 렌더에 밀리지 않는다.
+    /// </summary>
+    private void UpdatePanelVisibility()
+    {
+        bool hidden = _windowed || _collapsed;
+        SceneHost.IsVisible = !hidden;
+        BadgeRow.IsVisible = !hidden;
+        NoticeHost.IsVisible = !hidden;
+
+        if (hidden)
+        {
+            UnhandledHost.IsVisible = false;
+        }
+
+        CollapseButton.Content = _collapsed ? "펼치기 ▸" : "접기 ▾";
     }
 }

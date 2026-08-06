@@ -6,7 +6,7 @@
             Padding="10,8">
         <Grid RowDefinitions="Auto,Auto,Auto,Auto">
             <!-- 에셋 루트 지정·새로 고침은 좌측 에셋 탐색기가 맡는다 (X8). -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <TextBlock Grid.Column="0"
                            Text="무대 프리뷰"
                            FontWeight="SemiBold"
@@ -25,6 +25,13 @@
                 <Button Grid.Column="3"
                         x:Name="OpenWindowButton"
                         Content="창으로 열기"
+                        FontSize="10"
+                        Padding="6,2"
+                        Margin="0,0,4,0" />
+                <!-- 아래로 접기 (W38) — 편집 공간이 필요할 때 헤더만 남긴다. -->
+                <Button Grid.Column="4"
+                        x:Name="CollapseButton"
+                        Content="접기 ▾"
                         FontSize="10"
                         Padding="6,2" />
             </Grid>

@@ -1117,7 +1117,7 @@ internal sealed class StageSceneView : UserControl
         {
             Text = "⠿ 조절창 — 끌어서 이동 · 우클릭 닫기",
             FontSize = 10,
-            Opacity = 0.75,
+            Opacity = 0.8,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -1132,7 +1132,7 @@ internal sealed class StageSceneView : UserControl
 
         var handle = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(255, 50, 50, 60)),
+            Background = new SolidColorBrush(Color.FromArgb(255, 214, 218, 228)),
             CornerRadius = new CornerRadius(6, 6, 0, 0),
             Padding = new Thickness(8, 4),
             Cursor = new Cursor(StandardCursorType.SizeAll),
@@ -1170,10 +1170,13 @@ internal sealed class StageSceneView : UserControl
             args.Pointer.Capture(null);
         };
 
+        // 밝은 패널 — 앱 테마의 기본 글자색(검정)이 그대로 읽힌다. 검은 무대 위에서도 또렷하다.
+        // 내용은 높이 상한 안에서만 자란다: 위(핸들·탭)는 고정, 아래만 내용 길이대로 늘고,
+        // 상한을 넘으면 안에서 스크롤된다 — 화면 끝에서 위로 밀려 높낮이가 튀는 일이 없다 (W38).
         var root = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(245, 30, 30, 36)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(110, 255, 255, 255)),
+            Background = new SolidColorBrush(Color.FromArgb(250, 244, 246, 250)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(140, 90, 96, 110)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             MaxWidth = 340,
@@ -1182,7 +1185,13 @@ internal sealed class StageSceneView : UserControl
                 Children =
                 {
                     handle,
-                    new Border { Padding = new Thickness(8), Child = content }
+                    new ScrollViewer
+                    {
+                        MaxHeight = 440,
+                        HorizontalScrollBarVisibility =
+                            Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                        Content = new Border { Padding = new Thickness(8), Child = content }
+                    }
                 }
             }
         };
