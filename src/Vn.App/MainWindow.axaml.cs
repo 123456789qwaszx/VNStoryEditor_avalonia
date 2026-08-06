@@ -271,6 +271,79 @@ public partial class MainWindow : Window
         });
         panel.Children.Add(add);
 
+        // 다른 프로젝트의 .vnstory.json을 판째 들여온다 (W51). 딸린 대본도 함께 온다.
+        var import = new Button
+        {
+            Content = "기존 파일 가져오기…",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        ToolTip.SetTip(import,
+            "다른 프로젝트의 story/*.vnstory.json을 이 프로젝트의 판으로 가져옵니다. " +
+            "대사 본문은 원본 프로젝트의 script 폴더가 옆에 있어야 함께 들어옵니다.");
+        import.Click += async (_, _) => await UiGuard.RunAsync(_session, "파일 가져오기", async () =>
+        {
+            flyout.Hide();
+
+            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
+
+            if (storage is null || !storage.CanOpen)
+            {
+                _session.SetStatus("이 환경에서는 파일 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "가져올 시나리오 파일 (.vnstory.json, 여러 개 가능)",
+                AllowMultiple = true,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("VnTool 시나리오 파일") { Patterns = new[] { "*.vnstory.json" } }
+                }
+            });
+
+            int importedFiles = 0;
+            int importedScripts = 0;
+            var problems = new List<string>();
+            string? lastFileId = null;
+
+            foreach (IStorageFile file in files)
+            {
+                if (file.TryGetLocalPath() is not { } localPath)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    StoryFileImportOutcome outcome = _session.Editor.ImportStoryFile(localPath);
+                    importedFiles++;
+                    importedScripts += outcome.ImportedScripts;
+                    problems.AddRange(outcome.Warnings);
+                    lastFileId = outcome.File.Id;
+                }
+                catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException)
+                {
+                    problems.Add(exception.Message);
+                }
+            }
+
+            if (lastFileId is not null)
+            {
+                _session.SelectFile(lastFileId);
+            }
+
+            if (importedFiles > 0 || problems.Count > 0)
+            {
+                _session.SetStatus(
+                    $"파일 {importedFiles}개 · 대본 {importedScripts}개를 가져왔습니다." +
+                    (problems.Count > 0 ? $" · 확인 필요 {problems.Count}건: {problems[0]}" : string.Empty));
+            }
+        });
+        panel.Children.Add(import);
+
         flyout.ShowAt(AddFileButton);
         name.Focus();
     }
