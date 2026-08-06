@@ -30,11 +30,14 @@
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Auto">
                 <!-- 배율은 레이아웃 변환이다 — 스크롤 범위가 확대/축소를 그대로 따라온다 (W40). -->
+                <!-- 배경은 반드시 실제 브러시여야 한다: FluentTheme에는 ThemeBackgroundBrush가
+                     없어 null이 되고, 배경 없는 Canvas는 빈 곳 클릭이 히트되지 않아
+                     범위 선택·간선 선택 해제가 조용히 죽는다. Transparent도 히트는 된다. -->
                 <LayoutTransformControl x:Name="ZoomHost">
                     <Canvas x:Name="GraphCanvas"
                             Width="3000"
                             Height="2000"
-                            Background="{DynamicResource ThemeBackgroundBrush}" />
+                            Background="Transparent" />
                 </LayoutTransformControl>
             </ScrollViewer>
 
@@ -45,7 +48,7 @@
                     CornerRadius="6"
                     BorderThickness="1"
                     BorderBrush="#66808080"
-                    Background="{DynamicResource ThemeBackgroundBrush}">
+                    Background="#F2F6F7FA">
                 <StackPanel>
                     <Canvas x:Name="MinimapCanvas"
                             Width="180"
