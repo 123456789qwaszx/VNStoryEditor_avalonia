@@ -332,7 +332,41 @@ internal sealed class StageSceneView : UserControl
             }, new StageRect(width * 0.02, height * 0.03, width * 0.4, em * 1.6));
         }
 
+        RenderAudioCues(request, height, em);
         RenderStatsHud(request, width, em);
+    }
+
+    /// <summary>
+    /// 이 라인의 소리 커맨드 ♪ 칩 (W34-b) — 정지 프레임에 그릴 것이 없는 오디오가
+    /// 조용히 사라지지 않게 좌측에 알린다(규칙 14의 소리 판).
+    /// </summary>
+    private void RenderAudioCues(MiniStagePreviewRequest request, double height, double em)
+    {
+        if (request.AudioCues is not { Count: > 0 } cues)
+        {
+            return;
+        }
+
+        var rows = new StackPanel { Spacing = em * 0.15 };
+
+        foreach (string cue in cues)
+        {
+            rows.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(150, 15, 40, 70)),
+                CornerRadius = new CornerRadius(em * 0.2),
+                Padding = new Thickness(em * 0.35, em * 0.12),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = new TextBlock
+                {
+                    Text = $"♪ {cue}",
+                    FontSize = em * 0.55,
+                    Foreground = new SolidColorBrush(Color.FromArgb(235, 147, 197, 253))
+                }
+            });
+        }
+
+        Add(rows, new StageRect(em * 0.6, height * 0.10, em * 14, em * (cues.Count + 1)));
     }
 
     private void RenderBackground(

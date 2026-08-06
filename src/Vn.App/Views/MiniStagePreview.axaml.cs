@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
+using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
+using Vn.Authoring.Results;
 
 namespace Vn.App.Views;
 
@@ -70,6 +72,33 @@ internal static class StageChoiceOptions
     }
 }
 
+/// <summary>
+/// 이 라인의 소리 커맨드 표시 문자열 (W34-b) — 정지 프레임에 그릴 것이 없는 오디오를
+/// ♪ 칩으로 알린다. "오디오" 판정은 카테고리 id <c>audio</c> 규약이다: 다른 id를 쓰는
+/// 게임 정의에서는 칩이 안 뜰 뿐, 잘못 접히는 것은 없다(표시 편의이지 해석 규칙이 아니다).
+/// </summary>
+internal static class StageAudioCues
+{
+    public static IReadOnlyList<string>? Of(
+        PresentationCommandCatalog catalog,
+        IReadOnlyList<PresentationResultCommand>? commands)
+    {
+        if (commands is null || commands.Count == 0)
+        {
+            return null;
+        }
+
+        string[] cues = commands
+            .Select(command => (Command: command, Definition: catalog.Find(command.DefinitionId)))
+            .Where(pair => string.Equals(pair.Definition?.CategoryId, "audio", StringComparison.Ordinal))
+            .Select(pair => CommandText.Format(
+                pair.Definition, pair.Command.DefinitionId, pair.Command.Arguments))
+            .ToArray();
+
+        return cues.Length > 0 ? cues : null;
+    }
+}
+
 /// <summary>공유 무대 프리뷰에 밀어 넣는 요청 하나. 폴드는 호출자가 이미 끝냈다.</summary>
 /// <param name="HasPresentation">false면 연출 공급이 없는 것 — 오류가 아니라 화자만 표시한다.</param>
 /// <param name="LineIndex">문서에서 선택 라인의 0기준 위치. 없으면 -1 — 창 하단 표시용.</param>
@@ -97,7 +126,8 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<StageChoiceOption>? ChoiceOptions = null,
     Ked.Presentation.Core.StageState? CoreState = null,
     IReadOnlyList<BranchFlow.Block>? BranchBlocks = null,
-    double TransitionSeconds = 0);
+    double TransitionSeconds = 0,
+    IReadOnlyList<string>? AudioCues = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가

@@ -475,6 +475,11 @@ public partial class DialogueNodeEditor : UserControl
             TransitionSeconds: StageTransitions.SecondsFor(
                 PresentationCommandCatalog.For(_session.Definition),
                 export.Presentation.Bindings.FirstOrDefault(item =>
+                    string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands),
+            // 소리 표시(W34-b): 정지 프레임에 없는 오디오를 ♪ 칩으로.
+            AudioCues: StageAudioCues.Of(
+                PresentationCommandCatalog.For(_session.Definition),
+                export.Presentation.Bindings.FirstOrDefault(item =>
                     string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands)));
     }
 
