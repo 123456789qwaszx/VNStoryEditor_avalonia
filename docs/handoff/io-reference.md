@@ -87,6 +87,9 @@ MyGame/                          ← 이 폴더가 곧 백업·이관 단위다
   빈 표정 번호(01, 02…)부터 차례로 들어간다. [폴더 열기]는 그 자리를 파일 탐색기로 연다.
 - **배경**: 파일명이 곧 키(Ordinal, 확장자 제외). 하위 폴더 포함 키(`night/alley`) —
   런타임 `Resources/Backgrounds/{key}`와 동형. PNG.
+- **오디오 (W59)**: `assets/bgm`·`assets/sfx` — 파일명(확장자 제외)이 곧 clipKey.
+  mp3·wav·ogg. 첫 저장 때 자동 준비되고, 연출 조절창의 오디오 탭이 이 목록으로
+  `bgm`/`sfx` 커맨드를 단다(프리뷰는 소리를 재생하지 않는다 — ♪ 칩 표시).
 - **초상화**: 폴더 규약이 권위다 — `{portraitsRoot}/{char}/{variant}/{emotion}.png`
   (variant 기본 `a`, emotion 2자리 `01`, 폴백 (char, a, 01)).
   `portraits.manifest.json`은 구버전 덤프·자유 경로의 수입 보조일 뿐, 없어도 된다.
