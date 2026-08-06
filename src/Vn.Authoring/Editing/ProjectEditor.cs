@@ -1342,13 +1342,23 @@ public sealed partial class ProjectEditor
     /// 프로젝트 이동 내성을 위해 상대 경로를 권장하지만 강제하지는 않는다 —
     /// 에셋이 다른 드라이브에 있으면 상대 경로가 존재하지 않는다.
     /// </summary>
-    public void SetAssetRoots(string? backgroundsPath, string? portraitsPath)
+    public void SetAssetRoots(
+        string? backgroundsPath,
+        string? portraitsPath,
+        string? bgmPath = null,
+        string? sfxPath = null)
     {
         string? backgrounds = AssetRootSettings.NormalizePath(backgroundsPath);
         string? portraits = AssetRootSettings.NormalizePath(portraitsPath);
+        // 오디오 루트 (W59) — 넘기지 않으면(null) 기존 값을 유지한다: 배경/초상화만
+        // 바꾸는 기존 호출(폴더 지정 UI)이 오디오 설정을 지우면 안 된다.
+        string? bgm = AssetRootSettings.NormalizePath(bgmPath) ?? Project.AssetRoots.BgmPath;
+        string? sfx = AssetRootSettings.NormalizePath(sfxPath) ?? Project.AssetRoots.SfxPath;
 
         if (string.Equals(Project.AssetRoots.BackgroundsPath, backgrounds, StringComparison.Ordinal) &&
-            string.Equals(Project.AssetRoots.PortraitsPath, portraits, StringComparison.Ordinal))
+            string.Equals(Project.AssetRoots.PortraitsPath, portraits, StringComparison.Ordinal) &&
+            string.Equals(Project.AssetRoots.BgmPath, bgm, StringComparison.Ordinal) &&
+            string.Equals(Project.AssetRoots.SfxPath, sfx, StringComparison.Ordinal))
         {
             return;
         }
@@ -1357,6 +1367,8 @@ public sealed partial class ProjectEditor
         {
             Project.AssetRoots.BackgroundsPath = backgrounds;
             Project.AssetRoots.PortraitsPath = portraits;
+            Project.AssetRoots.BgmPath = bgm;
+            Project.AssetRoots.SfxPath = sfx;
         });
     }
 

@@ -122,6 +122,81 @@ public partial class AssetExplorerView : UserControl
         {
             AddItems(tree.PortraitItems, depth: 0, parentPath: "pt");
         }
+
+        // 오디오 (W59) — 배경과 같은 규약: 파일명이 곧 clipKey. 연출 조절창의 오디오 탭이 쓴다.
+        AddAudioSection("BGM", bgm: true, _session.BgmRoot);
+        AddAudioSection("효과음", bgm: false, _session.SfxRoot);
+    }
+
+    /// <summary>오디오 섹션 (W59) — 파일 목록 + 가져오기/폴더 열기. 규약은 배경과 같다.</summary>
+    private void AddAudioSection(string title, bool bgm, string? root)
+    {
+        TreeHost.Children.Add(SectionHeaderRow(
+            title,
+            root,
+            importAnchor => ImportAudioAsync(bgm)));
+
+        if (root is null)
+        {
+            TreeHost.Children.Add(EmptyLabel("프로젝트를 저장하면 assets 아래 폴더가 준비됩니다."));
+            return;
+        }
+
+        IReadOnlyList<string> keys = _session!.AudioClipKeys(root);
+
+        if (keys.Count == 0)
+        {
+            TreeHost.Children.Add(EmptyLabel(
+                $"{(bgm ? "assets/bgm" : "assets/sfx")}에 mp3·wav·ogg를 넣으면 파일명이 곧 clipKey가 됩니다."));
+            return;
+        }
+
+        foreach (string key in keys)
+        {
+            TreeHost.Children.Add(new TextBlock
+            {
+                Text = $"♪ {key}",
+                FontSize = 11,
+                Margin = new Thickness(4, 0, 0, 0)
+            });
+        }
+    }
+
+    private async void ImportAudioAsync(bool bgm)
+    {
+        await UiGuard.RunAsync(_session, "오디오 가져오기", async () =>
+        {
+            if (_session is null ||
+                TopLevel.GetTopLevel(this)?.StorageProvider is not { CanOpen: true } storage)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = $"가져올 {(bgm ? "BGM" : "효과음")} 파일 (여러 개 가능)",
+                AllowMultiple = true,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("오디오 (mp3·wav·ogg)")
+                    {
+                        Patterns = new[] { "*.mp3", "*.wav", "*.ogg" }
+                    }
+                }
+            });
+
+            List<string> paths = files
+                .Select(file => file.TryGetLocalPath())
+                .Where(path => path is not null)
+                .Select(path => path!)
+                .ToList();
+
+            if (paths.Count > 0)
+            {
+                _session.ImportAudio(bgm, paths);
+                Rebuild();
+            }
+        });
     }
 
     // ── 가져오기·폴더 열기 (W48) ──────────────────────────────────────────

@@ -162,6 +162,80 @@ internal sealed class AuthoringSession
     /// <summary>해석된 배경 루트 절대 경로 — 가져오기·폴더 열기(W48)가 쓴다.</summary>
     public string? BackgroundsRoot => ResolveAssetRoots().Backgrounds;
 
+    /// <summary>해석된 BGM 루트 절대 경로 (W59). 파일명이 곧 clipKey다.</summary>
+    public string? BgmRoot => ResolvePath(Project.AssetRoots.BgmPath);
+
+    /// <summary>해석된 효과음 루트 절대 경로 (W59). 파일명이 곧 clipKey다.</summary>
+    public string? SfxRoot => ResolvePath(Project.AssetRoots.SfxPath);
+
+    /// <summary>오디오 파일 확장자 규약 (W59) — 이 셋만 clipKey 후보가 된다.</summary>
+    public static readonly string[] AudioExtensions = [".mp3", ".wav", ".ogg"];
+
+    /// <summary>루트 폴더의 오디오 clipKey 목록 (W59) — 파일명(확장자 제외)이 곧 키다.</summary>
+    public IReadOnlyList<string> AudioClipKeys(string? root)
+    {
+        if (root is null || !Directory.Exists(root))
+        {
+            return Array.Empty<string>();
+        }
+
+        return Directory.EnumerateFiles(root)
+            .Where(file => AudioExtensions.Contains(
+                Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+            .Select(Path.GetFileNameWithoutExtension)
+            .Where(key => !string.IsNullOrEmpty(key))
+            .Select(key => key!)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 아무 곳의 오디오 파일을 BGM/효과음 루트로 복제해 들여온다 (W59) — 배경 가져오기와
+    /// 같은 규약: 파일명이 곧 키, 같은 이름은 건너뛴다.
+    /// </summary>
+    public int ImportAudio(bool bgm, IEnumerable<string> files)
+    {
+        string kind = bgm ? "BGM" : "효과음";
+
+        if ((bgm ? BgmRoot : SfxRoot) is not { } root)
+        {
+            SetStatus($"{kind} 폴더가 없습니다 — 프로젝트를 저장하면 assets 아래 준비됩니다.");
+            return 0;
+        }
+
+        Directory.CreateDirectory(root);
+        int copied = 0;
+        var skipped = new List<string>();
+
+        foreach (string file in files.Where(item => AudioExtensions.Contains(
+            Path.GetExtension(item), StringComparer.OrdinalIgnoreCase)))
+        {
+            string destination = Path.Combine(root, Path.GetFileName(file));
+
+            if (File.Exists(destination))
+            {
+                skipped.Add(Path.GetFileName(file));
+                continue;
+            }
+
+            File.Copy(file, destination);
+            copied++;
+        }
+
+        RefreshAssets();
+        SetStatus($"{kind} {copied}개를 가져왔습니다." +
+            (skipped.Count > 0 ? $" 같은 이름이 있어 건너뜀: {string.Join(", ", skipped)}" : string.Empty));
+        return copied;
+    }
+
+    private string? ResolvePath(string? configured)
+    {
+        string basePath = ProjectPath
+            ?? Path.Combine(Environment.CurrentDirectory, "unsaved" + ProjectManifestJson.FileExtension);
+
+        return AssetRootSettings.ResolveFrom(basePath, configured);
+    }
+
     /// <summary>
     /// 앱에 내장된 기본 튜닝(런타임 실측 덤프의 스냅샷)을 프로젝트 옆 규약 폴더에 만든다 (W46).
     /// 이미 내용이 있는 폴더는 덮어쓰지 않는다 — 교체는 <see cref="ConnectTuningFolder"/>가 한다.
@@ -464,10 +538,10 @@ internal sealed class AuthoringSession
         bool firstSave = ProjectPath is null;
 
         // 새 프로젝트의 첫 저장 (W48): 에셋 폴더 규약을 프로젝트에 미리 심는다 —
-        // 루트가 저장본에 들어가야 하므로 디스크에 쓰기 전에 지정한다.
+        // 루트가 저장본에 들어가야 하므로 디스크에 쓰기 전에 지정한다. 오디오도 같은 구조 (W59).
         if (firstSave && Project.AssetRoots.IsEmpty)
         {
-            Editor.SetAssetRoots("assets/backgrounds", "assets/portraits");
+            Editor.SetAssetRoots("assets/backgrounds", "assets/portraits", "assets/bgm", "assets/sfx");
         }
 
         ProjectStore.Save(target, Project);
@@ -499,6 +573,8 @@ internal sealed class AuthoringSession
         string root = Path.GetDirectoryName(ProjectPath)!;
         Directory.CreateDirectory(Path.Combine(root, "assets", "backgrounds"));
         Directory.CreateDirectory(Path.Combine(root, "assets", "portraits"));
+        Directory.CreateDirectory(Path.Combine(root, "assets", "bgm"));
+        Directory.CreateDirectory(Path.Combine(root, "assets", "sfx"));
 
         string tuningRoot = Path.Combine(root, RuntimeTuningLibrary.DefaultFolderName);
 

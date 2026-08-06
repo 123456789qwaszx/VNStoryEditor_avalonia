@@ -323,6 +323,16 @@ public static class ProjectManifestJson
             json["portraits"] = portraits;
         }
 
+        if (AssetRootSettings.NormalizePath(assetRoots.BgmPath) is { } bgm)
+        {
+            json["bgm"] = bgm;
+        }
+
+        if (AssetRootSettings.NormalizePath(assetRoots.SfxPath) is { } sfx)
+        {
+            json["sfx"] = sfx;
+        }
+
         return json.Count > 0 ? json : null;
     }
 
@@ -336,7 +346,9 @@ public static class ProjectManifestJson
         return new AssetRootSettings
         {
             BackgroundsPath = AssetRootSettings.NormalizePath((string?)assetRoots["backgrounds"]),
-            PortraitsPath = AssetRootSettings.NormalizePath((string?)assetRoots["portraits"])
+            PortraitsPath = AssetRootSettings.NormalizePath((string?)assetRoots["portraits"]),
+            BgmPath = AssetRootSettings.NormalizePath((string?)assetRoots["bgm"]),
+            SfxPath = AssetRootSettings.NormalizePath((string?)assetRoots["sfx"])
         };
     }
 

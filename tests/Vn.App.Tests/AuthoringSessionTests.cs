@@ -393,8 +393,12 @@ public class AuthoringSessionTests
 
             Assert.Equal("assets/backgrounds", session.Project.AssetRoots.BackgroundsPath);
             Assert.Equal("assets/portraits", session.Project.AssetRoots.PortraitsPath);
+            Assert.Equal("assets/bgm", session.Project.AssetRoots.BgmPath);   // W59
+            Assert.Equal("assets/sfx", session.Project.AssetRoots.SfxPath);
             Assert.True(Directory.Exists(Path.Combine(directory, "assets", "backgrounds")));
             Assert.True(Directory.Exists(Path.Combine(directory, "assets", "portraits")));
+            Assert.True(Directory.Exists(Path.Combine(directory, "assets", "bgm")));
+            Assert.True(Directory.Exists(Path.Combine(directory, "assets", "sfx")));
             Assert.True(session.TuningLibrary.IsLoaded); // 기본 튜닝이 자동으로 깔려 연결된다
             Assert.False(session.IsDirty); // 준비 과정이 미저장 변경을 남기지 않는다
 
@@ -426,6 +430,41 @@ public class AuthoringSessionTests
             Assert.True(File.Exists(Path.Combine(directory, "assets", "backgrounds", "room_day.png")));
 
             Assert.Equal(0, session.ImportBackgrounds([png])); // 같은 이름 — 덮지 않는다
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+            Directory.Delete(source, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 오디오_가져오기는_복제하고_저장_후_다시_열어도_루트가_남는다()
+    {
+        string directory = TempDirectory();
+        string source = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            string projectPath = Path.Combine(directory, "project.vnproject.json");
+            session.Save(projectPath);
+
+            string clip = Path.Combine(source, "main_theme.mp3");
+            File.WriteAllBytes(clip, [1, 2]);
+            string ignored = Path.Combine(source, "노트.txt");
+            File.WriteAllText(ignored, "오디오 아님");
+
+            Assert.Equal(1, session.ImportAudio(bgm: true, [clip, ignored])); // 규약 외 확장자는 걸러진다
+            Assert.True(File.Exists(Path.Combine(directory, "assets", "bgm", "main_theme.mp3")));
+            Assert.Equal(["main_theme"], session.AudioClipKeys(session.BgmRoot));
+
+            // 오디오 루트는 저장본에 남는다 (W59 직렬화).
+            session.Save();
+            var reopened = new AuthoringSession();
+            reopened.Open(projectPath);
+            Assert.Equal("assets/bgm", reopened.Project.AssetRoots.BgmPath);
+            Assert.Equal("assets/sfx", reopened.Project.AssetRoots.SfxPath);
         }
         finally
         {

@@ -1600,6 +1600,11 @@ internal sealed class StageSceneView : UserControl
             Header = new TextBlock { Text = "캐릭터", FontSize = 11 },
             Content = BuildCharacterTab(rebuild)
         });
+        tabs.Items.Add(new TabItem
+        {
+            Header = new TextBlock { Text = "오디오", FontSize = 11 },
+            Content = BuildAudioTab(rebuild)
+        });
 
         tabs.SelectedIndex = Math.Clamp(_popoverTabIndex, 0, 2);
 
@@ -1928,6 +1933,92 @@ internal sealed class StageSceneView : UserControl
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 250
         };
+    }
+
+    /// <summary>
+    /// 오디오 탭 (W59) — 이 라인에 BGM/효과음 커맨드를 단다. 목록은 assets/bgm·assets/sfx
+    /// 폴더의 파일(파일명 = clipKey)이고, 적용은 다른 탭과 같은 커맨드 경로 하나다.
+    /// 프리뷰는 소리를 재생하지 않는다 — ♪ 칩(W34-b)이 이 라인의 소리를 알린다.
+    /// </summary>
+    private Control BuildAudioTab(Action onApplied)
+    {
+        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
+
+        void AddSection(string title, bool bgm, string playCommand, string stopCommand, string stopLabel)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.7
+            });
+
+            string? root = bgm ? _session!.BgmRoot : _session!.SfxRoot;
+            IReadOnlyList<string> keys = _session!.AudioClipKeys(root);
+            var list = new StackPanel { Spacing = 2 };
+
+            if (keys.Count == 0)
+            {
+                list.Children.Add(new TextBlock
+                {
+                    Text = root is null
+                        ? "폴더가 없습니다 — 프로젝트를 저장하면 assets 아래 준비됩니다."
+                        : $"파일이 없습니다 — {(bgm ? "assets/bgm" : "assets/sfx")}에 mp3·wav·ogg를 넣고 에셋 새로 고침.",
+                    FontSize = 9,
+                    Opacity = 0.55,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 250
+                });
+            }
+
+            foreach (string key in keys)
+            {
+                var button = new Button
+                {
+                    Content = $"♪ {key}",
+                    FontSize = 10,
+                    Padding = new Thickness(6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left
+                };
+                button.Click += (_, _) =>
+                {
+                    ApplyStageCommand(playCommand, new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["clipKey"] = key
+                    });
+                    onApplied();
+                };
+                list.Children.Add(button);
+            }
+
+            panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = 140 });
+
+            var stop = new Button
+            {
+                Content = stopLabel,
+                FontSize = 10,
+                Padding = new Thickness(6, 2),
+                Background = new SolidColorBrush(Color.FromArgb(60, 220, 38, 38))
+            };
+            stop.Click += (_, _) =>
+            {
+                ApplyStageCommand(stopCommand, new Dictionary<string, string>(StringComparer.Ordinal));
+                onApplied();
+            };
+            panel.Children.Add(stop);
+        }
+
+        AddSection("BGM (파일명 = clipKey)", bgm: true, "bgm", "stop_bgm", "BGM 정지 (stop_bgm)");
+        panel.Children.Add(new Border
+        {
+            Height = 1,
+            Background = new SolidColorBrush(Color.FromArgb(60, 148, 163, 184))
+        });
+        AddSection("효과음 (파일명 = clipKey)", bgm: false, "sfx", "stop_all_sfx", "효과음 모두 정지 (stop_all_sfx)");
+
+        return panel;
     }
 
     private void ApplyBackground(string spriteKey)
