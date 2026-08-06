@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -902,7 +903,7 @@ public partial class MainWindow : Window
                 row.Children.Add(expanded);
                 row.Children.Add(active);
 
-                FileListPanel.Children.Add(new Border
+                var rowBorder = new Border
                 {
                     Padding = new Thickness(2),
                     CornerRadius = new CornerRadius(5),
@@ -910,7 +911,24 @@ public partial class MainWindow : Window
                         ? new SolidColorBrush(Color.FromArgb(24, 37, 99, 235))
                         : Brushes.Transparent,
                     Child = row
-                });
+                };
+
+                // 파일 행 우클릭 = 동작 목록 (W61). 라디오/체크박스가 이벤트를 먼저 먹어도
+                // 받도록 handledEventsToo로 듣는다.
+                rowBorder.AddHandler(
+                    PointerPressedEvent,
+                    (_, args) =>
+                    {
+                        if (args.GetCurrentPoint(rowBorder).Properties.IsRightButtonPressed)
+                        {
+                            ShowFileContextFlyout(rowBorder, fileId);
+                            args.Handled = true;
+                        }
+                    },
+                    RoutingStrategies.Bubble,
+                    handledEventsToo: true);
+
+                FileListPanel.Children.Add(rowBorder);
             }
 
             if (_session.Project.Files.Count == 0)
@@ -929,6 +947,111 @@ public partial class MainWindow : Window
             _rebuildingFileList = false;
         }
     }
+
+    /// <summary>
+    /// 파일 행 우클릭 메뉴 (W61) — 이름 바꾸기와 제거. 제거는 되돌리기 한 번으로 복구되고,
+    /// 마지막 파일은 편집기가 거부한다(상태줄에 사유가 뜬다).
+    /// </summary>
+    private void ShowFileContextFlyout(Control anchor, string fileId)
+    {
+        if (_session.Project.FindFile(fileId) is not { } file)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 2, MinWidth = 160 };
+        var flyout = new Flyout { Content = panel };
+
+        Button Item(string label, string tip)
+        {
+            var button = new Button
+            {
+                Content = label,
+                FontSize = 11,
+                Padding = new Thickness(10, 4),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = Brushes.Transparent
+            };
+            ToolTip.SetTip(button, tip);
+            panel.Children.Add(button);
+            return button;
+        }
+
+        Button rename = Item("이름 바꾸기…", "이 파일의 표시 이름을 바꿉니다. 저장 파일명(RelativePath)은 그대로입니다.");
+        rename.Click += (_, _) =>
+        {
+            flyout.Hide();
+            ShowRenameFileFlyout(anchor, fileId);
+        };
+
+        panel.Children.Add(MenuSeparator());
+
+        Button remove = Item(
+            $"제거 (노드 {file.Nodes.Count}개 포함)",
+            "이 파일과 안의 노드를 프로젝트에서 뺍니다. 다른 판에서 이어지던 연결도 정리됩니다. 되돌리기로 복구할 수 있습니다.");
+        remove.Click += (_, _) =>
+        {
+            flyout.Hide();
+            string name = file.Name;
+
+            if (UiGuard.Run(_session, "파일 제거", () => _session.Editor.RemoveStoryFile(fileId)))
+            {
+                _session.SetStatus($"파일 '{name}' 제거 — 되돌리기(Ctrl+Z)로 복구할 수 있습니다.");
+            }
+        };
+
+        flyout.ShowAt(anchor, showAtPointer: true);
+    }
+
+    /// <summary>파일 이름 바꾸기 입력 (W61) — 우클릭 메뉴에서 이어지는 두 번째 단계.</summary>
+    private void ShowRenameFileFlyout(Control anchor, string fileId)
+    {
+        if (_session.Project.FindFile(fileId) is not { } file)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 4, MinWidth = 200 };
+
+        var name = new TextBox
+        {
+            Text = file.Name,
+            FontSize = 11
+        };
+        panel.Children.Add(name);
+
+        var flyout = new Flyout { Content = panel };
+
+        var apply = new Button
+        {
+            Content = "이름 바꾸기",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        apply.Click += (_, _) => UiGuard.Run(_session, "파일 이름 바꾸기", () =>
+        {
+            if (!string.IsNullOrWhiteSpace(name.Text))
+            {
+                _session.Editor.RenameStoryFile(fileId, name.Text.Trim());
+            }
+
+            flyout.Hide();
+        });
+        panel.Children.Add(apply);
+
+        flyout.ShowAt(anchor);
+        name.SelectAll();
+        name.Focus();
+    }
+
+    private static Control MenuSeparator() => new Border
+    {
+        Height = 1,
+        Margin = new Thickness(4, 2),
+        Background = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128))
+    };
 
     /// <summary>
     /// 좌측의 편집 자료 요약 — 대본 원본·발행 결과·합성 목록. 전부 읽기 전용이다.

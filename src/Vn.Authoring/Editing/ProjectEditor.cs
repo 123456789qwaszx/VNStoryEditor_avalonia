@@ -137,6 +137,46 @@ public sealed partial class ProjectEditor
         return new StoryFileImportOutcome(imported, scripts.Count, warnings);
     }
 
+    /// <summary>
+    /// 시나리오 파일(판)을 통째로 제거한다 (W61). 안의 노드가 맺던 연결·출구는
+    /// 노드 삭제와 같은 규칙 하나(<see cref="RemoveReferencesToNode"/>)로 정리된다.
+    /// 대본·발행 결과는 지우지 않는다 — 발행본은 불변이고, 대본은 지우면 고아 연출의
+    /// 사유를 물을 수 없게 된다. 한 번의 되돌리기로 통째로 복구된다.
+    /// </summary>
+    public void RemoveStoryFile(string fileId)
+    {
+        StoryFile? file = Project.FindFile(fileId);
+
+        if (file is null)
+        {
+            return;
+        }
+
+        if (Project.Files.Count <= 1)
+        {
+            throw new InvalidOperationException(
+                "마지막 시나리오 파일은 제거할 수 없습니다 — 새 노드가 갈 곳이 없어집니다.");
+        }
+
+        Mutate(() =>
+        {
+            Project.Files.Remove(file);
+
+            foreach (StoryNode node in file.Nodes)
+            {
+                RemoveReferencesToNode(node.Id);
+            }
+
+            if (file.Nodes.Any(node =>
+                string.Equals(Project.StartNodeId, node.Id, StringComparison.Ordinal)))
+            {
+                Project.StartNodeId = Project.EnumerateNodes()
+                    .FirstOrDefault(candidate => candidate is not PresentationNode)
+                    ?.Id;
+            }
+        });
+    }
+
     public void RenameStoryFile(string fileId, string name)
     {
         if (Project.FindFile(fileId) is { } file && !string.Equals(file.Name, name, StringComparison.Ordinal))
