@@ -11,8 +11,52 @@
         <ContentControl Grid.Row="0" x:Name="SceneHost" />
 
         <Border Grid.Row="1"
-                Background="#FF1C1C20"
+                Background="#FF26262E"
+                BorderBrush="#33FFFFFF"
+                BorderThickness="0,1,0,0"
                 Padding="12,8">
+            <!-- 검은 무대 위 조작 바 — 기본 테마 버튼이 어두워 묻히므로 여기서만 밝게 고정한다. -->
+            <Border.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF44444F" />
+                    <Setter Property="Foreground" Value="White" />
+                    <Setter Property="BorderBrush" Value="#66FFFFFF" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Setter Property="CornerRadius" Value="4" />
+                </Style>
+                <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="#FF5A5A66" />
+                    <Setter Property="Foreground" Value="White" />
+                    <Setter Property="BorderBrush" Value="#99FFFFFF" />
+                </Style>
+                <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="#FF33333B" />
+                    <Setter Property="Foreground" Value="White" />
+                </Style>
+                <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="#FF2E2E35" />
+                    <Setter Property="Foreground" Value="#55FFFFFF" />
+                    <Setter Property="BorderBrush" Value="#22FFFFFF" />
+                </Style>
+                <Style Selector="ToggleButton">
+                    <Setter Property="Background" Value="#FF44444F" />
+                    <Setter Property="Foreground" Value="White" />
+                    <Setter Property="BorderBrush" Value="#66FFFFFF" />
+                    <Setter Property="BorderThickness" Value="1" />
+                    <Setter Property="CornerRadius" Value="4" />
+                </Style>
+                <Style Selector="ToggleButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="#FF5A5A66" />
+                    <Setter Property="Foreground" Value="White" />
+                </Style>
+                <Style Selector="ToggleButton:checked /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="#FFFACC15" />
+                    <Setter Property="Foreground" Value="Black" />
+                </Style>
+                <Style Selector="TextBlock">
+                    <Setter Property="Foreground" Value="White" />
+                </Style>
+            </Border.Styles>
             <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
                     <ToggleButton Grid.Column="0"
