@@ -177,6 +177,14 @@ public static class MiniStageFold
         public bool PassedBranch;
     }
 
+    /// <summary>
+    /// 오디오 커맨드인가 — 시각 폴드의 축이 아니고, 표현은 ♪ 칩(W34-b)과
+    /// 실재생(W62)이 소유한다. 폴드에 넣으면 영원히 "반영 안 됨"으로만 남아
+    /// 소음이 되므로 두 폴드 경로 모두 이 판정 하나로 건너뛴다.
+    /// </summary>
+    internal static bool IsAudioCue(PresentationCommandDefinition definition) =>
+        string.Equals(definition.CategoryId, "audio", StringComparison.Ordinal);
+
     internal static void Apply(
         FoldState state,
         PresentationCommandCatalog catalog,
@@ -191,6 +199,11 @@ public static class MiniStageFold
         {
             state.Unhandled.Add(new MiniStageUnhandled(lineId, command.DefinitionId));
             return;
+        }
+
+        if (IsAudioCue(definition))
+        {
+            return; // ♪ 칩·실재생이 알린다 — 조용히 버리는 것이 아니다 (규칙 14)
         }
 
         // 인자는 카탈로그 기본값 위에 발행 값이 덮인다 — 이미터의 생략 규칙과 같은 방향.

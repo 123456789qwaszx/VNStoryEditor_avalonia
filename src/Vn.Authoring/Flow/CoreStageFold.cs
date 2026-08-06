@@ -112,6 +112,12 @@ public static class CoreStageFold
             return core;
         }
 
+        if (MiniStageFold.IsAudioCue(definition))
+        {
+            // 코어에 넣으면 "이관 안 됨" 진단만 쌓인다 — 표현은 ♪ 칩·실재생(W62)의 것.
+            return core;
+        }
+
         string outputCommand = definition.OutputCommandName;
         string[] args = CommandText.ResolveOrdered(definition, command.Arguments)
             .Select(argument => argument.Value)

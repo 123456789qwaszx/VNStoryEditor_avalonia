@@ -18,13 +18,16 @@ internal static class AudioCueRouter
 
         foreach (PresentationResultCommand command in commands)
         {
-            if (!string.Equals(
-                catalog.Find(command.DefinitionId)?.CategoryId, "audio", StringComparison.Ordinal))
+            PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
+
+            if (!string.Equals(definition?.CategoryId, "audio", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            switch (command.DefinitionId)
+            // 정의 id(audio.bgm)가 아니라 출력 커맨드명(bgm)으로 가른다 — 런타임 계약과
+            // 같은 이름이고, 커스텀 정의가 id를 바꿔도 출력명이 같으면 소리가 난다.
+            switch (definition!.OutputCommandName)
             {
                 case "bgm":
                     PlayClip(session, bgm: true, command);
@@ -44,7 +47,7 @@ internal static class AudioCueRouter
 
                 default:
                     AudioPreview.Problem?.Invoke(
-                        $"오디오 커맨드 '{command.DefinitionId}'는 툴 미리 듣기가 소리 내지 못합니다 — ♪ 칩으로만 표시됩니다.");
+                        $"오디오 커맨드 '{definition.OutputCommandName}'는 툴 미리 듣기가 소리 내지 못합니다 — ♪ 칩으로만 표시됩니다.");
                     break;
             }
         }
