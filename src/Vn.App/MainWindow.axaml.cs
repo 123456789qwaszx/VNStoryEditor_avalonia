@@ -94,6 +94,7 @@ public partial class MainWindow : Window
         _session.SelectionChanged += OnSelectionChanged;
         _session.FileGraphStateChanged += OnFileGraphStateChanged;
 
+        AddFileButton.Click += (_, _) => UiGuard.Run(_session, "파일 추가", ShowAddFileFlyout);
         NewButton.Click += OnNewClick;
         OpenButton.Click += OnOpenClick;
         SaveButton.Click += OnSaveClick;
@@ -236,6 +237,43 @@ public partial class MainWindow : Window
     }
 
     // ── 파일 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 시나리오 파일 추가 (W50) — 파일 하나가 노드 그래프 판 하나다.
+    /// 이름은 비워도 된다(자동 이름). 새 파일이 곧 현재 작업 파일이 된다.
+    /// </summary>
+    private void ShowAddFileFlyout()
+    {
+        var panel = new StackPanel { Spacing = 4, MinWidth = 200 };
+
+        var name = new TextBox
+        {
+            PlaceholderText = "파일 이름 (예: 2장) — 비우면 자동",
+            FontSize = 11
+        };
+        panel.Children.Add(name);
+
+        var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+
+        var add = new Button
+        {
+            Content = "파일 추가",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        add.Click += (_, _) => UiGuard.Run(_session, "파일 추가", () =>
+        {
+            string? fileName = string.IsNullOrWhiteSpace(name.Text) ? null : name.Text.Trim();
+            StoryFile file = _session.Editor.AddStoryFile(fileName);
+            _session.SelectFile(file.Id); // 새 파일이 곧 작업 판이다 — 새 노드가 여기로 간다
+            flyout.Hide();
+        });
+        panel.Children.Add(add);
+
+        flyout.ShowAt(AddFileButton);
+        name.Focus();
+    }
 
     private async void OnNewClick(object? sender, RoutedEventArgs e)
     {
