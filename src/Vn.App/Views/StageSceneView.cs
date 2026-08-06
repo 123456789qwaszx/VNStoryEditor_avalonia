@@ -1938,7 +1938,8 @@ internal sealed class StageSceneView : UserControl
     /// <summary>
     /// 오디오 탭 (W59) — 이 라인에 BGM/효과음 커맨드를 단다. 목록은 assets/bgm·assets/sfx
     /// 폴더의 파일(파일명 = clipKey)이고, 적용은 다른 탭과 같은 커맨드 경로 하나다.
-    /// 프리뷰는 소리를 재생하지 않는다 — ♪ 칩(W34-b)이 이 라인의 소리를 알린다.
+    /// 정지 프레임에서는 ♪ 칩(W34-b)이 이 라인의 소리를 알리고, 재생이 이 라인에
+    /// 도달하면 실제로 울린다 (W62). ▶는 커맨드를 달지 않는 미리 듣기다.
     /// </summary>
     private Control BuildAudioTab(Action onApplied)
     {
