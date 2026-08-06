@@ -26,3 +26,6 @@ data/
 *.suo
 .vs/
 artifacts/
+
+### 제출 패키징 산출물 ###
+dist/
