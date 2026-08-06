@@ -104,6 +104,7 @@ internal static class StageIndicators
                 Background = new SolidColorBrush(Color.FromArgb(40, 217, 119, 6)),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(6, 2),
+                Margin = BadgeMargin,
                 Child = new TextBlock
                 {
                     Text = "좌표 근사 (tuning 없음)",
@@ -119,6 +120,7 @@ internal static class StageIndicators
                 Background = new SolidColorBrush(Color.FromArgb(40, 217, 119, 6)),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(6, 2),
+                Margin = BadgeMargin,
                 Child = new TextBlock
                 {
                     Text = "미선택 갈래 — 문서 순서 근사",
@@ -150,6 +152,7 @@ internal static class StageIndicators
                     Content = $"{(block.IsChoice ? "선택지" : "조건")}: {current}" + (auto ? " (자동)" : string.Empty),
                     FontSize = 10,
                     Padding = new Thickness(6, 2),
+                    Margin = BadgeMargin,
                     Background = new SolidColorBrush(block.SelectedBranch is null
                         ? Color.FromArgb(40, 217, 119, 6)     // 미선택 = 근사 색
                         : auto
@@ -225,6 +228,9 @@ internal static class StageIndicators
         }
     }
 
+    /// <summary>뱃지 줄은 WrapPanel이다(W37) — 간격은 Spacing이 아니라 이 마진 하나로 준다.</summary>
+    private static readonly Thickness BadgeMargin = new(0, 0, 6, 4);
+
     private static void AddToggleBadge(Panel badgeRow, Panel unhandledHost, string text, Color background)
     {
         var badge = new Button
@@ -232,6 +238,7 @@ internal static class StageIndicators
             Content = text,
             FontSize = 10,
             Padding = new Thickness(6, 2),
+            Margin = BadgeMargin,
             Background = new SolidColorBrush(background)
         };
 

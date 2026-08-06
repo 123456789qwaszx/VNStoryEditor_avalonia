@@ -290,7 +290,12 @@ public partial class MiniStagePreview : UserControl
             _window.AttachPlayback(Playback);
             _window.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
             _window.ManipulationApplied += () => ManipulationApplied?.Invoke();
-            _window.Closed += (_, _) => _window = null;
+            _window.Closed += (_, _) =>
+            {
+                _window = null;
+                SetWindowedMode(false);
+            };
+            SetWindowedMode(true);
 
             if (TopLevel.GetTopLevel(this) is Window owner)
             {
@@ -309,4 +314,26 @@ public partial class MiniStagePreview : UserControl
         _window?.Push(_current);
     }
 
+    /// <summary>
+    /// 프리뷰가 분리 창으로 빠지면 도킹 패널의 무대·뱃지·알림을 숨긴다 (W37) —
+    /// 같은 화면 두 개가 편집 공간만 차지한다. 창을 닫으면 되살아난다.
+    /// </summary>
+    private void SetWindowedMode(bool windowed)
+    {
+        SceneHost.IsVisible = !windowed;
+        BadgeRow.IsVisible = !windowed;
+        NoticeHost.IsVisible = !windowed;
+
+        if (windowed)
+        {
+            UnhandledHost.IsVisible = false;
+        }
+
+        OpenWindowButton.Content = windowed ? "창으로 보는 중" : "창으로 열기";
+
+        if (!windowed)
+        {
+            Render(); // 창을 닫으면 도킹 무대가 최신 상태로 되살아난다
+        }
+    }
 }

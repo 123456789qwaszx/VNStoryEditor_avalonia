@@ -89,11 +89,10 @@
                                Margin="12,0"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
-                    <StackPanel Grid.Column="4"
-                                x:Name="BadgeRow"
-                                Orientation="Horizontal"
-                                Spacing="6" />
                 </Grid>
+
+                <!-- 뱃지·갈래 칩은 제 줄을 가진다 — 위치 텍스트와 겹치지 않고, 많으면 줄바꿈한다 (W37). -->
+                <WrapPanel x:Name="BadgeRow" />
 
                 <StackPanel x:Name="NoticeHost" Spacing="2" />
                 <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />

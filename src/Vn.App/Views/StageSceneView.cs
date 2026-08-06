@@ -1,5 +1,6 @@
 ﻿using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -50,6 +51,11 @@ internal sealed class StageSceneView : UserControl
 
     /// <summary>조절창 탭 선택. 적용 후 재구성돼도 보던 탭이 유지된다.</summary>
     private int _popoverTabIndex;
+
+    // 조작 콘솔 팝업 (W37) — 위치 고정 + 드래그 이동. 뷰 좌상단 기준 오프셋으로 자리를 잡는다.
+    private readonly Popup _consolePopup;
+    private Point _consoleOpenAt;
+    private Point? _consoleUserPosition;
 
     /// <summary>직접 조작이 편집을 만들었다. 편집기 카드가 새 커맨드 행을 그려야 한다.</summary>
     internal event Action? ManipulationApplied;
@@ -190,8 +196,30 @@ internal sealed class StageSceneView : UserControl
             VerticalAlignment = VerticalAlignment.Center
         };
 
+        // 조작 콘솔 팝업 (W37) — 좌상단 고정 + 아래·오른쪽으로만 자라서 크기가 바뀌어도
+        // 자리가 튀지 않는다. 화면 밖으로 밀리면 미끄러지기만 한다(뒤집힘 없음).
+        _consolePopup = new Popup
+        {
+            PlacementTarget = this,
+            Placement = PlacementMode.AnchorAndGravity,
+            PlacementAnchor = Avalonia.Controls.Primitives.PopupPositioning.PopupAnchor.TopLeft,
+            PlacementGravity = Avalonia.Controls.Primitives.PopupPositioning.PopupGravity.BottomRight,
+            PlacementConstraintAdjustment =
+                Avalonia.Controls.Primitives.PopupPositioning.PopupPositionerConstraintAdjustment.SlideX |
+                Avalonia.Controls.Primitives.PopupPositioning.PopupPositionerConstraintAdjustment.SlideY,
+            IsLightDismissEnabled = true
+        };
+        _consolePopup.Closed += (_, _) => _consolePopup.Child = null;
+
         // 레터박스 여백은 검정 — 창 어디를 늘려도 무대 비율은 변하지 않는다.
-        Content = new Border { Background = Brushes.Black, Child = _viewbox };
+        Content = new Panel
+        {
+            Children =
+            {
+                new Border { Background = Brushes.Black, Child = _viewbox },
+                _consolePopup
+            }
+        };
 
         // 무대 빈 곳 좌클릭 → 무대 조절창(전역 슬롯 + 배경/슬롯/캐릭터 탭). 초상화 클릭은
         // 자기 핸들러가 먼저 잡는다. 조절창은 적용해도 닫히지 않는다 — 우클릭이 닫는다.
@@ -212,6 +240,7 @@ internal sealed class StageSceneView : UserControl
 
             if (CanManipulate())
             {
+                _consoleOpenAt = args.GetPosition(this);
                 UiGuard.Run(_session, "무대 조절창", ShowStagePopover);
                 args.Handled = true;
             }
@@ -351,7 +380,7 @@ internal sealed class StageSceneView : UserControl
             return;
         }
 
-        ShowManipulationFlyout((host, _, rebuild) =>
+        ShowManipulationFlyout((host, rebuild) =>
         {
             host.MinWidth = 210;
             host.Children.Add(new TextBlock
@@ -601,6 +630,7 @@ internal sealed class StageSceneView : UserControl
                     return;
                 }
 
+                _consoleOpenAt = args.GetPosition(this);
                 UiGuard.Run(
                     _session,
                     "캐릭터 조작",
@@ -661,6 +691,7 @@ internal sealed class StageSceneView : UserControl
                     return;
                 }
 
+                _consoleOpenAt = args.GetPosition(this);
                 UiGuard.Run(_session, "슬롯 조작", () => ShowCharacterPopover(portrait.SlotKey));
                 args.Handled = true;
             };
@@ -903,6 +934,7 @@ internal sealed class StageSceneView : UserControl
         ToolTip.SetTip(simChip, "변수 시작값을 바꿔 조건 갈래 자동 판정을 봅니다.");
         simChip.PointerPressed += (_, args) =>
         {
+            _consoleOpenAt = args.GetPosition(this);
             UiGuard.Run(_session, "값 시뮬", () => ShowSimulationFlyout(stats));
             args.Handled = true;
         };
@@ -1063,33 +1095,121 @@ internal sealed class StageSceneView : UserControl
         pairs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
     /// <summary>
-    /// 적용해도 닫히지 않는 조작 플라이아웃의 공통 틀 (소유자 지시 2026-08-06).
-    /// 조작 하나가 끝나면 내용만 현재 상태로 다시 그려지고, <b>우클릭이 닫는다</b>
-    /// (바깥 클릭도 기존처럼 닫는다). 앵커는 언제나 이 뷰 자신이다 — 캔버스가 다시
-    /// 그려져도 팝오버가 살아남는다.
+    /// 적용해도 닫히지 않는 조작 콘솔의 공통 틀 (소유자 지시 2026-08-06).
+    /// 조작 하나가 끝나면 내용만 현재 상태로 다시 그려지고, <b>우클릭·✕·바깥 클릭이 닫는다</b>.
+    ///
+    /// Flyout이 아니라 위치 고정 Popup이다 (W37): 탭 전환·내용 갱신으로 크기가 바뀌어도
+    /// 자리가 튀지 않고(좌상단 고정 + 아래·오른쪽으로만 자람), <b>윗부분 핸들을 잡아
+    /// 원하는 위치로 끌 수 있다</b>. 끌어 둔 위치는 다음에 열 때도 유지된다.
     /// </summary>
-    private void ShowManipulationFlyout(Action<StackPanel, Flyout, Action> build)
+    private void ShowManipulationFlyout(Action<StackPanel, Action> build)
     {
-        var host = new StackPanel { Spacing = 6 };
-        var flyout = new Flyout { Content = host, Placement = PlacementMode.Pointer };
+        var content = new StackPanel { Spacing = 6 };
 
         void Rebuild()
         {
-            host.Children.Clear();
-            UiGuard.Run(_session, "조절창 갱신", () => build(host, flyout, Rebuild));
+            content.Children.Clear();
+            UiGuard.Run(_session, "조절창 갱신", () => build(content, Rebuild));
         }
 
-        host.PointerPressed += (_, args) =>
+        // ── 헤더 = 드래그 핸들 + 닫기 ──
+        var title = new TextBlock
         {
-            if (args.GetCurrentPoint(host).Properties.IsRightButtonPressed)
+            Text = "⠿ 조절창 — 끌어서 이동 · 우클릭 닫기",
+            FontSize = 10,
+            Opacity = 0.75,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var closeButton = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(6, 1) };
+        closeButton.Click += (_, _) => CloseConsole();
+
+        var headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(title, 0);
+        Grid.SetColumn(closeButton, 1);
+        headerGrid.Children.Add(title);
+        headerGrid.Children.Add(closeButton);
+
+        var handle = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(255, 50, 50, 60)),
+            CornerRadius = new CornerRadius(6, 6, 0, 0),
+            Padding = new Thickness(8, 4),
+            Cursor = new Cursor(StandardCursorType.SizeAll),
+            Child = headerGrid
+        };
+
+        bool dragging = false;
+        Point dragStart = default;
+        (double X, double Y) dragBase = default;
+
+        handle.PointerPressed += (_, args) =>
+        {
+            if (args.GetCurrentPoint(handle).Properties.IsLeftButtonPressed)
             {
-                flyout.Hide();
+                dragging = true;
+                dragStart = args.GetPosition(this);
+                dragBase = (_consolePopup.HorizontalOffset, _consolePopup.VerticalOffset);
+                args.Pointer.Capture(handle);
+                args.Handled = true;
+            }
+        };
+        handle.PointerMoved += (_, args) =>
+        {
+            if (dragging)
+            {
+                Point position = args.GetPosition(this);
+                _consolePopup.HorizontalOffset = dragBase.X + (position.X - dragStart.X);
+                _consolePopup.VerticalOffset = dragBase.Y + (position.Y - dragStart.Y);
+                _consoleUserPosition = new Point(_consolePopup.HorizontalOffset, _consolePopup.VerticalOffset);
+            }
+        };
+        handle.PointerReleased += (_, args) =>
+        {
+            dragging = false;
+            args.Pointer.Capture(null);
+        };
+
+        var root = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(245, 30, 30, 36)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(110, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            MaxWidth = 340,
+            Child = new StackPanel
+            {
+                Children =
+                {
+                    handle,
+                    new Border { Padding = new Thickness(8), Child = content }
+                }
+            }
+        };
+
+        root.PointerPressed += (_, args) =>
+        {
+            if (args.GetCurrentPoint(root).Properties.IsRightButtonPressed)
+            {
+                CloseConsole();
                 args.Handled = true;
             }
         };
 
+        // 끌어 둔 자리 우선, 처음이면 클릭한 지점.
+        Point openAt = _consoleUserPosition ?? _consoleOpenAt;
+        _consolePopup.HorizontalOffset = openAt.X;
+        _consolePopup.VerticalOffset = openAt.Y;
+        _consolePopup.Child = root;
+
         Rebuild();
-        flyout.ShowAt(this);
+        _consolePopup.IsOpen = true;
+    }
+
+    private void CloseConsole()
+    {
+        _consolePopup.IsOpen = false;
+        _consolePopup.Child = null;
     }
 
     /// <summary>
@@ -1351,7 +1471,7 @@ internal sealed class StageSceneView : UserControl
         ShowManipulationFlyout(BuildStagePopover);
     }
 
-    private void BuildStagePopover(StackPanel host, Flyout flyout, Action rebuild)
+    private void BuildStagePopover(StackPanel host, Action rebuild)
     {
         if (_session is null || _request is null)
         {

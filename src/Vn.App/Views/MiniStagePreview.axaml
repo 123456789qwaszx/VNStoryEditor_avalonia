@@ -29,11 +29,10 @@
                         Padding="6,2" />
             </Grid>
 
-            <StackPanel Grid.Row="1"
-                        x:Name="BadgeRow"
-                        Orientation="Horizontal"
-                        Spacing="6"
-                        Margin="0,6,0,0" />
+            <!-- 뱃지·갈래 칩 — 많아지면 줄바꿈한다 (W37). 간격은 StageIndicators가 마진으로 준다. -->
+            <WrapPanel Grid.Row="1"
+                       x:Name="BadgeRow"
+                       Margin="0,6,0,0" />
 
             <!-- 축소판 무대 — 분리 창과 같은 StageSceneView를 쓴다(렌더 사본 금지). -->
             <ContentControl Grid.Row="2"
