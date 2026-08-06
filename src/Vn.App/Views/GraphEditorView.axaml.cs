@@ -69,6 +69,7 @@ public partial class GraphEditorView : UserControl
     private Vector _panStartOffset;
     private bool _minimapDragging;
     private Rectangle? _minimapViewport;
+    private string? _followedNodeId; // 선택이 바뀐 순간에만 화면이 따라간다 (GB-4)
 
     // 범위 선택 (W40) — 좌클릭 드래그로 잡은 노드 무리는 한 번에 움직인다.
     private Rectangle? _rubberBand;
@@ -152,6 +153,12 @@ public partial class GraphEditorView : UserControl
         MinimapCanvas.PointerPressed += OnMinimapPressed;
         MinimapCanvas.PointerMoved += OnMinimapMoved;
         MinimapCanvas.PointerReleased += (_, _) => _minimapDragging = false;
+
+        // 전체 보기·배율 프리셋 (GB-4). 프리셋은 화면 중앙 기준으로 배율만 바꾼다.
+        FitAllButton.Click += (_, _) => FitAll();
+        Zoom50Button.Click += (_, _) => ApplyZoom(0.5, null);
+        Zoom100Button.Click += (_, _) => ApplyZoom(1, null);
+        Zoom150Button.Click += (_, _) => ApplyZoom(1.5, null);
     }
 
     internal void Attach(AuthoringSession session)
@@ -278,6 +285,14 @@ public partial class GraphEditorView : UserControl
                     ? new SolidColorBrush(Color.FromArgb(42, 37, 99, 235))
                     : Brushes.Transparent;
             }
+        }
+
+        // 선택이 실제로 바뀐 순간에만 따라간다 (GB-4) — 같은 선택의 재하이라이트
+        // (편집·재빌드)에 화면이 끼어들면 스크롤해 둔 자리를 빼앗는다.
+        if (!string.Equals(_session?.SelectedNodeId, _followedNodeId, StringComparison.Ordinal))
+        {
+            _followedNodeId = _session?.SelectedNodeId;
+            ScrollToSelected();
         }
     }
 
@@ -788,7 +803,6 @@ public partial class GraphEditorView : UserControl
     /// <summary>배율 적용 — anchor(뷰포트 좌표) 아래의 내용이 그 자리에 남게 오프셋을 맞춘다.</summary>
     private void ApplyZoom(double zoom, Point? anchor)
     {
-        double clamped = Math.Clamp(zoom, MinZoom, MaxZoom);
         Point pivot = anchor ?? new Point(
             GraphScroll.Viewport.Width / 2, GraphScroll.Viewport.Height / 2);
 
@@ -797,15 +811,99 @@ public partial class GraphEditorView : UserControl
             (GraphScroll.Offset.X + pivot.X) / _zoom,
             (GraphScroll.Offset.Y + pivot.Y) / _zoom);
 
-        _zoom = clamped;
-        ZoomHost.LayoutTransform = new ScaleTransform(_zoom, _zoom);
-        ZoomText.Text = $"{Math.Round(_zoom * 100)}%";
-
-        ZoomHost.UpdateLayout(); // 새 크기를 알아야 오프셋 상한이 맞는다
+        SetZoom(zoom);
         GraphScroll.Offset = new Vector(
             Math.Max(0, (content.X * _zoom) - pivot.X),
             Math.Max(0, (content.Y * _zoom) - pivot.Y));
         RefreshMinimapViewport();
+    }
+
+    /// <summary>배율의 변환·표시만 — 오프셋은 호출자가 자기 규칙(고정점·중앙)으로 정한다.</summary>
+    private void SetZoom(double zoom)
+    {
+        _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        ZoomHost.LayoutTransform = new ScaleTransform(_zoom, _zoom);
+        ZoomText.Text = $"{Math.Round(_zoom * 100)}%";
+        ZoomHost.UpdateLayout(); // 새 크기를 알아야 오프셋 상한이 맞는다
+    }
+
+    /// <summary>전체 보기 (GB-4) — 노드·프록시 전부가 여백을 두고 들어오는 배율과 위치.</summary>
+    private void FitAll()
+    {
+        Rect? bounds = null;
+
+        foreach (NodeCard card in _cards)
+        {
+            var rect = new Rect(
+                Canvas.GetLeft(card.Visual), Canvas.GetTop(card.Visual),
+                CardWidth, CardHeightOf(card));
+            bounds = bounds is { } current ? current.Union(rect) : rect;
+        }
+
+        foreach (FileProxyVisual proxy in _proxies)
+        {
+            var rect = new Rect(
+                Canvas.GetLeft(proxy.Visual), Canvas.GetTop(proxy.Visual),
+                ProxyWidth, ProxyHeaderHeight + (Math.Max(1, proxy.Rows.Count) * ProxyRowHeight));
+            bounds = bounds is { } current ? current.Union(rect) : rect;
+        }
+
+        if (bounds is not { } all)
+        {
+            ApplyZoom(1, null); // 빈 판 — 기본 배율로 돌아간다
+            GraphScroll.Offset = default;
+            return;
+        }
+
+        all = all.Inflate(80); // 가장자리 여백
+        SetZoom(Math.Min(
+            1.0, // 노드가 적다고 확대까지 하지는 않는다
+            Math.Min(GraphScroll.Viewport.Width / all.Width, GraphScroll.Viewport.Height / all.Height)));
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, (all.Center.X * _zoom) - (GraphScroll.Viewport.Width / 2)),
+            Math.Max(0, (all.Center.Y * _zoom) - (GraphScroll.Viewport.Height / 2)));
+        RefreshMinimapViewport();
+    }
+
+    /// <summary>
+    /// 선택 노드로 화면 이동 (GB-4) — 이미 보이는 노드에는 끼어들지 않는다.
+    /// 접힌 파일 안의 노드면 그 프록시로 간다.
+    /// </summary>
+    private void ScrollToSelected()
+    {
+        if (_session?.SelectedNodeId is not { } nodeId)
+        {
+            return;
+        }
+
+        Control? target = FindCard(nodeId)?.Visual;
+        target ??= _proxies.FirstOrDefault(proxy => proxy.Rows.Any(row =>
+            string.Equals(row.NodeId, nodeId, StringComparison.Ordinal)))?.Visual;
+
+        if (target is null)
+        {
+            return;
+        }
+
+        double left = Canvas.GetLeft(target);
+        double top = Canvas.GetTop(target);
+        double width = target.Bounds.Width > 0 ? target.Bounds.Width : CardWidth;
+        double height = target.Bounds.Height > 0 ? target.Bounds.Height : 160;
+
+        var viewRect = new Rect(
+            GraphScroll.Offset.X / _zoom,
+            GraphScroll.Offset.Y / _zoom,
+            GraphScroll.Viewport.Width / _zoom,
+            GraphScroll.Viewport.Height / _zoom);
+
+        if (viewRect.Intersects(new Rect(left, top, width, height)))
+        {
+            return;
+        }
+
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, ((left + (width / 2)) * _zoom) - (GraphScroll.Viewport.Width / 2)),
+            Math.Max(0, ((top + (height / 2)) * _zoom) - (GraphScroll.Viewport.Height / 2)));
     }
 
     private void OnGraphPanPressed(object? sender, PointerPressedEventArgs args)
@@ -1104,8 +1202,8 @@ public partial class GraphEditorView : UserControl
             {
                 _session.Editor.MoveNode(
                     nodeId,
-                    Math.Max(0, start.X + deltaX),
-                    Math.Max(0, start.Y + deltaY));
+                    ClampNodeX(start.X + deltaX),
+                    ClampNodeY(start.Y + deltaY));
             }
 
             return;
@@ -1116,11 +1214,16 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        double x = Math.Max(0, position.X - _dragOffset.X);
-        double y = Math.Max(0, position.Y - _dragOffset.Y);
-
-        _session.Editor.MoveNode(_draggingCard.NodeId, x, y);
+        _session.Editor.MoveNode(
+            _draggingCard.NodeId,
+            ClampNodeX(position.X - _dragOffset.X),
+            ClampNodeY(position.Y - _dragOffset.Y));
     }
+
+    // 판 경계 클램프 (GB-4) — 카드가 스크롤이 닿지 않는 바깥으로 끌려 나가지 않는다.
+    private static double ClampNodeX(double x) => Math.Clamp(x, 0, CanvasWidth - CardWidth);
+
+    private static double ClampNodeY(double y) => Math.Clamp(y, 0, CanvasHeight - 240);
 
     private void OnCanvasPointerReleased(object? sender, PointerReleasedEventArgs args)
     {
@@ -1152,12 +1255,6 @@ public partial class GraphEditorView : UserControl
             }
 
             HighlightSelection();
-
-            if (_multiSelected.Count > 0)
-            {
-                HintText.Text = $"{_multiSelected.Count}개 노드 선택 — 무리 안의 카드를 끌면 함께 움직입니다.";
-            }
-
             return;
         }
 
@@ -1412,9 +1509,14 @@ public partial class GraphEditorView : UserControl
         StoryFile activeFile = _session.ActiveFile
             ?? throw new InvalidOperationException($"현재 StoryFile '{fileId}'를 찾을 수 없습니다.");
 
+        // 지금 보고 있는 곳에 만든다 (GB-4) — 큰 판에서 "만들었는데 안 보임"을 없앤다.
+        // 연속 생성은 계단으로 밀려 정확히 겹치지 않는다.
         int fileNodeCount = activeFile.Nodes.Count;
-        double x = 60 + (fileNodeCount % 4) * 260;
-        double y = 60 + (fileNodeCount / 4) * 200;
+        double stagger = (fileNodeCount % 5) * 26;
+        double x = ClampNodeX(
+            ((GraphScroll.Offset.X + (GraphScroll.Viewport.Width / 2)) / _zoom) - (CardWidth / 2) + stagger);
+        double y = ClampNodeY(
+            ((GraphScroll.Offset.Y + (GraphScroll.Viewport.Height / 2)) / _zoom) - 90 + stagger);
 
         StoryNode node = kind switch
         {
