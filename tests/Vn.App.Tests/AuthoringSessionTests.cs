@@ -439,6 +439,37 @@ public class AuthoringSessionTests
     }
 
     [Fact]
+    public void 저장은_없는_폴더를_복구하고_다른_이름_저장은_새_자리에_살림을_차린다()
+    {
+        // W60: 실수로 지운 폴더는 다음 저장이 되살리고, 다른 이름으로 저장한 새 위치에도
+        // 에셋 폴더·기본 튜닝이 준비된다. 내용이 있는 폴더는 불가침이다.
+        string first = TempDirectory();
+        string second = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(first, "project.vnproject.json"));
+
+            Directory.Delete(Path.Combine(first, "assets", "bgm"), recursive: true);
+            session.Save(); // 같은 자리 재저장 — 지워진 폴더가 되살아난다
+            Assert.True(Directory.Exists(Path.Combine(first, "assets", "bgm")));
+
+            session.Save(Path.Combine(second, "다른이름.vnproject.json")); // 다른 이름으로 저장
+            Assert.True(Directory.Exists(Path.Combine(second, "assets", "backgrounds")));
+            Assert.True(Directory.Exists(Path.Combine(second, "assets", "portraits")));
+            Assert.True(Directory.Exists(Path.Combine(second, "assets", "bgm")));
+            Assert.True(Directory.Exists(Path.Combine(second, "assets", "sfx")));
+            Assert.True(File.Exists(Path.Combine(second, "ExportedTuning", "base-resolution.json")));
+        }
+        finally
+        {
+            Directory.Delete(first, recursive: true);
+            Directory.Delete(second, recursive: true);
+        }
+    }
+
+    [Fact]
     public void 오디오_가져오기는_복제하고_저장_후_다시_열어도_루트가_남는다()
     {
         string directory = TempDirectory();

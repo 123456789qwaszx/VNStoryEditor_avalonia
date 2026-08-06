@@ -551,40 +551,56 @@ internal sealed class AuthoringSession
         Definition = GameDefinition.LoadBeside(ProjectPath);
         AppSettingsService.SaveRecentProject(ProjectPath);
 
-        bool provisioned = firstSave && ProvisionNewProjectFolder();
+        bool provisioned = EnsureProjectFolders();
 
         StatusMessage = $"{Path.GetFileName(ProjectPath)}에 저장했습니다." +
-            (provisioned ? " 에셋 폴더와 기본 튜닝을 준비했습니다 — 그림은 assets 폴더에 채워 넣으면 됩니다." : string.Empty);
+            (provisioned ? " 없던 에셋 폴더·기본 튜닝을 준비했습니다." : string.Empty);
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
     }
 
     /// <summary>
-    /// 새 프로젝트 폴더의 기본 살림 (W48) — 에셋 폴더를 만들고 기본 튜닝을 깐다.
-    /// 비전공 작가는 튜닝을 만질 일이 없으므로 처음부터 연결돼 있어야 한다.
-    /// 이미 튜닝이 있으면 건드리지 않는다(불가침 규칙 그대로).
+    /// 프로젝트 폴더의 기본 살림 (W48·W60) — <b>매 저장마다</b> 없는 에셋 폴더를 만들고,
+    /// 튜닝 폴더가 통째로 없으면 기본 튜닝을 깐다. 첫 저장뿐 아니라 다른 이름으로 저장한
+    /// 새 위치, 실수로 폴더를 지운 경우까지 복구한다. 내용이 있는 폴더는 불가침이다.
+    /// 무언가 실제로 만들었을 때만 true — 조용한 저장이 시끄러워지지 않는다.
     /// </summary>
-    private bool ProvisionNewProjectFolder()
+    private bool EnsureProjectFolders()
     {
         if (ProjectPath is null)
         {
             return false;
         }
 
-        string root = Path.GetDirectoryName(ProjectPath)!;
-        Directory.CreateDirectory(Path.Combine(root, "assets", "backgrounds"));
-        Directory.CreateDirectory(Path.Combine(root, "assets", "portraits"));
-        Directory.CreateDirectory(Path.Combine(root, "assets", "bgm"));
-        Directory.CreateDirectory(Path.Combine(root, "assets", "sfx"));
+        bool created = false;
 
-        string tuningRoot = Path.Combine(root, RuntimeTuningLibrary.DefaultFolderName);
-
-        if (!Directory.Exists(tuningRoot) || !Directory.EnumerateFileSystemEntries(tuningRoot).Any())
+        foreach (string? root in new[] { BackgroundsRoot, PortraitsRoot, BgmRoot, SfxRoot })
         {
-            CreateDefaultTuning(); // 상태 메시지는 저장 요약이 덮는다
+            if (root is not null && !Directory.Exists(root))
+            {
+                Directory.CreateDirectory(root);
+                created = true;
+            }
         }
 
-        RefreshAssets();
-        return true;
+        // 기본 튜닝 — 재지정(runtimeTuningPath)이 없고 규약 폴더가 비었을 때만.
+        if (string.IsNullOrWhiteSpace(Definition.RuntimeTuningPath))
+        {
+            string tuningRoot = Path.Combine(
+                Path.GetDirectoryName(ProjectPath)!, RuntimeTuningLibrary.DefaultFolderName);
+
+            if (!Directory.Exists(tuningRoot) || !Directory.EnumerateFileSystemEntries(tuningRoot).Any())
+            {
+                CreateDefaultTuning(); // 상태 메시지는 저장 요약이 덮는다
+                created = true;
+            }
+        }
+
+        if (created)
+        {
+            RefreshAssets();
+        }
+
+        return created;
     }
 
     public void SetStatus(string message)
