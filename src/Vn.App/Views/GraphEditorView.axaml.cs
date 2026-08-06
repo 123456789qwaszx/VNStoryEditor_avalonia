@@ -76,6 +76,12 @@ public partial class GraphEditorView : UserControl
     private readonly Dictionary<string, (Vector Offset, double Zoom)> _boardViews = new(StringComparer.Ordinal);
     private string? _viewedFileId;
 
+    // 접힌 파일 드래그 (W52) — 프록시 위치는 안 노드들의 평균이므로,
+    // 끌기는 파일 안 노드 전부를 같은 delta로 옮기는 것이다(펼치면 그 자리에 있다).
+    private string? _draggingProxyFileId;
+    private Point _proxyDragStart;
+    private readonly Dictionary<string, Point> _proxyStartPositions = new(StringComparer.Ordinal);
+
     // 범위 선택 (W40) — 좌클릭 드래그로 잡은 노드 무리는 한 번에 움직인다.
     private Rectangle? _rubberBand;
     private Point _rubberStart;
@@ -500,6 +506,30 @@ public partial class GraphEditorView : UserControl
         Canvas.SetLeft(visual, file.Position.X);
         Canvas.SetTop(visual, file.Position.Y);
         GraphCanvas.Children.Add(visual);
+
+        // 접힌 파일도 끌어 옮긴다 (W52). 노드 행은 자기 클릭을 Handled로 막으므로
+        // 여기 오는 좌클릭은 헤더·테두리다. 빈 파일 프록시는 옮길 내용이 없다.
+        visual.Cursor = new Cursor(StandardCursorType.SizeAll);
+        visual.PointerPressed += (_, args) =>
+        {
+            if (_session is null ||
+                !args.GetCurrentPoint(visual).Properties.IsLeftButtonPressed ||
+                _session.Project.FindFile(file.FileId) is not { Nodes.Count: > 0 } storyFile)
+            {
+                return;
+            }
+
+            _draggingProxyFileId = file.FileId;
+            _proxyDragStart = args.GetPosition(GraphCanvas);
+            _proxyStartPositions.Clear();
+
+            foreach (StoryNode node in storyFile.Nodes)
+            {
+                _proxyStartPositions[node.Id] = new Point(node.Layout.X, node.Layout.Y);
+            }
+
+            args.Handled = true;
+        };
 
         return new FileProxyVisual(file.FileId, visual, rows);
     }
@@ -1278,6 +1308,22 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
+        if (_draggingProxyFileId is not null)
+        {
+            double deltaX = position.X - _proxyDragStart.X;
+            double deltaY = position.Y - _proxyDragStart.Y;
+
+            foreach ((string nodeId, Point start) in _proxyStartPositions)
+            {
+                _session.Editor.MoveNode(
+                    nodeId,
+                    ClampNodeX(start.X + deltaX),
+                    ClampNodeY(start.Y + deltaY));
+            }
+
+            return;
+        }
+
         if (_draggingCard is null)
         {
             return;
@@ -1298,6 +1344,7 @@ public partial class GraphEditorView : UserControl
     {
         _draggingCard = null;
         _draggingGroup = false;
+        _draggingProxyFileId = null;
 
         // 범위 선택 확정 (W40) — 사각형에 걸친 카드 전부가 무리가 된다.
         if (_rubberBand is not null)
