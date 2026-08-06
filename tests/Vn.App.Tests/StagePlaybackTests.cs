@@ -98,6 +98,36 @@ public class StagePlaybackTests
         Assert.Equal([1], moves);
     }
 
+    // ── 재생 배율 (W34-a) ─────────────────────────────────────────────────
+
+    [Fact]
+    public void 배율은_타자와_여운에_함께_적용된다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 2, text: new string('가', 60));
+
+        playback.SpeedMultiplier = 2; // 2배 — 60자 타자가 1초, 여운이 0.6초
+        playback.Play();
+
+        playback.Tick(0.5);
+        Assert.Equal(30, playback.VisibleCharacters); // 0.5초 × 30cps × 2배
+
+        playback.Tick(0.5); // 타자 완료
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds / 2 + 0.01); // 절반 시간이면 여운 끝
+        Assert.Equal([1], moves);
+    }
+
+    [Fact]
+    public void 배율은_경계로_잘리고_이상값은_1로_돌아온다()
+    {
+        var playback = new StagePlayback();
+
+        playback.SpeedMultiplier = 100;
+        Assert.Equal(4, playback.SpeedMultiplier); // 상한
+
+        playback.SpeedMultiplier = double.NaN;
+        Assert.Equal(1, playback.SpeedMultiplier);
+    }
+
     // ── 전이 (W33) ────────────────────────────────────────────────────────
 
     [Fact]

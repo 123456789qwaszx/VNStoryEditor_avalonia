@@ -20,6 +20,9 @@ internal static class StagePlaybackControls
 
         var playButton = new Button { FontSize = 11, Padding = new Thickness(8, 3) };
 
+        var speedButton = new Button { FontSize = 11, Padding = new Thickness(8, 3), MinWidth = 44 };
+        ToolTip.SetTip(speedButton, "재생 속도 배율 — 타자·전이·여운에 함께 적용됩니다.");
+
         var progress = new TextBlock
         {
             FontSize = 11,
@@ -33,11 +36,22 @@ internal static class StagePlaybackControls
             playButton.Content = playback.IsPlaying ? "⏸ 일시정지" : "▶ 재생";
             playButton.IsEnabled = playback.CanPlay;
             restartButton.IsEnabled = playback.CanPlay;
+            speedButton.Content = $"{playback.SpeedMultiplier:0.#}×";
             progress.Text = playback.ProgressLabel;
         }
 
         restartButton.Click += (_, _) => playback.Restart();
         playButton.Click += (_, _) => playback.TogglePlay();
+        speedButton.Click += (_, _) =>
+        {
+            // 순환: 0.5 → 1 → 1.5 → 2 → 다시 0.5. 목록 밖 값(설정 파일 수기 편집)은 1로 합류.
+            int index = Array.FindIndex(
+                StagePlayback.SpeedSteps,
+                step => Math.Abs(step - playback.SpeedMultiplier) < 0.0001);
+            playback.SpeedMultiplier = index < 0
+                ? 1
+                : StagePlayback.SpeedSteps[(index + 1) % StagePlayback.SpeedSteps.Length];
+        };
 
         var row = new StackPanel
         {
@@ -47,6 +61,7 @@ internal static class StagePlaybackControls
         };
         row.Children.Add(restartButton);
         row.Children.Add(playButton);
+        row.Children.Add(speedButton);
         row.Children.Add(progress);
 
         row.AttachedToVisualTree += (_, _) =>

@@ -64,6 +64,20 @@ internal static class AppSettingsService
         Save(settings);
     }
 
+    /// <summary>재생 속도 배율 (W34-a). 형식이 깨져 있으면 1배로 돌아간다.</summary>
+    public static double LoadPlaybackSpeed()
+    {
+        double speed = Load(SettingsPath).PlaybackSpeed ?? 1;
+        return double.IsFinite(speed) && speed > 0 ? speed : 1;
+    }
+
+    public static void SavePlaybackSpeed(double speed)
+    {
+        AppSettings settings = Load(SettingsPath);
+        settings.PlaybackSpeed = speed;
+        Save(settings);
+    }
+
     /// <summary>
     /// 설정 파일이 없거나, 잘린 JSON이거나, 형이 전혀 다른 내용이어도 기본값으로 돌아간다.
     /// 편의 설정 하나 때문에 앱이 시작하지 못하는 일은 없어야 한다.
@@ -135,5 +149,8 @@ internal static class AppSettingsService
     internal sealed class AppSettings
     {
         public string? RecentProject { get; set; }
+
+        /// <summary>재생 속도 배율. null이면 1배 — 없던 설정 파일과의 호환.</summary>
+        public double? PlaybackSpeed { get; set; }
     }
 }

@@ -17,8 +17,34 @@ namespace Vn.App.Services;
 /// </summary>
 internal sealed class StagePlayback
 {
-    /// <summary>타자 속도(문자/초) — 툴 편의 설정의 기본값(게임 사양이 아니다). 설정화는 W34 백로그.</summary>
+    /// <summary>타자 속도(문자/초) 기본값 — 툴 편의 설정(게임 사양이 아니다). 체감 속도는 배율이 조절한다.</summary>
     public const double CharactersPerSecond = 30;
+
+    /// <summary>배율 순환 순서 (W34-a) — 컨트롤 버튼이 이 순서로 돈다.</summary>
+    public static readonly double[] SpeedSteps = [0.5, 1, 1.5, 2];
+
+    private double _speedMultiplier = 1;
+
+    /// <summary>
+    /// 재생 속도 배율 (W34-a) — 타자·여운·전이 전부에 일괄 적용된다(시간의 원천이 하나라
+    /// 배율도 한 곳이다). 툴 편의 설정이라 세션을 넘어 기억된다(AppSettings).
+    /// </summary>
+    public double SpeedMultiplier
+    {
+        get => _speedMultiplier;
+        set
+        {
+            double clamped = double.IsFinite(value) ? Math.Clamp(value, 0.25, 4) : 1;
+
+            if (Math.Abs(clamped - _speedMultiplier) < 0.0001)
+            {
+                return;
+            }
+
+            _speedMultiplier = clamped;
+            StateChanged?.Invoke();
+        }
+    }
 
     /// <summary>전문이 다 보인 뒤 다음 라인까지의 여운.</summary>
     public const double AfterTypeDwellSeconds = 1.2;
@@ -242,6 +268,8 @@ internal sealed class StagePlayback
         {
             return;
         }
+
+        deltaSeconds *= _speedMultiplier; // 배율은 시간의 입구 한 곳에서만 (W34-a)
 
         // 전이는 타자와 나란히 흐른다 — 움직이면서 대사가 찍히는 쪽이 재생답다.
         if (_transitionActive)

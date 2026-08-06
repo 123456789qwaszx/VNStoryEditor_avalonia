@@ -138,6 +138,18 @@ public partial class MiniStagePreview : UserControl
         _scene.PlaybackAdvance = Playback.TryAdvanceByInput;
         PlaybackHost.Content = StagePlaybackControls.Build(Playback);
 
+        // 재생 배율은 툴 편의 설정 — 세션을 넘어 기억된다 (W34-a).
+        Playback.SpeedMultiplier = AppSettingsService.LoadPlaybackSpeed();
+        double savedSpeed = Playback.SpeedMultiplier;
+        Playback.StateChanged += () =>
+        {
+            if (Math.Abs(Playback.SpeedMultiplier - savedSpeed) > 0.0001)
+            {
+                savedSpeed = Playback.SpeedMultiplier;
+                AppSettingsService.SavePlaybackSpeed(savedSpeed);
+            }
+        };
+
         _playbackTimer = new Avalonia.Threading.DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(50)
