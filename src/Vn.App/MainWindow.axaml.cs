@@ -80,6 +80,11 @@ public partial class MainWindow : Window
             {
                 PresentationEditor.Rebuild();
             }
+            else if (DialogueEditor.IsVisible)
+            {
+                // 대사 편집기에서의 프리뷰 선택지 클릭(갈래 선택)도 즉시 보여야 한다 (W47).
+                DialogueEditor.RefreshBranchView();
+            }
         };
         DialogueEditor.StagePreview = StagePreview;
         PresentationEditor.StagePreview = StagePreview;

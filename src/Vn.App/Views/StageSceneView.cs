@@ -1573,24 +1573,7 @@ internal sealed class StageSceneView : UserControl
                 }
             };
             host.Children.Add(slotCombo);
-
-            // 지금 무엇을 조작 중인지 — 강조 칩으로 분명하게.
-            MiniStageSlot selected = _request.State.Slots[_popoverSlotKey!];
-            host.Children.Add(new Border
-            {
-                Background = new SolidColorBrush(Color.FromArgb(45, 250, 204, 21)),
-                CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(6, 2),
-                Child = new TextBlock
-                {
-                    Text = $"선택된 슬롯: {_popoverSlotKey}" +
-                        (selected.CharacterId is { } castId ? $" · {castId}" : string.Empty) +
-                        (selected.Visible ? string.Empty : " (숨김)") +
-                        " — 우클릭으로 닫기",
-                    FontSize = 10,
-                    FontWeight = FontWeight.SemiBold
-                }
-            });
+            // 현재 조작 중인 슬롯 표시는 위 콤보가 이미 한다 — 별도 칩은 소유자 지시로 제거 (W47).
         }
 
         host.Children.Add(new Border

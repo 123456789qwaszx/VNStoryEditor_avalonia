@@ -320,6 +320,10 @@ public sealed partial class ProjectEditor
                 ordered.Add(line);
             }
 
+            // 은퇴한 줄이 소유하던 대사 논리는 함께 접는다 (W47) — 카드가 없는 줄의
+            // 조건은 지울 진입점조차 없는 유령이 된다.
+            PruneRetiredLineLogic(script.Id, lineId => !kept.Contains(lineId));
+
             script.Lines.Clear();
             script.Lines.AddRange(ordered);
             script.SourceRevision++;
@@ -362,7 +366,30 @@ public sealed partial class ProjectEditor
             return;
         }
 
-        Mutate(() => line.IsRetired = true);
+        Mutate(() =>
+        {
+            line.IsRetired = true;
+            PruneRetiredLineLogic(scriptId, id => string.Equals(id, lineId, StringComparison.Ordinal));
+        });
+    }
+
+    /// <summary>
+    /// 줄이 대본에서 물러나면 그 줄이 소유하던 대사 논리(조건·선택 전환, set, 갈래 출구)도
+    /// 접는다 (W47) — 줄 카드가 없으면 편집 진입점이 없어 지울 수도 없는 유령이 된다.
+    /// 연출 바인딩은 남긴다: 고아 연출은 지우지 않고 해석기가 알리는 기존 정책 그대로다.
+    /// </summary>
+    private void PruneRetiredLineLogic(string scriptId, Func<string, bool> retired)
+    {
+        foreach (DialogueNode node in Project.EnumerateNodes().OfType<DialogueNode>()
+            .Where(item => string.Equals(item.ScriptId, scriptId, StringComparison.Ordinal)))
+        {
+            node.LineExtensions.RemoveAll(extension => retired(extension.LineId));
+
+            foreach (string exitLineId in node.BranchExits.Keys.Where(retired).ToList())
+            {
+                node.BranchExits.Remove(exitLineId);
+            }
+        }
     }
 
     public void MoveScriptLine(string scriptId, string lineId, int delta)

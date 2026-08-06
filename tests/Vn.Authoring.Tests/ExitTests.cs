@@ -137,19 +137,22 @@ public class ExitTests
     /// 도구가 말없이 지우면 대본을 되돌려도 작가가 만든 갈래는 돌아오지 않는다.
     /// </summary>
     [Fact]
-    public void 대본에서_줄이_빠져도_그_줄의_출구는_고아로_남는다()
+    public void 대본에서_줄이_빠지면_그_줄의_출구와_전환도_함께_접힌다()
     {
+        // W47 (소유자 결정): 줄 카드가 없는 조건·출구는 지울 진입점조차 없는 유령이 된다 —
+        // 고아로 남기는 대신 줄이 물러날 때 함께 정리한다. 연출 바인딩은 기존 정책대로 남는다.
         var sample = new Sample();
         string opener = sample.Line("if", LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, opener, sample.TargetA.Id);
 
         sample.Editor.RetireScriptLine(sample.Script.Id, opener);
 
-        Assert.Equal(sample.TargetA.Id, sample.Dialogue.BranchExits[opener]);
+        Assert.Empty(sample.Dialogue.BranchExits);
+        Assert.Empty(sample.Dialogue.LineExtensions);
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         Assert.Empty(flow.Lines);
-        Assert.Contains(
+        Assert.DoesNotContain(
             flow.Problems,
             problem => problem.Kind == FlowProblemKind.OrphanedLineExtension);
     }

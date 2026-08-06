@@ -434,12 +434,66 @@ public partial class DialogueNodeEditor : UserControl
 
         wrapper.AddHandler(
             PointerPressedEvent,
-            (_, _) => SelectStageLine(lineId),
+            (_, args) =>
+            {
+                SelectStageLine(lineId);
+
+                // 우클릭 = 줄 추가/삭제 바로가기 (W47) — ＋ 플라이아웃을 거치지 않는 짧은 길.
+                if (args.GetCurrentPoint(wrapper).Properties.IsRightButtonPressed)
+                {
+                    ShowLineContextFlyout(wrapper, lineId);
+                }
+            },
             RoutingStrategies.Bubble,
             handledEventsToo: true);
         _stageLineCards[lineId] = wrapper;
 
         return wrapper;
+    }
+
+    /// <summary>줄 카드 우클릭 메뉴 (W47) — 추가·삭제는 ＋ 플라이아웃과 같은 편집 경로 하나를 쓴다.</summary>
+    private void ShowLineContextFlyout(Control anchor, string lineId)
+    {
+        if (_session?.Project.FindDialogue(_nodeId) is not { } node || node.ScriptId is not { } scriptId)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 2, MinWidth = 140 };
+
+        Button Item(string label, string tip)
+        {
+            var button = new Button
+            {
+                Content = label,
+                FontSize = 11,
+                Padding = new Thickness(10, 4),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = Brushes.Transparent
+            };
+            ToolTip.SetTip(button, tip);
+            panel.Children.Add(button);
+            return button;
+        }
+
+        var flyout = new Flyout { Content = panel };
+
+        Button add = Item("아래에 줄 추가", "이 줄 바로 아래에 새 줄을 끼워 넣습니다.");
+        add.Click += (_, _) =>
+        {
+            flyout.Hide();
+            UiGuard.Run(_session, "줄 추가", AddLine); // 선택된 줄 아래에 — 위의 SelectStageLine이 이미 골랐다
+        };
+
+        Button remove = Item("이 줄 삭제", "대본에서 이 줄을 뺍니다. LineId는 은퇴 상태로 남습니다.");
+        remove.Click += (_, _) =>
+        {
+            flyout.Hide();
+            UiGuard.Run(_session, "줄 삭제", () => _session!.Editor.RetireScriptLine(scriptId, lineId));
+        };
+
+        flyout.ShowAt(anchor);
     }
 
     private void SelectStageLine(string lineId)
@@ -618,6 +672,19 @@ public partial class DialogueNodeEditor : UserControl
                 export.Presentation.Bindings.FirstOrDefault(item =>
                     string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands),
             AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
+    }
+
+    /// <summary>
+    /// 프리뷰에서 갈래 선택이 바뀌었다 (W47) — 카드 흐림과 무대 프리뷰만 갱신한다.
+    /// 카드를 다시 만들지 않아 입력 포커스를 잃지 않는다.
+    /// </summary>
+    internal void RefreshBranchView()
+    {
+        if (_session?.Project.FindDialogue(_nodeId) is { } node)
+        {
+            RefreshBranchStates(node);
+            UpdateStagePreview(node);
+        }
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.

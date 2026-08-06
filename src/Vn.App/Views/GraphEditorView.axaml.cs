@@ -126,7 +126,6 @@ public partial class GraphEditorView : UserControl
         AddPresentationButton.Click += (_, _) => AddNode(GraphNodeKind.Presentation);
         AddSupplyButton.Click += (_, _) => AddNode(GraphNodeKind.CommandSupply);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
-        DeleteEdgeButton.Click += (_, _) => DeleteSelectedEdge();
 
         foreach (CheckBox check in new[]
                  {
@@ -191,7 +190,6 @@ public partial class GraphEditorView : UserControl
         _proxies.Clear();
         _edges.Clear();
         _selectedEdge = null;
-        DeleteEdgeButton.IsEnabled = false;
 
         foreach (GraphItemProjection item in _projection.Items)
         {
@@ -701,16 +699,21 @@ public partial class GraphEditorView : UserControl
 
         var edge = new EdgeVisual(connection, path, label);
 
-        path.PointerPressed += (_, args) =>
+        // 좌클릭 = 선택(하단에 정보), 우클릭 = 삭제 (W47 — 툴바의 간선 삭제 버튼을 대신한다).
+        void OnEdgePressed(PointerPressedEventArgs args, Control source)
         {
             SelectEdge(edge);
+
+            if (args.GetCurrentPoint(source).Properties.IsRightButtonPressed)
+            {
+                DeleteSelectedEdge();
+            }
+
             args.Handled = true;
-        };
-        label.PointerPressed += (_, args) =>
-        {
-            SelectEdge(edge);
-            args.Handled = true;
-        };
+        }
+
+        path.PointerPressed += (_, args) => OnEdgePressed(args, path);
+        label.PointerPressed += (_, args) => OnEdgePressed(args, label);
 
         GraphCanvas.Children.Insert(0, path);
         GraphCanvas.Children.Add(label);
@@ -1520,7 +1523,6 @@ public partial class GraphEditorView : UserControl
         }
 
         _selectedEdge = edge;
-        DeleteEdgeButton.IsEnabled = edge is not null;
 
         if (edge is null)
         {
@@ -1539,7 +1541,7 @@ public partial class GraphEditorView : UserControl
             _ => "기본 출구"
         };
 
-        HintText.Text = $"{sourceName} — {kind} → {targetName}";
+        HintText.Text = $"{sourceName} — {kind} → {targetName} · 우클릭으로 삭제";
     }
 
     private void DeleteSelectedEdge()

@@ -717,7 +717,9 @@ public static class YarnBundleEmitter
                 IsBlocking: true));
         }
 
-        story.Append("\n\n");
+        // 갈래(선택지·조건) 안의 줄은 붙여 낸다 (W47) — 옵션 본문 사이에 빈 줄이 섞이면
+        // 블록이 흩어져 보인다. 숨(빈 줄)은 갈래 밖 일반 흐름에서만 준다.
+        story.Append(segment.IndentLevel > 0 ? "\n" : "\n\n");
 
         if (pres is null)
         {

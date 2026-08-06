@@ -38,7 +38,9 @@ public partial class SetNodeEditor : UserControl
         {
             if (_session is not null && _nodeId is not null)
             {
-                _session.Editor.AddCondition(_nodeId, "새 조건", string.Empty);
+                // 이름은 빈칸으로 시작한다 (W47) — "새 조건"이 미리 채워져 있으면
+                // 지우는 일부터 시켜야 한다. 자리 안내는 PlaceholderText가 한다.
+                _session.Editor.AddCondition(_nodeId, string.Empty, string.Empty);
             }
         };
 
@@ -651,7 +653,18 @@ public partial class SetNodeEditor : UserControl
             _session!.Editor.SetAssignments(node.Id, next);
         }
 
-        type.SelectionChanged += (_, _) => Commit();
+        type.SelectionChanged += (_, _) =>
+        {
+            Commit();
+
+            // 타입 전환은 행의 모양이 바뀌는 일이다 (W47) — On/Off 토글·초기값 칸이 즉시
+            // 갈아끼워져야 하고, 조건 행의 편집 형태도 타입을 따른다. 콤보 이벤트 안에서
+            // 자기 자신을 지우지 않도록 다음 UI 턴에 다시 만든다.
+            if (!_building)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(Rebuild);
+            }
+        };
         variable.LostFocus += (_, _) => Commit();
         value.LostFocus += (_, _) => Commit();
         boolValue.IsCheckedChanged += (_, _) =>
