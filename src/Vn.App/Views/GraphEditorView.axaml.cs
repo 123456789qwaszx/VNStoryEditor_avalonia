@@ -71,6 +71,11 @@ public partial class GraphEditorView : UserControl
     private Rectangle? _minimapViewport;
     private string? _followedNodeId; // 선택이 바뀐 순간에만 화면이 따라간다 (GB-4)
 
+    // 판별 뷰 상태 (GB-1) — 판(활성 파일)마다 보던 자리·배율을 기억한다.
+    // 뷰 상태라 저장하지 않는다(원칙 E) — 세션 안에서만 산다.
+    private readonly Dictionary<string, (Vector Offset, double Zoom)> _boardViews = new(StringComparer.Ordinal);
+    private string? _viewedFileId;
+
     // 범위 선택 (W40) — 좌클릭 드래그로 잡은 노드 무리는 한 번에 움직인다.
     private Rectangle? _rubberBand;
     private Point _rubberStart;
@@ -209,6 +214,53 @@ public partial class GraphEditorView : UserControl
         DrawEdges();
         HighlightSelection();
         RefreshMinimap();
+        HandleBoardSwitch();
+    }
+
+    /// <summary>
+    /// 판 전환 (GB-1) — 활성 파일이 바뀌었으면 떠나는 판의 자리·배율을 기억하고,
+    /// 새 판은 기억해 둔 자리로(처음이면 전체 보기로) 돌아간다.
+    /// </summary>
+    private void HandleBoardSwitch()
+    {
+        string? active = _session?.ActiveFileId;
+
+        if (string.Equals(active, _viewedFileId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_viewedFileId is { } previous)
+        {
+            _boardViews[previous] = (GraphScroll.Offset, _zoom);
+        }
+
+        _viewedFileId = active;
+
+        void Restore()
+        {
+            if (active is not null &&
+                _boardViews.TryGetValue(active, out (Vector Offset, double Zoom) view))
+            {
+                SetZoom(view.Zoom);
+                GraphScroll.Offset = view.Offset;
+                RefreshMinimapViewport();
+            }
+            else
+            {
+                FitAll(); // 처음 여는 판은 전체가 들어오게
+            }
+        }
+
+        if (GraphScroll.Viewport.Width > 0)
+        {
+            Restore();
+        }
+        else
+        {
+            // 앱 시작 직후 첫 레이아웃 전 — 뷰포트 크기가 잡힌 다음 턴에 자리를 잡는다.
+            Avalonia.Threading.Dispatcher.UIThread.Post(Restore);
+        }
     }
 
     /// <summary>좌표만 바뀌었을 때. projection을 다시 계산하되 컨트롤은 유지한다.</summary>
@@ -291,8 +343,17 @@ public partial class GraphEditorView : UserControl
         // (편집·재빌드)에 화면이 끼어들면 스크롤해 둔 자리를 빼앗는다.
         if (!string.Equals(_session?.SelectedNodeId, _followedNodeId, StringComparison.Ordinal))
         {
+            // 노드 삭제의 대체 선택(사라진 노드 → 첫 노드)은 사용자가 고른 게 아니다 —
+            // 화면을 옮기지 않는다 (소유자 지시 2026-08-06).
+            bool deletionFallback = _followedNodeId is not null &&
+                _session?.Project.FindNode(_followedNodeId) is null;
+
             _followedNodeId = _session?.SelectedNodeId;
-            ScrollToSelected();
+
+            if (!deletionFallback)
+            {
+                ScrollToSelected();
+            }
         }
     }
 
@@ -830,6 +891,11 @@ public partial class GraphEditorView : UserControl
     /// <summary>전체 보기 (GB-4) — 노드·프록시 전부가 여백을 두고 들어오는 배율과 위치.</summary>
     private void FitAll()
     {
+        if (GraphScroll.Viewport.Width <= 0 || GraphScroll.Viewport.Height <= 0)
+        {
+            return; // 레이아웃 전 — 맞출 화면이 아직 없다
+        }
+
         Rect? bounds = null;
 
         foreach (NodeCard card in _cards)

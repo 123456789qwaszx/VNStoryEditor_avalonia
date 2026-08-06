@@ -323,9 +323,21 @@ internal sealed class AuthoringSession
         }
 
         ActiveFileId = fileId;
+
+        // 판 전환 (GB-1): 활성 파일이 곧 보이는 판이다 — 그 파일만 펼치고 나머지는 접는다.
+        // 다른 판을 함께 보고 싶으면 파일 목록의 펼침 체크로 다시 연다(체크는 독립 유지).
+        bool expandedChanged = false;
+
+        if (fileId is not null)
+        {
+            expandedChanged = _expandedFileIds.Count != 1 || !_expandedFileIds.Contains(fileId);
+            _expandedFileIds.Clear();
+            _expandedFileIds.Add(fileId);
+        }
+
         RaiseFileGraphStateChanged(
             activeFileChanged: true,
-            expandedFilesChanged: false,
+            expandedFilesChanged: expandedChanged,
             fileListChanged: false);
     }
 

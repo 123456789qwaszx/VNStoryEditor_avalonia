@@ -124,22 +124,37 @@ public class AuthoringSessionTests
     }
 
     [Fact]
-    public void 현재_파일과_그래프_펼침_상태는_서로_독립적이다()
+    public void 파일_선택은_판_전환이다_그_파일만_펼쳐진다()
     {
+        // GB-1 (W43): 활성 파일이 곧 보이는 판이다. 전환하면 그 파일만 펼쳐진다.
         var session = new AuthoringSession();
         StoryFile first = session.ActiveFile!;
         StoryFile second = session.Editor.AddStoryFile("두 번째");
-        DialogueNode firstNode = session.Editor.AddDialogueNode(first.Id, name: "첫 파일");
+        session.Editor.AddDialogueNode(first.Id, name: "첫 파일");
         DialogueNode secondNode = session.Editor.AddDialogueNode(second.Id, name: "둘째 파일");
 
         session.SelectFile(second.Id);
-        session.SetFileExpanded(second.Id, expanded: false);
 
         Assert.Equal(second.Id, session.ActiveFileId);
-        Assert.False(session.IsFileExpanded(second.Id));
+        Assert.True(session.IsFileExpanded(second.Id));
+        Assert.False(session.IsFileExpanded(first.Id));
+        Assert.Equal(new[] { secondNode.Id }, session.EnumerateExpandedNodes().Select(node => node.Id));
+    }
+
+    [Fact]
+    public void 판_전환_뒤에도_펼침_체크로_다른_판을_함께_볼_수_있다()
+    {
+        // 전환이 접은 파일은 체크로 다시 펼 수 있다 — 체크 자체는 독립으로 남는다.
+        var session = new AuthoringSession();
+        StoryFile first = session.ActiveFile!;
+        StoryFile second = session.Editor.AddStoryFile("두 번째");
+
+        session.SelectFile(second.Id);
+        session.SetFileExpanded(first.Id, expanded: true);
+
+        Assert.Equal(second.Id, session.ActiveFileId);
         Assert.True(session.IsFileExpanded(first.Id));
-        Assert.Equal(new[] { firstNode.Id }, session.EnumerateExpandedNodes().Select(node => node.Id));
-        Assert.DoesNotContain(secondNode.Id, session.EnumerateExpandedNodes().Select(node => node.Id));
+        Assert.True(session.IsFileExpanded(second.Id));
     }
 
     [Fact]
@@ -181,14 +196,15 @@ public class AuthoringSessionTests
         session.FileGraphStateChanged += (_, e) => changes.Add(e);
 
         session.SelectFile(second.Id);
-        session.SetFileExpanded(first.Id, expanded: false);
+        session.SetFileExpanded(first.Id, expanded: true);
 
         Assert.Collection(
             changes,
             active =>
             {
+                // 판 전환(GB-1)은 활성 파일과 펼침을 함께 바꾼다 — 그 파일만 남긴다.
                 Assert.True(active.ActiveFileChanged);
-                Assert.False(active.ExpandedFilesChanged);
+                Assert.True(active.ExpandedFilesChanged);
                 Assert.False(active.FileListChanged);
             },
             expanded =>
