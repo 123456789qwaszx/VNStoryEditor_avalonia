@@ -102,6 +102,12 @@ internal sealed class AuthoringSession
     /// </summary>
     public StageBranchSelection BranchSelection { get; } = new();
 
+    /// <summary>
+    /// 조건 값 시뮬의 시작값 오버라이드 (W36-b) — 변수명 → "이 값으로 시작한다고 치자".
+    /// 뷰 상태라 저장하지 않는다. 비어 있으면 등록 초기값 그대로다.
+    /// </summary>
+    public Dictionary<string, string> SimulationValues { get; } = new(StringComparer.Ordinal);
+
     // ── 런타임 tuning (W23) ────────────────────────────────────────────────
 
     private RuntimeTuningLibrary? _tuningLibrary;
@@ -207,6 +213,7 @@ internal sealed class AuthoringSession
         ProjectPath = null;
         Definition = GameDefinition.Empty;
         BranchSelection.Clear();
+        SimulationValues.Clear();
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
         StatusMessage = "새 프로젝트입니다. 노드를 추가해 시작하세요.";
 
@@ -227,6 +234,7 @@ internal sealed class AuthoringSession
         ProjectPath = loaded.ManifestPath;
         Definition = GameDefinition.LoadBeside(loaded.ManifestPath);
         BranchSelection.Clear();
+        SimulationValues.Clear();
         _savedSnapshot = ProjectSnapshotCodec.Encode(project);
         _tuningLibrary = null;
         StatusMessage =

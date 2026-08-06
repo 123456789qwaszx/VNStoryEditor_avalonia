@@ -205,9 +205,24 @@ public partial class PresentationNodeEditor : UserControl
 
         DialogueResultLine? line = dialogue.FindLine(_selectedLineId) ?? dialogue.Lines.FirstOrDefault();
 
-        // 갈래 인식 (W35) — 선택된 갈래의 라인만 접는다. 미선택 블록은 문서 순서 근사 + 표시.
+        // 조건 값 시뮬 (W36-b): 수동 선택 + 값 기반 자동 판정을 합친 유효 선택을 쓴다.
+        ConditionSimulation.Result simulation = ConditionSimulation.Decide(
+            dialogue.Lines,
+            resultLine => resultLine.Transition?.Kind,
+            resultLine => resultLine.LineId,
+            resultLine => resultLine.Transition?.Expression,
+            resultLine => resultLine.Sets.Select(operation =>
+                (operation.Variable, operation.Operator, operation.Value)),
+            dialogue.Assignments.Select(assignment => (
+                assignment.Variable,
+                _session.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
+                    ? overridden
+                    : assignment.Value)),
+            _session.BranchSelection);
+
+        // 갈래 인식 (W35) — 유효 선택된 갈래의 라인만 접는다. 미결정 블록은 근사 + 표시.
         BranchAwareLines.Result branch = BranchAwareLines.UpTo(
-            dialogue, draft.Bindings, line?.LineId, _session.BranchSelection);
+            dialogue, draft.Bindings, line?.LineId, simulation.Effective);
 
         PresentationResultBinding? lineBinding = draft.Bindings.FirstOrDefault(item =>
             string.Equals(item.LineId, line?.LineId, StringComparison.Ordinal));
@@ -224,9 +239,13 @@ public partial class PresentationNodeEditor : UserControl
             : dialogue.Lines.ToList().FindIndex(item =>
                 string.Equals(item.LineId, line.LineId, StringComparison.Ordinal));
 
-        // 스탯 HUD (X3): 발행 시점 설정값 + 선택 갈래 기준의 set 누적 (W35 — 문서 순서 근사 은퇴).
+        // 스탯 HUD (X3): (시뮬 시작값 반영) 발행 시점 설정값 + 유효 갈래 기준의 set 누적.
         IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
-            dialogue.Assignments.Select(assignment => (assignment.Variable, assignment.Value)),
+            dialogue.Assignments.Select(assignment => (
+                assignment.Variable,
+                _session.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
+                    ? overridden
+                    : assignment.Value)),
             branch.TakenLines
                 .SelectMany(item => item.Sets.Select(operation =>
                     (operation.Variable, operation.Operator, operation.Value)))
@@ -261,7 +280,8 @@ public partial class PresentationNodeEditor : UserControl
             // 전이(W33): 이 라인으로 넘어가는 시간 = 라인 커맨드 duration의 최댓값.
             TransitionSeconds: StageTransitions.SecondsFor(catalog, lineBinding?.Commands),
             // 소리 표시(W34-b): 정지 프레임에 없는 오디오를 ♪ 칩으로.
-            AudioCues: StageAudioCues.Of(catalog, lineBinding?.Commands)));
+            AudioCues: StageAudioCues.Of(catalog, lineBinding?.Commands),
+            AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

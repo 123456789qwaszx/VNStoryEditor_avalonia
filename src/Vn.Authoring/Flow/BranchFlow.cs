@@ -83,6 +83,24 @@ public sealed class StageBranchSelection
         _choiceByBlock.Clear();
         _conditionByBlock.Clear();
     }
+
+    /// <summary>수동 선택의 사본 — 시뮬(W36-b)이 자동 판정을 얹을 때 원본을 훼손하지 않는다.</summary>
+    public StageBranchSelection Clone()
+    {
+        var clone = new StageBranchSelection();
+
+        foreach ((string blockId, string optionLineId) in _choiceByBlock)
+        {
+            clone._choiceByBlock[blockId] = optionLineId;
+        }
+
+        foreach ((string blockId, int branchIndex) in _conditionByBlock)
+        {
+            clone._conditionByBlock[blockId] = branchIndex;
+        }
+
+        return clone;
+    }
 }
 
 /// <summary>
@@ -132,58 +150,17 @@ public static class BranchFlow
         ArgumentNullException.ThrowIfNull(selection);
 
         // 1차: 블록 구조와 커서 위치를 파악한다.
-        var blockStarts = new List<(string BlockId, bool IsChoice, List<Branch> Branches)>();
-        var blockOfLine = new (int BlockIndex, int BranchIndex)?[lines.Count];
-        (int BlockIndex, int BranchIndex)? cursorBranch = null;
+        (List<(string BlockId, bool IsChoice, List<Branch> Branches)> blockStarts,
+            (int BlockIndex, int BranchIndex)?[] blockOfLine) = BuildStructure(lines, kindOf, lineIdOf, labelOf);
 
-        int currentBlock = -1;
-        int currentBranch = -1;
+        (int BlockIndex, int BranchIndex)? cursorBranch = null;
 
         for (int index = 0; index < lines.Count; index++)
         {
-            ConditionTransitionKind? kind = kindOf(lines[index]);
-
-            switch (kind)
+            if (blockOfLine[index] is { } at && cursorLineId is not null &&
+                string.Equals(lineIdOf(lines[index]), cursorLineId, StringComparison.Ordinal))
             {
-                case ConditionTransitionKind.EndIf or ConditionTransitionKind.EndChoice:
-                    currentBlock = -1; // End 라인부터 일반 흐름
-                    break;
-
-                case ConditionTransitionKind.BeginIf or ConditionTransitionKind.BeginChoice:
-                    blockStarts.Add((
-                        lineIdOf(lines[index]),
-                        kind is ConditionTransitionKind.BeginChoice,
-                        new List<Branch> { new(lineIdOf(lines[index]), labelOf(lines[index])) }));
-                    currentBlock = blockStarts.Count - 1;
-                    currentBranch = 0;
-                    break;
-
-                case ConditionTransitionKind.BeginElseIf or ConditionTransitionKind.BeginNextOption:
-                    if (currentBlock < 0)
-                    {
-                        // 깨진 구조(시작 없는 갈래) — 새 블록으로 취급해 조용히 삼키지 않는다.
-                        blockStarts.Add((
-                            lineIdOf(lines[index]),
-                            kind is ConditionTransitionKind.BeginNextOption,
-                            new List<Branch>()));
-                        currentBlock = blockStarts.Count - 1;
-                        currentBranch = -1;
-                    }
-
-                    blockStarts[currentBlock].Branches.Add(new Branch(lineIdOf(lines[index]), labelOf(lines[index])));
-                    currentBranch = blockStarts[currentBlock].Branches.Count - 1;
-                    break;
-            }
-
-            if (currentBlock >= 0)
-            {
-                blockOfLine[index] = (currentBlock, currentBranch);
-
-                if (cursorLineId is not null &&
-                    string.Equals(lineIdOf(lines[index]), cursorLineId, StringComparison.Ordinal))
-                {
-                    cursorBranch = (currentBlock, currentBranch);
-                }
+                cursorBranch = at;
             }
         }
 
@@ -238,6 +215,70 @@ public static class BranchFlow
             .ToArray();
 
         return new Analysis<TLine>(analyzed, blocks);
+    }
+
+    /// <summary>
+    /// 평면 체인의 블록 구조 — Analyze와 조건 값 시뮬(<see cref="ConditionSimulation"/>)이
+    /// 같은 문법 해석 하나를 쓴다(사본 금지).
+    /// </summary>
+    internal static (
+        List<(string BlockId, bool IsChoice, List<Branch> Branches)> BlockStarts,
+        (int BlockIndex, int BranchIndex)?[] BlockOfLine)
+        BuildStructure<TLine>(
+            IReadOnlyList<TLine> lines,
+            Func<TLine, ConditionTransitionKind?> kindOf,
+            Func<TLine, string> lineIdOf,
+            Func<TLine, string> labelOf)
+    {
+        var blockStarts = new List<(string BlockId, bool IsChoice, List<Branch> Branches)>();
+        var blockOfLine = new (int BlockIndex, int BranchIndex)?[lines.Count];
+
+        int currentBlock = -1;
+        int currentBranch = -1;
+
+        for (int index = 0; index < lines.Count; index++)
+        {
+            ConditionTransitionKind? kind = kindOf(lines[index]);
+
+            switch (kind)
+            {
+                case ConditionTransitionKind.EndIf or ConditionTransitionKind.EndChoice:
+                    currentBlock = -1; // End 라인부터 일반 흐름
+                    break;
+
+                case ConditionTransitionKind.BeginIf or ConditionTransitionKind.BeginChoice:
+                    blockStarts.Add((
+                        lineIdOf(lines[index]),
+                        kind is ConditionTransitionKind.BeginChoice,
+                        new List<Branch> { new(lineIdOf(lines[index]), labelOf(lines[index])) }));
+                    currentBlock = blockStarts.Count - 1;
+                    currentBranch = 0;
+                    break;
+
+                case ConditionTransitionKind.BeginElseIf or ConditionTransitionKind.BeginNextOption:
+                    if (currentBlock < 0)
+                    {
+                        // 깨진 구조(시작 없는 갈래) — 새 블록으로 취급해 조용히 삼키지 않는다.
+                        blockStarts.Add((
+                            lineIdOf(lines[index]),
+                            kind is ConditionTransitionKind.BeginNextOption,
+                            new List<Branch>()));
+                        currentBlock = blockStarts.Count - 1;
+                        currentBranch = -1;
+                    }
+
+                    blockStarts[currentBlock].Branches.Add(new Branch(lineIdOf(lines[index]), labelOf(lines[index])));
+                    currentBranch = blockStarts[currentBlock].Branches.Count - 1;
+                    break;
+            }
+
+            if (currentBlock >= 0)
+            {
+                blockOfLine[index] = (currentBlock, currentBranch);
+            }
+        }
+
+        return (blockStarts, blockOfLine);
     }
 
     /// <summary>커서까지 지나온 블록만 — 아직 닿지 않은 갈래는 고를 것도 없다(칩 노출용).</summary>

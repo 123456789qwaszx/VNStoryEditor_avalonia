@@ -133,6 +133,9 @@ internal static class StageIndicators
         {
             foreach (BranchFlow.Block block in blocks)
             {
+                // 값 시뮬(W36-b)이 자동으로 판정한 블록 — 수동(칩 클릭)이 언제든 덮는다.
+                bool auto = request.AutoBranchBlocks?.Contains(block.BlockLineId) == true;
+
                 string current = block.SelectedBranch switch
                 {
                     null => "근사(전부)",
@@ -144,12 +147,14 @@ internal static class StageIndicators
 
                 var chip = new Button
                 {
-                    Content = $"{(block.IsChoice ? "선택지" : "조건")}: {current}",
+                    Content = $"{(block.IsChoice ? "선택지" : "조건")}: {current}" + (auto ? " (자동)" : string.Empty),
                     FontSize = 10,
                     Padding = new Thickness(6, 2),
                     Background = new SolidColorBrush(block.SelectedBranch is null
                         ? Color.FromArgb(40, 217, 119, 6)     // 미선택 = 근사 색
-                        : Color.FromArgb(40, 34, 197, 94))    // 선택됨 = 초록 계열
+                        : auto
+                            ? Color.FromArgb(40, 59, 130, 246) // 자동 = 파랑 계열
+                            : Color.FromArgb(40, 34, 197, 94)) // 수동 = 초록 계열
                 };
 
                 ToolTip.SetTip(chip, string.Join(
@@ -157,7 +162,7 @@ internal static class StageIndicators
                     block.Branches.Select((branch, index) =>
                         $"{(block.SelectedBranch == index ? "▶ " : "· ")}{Shorten(branch.Label, 40)}")) +
                     (block.IsChoice ? string.Empty : "\n· (전부 거짓 = 건너뜀)") +
-                    "\n클릭하면 다음 갈래로 순환합니다.");
+                    (auto ? "\n스탯 시뮬 값으로 자동 판정됨 — 클릭하면 수동 선택이 덮습니다." : "\n클릭하면 다음 갈래로 순환합니다."));
 
                 BranchFlow.Block captured = block;
                 chip.Click += (_, _) =>

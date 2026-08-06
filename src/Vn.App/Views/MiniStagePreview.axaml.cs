@@ -127,7 +127,8 @@ internal sealed record MiniStagePreviewRequest(
     Ked.Presentation.Core.StageState? CoreState = null,
     IReadOnlyList<BranchFlow.Block>? BranchBlocks = null,
     double TransitionSeconds = 0,
-    IReadOnlyList<string>? AudioCues = null);
+    IReadOnlyList<string>? AudioCues = null,
+    IReadOnlyList<string>? AutoBranchBlocks = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가

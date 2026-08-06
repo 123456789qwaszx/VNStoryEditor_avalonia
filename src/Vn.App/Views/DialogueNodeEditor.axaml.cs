@@ -156,7 +156,8 @@ public partial class DialogueNodeEditor : UserControl
             }
 
             // 갈래 트리 상태 (W36-a) — 헤더 문구용. 카드별 흐림은 RefreshBranchStates가 맡는다.
-            BranchFlow.Analysis<DialogueLine> branchAnalysis = AnalyzeBranches(script);
+            BranchFlow.Analysis<DialogueLine> branchAnalysis =
+                AnalyzeBranches(script, SimulateBranches(node, script).Effective);
             var blockOfLine = new Dictionary<string, BranchFlow.Block>(StringComparer.Ordinal);
 
             foreach (BranchFlow.Block block in branchAnalysis.Blocks)
@@ -252,15 +253,43 @@ public partial class DialogueNodeEditor : UserControl
         }
     }
 
-    /// <summary>대본 라인의 갈래 분석 — 프리뷰 폴드와 같은 선택·커서 기준(사본 금지).</summary>
-    private BranchFlow.Analysis<DialogueLine> AnalyzeBranches(DialogueScript script)
+    /// <summary>
+    /// 조건 값 시뮬 (W36-b) — 수동 선택 위에 "값이 이렇다면 이 갈래"의 자동 판정을 얹는다.
+    /// 시작값 = 등록 초기값 + 세션 시뮬 오버라이드. 식은 노드 조건·게임 정의 조건에서 찾는다.
+    /// </summary>
+    private ConditionSimulation.Result SimulateBranches(DialogueNode node, DialogueScript script)
+    {
+        var initial = RegisteredVariables(node)
+            .Select(assignment => (
+                assignment.Variable,
+                Value: _session!.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
+                    ? overridden
+                    : assignment.Value))
+            .ToList();
+
+        return ConditionSimulation.Decide(
+            script.Lines,
+            line => line.Transition?.Kind,
+            line => line.LineId,
+            line => line.Transition?.ConditionId is { } conditionId
+                ? _session!.Project.FindCondition(conditionId)?.Expression
+                    ?? _session.Definition.Conditions.FirstOrDefault(condition =>
+                        string.Equals(condition.Id, conditionId, StringComparison.Ordinal))?.Expression
+                : null,
+            line => line.Sets.Select(operation => (operation.Variable, operation.Operator, operation.Value)),
+            initial,
+            _session!.BranchSelection);
+    }
+
+    /// <summary>대본 라인의 갈래 분석 — 프리뷰 폴드와 같은 유효 선택(수동+자동)·커서 기준(사본 금지).</summary>
+    private BranchFlow.Analysis<DialogueLine> AnalyzeBranches(DialogueScript script, StageBranchSelection effective)
     {
         return BranchFlow.Analyze(
             script.Lines,
             line => line.Transition?.Kind,
             line => line.LineId,
             line => line.Text,
-            _session!.BranchSelection,
+            effective,
             _selectedLineId);
     }
 
@@ -277,7 +306,8 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
-        BranchFlow.Analysis<DialogueLine> analysis = AnalyzeBranches(script);
+        BranchFlow.Analysis<DialogueLine> analysis =
+            AnalyzeBranches(script, SimulateBranches(node, script).Effective);
 
         _branchStarts.Clear();
 
@@ -473,14 +503,17 @@ public partial class DialogueNodeEditor : UserControl
             : script.Lines.ToList().FindIndex(item =>
                 string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal));
 
-        // 스탯 HUD (X3): 작업 중 문서 기준 — 등록 초기값 + 선택 갈래 기준의 set 누적
-        // (W35 — 문서 순서 근사 은퇴. 선택 상태는 발행 쪽과 같은 LineId 키를 쓴다).
+        // 조건 값 시뮬 (W36-b): 수동 선택 + 값 기반 자동 판정을 합친 유효 선택을 쓴다.
+        ConditionSimulation.Result simulation = SimulateBranches(node, script);
+
+        // 스탯 HUD (X3): 작업 중 문서 기준 — (시뮬 시작값 반영) 초기값 + 선택 갈래 기준의
+        // set 누적 (W35 — 문서 순서 근사 은퇴. 선택 상태는 발행 쪽과 같은 LineId 키를 쓴다).
         BranchFlow.Analysis<DialogueLine> scriptAnalysis = BranchFlow.Analyze(
             script.Lines,
             line => line.Transition?.Kind,
             line => line.LineId,
             line => line.Text,
-            _session.BranchSelection,
+            simulation.Effective,
             selected?.LineId);
 
         var setsUpToLine = new List<(string Variable, SetOperatorKind Operator, string Value)>();
@@ -501,7 +534,11 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
-            RegisteredVariables(node).Select(assignment => (assignment.Variable, assignment.Value)),
+            RegisteredVariables(node).Select(assignment => (
+                assignment.Variable,
+                _session.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
+                    ? overridden
+                    : assignment.Value)),
             setsUpToLine);
 
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다.
@@ -530,7 +567,8 @@ public partial class DialogueNodeEditor : UserControl
                 LineCount: script.Lines.Count,
                 Stats: stats,
                 ChoiceOptions: choices,
-                BranchBlocks: scriptBlocks));
+                BranchBlocks: scriptBlocks,
+                AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
             return;
         }
 
@@ -540,9 +578,9 @@ public partial class DialogueNodeEditor : UserControl
             ? "이 줄은 공급된 연출이 읽은 발행본에 없습니다. 문서 전체 기준 상태를 표시합니다."
             : null;
 
-        // 갈래 인식 (W35) — 선택된 갈래의 라인만 접는다. 미선택 블록은 문서 순서 근사 + 표시.
+        // 갈래 인식 (W35) — 유효 선택(수동+자동)된 갈래의 라인만 접는다. 미결정 블록은 근사 + 표시.
         BranchAwareLines.Result branch = BranchAwareLines.UpTo(
-            export.Dialogue, export.Presentation.Bindings, selected?.LineId, _session.BranchSelection);
+            export.Dialogue, export.Presentation.Bindings, selected?.LineId, simulation.Effective);
 
         CoreStageFoldResult fold = CoreStageFold.Fold(
             PresentationCommandCatalog.For(_session.Definition),
@@ -578,7 +616,8 @@ public partial class DialogueNodeEditor : UserControl
             AudioCues: StageAudioCues.Of(
                 PresentationCommandCatalog.For(_session.Definition),
                 export.Presentation.Bindings.FirstOrDefault(item =>
-                    string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands)));
+                    string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands),
+            AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
     }
 
     /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>

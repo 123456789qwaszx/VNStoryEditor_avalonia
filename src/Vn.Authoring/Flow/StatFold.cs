@@ -37,22 +37,33 @@ public static class StatFold
 
         foreach ((string variable, SetOperatorKind op, string value) in operations)
         {
-            // 등록되지 않은 변수는 스탯이 아니다 — HUD 범위 밖(set 행에서는 보인다).
-            if (!values.TryGetValue(variable, out string? current))
-            {
-                continue;
-            }
-
-            values[variable] = op switch
-            {
-                SetOperatorKind.Assign => value,
-                SetOperatorKind.Add => ApplyNumeric(current, value, static (a, b) => a + b),
-                SetOperatorKind.Subtract => ApplyNumeric(current, value, static (a, b) => a - b),
-                _ => current
-            };
+            Apply(values, variable, op, value);
         }
 
         return order.Select(variable => new StatValue(variable, Format(values[variable]))).ToList();
+    }
+
+    /// <summary>
+    /// set 하나를 값 사전에 적용한다 — HUD 누적과 조건 값 시뮬(W36-b)이 같은 연산 하나를
+    /// 쓴다(사본 금지). 등록되지 않은 변수는 스탯이 아니다 — HUD 범위 밖(set 행에서는 보인다).
+    /// </summary>
+    public static void Apply(
+        Dictionary<string, string> values, string variable, SetOperatorKind op, string value)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        if (!values.TryGetValue(variable, out string? current))
+        {
+            return;
+        }
+
+        values[variable] = op switch
+        {
+            SetOperatorKind.Assign => value,
+            SetOperatorKind.Add => ApplyNumeric(current, value, static (a, b) => a + b),
+            SetOperatorKind.Subtract => ApplyNumeric(current, value, static (a, b) => a - b),
+            _ => current
+        };
     }
 
     /// <summary>수치가 아니면(누적 불가) 마지막 원문을 그대로 둔다 — 조용히 0으로 만들지 않는다.</summary>

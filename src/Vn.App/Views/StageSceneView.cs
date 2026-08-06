@@ -340,6 +340,104 @@ internal sealed class StageSceneView : UserControl
     /// 이 라인의 소리 커맨드 ♪ 칩 (W34-b) — 정지 프레임에 그릴 것이 없는 오디오가
     /// 조용히 사라지지 않게 좌측에 알린다(규칙 14의 소리 판).
     /// </summary>
+    /// <summary>
+    /// 시뮬 시작값 편집 (W36-b) — "이 변수가 이 값으로 시작한다고 치자". 뷰 상태라 저장되지
+    /// 않고, 빈 값이면 등록 초기값으로 돌아간다. 적용해도 닫히지 않는다(우클릭 닫기).
+    /// </summary>
+    private void ShowSimulationFlyout(IReadOnlyList<StatFold.StatValue> stats)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        ShowManipulationFlyout((host, _, rebuild) =>
+        {
+            host.MinWidth = 210;
+            host.Children.Add(new TextBlock
+            {
+                Text = "시뮬 시작값 — 조건 갈래를 자동 판정합니다 (우클릭으로 닫기)",
+                FontSize = 10,
+                Opacity = 0.7,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 230
+            });
+
+            foreach (StatFold.StatValue stat in stats)
+            {
+                string variable = stat.Variable;
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*") };
+
+                var label = new TextBlock
+                {
+                    Text = variable,
+                    FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                var input = new TextBox
+                {
+                    Text = _session.SimulationValues.TryGetValue(variable, out string? overridden)
+                        ? overridden
+                        : string.Empty,
+                    PlaceholderText = "등록 초기값",
+                    FontSize = 11,
+                    MinHeight = 24
+                };
+
+                void Commit()
+                {
+                    string text = input.Text?.Trim() ?? string.Empty;
+
+                    if (text.Length == 0)
+                    {
+                        _session.SimulationValues.Remove(variable);
+                    }
+                    else
+                    {
+                        _session.SimulationValues[variable] = text;
+                    }
+
+                    BranchSelectionChanged?.Invoke(); // 갈래 판정·HUD가 다시 계산된다
+                    rebuild();
+                }
+
+                input.KeyDown += (_, keyArgs) =>
+                {
+                    if (keyArgs.Key == Key.Enter)
+                    {
+                        Commit();
+                    }
+                };
+                input.LostFocus += (_, _) => Commit();
+
+                Grid.SetColumn(label, 0);
+                Grid.SetColumn(input, 1);
+                row.Children.Add(label);
+                row.Children.Add(input);
+                host.Children.Add(row);
+            }
+
+            if (_session.SimulationValues.Count > 0)
+            {
+                var reset = new Button
+                {
+                    Content = "시뮬 값 전부 지우기",
+                    FontSize = 10,
+                    Padding = new Thickness(8, 3),
+                    HorizontalAlignment = HorizontalAlignment.Right
+                };
+                reset.Click += (_, _) =>
+                {
+                    _session.SimulationValues.Clear();
+                    BranchSelectionChanged?.Invoke();
+                    rebuild();
+                };
+                host.Children.Add(reset);
+            }
+        });
+    }
+
     private void RenderAudioCues(MiniStagePreviewRequest request, double height, double em)
     {
         if (request.AudioCues is not { Count: > 0 } cues)
@@ -784,6 +882,32 @@ internal sealed class StageSceneView : UserControl
 
         Add(toggle, new StageRect(width - em * 3.4, em * 0.5, em * 2.9, em * 1.2));
 
+        // 조건 값 시뮬 (W36-b) — 시작값을 바꿔 "이 값이면 어느 갈래인가"를 본다.
+        bool simActive = _session?.SimulationValues.Count > 0;
+        var simChip = new Border
+        {
+            Background = new SolidColorBrush(simActive
+                ? Color.FromArgb(190, 30, 64, 175)
+                : Color.FromArgb(150, 0, 0, 0)),
+            CornerRadius = new CornerRadius(em * 0.2),
+            Padding = new Thickness(em * 0.35, em * 0.12),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = new TextBlock
+            {
+                Text = simActive ? "시뮬 ●" : "시뮬",
+                FontSize = em * 0.6,
+                Foreground = Brushes.White,
+                Opacity = 0.9
+            }
+        };
+        ToolTip.SetTip(simChip, "변수 시작값을 바꿔 조건 갈래 자동 판정을 봅니다.");
+        simChip.PointerPressed += (_, args) =>
+        {
+            UiGuard.Run(_session, "값 시뮬", () => ShowSimulationFlyout(stats));
+            args.Handled = true;
+        };
+        Add(simChip, new StageRect(width - em * 6.6, em * 0.5, em * 2.9, em * 1.2));
+
         if (!_statsVisible)
         {
             return;
@@ -803,9 +927,10 @@ internal sealed class StageSceneView : UserControl
 
         rows.Children.Add(new TextBlock
         {
-            Text = _request?.State.PassedBranchApproximation == true
-                ? "미선택 갈래 있음 — 그 구간은 문서 순서 근사"
-                : "선택된 갈래 기준",
+            Text = (_request?.State.PassedBranchApproximation == true
+                    ? "미선택 갈래 있음 — 그 구간은 문서 순서 근사"
+                    : "선택된 갈래 기준") +
+                (_session?.SimulationValues.Count > 0 ? " · 시뮬 시작값 적용 중" : string.Empty),
             FontSize = em * 0.45,
             Foreground = Brushes.White,
             Opacity = 0.55
