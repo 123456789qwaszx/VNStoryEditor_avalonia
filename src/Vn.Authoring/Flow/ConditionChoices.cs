@@ -72,18 +72,22 @@ public static class ConditionChoices
     public const string InheritInsideChoiceLabel = "현재 옵션 유지";
     public const string NextOptionLabel = "다음 옵션 (이 줄이 라벨)";
     public const string EndChoiceLabel = "선택지 끝";
+    public const string EndChoiceAndIfLabel = "선택지 끝 + 조건 종료";
 
     /// <summary>
     /// <paramref name="preceding"/>는 이 줄의 전환을 적용하기 전의 갈래다.
     /// null이면 조건 바깥이다. 현재 전환이 연결 해제로 인해 사용할 수 없게 되었더라도
     /// <paramref name="currentTransition"/>을 그대로 선택할 수 있도록 목록에 보존한다.
     /// </summary>
+    /// <param name="choiceInsideCondition">이 줄의 선택 블록이 조건 갈래 안에 있는가 (W54) —
+    /// 참이면 "선택지 끝 + 조건 종료"(한 줄 결합 종료, W55)를 함께 제시한다.</param>
     public static IReadOnlyList<ConditionChoice> For(
         ConditionBranch? preceding,
         DialogueNode dialogue,
         StoryProject project,
         GameDefinition? definition = null,
-        LineConditionTransition? currentTransition = null)
+        LineConditionTransition? currentTransition = null,
+        bool choiceInsideCondition = false)
     {
         ArgumentNullException.ThrowIfNull(dialogue);
         ArgumentNullException.ThrowIfNull(project);
@@ -111,10 +115,16 @@ public static class ConditionChoices
         }
         else if (preceding.IsChoice)
         {
-            // 선택 블록 안이다. 조건 항목은 제시하지 않는다 — 두 체인의 중첩은 지원하지 않는다.
+            // 선택 블록 안이다. 새 조건을 여는 항목은 제시하지 않는다(선택지 안 조건 비지원).
             choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritInsideChoiceLabel));
             choices.Add(new ConditionChoice(ConditionChoiceKind.BeginNextOption, null, NextOptionLabel));
             choices.Add(new ConditionChoice(ConditionChoiceKind.EndChoice, null, EndChoiceLabel));
+
+            if (choiceInsideCondition)
+            {
+                // 조건 안 선택지(W54)의 끝은 조건 종료와 한 줄로 겹칠 수 있다 (W55).
+                choices.Add(new ConditionChoice(ConditionChoiceKind.EndIf, null, EndChoiceAndIfLabel));
+            }
         }
         else
         {

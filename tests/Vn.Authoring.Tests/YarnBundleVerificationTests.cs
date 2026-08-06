@@ -290,6 +290,57 @@ public class YarnBundleVerificationTests
     }
 
     [Fact]
+    public void 결합_종료_번들도_실컴파일된다()
+    {
+        // W55 — 조건 종료 한 줄이 선택지도 닫는다: Pres에서 선택 합성 조건이
+        // 조건 사본보다 먼저 닫혀(endif 두 개) 실제 컴파일을 통과해야 한다.
+        var sample = new Sample();
+        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "$favor >= 5");
+
+        sample.Line("시작.");
+        sample.Line("조건 시작", LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        sample.Line("사과", LineConditionTransition.BeginChoice());
+        string body = sample.Line("사과 본문");
+        sample.Line("포도", LineConditionTransition.BeginNextOption());
+        sample.Line("포도 본문");
+        sample.Line("모두 끝", LineConditionTransition.EndIf()); // 결합 종료 (W55)
+        sample.Line("바깥.");
+
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+        PresentationNode node = sample.Editor.AddPresentationNode(sample.File.Id, name: "결합 연출");
+        sample.Editor.SetPresentationSource(node.Id, dialogue.Identity.ResultId, dialogue.Identity.Version);
+        sample.Editor.AddPresentationCommand(node.Id, body, "camera.closeup");
+        PresentationResult presentation = sample.Editor.PublishPresentation(node.Id).Result;
+
+        YarnBundle bundle = YarnBundleEmitter.Emit(
+            dialogue, presentation, sample.Project, Sample.Definition, bundleName: "combined_ep");
+
+        string pres = bundle.Files.Single(file => file.FileName == "Pres_combined_ep.yarn").Text;
+        Assert.Equal(2, Regex.Matches(pres, Regex.Escape("<<endif>>")).Count);
+
+        string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Compile.{Guid.NewGuid():N}");
+
+        try
+        {
+            YarnBundleEmitter.WriteBundles(new[] { bundle }, directory);
+            AnalysisReport report = Analyze(directory);
+
+            IReadOnlyList<VnDiagnostic> errors = report.Diagnostics
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
+                Environment.NewLine,
+                errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void 라벨_수정_재발행_재출력에서_OptionId와_순서와_동기_변수는_불변이다()
     {
         ChoiceTests.ChoiceWorld world = ChoiceTests.BuildChoiceWorld();

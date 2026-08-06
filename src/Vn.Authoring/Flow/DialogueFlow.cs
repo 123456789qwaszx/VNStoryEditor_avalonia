@@ -44,13 +44,15 @@ public sealed record ConditionBranch(
 /// </param>
 /// <param name="Depth">감싼 블록 수 — 바깥 0, 조건 또는 선택 안 1, 조건 안 선택지(W54) 안 2.</param>
 /// <param name="IsBranchExit">이 줄이 자기 갈래의 마지막이고 그 갈래에 출구가 있는지.</param>
+/// <param name="PrecedingDepth">전환 적용 전의 감싼 블록 수 — 드롭다운이 "조건 안 선택지인가"를 아는 근거 (W55).</param>
 public sealed record ResolvedLine(
     DialogueLine Line,
     int Index,
     int Depth,
     ConditionBranch? Branch,
     ConditionBranch? PrecedingBranch,
-    bool IsBranchExit);
+    bool IsBranchExit,
+    int PrecedingDepth = 0);
 
 public enum FlowProblemKind
 {

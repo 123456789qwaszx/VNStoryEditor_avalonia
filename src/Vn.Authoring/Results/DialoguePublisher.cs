@@ -234,7 +234,8 @@ public static class DialoguePublisher
             choiceOpen = line.Transition?.Kind switch
             {
                 ConditionTransitionKind.BeginChoice or ConditionTransitionKind.BeginNextOption => true,
-                ConditionTransitionKind.EndChoice => false,
+                // 조건 종료는 열린 선택지도 함께 닫는다 (W55) — 합성기가 암묵 ChoiceEnd를 낸다.
+                ConditionTransitionKind.EndChoice or ConditionTransitionKind.EndIf => false,
                 _ => choiceOpen
             };
         }

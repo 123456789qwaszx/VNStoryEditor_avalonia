@@ -1581,7 +1581,9 @@ public partial class DialogueNodeEditor : UserControl
             node,
             _session!.Project,
             _session.Definition,
-            resolved.Line.Transition);
+            resolved.Line.Transition,
+            // 조건 안 선택지(깊이 2)면 "선택지 끝 + 조건 종료"도 제시한다 (W55).
+            choiceInsideCondition: resolved.PrecedingBranch is { IsChoice: true } && resolved.PrecedingDepth == 2);
 
         var box = new ComboBox
         {

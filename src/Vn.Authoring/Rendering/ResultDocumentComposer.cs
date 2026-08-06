@@ -153,7 +153,10 @@ public static class ResultDocumentComposer
         (RenderSourceReference Source, string Target, bool IsChoice)? pendingBranchJump = null;
 
         // W54: 조건 갈래 안 선택 블록 — 들여쓰기는 (조건 열림 ? 1 : 0) + (옵션 본문 ? 1 : 0).
+        // W55: 조건 종료는 열린 선택지도 함께 닫는다 — Pres 합성 조건을 잃지 않으려면
+        // 암묵 ChoiceEnd를 조건 종료보다 먼저 내야 한다.
         bool conditionOpen = false;
+        bool choiceOpen = false;
 
         foreach (DialogueResultLine line in dialogue.Lines)
         {
@@ -195,6 +198,7 @@ public static class ResultDocumentComposer
                     case ConditionTransitionKind.BeginChoice:
                     case ConditionTransitionKind.BeginNextOption:
                         isOptionLabel = true;
+                        choiceOpen = true;
                         depth = conditionOpen ? 2 : 1; // 옵션 본문 깊이
 
                         if (transition.Kind == ConditionTransitionKind.BeginChoice)
@@ -231,6 +235,7 @@ public static class ResultDocumentComposer
                         break;
 
                     case ConditionTransitionKind.EndChoice:
+                        choiceOpen = false;
                         depth = conditionOpen ? 1 : 0; // 조건 안이었다면 그 갈래로 돌아간다 (W54)
 
                         if (showDialogue)
@@ -246,6 +251,19 @@ public static class ResultDocumentComposer
                         break;
 
                     default:
+                        // 조건 종료가 선택지를 함께 닫는다 (W55) — Pres의 합성 조건($__ch)이
+                        // 조건 사본보다 먼저 닫히도록 암묵 ChoiceEnd를 낸다.
+                        if (choiceOpen && showDialogue)
+                        {
+                            segments.Add(new RenderedSegment(
+                                Id: $"choice:{line.LineId}:implicit-end",
+                                Kind: RenderedSegmentKind.ChoiceEnd,
+                                Layer: DocumentLayer.Dialogue,
+                                Source: lineSource,
+                                ChoiceBlockOrdinal: choiceBlockOrdinal));
+                        }
+
+                        choiceOpen = false;
                         conditionOpen = transition.Kind is not ConditionTransitionKind.EndIf;
                         depth = conditionOpen ? 1 : 0;
 

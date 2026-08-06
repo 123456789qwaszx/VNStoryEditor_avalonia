@@ -77,16 +77,49 @@ public class ChoiceTests
     [Fact]
     public void 선택이_닫히기_전의_조건_전환은_여전히_MixedChain이다()
     {
+        // 조건 종료(EndIf)는 W55로 선택지를 함께 닫지만, elseif 같은 갈래 전환은 여전히 위반이다.
         var sample = new Sample();
         sample.Line("조건 시작", LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Line("선택 시작", LineConditionTransition.BeginChoice());
-        sample.Line("끝", LineConditionTransition.EndIf()); // 선택지 끝 없이 조건 종료
+        sample.Line("끝", LineConditionTransition.BeginElseIf(sample.ConditionB.Id)); // 선택지 끝 없이 갈래 전환
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         Assert.Contains(flow.Problems, problem => problem.Kind == FlowProblemKind.MixedChain);
 
         Assert.Throws<Vn.Authoring.Editing.PublishRejectedException>(
             () => sample.Editor.PublishDialogue(sample.Dialogue.Id));
+    }
+
+    [Fact]
+    public void 조건_종료_한_줄이_선택지도_함께_닫는다()
+    {
+        // W55 (소유자 지시): 선택지 끝과 조건 끝을 한 줄로 겹칠 수 있다.
+        var sample = new Sample();
+        sample.Line("조건 시작", LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        sample.Line("사과", LineConditionTransition.BeginChoice());
+        string body = sample.Line("사과 본문");
+        string combined = sample.Line("모두 끝", LineConditionTransition.EndIf());
+        sample.Line("바깥");
+
+        DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
+
+        Assert.Empty(flow.Problems);
+        Assert.Equal(0, flow.Lines.Single(line => line.Line.LineId == combined).Depth); // 둘 다 닫혔다
+
+        // 중첩 선택지 안의 드롭다운에는 결합 종료 항목이 제시된다.
+        ResolvedLine inside = flow.Lines.Single(line => line.Line.LineId == combined);
+        Assert.True(inside.PrecedingBranch is { IsChoice: true } && inside.PrecedingDepth == 2);
+        IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(
+            inside.PrecedingBranch,
+            sample.Dialogue,
+            sample.Project,
+            choiceInsideCondition: true);
+        Assert.Contains(choices, choice =>
+            choice.Kind == ConditionChoiceKind.EndIf &&
+            choice.Label == ConditionChoices.EndChoiceAndIfLabel);
+
+        sample.Editor.PublishDialogue(sample.Dialogue.Id); // 발행도 막히지 않는다
+        _ = body;
     }
 
     [Fact]

@@ -71,8 +71,8 @@ public static class ConditionFlowResolver
                 $"대본 '{script.ScriptId}'를 프로젝트에서 찾을 수 없습니다."));
         }
 
-        // 줄마다 (전환 적용 뒤 갈래, 적용 전 갈래, 깊이). 아직 완성되지 않은 갈래를 가리킨다.
-        var perLine = new (BranchBuilder? Current, BranchBuilder? Preceding, int Depth)[script.Lines.Count];
+        // 줄마다 (전환 적용 뒤 갈래, 적용 전 갈래, 깊이, 적용 전 깊이). 아직 완성되지 않은 갈래를 가리킨다.
+        var perLine = new (BranchBuilder? Current, BranchBuilder? Preceding, int Depth, int PrecedingDepth)[script.Lines.Count];
 
         // W54: 조건 갈래 <b>안의</b> 선택지를 지원한다 — 바깥 조건 하나 + 안 선택지 하나의
         // 두 칸 스택이다. active = 안쪽(선택지가 열려 있으면 그것, 아니면 조건).
@@ -87,19 +87,28 @@ public static class ConditionFlowResolver
             DialogueLine line = script.Lines[index];
             BranchBuilder? active = choiceActive ?? conditionActive;
             BranchBuilder? preceding = active;
+            int precedingDepth = (conditionActive is null ? 0 : 1) + (choiceActive is null ? 0 : 1);
 
             if (line.Transition is { } transition)
             {
-                // 선택 블록 안에서의 조건 전환은 여전히 중첩 위반이다 — 선택을 먼저 닫아야 한다.
                 if (choiceActive is not null && !transition.IsChoiceKind)
                 {
-                    problems.Add(new FlowProblem(
-                        FlowProblemKind.MixedChain,
-                        line.LineId,
-                        "선택 블록이 닫히기 전에 조건 전환이 나왔습니다. 선택지 끝을 먼저 넣으세요."));
-                    choiceActive = null;
+                    if (transition.Kind is ConditionTransitionKind.EndIf)
+                    {
+                        // 조건 종료는 열린 선택지도 함께 닫는다 (W55) — 한 줄로 둘 다 끝낸다.
+                        choiceActive = null;
+                    }
+                    else
+                    {
+                        // 그 밖의 조건 전환(elseif 등)은 여전히 중첩 위반 — 선택을 먼저 닫아야 한다.
+                        problems.Add(new FlowProblem(
+                            FlowProblemKind.MixedChain,
+                            line.LineId,
+                            "선택 블록이 닫히기 전에 조건 전환이 나왔습니다. 선택지 끝을 먼저 넣으세요."));
+                        choiceActive = null;
+                    }
                 }
-                // 반대 방향(조건 안 선택 전환)은 이제 정식 구성이다 (W54) — 문제로 알리지 않는다.
+                // 반대 방향(조건 안 선택 전환)은 정식 구성이다 (W54) — 문제로 알리지 않는다.
 
                 active = choiceActive ?? conditionActive;
 
@@ -241,7 +250,8 @@ public static class ConditionFlowResolver
             perLine[index] = (
                 choiceActive ?? conditionActive,
                 preceding,
-                (conditionActive is null ? 0 : 1) + (choiceActive is null ? 0 : 1));
+                (conditionActive is null ? 0 : 1) + (choiceActive is null ? 0 : 1),
+                precedingDepth);
         }
 
         IReadOnlyList<ConditionBranch> branches = Complete(node, builders);
@@ -251,7 +261,7 @@ public static class ConditionFlowResolver
 
         for (int index = 0; index < script.Lines.Count; index++)
         {
-            (BranchBuilder? current, BranchBuilder? preceding, int depth) = perLine[index];
+            (BranchBuilder? current, BranchBuilder? preceding, int depth, int precedingDepth) = perLine[index];
 
             ConditionBranch? branch = current is null ? null : byOpenLine[current.OpenLineId];
             ConditionBranch? before = preceding is null ? null : byOpenLine[preceding.OpenLineId];
@@ -262,7 +272,8 @@ public static class ConditionFlowResolver
                 depth,
                 branch,
                 before,
-                branch is not null && branch.HasExit && branch.LastLineIndex == index));
+                branch is not null && branch.HasExit && branch.LastLineIndex == index,
+                precedingDepth));
         }
 
         AddOrphanProblems(script, problems);
