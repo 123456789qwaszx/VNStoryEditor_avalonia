@@ -6,7 +6,7 @@
                 Padding="12,8"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,1,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
                 <ToggleButton Grid.Column="0"
                               x:Name="CollapseToggle"
                               IsChecked="True"
@@ -31,6 +31,12 @@
                         Padding="6,2"
                         Margin="0,0,4,0" />
                 <Button Grid.Column="4"
+                        x:Name="TuningButton"
+                        Content="튜닝…"
+                        FontSize="10"
+                        Padding="6,2"
+                        Margin="0,0,4,0" />
+                <Button Grid.Column="5"
                         x:Name="RefreshButton"
                         Content="새로 고침"
                         FontSize="10"

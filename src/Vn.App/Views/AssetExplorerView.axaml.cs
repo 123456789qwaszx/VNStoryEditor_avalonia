@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
 
@@ -35,6 +36,8 @@ public partial class AssetExplorerView : UserControl
         });
         // 에셋 루트 변경의 상시 진입점 (X8 — 프리뷰 위 버튼을 걷어낸 자리).
         RootsButton.Click += (_, _) => UiGuard.Run(_session, "에셋 폴더 설정", ShowRootsFlyout);
+        // 튜닝 관리의 상시 진입점 (W46) — 기본 생성·기존 폴더 연결.
+        TuningButton.Click += (_, _) => UiGuard.Run(_session, "튜닝 설정", ShowTuningFlyout);
         CollapseToggle.IsCheckedChanged += (_, _) =>
         {
             TreeScroll.IsVisible = CollapseToggle.IsChecked == true;
@@ -142,6 +145,99 @@ public partial class AssetExplorerView : UserControl
         panel.Children.Add(ConfigureRow("초상화 폴더 지정…", backgrounds: false));
 
         new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(RootsButton);
+    }
+
+    /// <summary>
+    /// 튜닝 관리 팝오버 (W46) — 현재 상태와 두 진입점.
+    /// [기본 튜닝 생성] = 앱 내장 실측 덤프 스냅샷을 프로젝트 옆 규약 폴더에 쓴다(기존 불가침).
+    /// [튜닝 폴더 연결…] = 갖고 있는 ExportedTuning 폴더를 골라 규약 자리로 복사한다.
+    /// </summary>
+    private void ShowTuningFlyout()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        RuntimeTuningLibrary tuning = _session.TuningLibrary;
+        var panel = new StackPanel { Spacing = 4, MinWidth = 260, MaxWidth = 340 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"상태: {tuning.Summary}",
+            FontSize = 10,
+            Opacity = 0.75,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        if (tuning.Directory is { } directory)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = directory,
+                FontSize = 9,
+                Opacity = 0.55,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var create = new Button
+        {
+            Content = "기본 튜닝 생성",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        ToolTip.SetTip(create, "앱에 내장된 기본값(런타임 실측 덤프)으로 프로젝트 옆 ExportedTuning 폴더를 만듭니다. 이미 있으면 덮어쓰지 않습니다.");
+        create.Click += (_, _) => UiGuard.Run(_session, "기본 튜닝 생성", () =>
+        {
+            _session.CreateDefaultTuning();
+            Rebuild();
+        });
+        panel.Children.Add(create);
+
+        var connect = new Button
+        {
+            Content = "튜닝 폴더 연결…",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        ToolTip.SetTip(connect, "갖고 있는 ExportedTuning 폴더를 골라 프로젝트 옆으로 복사합니다. 같은 파일은 덮어씁니다.");
+        connect.Click += async (_, _) => await UiGuard.RunAsync(_session, "튜닝 폴더 연결", async () =>
+        {
+            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanPickFolder: true } storage)
+            {
+                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
+                new FolderPickerOpenOptions
+                {
+                    Title = "연결할 튜닝 폴더 (ExportedTuning)",
+                    AllowMultiple = false
+                });
+
+            if (folders.Count > 0 && folders[0].TryGetLocalPath() is { } picked)
+            {
+                _session.ConnectTuningFolder(picked);
+                Rebuild();
+            }
+        });
+        panel.Children.Add(connect);
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "튜닝은 게임 화면의 실측 배치값입니다. 없으면 프리뷰 좌표가 근사로 표시됩니다.",
+            FontSize = 9,
+            Opacity = 0.5,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+
+        new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(TuningButton);
     }
 
     /// <summary>빈 상태는 기능 잠금이 아니라 안내다 — 다음 할 일과 이동 버튼을 준다.</summary>

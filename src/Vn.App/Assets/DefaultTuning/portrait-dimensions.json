@@ -1,0 +1,291 @@
+{
+    "entries": [
+        {
+            "character": "harin",
+            "variant": "harin_a",
+            "emotion": "01",
+            "width": 1647.0,
+            "height": 2048.0
+        },
+        {
+            "character": "jineunha",
+            "variant": "jineunha_a",
+            "emotion": "01",
+            "width": 174.0,
+            "height": 312.0
+        },
+        {
+            "character": "jineunha",
+            "variant": "jineunha_a",
+            "emotion": "02",
+            "width": 174.0,
+            "height": 312.0
+        },
+        {
+            "character": "jineunha",
+            "variant": "jineunha_a",
+            "emotion": "03",
+            "width": 174.0,
+            "height": 312.0
+        },
+        {
+            "character": "jineunha",
+            "variant": "jineunha_a",
+            "emotion": "04",
+            "width": 174.0,
+            "height": 312.0
+        },
+        {
+            "character": "jineunha",
+            "variant": "jineunha_a",
+            "emotion": "05",
+            "width": 174.0,
+            "height": 312.0
+        },
+        {
+            "character": "jineunha",
+            "variant": "jineunha_a",
+            "emotion": "06",
+            "width": 174.0,
+            "height": 312.0
+        },
+        {
+            "character": "kasmi",
+            "variant": "kasmi_a",
+            "emotion": "01",
+            "width": 1647.0,
+            "height": 2048.0
+        },
+        {
+            "character": "leebyeol",
+            "variant": "leebyeol_a",
+            "emotion": "01",
+            "width": 166.0,
+            "height": 293.0
+        },
+        {
+            "character": "leebyeol",
+            "variant": "leebyeol_a",
+            "emotion": "02",
+            "width": 166.0,
+            "height": 293.0
+        },
+        {
+            "character": "leebyeol",
+            "variant": "leebyeol_a",
+            "emotion": "03",
+            "width": 166.0,
+            "height": 293.0
+        },
+        {
+            "character": "leebyeol",
+            "variant": "leebyeol_a",
+            "emotion": "04",
+            "width": 166.0,
+            "height": 293.0
+        },
+        {
+            "character": "leebyeol",
+            "variant": "leebyeol_a",
+            "emotion": "05",
+            "width": 166.0,
+            "height": 293.0
+        },
+        {
+            "character": "leebyeol",
+            "variant": "leebyeol_a",
+            "emotion": "06",
+            "width": 166.0,
+            "height": 293.0
+        },
+        {
+            "character": "moonyujeong",
+            "variant": "moonyujeong_a",
+            "emotion": "01",
+            "width": 183.0,
+            "height": 288.0
+        },
+        {
+            "character": "moonyujeong",
+            "variant": "moonyujeong_a",
+            "emotion": "02",
+            "width": 183.0,
+            "height": 288.0
+        },
+        {
+            "character": "moonyujeong",
+            "variant": "moonyujeong_a",
+            "emotion": "03",
+            "width": 183.0,
+            "height": 288.0
+        },
+        {
+            "character": "moonyujeong",
+            "variant": "moonyujeong_a",
+            "emotion": "04",
+            "width": 183.0,
+            "height": 288.0
+        },
+        {
+            "character": "moonyujeong",
+            "variant": "moonyujeong_a",
+            "emotion": "05",
+            "width": 183.0,
+            "height": 288.0
+        },
+        {
+            "character": "moonyujeong",
+            "variant": "moonyujeong_a",
+            "emotion": "06",
+            "width": 183.0,
+            "height": 288.0
+        },
+        {
+            "character": "npc",
+            "variant": "npc_a",
+            "emotion": "01",
+            "width": 555.0,
+            "height": 2048.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "01",
+            "width": 315.0,
+            "height": 662.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "02",
+            "width": 237.0,
+            "height": 548.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "03",
+            "width": 237.0,
+            "height": 548.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "04",
+            "width": 237.0,
+            "height": 548.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "05",
+            "width": 237.0,
+            "height": 548.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "06",
+            "width": 237.0,
+            "height": 548.0
+        },
+        {
+            "character": "parkeunseol",
+            "variant": "parkeunseol_a",
+            "emotion": "07",
+            "width": 237.0,
+            "height": 548.0
+        },
+        {
+            "character": "sigure",
+            "variant": "sigure_a",
+            "emotion": "01",
+            "width": 1647.0,
+            "height": 2048.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_a",
+            "emotion": "01",
+            "width": 378.0,
+            "height": 658.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_a",
+            "emotion": "02",
+            "width": 389.0,
+            "height": 646.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_a",
+            "emotion": "03",
+            "width": 389.0,
+            "height": 646.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_a",
+            "emotion": "04",
+            "width": 389.0,
+            "height": 646.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_a",
+            "emotion": "05",
+            "width": 389.0,
+            "height": 646.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_a",
+            "emotion": "06",
+            "width": 389.0,
+            "height": 646.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_b",
+            "emotion": "01",
+            "width": 425.0,
+            "height": 746.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_b",
+            "emotion": "02",
+            "width": 373.0,
+            "height": 607.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_b",
+            "emotion": "03",
+            "width": 373.0,
+            "height": 607.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_b",
+            "emotion": "04",
+            "width": 373.0,
+            "height": 607.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_b",
+            "emotion": "05",
+            "width": 373.0,
+            "height": 607.0
+        },
+        {
+            "character": "yoonsaea",
+            "variant": "yoonsaea_b",
+            "emotion": "06",
+            "width": 373.0,
+            "height": 607.0
+        }
+    ]
+}

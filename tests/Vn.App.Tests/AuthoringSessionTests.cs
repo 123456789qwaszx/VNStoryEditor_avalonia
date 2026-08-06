@@ -266,6 +266,96 @@ public class AuthoringSessionTests
         Assert.Contains(added.Id, session.ExpandedFileIds);
     }
 
+    // ── 튜닝 관리 (W46) ───────────────────────────────────────────────────
+
+    [Fact]
+    public void 기본_튜닝_생성은_규약_폴더에_내장_파일을_쓰고_바로_읽힌다()
+    {
+        string directory = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            session.CreateDefaultTuning();
+
+            string tuningRoot = Path.Combine(directory, "ExportedTuning");
+            Assert.True(File.Exists(Path.Combine(tuningRoot, "base-resolution.json")));
+            Assert.True(File.Exists(Path.Combine(tuningRoot, "rig-schemas.json")));
+            Assert.True(File.Exists(Path.Combine(tuningRoot, "presets", "depth.json")));
+            Assert.True(session.TuningLibrary.IsLoaded);
+            Assert.True(session.TuningLibrary.RigCount > 0);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 기본_튜닝_생성은_저장_전에는_안내만_하고_기존_폴더를_덮지_않는다()
+    {
+        var unsaved = new AuthoringSession();
+        unsaved.CreateDefaultTuning(); // 저장 전 — 예외 없이 안내만
+        Assert.Contains("저장", unsaved.StatusMessage);
+
+        string directory = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            string tuningRoot = Path.Combine(directory, "ExportedTuning");
+            Directory.CreateDirectory(tuningRoot);
+            File.WriteAllText(Path.Combine(tuningRoot, "custom.json"), "{}");
+
+            session.CreateDefaultTuning(); // 내용이 있는 폴더 — 불가침
+
+            Assert.False(File.Exists(Path.Combine(tuningRoot, "base-resolution.json")));
+            Assert.Contains("덮어쓰지 않습니다", session.StatusMessage);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 튜닝_폴더_연결은_규약_자리로_복사하고_엉뚱한_폴더는_거른다()
+    {
+        string directory = TempDirectory();
+        string source = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            session.ConnectTuningFolder(source); // 튜닝 파일이 없는 폴더
+            Assert.Contains("찾지 못했습니다", session.StatusMessage);
+
+            File.WriteAllText(
+                Path.Combine(source, "base-resolution.json"),
+                """{"referenceResolution":{"x":1920,"y":1080}}""");
+            Directory.CreateDirectory(Path.Combine(source, "presets"));
+            File.WriteAllText(Path.Combine(source, "presets", "depth.json"), "{}");
+
+            session.ConnectTuningFolder(source);
+
+            string tuningRoot = Path.Combine(directory, "ExportedTuning");
+            Assert.True(File.Exists(Path.Combine(tuningRoot, "base-resolution.json")));
+            Assert.True(File.Exists(Path.Combine(tuningRoot, "presets", "depth.json")));
+            Assert.True(session.TuningLibrary.IsLoaded);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+            Directory.Delete(source, recursive: true);
+        }
+    }
+
     private static string TempDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Session.{Guid.NewGuid():N}");

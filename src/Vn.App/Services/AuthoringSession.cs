@@ -159,6 +159,119 @@ internal sealed class AuthoringSession
     /// <summary>해석된 초상화 루트 절대 경로 — 표정 스프라이트 복제(설정노드)가 쓴다.</summary>
     public string? PortraitsRoot => ResolveAssetRoots().Portraits;
 
+    /// <summary>
+    /// 앱에 내장된 기본 튜닝(런타임 실측 덤프의 스냅샷)을 프로젝트 옆 규약 폴더에 만든다 (W46).
+    /// 이미 내용이 있는 폴더는 덮어쓰지 않는다 — 교체는 <see cref="ConnectTuningFolder"/>가 한다.
+    /// </summary>
+    public void CreateDefaultTuning()
+    {
+        if (TuningTargetRoot() is not { } target)
+        {
+            return;
+        }
+
+        if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+        {
+            SetStatus(
+                $"튜닝 폴더가 이미 있습니다: {target} — 덮어쓰지 않습니다. " +
+                "교체하려면 '튜닝 폴더 연결…'로 다른 폴더를 복사해 오세요.");
+            return;
+        }
+
+        var assembly = typeof(AuthoringSession).Assembly;
+        const string prefix = "DefaultTuning/";
+        int written = 0;
+
+        foreach (string name in assembly.GetManifestResourceNames())
+        {
+            if (!name.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // LogicalName의 경로 구분자는 빌드 OS를 따른다 — 양쪽 다 받아 준다.
+            string relative = name[prefix.Length..].Replace('\\', '/');
+            string path = Path.Combine(target, relative.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+            using Stream source = assembly.GetManifestResourceStream(name)
+                ?? throw new InvalidOperationException($"내장 기본 튜닝 리소스를 열 수 없습니다: {name}");
+            using FileStream file = File.Create(path);
+            source.CopyTo(file);
+            written++;
+        }
+
+        RefreshAssets();
+        SetStatus($"기본 튜닝 {written}개 파일을 만들었습니다: {target} · {TuningLibrary.Summary}");
+    }
+
+    /// <summary>
+    /// 기존 튜닝 폴더를 골라 프로젝트 옆 규약 폴더로 복사해 연결한다 (W46).
+    /// 같은 이름의 파일은 덮어쓴다 — "통째 교체"가 튜닝 관리 규약이다(io-reference §1-3).
+    /// </summary>
+    public void ConnectTuningFolder(string sourceDirectory)
+    {
+        if (TuningTargetRoot() is not { } target)
+        {
+            return;
+        }
+
+        string source = Path.GetFullPath(sourceDirectory);
+
+        if (!Directory.Exists(source))
+        {
+            SetStatus($"폴더를 찾을 수 없습니다: {source}");
+            return;
+        }
+
+        // 튜닝처럼 보이는지 최소 확인 — 엉뚱한 폴더를 통째로 복사하는 사고를 막는다.
+        bool looksLikeTuning =
+            File.Exists(Path.Combine(source, "base-resolution.json")) ||
+            File.Exists(Path.Combine(source, "rig-schemas.json")) ||
+            Directory.Exists(Path.Combine(source, "presets"));
+
+        if (!looksLikeTuning)
+        {
+            SetStatus(
+                "선택한 폴더에서 튜닝 파일을 찾지 못했습니다 " +
+                "(base-resolution.json · rig-schemas.json · presets/ 중 하나는 있어야 합니다).");
+            return;
+        }
+
+        if (string.Equals(source, Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshAssets(); // 이미 규약 자리다 — 다시 읽기만 한다
+            return;
+        }
+
+        int copied = 0;
+
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            string destination = Path.Combine(target, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, overwrite: true);
+            copied++;
+        }
+
+        RefreshAssets();
+        SetStatus($"튜닝 폴더를 연결했습니다({copied}개 파일 복사): {target} · {TuningLibrary.Summary}");
+    }
+
+    /// <summary>튜닝이 놓일 규약 자리. 저장 전에는 기준 폴더가 없어 안내만 남기고 null.</summary>
+    private string? TuningTargetRoot()
+    {
+        if (ProjectPath is null)
+        {
+            SetStatus("튜닝은 프로젝트 폴더 옆에 놓입니다 — 프로젝트를 먼저 저장해 주세요.");
+            return null;
+        }
+
+        return Path.Combine(
+            Path.GetDirectoryName(ProjectPath)!,
+            RuntimeTuningLibrary.DefaultFolderName);
+    }
+
     public void RefreshAssets()
     {
         _assetLibrary = null;
