@@ -304,16 +304,20 @@ public class AuthoringSessionTests
 
         try
         {
-            var session = new AuthoringSession();
-            session.Save(Path.Combine(directory, "project.vnproject.json"));
-
+            // 이미 튜닝이 있는 폴더에 저장한다 — 첫 저장의 자동 준비(W48)도 불가침을 지킨다.
             string tuningRoot = Path.Combine(directory, "ExportedTuning");
             Directory.CreateDirectory(tuningRoot);
             File.WriteAllText(Path.Combine(tuningRoot, "custom.json"), "{}");
 
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            Assert.False(File.Exists(Path.Combine(tuningRoot, "base-resolution.json")));
+
             session.CreateDefaultTuning(); // 내용이 있는 폴더 — 불가침
 
             Assert.False(File.Exists(Path.Combine(tuningRoot, "base-resolution.json")));
+            Assert.True(File.Exists(Path.Combine(tuningRoot, "custom.json")));
             Assert.Contains("덮어쓰지 않습니다", session.StatusMessage);
         }
         finally
@@ -348,6 +352,93 @@ public class AuthoringSessionTests
             Assert.True(File.Exists(Path.Combine(tuningRoot, "base-resolution.json")));
             Assert.True(File.Exists(Path.Combine(tuningRoot, "presets", "depth.json")));
             Assert.True(session.TuningLibrary.IsLoaded);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+            Directory.Delete(source, recursive: true);
+        }
+    }
+
+    // ── 새 프로젝트 자동 준비 + PNG 가져오기 (W48) ────────────────────────
+
+    [Fact]
+    public void 첫_저장은_에셋_폴더와_기본_튜닝을_준비한다()
+    {
+        string directory = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            Assert.Equal("assets/backgrounds", session.Project.AssetRoots.BackgroundsPath);
+            Assert.Equal("assets/portraits", session.Project.AssetRoots.PortraitsPath);
+            Assert.True(Directory.Exists(Path.Combine(directory, "assets", "backgrounds")));
+            Assert.True(Directory.Exists(Path.Combine(directory, "assets", "portraits")));
+            Assert.True(session.TuningLibrary.IsLoaded); // 기본 튜닝이 자동으로 깔려 연결된다
+            Assert.False(session.IsDirty); // 준비 과정이 미저장 변경을 남기지 않는다
+
+            // 두 번째 저장은 준비를 반복하지 않는다 — 상태 메시지가 담백하다.
+            session.Save();
+            Assert.DoesNotContain("기본 튜닝", session.StatusMessage);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 배경_가져오기는_복제하고_같은_이름은_건너뛴다()
+    {
+        string directory = TempDirectory();
+        string source = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            string png = Path.Combine(source, "room_day.png");
+            File.WriteAllBytes(png, [1, 2, 3]);
+
+            Assert.Equal(1, session.ImportBackgrounds([png]));
+            Assert.True(File.Exists(Path.Combine(directory, "assets", "backgrounds", "room_day.png")));
+
+            Assert.Equal(0, session.ImportBackgrounds([png])); // 같은 이름 — 덮지 않는다
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+            Directory.Delete(source, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 초상화_가져오기는_규약_자리에_표정_번호를_이어_붙인다()
+    {
+        string directory = TempDirectory();
+        string source = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            string first = Path.Combine(source, "웃음.png");
+            string second = Path.Combine(source, "화남.png");
+            File.WriteAllBytes(first, [1]);
+            File.WriteAllBytes(second, [2]);
+
+            Assert.Equal(2, session.ImportPortraits("willow", 'a', [first, second]));
+
+            string folder = Path.Combine(directory, "assets", "portraits", "willow", "a");
+            Assert.True(File.Exists(Path.Combine(folder, "01.png")));
+            Assert.True(File.Exists(Path.Combine(folder, "02.png")));
+
+            Assert.Equal(1, session.ImportPortraits("willow", 'a', [first]));
+            Assert.True(File.Exists(Path.Combine(folder, "03.png"))); // 빈 번호를 이어 쓴다
         }
         finally
         {

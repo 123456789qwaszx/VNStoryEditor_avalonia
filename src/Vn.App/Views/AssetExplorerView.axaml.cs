@@ -84,7 +84,10 @@ public partial class AssetExplorerView : UserControl
             return;
         }
 
-        TreeHost.Children.Add(SectionHeader("배경"));
+        TreeHost.Children.Add(SectionHeaderRow(
+            "배경",
+            _session.BackgroundsRoot,
+            importAction: ImportBackgroundsAsync));
 
         if (!tree.BackgroundsConfigured)
         {
@@ -100,7 +103,12 @@ public partial class AssetExplorerView : UserControl
             AddItems(tree.BackgroundItems, depth: 0, parentPath: "bg");
         }
 
-        TreeHost.Children.Add(SectionHeader("초상화"));
+        Control portraitHeader = SectionHeaderRow(
+            "초상화",
+            _session.PortraitsRoot,
+            importAnchor => ShowPortraitImportFlyout(importAnchor));
+
+        TreeHost.Children.Add(portraitHeader);
 
         if (!tree.PortraitsConfigured)
         {
@@ -116,6 +124,178 @@ public partial class AssetExplorerView : UserControl
         }
     }
 
+    // ── 가져오기·폴더 열기 (W48) ──────────────────────────────────────────
+
+    /// <summary>섹션 제목 + [가져오기…]/[열기] — 루트가 없으면 버튼도 없다(안내가 대신한다).</summary>
+    private Control SectionHeaderRow(string title, string? root, Action<Control>? importAction)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(0, 6, 0, 2)
+        };
+
+        row.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 10,
+            Opacity = 0.55,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        if (root is not null && importAction is not null)
+        {
+            var import = new Button { Content = "가져오기…", FontSize = 9, Padding = new Thickness(5, 1) };
+            ToolTip.SetTip(import, "다른 폴더의 PNG를 골라 이 자리로 복제해 옵니다.");
+            import.Click += (_, _) => importAction(import);
+            row.Children.Add(import);
+
+            var open = new Button { Content = "폴더 열기", FontSize = 9, Padding = new Thickness(5, 1) };
+            ToolTip.SetTip(open, root);
+            open.Click += (_, _) => UiGuard.Run(_session, "폴더 열기", () => OpenInExplorer(root));
+            row.Children.Add(open);
+        }
+
+        return row;
+    }
+
+    /// <summary>지정 폴더를 파일 탐색기로 연다 (W48). 없으면 만들어서 연다 — 빈칸 채우기가 목적이다.</summary>
+    private static void OpenInExplorer(string path)
+    {
+        System.IO.Directory.CreateDirectory(path);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = path,
+            UseShellExecute = true
+        });
+    }
+
+    private static FilePickerFileType PngFileType => new("PNG 이미지") { Patterns = ["*.png"] };
+
+    private async void ImportBackgroundsAsync(Control anchor)
+    {
+        await UiGuard.RunAsync(_session, "배경 가져오기", async () =>
+        {
+            if (_session is null ||
+                TopLevel.GetTopLevel(this)?.StorageProvider is not { CanOpen: true } storage)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "가져올 배경 PNG 선택 (여러 개 가능)",
+                AllowMultiple = true,
+                FileTypeFilter = [PngFileType]
+            });
+
+            List<string> paths = files
+                .Select(file => file.TryGetLocalPath())
+                .Where(path => path is not null)
+                .Select(path => path!)
+                .ToList();
+
+            if (paths.Count > 0)
+            {
+                _session.ImportBackgrounds(paths);
+                Rebuild();
+            }
+        });
+    }
+
+    /// <summary>초상화 가져오기 (W48) — 캐릭터·변형을 정하고 PNG를 고르면 표정 번호가 차례로 붙는다.</summary>
+    private void ShowPortraitImportFlyout(Control anchor)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 4, MinWidth = 230 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "어느 캐릭터의 초상화인가요? 고른 PNG는 표정 01, 02…로 차례로 들어갑니다.",
+            FontSize = 10,
+            Opacity = 0.65,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 230
+        });
+
+        var character = new AutoCompleteBox
+        {
+            PlaceholderText = "캐릭터 키 (예: willow)",
+            FontSize = 11,
+            ItemsSource = _session.Definition.Speakers
+                .Select(speaker => speaker.CharacterId)
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Distinct(StringComparer.Ordinal)
+                .ToList(),
+            FilterMode = AutoCompleteFilterMode.Contains,
+            MinimumPrefixLength = 0
+        };
+        panel.Children.Add(character);
+
+        var variantRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        variantRow.Children.Add(new TextBlock
+        {
+            Text = "변형(포즈)",
+            FontSize = 10,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        var variant = new TextBox { Text = "a", Width = 40, FontSize = 11 };
+        variantRow.Children.Add(variant);
+        panel.Children.Add(variantRow);
+
+        var pick = new Button
+        {
+            Content = "PNG 고르기…",
+            FontSize = 11,
+            Padding = new Thickness(8, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        pick.Click += async (_, _) => await UiGuard.RunAsync(_session, "초상화 가져오기", async () =>
+        {
+            string key = character.Text?.Trim() ?? string.Empty;
+
+            if (key.Length == 0)
+            {
+                _session.SetStatus("캐릭터 키를 먼저 입력하세요.");
+                return;
+            }
+
+            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanOpen: true } storage)
+            {
+                return;
+            }
+
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = $"{key}의 초상화 PNG 선택 (여러 개 가능)",
+                AllowMultiple = true,
+                FileTypeFilter = [PngFileType]
+            });
+
+            List<string> paths = files
+                .Select(file => file.TryGetLocalPath())
+                .Where(path => path is not null)
+                .Select(path => path!)
+                .ToList();
+
+            if (paths.Count > 0)
+            {
+                char variantSuffix = variant.Text?.Trim() is { Length: > 0 } trimmed ? trimmed[0] : 'a';
+                _session.ImportPortraits(key, variantSuffix, paths);
+                Rebuild();
+            }
+        });
+        panel.Children.Add(pick);
+
+        new Flyout { Content = panel, Placement = PlacementMode.Bottom }.ShowAt(anchor);
+    }
+
     /// <summary>현재 루트 경로를 보여 주고 바꿀 수 있는 팝오버 — 지정은 언제나 여기서 가능하다.</summary>
     private void ShowRootsFlyout()
     {
@@ -125,6 +305,21 @@ public partial class AssetExplorerView : UserControl
         }
 
         var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
+
+        // 프로젝트 폴더가 모든 규약 경로의 기준이다 — 바로 열 수 있게 한다 (W48).
+        if (_session.ProjectPath is { } projectPath &&
+            System.IO.Path.GetDirectoryName(projectPath) is { } projectRoot)
+        {
+            var openProject = new Button
+            {
+                Content = "프로젝트 폴더 열기",
+                FontSize = 11,
+                Padding = new Thickness(8, 3),
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            openProject.Click += (_, _) => UiGuard.Run(_session, "폴더 열기", () => OpenInExplorer(projectRoot));
+            panel.Children.Add(openProject);
+        }
 
         panel.Children.Add(new TextBlock
         {
@@ -179,6 +374,17 @@ public partial class AssetExplorerView : UserControl
                 Opacity = 0.55,
                 TextWrapping = TextWrapping.Wrap
             });
+
+            var openTuning = new Button
+            {
+                Content = "폴더 열기",
+                FontSize = 11,
+                Padding = new Thickness(8, 3),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 2, 0, 0)
+            };
+            openTuning.Click += (_, _) => UiGuard.Run(_session, "폴더 열기", () => OpenInExplorer(directory));
+            panel.Children.Add(openTuning);
         }
 
         var create = new Button

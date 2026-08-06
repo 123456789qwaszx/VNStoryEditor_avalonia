@@ -159,6 +159,9 @@ internal sealed class AuthoringSession
     /// <summary>해석된 초상화 루트 절대 경로 — 표정 스프라이트 복제(설정노드)가 쓴다.</summary>
     public string? PortraitsRoot => ResolveAssetRoots().Portraits;
 
+    /// <summary>해석된 배경 루트 절대 경로 — 가져오기·폴더 열기(W48)가 쓴다.</summary>
+    public string? BackgroundsRoot => ResolveAssetRoots().Backgrounds;
+
     /// <summary>
     /// 앱에 내장된 기본 튜닝(런타임 실측 덤프의 스냅샷)을 프로젝트 옆 규약 폴더에 만든다 (W46).
     /// 이미 내용이 있는 폴더는 덮어쓰지 않는다 — 교체는 <see cref="ConnectTuningFolder"/>가 한다.
@@ -256,6 +259,90 @@ internal sealed class AuthoringSession
 
         RefreshAssets();
         SetStatus($"튜닝 폴더를 연결했습니다({copied}개 파일 복사): {target} · {TuningLibrary.Summary}");
+    }
+
+    /// <summary>
+    /// 아무 곳의 배경 PNG를 배경 루트로 복제해 들여온다 (W48) — "폴더에 채워 넣는" 느낌의
+    /// 짧은 길. 파일명이 곧 키이므로 이름 그대로 복사하고, 같은 이름이 있으면 건너뛴다
+    /// (덮어쓰면 기존 배경이 소리 없이 바뀐다).
+    /// </summary>
+    public int ImportBackgrounds(IEnumerable<string> files)
+    {
+        if (ResolveAssetRoots().Backgrounds is not { } root)
+        {
+            SetStatus("배경 폴더가 없습니다 — 프로젝트를 저장하면 assets/backgrounds가 준비됩니다.");
+            return 0;
+        }
+
+        Directory.CreateDirectory(root);
+        int copied = 0;
+        var skipped = new List<string>();
+
+        foreach (string file in files.Where(item =>
+            string.Equals(Path.GetExtension(item), ".png", StringComparison.OrdinalIgnoreCase)))
+        {
+            string destination = Path.Combine(root, Path.GetFileName(file));
+
+            if (File.Exists(destination))
+            {
+                skipped.Add(Path.GetFileName(file));
+                continue;
+            }
+
+            File.Copy(file, destination);
+            copied++;
+        }
+
+        RefreshAssets();
+        SetStatus($"배경 {copied}개를 가져왔습니다." +
+            (skipped.Count > 0 ? $" 같은 이름이 있어 건너뜀: {string.Join(", ", skipped)}" : string.Empty));
+        return copied;
+    }
+
+    /// <summary>
+    /// 아무 곳의 PNG를 초상화 규약 자리({캐릭터}/{변형}/{표정 2자리}.png)로 복제해 들여온다
+    /// (W48). 표정 번호는 그 폴더의 빈 번호부터 차례로 붙는다 — 이름 규약을 몰라도
+    /// 채워 넣는 순서대로 01, 02…가 된다.
+    /// </summary>
+    public int ImportPortraits(string characterKey, char variant, IEnumerable<string> files)
+    {
+        if (ResolveAssetRoots().Portraits is not { } root)
+        {
+            SetStatus("초상화 폴더가 없습니다 — 프로젝트를 저장하면 assets/portraits가 준비됩니다.");
+            return 0;
+        }
+
+        string key = characterKey.Trim();
+
+        if (key.Length == 0)
+        {
+            SetStatus("캐릭터 키를 입력해야 초상화를 들여올 수 있습니다.");
+            return 0;
+        }
+
+        string folder = Path.Combine(root, key, char.ToLowerInvariant(variant).ToString());
+        Directory.CreateDirectory(folder);
+
+        // 다음 빈 표정 번호부터 — 이미 01·02가 있으면 03부터 붙는다.
+        int next = Directory.EnumerateFiles(folder, "*.png")
+            .Select(file => int.TryParse(Path.GetFileNameWithoutExtension(file), out int parsed) ? parsed : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+
+        int copied = 0;
+
+        foreach (string file in files.Where(item =>
+            string.Equals(Path.GetExtension(item), ".png", StringComparison.OrdinalIgnoreCase)))
+        {
+            File.Copy(file, Path.Combine(folder, $"{next + copied:00}.png"));
+            copied++;
+        }
+
+        RefreshAssets();
+        SetStatus(copied > 0
+            ? $"{key}/{char.ToLowerInvariant(variant)}에 초상화 {copied}개를 {next:00}번부터 넣었습니다."
+            : "가져올 PNG가 없습니다.");
+        return copied;
     }
 
     /// <summary>튜닝이 놓일 규약 자리. 저장 전에는 기준 폴더가 없어 안내만 남기고 null.</summary>
@@ -374,6 +461,14 @@ internal sealed class AuthoringSession
     {
         string target = path ?? ProjectPath
             ?? throw new InvalidOperationException("저장할 경로가 없습니다.");
+        bool firstSave = ProjectPath is null;
+
+        // 새 프로젝트의 첫 저장 (W48): 에셋 폴더 규약을 프로젝트에 미리 심는다 —
+        // 루트가 저장본에 들어가야 하므로 디스크에 쓰기 전에 지정한다.
+        if (firstSave && Project.AssetRoots.IsEmpty)
+        {
+            Editor.SetAssetRoots("assets/backgrounds", "assets/portraits");
+        }
 
         ProjectStore.Save(target, Project);
 
@@ -382,8 +477,38 @@ internal sealed class AuthoringSession
         Definition = GameDefinition.LoadBeside(ProjectPath);
         AppSettingsService.SaveRecentProject(ProjectPath);
 
-        StatusMessage = $"{Path.GetFileName(ProjectPath)}에 저장했습니다.";
+        bool provisioned = firstSave && ProvisionNewProjectFolder();
+
+        StatusMessage = $"{Path.GetFileName(ProjectPath)}에 저장했습니다." +
+            (provisioned ? " 에셋 폴더와 기본 튜닝을 준비했습니다 — 그림은 assets 폴더에 채워 넣으면 됩니다." : string.Empty);
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
+    }
+
+    /// <summary>
+    /// 새 프로젝트 폴더의 기본 살림 (W48) — 에셋 폴더를 만들고 기본 튜닝을 깐다.
+    /// 비전공 작가는 튜닝을 만질 일이 없으므로 처음부터 연결돼 있어야 한다.
+    /// 이미 튜닝이 있으면 건드리지 않는다(불가침 규칙 그대로).
+    /// </summary>
+    private bool ProvisionNewProjectFolder()
+    {
+        if (ProjectPath is null)
+        {
+            return false;
+        }
+
+        string root = Path.GetDirectoryName(ProjectPath)!;
+        Directory.CreateDirectory(Path.Combine(root, "assets", "backgrounds"));
+        Directory.CreateDirectory(Path.Combine(root, "assets", "portraits"));
+
+        string tuningRoot = Path.Combine(root, RuntimeTuningLibrary.DefaultFolderName);
+
+        if (!Directory.Exists(tuningRoot) || !Directory.EnumerateFileSystemEntries(tuningRoot).Any())
+        {
+            CreateDefaultTuning(); // 상태 메시지는 저장 요약이 덮는다
+        }
+
+        RefreshAssets();
+        return true;
     }
 
     public void SetStatus(string message)
