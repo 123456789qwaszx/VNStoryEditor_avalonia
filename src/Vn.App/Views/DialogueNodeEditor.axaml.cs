@@ -109,6 +109,8 @@ public partial class DialogueNodeEditor : UserControl
         };
         panel.Children.Add(add);
 
+        panel.Children.Add(MenuSeparator());
+
         panel.Children.Add(new Button
         {
             Content = "이 줄 삭제",
@@ -525,6 +527,13 @@ public partial class DialogueNodeEditor : UserControl
         return wrapper;
     }
 
+    private static Control MenuSeparator() => new Border
+    {
+        Height = 1,
+        Margin = new Thickness(4, 2),
+        Background = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128))
+    };
+
     /// <summary>줄 카드 우클릭 메뉴 (W47) — 추가·삭제는 ＋ 플라이아웃과 같은 편집 경로 하나를 쓴다.</summary>
     private void ShowLineContextFlyout(Control anchor, string lineId)
     {
@@ -560,6 +569,9 @@ public partial class DialogueNodeEditor : UserControl
             UiGuard.Run(_session, "줄 추가", AddLine); // 선택된 줄 아래에 — 위의 SelectStageLine이 이미 골랐다
         };
 
+        // 추가와 삭제 사이에 구분선 (소유자 지시) — 성격이 반대인 두 동작이 붙어 있으면 헷갈린다.
+        panel.Children.Add(MenuSeparator());
+
         Button remove = Item("이 줄 삭제", "대본에서 이 줄을 뺍니다. LineId는 은퇴 상태로 남습니다.");
         remove.Click += (_, _) =>
         {
@@ -567,7 +579,8 @@ public partial class DialogueNodeEditor : UserControl
             UiGuard.Run(_session, "줄 삭제", () => _session!.Editor.RetireScriptLine(scriptId, lineId));
         };
 
-        flyout.ShowAt(anchor);
+        // 마우스 지점에서 연다 (소유자 지시) — 카드 기준으로 뜨면 클릭한 곳과 멀어 헷갈린다.
+        flyout.ShowAt(anchor, showAtPointer: true);
     }
 
     private void SelectStageLine(string lineId)
