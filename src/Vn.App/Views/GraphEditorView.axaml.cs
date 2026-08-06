@@ -52,10 +52,14 @@ public partial class GraphEditorView : UserControl
     private bool _updatingFilter;
 
     // ── 그래프 내비게이션 (W40) ────────────────────────────────────────────
-    private const double MinZoom = 0.25;
+    private const double MinZoom = 0.1;  // 큰 판(W41)에서도 전체 조망이 가능하게
     private const double MaxZoom = 2.0;
-    private const double CanvasWidth = 3000;   // axaml의 GraphCanvas 크기와 같아야 한다
-    private const double CanvasHeight = 2000;
+
+    // 판 크기 (W41) — 캔버스 크기의 유일한 정의. 미니맵과 같은 3:2 비율을 유지해야
+    // 미니맵이 왜곡 없이 축소된다. Canvas는 좌표 공간일 뿐이라 크기 자체는 비용이
+    // 없다 — 비용은 노드 수에서 나온다(가상화는 파일 판 백로그).
+    private const double CanvasWidth = 12000;
+    private const double CanvasHeight = 8000;
     private const double MinimapWidth = 180;   // 캔버스와 같은 3:2 비율
     private const double MinimapHeight = 120;
 
@@ -106,6 +110,10 @@ public partial class GraphEditorView : UserControl
     public GraphEditorView()
     {
         InitializeComponent();
+
+        // 판 크기는 상수 한 곳이 정한다 (W41) — 미니맵 배율과 어긋날 길을 없앤다.
+        GraphCanvas.Width = CanvasWidth;
+        GraphCanvas.Height = CanvasHeight;
 
         AddDialogueButton.Click += (_, _) => AddNode(GraphNodeKind.Dialogue);
         AddSetButton.Click += (_, _) => AddNode(GraphNodeKind.Set);
