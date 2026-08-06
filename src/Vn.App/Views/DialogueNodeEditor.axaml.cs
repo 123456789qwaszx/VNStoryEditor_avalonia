@@ -723,11 +723,18 @@ public partial class DialogueNodeEditor : UserControl
         BranchAwareLines.Result branch = BranchAwareLines.UpTo(
             export.Dialogue, export.Presentation.Bindings, selected?.LineId, simulation.Effective);
 
+        PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
+
         CoreStageFoldResult fold = CoreStageFold.Fold(
-            PresentationCommandCatalog.For(_session.Definition),
+            catalog,
             export.Presentation.SetupCommands,
             branch.FoldLines,
             _session.TuningLibrary.Tuning);
+
+        // 이 라인에 붙은 연출 커맨드 — 전이 시간·♪ 칩·실재생(W62)이 같은 것 하나를 본다.
+        IReadOnlyList<PresentationResultCommand>? lineCommands = export.Presentation.Bindings
+            .FirstOrDefault(item =>
+                string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands;
 
         StagePreview.Show(new MiniStagePreviewRequest(
             contextLabel,
@@ -749,16 +756,12 @@ public partial class DialogueNodeEditor : UserControl
             CoreState: fold.CoreState,
             BranchBlocks: scriptBlocks,
             // 전이(W33): 이 라인으로 넘어가는 시간 = 라인 커맨드 duration의 최댓값.
-            TransitionSeconds: StageTransitions.SecondsFor(
-                PresentationCommandCatalog.For(_session.Definition),
-                export.Presentation.Bindings.FirstOrDefault(item =>
-                    string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands),
+            TransitionSeconds: StageTransitions.SecondsFor(catalog, lineCommands),
             // 소리 표시(W34-b): 정지 프레임에 없는 오디오를 ♪ 칩으로.
-            AudioCues: StageAudioCues.Of(
-                PresentationCommandCatalog.For(_session.Definition),
-                export.Presentation.Bindings.FirstOrDefault(item =>
-                    string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands),
-            AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
+            AudioCues: StageAudioCues.Of(catalog, lineCommands),
+            AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
+            // 소리 실재생(W62): 재생이 이 라인에 도달하면 위 칩의 원본 커맨드가 울린다.
+            AudioCommands: StageAudioCues.AudioOf(catalog, lineCommands)));
     }
 
     /// <summary>

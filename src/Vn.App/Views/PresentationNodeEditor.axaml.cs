@@ -269,7 +269,9 @@ public partial class PresentationNodeEditor : UserControl
             TransitionSeconds: StageTransitions.SecondsFor(catalog, lineBinding?.Commands),
             // 소리 표시(W34-b): 정지 프레임에 없는 오디오를 ♪ 칩으로.
             AudioCues: StageAudioCues.Of(catalog, lineBinding?.Commands),
-            AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
+            AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
+            // 소리 실재생(W62): 재생이 이 라인에 도달하면 칩의 원본 커맨드가 울린다.
+            AudioCommands: StageAudioCues.AudioOf(catalog, lineBinding?.Commands)));
     }
 
     /// <summary>

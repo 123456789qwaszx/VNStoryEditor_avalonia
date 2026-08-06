@@ -153,12 +153,30 @@ public partial class AssetExplorerView : UserControl
 
         foreach (string key in keys)
         {
-            TreeHost.Children.Add(new TextBlock
+            // ♪ 항목이 곧 미리 듣기 버튼이다 (W62). 같은 파일을 다시 누르면 멈춘다.
+            var audition = new Button
             {
-                Text = $"♪ {key}",
+                Content = $"▶ {key}",
                 FontSize = 11,
-                Margin = new Thickness(4, 0, 0, 0)
+                Padding = new Thickness(4, 1),
+                Margin = new Thickness(4, 0, 0, 0),
+                Background = Brushes.Transparent,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left
+            };
+            ToolTip.SetTip(audition, "미리 듣기 — 다시 누르면 멈춥니다.");
+            audition.Click += (_, _) => UiGuard.Run(_session, "오디오 미리 듣기", () =>
+            {
+                if (_session!.ResolveAudioClipPath(root, key) is { } path)
+                {
+                    AudioPreview.ToggleAudition(path);
+                }
+                else
+                {
+                    _session.SetStatus($"clipKey '{key}' 파일이 사라졌습니다 — 에셋 새로 고침을 눌러 보세요.");
+                }
             });
+            TreeHost.Children.Add(audition);
         }
     }
 

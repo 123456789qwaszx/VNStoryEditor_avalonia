@@ -83,19 +83,30 @@ internal static class StageAudioCues
         PresentationCommandCatalog catalog,
         IReadOnlyList<PresentationResultCommand>? commands)
     {
+        string[]? cues = AudioOf(catalog, commands)?
+            .Select(command => CommandText.Format(
+                catalog.Find(command.DefinitionId), command.DefinitionId, command.Arguments))
+            .ToArray();
+
+        return cues is { Length: > 0 } ? cues : null;
+    }
+
+    /// <summary>이 라인의 오디오 커맨드 원본 (W62) — 실재생 라우터가 소화한다. 판정 규약은 칩과 같다.</summary>
+    public static IReadOnlyList<PresentationResultCommand>? AudioOf(
+        PresentationCommandCatalog catalog,
+        IReadOnlyList<PresentationResultCommand>? commands)
+    {
         if (commands is null || commands.Count == 0)
         {
             return null;
         }
 
-        string[] cues = commands
-            .Select(command => (Command: command, Definition: catalog.Find(command.DefinitionId)))
-            .Where(pair => string.Equals(pair.Definition?.CategoryId, "audio", StringComparison.Ordinal))
-            .Select(pair => CommandText.Format(
-                pair.Definition, pair.Command.DefinitionId, pair.Command.Arguments))
+        PresentationResultCommand[] audio = commands
+            .Where(command => string.Equals(
+                catalog.Find(command.DefinitionId)?.CategoryId, "audio", StringComparison.Ordinal))
             .ToArray();
 
-        return cues.Length > 0 ? cues : null;
+        return audio.Length > 0 ? audio : null;
     }
 }
 
@@ -128,7 +139,8 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<BranchFlow.Block>? BranchBlocks = null,
     double TransitionSeconds = 0,
     IReadOnlyList<string>? AudioCues = null,
-    IReadOnlyList<string>? AutoBranchBlocks = null);
+    IReadOnlyList<string>? AutoBranchBlocks = null,
+    IReadOnlyList<PresentationResultCommand>? AudioCommands = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
@@ -213,6 +225,51 @@ public partial class MiniStagePreview : UserControl
 
         // 전이 (W33): 진행도 변화는 무대 자리 보간만 갱신한다 — 전체 재렌더 없이.
         Playback.TransitionChanged += SyncTransition;
+
+        // 오디오 실재생 (W62): 정지·일시정지는 소리도 멈추고, 재생 시작은 현재 라인의
+        // 소리부터 낸다 — BGM 재개는 곡 처음부터라는 근사(진행 위치 기억 없음).
+        Playback.StateChanged += () =>
+        {
+            if (Playback.IsPlaying == _audioWasPlaying)
+            {
+                return;
+            }
+
+            _audioWasPlaying = Playback.IsPlaying;
+            _audioFiredLineId = null;
+
+            if (Playback.IsPlaying)
+            {
+                FireLineAudio(_current);
+            }
+            else
+            {
+                AudioPreview.StopAll();
+            }
+        };
+    }
+
+    private bool _audioWasPlaying;
+    private string? _audioFiredLineId;
+
+    /// <summary>
+    /// 재생 중 새 라인에 도달했을 때 그 라인의 오디오 커맨드를 소리로 낸다 (W62).
+    /// 같은 라인의 재요청(편집 반영·에셋 새로 고침)에는 다시 울리지 않는다.
+    /// </summary>
+    private void FireLineAudio(MiniStagePreviewRequest? request)
+    {
+        if (!Playback.IsPlaying || _session is null || request?.SelectedLineId is not { } lineId ||
+            string.Equals(_audioFiredLineId, lineId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _audioFiredLineId = lineId;
+
+        if (request.AudioCommands is { Count: > 0 } audio)
+        {
+            AudioCueRouter.Fire(_session, audio);
+        }
     }
 
     private void SyncTypewriter()
@@ -296,6 +353,7 @@ public partial class MiniStagePreview : UserControl
             transitionSeconds: request?.TransitionSeconds ?? 0);
         SyncTypewriter();
         SyncTransition();
+        FireLineAudio(request);
     }
 
     private void OpenWindow()

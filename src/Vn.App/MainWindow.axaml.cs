@@ -44,6 +44,11 @@ public partial class MainWindow : Window
             UiGuard.Report(_session, "화면 동작", e.Exception);
         };
 
+        // 오디오 실재생 (W62) — 재생 실패·미지원 보고는 상태줄 하나로 모이고,
+        // 셸이 닫히면 소리도 함께 끝난다.
+        AudioPreview.Problem = message => _session.SetStatus(message);
+        Closed += (_, _) => AudioPreview.StopAll();
+
         Graph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);

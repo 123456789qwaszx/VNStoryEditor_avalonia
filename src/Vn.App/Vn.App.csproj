@@ -12,6 +12,9 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Fonts.Inter" />
+    <!-- 오디오 미리 듣기 (W62). 게임 런타임 오디오가 아니라 저작 확인용 재생이다. -->
+    <PackageReference Include="NAudio" />
+    <PackageReference Include="NAudio.Vorbis" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>

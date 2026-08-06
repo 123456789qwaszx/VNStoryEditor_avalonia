@@ -190,6 +190,24 @@ internal sealed class AuthoringSession
     }
 
     /// <summary>
+    /// clipKey를 실제 파일 경로로 되찾는다 (W62 미리 듣기) — 파일명(확장자 제외)=키
+    /// 규약의 역방향. 없으면 null — 호출자가 사유를 상태줄로 알린다.
+    /// </summary>
+    public string? ResolveAudioClipPath(string? root, string clipKey)
+    {
+        if (root is null || string.IsNullOrWhiteSpace(clipKey) || !Directory.Exists(root))
+        {
+            return null;
+        }
+
+        return Directory.EnumerateFiles(root)
+            .Where(file => AudioExtensions.Contains(
+                Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
+            .FirstOrDefault(file => string.Equals(
+                Path.GetFileNameWithoutExtension(file), clipKey, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// 아무 곳의 오디오 파일을 BGM/효과음 루트로 복제해 들여온다 (W59) — 배경 가져오기와
     /// 같은 규약: 파일명이 곧 키, 같은 이름은 건너뛴다.
     /// </summary>

@@ -1990,7 +1990,30 @@ internal sealed class StageSceneView : UserControl
                     });
                     onApplied();
                 };
-                list.Children.Add(button);
+
+                // ▶ = 미리 듣기 (W62) — 커맨드를 달지 않고 소리만 확인한다. 다시 누르면 멈춘다.
+                var audition = new Button
+                {
+                    Content = "▶",
+                    FontSize = 10,
+                    Padding = new Thickness(5, 2),
+                    VerticalAlignment = VerticalAlignment.Stretch
+                };
+                ToolTip.SetTip(audition, "미리 듣기 — 라인에 달지 않고 소리만 확인합니다. 다시 누르면 멈춥니다.");
+                audition.Click += (_, _) => UiGuard.Run(_session, "오디오 미리 듣기", () =>
+                {
+                    if (_session!.ResolveAudioClipPath(root, key) is { } path)
+                    {
+                        AudioPreview.ToggleAudition(path);
+                    }
+                });
+
+                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+                Grid.SetColumn(button, 0);
+                Grid.SetColumn(audition, 1);
+                row.Children.Add(button);
+                row.Children.Add(audition);
+                list.Children.Add(row);
             }
 
             panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = 140 });
