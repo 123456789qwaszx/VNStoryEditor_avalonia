@@ -114,6 +114,13 @@ internal sealed class StagePlayback
     /// <summary>라인 이동 요청(delta). 활성 편집기의 선택이 움직인다 — 기존 경로 재사용.</summary>
     public event Action<int>? MoveRequested;
 
+    /// <summary>
+    /// 문서 끝에서 호스트에게 묻는다 (W39): 실행 출구를 따라 다음 노드로 이어질 수 있는가.
+    /// true = 전환이 시작됐다 — <see cref="OnNodeSwitch"/>가 대기를 걸고 새 노드의 첫
+    /// 프리뷰 요청이 푼다. null/false = 기존대로 끝에서 멈춘다.
+    /// </summary>
+    public Func<bool>? NodeExitRequested;
+
     /// <summary>새 프리뷰 요청이 도착했다 — 라인이 바뀌었으면 전이와 타자를 새로 시작한다.</summary>
     public void OnRequest(
         int lineIndex, int lineCount, string? lineText, bool isChoice = false, double transitionSeconds = 0)
@@ -322,7 +329,15 @@ internal sealed class StagePlayback
     {
         if (LineIndex >= LineCount - 1)
         {
-            IsPlaying = false; // 끝 도달 — 멈추고 ⏮로 돌아갈 수 있다
+            // 문서 끝 — 실행 출구로 이어질 수 있는지 호스트에게 묻는다 (W39). 전환이
+            // 시작되면 OnNodeSwitch가 대기를 걸고, 새 노드의 첫 요청이 푼다(그 요청이
+            // 이 호출 안에서 동기로 이미 도착했을 수도 있으므로 여기서는 더 만지지 않는다).
+            if (NodeExitRequested?.Invoke() == true)
+            {
+                return;
+            }
+
+            IsPlaying = false; // 끝 도달, 이어질 노드 없음 — 멈추고 ⏮로 돌아갈 수 있다
             TypingProgress?.Invoke();
             StateChanged?.Invoke();
             return;
@@ -331,6 +346,33 @@ internal sealed class StagePlayback
         _awaitingMove = true;
         _elapsed = 0;
         MoveRequested?.Invoke(1);
+    }
+
+    /// <summary>
+    /// 노드 전환 직전에 호스트가 부른다 (W39) — 위치를 초기화해 새 노드의 첫 요청이
+    /// 같은 인덱스여도 새 라인으로 취급되게 하고(타자가 다시 시작된다), 노드를 넘는
+    /// 전이 보간은 하지 않는다. 요청이 올 때까지 틱은 대기한다.
+    /// </summary>
+    public void OnNodeSwitch()
+    {
+        LineIndex = -1;
+        _awaitingMove = true;
+        _transitionActive = false;
+        TransitionChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 경로가 문서 끝 전에 끝났는데 이어질 노드가 없다 (W39) — 갈래 출구 뒤 라인은
+    /// 실행되지 않으므로 여기서 멈춘다. 이동은 일어나지 않았으니 대기도 푼다.
+    /// </summary>
+    public void StopAtEnd()
+    {
+        _awaitingMove = false;
+        _transitionActive = false;
+        IsPlaying = false;
+        TransitionChanged?.Invoke();
+        TypingProgress?.Invoke();
+        StateChanged?.Invoke();
     }
 
     public string ProgressLabel => CanPlay ? $"{LineIndex + 1}/{LineCount}" : "—";

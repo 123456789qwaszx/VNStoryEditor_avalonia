@@ -620,7 +620,9 @@ public partial class DialogueNodeEditor : UserControl
             AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
     }
 
-    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>
+    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.
+    /// 재생 중에는 타는 경로만 걷는다 (W39) — 안 타는 갈래 라인은 건너뛰고,
+    /// 경로 끝에서는 실행 출구를 따라 다음 노드로 넘어간다.</summary>
     internal void MoveStageLine(int delta)
     {
         if (_session?.Project.FindDialogue(_nodeId) is not { } node)
@@ -628,18 +630,113 @@ public partial class DialogueNodeEditor : UserControl
             return;
         }
 
-        IReadOnlyList<DialogueLine> lines = DialogueScriptResolver.Resolve(_session.Project, node).Lines;
+        DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
 
-        if (lines.Count == 0)
+        if (script.Lines.Count == 0)
         {
             return;
         }
 
-        int index = lines.ToList().FindIndex(item =>
-            string.Equals(item.LineId, _selectedLineId, StringComparison.Ordinal));
-        int next = Math.Clamp((index < 0 ? 0 : index) + delta, 0, lines.Count - 1);
+        if (StagePreview?.Playback.IsPlaying == true && TryMoveAlongPath(node, script, delta))
+        {
+            return;
+        }
 
-        SelectStageLine(lines[next].LineId);
+        int index = script.Lines.ToList().FindIndex(item =>
+            string.Equals(item.LineId, _selectedLineId, StringComparison.Ordinal));
+        int next = Math.Clamp((index < 0 ? 0 : index) + delta, 0, script.Lines.Count - 1);
+
+        SelectStageLine(script.Lines[next].LineId);
+    }
+
+    /// <summary>재생 경로 이동 (W39). 현재 라인이 경로 밖(출구 뒤 등)이면 false —
+    /// 문서 순서 이동으로 계속해 조용히 버리지 않는다.</summary>
+    private bool TryMoveAlongPath(DialogueNode node, DialogueScript script, int delta)
+    {
+        PlaybackPath.Result path = TracePlaybackPath(node, script);
+        int at = path.LineIds.ToList().FindIndex(id =>
+            string.Equals(id, _selectedLineId, StringComparison.Ordinal));
+
+        if (at < 0)
+        {
+            return false;
+        }
+
+        int next = at + delta;
+
+        if (next >= path.LineIds.Count)
+        {
+            if (!TryEnterNextNode(path.ExitTargetNodeId))
+            {
+                StagePreview!.Playback.StopAtEnd();
+            }
+
+            return true;
+        }
+
+        SelectStageLine(path.LineIds[Math.Max(next, 0)]);
+        return true;
+    }
+
+    /// <summary>이 노드의 재생 경로 — 유효 갈래 선택(수동+자동) 기준, 출구는 그래프의 것.</summary>
+    private PlaybackPath.Result TracePlaybackPath(DialogueNode node, DialogueScript script)
+    {
+        return PlaybackPath.Trace(
+            script.Lines,
+            line => line.Transition?.Kind,
+            line => line.LineId,
+            line => node.BranchExits.TryGetValue(line.LineId, out string? exit) ? exit : null,
+            node.DefaultExitTargetNodeId,
+            SimulateBranches(node, script).Effective,
+            _selectedLineId);
+    }
+
+    /// <summary>문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.</summary>
+    internal bool TryExitPlaybackNode()
+    {
+        if (_session?.Project.FindDialogue(_nodeId) is not { } node)
+        {
+            return false;
+        }
+
+        DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
+        return TryEnterNextNode(TracePlaybackPath(node, script).ExitTargetNodeId);
+    }
+
+    /// <summary>
+    /// 실행 출구의 대사 노드로 재생을 넘긴다 (W39). 노드 선택이 바뀌면 편집기가 그 노드를
+    /// 열고 첫 라인 프리뷰를 밀어 재생이 이어진다. 대사 노드가 아니면 알리고 멈춘다.
+    /// </summary>
+    private bool TryEnterNextNode(string? targetNodeId)
+    {
+        if (_session is null || StagePreview is null || targetNodeId is null)
+        {
+            return false;
+        }
+
+        if (_session.Project.FindNode(targetNodeId) is not DialogueNode next)
+        {
+            _session.SetStatus("실행 출구가 가리키는 대사 노드를 찾지 못해 이어 재생을 멈췄습니다.");
+            return false;
+        }
+
+        if (string.Equals(next.Id, _nodeId, StringComparison.Ordinal))
+        {
+            // 자기 자신으로 돌아오는 출구 — 선택 변경 이벤트가 없으므로 첫 라인을 직접 고른다.
+            if (DialogueScriptResolver.Resolve(_session.Project, next).Lines.FirstOrDefault() is not { } first)
+            {
+                return false;
+            }
+
+            StagePreview.Playback.OnNodeSwitch();
+            _selectedLineId = null;
+            SelectStageLine(first.LineId);
+            return true;
+        }
+
+        StagePreview.Playback.OnNodeSwitch();
+        _session.Select(next.Id);
+        return true;
     }
 
     private void OnPreviewPresetSelected()

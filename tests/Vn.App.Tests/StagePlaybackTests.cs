@@ -213,6 +213,83 @@ public class StagePlaybackTests
         Assert.Equal([1], moves);         // 더 갈 곳이 없으니 추가 이동 요청도 없다
     }
 
+    // ── 노드 간 이어 재생 (W39) ───────────────────────────────────────────
+
+    [Fact]
+    public void 문서_끝에서_노드_전환이_받아들여지면_재생이_이어진다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 1, text: "");
+        int exitAsks = 0;
+
+        playback.NodeExitRequested = () =>
+        {
+            exitAsks++;
+            playback.OnNodeSwitch(); // 편집기가 노드를 바꾸고 —
+            Arrive(playback, 0, 2, new string('가', 30)); // 새 노드의 첫 라인이 도착한다
+            return true;
+        };
+
+        playback.Play();
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
+
+        Assert.Equal(1, exitAsks);
+        Assert.True(playback.IsPlaying);            // 멈추지 않고 이어진다
+        Assert.Empty(moves);                        // 라인 이동이 아니라 노드 전환이다
+        Assert.Equal(0, playback.VisibleCharacters); // 새 노드 첫 라인의 타자가 처음부터
+        Assert.Null(playback.TransitionProgress);   // 노드를 넘는 전이 보간은 없다
+
+        playback.Tick(0.5);
+        Assert.Equal(15, playback.VisibleCharacters); // 시간이 정상으로 흐른다
+    }
+
+    [Fact]
+    public void 문서_끝에서_전환이_거절되면_기존대로_멈춘다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 1, text: "");
+        playback.NodeExitRequested = () => false;
+
+        playback.Play();
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
+
+        Assert.False(playback.IsPlaying);
+        Assert.Empty(moves);
+    }
+
+    [Fact]
+    public void 노드_전환은_같은_인덱스의_요청도_새_라인으로_시작한다()
+    {
+        // 이전 노드가 1줄짜리면 끝 인덱스도 0, 새 노드 첫 라인도 0 — 그래도 타자가 다시 시작돼야 한다.
+        (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 1, text: new string('가', 30));
+
+        playback.Play();
+        playback.Tick(0.5); // 15자 타자 중
+
+        playback.OnNodeSwitch();
+        Arrive2(playback, 0, 3, transitionSeconds: 0.4); // 같은 인덱스 0으로 도착
+
+        Assert.Equal(0, playback.VisibleCharacters); // 새 라인 취급 — 처음부터
+        Assert.Null(playback.TransitionProgress);    // 노드를 넘는 전이는 흐르지 않는다
+    }
+
+    [Fact]
+    public void 경로가_중간에_끝나면_정지가_대기를_풀고_멈춘다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: "");
+
+        playback.Play();
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
+        Assert.Equal([1], moves); // 이동 요청이 나갔지만 —
+
+        playback.StopAtEnd(); // 편집기: 경로 끝(갈래 출구 뒤), 이어질 노드 없음
+
+        Assert.False(playback.IsPlaying);
+        playback.Tick(10);
+        Assert.Equal([1], moves); // 대기에 걸려 있지 않고 조용하다
+    }
+
     [Fact]
     public void 재생_중이_아니면_클릭은_기존_조작이다()
     {

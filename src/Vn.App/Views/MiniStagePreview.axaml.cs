@@ -152,6 +152,12 @@ public partial class MiniStagePreview : UserControl
     /// <summary>분리 창의 이전/다음 버튼과 재생 자동 진행. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
     internal event Action<int>? LineMoveRequested;
 
+    /// <summary>
+    /// 문서 끝에서 다음 노드로 이어 재생 (W39) — 활성 편집기가 실행 출구를 따라
+    /// 노드 전환에 성공하면 true를 돌려준다.
+    /// </summary>
+    internal Func<bool>? NodeExitRequested;
+
     /// <summary>도킹/분리 무대 어느 쪽이든 직접 조작이 편집을 만들었다 — 편집기가 다시 그린다.</summary>
     internal event Action? ManipulationApplied;
 
@@ -179,6 +185,7 @@ public partial class MiniStagePreview : UserControl
 
         // 재생 배선 — 시간의 원천은 이 타이머 하나, 라인 이동은 기존 선택 경로다.
         Playback.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
+        Playback.NodeExitRequested = () => NodeExitRequested?.Invoke() == true;
         _scene.PlaybackAdvance = Playback.TryAdvanceByInput;
         PlaybackHost.Content = StagePlaybackControls.Build(Playback);
 

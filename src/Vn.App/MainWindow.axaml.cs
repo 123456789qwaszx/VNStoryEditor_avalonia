@@ -62,6 +62,17 @@ public partial class MainWindow : Window
                 DialogueEditor.MoveStageLine(delta);
             }
         };
+        StagePreview.NodeExitRequested = () =>
+        {
+            // 문서 끝 도달 (W39) — 활성 편집기가 실행 출구를 따라 다음 노드로 전환하면
+            // 재생이 이어진다. 전환된 노드의 편집기가 열리며 첫 라인 프리뷰를 민다.
+            if (PresentationEditor.IsVisible)
+            {
+                return PresentationEditor.TryExitPlaybackNode();
+            }
+
+            return DialogueEditor.IsVisible && DialogueEditor.TryExitPlaybackNode();
+        };
         StagePreview.ManipulationApplied += () =>
         {
             // 직접 조작은 연출 노드의 바인딩을 바꿨다 — 커맨드 행에 즉시 보여야 한다.

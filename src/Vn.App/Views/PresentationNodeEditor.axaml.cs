@@ -206,19 +206,7 @@ public partial class PresentationNodeEditor : UserControl
         DialogueResultLine? line = dialogue.FindLine(_selectedLineId) ?? dialogue.Lines.FirstOrDefault();
 
         // 조건 값 시뮬 (W36-b): 수동 선택 + 값 기반 자동 판정을 합친 유효 선택을 쓴다.
-        ConditionSimulation.Result simulation = ConditionSimulation.Decide(
-            dialogue.Lines,
-            resultLine => resultLine.Transition?.Kind,
-            resultLine => resultLine.LineId,
-            resultLine => resultLine.Transition?.Expression,
-            resultLine => resultLine.Sets.Select(operation =>
-                (operation.Variable, operation.Operator, operation.Value)),
-            dialogue.Assignments.Select(assignment => (
-                assignment.Variable,
-                _session.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
-                    ? overridden
-                    : assignment.Value)),
-            _session.BranchSelection);
+        ConditionSimulation.Result simulation = SimulateBranches(dialogue);
 
         // 갈래 인식 (W35) — 유효 선택된 갈래의 라인만 접는다. 미결정 블록은 근사 + 표시.
         BranchAwareLines.Result branch = BranchAwareLines.UpTo(
@@ -284,7 +272,30 @@ public partial class PresentationNodeEditor : UserControl
             AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
     }
 
-    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.</summary>
+    /// <summary>
+    /// 조건 값 시뮬 (W36-b) — 수동 선택 위에 "값이 이렇다면 이 갈래"의 자동 판정을 얹는다.
+    /// 시작값 = 발행 시점 설정값 + 세션 시뮬 오버라이드. 프리뷰와 재생 경로가 같은 판정을 쓴다.
+    /// </summary>
+    private ConditionSimulation.Result SimulateBranches(DialogueResult dialogue)
+    {
+        return ConditionSimulation.Decide(
+            dialogue.Lines,
+            resultLine => resultLine.Transition?.Kind,
+            resultLine => resultLine.LineId,
+            resultLine => resultLine.Transition?.Expression,
+            resultLine => resultLine.Sets.Select(operation =>
+                (operation.Variable, operation.Operator, operation.Value)),
+            dialogue.Assignments.Select(assignment => (
+                assignment.Variable,
+                _session!.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
+                    ? overridden
+                    : assignment.Value)),
+            _session!.BranchSelection);
+    }
+
+    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.
+    /// 재생 중에는 타는 경로만 걷는다 (W39) — 안 타는 갈래 라인은 건너뛰고,
+    /// 경로 끝에서는 실행 출구를 따라 다음 노드로 넘어간다.</summary>
     internal void MoveStageLine(int delta)
     {
         if (_session?.Project.FindPresentation(_nodeId) is not { } presentation)
@@ -299,11 +310,98 @@ public partial class PresentationNodeEditor : UserControl
             return;
         }
 
+        if (StagePreview?.Playback.IsPlaying == true && TryMoveAlongPath(dialogue, delta))
+        {
+            return;
+        }
+
         int index = dialogue.Lines.ToList().FindIndex(item =>
             string.Equals(item.LineId, _selectedLineId, StringComparison.Ordinal));
         int next = Math.Clamp((index < 0 ? 0 : index) + delta, 0, dialogue.Lines.Count - 1);
 
         SelectStageLine(dialogue.Lines[next].LineId);
+    }
+
+    /// <summary>재생 경로 이동 (W39). 현재 라인이 경로 밖(출구 뒤 등)이면 false —
+    /// 문서 순서 이동으로 계속해 조용히 버리지 않는다.</summary>
+    private bool TryMoveAlongPath(DialogueResult dialogue, int delta)
+    {
+        PlaybackPath.Result path = TracePlaybackPath(dialogue);
+        int at = path.LineIds.ToList().FindIndex(id =>
+            string.Equals(id, _selectedLineId, StringComparison.Ordinal));
+
+        if (at < 0)
+        {
+            return false;
+        }
+
+        int next = at + delta;
+
+        if (next >= path.LineIds.Count)
+        {
+            if (!TryEnterNextNode(path.ExitTargetNodeId))
+            {
+                StagePreview!.Playback.StopAtEnd();
+            }
+
+            return true;
+        }
+
+        SelectStageLine(path.LineIds[Math.Max(next, 0)]);
+        return true;
+    }
+
+    /// <summary>이 발행본의 재생 경로 — 여기서 보는 것이 발행 결과이므로 출구도 발행본의 것이다.</summary>
+    private PlaybackPath.Result TracePlaybackPath(DialogueResult dialogue)
+    {
+        return PlaybackPath.Trace(
+            dialogue.Lines,
+            line => line.Transition?.Kind,
+            line => line.LineId,
+            line => line.BranchExitTargetNodeId,
+            dialogue.DefaultExitTargetNodeId,
+            SimulateBranches(dialogue).Effective,
+            _selectedLineId);
+    }
+
+    /// <summary>문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.</summary>
+    internal bool TryExitPlaybackNode()
+    {
+        if (_session?.Project.FindPresentation(_nodeId) is not { } presentation)
+        {
+            return false;
+        }
+
+        PresentationWorkspace workspace = PresentationBindingResolver.Resolve(_session.Project, presentation);
+
+        if (workspace.Dialogue is not { } dialogue)
+        {
+            return false;
+        }
+
+        return TryEnterNextNode(TracePlaybackPath(dialogue).ExitTargetNodeId);
+    }
+
+    /// <summary>
+    /// 실행 출구의 대사 노드로 재생을 넘긴다 (W39). 노드 선택이 바뀌면 대사 편집기가
+    /// 그 노드를 열고 첫 라인 프리뷰를 밀어 재생이 이어진다. 대사 노드가 아니면 알리고 멈춘다.
+    /// </summary>
+    private bool TryEnterNextNode(string? targetNodeId)
+    {
+        if (_session is null || StagePreview is null || targetNodeId is null)
+        {
+            return false;
+        }
+
+        if (_session.Project.FindNode(targetNodeId) is not DialogueNode next)
+        {
+            _session.SetStatus("실행 출구가 가리키는 대사 노드를 찾지 못해 이어 재생을 멈췄습니다.");
+            return false;
+        }
+
+        StagePreview.Playback.OnNodeSwitch();
+        _session.Select(next.Id);
+        return true;
     }
 
     private void SelectStageLine(string lineId)
