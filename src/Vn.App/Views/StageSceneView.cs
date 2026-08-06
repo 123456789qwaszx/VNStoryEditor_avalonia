@@ -1947,13 +1947,63 @@ internal sealed class StageSceneView : UserControl
 
         void AddSection(string title, bool bgm, string playCommand, string stopCommand, string stopLabel)
         {
-            panel.Children.Add(new TextBlock
+            // 제목 옆 볼륨 슬라이더 (W63) — 툴 미리 듣기 볼륨이다. 게임 출력에는 영향이 없고,
+            // 울리고 있는 소리에도 즉시 적용되며 세션을 넘어 기억된다(AppSettings).
+            double volume = bgm ? AudioPreview.BgmVolume : AudioPreview.SfxVolume;
+
+            var volumeLabel = new TextBlock
+            {
+                Text = $"{Math.Round(volume * 100)}%",
+                FontSize = 9,
+                Opacity = 0.6,
+                Width = 30,
+                TextAlignment = TextAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var volumeSlider = new Slider
+            {
+                Minimum = 0,
+                Maximum = 100,
+                Value = volume * 100,
+                Width = 90,
+                Margin = new Thickness(8, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            ToolTip.SetTip(volumeSlider, "툴 미리 듣기 볼륨 — 게임 출력에는 영향이 없습니다.");
+            volumeSlider.ValueChanged += (_, args) =>
+            {
+                double next = args.NewValue / 100;
+
+                if (bgm)
+                {
+                    AudioPreview.BgmVolume = next;
+                }
+                else
+                {
+                    AudioPreview.SfxVolume = next;
+                }
+
+                volumeLabel.Text = $"{Math.Round(args.NewValue)}%";
+            };
+
+            var titleText = new TextBlock
             {
                 Text = title,
                 FontSize = 10,
                 FontWeight = FontWeight.SemiBold,
-                Opacity = 0.7
-            });
+                Opacity = 0.7,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
+            Grid.SetColumn(titleText, 0);
+            Grid.SetColumn(volumeSlider, 1);
+            Grid.SetColumn(volumeLabel, 2);
+            header.Children.Add(titleText);
+            header.Children.Add(volumeSlider);
+            header.Children.Add(volumeLabel);
+            panel.Children.Add(header);
 
             string? root = bgm ? _session!.BgmRoot : _session!.SfxRoot;
             IReadOnlyList<string> keys = _session!.AudioClipKeys(root);
@@ -2005,7 +2055,7 @@ internal sealed class StageSceneView : UserControl
                 {
                     if (_session!.ResolveAudioClipPath(root, key) is { } path)
                     {
-                        AudioPreview.ToggleAudition(path);
+                        AudioPreview.ToggleAudition(path, bgm);
                     }
                 });
 

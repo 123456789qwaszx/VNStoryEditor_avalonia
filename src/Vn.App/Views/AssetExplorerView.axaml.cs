@@ -169,7 +169,7 @@ public partial class AssetExplorerView : UserControl
             {
                 if (_session!.ResolveAudioClipPath(root, key) is { } path)
                 {
-                    AudioPreview.ToggleAudition(path);
+                    AudioPreview.ToggleAudition(path, bgm);
                 }
                 else
                 {

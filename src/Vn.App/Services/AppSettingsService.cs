@@ -78,6 +78,24 @@ internal static class AppSettingsService
         Save(settings);
     }
 
+    /// <summary>미리 듣기 볼륨 (W63) — 0..1. 형식이 깨져 있으면 1(원음)로 돌아간다.</summary>
+    public static (double Bgm, double Sfx) LoadAudioVolumes()
+    {
+        AppSettings settings = Load(SettingsPath);
+        return (ClampVolume(settings.BgmVolume), ClampVolume(settings.SfxVolume));
+    }
+
+    public static void SaveAudioVolumes(double bgm, double sfx)
+    {
+        AppSettings settings = Load(SettingsPath);
+        settings.BgmVolume = ClampVolume(bgm);
+        settings.SfxVolume = ClampVolume(sfx);
+        Save(settings);
+    }
+
+    private static double ClampVolume(double? volume) =>
+        volume is { } value && double.IsFinite(value) ? Math.Clamp(value, 0, 1) : 1;
+
     /// <summary>
     /// 설정 파일이 없거나, 잘린 JSON이거나, 형이 전혀 다른 내용이어도 기본값으로 돌아간다.
     /// 편의 설정 하나 때문에 앱이 시작하지 못하는 일은 없어야 한다.
@@ -152,5 +170,11 @@ internal static class AppSettingsService
 
         /// <summary>재생 속도 배율. null이면 1배 — 없던 설정 파일과의 호환.</summary>
         public double? PlaybackSpeed { get; set; }
+
+        /// <summary>미리 듣기 BGM 볼륨 0..1 (W63). null이면 원음.</summary>
+        public double? BgmVolume { get; set; }
+
+        /// <summary>미리 듣기 효과음 볼륨 0..1 (W63). null이면 원음.</summary>
+        public double? SfxVolume { get; set; }
     }
 }
