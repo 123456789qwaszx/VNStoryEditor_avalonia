@@ -489,6 +489,9 @@ public partial class DialogueNodeEditor : UserControl
     {
         var wrapper = new Border
         {
+            // Transparent는 보이지 않지만 히트테스트는 된다 — 배경 없는 일반 대사 카드의
+            // 빈 부분을 클릭해도 선택이 되게 한다(글자 위만 반응하던 문제 수정, W53).
+            Background = Brushes.Transparent,
             BorderThickness = new Thickness(3, 0, 0, 0),
             BorderBrush = string.Equals(lineId, _selectedLineId, StringComparison.Ordinal)
                 ? StageSelectionBrush
