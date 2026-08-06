@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
@@ -49,6 +50,29 @@ public partial class GraphEditorView : UserControl
 
     private EdgeVisual? _selectedEdge;
     private bool _updatingFilter;
+
+    // ── 그래프 내비게이션 (W40) ────────────────────────────────────────────
+    private const double MinZoom = 0.25;
+    private const double MaxZoom = 2.0;
+    private const double CanvasWidth = 3000;   // axaml의 GraphCanvas 크기와 같아야 한다
+    private const double CanvasHeight = 2000;
+    private const double MinimapWidth = 180;   // 캔버스와 같은 3:2 비율
+    private const double MinimapHeight = 120;
+
+    private double _zoom = 1;
+    private bool _panning;
+    private Point _panStart;
+    private Vector _panStartOffset;
+    private bool _minimapDragging;
+    private Rectangle? _minimapViewport;
+
+    // 범위 선택 (W40) — 좌클릭 드래그로 잡은 노드 무리는 한 번에 움직인다.
+    private Rectangle? _rubberBand;
+    private Point _rubberStart;
+    private readonly HashSet<string> _multiSelected = new(StringComparer.Ordinal);
+    private bool _draggingGroup;
+    private Point _groupDragStart;
+    private readonly Dictionary<string, Point> _groupStartPositions = new(StringComparer.Ordinal);
 
     /// <summary>토글 상태로 만든 필터. 거르는 것은 화면이 아니라 투영이다.</summary>
     private GraphFilter CurrentFilter => new(
@@ -110,6 +134,16 @@ public partial class GraphEditorView : UserControl
         GraphCanvas.PointerMoved += OnCanvasPointerMoved;
         GraphCanvas.PointerReleased += OnCanvasPointerReleased;
         GraphCanvas.PointerPressed += OnCanvasPointerPressed;
+
+        // 그래프 내비게이션 (W40) — Ctrl+휠 줌·중간 버튼 팬은 스크롤보다 먼저 가로챈다.
+        GraphScroll.AddHandler(PointerWheelChangedEvent, OnGraphWheel, RoutingStrategies.Tunnel);
+        GraphScroll.AddHandler(PointerPressedEvent, OnGraphPanPressed, RoutingStrategies.Tunnel);
+        GraphScroll.AddHandler(PointerMovedEvent, OnGraphPanMoved, RoutingStrategies.Tunnel);
+        GraphScroll.AddHandler(PointerReleasedEvent, OnGraphPanReleased, RoutingStrategies.Tunnel);
+        GraphScroll.ScrollChanged += (_, _) => RefreshMinimapViewport();
+        MinimapCanvas.PointerPressed += OnMinimapPressed;
+        MinimapCanvas.PointerMoved += OnMinimapMoved;
+        MinimapCanvas.PointerReleased += (_, _) => _minimapDragging = false;
     }
 
     internal void Attach(AuthoringSession session)
@@ -159,6 +193,7 @@ public partial class GraphEditorView : UserControl
 
         DrawEdges();
         HighlightSelection();
+        RefreshMinimap();
     }
 
     /// <summary>좌표만 바뀌었을 때. projection을 다시 계산하되 컨트롤은 유지한다.</summary>
@@ -208,6 +243,8 @@ public partial class GraphEditorView : UserControl
                 PositionEdge(edge);
             }
         }
+
+        RefreshMinimap();
     }
 
     internal void HighlightSelection()
@@ -215,12 +252,13 @@ public partial class GraphEditorView : UserControl
         foreach (NodeCard card in _cards)
         {
             bool selected = string.Equals(card.NodeId, _session?.SelectedNodeId, StringComparison.Ordinal);
+            bool grouped = _multiSelected.Contains(card.NodeId); // 범위 선택 무리 (W40)
 
-            card.Visual.BorderBrush = selected
+            card.Visual.BorderBrush = selected || grouped
                 ? new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB))
                 : new SolidColorBrush(Color.FromArgb(90, 128, 128, 128));
 
-            card.Visual.BorderThickness = new Thickness(selected ? 2 : 1);
+            card.Visual.BorderThickness = new Thickness(selected || grouped ? 2 : 1);
         }
 
         foreach (FileProxyVisual proxy in _proxies)
@@ -725,11 +763,224 @@ public partial class GraphEditorView : UserControl
         return new Point(x, y);
     }
 
+    // ── 그래프 내비게이션 (W40): 줌·팬·미니맵 ─────────────────────────────
+
+    private void OnGraphWheel(object? sender, PointerWheelEventArgs args)
+    {
+        if (!args.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            return; // 그냥 휠은 기존 스크롤 그대로
+        }
+
+        double factor = args.Delta.Y > 0 ? 1.15 : 1 / 1.15;
+        ApplyZoom(_zoom * factor, args.GetPosition(GraphScroll));
+        args.Handled = true;
+    }
+
+    /// <summary>배율 적용 — anchor(뷰포트 좌표) 아래의 내용이 그 자리에 남게 오프셋을 맞춘다.</summary>
+    private void ApplyZoom(double zoom, Point? anchor)
+    {
+        double clamped = Math.Clamp(zoom, MinZoom, MaxZoom);
+        Point pivot = anchor ?? new Point(
+            GraphScroll.Viewport.Width / 2, GraphScroll.Viewport.Height / 2);
+
+        // 지금 pivot 아래에 있는 캔버스 좌표.
+        var content = new Point(
+            (GraphScroll.Offset.X + pivot.X) / _zoom,
+            (GraphScroll.Offset.Y + pivot.Y) / _zoom);
+
+        _zoom = clamped;
+        ZoomHost.LayoutTransform = new ScaleTransform(_zoom, _zoom);
+        ZoomText.Text = $"{Math.Round(_zoom * 100)}%";
+
+        ZoomHost.UpdateLayout(); // 새 크기를 알아야 오프셋 상한이 맞는다
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, (content.X * _zoom) - pivot.X),
+            Math.Max(0, (content.Y * _zoom) - pivot.Y));
+        RefreshMinimapViewport();
+    }
+
+    private void OnGraphPanPressed(object? sender, PointerPressedEventArgs args)
+    {
+        if (!args.GetCurrentPoint(GraphScroll).Properties.IsMiddleButtonPressed)
+        {
+            return;
+        }
+
+        _panning = true;
+        _panStart = args.GetPosition(GraphScroll);
+        _panStartOffset = GraphScroll.Offset;
+        args.Pointer.Capture(GraphScroll);
+        args.Handled = true;
+    }
+
+    private void OnGraphPanMoved(object? sender, PointerEventArgs args)
+    {
+        if (!_panning)
+        {
+            return;
+        }
+
+        Point now = args.GetPosition(GraphScroll);
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, _panStartOffset.X - (now.X - _panStart.X)),
+            Math.Max(0, _panStartOffset.Y - (now.Y - _panStart.Y)));
+        args.Handled = true;
+    }
+
+    private void OnGraphPanReleased(object? sender, PointerReleasedEventArgs args)
+    {
+        if (_panning)
+        {
+            _panning = false;
+            args.Pointer.Capture(null);
+            args.Handled = true;
+        }
+    }
+
+    /// <summary>미니맵 전체 다시 그리기 — 카드·프록시를 축소 사각형으로, 위에 뷰포트 틀.</summary>
+    private void RefreshMinimap()
+    {
+        MinimapCanvas.Children.Clear();
+
+        foreach (NodeCard card in _cards)
+        {
+            AddMinimapRect(
+                Canvas.GetLeft(card.Visual),
+                Canvas.GetTop(card.Visual),
+                CardWidth,
+                CardHeightOf(card),
+                card.NodeKind switch
+                {
+                    GraphNodeKind.Set => Color.FromRgb(0x3B, 0x82, 0xF6),
+                    GraphNodeKind.Presentation => Color.FromRgb(0x8B, 0x5C, 0xF6),
+                    GraphNodeKind.CommandSupply => Color.FromRgb(0x22, 0xC5, 0x5E),
+                    _ => Color.FromRgb(0x9C, 0xA3, 0xAF)
+                });
+        }
+
+        foreach (FileProxyVisual proxy in _proxies)
+        {
+            AddMinimapRect(
+                Canvas.GetLeft(proxy.Visual),
+                Canvas.GetTop(proxy.Visual),
+                ProxyWidth,
+                ProxyHeaderHeight + (Math.Max(1, proxy.Rows.Count) * ProxyRowHeight),
+                Color.FromRgb(0x6B, 0x72, 0x80));
+        }
+
+        _minimapViewport = new Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)),
+            StrokeThickness = 1,
+            Fill = new SolidColorBrush(Color.FromArgb(20, 37, 99, 235)),
+            IsHitTestVisible = false
+        };
+        MinimapCanvas.Children.Add(_minimapViewport);
+        RefreshMinimapViewport();
+    }
+
+    private void AddMinimapRect(double x, double y, double width, double height, Color color)
+    {
+        var rect = new Rectangle
+        {
+            Width = Math.Max(2, width * (MinimapWidth / CanvasWidth)),
+            Height = Math.Max(2, height * (MinimapHeight / CanvasHeight)),
+            Fill = new SolidColorBrush(Color.FromArgb(170, color.R, color.G, color.B)),
+            RadiusX = 1,
+            RadiusY = 1,
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(rect, x * (MinimapWidth / CanvasWidth));
+        Canvas.SetTop(rect, y * (MinimapHeight / CanvasHeight));
+        MinimapCanvas.Children.Add(rect);
+    }
+
+    /// <summary>뷰포트 틀만 옮긴다 — 스크롤·줌마다 불리므로 전체를 다시 그리지 않는다.</summary>
+    private void RefreshMinimapViewport()
+    {
+        if (_minimapViewport is null)
+        {
+            return;
+        }
+
+        double scaleX = MinimapWidth / CanvasWidth;
+        double scaleY = MinimapHeight / CanvasHeight;
+
+        double left = GraphScroll.Offset.X / _zoom * scaleX;
+        double top = GraphScroll.Offset.Y / _zoom * scaleY;
+        double width = Math.Min(MinimapWidth, GraphScroll.Viewport.Width / _zoom * scaleX);
+        double height = Math.Min(MinimapHeight, GraphScroll.Viewport.Height / _zoom * scaleY);
+
+        Canvas.SetLeft(_minimapViewport, Math.Clamp(left, 0, MinimapWidth));
+        Canvas.SetTop(_minimapViewport, Math.Clamp(top, 0, MinimapHeight));
+        _minimapViewport.Width = width;
+        _minimapViewport.Height = height;
+    }
+
+    private void OnMinimapPressed(object? sender, PointerPressedEventArgs args)
+    {
+        _minimapDragging = true;
+        MoveViewportTo(args.GetPosition(MinimapCanvas));
+        args.Pointer.Capture(MinimapCanvas);
+        args.Handled = true;
+    }
+
+    private void OnMinimapMoved(object? sender, PointerEventArgs args)
+    {
+        if (_minimapDragging)
+        {
+            MoveViewportTo(args.GetPosition(MinimapCanvas));
+            args.Handled = true;
+        }
+    }
+
+    /// <summary>미니맵의 한 점이 뷰포트 중앙에 오도록 스크롤을 옮긴다.</summary>
+    private void MoveViewportTo(Point minimapPoint)
+    {
+        double contentX = minimapPoint.X / (MinimapWidth / CanvasWidth);
+        double contentY = minimapPoint.Y / (MinimapHeight / CanvasHeight);
+
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, (contentX * _zoom) - (GraphScroll.Viewport.Width / 2)),
+            Math.Max(0, (contentY * _zoom) - (GraphScroll.Viewport.Height / 2)));
+    }
+
+    private double CardHeightOf(NodeCard card)
+    {
+        return card.Visual.Bounds.Height > 0
+            ? card.Visual.Bounds.Height
+            : HeaderHeight + (card.Ports.Count * PortRowHeight) + (CardPadding * 2);
+    }
+
     // ── 조작 ────────────────────────────────────────────────────────────────
 
     private void OnCardPressed(NodeCard card, PointerPressedEventArgs args)
     {
         _session?.Select(card.NodeId);
+
+        // 범위 선택된 카드를 잡으면 무리가 함께 움직인다 (W40).
+        if (_multiSelected.Contains(card.NodeId) && _multiSelected.Count > 1)
+        {
+            _draggingGroup = true;
+            _groupDragStart = args.GetPosition(GraphCanvas);
+            _groupStartPositions.Clear();
+
+            foreach (NodeCard member in _cards)
+            {
+                if (_multiSelected.Contains(member.NodeId))
+                {
+                    _groupStartPositions[member.NodeId] = new Point(
+                        Canvas.GetLeft(member.Visual), Canvas.GetTop(member.Visual));
+                }
+            }
+
+            HighlightSelection();
+            args.Handled = true;
+            return;
+        }
+
+        _multiSelected.Clear(); // 무리 밖 카드를 잡으면 단일 선택으로 돌아간다
         HighlightSelection();
 
         _draggingCard = card;
@@ -775,15 +1026,55 @@ public partial class GraphEditorView : UserControl
 
     private void OnCanvasPointerPressed(object? sender, PointerPressedEventArgs args)
     {
-        if (args.Source is Canvas)
+        if (args.Source is not Canvas)
         {
-            SelectEdge(null);
+            return;
         }
+
+        SelectEdge(null);
+
+        // 빈 곳 좌클릭 = 범위 선택 시작 (W40). 이전 무리는 새 범위가 대신한다.
+        if (args.GetCurrentPoint(GraphCanvas).Properties.IsLeftButtonPressed)
+        {
+            _multiSelected.Clear();
+            HighlightSelection();
+
+            _rubberStart = args.GetPosition(GraphCanvas);
+            _rubberBand = new Rectangle
+            {
+                Stroke = new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)),
+                StrokeThickness = 1,
+                StrokeDashArray = new AvaloniaList<double> { 4, 3 },
+                Fill = new SolidColorBrush(Color.FromArgb(28, 37, 99, 235)),
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(_rubberBand, _rubberStart.X);
+            Canvas.SetTop(_rubberBand, _rubberStart.Y);
+            GraphCanvas.Children.Add(_rubberBand);
+            args.Pointer.Capture(GraphCanvas);
+        }
+    }
+
+    private Rect RubberRect(Point current)
+    {
+        return new Rect(
+            new Point(Math.Min(_rubberStart.X, current.X), Math.Min(_rubberStart.Y, current.Y)),
+            new Point(Math.Max(_rubberStart.X, current.X), Math.Max(_rubberStart.Y, current.Y)));
     }
 
     private void OnCanvasPointerMoved(object? sender, PointerEventArgs args)
     {
         Point position = args.GetPosition(GraphCanvas);
+
+        if (_rubberBand is not null)
+        {
+            Rect rect = RubberRect(position);
+            Canvas.SetLeft(_rubberBand, rect.X);
+            Canvas.SetTop(_rubberBand, rect.Y);
+            _rubberBand.Width = rect.Width;
+            _rubberBand.Height = rect.Height;
+            return;
+        }
 
         if (_connectingLine is not null)
         {
@@ -791,7 +1082,28 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        if (_draggingCard is null || _session is null)
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (_draggingGroup)
+        {
+            double deltaX = position.X - _groupDragStart.X;
+            double deltaY = position.Y - _groupDragStart.Y;
+
+            foreach ((string nodeId, Point start) in _groupStartPositions)
+            {
+                _session.Editor.MoveNode(
+                    nodeId,
+                    Math.Max(0, start.X + deltaX),
+                    Math.Max(0, start.Y + deltaY));
+            }
+
+            return;
+        }
+
+        if (_draggingCard is null)
         {
             return;
         }
@@ -805,6 +1117,41 @@ public partial class GraphEditorView : UserControl
     private void OnCanvasPointerReleased(object? sender, PointerReleasedEventArgs args)
     {
         _draggingCard = null;
+        _draggingGroup = false;
+
+        // 범위 선택 확정 (W40) — 사각형에 걸친 카드 전부가 무리가 된다.
+        if (_rubberBand is not null)
+        {
+            Rect rect = RubberRect(args.GetPosition(GraphCanvas));
+            GraphCanvas.Children.Remove(_rubberBand);
+            _rubberBand = null;
+            args.Pointer.Capture(null);
+
+            _multiSelected.Clear();
+
+            foreach (NodeCard card in _cards)
+            {
+                var bounds = new Rect(
+                    Canvas.GetLeft(card.Visual),
+                    Canvas.GetTop(card.Visual),
+                    CardWidth,
+                    CardHeightOf(card));
+
+                if (rect.Intersects(bounds))
+                {
+                    _multiSelected.Add(card.NodeId);
+                }
+            }
+
+            HighlightSelection();
+
+            if (_multiSelected.Count > 0)
+            {
+                HintText.Text = $"{_multiSelected.Count}개 노드 선택 — 무리 안의 카드를 끌면 함께 움직입니다.";
+            }
+
+            return;
+        }
 
         if (_connectingFrom is null)
         {

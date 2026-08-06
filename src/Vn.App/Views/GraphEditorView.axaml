@@ -25,14 +25,44 @@
             </StackPanel>
         </Border>
 
-        <ScrollViewer Grid.Row="1"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto">
-            <Canvas x:Name="GraphCanvas"
-                    Width="3000"
-                    Height="2000"
-                    Background="{DynamicResource ThemeBackgroundBrush}" />
-        </ScrollViewer>
+        <Grid Grid.Row="1">
+            <ScrollViewer x:Name="GraphScroll"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                <!-- 배율은 레이아웃 변환이다 — 스크롤 범위가 확대/축소를 그대로 따라온다 (W40). -->
+                <LayoutTransformControl x:Name="ZoomHost">
+                    <Canvas x:Name="GraphCanvas"
+                            Width="3000"
+                            Height="2000"
+                            Background="{DynamicResource ThemeBackgroundBrush}" />
+                </LayoutTransformControl>
+            </ScrollViewer>
+
+            <!-- 미니맵 (W40) — 우측 하단에 전체 맵과 현재 배율. 클릭·드래그로 뷰포트 이동. -->
+            <Border HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,18,18"
+                    CornerRadius="6"
+                    BorderThickness="1"
+                    BorderBrush="#66808080"
+                    Background="{DynamicResource ThemeBackgroundBrush}">
+                <StackPanel>
+                    <Canvas x:Name="MinimapCanvas"
+                            Width="180"
+                            Height="120"
+                            ClipToBounds="True"
+                            Background="Transparent"
+                            Cursor="Hand" />
+                    <Border BorderBrush="#33808080" BorderThickness="0,1,0,0" Padding="6,2">
+                        <TextBlock x:Name="ZoomText"
+                                   FontSize="10"
+                                   Opacity="0.7"
+                                   HorizontalAlignment="Right"
+                                   Text="100%" />
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
 
         <Border Grid.Row="2"
                 Padding="10,6"
@@ -42,7 +72,7 @@
                        FontSize="11"
                        Opacity="0.7"
                        TextWrapping="Wrap"
-                       Text="포트(●)를 끌어 실제 노드나 접힌 FileProxy의 노드 행에 놓으면 연결됩니다." />
+                       Text="포트(●)를 끌어 노드에 놓으면 연결 · 빈 곳 좌클릭 드래그=범위 선택 · 중간 버튼=이동 · Ctrl+휠=확대/축소" />
         </Border>
     </Grid>
 </UserControl>

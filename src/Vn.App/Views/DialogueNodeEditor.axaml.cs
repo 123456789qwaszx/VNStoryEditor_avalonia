@@ -1003,7 +1003,6 @@ public partial class DialogueNodeEditor : UserControl
                 PlaceholderText = "화자",
                 FontSize = 11,
                 MinHeight = 26,
-                Margin = new Thickness(4, 0, 0, 0),
                 ItemsSource = _session!.Definition.Speakers
                     .Select(item => item.Name)
                     .Where(item => item.Length > 0)
@@ -1012,8 +1011,32 @@ public partial class DialogueNodeEditor : UserControl
                 MinimumPrefixLength = 0
             };
             speaker.TextChanged += (_, _) => Commit();
-            Grid.SetColumn(speaker, 2);
-            row.Children.Add(speaker);
+
+            // ▾ = 등록 화자 전체 목록 (W40) — 자동완성은 타이핑해야 열리니 클릭 한 번 길을 따로 둔다.
+            AutoCompleteBox speakerBox = speaker;
+            var pick = new Button
+            {
+                Content = "▾",
+                FontSize = 8,
+                Padding = new Thickness(3, 0),
+                MinWidth = 16,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Margin = new Thickness(1, 0, 0, 0)
+            };
+            ToolTip.SetTip(pick, "등록된 화자 목록에서 선택");
+            pick.Click += (_, _) => ShowSpeakerFlyout(pick, speakerBox);
+
+            var speakerCell = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                Margin = new Thickness(4, 0, 0, 0)
+            };
+            Grid.SetColumn(speaker, 0);
+            Grid.SetColumn(pick, 1);
+            speakerCell.Children.Add(speaker);
+            speakerCell.Children.Add(pick);
+            Grid.SetColumn(speakerCell, 2);
+            row.Children.Add(speakerCell);
         }
 
         text.TextChanged += (_, _) => Commit();
@@ -1025,6 +1048,53 @@ public partial class DialogueNodeEditor : UserControl
         row.Children.Add(plus);
 
         return row;
+    }
+
+    /// <summary>
+    /// 등록 화자 드롭다운 (W40). 항목 클릭 = 그 이름이 화자 칸에 들어간다 —
+    /// TextChanged가 대본에 반영하므로 자유 입력과 같은 길 하나를 쓴다.
+    /// </summary>
+    private void ShowSpeakerFlyout(Button anchor, AutoCompleteBox speaker)
+    {
+        List<string> names = _session!.Definition.Speakers
+            .Select(item => item.Name)
+            .Where(item => item.Length > 0)
+            .ToList();
+
+        if (names.Count == 0)
+        {
+            _session.SetStatus("game.definition에 등록된 화자가 없습니다. 화자 칸에 직접 입력하세요.");
+            return;
+        }
+
+        var panel = new StackPanel();
+        var flyout = new Flyout
+        {
+            Content = new ScrollViewer { MaxHeight = 240, Content = panel },
+            Placement = PlacementMode.Bottom
+        };
+
+        foreach (string name in names)
+        {
+            var item = new Button
+            {
+                Content = name,
+                FontSize = 11,
+                Padding = new Thickness(10, 4),
+                MinWidth = 120,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = Brushes.Transparent
+            };
+            item.Click += (_, _) =>
+            {
+                speaker.Text = name;
+                flyout.Hide();
+            };
+            panel.Children.Add(item);
+        }
+
+        flyout.ShowAt(anchor);
     }
 
     // ── 태그 레일 ───────────────────────────────────────────────────────────
