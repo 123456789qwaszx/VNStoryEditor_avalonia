@@ -174,6 +174,34 @@ public class PlaybackPathTests
     }
 
     [Fact]
+    public void 조건_갈래_출구는_안의_선택지를_다_지나고_나서_끊는다()
+    {
+        // W54 — 조건 안 선택지 줄도 바깥 조건 갈래에 속하므로, 조건 출구는
+        // 선택지를 다 지난 뒤(EndIf 라인 앞)에 실행된다.
+        DialogueResultLine[] document =
+        [
+            Line(0, "ln_0"),
+            Line(1, "ln_if", "조건", ConditionTransitionKind.BeginIf, branchExit: "nd_high"),
+            Line(2, "ln_labelA", "사과", ConditionTransitionKind.BeginChoice),
+            Line(3, "ln_a1", "사과 본문"),
+            Line(4, "ln_join", "합류", ConditionTransitionKind.EndChoice),
+            Line(5, "ln_endif", "끝", ConditionTransitionKind.EndIf),
+            Line(6, "ln_tail", "뒷 대사"),
+        ];
+
+        var selection = new StageBranchSelection();
+        selection.SelectCondition("ln_if", 0);
+        selection.SelectChoice("ln_labelA", "ln_labelA");
+
+        PlaybackPath.Result path = Trace(document, selection);
+
+        // 선택지 본문·합류까지 전부 탄 뒤에야 조건 출구가 경로를 끊는다.
+        Assert.Equal(["ln_0", "ln_if", "ln_labelA", "ln_a1", "ln_join"], path.LineIds);
+        Assert.Equal("nd_high", path.ExitTargetNodeId);
+        Assert.True(path.ExitViaBranch);
+    }
+
+    [Fact]
     public void 문서가_갈래로_끝나_닫히지_않아도_출구를_버리지_않는다()
     {
         DialogueResultLine[] document =

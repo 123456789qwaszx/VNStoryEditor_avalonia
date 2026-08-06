@@ -45,7 +45,7 @@ public static class ConditionSimulation
         ArgumentNullException.ThrowIfNull(manual);
 
         (List<(string BlockId, bool IsChoice, List<BranchFlow.Branch> Branches)> blockStarts,
-            (int BlockIndex, int BranchIndex)?[] blockOfLine) =
+            IReadOnlyList<(int BlockIndex, int BranchIndex)>[] framesOfLine) =
             BranchFlow.BuildStructure(lines, kindOf, lineIdOf, lineIdOf);
 
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -74,26 +74,37 @@ public static class ConditionSimulation
         for (int index = 0; index < lines.Count; index++)
         {
             TLine line = lines[index];
+            IReadOnlyList<(int BlockIndex, int BranchIndex)> frames = framesOfLine[index];
 
-            if (blockOfLine[index] is not { } at)
+            if (frames.Count == 0)
             {
                 ApplySets(values, setsOf(line));
                 continue;
             }
 
-            (string blockId, bool isChoice, List<BranchFlow.Branch> branches) = blockStarts[at.BlockIndex];
+            // 감싼 블록 전부가 이 라인의 갈래를 골라야 탄다 (W54 — 조건 안 선택지 포함).
+            bool taken = true;
 
-            // 블록에 처음 닿는 순간 — 그 시점 값으로 판정한다.
-            if (!decided[at.BlockIndex])
+            foreach ((int blockIndex, int branchIndex) in frames)
             {
-                decided[at.BlockIndex] = true;
-                decisions[at.BlockIndex] = DecideBlock(
-                    blockId, isChoice, branches, lineByLineId, expressionOf,
-                    values, manual, effective, autoBlocks, undecidable);
-            }
+                (string blockId, bool isChoice, List<BranchFlow.Branch> branches) = blockStarts[blockIndex];
 
-            int? decision = decisions[at.BlockIndex];
-            bool taken = decision is null || at.BranchIndex == decision;
+                // 블록에 처음 닿는 순간 — 그 시점 값으로 판정한다.
+                if (!decided[blockIndex])
+                {
+                    decided[blockIndex] = true;
+                    decisions[blockIndex] = DecideBlock(
+                        blockId, isChoice, branches, lineByLineId, expressionOf,
+                        values, manual, effective, autoBlocks, undecidable);
+                }
+
+                int? decision = decisions[blockIndex];
+
+                if (decision is not null && branchIndex != decision)
+                {
+                    taken = false; // 미결정(null)은 근사대로 전부 적용 — 기존 규칙 그대로
+                }
+            }
 
             if (taken)
             {

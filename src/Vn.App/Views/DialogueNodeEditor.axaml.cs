@@ -268,6 +268,8 @@ public partial class DialogueNodeEditor : UserControl
 
                     LineHost.Children.Add(new Border
                     {
+                        // 조건 갈래 안 선택지(W54)는 박스째 조건 깊이만큼 들어간다.
+                        Margin = new Thickness((line.Depth - 1) * 20, 0, 0, 0),
                         Padding = new Thickness(6, 4),
                         CornerRadius = new CornerRadius(8),
                         BorderThickness = new Thickness(2),

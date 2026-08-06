@@ -41,12 +41,46 @@ public class ChoiceTests
     }
 
     [Fact]
-    public void 조건과_선택이_겹치면_MixedChain으로_알리고_발행을_막는다()
+    public void 조건_안_선택지는_정식_구성이다()
+    {
+        // W54 (소유자 결정): 조건 갈래 본문 안에서 닫히는 선택 블록은 지원한다.
+        var sample = new Sample();
+        string opener = sample.Line("조건 시작", LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        string label1 = sample.Line("사과", LineConditionTransition.BeginChoice());
+        string body1 = sample.Line("사과 본문");
+        string label2 = sample.Line("포도", LineConditionTransition.BeginNextOption());
+        string body2 = sample.Line("포도 본문");
+        string joined = sample.Line("합류(조건 안)", LineConditionTransition.EndChoice());
+        sample.Line("끝", LineConditionTransition.EndIf());
+
+        DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
+
+        Assert.Empty(flow.Problems);
+        Assert.Equal(3, flow.Branches.Count); // 조건 1 + 옵션 2
+
+        // 깊이: 옵션 라벨·본문은 2(조건+선택), 선택이 닫힌 합류 줄은 다시 조건 안 1.
+        Assert.Equal(2, flow.Lines.Single(line => line.Line.LineId == body1).Depth);
+        Assert.Equal(2, flow.Lines.Single(line => line.Line.LineId == label2).Depth);
+        Assert.Equal(1, flow.Lines.Single(line => line.Line.LineId == joined).Depth);
+
+        // 안쪽 갈래 표시는 옵션이고, 바깥 조건 갈래는 선택지 줄까지 덮는다.
+        Assert.Equal(label1, flow.Lines.Single(line => line.Line.LineId == body1).Branch!.OpenLineId);
+        ConditionBranch condition = flow.Branches.Single(branch => !branch.IsChoice);
+        Assert.Equal(opener, condition.OpenLineId);
+        Assert.True(condition.LastLineIndex >=
+            flow.Lines.Single(line => line.Line.LineId == body2).Index);
+
+        // 발행도 막히지 않는다.
+        sample.Editor.PublishDialogue(sample.Dialogue.Id);
+    }
+
+    [Fact]
+    public void 선택이_닫히기_전의_조건_전환은_여전히_MixedChain이다()
     {
         var sample = new Sample();
-        sample.Line("if 안", LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        sample.Line("조건 시작", LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Line("선택 시작", LineConditionTransition.BeginChoice());
-        sample.Line("끝", LineConditionTransition.EndChoice());
+        sample.Line("끝", LineConditionTransition.EndIf()); // 선택지 끝 없이 조건 종료
 
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         Assert.Contains(flow.Problems, problem => problem.Kind == FlowProblemKind.MixedChain);
@@ -338,6 +372,66 @@ public class ChoiceTests
         PresentationResult presentation = sample.Editor.PublishPresentation(node.Id).Result;
 
         return new ChoiceWorld(sample, label1, label2, dialogue, node, presentation);
+    }
+
+    // ── 조건 안 선택지 (W54) ────────────────────────────────────────────────
+
+    /// <summary>W54: 조건 갈래 안에서 닫히는 선택 블록 + 그 조건 갈래의 출구.</summary>
+    internal static ChoiceWorld BuildNestedChoiceWorld()
+    {
+        var sample = new Sample();
+
+        // 실컴파일까지 가는 월드다 — 조건 식은 Yarn 문법($ 접두)이어야 한다 (골든 월드와 동일).
+        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "$favor >= 5");
+
+        sample.Line("가게 앞이다.");
+        string opener = sample.Line("주인이 있다", LineConditionTransition.BeginIf(sample.ConditionA.Id));
+        string label1 = sample.Line("치킨을 산다", LineConditionTransition.BeginChoice());
+        string body1 = sample.Line("치킨을 샀다.");
+        string label2 = sample.Line("그냥 나온다", LineConditionTransition.BeginNextOption());
+        sample.Line("빈손으로 나왔다.");
+        sample.Line("주인이 인사했다.", LineConditionTransition.EndChoice());
+        sample.Line("가게를 나섰다.", LineConditionTransition.EndIf());
+        sample.Line("집으로 간다.");
+
+        // 조건 갈래의 출구 — 안의 선택지를 다 지나고 나서 점프해야 한다.
+        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, opener, sample.TargetA.Id);
+        sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Default, null, sample.TargetDefault.Id);
+
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        PresentationNode node = sample.Editor.AddPresentationNode(sample.File.Id, name: "중첩 연출");
+        sample.Editor.SetPresentationSource(node.Id, dialogue.Identity.ResultId, dialogue.Identity.Version);
+        sample.Editor.AddPresentationCommand(node.Id, body1, "camera.closeup");
+        PresentationResult presentation = sample.Editor.PublishPresentation(node.Id).Result;
+
+        return new ChoiceWorld(sample, label1, label2, dialogue, node, presentation);
+    }
+
+    [Fact]
+    public void 조건_안_선택지는_들여쓴_옵션으로_나오고_조건_출구는_선택_뒤에_점프한다()
+    {
+        ChoiceWorld world = BuildNestedChoiceWorld();
+
+        YarnBundle bundle = YarnBundleEmitter.Emit(
+            world.Dialogue,
+            world.Presentation,
+            world.Sample.Project,
+            Sample.Definition,
+            bundleName: "nested_ep");
+        string story = bundle.Files.Single(file => file.FileName == "Story_nested_ep.yarn").Text;
+
+        Assert.Contains("\n    -> 치킨을 산다", story);         // 라벨이 조건 깊이만큼 들여쓰였다
+        Assert.Contains("\n        <<set $__ch_0 = 0>>", story); // 동기 변수는 라벨보다 한 단 더
+        Assert.Contains("\n        치킨을 샀다.", story);        // 옵션 본문도 한 단 더
+
+        // 조건 갈래 출구 점프는 선택 블록의 마지막 본문 뒤, endif 앞에서 나온다 —
+        // 선택 전환에 새어 나오면 선택지가 제시되기 전에 점프해 버린다.
+        int lastOptionBody = story.IndexOf("빈손으로 나왔다.", StringComparison.Ordinal);
+        int jump = story.IndexOf("<<jump Story_", StringComparison.Ordinal);
+        int endif = story.IndexOf("<<endif>>", StringComparison.Ordinal);
+        Assert.True(lastOptionBody >= 0 && lastOptionBody < jump && jump < endif, story);
     }
 
     internal sealed record ChoiceWorld(

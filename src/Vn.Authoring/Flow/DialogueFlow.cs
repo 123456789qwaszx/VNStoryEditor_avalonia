@@ -42,7 +42,7 @@ public sealed record ConditionBranch(
 /// <param name="PrecedingBranch">
 /// 전환을 적용하기 <em>전</em>의 상태. 조건 드롭다운이 무엇을 제시할지는 이것으로 정해진다.
 /// </param>
-/// <param name="Depth">첫 버전에서는 0 또는 1이다. <c>elseif</c>로 바뀌어도 늘지 않는다.</param>
+/// <param name="Depth">감싼 블록 수 — 바깥 0, 조건 또는 선택 안 1, 조건 안 선택지(W54) 안 2.</param>
 /// <param name="IsBranchExit">이 줄이 자기 갈래의 마지막이고 그 갈래에 출구가 있는지.</param>
 public sealed record ResolvedLine(
     DialogueLine Line,
@@ -81,7 +81,8 @@ public enum FlowProblemKind
     /// <summary>출구가 가리키는 노드가 프로젝트에 없다.</summary>
     MissingExitTarget,
 
-    /// <summary>조건 체인과 선택 체인이 겹쳤다. Phase 1은 두 체인의 중첩을 지원하지 않는다.</summary>
+    /// <summary>선택 블록이 닫히기 전에 조건 전환이 나왔다. 조건 안 선택지(W54)는 정식
+    /// 구성이지만, 그 반대 방향과 미닫힘 교차는 지원하지 않는다.</summary>
     MixedChain,
 
     /// <summary>열린 선택 블록이 없는데 다음 옵션·선택 종료가 나왔다.</summary>

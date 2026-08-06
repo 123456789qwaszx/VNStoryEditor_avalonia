@@ -148,8 +148,12 @@ public static class ResultDocumentComposer
 
         // 갈래 출구는 여는 줄이 소유하지만(§4.2) 실행은 갈래의 끝에서 일어난다.
         // 여는 줄 바로 뒤에 jump를 두면 갈래 본문이 그 아래 묻혀 실행되지 않는다.
-        // 그래서 다음 전환(elseif/endif, 다음 옵션/선택 끝)이 갈래를 닫는 순간에 내보낸다.
-        (RenderSourceReference Source, string Target)? pendingBranchJump = null;
+        // 그래서 자기 체인의 다음 전환이 갈래를 닫는 순간에 내보낸다. 조건 갈래의 출구는
+        // 안에 열린 선택 블록(W54)의 전환에는 흘러나오지 않는다 — 소유 체인이 다르다.
+        (RenderSourceReference Source, string Target, bool IsChoice)? pendingBranchJump = null;
+
+        // W54: 조건 갈래 안 선택 블록 — 들여쓰기는 (조건 열림 ? 1 : 0) + (옵션 본문 ? 1 : 0).
+        bool conditionOpen = false;
 
         foreach (DialogueResultLine line in dialogue.Lines)
         {
@@ -163,22 +167,35 @@ public static class ResultDocumentComposer
 
             if (line.Transition is { } transition)
             {
-                if (options.IncludeExecutionJumps && pendingBranchJump is { } pending)
+                bool isChoiceTransition = transition.Kind is ConditionTransitionKind.BeginChoice
+                    or ConditionTransitionKind.BeginNextOption
+                    or ConditionTransitionKind.EndChoice;
+
+                // 자기 체인의 전환만 대기 중인 출구를 흘려보낸다 (W54) — 조건 갈래의 출구가
+                // 안의 선택 전환에서 새어 나오면 선택지가 제시되기 전에 점프해 버린다.
+                if (options.IncludeExecutionJumps && pendingBranchJump is { } pending &&
+                    pending.IsChoice == isChoiceTransition)
                 {
                     AddBranchJump(segments, project, pending.Source, pending.Target);
+                    pendingBranchJump = null;
                 }
+                else if (!isChoiceTransition)
+                {
+                    // 조건 전환은 어떤 대기든 닫는다(깨진 구조의 안전망 — 잃지 않고 낸다).
+                    if (options.IncludeExecutionJumps && pendingBranchJump is { } stale)
+                    {
+                        AddBranchJump(segments, project, stale.Source, stale.Target);
+                    }
 
-                pendingBranchJump = null;
-                depth = transition.Kind is ConditionTransitionKind.EndIf
-                    or ConditionTransitionKind.EndChoice
-                    ? 0
-                    : 1;
+                    pendingBranchJump = null;
+                }
 
                 switch (transition.Kind)
                 {
                     case ConditionTransitionKind.BeginChoice:
                     case ConditionTransitionKind.BeginNextOption:
                         isOptionLabel = true;
+                        depth = conditionOpen ? 2 : 1; // 옵션 본문 깊이
 
                         if (transition.Kind == ConditionTransitionKind.BeginChoice)
                         {
@@ -199,7 +216,7 @@ public static class ResultDocumentComposer
                                 Kind: RenderedSegmentKind.ChoiceOption,
                                 Layer: DocumentLayer.Dialogue,
                                 Source: lineSource,
-                                IndentLevel: 0,
+                                IndentLevel: conditionOpen ? 1 : 0, // 라벨은 감싼 조건 깊이 (W54)
                                 Text: options.IncludeDialogueText ? line.Text : null,
                                 LocalizedText: options.IncludeLocalizedDialogue
                                     ? localization?.GetLocalizedText(line.LineId)
@@ -214,6 +231,8 @@ public static class ResultDocumentComposer
                         break;
 
                     case ConditionTransitionKind.EndChoice:
+                        depth = conditionOpen ? 1 : 0; // 조건 안이었다면 그 갈래로 돌아간다 (W54)
+
                         if (showDialogue)
                         {
                             segments.Add(new RenderedSegment(
@@ -227,6 +246,9 @@ public static class ResultDocumentComposer
                         break;
 
                     default:
+                        conditionOpen = transition.Kind is not ConditionTransitionKind.EndIf;
+                        depth = conditionOpen ? 1 : 0;
+
                         if (options.IncludeConditions)
                         {
                             AddTransition(segments, line, transition, lineSource);
@@ -305,7 +327,11 @@ public static class ResultDocumentComposer
             {
                 // 갈래 출구의 소유자는 화면에 보이는 마지막 줄이 아니라 갈래를 여는 LineId다.
                 // 결과에서도 같은 규칙을 지켜야 Preview에서 원본으로 돌아갈 수 있다.
-                pendingBranchJump = (lineSource, branchTarget);
+                pendingBranchJump = (
+                    lineSource,
+                    branchTarget,
+                    line.Transition?.Kind is ConditionTransitionKind.BeginChoice
+                        or ConditionTransitionKind.BeginNextOption);
             }
         }
 

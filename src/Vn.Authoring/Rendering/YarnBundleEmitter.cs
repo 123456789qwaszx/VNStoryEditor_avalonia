@@ -611,7 +611,10 @@ public static class YarnBundleEmitter
 
         // 라벨은 접두 없이 순수 텍스트로 낸다 (계약서 D6 결정 — 런타임은 라벨을 원문 그대로 렌더한다).
         // 미리보기 태그(D5)는 표시 전용이고, 실제 효과는 뒤따르는 본문의 <<set>>이다.
-        story.Append("-> ").Append(segment.Text ?? string.Empty);
+        // 조건 갈래 안 선택지(W54)는 라벨부터 감싼 깊이만큼 들여쓴다 — 옵션 소속은
+        // 들여쓰기가 문법이다.
+        string labelIndent = YarnSyntax.IndentOf(segment.IndentLevel);
+        story.Append(labelIndent).Append("-> ").Append(segment.Text ?? string.Empty);
 
         foreach (string tag in segment.Tags ?? Array.Empty<string>())
         {
@@ -633,7 +636,7 @@ public static class YarnBundleEmitter
 
         if (hasLane)
         {
-            story.Append(YarnSyntax.Indent)
+            story.Append(labelIndent).Append(YarnSyntax.Indent)
                 .Append("<<set $__ch_").Append(ordinal)
                 .Append(" = ").Append(index)
                 .Append(">>\n");
@@ -643,7 +646,8 @@ public static class YarnBundleEmitter
         {
             // 라벨 라인은 advance를 소비하지 않으므로(계약서 B) Pres에 사본을 만들지 않는다.
             // 합성 조건만 낸다. 갈래별 본문 라인 수는 같은 결과에서 나오므로 일치한다.
-            pres.Append(index == 0 ? "<<if $__ch_" : "<<elseif $__ch_")
+            pres.Append(labelIndent)
+                .Append(index == 0 ? "<<if $__ch_" : "<<elseif $__ch_")
                 .Append(ordinal)
                 .Append(" == ")
                 .Append(index)

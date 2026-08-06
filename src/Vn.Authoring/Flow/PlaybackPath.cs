@@ -46,7 +46,9 @@ public static class PlaybackPath
             lines, kindOf, lineIdOf, lineIdOf, selection, cursorLineId);
 
         // 라인이 어느 블록·갈래에 속하는지는 BranchFlow와 같은 문법 해석 하나로 얻는다.
-        (_, (int BlockIndex, int BranchIndex)?[] blockOfLine) =
+        // 프레임(W54)이라 조건 안 선택지 줄도 바깥 조건 갈래에 계속 속한다 — 바깥 갈래의
+        // 출구는 안의 선택지를 다 지나고 나서야 실행된다.
+        (_, IReadOnlyList<(int BlockIndex, int BranchIndex)>[] framesOfLine) =
             BranchFlow.BuildStructure(lines, kindOf, lineIdOf, lineIdOf);
 
         var lineIds = new List<string>();
@@ -54,11 +56,11 @@ public static class PlaybackPath
 
         for (int index = 0; index < lines.Count; index++)
         {
+            IReadOnlyList<(int BlockIndex, int BranchIndex)> frames = framesOfLine[index];
+
             // 대기 중인 출구는 그 갈래를 벗어나는 순간 실행된다 — 경로는 여기서 끝.
             if (pendingExit is { } pending &&
-                (blockOfLine[index] is not { } here ||
-                    here.BlockIndex != pending.Block ||
-                    here.BranchIndex != pending.Branch))
+                !frames.Any(frame => frame.BlockIndex == pending.Block && frame.BranchIndex == pending.Branch))
             {
                 return new Result(lineIds, pending.Target, ExitViaBranch: true);
             }
@@ -72,12 +74,19 @@ public static class PlaybackPath
 
             lineIds.Add(lineIdOf(line.Source));
 
-            if (blockOfLine[index] is { } at &&
+            // 갈래를 여는 줄이 출구를 소유한다 — 확정 선택된(근사 아님) 갈래만 출구를 태운다.
+            // 프레임의 안쪽 것이 그 줄 자신의 갈래다.
+            if (frames.Count > 0 &&
                 !line.Unresolved &&
-                analysis.Blocks[at.BlockIndex].SelectedBranch == at.BranchIndex &&
+                line.Taken &&
                 branchExitOf(line.Source) is { } target)
             {
-                pendingExit = (at.BlockIndex, at.BranchIndex, target);
+                (int blockIndex, int branchIndex) = frames[^1];
+
+                if (analysis.Blocks[blockIndex].SelectedBranch == branchIndex)
+                {
+                    pendingExit = (blockIndex, branchIndex, target);
+                }
             }
         }
 

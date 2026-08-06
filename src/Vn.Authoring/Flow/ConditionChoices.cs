@@ -118,7 +118,7 @@ public static class ConditionChoices
         }
         else
         {
-            // 안이다. 유지 / 다른 조건으로 전환 / 종료.
+            // 조건 안이다. 유지 / 다른 조건으로 전환 / 선택지 시작(W54) / 종료.
             choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritInsideLabel));
 
             foreach (AvailableCondition condition in catalog.Conditions)
@@ -135,6 +135,8 @@ public static class ConditionChoices
                     condition.DisplayName));
             }
 
+            // 조건 갈래 안에서 선택지를 제시한다 (W54) — 선택은 이 갈래 안에서 닫힌다.
+            choices.Add(new ConditionChoice(ConditionChoiceKind.BeginChoice, null, BeginChoiceLabel));
             choices.Add(new ConditionChoice(ConditionChoiceKind.EndIf, null, EndIfLabel));
         }
 

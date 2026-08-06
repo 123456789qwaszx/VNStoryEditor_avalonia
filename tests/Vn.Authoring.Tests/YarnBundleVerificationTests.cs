@@ -250,6 +250,46 @@ public class YarnBundleVerificationTests
     }
 
     [Fact]
+    public void 조건_안_선택지_번들도_실컴파일된다()
+    {
+        // W54 — 중첩 들여쓰기·합성 조건·출구 점프가 실제 Yarn 컴파일러를 통과해야 한다.
+        ChoiceTests.ChoiceWorld world = ChoiceTests.BuildNestedChoiceWorld();
+        YarnBundle bundle = YarnBundleEmitter.Emit(
+            world.Dialogue,
+            world.Presentation,
+            world.Sample.Project,
+            Sample.Definition,
+            bundleName: "nested_ep");
+        string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Compile.{Guid.NewGuid():N}");
+
+        try
+        {
+            var bundles = new List<YarnBundle> { bundle };
+
+            foreach (DialogueNode target in new[] { world.Sample.TargetA, world.Sample.TargetDefault })
+            {
+                DialogueResult result = world.Sample.Editor.PublishDialogue(target.Id).Result;
+                bundles.Add(YarnBundleEmitter.Emit(result, project: world.Sample.Project));
+            }
+
+            YarnBundleEmitter.WriteBundles(bundles, directory);
+            AnalysisReport report = Analyze(directory);
+
+            IReadOnlyList<VnDiagnostic> errors = report.Diagnostics
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
+                Environment.NewLine,
+                errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void 라벨_수정_재발행_재출력에서_OptionId와_순서와_동기_변수는_불변이다()
     {
         ChoiceTests.ChoiceWorld world = ChoiceTests.BuildChoiceWorld();

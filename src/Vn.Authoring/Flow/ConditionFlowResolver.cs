@@ -71,38 +71,43 @@ public static class ConditionFlowResolver
                 $"대본 '{script.ScriptId}'를 프로젝트에서 찾을 수 없습니다."));
         }
 
-        // 줄마다 (전환 적용 뒤 갈래, 적용 전 갈래). 아직 완성되지 않은 갈래를 가리킨다.
-        var perLine = new (BranchBuilder? Current, BranchBuilder? Preceding)[script.Lines.Count];
+        // 줄마다 (전환 적용 뒤 갈래, 적용 전 갈래, 깊이). 아직 완성되지 않은 갈래를 가리킨다.
+        var perLine = new (BranchBuilder? Current, BranchBuilder? Preceding, int Depth)[script.Lines.Count];
 
-        BranchBuilder? active = null;
+        // W54: 조건 갈래 <b>안의</b> 선택지를 지원한다 — 바깥 조건 하나 + 안 선택지 하나의
+        // 두 칸 스택이다. active = 안쪽(선택지가 열려 있으면 그것, 아니면 조건).
+        // 여전히 비지원(문제로 알림): 조건 안 조건, 선택지 안 조건, 선택지 안 선택지,
+        // 선택지가 닫히기 전의 조건 전환.
+        BranchBuilder? conditionActive = null;
+        BranchBuilder? choiceActive = null;
         int chainIndex = -1;
 
         for (int index = 0; index < script.Lines.Count; index++)
         {
             DialogueLine line = script.Lines[index];
+            BranchBuilder? active = choiceActive ?? conditionActive;
             BranchBuilder? preceding = active;
 
             if (line.Transition is { } transition)
             {
-                // 조건 체인과 선택 체인은 같은 기계로 계산되지만 섞이지 않는다.
-                // 겹치면 MixedChain으로 알리고, 열려 있던 체인을 닫고 새 체인을 연다 —
-                // 화면은 계속 그릴 수 있어야 하고, 발행은 검증이 막는다.
-                if (active is not null && transition.IsChoiceKind != active.IsChoice)
+                // 선택 블록 안에서의 조건 전환은 여전히 중첩 위반이다 — 선택을 먼저 닫아야 한다.
+                if (choiceActive is not null && !transition.IsChoiceKind)
                 {
                     problems.Add(new FlowProblem(
                         FlowProblemKind.MixedChain,
                         line.LineId,
-                        active.IsChoice
-                            ? "선택 블록 안에서 조건 전환이 나왔습니다. 조건과 선택의 중첩은 지원하지 않습니다."
-                            : "조건 갈래 안에서 선택 전환이 나왔습니다. 조건과 선택의 중첩은 지원하지 않습니다."));
-                    active = null;
+                        "선택 블록이 닫히기 전에 조건 전환이 나왔습니다. 선택지 끝을 먼저 넣으세요."));
+                    choiceActive = null;
                 }
+                // 반대 방향(조건 안 선택 전환)은 이제 정식 구성이다 (W54) — 문제로 알리지 않는다.
+
+                active = choiceActive ?? conditionActive;
 
                 switch (transition.Kind)
                 {
-                    case ConditionTransitionKind.BeginIf when active is null:
+                    case ConditionTransitionKind.BeginIf when conditionActive is null:
                         chainIndex++;
-                        active = Open(
+                        conditionActive = Open(
                             line,
                             transition,
                             chainIndex,
@@ -119,12 +124,12 @@ public static class ConditionFlowResolver
                         problems.Add(new FlowProblem(
                             FlowProblemKind.NestedCondition,
                             line.LineId,
-                            "조건 안에서 새 조건을 열었습니다. 첫 버전은 중첩 조건을 지원하지 않아 같은 깊이의 다른 갈래로 다룹니다."));
-                        active = Open(
+                            "조건 안에서 새 조건을 열었습니다. 조건 중첩은 지원하지 않아 같은 깊이의 다른 갈래로 다룹니다."));
+                        conditionActive = Open(
                             line,
                             transition,
-                            active.ChainIndex,
-                            active.BranchIndexInChain + 1,
+                            conditionActive.ChainIndex,
+                            conditionActive.BranchIndexInChain + 1,
                             index,
                             builders,
                             problems,
@@ -133,13 +138,13 @@ public static class ConditionFlowResolver
                             available);
                         break;
 
-                    case ConditionTransitionKind.BeginElseIf when active is null:
+                    case ConditionTransitionKind.BeginElseIf when conditionActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.ElseIfWithoutIf,
                             line.LineId,
                             "열린 조건이 없는데 elseif가 있습니다. 새 조건을 여는 것으로 다룹니다."));
                         chainIndex++;
-                        active = Open(
+                        conditionActive = Open(
                             line,
                             transition,
                             chainIndex,
@@ -153,11 +158,11 @@ public static class ConditionFlowResolver
                         break;
 
                     case ConditionTransitionKind.BeginElseIf:
-                        active = Open(
+                        conditionActive = Open(
                             line,
                             transition,
-                            active.ChainIndex,
-                            active.BranchIndexInChain + 1,
+                            conditionActive.ChainIndex,
+                            conditionActive.BranchIndexInChain + 1,
                             index,
                             builders,
                             problems,
@@ -166,7 +171,7 @@ public static class ConditionFlowResolver
                             available);
                         break;
 
-                    case ConditionTransitionKind.EndIf when active is null:
+                    case ConditionTransitionKind.EndIf when conditionActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.EndIfWithoutIf,
                             line.LineId,
@@ -174,12 +179,13 @@ public static class ConditionFlowResolver
                         break;
 
                     case ConditionTransitionKind.EndIf:
-                        active = null;
+                        conditionActive = null;
                         break;
 
-                    case ConditionTransitionKind.BeginChoice when active is null:
+                    case ConditionTransitionKind.BeginChoice when choiceActive is null:
+                        // 바깥이든 조건 갈래 안이든(W54) 새 선택 블록을 연다.
                         chainIndex++;
-                        active = OpenOption(line, transition, chainIndex, 0, index, builders);
+                        choiceActive = OpenOption(line, transition, chainIndex, 0, index, builders);
                         break;
 
                     case ConditionTransitionKind.BeginChoice:
@@ -188,35 +194,35 @@ public static class ConditionFlowResolver
                             FlowProblemKind.NestedCondition,
                             line.LineId,
                             "선택 블록 안에서 새 선택 블록을 열었습니다. 같은 블록의 다음 옵션으로 다룹니다."));
-                        active = OpenOption(
+                        choiceActive = OpenOption(
                             line,
                             transition,
-                            active.ChainIndex,
-                            active.BranchIndexInChain + 1,
+                            choiceActive.ChainIndex,
+                            choiceActive.BranchIndexInChain + 1,
                             index,
                             builders);
                         break;
 
-                    case ConditionTransitionKind.BeginNextOption when active is null:
+                    case ConditionTransitionKind.BeginNextOption when choiceActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.OptionWithoutChoice,
                             line.LineId,
                             "열린 선택 블록이 없는데 다음 옵션이 있습니다. 새 블록을 여는 것으로 다룹니다."));
                         chainIndex++;
-                        active = OpenOption(line, transition, chainIndex, 0, index, builders);
+                        choiceActive = OpenOption(line, transition, chainIndex, 0, index, builders);
                         break;
 
                     case ConditionTransitionKind.BeginNextOption:
-                        active = OpenOption(
+                        choiceActive = OpenOption(
                             line,
                             transition,
-                            active.ChainIndex,
-                            active.BranchIndexInChain + 1,
+                            choiceActive.ChainIndex,
+                            choiceActive.BranchIndexInChain + 1,
                             index,
                             builders);
                         break;
 
-                    case ConditionTransitionKind.EndChoice when active is null:
+                    case ConditionTransitionKind.EndChoice when choiceActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.OptionWithoutChoice,
                             line.LineId,
@@ -224,13 +230,18 @@ public static class ConditionFlowResolver
                         break;
 
                     case ConditionTransitionKind.EndChoice:
-                        active = null;
+                        // 선택만 닫는다 — 조건 갈래 안이었다면 그 갈래로 돌아간다 (W54).
+                        choiceActive = null;
                         break;
                 }
             }
 
-            active?.Extend(index);
-            perLine[index] = (active, preceding);
+            conditionActive?.Extend(index); // 바깥 조건 갈래는 안의 선택지 줄까지 덮는다
+            choiceActive?.Extend(index);
+            perLine[index] = (
+                choiceActive ?? conditionActive,
+                preceding,
+                (conditionActive is null ? 0 : 1) + (choiceActive is null ? 0 : 1));
         }
 
         IReadOnlyList<ConditionBranch> branches = Complete(node, builders);
@@ -240,7 +251,7 @@ public static class ConditionFlowResolver
 
         for (int index = 0; index < script.Lines.Count; index++)
         {
-            (BranchBuilder? current, BranchBuilder? preceding) = perLine[index];
+            (BranchBuilder? current, BranchBuilder? preceding, int depth) = perLine[index];
 
             ConditionBranch? branch = current is null ? null : byOpenLine[current.OpenLineId];
             ConditionBranch? before = preceding is null ? null : byOpenLine[preceding.OpenLineId];
@@ -248,7 +259,7 @@ public static class ConditionFlowResolver
             lines.Add(new ResolvedLine(
                 script.Lines[index],
                 index,
-                branch is null ? 0 : 1,
+                depth,
                 branch,
                 before,
                 branch is not null && branch.HasExit && branch.LastLineIndex == index));

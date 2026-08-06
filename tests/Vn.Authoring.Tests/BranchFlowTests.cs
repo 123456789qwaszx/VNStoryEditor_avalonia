@@ -98,6 +98,67 @@ public class BranchFlowTests
         Assert.Equal(0, Assert.Single(analysis.Blocks).SelectedBranch);
     }
 
+    /// <summary>W54: 조건 갈래 안에서 닫히는 선택 블록.</summary>
+    private static DialogueResultLine[] NestedDocument() =>
+    [
+        Line(0, "ln_0"),
+        Line(1, "ln_if", "조건", ConditionTransitionKind.BeginIf, name: "호감 높음"),
+        Line(2, "ln_labelA", "사과", ConditionTransitionKind.BeginChoice),
+        Line(3, "ln_a1", "사과 본문"),
+        Line(4, "ln_labelB", "포도", ConditionTransitionKind.BeginNextOption),
+        Line(5, "ln_b1", "포도 본문"),
+        Line(6, "ln_join", "합류", ConditionTransitionKind.EndChoice),
+        Line(7, "ln_end", "끝", ConditionTransitionKind.EndIf),
+    ];
+
+    [Fact]
+    public void 조건_안_선택지는_감싼_블록_전부의_선택을_따른다()
+    {
+        // W54 — 접히려면 조건도 그 갈래여야 하고, 선택지도 그 옵션이어야 한다.
+        var selection = new StageBranchSelection();
+        selection.SelectCondition("ln_if", 0);
+        selection.SelectChoice("ln_labelA", "ln_labelB"); // 포도
+
+        BranchFlow.Analysis<DialogueResultLine> analysis =
+            Analyze(NestedDocument(), selection, cursor: null);
+
+        Assert.Equal(2, analysis.Blocks.Count); // 조건 블록 + 선택 블록
+        Assert.False(analysis.Lines[3].Taken);  // 사과 본문 — 다른 옵션
+        Assert.True(analysis.Lines[5].Taken);   // 포도 본문
+        Assert.True(analysis.Lines[6].Taken);   // 합류 — 선택이 닫혀 조건 안
+        Assert.All(analysis.Lines, line => Assert.False(line.Unresolved));
+
+        // 조건을 건너뛰면 안의 선택지도 통째로 안 탄다.
+        selection.SelectCondition("ln_if", StageBranchSelection.SkipAllBranches);
+        BranchFlow.Analysis<DialogueResultLine> skipped =
+            Analyze(NestedDocument(), selection, cursor: null);
+        Assert.False(skipped.Lines[5].Taken);
+        Assert.False(skipped.Lines[6].Taken);
+        Assert.True(skipped.Lines[0].Taken); // 바깥은 그대로
+
+        // 조건이 미선택이면 안의 선택 결과가 있어도 근사 표시가 남는다.
+        var partial = new StageBranchSelection();
+        partial.SelectChoice("ln_labelA", "ln_labelB");
+        BranchFlow.Analysis<DialogueResultLine> approx =
+            Analyze(NestedDocument(), partial, cursor: null);
+        Assert.True(approx.Lines[5].Taken);
+        Assert.True(approx.Lines[5].Unresolved);
+    }
+
+    [Fact]
+    public void 중첩_안의_커서는_감싼_갈래_전부를_덮는다()
+    {
+        // 포도 본문을 보고 있으면 조건 갈래와 포도 옵션이 함께 선택으로 덮인다.
+        BranchFlow.Analysis<DialogueResultLine> analysis =
+            Analyze(NestedDocument(), new StageBranchSelection(), cursor: "ln_b1");
+
+        Assert.True(analysis.Lines[5].Taken);
+        Assert.False(analysis.Lines[5].Unresolved);
+        Assert.False(analysis.Lines[3].Taken); // 사과 본문은 밀려난다
+        Assert.Equal(0, analysis.Blocks[0].SelectedBranch); // 조건 갈래
+        Assert.Equal(1, analysis.Blocks[1].SelectedBranch); // 포도 옵션
+    }
+
     [Fact]
     public void 조건_블록은_참_갈래나_전부_거짓을_고를_수_있다()
     {
