@@ -1,5 +1,6 @@
 using System.Text;
 using Vn.App.Services;
+using Vn.Authoring.Definition;
 using Vn.Authoring.Model;
 using Vn.Authoring.Serialization;
 
@@ -350,6 +351,31 @@ public class AuthoringSessionTests
         {
             Directory.Delete(directory, recursive: true);
             Directory.Delete(source, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 화자_저장은_정의를_다시_읽어_대사_드롭다운_원천에_반영된다()
+    {
+        string directory = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            bool saved = session.SaveSpeakers(new[]
+            {
+                new SpeakerSpec { Name = "새화자", CharacterId = string.Empty } // 매핑 없어도 저장된다
+            });
+
+            Assert.True(saved);
+            Assert.Contains(session.Definition.Speakers, speaker =>
+                string.Equals(speaker.Name, "새화자", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
         }
     }
 

@@ -1153,6 +1153,13 @@ public partial class DialogueNodeEditor : UserControl
             };
             speaker.TextChanged += (_, _) => Commit();
 
+            // 후보는 포커스 때마다 정의에서 다시 읽는다 (W56) — 방금 등록한 화자가
+            // 카드 재생성 없이도 자동완성에 바로 나온다.
+            speaker.GotFocus += (_, _) => speaker.ItemsSource = _session!.Definition.Speakers
+                .Select(item => item.Name)
+                .Where(item => item.Length > 0)
+                .ToList();
+
             // ▾ = 등록 화자 전체 목록 (W40) — 자동완성은 타이핑해야 열리니 클릭 한 번 길을 따로 둔다.
             AutoCompleteBox speakerBox = speaker;
             var pick = new Button

@@ -260,6 +260,11 @@ public partial class SetNodeEditor : UserControl
             }
         }
 
+        // 타이핑 즉시 커밋한다 (W56) — 그래프의 노드 카드는 포커스를 가져가지 않아,
+        // "이름 입력 → 곧장 노드 클릭" 흐름에서 LostFocus가 울리지 않고 저장이 새는
+        // 버그가 있었다. 변경 없음 검사가 있어 중복 저장은 걸러진다.
+        name.TextChanged += (_, _) => Commit();
+        characterId.TextChanged += (_, _) => Commit();
         name.LostFocus += (_, _) => Commit();
         characterId.LostFocus += (_, _) => Commit();
         name.KeyDown += CommitOnEnter;
