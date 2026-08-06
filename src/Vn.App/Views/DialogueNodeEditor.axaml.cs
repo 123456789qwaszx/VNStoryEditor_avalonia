@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
@@ -68,6 +69,70 @@ public partial class DialogueNodeEditor : UserControl
             .ToArray();
         PreviewPresetCombo.SelectedIndex = 0;
         PreviewPresetCombo.SelectionChanged += (_, _) => OnPreviewPresetSelected();
+
+        // 목록 아래 빈 공간 우클릭 = 맨 아래 줄 추가 (W49). 카드 위 우클릭은 카드가
+        // 먼저 받아 Handled로 막고, 텍스트 칸은 기본 편집 메뉴의 자리다.
+        LineScroll.PointerPressed += (_, args) =>
+        {
+            if (args.GetCurrentPoint(LineScroll).Properties.IsRightButtonPressed &&
+                (args.Source as Visual)?.FindAncestorOfType<TextBox>(includeSelf: true) is null)
+            {
+                ShowEmptyAreaFlyout();
+            }
+        };
+    }
+
+    /// <summary>빈 공간의 줄 메뉴 (W49) — 여기서의 추가는 언제나 맨 아래, 삭제는 대상이 없어 잠긴다.</summary>
+    private void ShowEmptyAreaFlyout()
+    {
+        if (_session?.Project.FindDialogue(_nodeId) is null)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 2, MinWidth = 150 };
+        var flyout = new Flyout { Content = panel };
+
+        var add = new Button
+        {
+            Content = "맨 아래에 줄 추가",
+            FontSize = 11,
+            Padding = new Thickness(10, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Background = Brushes.Transparent
+        };
+        add.Click += (_, _) =>
+        {
+            flyout.Hide();
+            UiGuard.Run(_session, "줄 추가", AddLineAtEnd);
+        };
+        panel.Children.Add(add);
+
+        panel.Children.Add(new Button
+        {
+            Content = "이 줄 삭제",
+            FontSize = 11,
+            Padding = new Thickness(10, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Background = Brushes.Transparent,
+            IsEnabled = false // 빈 공간에는 지울 줄이 없다 — 줄 카드에서 우클릭
+        });
+
+        flyout.ShowAt(LineScroll, showAtPointer: true);
+    }
+
+    private void AddLineAtEnd()
+    {
+        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
+        {
+            return;
+        }
+
+        string scriptId = node.ScriptId ?? _session.Editor.EnsureDialogueScript(node.Id).Id;
+        ScriptLine line = _session.Editor.InsertScriptLine(scriptId); // 인덱스 없음 = 맨 끝
+        SelectStageLine(line.Id);
     }
 
     internal void Attach(AuthoringSession session)
@@ -439,9 +504,13 @@ public partial class DialogueNodeEditor : UserControl
                 SelectStageLine(lineId);
 
                 // 우클릭 = 줄 추가/삭제 바로가기 (W47) — ＋ 플라이아웃을 거치지 않는 짧은 길.
-                if (args.GetCurrentPoint(wrapper).Properties.IsRightButtonPressed)
+                // 텍스트 입력 칸 위에서는 비켜선다 (W49) — 잘라내기/복사/붙여넣기 기본
+                // 메뉴가 그 자리의 주인이다.
+                if (args.GetCurrentPoint(wrapper).Properties.IsRightButtonPressed &&
+                    (args.Source as Visual)?.FindAncestorOfType<TextBox>(includeSelf: true) is null)
                 {
                     ShowLineContextFlyout(wrapper, lineId);
+                    args.Handled = true; // 아래 빈 공간 메뉴(W49)가 겹쳐 뜨지 않게
                 }
             },
             RoutingStrategies.Bubble,

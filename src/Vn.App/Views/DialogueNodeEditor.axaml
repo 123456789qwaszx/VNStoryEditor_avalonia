@@ -40,7 +40,11 @@
         <TabControl Grid.Row="1" x:Name="EditorTabs">
             <TabItem Header="대사 편집">
                 <Grid RowDefinitions="*,Auto">
-                    <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
+                    <!-- Background이 있어야 카드 아래 빈 공간이 우클릭을 받는다 (W49). -->
+                    <ScrollViewer Grid.Row="0"
+                                  x:Name="LineScroll"
+                                  Background="Transparent"
+                                  HorizontalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="LineHost" Margin="12" Spacing="3" />
                     </ScrollViewer>
 

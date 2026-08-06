@@ -26,6 +26,7 @@ public partial class MainWindow : Window
 
     private readonly AuthoringSession _session = new();
     private LiveOutputService? _liveOutput;
+    private readonly DispatcherTimer _autoSaveTimer;
     private bool _restoredRecent;
     private bool _rebuildingFileList;
 
@@ -105,6 +106,29 @@ public partial class MainWindow : Window
             UiGuard.Run(_session, "내보내기 양식 선택", ShowExportFormatsFlyout);
 
         Opened += OnOpened;
+
+        // 저장 단축키 (W49) — 어디에 포커스가 있어도 Ctrl+S가 저장이다.
+        AddHandler(KeyDownEvent, (_, args) =>
+        {
+            if (args.Key == Avalonia.Input.Key.S &&
+                args.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
+            {
+                args.Handled = true;
+                OnSaveClick(this, new RoutedEventArgs());
+            }
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+        // 10분 자동 저장 (W49) — 저장 경로가 있고 바뀐 것이 있을 때만, 상태줄로 알린다.
+        _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
+        _autoSaveTimer.Tick += (_, _) => UiGuard.Run(_session, "자동 저장", () =>
+        {
+            if (_session.ProjectPath is not null && _session.IsDirty)
+            {
+                _session.Save();
+                _session.SetStatus($"자동 저장했습니다 ({DateTime.Now:HH:mm})");
+            }
+        });
+        _autoSaveTimer.Start();
 
         RebuildFileList();
         Graph.Rebuild();
@@ -213,11 +237,20 @@ public partial class MainWindow : Window
 
     // ── 파일 ────────────────────────────────────────────────────────────────
 
-    private void OnNewClick(object? sender, RoutedEventArgs e)
+    private async void OnNewClick(object? sender, RoutedEventArgs e)
     {
         try
         {
             _session.NewProject();
+
+            // 새 프로젝트는 곧장 한 번 저장한다 (W49) — 저장돼야 프로젝트 폴더가 확정되고
+            // 에셋 폴더·기본 튜닝 살림(W48)이 준비된다.
+            await SaveAsAsync();
+
+            if (_session.ProjectPath is null)
+            {
+                _session.SetStatus("저장을 건너뛰었습니다 — 저장하면 에셋 폴더와 기본 튜닝이 준비됩니다.");
+            }
         }
         catch (Exception exception)
         {

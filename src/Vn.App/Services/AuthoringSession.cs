@@ -562,16 +562,10 @@ internal sealed class AuthoringSession
 
         ActiveFileId = fileId;
 
-        // 판 전환 (GB-1): 활성 파일이 곧 보이는 판이다 — 그 파일만 펼치고 나머지는 접는다.
-        // 다른 판을 함께 보고 싶으면 파일 목록의 펼침 체크로 다시 연다(체크는 독립 유지).
-        bool expandedChanged = false;
-
-        if (fileId is not null)
-        {
-            expandedChanged = _expandedFileIds.Count != 1 || !_expandedFileIds.Contains(fileId);
-            _expandedFileIds.Clear();
-            _expandedFileIds.Add(fileId);
-        }
+        // 선택과 펼침은 독립이다 — W43의 "선택=그 파일만 펼침" 자동 접힘은 실사용에서
+        // "여러 파일을 오가며 함께 본다"를 막아 헷갈린다는 소유자 판단으로 철회했다 (W49).
+        // 활성 파일이 접혀 있으면 펴 주기만 한다(고른 파일이 안 보이는 일은 없어야 한다).
+        bool expandedChanged = fileId is not null && _expandedFileIds.Add(fileId);
 
         RaiseFileGraphStateChanged(
             activeFileChanged: true,
