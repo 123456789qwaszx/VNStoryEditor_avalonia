@@ -61,6 +61,19 @@ public partial class ChapterGraphView : UserControl
             _selectedChapterId = ChapterCombo.SelectedItem as string;
             Draw();
         };
+
+        // 픽스처 전환 → 경로 하이라이트가 바뀐다 (G6).
+        FixtureCombo.SelectionChanged += (_, _) =>
+        {
+            if (_updatingFixtureCombo)
+            {
+                return;
+            }
+
+            string? picked = FixtureCombo.SelectedItem as string;
+            _selectedFixture = picked == "(끄기)" ? null : picked;
+            Draw();
+        };
     }
 
     internal void Attach(AuthoringSession session)
@@ -295,22 +308,89 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Width = layout.Width;
         GraphCanvas.Height = layout.Height;
 
+        RefreshFixtureCombo(model);
+        (IReadOnlySet<string> path, IReadOnlySet<(string, string)> pathEdges) = WalkSelectedFixture(model);
+
         // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
         foreach (ChapterEdge edge in model.Edges)
         {
-            DrawEdge(model, layout, edge);
+            DrawEdge(model, layout, edge,
+                onPath: pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
         }
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
-            DrawEpisode(model, layout, episode);
+            DrawEpisode(model, layout, episode, onPath: path.Contains(episode.EpisodeId));
         }
 
         DrawDiagnostics(model);
-        DrawFixtureSummary(model);
     }
 
-    private void DrawEdge(ChapterGraphModel model, ChapterGraphLayout layout, ChapterEdge edge)
+    // ── 픽스처 (G6) ─────────────────────────────────────────────────────────
+
+    private string? _selectedFixture;
+    private bool _fixtureInitialized;
+    private bool _updatingFixtureCombo;
+
+    private void RefreshFixtureCombo(ChapterGraphModel model)
+    {
+        var names = new List<string> { "(끄기)" };
+        names.AddRange(model.Fixtures.Select(fixture => fixture.Name));
+
+        _updatingFixtureCombo = true;
+        FixtureCombo.ItemsSource = names;
+
+        // 처음 한 번만 `활성` 픽스처를 기본으로 고른다 — 시트가 고른 것을 화면이 존중하되,
+        // 사람이 (끄기)를 골랐다면 그 선택이 이긴다.
+        if (!_fixtureInitialized)
+        {
+            _selectedFixture = model.Fixtures.FirstOrDefault(fixture => fixture.IsActive)?.Name;
+            _fixtureInitialized = true;
+        }
+
+        FixtureCombo.SelectedItem = _selectedFixture is not null && names.Contains(_selectedFixture)
+            ? _selectedFixture
+            : "(끄기)";
+        _updatingFixtureCombo = false;
+    }
+
+    /// <summary>선택된 픽스처로 한 판을 걸어 경로(노드·간선 집합)를 얻는다.</summary>
+    private (IReadOnlySet<string> Nodes, IReadOnlySet<(string, string)> Edges) WalkSelectedFixture(
+        ChapterGraphModel model)
+    {
+        var empty = (new HashSet<string>(StringComparer.Ordinal),
+            new HashSet<(string, string)>());
+
+        FixtureStopText.Text = string.Empty;
+
+        ChapterFixture? fixture = model.Fixtures.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, _selectedFixture, StringComparison.Ordinal));
+
+        if (fixture is null)
+        {
+            return empty;
+        }
+
+        FixtureWalkResult walk = ChapterFixtureWalker.Walk(model, fixture);
+
+        if (walk.StoppedBecause is not null)
+        {
+            FixtureStopText.Text = walk.StoppedBecause;
+        }
+
+        var nodes = walk.EpisodeIds.ToHashSet(StringComparer.Ordinal);
+        var edges = new HashSet<(string, string)>();
+
+        for (int index = 0; index + 1 < walk.EpisodeIds.Count; index++)
+        {
+            edges.Add((walk.EpisodeIds[index], walk.EpisodeIds[index + 1]));
+        }
+
+        return (nodes, edges);
+    }
+
+    private void DrawEdge(
+        ChapterGraphModel model, ChapterGraphLayout layout, ChapterEdge edge, bool onPath)
     {
         ChapterEpisode? from = model.FindEpisode(edge.FromEpisodeId);
         ChapterEpisode? to = model.FindEpisode(edge.ToEpisodeId);
@@ -338,6 +418,13 @@ public partial class ChapterGraphView : UserControl
         {
             // 잠기면 숨는 간선은 존재 자체가 조건부다 — 실선으로 그리면 없는 길을 약속하게 된다.
             line.StrokeDashArray = new AvaloniaList<double> { 4, 3 };
+        }
+
+        if (onPath)
+        {
+            // 픽스처가 실제로 지나가는 간선 (G6). 굵고 초록이다.
+            line.Stroke = new SolidColorBrush(Color.Parse("#3E9B57"));
+            line.StrokeThickness = 3.2;
         }
 
         // 간선의 정체를 시각 요소에 남긴다. 화면 없는 렌더 검증(Gate A)이 "무엇이 그려졌는지"를
@@ -370,7 +457,8 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Children.Add(text);
     }
 
-    private void DrawEpisode(ChapterGraphModel model, ChapterGraphLayout layout, ChapterEpisode episode)
+    private void DrawEpisode(
+        ChapterGraphModel model, ChapterGraphLayout layout, ChapterEpisode episode, bool onPath)
     {
         bool hasError = model.EpisodeHasError(episode);
 
@@ -445,6 +533,19 @@ public partial class ChapterGraphView : UserControl
             card.BorderBrush = new SolidColorBrush(Color.Parse("#C08A3E"));
         }
 
+        if (onPath)
+        {
+            // 픽스처 경로 위의 노드 (G6). 간선과 같은 초록으로 묶인다. 오류 테두리보다는 뒤다 —
+            // 경로에 있어도 깨진 건 깨진 것이다.
+            if (!hasError)
+            {
+                card.BorderThickness = new Thickness(2.4);
+                card.BorderBrush = new SolidColorBrush(Color.Parse("#3E9B57"));
+            }
+
+            card.Background = new SolidColorBrush(Color.Parse("#F0EDF7EF"));
+        }
+
         // 클릭 = 에피소드 엑셀 열기 (G5). 드래그가 아니다 — 이 뷰에 드래그는 없다.
         card.PointerPressed += (_, _) =>
             UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
@@ -493,17 +594,6 @@ public partial class ChapterGraphView : UserControl
         }
 
         return string.Join("\n", lines);
-    }
-
-    private void DrawFixtureSummary(ChapterGraphModel model)
-    {
-        ChapterFixture? active = model.Fixtures.FirstOrDefault(fixture => fixture.IsActive);
-
-        PixtureText.Text = model.Fixtures.Count == 0
-            ? string.Empty
-            : active is null
-                ? $"픽스처 {model.Fixtures.Count}개 (활성 없음)"
-                : $"활성 픽스처: {active.Name}";
     }
 
     /// <summary>

@@ -17,12 +17,22 @@
                 <Button Grid.Column="2" x:Name="ReloadButton" Content="다시 읽기" Margin="6,0,0,0" />
                 <Button Grid.Column="3" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
 
-                <TextBlock Grid.Column="4"
-                           x:Name="PixtureText"
-                           FontSize="11"
-                           Opacity="0.6"
-                           VerticalAlignment="Center"
-                           Margin="12,0,0,0" />
+                <StackPanel Grid.Column="4"
+                            Orientation="Horizontal"
+                            Margin="12,0,0,0"
+                            Spacing="6">
+                    <TextBlock Text="픽스처"
+                               FontSize="11"
+                               Opacity="0.6"
+                               VerticalAlignment="Center" />
+                    <!-- 재생루트 하이라이트 (G6). 픽스처는 테스트 데이터라 내보내기에 섞이지 않는다. -->
+                    <ComboBox x:Name="FixtureCombo" MinWidth="130" FontSize="11" />
+                    <TextBlock x:Name="FixtureStopText"
+                               FontSize="10"
+                               Opacity="0.7"
+                               Foreground="DarkGoldenrod"
+                               VerticalAlignment="Center" />
+                </StackPanel>
 
                 <!-- 읽기전용임을 화면이 스스로 말한다 (G-2). 드래그로 엑셀이 바뀌지 않는다. -->
                 <Border Grid.Column="6"
