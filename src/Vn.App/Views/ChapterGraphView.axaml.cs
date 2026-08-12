@@ -823,6 +823,7 @@ public partial class ChapterGraphView : UserControl
     {
         _selectedEpisodeId = episodeId;
         _selectedEdgeKey = null;
+        ShowEditTabForSelection(episodeId is not null);
         ApplySelectionVisuals();
         RefreshPropertyPanel();
     }
@@ -831,8 +832,22 @@ public partial class ChapterGraphView : UserControl
     {
         _selectedEdgeKey = (fromEpisodeId, toEpisodeId);
         _selectedEpisodeId = null;
+        ShowEditTabForSelection(true);
         ApplySelectionVisuals();
         RefreshPropertyPanel();
+    }
+
+    /// <summary>
+    /// 무언가를 고르면 편집 탭으로 옮긴다 — 판에서 노드를 눌렀는데 오른쪽이 그대로면
+    /// "클릭이 안 먹힌다"가 된다. 선택을 푸는 쪽(빈 판 클릭)은 탭을 건드리지 않는다:
+    /// 조건을 보다가 판을 정리하려고 빈 곳을 누른 사람을 조건 탭 밖으로 끌어내지 않는다.
+    /// </summary>
+    private void ShowEditTabForSelection(bool selected)
+    {
+        if (selected)
+        {
+            RightTabs.SelectedItem = EditTab;
+        }
     }
 
     /// <summary>모든 카드·간선을 기본 모습으로 되돌리고 선택된 것만 파랗게 강조한다.</summary>

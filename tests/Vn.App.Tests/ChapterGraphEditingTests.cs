@@ -108,6 +108,34 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 조건_탭이_앞이고_무언가를_고르면_편집_탭으로_옮긴다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        var tabs = view.FindControl<TabControl>("RightTabs")!;
+        var conditionTab = view.FindControl<TabItem>("ConditionTab")!;
+        var editTab = view.FindControl<TabItem>("EditTab")!;
+
+        // 아무것도 안 고른 처음에는 조건 탭이 앞에서 먼저 보인다.
+        Assert.Equal(0, tabs.IndexFromContainer(conditionTab));
+        Assert.Same(conditionTab, tabs.SelectedItem);
+
+        // 노드를 고르면 편집 탭으로 옮긴다 — 안 그러면 눌러도 오른쪽이 그대로다.
+        view.SelectEpisode("main05.02");
+        Assert.Same(editTab, tabs.SelectedItem);
+
+        // 조건 탭으로 돌아가 조건을 보다가 빈 판을 눌러도 끌려 나오지 않는다.
+        tabs.SelectedItem = conditionTab;
+        view.SelectEpisode(null);
+        Assert.Same(conditionTab, tabs.SelectedItem);
+
+        // 간선을 고르면 다시 편집 탭.
+        view.SelectEdgeKey("main05.02", "branch05.02A");
+        Assert.Same(editTab, tabs.SelectedItem);
+    });
+
+    [Fact]
     public void 간선_이름을_고치면_엑셀로_간다() => HeadlessUi.Run(() =>
     {
         using var project = new TempProject(SamplePath);

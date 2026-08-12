@@ -78,12 +78,41 @@
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
-            <!-- 속성 패널 (G-2 v2) — 소량 편집은 여기서, 대량(대사)은 엑셀에서.
-                 모든 [적용]은 엑셀 셀에 써지고, 저장 감시가 다시 읽어 그래프가 따라온다. -->
-            <ScrollViewer Grid.Column="2"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="10" Spacing="6">
+            <!-- 오른쪽 패널 (G-2 v3) — 소량 편집은 여기서, 대량(대사)은 엑셀에서.
+                 모든 [적용]은 엑셀 셀에 써지고, 저장 감시가 다시 읽어 그래프가 따라온다.
+
+                 두 탭으로 나눈 이유: 조건은 챕터 전체에 걸린 표(선택과 무관)이고,
+                 편집은 지금 고른 하나에 걸린다. 섞여 있으면 조건을 보려고 매번 스크롤해야 했다.
+                 조건이 앞 탭이다 — 흐름을 잇기 전에 조건부터 정의하는 순서라서. -->
+            <TabControl Grid.Column="2" x:Name="RightTabs" Padding="0">
+                <TabItem x:Name="ConditionTab" Header="조건" FontSize="12">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <!-- 조건 시트 편집 — 라벨이 이미 있으면 수정, 없으면 추가.
+                             식의 내용은 검증기가 잡는다. -->
+                        <StackPanel x:Name="ConditionSection" Margin="10" Spacing="4">
+                            <TextBlock Text="라벨 ↔ 식"
+                                       FontWeight="SemiBold"
+                                       FontSize="12" />
+                            <TextBlock Text="식은 여기서 한 번만 정의하고, 에피소드·간선에서는 라벨로만 부릅니다. 식을 고치면 그 라벨을 쓰는 곳이 전부 따라 바뀝니다."
+                                       FontSize="10"
+                                       Opacity="0.55"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,4" />
+                            <StackPanel x:Name="ConditionListPanel" Spacing="2" />
+                            <TextBox x:Name="ConditionLabelBox" FontSize="11" PlaceholderText="라벨 — 예: 신뢰높음" />
+                            <TextBox x:Name="ConditionExprBox" FontSize="11"
+                                     PlaceholderText="식 — 예: trust >= 3 (AND는 ;)"
+                                     ToolTip.Tip="쓸 수 있는 연산자는 &gt;= · &lt;= · == 셋뿐이고 값은 정수만 됩니다. 에피소드 클리어는 cleared:EpisodeId 입니다." />
+                            <Button x:Name="SaveConditionButton" Content="조건 추가/수정" HorizontalAlignment="Stretch" FontSize="11" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem x:Name="EditTab" Header="편집" FontSize="12">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="10" Spacing="6">
                     <TextBlock x:Name="NoSelectionText"
                                Text="노드 클릭 = 선택 · 더블클릭 = 대본 엑셀 열기&#x0A;선택한 뒤 [＋ 에피소드] = 다음 에피소드로 잇기&#x0A;간선(선·라벨) 클릭 = 조건·해금 편집"
                                FontSize="11"
@@ -153,17 +182,10 @@
                         <Button x:Name="EdgeApplyButton" Content="적용" HorizontalAlignment="Stretch" />
                         <Button x:Name="EdgeDeleteButton" Content="간선 삭제" HorizontalAlignment="Stretch" />
                     </StackPanel>
-
-                    <!-- 조건 시트 편집 — 라벨이 이미 있으면 수정, 없으면 추가. 식의 내용은 검증기가 잡는다. -->
-                    <StackPanel x:Name="ConditionSection" Spacing="4" Margin="0,14,0,0">
-                        <TextBlock Text="조건 (라벨 ↔ 식)" FontWeight="SemiBold" FontSize="12" />
-                        <StackPanel x:Name="ConditionListPanel" Spacing="2" />
-                        <TextBox x:Name="ConditionLabelBox" FontSize="11" PlaceholderText="라벨" />
-                        <TextBox x:Name="ConditionExprBox" FontSize="11" PlaceholderText="식 — 예: trust >= 3 (AND는 ;)" />
-                        <Button x:Name="SaveConditionButton" Content="조건 추가/수정" HorizontalAlignment="Stretch" FontSize="11" />
-                    </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
         </Grid>
 
         <Border Grid.Row="2"
