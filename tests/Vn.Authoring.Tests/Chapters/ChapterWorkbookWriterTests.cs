@@ -333,6 +333,20 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     }
 
     [Fact]
+    public void xlsm으로_개명된_챕터도_읽고_쓸_수_있다()
+    {
+        // 구글 시트가 챕터 파일을 .xlsm으로 개명해도(매크로 없이 선언만) 챕터는 살아 있어야
+        // 하고, 툴의 구조 편집(간선·에피소드)도 그 파일에 그대로 이어져야 한다.
+        string path = Path.Combine(_directory, "ch05.xlsm");
+        File.Copy(SamplePath, path);
+
+        Assert.NotNull(ChapterWorkbookReader.Read(path).FindEpisode("main05.01"));
+
+        Assert.True(ChapterWorkbookWriter.UpdateEpisode(path, "main05.02", title: "xlsm에서 고침").Written);
+        Assert.Equal("xlsm에서 고침", ChapterWorkbookReader.Read(path).FindEpisode("main05.02")!.Title);
+    }
+
+    [Fact]
     public void 조건_라벨_열에_조건_시트를_가리키는_드롭다운이_깔린다()
     {
         // 조건 라벨은 엑셀에서 적는다(v3) — 손으로 적으면 오타가 유령 참조가 되므로,

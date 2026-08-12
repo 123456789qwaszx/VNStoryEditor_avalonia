@@ -51,8 +51,20 @@ public static class ChapterLibrary
 
         var entries = new List<ChapterEntry>();
 
-        foreach (string path in Directory.EnumerateFiles(folder, "*.xlsx")
-                     .Where(candidate => !Path.GetFileName(candidate).StartsWith("~$", StringComparison.Ordinal))
+        // .xlsm도 챕터다 — 구글 시트가 .xlsx를 저장하며 그렇게 개명하는 실사례가 있다
+        // (매크로 없이 선언만). 같은 Id가 두 형식으로 있으면 최근에 저장된 쪽이 원고다.
+        foreach (string path in Directory.EnumerateFiles(folder, "*.xls*")
+                     .Where(candidate =>
+                     {
+                         string name = Path.GetFileName(candidate);
+                         string extension = Path.GetExtension(name);
+
+                         return !name.StartsWith("~$", StringComparison.Ordinal) &&
+                                (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(extension, ".xlsm", StringComparison.OrdinalIgnoreCase));
+                     })
+                     .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase)
+                     .Select(group => group.OrderByDescending(File.GetLastWriteTimeUtc).First())
                      .OrderBy(candidate => candidate, StringComparer.OrdinalIgnoreCase))
         {
             entries.Add(Read(path, definition));

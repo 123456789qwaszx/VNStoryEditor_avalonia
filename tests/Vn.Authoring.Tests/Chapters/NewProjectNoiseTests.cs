@@ -71,17 +71,35 @@ public sealed class NewProjectNoiseTests : IDisposable
     }
 
     [Fact]
-    public void 같은_이름의_xlsm이_있으면_찾아낸다()
+    public void xlsm으로_개명된_워크북도_같은_에피소드다()
     {
-        // 실제 사고 — 구글 시트로 열어 저장했더니 .xlsx가 .xlsm이 되어 사라졌고,
-        // 툴은 .xlsx만 보므로 "없구나" 하며 빈 워크북을 새로 만들었다. 원고는 .xlsm에 있었다.
+        // 실제 사고의 최종 처리 (v4.1) — 구글 시트는 .xlsx를 저장하며 .xlsm으로 개명한다.
+        // 매크로는 없고 선언만 그렇다(컨테이너 해부로 확인). 툴은 읽기만 하므로(v4)
+        // .xlsm을 정식으로 받는다 — 빈 워크북을 새로 만들지 않고, 그 파일을 그대로 읽는다.
         string episodes = Path.Combine(_directory, "episodes");
         Directory.CreateDirectory(episodes);
 
         File.WriteAllBytes(Path.Combine(episodes, "ep01.xlsm"), ReadTemplateBytes(episodes));
 
-        Assert.Null(EpisodeLibrary.FindExisting(episodes, "ep01"));      // .xlsx는 없다
-        Assert.NotNull(EpisodeLibrary.FindOtherFormat(episodes, "ep01")); // 그러나 원고는 있다
+        Assert.NotNull(EpisodeLibrary.FindExisting(episodes, "ep01"));   // 같은 워크북이다
+        Assert.Null(EpisodeLibrary.FindOtherFormat(episodes, "ep01"));   // "다른 형식" 아님
+        Assert.False(EpisodeLibrary.EnsureWorkbook(episodes, "ep01"));   // 새로 만들지 않는다
+        Assert.Single(Directory.EnumerateFiles(episodes, "*.xls*"));
+    }
+
+    [Fact]
+    public void 빈_xlsx_유물과_xlsm이_같이_있으면_최근에_저장된_쪽이_원고다()
+    {
+        // 사고 당시의 실제 폴더 모습 — 옛 빌드가 만든 빈 .xlsx 옆에 진짜 원고 .xlsm.
+        string episodes = Path.Combine(_directory, "episodes");
+        Directory.CreateDirectory(episodes);
+
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep02");                     // 빈 유물
+        string manuscript = Path.Combine(episodes, "ep02.xlsm");
+        File.WriteAllBytes(manuscript, ReadTemplateBytes(episodes));
+        File.SetLastWriteTimeUtc(manuscript, DateTime.UtcNow.AddMinutes(5)); // 더 최근
+
+        Assert.Equal(manuscript, EpisodeLibrary.FindExisting(episodes, "ep02"));
     }
 
     private static byte[] ReadTemplateBytes(string folder)

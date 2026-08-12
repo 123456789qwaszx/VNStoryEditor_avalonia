@@ -37,11 +37,14 @@ public static class EpisodeLibrary
     /// <summary>
     /// 폴더에 이미 있는 그 에피소드의 워크북. 없으면 null.
     ///
-    /// <b><see cref="File.Exists(string)"/> 하나만 믿지 않는다.</b> 클라우드 동기화(구글
-    /// 드라이브·원드라이브)는 한글 파일 이름을 <b>분해형(NFD)</b>으로 바꿔 놓기도 하는데,
-    /// 그러면 툴이 만든 조합형(NFC) 경로로는 파일을 못 찾는다. 못 찾으면 "없구나" 하고
-    /// 같은 이름으로 <b>보이는</b> 빈 워크북을 하나 더 만들게 되고, 사람이 쓴 대사는 다른
-    /// 파일에 남는다 — 실제로 일어난 사고다. 그래서 폴더를 훑어 이름을 정규화해 맞춘다.
+    /// <b><see cref="File.Exists(string)"/> 하나만 믿지 않는다.</b> 두 가지 실사례 때문이다:
+    /// ① 클라우드 동기화가 한글 파일 이름을 분해형(NFD)으로 바꿔 놓아 조합형(NFC) 경로로는
+    /// 못 찾는다. ② 구글 시트가 .xlsx를 저장하며 <b>.xlsm으로 개명한다</b> — 매크로는 없이
+    /// 선언만 그렇게 쓴다(컨테이너 해부로 확인). 못 찾으면 "없구나" 하고 빈 워크북을 하나 더
+    /// 만들게 되므로, 폴더를 훑어 이름을 정규화해 맞추고 .xlsm도 같은 워크북으로 받는다.
+    /// v4에서 툴은 이 파일을 읽기만 하므로 .xlsm이어도 아무 문제가 없다.
+    ///
+    /// 같은 이름이 여럿이면(빈 .xlsx 유물 + 진짜 .xlsm) <b>가장 최근에 저장된 것</b>이 원고다.
     /// </summary>
     public static string? FindExisting(string folder, string episodeId)
     {
@@ -52,38 +55,33 @@ public static class EpisodeLibrary
 
         string wanted = Normalize(episodeId);
 
-        foreach (string candidate in Directory.EnumerateFiles(folder, "*.xlsx"))
-        {
-            string name = Path.GetFileName(candidate);
-
-            // 엑셀이 열어 둔 잠금 파일(~$…)은 워크북이 아니다.
-            if (name.StartsWith("~$", StringComparison.Ordinal))
+        return Directory.EnumerateFiles(folder, "*.xls*")
+            .Where(candidate =>
             {
-                continue;
-            }
+                string name = Path.GetFileName(candidate);
+                string extension = Path.GetExtension(name);
 
-            if (string.Equals(Normalize(Path.GetFileNameWithoutExtension(name)), wanted,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
+                return !name.StartsWith("~$", StringComparison.Ordinal) &&
+                       (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(extension, ".xlsm", StringComparison.OrdinalIgnoreCase)) &&
+                       string.Equals(Normalize(Path.GetFileNameWithoutExtension(name)), wanted,
+                           StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
     }
 
     /// <summary>이름 비교의 단일 규칙 — 조합형으로 모으고 앞뒤 공백을 턴다.</summary>
     private static string Normalize(string value) =>
         value.Trim().Normalize(NormalizationForm.FormC);
 
-    /// <summary>툴이 다루지 않는 스프레드시트 형식. 구글 시트·엑셀이 이걸로 저장하기도 한다.</summary>
-    private static readonly string[] OtherSpreadsheetExtensions = [".xlsm", ".xlsb", ".xls", ".ods"];
+    /// <summary>툴이 읽지 못하는 스프레드시트 형식 (.xlsm은 v4.1부터 정식으로 읽는다).</summary>
+    private static readonly string[] OtherSpreadsheetExtensions = [".xlsb", ".xls", ".ods"];
 
     /// <summary>
-    /// 같은 이름인데 <b>다른 형식</b>인 파일(예: <c>.xlsm</c>). 툴은 <c>.xlsx</c>만 읽고 쓰므로
-    /// 이런 파일은 보이지 않는다 — 그런데 사람이 대사를 적어 둔 곳이 바로 거기일 수 있다.
-    /// 조용히 무시하면 툴은 "워크북이 없구나" 하며 빈 것을 새로 만들고, 사람의 원고는
-    /// 화면 어디에도 나타나지 않는다. 찾아서 말해 주기 위한 자리다(규칙 14).
+    /// 같은 이름인데 <b>읽을 수 없는 형식</b>인 파일(예: <c>.ods</c>). 조용히 무시하면 툴은
+    /// "워크북이 없구나" 하며 빈 것을 새로 만들고, 사람의 원고는 화면 어디에도 나타나지
+    /// 않는다. 찾아서 말해 주기 위한 자리다(규칙 14).
     /// </summary>
     public static string? FindOtherFormat(string folder, string episodeId)
     {

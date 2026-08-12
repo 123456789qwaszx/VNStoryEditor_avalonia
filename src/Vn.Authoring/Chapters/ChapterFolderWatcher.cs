@@ -41,7 +41,9 @@ public sealed class ChapterFolderWatcher : IDisposable
         _delay = debounce ?? DefaultDebounce;
         _debounce = new Timer(_ => Fire(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
-        _watcher = new FileSystemWatcher(folder, "*.xlsx")
+        // *.xls*로 넓게 듣는다 — 구글 시트가 .xlsx를 저장하며 .xlsm으로 개명하는 실사례가
+        // 있어(매크로 없이 선언만 그렇게 쓴다), .xlsx만 들으면 그 저장을 놓친다.
+        _watcher = new FileSystemWatcher(folder, "*.xls*")
         {
             // 엑셀은 임시 파일로 쓰고 이름을 바꾼다 — 이름·크기·쓴 시각을 모두 봐야 저장을 놓치지 않는다.
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
