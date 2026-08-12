@@ -366,11 +366,21 @@ public partial class MainWindow : Window
                     }
                 };
 
-                row.PointerPressed += (_, _) => UiGuard.Run(_session, "챕터 선택", () =>
+                row.PointerPressed += (_, args) =>
                 {
-                    _session.SelectFile(_session.EnsureChapterBoard(chapterId));
-                    ChapterGraph.SelectChapter(chapterId);
-                });
+                    if (args.GetCurrentPoint(row).Properties.IsRightButtonPressed)
+                    {
+                        ShowChapterContextFlyout(row, chapterId);
+                        args.Handled = true;
+                        return;
+                    }
+
+                    UiGuard.Run(_session, "챕터 선택", () =>
+                    {
+                        _session.SelectFile(_session.EnsureChapterBoard(chapterId));
+                        ChapterGraph.SelectChapter(chapterId);
+                    });
+                };
 
                 FileListPanel.Children.Add(row);
             }
@@ -387,6 +397,66 @@ public partial class MainWindow : Window
                 });
             }
         }
+    }
+
+    /// <summary>
+    /// 챕터 행 우클릭 — 이름 바꾸기. 워크북 파일이 옮겨지고 판(StoryFile) 이름이 따라간다.
+    /// 챕터 삭제는 두지 않는다: 워크북 파일 삭제는 되돌릴 수 없어 툴이 대신하지 않는다 —
+    /// 지우려면 폴더에서 사람이 지운다(폴더 열기가 그 길이다).
+    /// </summary>
+    private void ShowChapterContextFlyout(Control anchor, string chapterId)
+    {
+        var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
+
+        var name = new TextBox { Text = chapterId, FontSize = 11 };
+        panel.Children.Add(name);
+
+        var flyout = new Flyout { Content = panel };
+
+        var rename = new Button { Content = "이름 바꾸기", HorizontalAlignment = HorizontalAlignment.Stretch };
+        rename.Click += (_, _) => UiGuard.Run(_session, "챕터 이름 바꾸기", () =>
+        {
+            string newId = name.Text?.Trim() ?? string.Empty;
+
+            if (newId.Length == 0 || string.Equals(newId, chapterId, StringComparison.Ordinal))
+            {
+                flyout.Hide();
+                return;
+            }
+
+            string? folder = ChapterLibrary.FolderFor(_session.ProjectPath);
+
+            if (folder is null)
+            {
+                _session.SetStatus("프로젝트를 먼저 저장해야 합니다.");
+                return;
+            }
+
+            ChapterWriteResult result = ChapterWorkbookWriter.RenameChapterWorkbook(folder, chapterId, newId);
+
+            if (!result.Written)
+            {
+                _session.SetStatus(result.Failure!);
+                return;
+            }
+
+            // 판이 따라간다 — 챕터=판 1:1. 판이 아직 없었다면 만들 것도 없다.
+            if (_session.Project.Files.FirstOrDefault(file =>
+                    string.Equals(file.Name, chapterId, StringComparison.Ordinal)) is { } board)
+            {
+                _session.Editor.RenameStoryFile(board.Id, newId);
+            }
+
+            ChapterGraph.RefreshFromDisk();
+            ChapterGraph.SelectChapter(newId);
+            flyout.Hide();
+            _session.SetStatus($"챕터 '{chapterId}' → '{newId}'로 바꿨습니다. 내보낸 JSON이 있었다면 다시 내보내 주세요.");
+        });
+        panel.Children.Add(rename);
+
+        flyout.ShowAt(anchor);
+        name.SelectAll();
+        name.Focus();
     }
 
     private async void OnNewClick(object? sender, RoutedEventArgs e)

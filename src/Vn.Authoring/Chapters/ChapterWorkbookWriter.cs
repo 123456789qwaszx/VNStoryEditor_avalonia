@@ -196,7 +196,7 @@ public static class ChapterWorkbookWriter
 
                 cell.SetValue(string.Join("; ", kept));
             }
-        });
+        }, backup: true);
 
     // ── 간선 ────────────────────────────────────────────────────────────────
 
@@ -243,7 +243,7 @@ public static class ChapterWorkbookWriter
             }
 
             found.Delete();
-        });
+        }, backup: true);
 
     /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다.</summary>
     public static ChapterWriteResult UpdateEdge(
@@ -358,6 +358,42 @@ public static class ChapterWorkbookWriter
         return true;
     }
 
+    /// <summary>
+    /// 챕터 개명 = 워크북 파일 이름 바꾸기. 시트 안에는 챕터 Id가 없으므로(파일 이름이 곧 Id)
+    /// 이동 하나로 끝난다. 에피소드 워크북은 에피소드 Id로 이름 붙으므로 무관하다.
+    /// 판(StoryFile) 이름은 호출자(셸)가 따라 바꾼다 — 챕터=판 1:1.
+    /// </summary>
+    public static ChapterWriteResult RenameChapterWorkbook(string folder, string oldId, string newId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newId);
+
+        string source = Path.Combine(folder, oldId + ".xlsx");
+        string target = Path.Combine(folder, newId + ".xlsx");
+
+        if (!File.Exists(source))
+        {
+            return ChapterWriteResult.Locked($"챕터 워크북이 없습니다: {source}");
+        }
+
+        if (File.Exists(target))
+        {
+            return ChapterWriteResult.Locked($"챕터 '{newId}'가 이미 있습니다.");
+        }
+
+        try
+        {
+            File.Move(source, target);
+            return ChapterWriteResult.Ok;
+        }
+        catch (Exception exception)
+        {
+            return ChapterWriteResult.Locked(
+                $"챕터 이름을 바꾸지 못했습니다(파일이 잠겨 있을 수 있습니다): {exception.Message}");
+        }
+    }
+
     private static IXLWorksheet AddSheetWithHeaders(XLWorkbook workbook, string name, string[] headers)
     {
         IXLWorksheet sheet = workbook.AddWorksheet(name);
@@ -379,7 +415,12 @@ public static class ChapterWorkbookWriter
     /// 메모리 사본에서 고치고 원본에 저장한다. 엑셀이 잠갔으면(또는 무엇이든 실패하면)
     /// 파일은 그대로 두고 사유만 돌려준다 — 반쯤 쓴 워크북은 없다.
     /// </summary>
-    private static ChapterWriteResult Mutate(string path, Action<XLWorkbook> edit)
+    /// <param name="backup">
+    /// 쓰기 전의 원본을 <c>{파일}.bak</c>으로 남길지. 툴 편집에는 Ctrl+Z가 없으므로
+    /// <b>지우는 종류의 쓰기</b>(행·간선 삭제)는 이걸 켠다 — 실수해도 .bak을 .xlsx로
+    /// 되돌리면 그만이다. 백업은 마지막 파괴적 쓰기 직전 상태 하나만 남는다(굴림).
+    /// </param>
+    private static ChapterWriteResult Mutate(string path, Action<XLWorkbook> edit, bool backup = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -391,6 +432,12 @@ public static class ChapterWorkbookWriter
                        path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
                 stream.CopyTo(memory);
+            }
+
+            if (backup)
+            {
+                // 이미 읽어 둔 버퍼로 쓴다 — 원본에 손대지 않고, 잠금과도 부딪치지 않는다.
+                File.WriteAllBytes(path + ".bak", memory.ToArray());
             }
 
             memory.Position = 0;

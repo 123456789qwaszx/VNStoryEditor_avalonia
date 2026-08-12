@@ -211,6 +211,45 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.True(condition.IsValid);
     }
 
+    // ── 안전망·개명 ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 파괴적_쓰기는_직전_상태를_bak으로_남긴다()
+    {
+        // 툴 편집에는 Ctrl+Z가 없다 — 지우는 종류의 쓰기는 .bak을 굴려 되돌릴 길을 남긴다.
+        string path = Copy();
+        byte[] before = File.ReadAllBytes(path);
+
+        Assert.True(ChapterWorkbookWriter.RemoveEpisode(path, "branch05.02A").Written);
+
+        string backup = path + ".bak";
+        Assert.True(File.Exists(backup));
+        Assert.Equal(before, File.ReadAllBytes(backup));  // 지우기 직전 상태 그대로
+
+        // 위치 쓰기 같은 비파괴 쓰기는 백업을 만들지 않는다 — 굴림이 덮어쓰지 않게.
+        File.Delete(backup);
+        Assert.True(ChapterWorkbookWriter.SetEpisodePosition(path, "main05.01", 5, 5).Written);
+        Assert.False(File.Exists(backup));
+    }
+
+    [Fact]
+    public void 챕터_개명은_파일을_옮기고_중복은_거부한다()
+    {
+        string folder = Path.Combine(_directory, "chapters");
+        Directory.CreateDirectory(folder);
+        File.Copy(SamplePath, Path.Combine(folder, "ch05.xlsx"));
+
+        ChapterWriteResult result = ChapterWorkbookWriter.RenameChapterWorkbook(folder, "ch05", "ch05b");
+
+        Assert.True(result.Written, result.Failure);
+        Assert.False(File.Exists(Path.Combine(folder, "ch05.xlsx")));
+        Assert.NotNull(ChapterWorkbookReader.Read(Path.Combine(folder, "ch05b.xlsx")).FindEpisode("main05.01"));
+
+        // 대상이 이미 있으면 덮어쓰지 않고 거부한다.
+        File.Copy(SamplePath, Path.Combine(folder, "ch05.xlsx"));
+        Assert.False(ChapterWorkbookWriter.RenameChapterWorkbook(folder, "ch05", "ch05b").Written);
+    }
+
     // ── 새 챕터 ─────────────────────────────────────────────────────────────
 
     [Fact]
