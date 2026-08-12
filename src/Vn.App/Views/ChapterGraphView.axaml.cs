@@ -7,6 +7,7 @@ using IoPath = System.IO.Path;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
 
@@ -15,10 +16,9 @@ namespace Vn.App.Views;
 /// <summary>
 /// 챕터·에피소드 그래프 뷰 (G4·G5). <b>별도 화면이고 기존 대사·연출 그래프는 손대지 않는다</b> (G-1).
 ///
-/// <b>그래프는 읽기 전용이다 — 구조적으로.</b> 드래그 핸들러가 없고, 위치·관계의 소유자는
-/// 엑셀이다(G-2). 이 화면이 파일에 쓰는 것은 둘뿐이며 그래프와 무관하다: 없는 에피소드
-/// 워크북의 생성(<see cref="EpisodeLibrary"/>)과 동기화의 LineId 되쓰기(B열) — 둘 다 노드
-/// 클릭·저장 감시(G5)의 일이다.
+/// <b>편집은 전부 엑셀 셀 쓰기다 (G-2 v2).</b> 위치·관계의 소유자는 여전히 엑셀이고, 이 화면의
+/// 드래그·패널·[＋ 분기]는 <see cref="ChapterWorkbookWriter"/>를 거쳐 해당 셀만 고친다.
+/// 저장 감시(G5)가 다시 읽어 화면이 따라온다 — 화면 상태가 진실이 되는 순간은 없다.
 ///
 /// 오류가 있어도 읽힌 데까지 그린다. 빈 화면 + "오류"보다, 그려진 그래프 옆에 무엇이 어디서
 /// 잘못됐는지 세워 두는 편이 고칠 자리를 알려 준다(규칙 14).
@@ -112,6 +112,16 @@ public partial class ChapterGraphView : UserControl
         CreateNextButton.Click += (_, _) => UiGuard.Run(_session, "다음 에피소드 추가", CreateNextEpisodeFromPanel);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
+
+        // 빈 판 클릭 = 선택 해제. 카드·간선·라벨 핸들러가 각자 누름을 소비하므로(e.Handled)
+        // 여기까지 흘러오는 왼쪽 누름은 진짜 빈 공간뿐이다.
+        GraphCanvas.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(GraphCanvas).Properties.IsLeftButtonPressed)
+            {
+                SelectEpisode(null);
+            }
+        };
     }
 
     internal void Attach(AuthoringSession session)
@@ -374,6 +384,10 @@ public partial class ChapterGraphView : UserControl
     {
         GraphCanvas.Children.Clear();
         DiagnosticsPanel.Children.Clear();
+        _cardById.Clear();
+        _cardBase.Clear();
+        _lineByEdge.Clear();
+        _lineBase.Clear();
 
         // 그릴 것이 없으면 판도 없다. 이걸 지우지 않으면 큰 챕터를 보다가 못 읽는 챕터로
         // 넘어갔을 때 텅 빈 캔버스가 이전 크기 그대로 남아 스크롤만 넓어진다.
@@ -428,7 +442,8 @@ public partial class ChapterGraphView : UserControl
         }
 
         DrawDiagnostics(model);
-        RefreshPropertyPanel();
+        ApplySelectionVisuals();
+        RefreshPropertyPanel(preserveTyping: true);
     }
 
     // ── 픽스처 (G6) ─────────────────────────────────────────────────────────
@@ -532,19 +547,16 @@ public partial class ChapterGraphView : UserControl
             line.StrokeThickness = 3.2;
         }
 
-        bool isSelected = _selectedEdgeKey is { } key &&
-            key.From == edge.FromEpisodeId && key.To == edge.ToEpisodeId;
-
-        if (isSelected)
-        {
-            line.Stroke = new SolidColorBrush(Color.Parse("#3D7BD9"));
-            line.StrokeThickness = 3.4;
-        }
-
         // 간선의 정체를 시각 요소에 남긴다. 화면 없는 렌더 검증(Gate A)이 "무엇이 그려졌는지"를
         // 색·좌표로 역추론하지 않고 이름으로 확인할 수 있어야 한다.
         line.Tag = EdgeTag(edge);
         GraphCanvas.Children.Add(line);
+
+        // 선택 강조는 제자리에서 입힌다(ApplySelectionVisuals) — 여기서는 기본 모습만 등록한다.
+        string fromId = edge.FromEpisodeId;
+        string toId = edge.ToEpisodeId;
+        _lineByEdge[(fromId, toId)] = line;
+        _lineBase[(fromId, toId)] = (line.Stroke, line.StrokeThickness);
 
         // 1.6px 실선은 사람이 못 누른다 — 보이지 않는 굵은 히트 선을 위에 겹친다.
         // Transparent는 히트 대상이다(null과 다르다). 카드가 나중에 그려져 그 위를 덮으므로
@@ -558,10 +570,11 @@ public partial class ChapterGraphView : UserControl
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
         };
 
-        string fromId = edge.FromEpisodeId;
-        string toId = edge.ToEpisodeId;
-        hit.PointerPressed += (_, _) =>
+        hit.PointerPressed += (_, e) =>
+        {
+            e.Handled = true; // 캔버스(빈 공간 = 선택 해제)까지 흘러가면 곧바로 풀려 버린다
             UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
+        };
         GraphCanvas.Children.Add(hit);
 
         string label = string.Join(" · ", new[]
@@ -580,7 +593,16 @@ public partial class ChapterGraphView : UserControl
             Background = new SolidColorBrush(Color.Parse("#F0F4F6F8")),
             CornerRadius = new CornerRadius(3),
             Padding = new Thickness(4, 1),
-            Child = new TextBlock { Text = label, FontSize = 10, Opacity = 0.85 }
+            Child = new TextBlock { Text = label, FontSize = 10, Opacity = 0.85 },
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+        };
+
+        // 라벨은 간선의 한가운데 — 사람이 간선을 누르려고 겨누는 바로 그 자리 — 를 덮는다.
+        // 히트 선보다 나중에 그려져 클릭을 삼키므로, 라벨 클릭도 간선 선택으로 잇는다.
+        text.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
         };
 
         text.Measure(Size.Infinity);
@@ -704,11 +726,9 @@ public partial class ChapterGraphView : UserControl
         WireCardInteraction(card, episode);
         card.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
 
-        if (string.Equals(episode.EpisodeId, _selectedEpisodeId, StringComparison.Ordinal))
-        {
-            card.BorderBrush = new SolidColorBrush(Color.Parse("#3D7BD9"));
-            card.BorderThickness = new Thickness(2.4);
-        }
+        // 선택 강조는 제자리에서 입힌다(ApplySelectionVisuals) — 여기서는 기본 모습만 등록한다.
+        _cardById[episode.EpisodeId] = card;
+        _cardBase[episode.EpisodeId] = (card.BorderBrush, card.BorderThickness);
 
         (double x, double y) = layout.Place(episode);
         Canvas.SetLeft(card, x);
@@ -746,6 +766,13 @@ public partial class ChapterGraphView : UserControl
     {
         card.PointerPressed += (_, e) =>
         {
+            // 오른쪽·가운데 단추로는 선택도 드래그도 시작하지 않는다.
+            if (!e.GetCurrentPoint(card).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
+            e.Handled = true; // 캔버스(빈 공간 = 선택 해제)로 흘러가면 방금 한 선택이 풀린다
             SelectEpisode(episode.EpisodeId);
 
             _dragCard = card;
@@ -797,8 +824,16 @@ public partial class ChapterGraphView : UserControl
             }
         };
 
-        card.DoubleTapped += (_, _) =>
+        card.DoubleTapped += (_, e) =>
+        {
+            e.Handled = true;
+
+            // 둘째 탭의 PointerPressed가 시작해 둔 드래그 상태를 걷는다 — 열기와 이동이 겹치면 안 된다.
+            _dragCard = null;
+            _dragEpisode = null;
+
             UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
+        };
     }
 
     /// <summary>
@@ -823,22 +858,67 @@ public partial class ChapterGraphView : UserControl
     /// <summary>선택은 노드 아니면 간선 하나다 — 패널이 무엇을 편집하는지 애매하면 안 된다.</summary>
     private (string From, string To)? _selectedEdgeKey;
 
+    // 선택 강조는 다시 그리지 않고 제자리에서 바꾼다. 클릭 핸들러 안에서 캔버스를 다시 만들면
+    // 방금 누른 카드가 파괴되어 더블클릭(둘째 탭이 다른 인스턴스에 떨어짐)과 드래그(캡처가
+    // 죽은 카드에 걸림)가 죽는다 — 실사용에서 "클릭이 안 먹힌다"로 나타났던 결함이다.
+    private readonly Dictionary<string, Border> _cardById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (IBrush? Brush, Thickness Thickness)> _cardBase =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<(string, string), Line> _lineByEdge = new();
+    private readonly Dictionary<(string, string), (IBrush? Stroke, double Thickness)> _lineBase = new();
+
     internal void SelectEpisode(string? episodeId)
     {
         _selectedEpisodeId = episodeId;
         _selectedEdgeKey = null;
-        Draw(); // Draw 끝에서 패널이 채워진다
+        ApplySelectionVisuals();
+        RefreshPropertyPanel();
     }
 
     internal void SelectEdgeKey(string fromEpisodeId, string toEpisodeId)
     {
         _selectedEdgeKey = (fromEpisodeId, toEpisodeId);
         _selectedEpisodeId = null;
-        Draw();
+        ApplySelectionVisuals();
+        RefreshPropertyPanel();
+    }
+
+    /// <summary>모든 카드·간선을 기본 모습으로 되돌리고 선택된 것만 파랗게 강조한다.</summary>
+    private void ApplySelectionVisuals()
+    {
+        foreach ((string id, Border card) in _cardById)
+        {
+            (IBrush? brush, Thickness thickness) = _cardBase[id];
+            card.BorderBrush = brush;
+            card.BorderThickness = thickness;
+        }
+
+        foreach (((string, string) key, Line line) in _lineByEdge)
+        {
+            (IBrush? stroke, double thickness) = _lineBase[key];
+            line.Stroke = stroke;
+            line.StrokeThickness = thickness;
+        }
+
+        if (_selectedEpisodeId is { } episodeId && _cardById.TryGetValue(episodeId, out Border? selected))
+        {
+            selected.BorderBrush = new SolidColorBrush(Color.Parse("#3D7BD9"));
+            selected.BorderThickness = new Thickness(2.4);
+        }
+
+        if (_selectedEdgeKey is { } edgeKey && _lineByEdge.TryGetValue(edgeKey, out Line? line2))
+        {
+            line2.Stroke = new SolidColorBrush(Color.Parse("#3D7BD9"));
+            line2.StrokeThickness = 3.4;
+        }
     }
 
     /// <summary>선택된 에피소드(또는 간선)의 현재 값으로 패널을 채운다. 원천은 언제나 방금 읽은 모델이다.</summary>
-    private void RefreshPropertyPanel()
+    /// <param name="preserveTyping">
+    /// 저장 감시가 부른 다시 그리기라면 참 — 사람이 패널 글상자에 입력 중일 때 그 값을
+    /// 모델 값으로 덮어쓰지 않는다. 선택이 바뀌어 부르는 쪽은 거짓(새 값으로 반드시 찬다).
+    /// </param>
+    private void RefreshPropertyPanel(bool preserveTyping = false)
     {
         ChapterGraphModel? model = SelectedModel;
         ChapterEpisode? episode = model?.FindEpisode(_selectedEpisodeId ?? string.Empty);
@@ -846,6 +926,11 @@ public partial class ChapterGraphView : UserControl
             ? model?.Edges.FirstOrDefault(candidate =>
                 candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To)
             : null;
+
+        if (preserveTyping && (episode is not null || edge is not null) && IsTypingInPanel())
+        {
+            return;
+        }
 
         PropertyPanel.IsVisible = episode is not null;
         EdgePanel.IsVisible = edge is not null;
@@ -892,6 +977,12 @@ public partial class ChapterGraphView : UserControl
         RefreshEdgeList(model, episode);
     }
 
+    /// <summary>오른쪽 패널의 글상자에 키보드 포커스가 있는가 — 입력 중 덮어쓰기 방지의 판정.</summary>
+    private bool IsTypingInPanel() =>
+        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox box &&
+        box.GetVisualAncestors().Any(ancestor =>
+            ReferenceEquals(ancestor, PropertyPanel) || ReferenceEquals(ancestor, EdgePanel));
+
     private void RefreshEdgeList(ChapterGraphModel model, ChapterEpisode episode)
     {
         EdgeListPanel.Children.Clear();
@@ -909,6 +1000,8 @@ public partial class ChapterGraphView : UserControl
                 FontSize = 11,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                // 배경 없는 TextBlock은 글자 획 위만 클릭된다 — 행 전체가 눌리게 깔아 둔다.
+                Background = Brushes.Transparent,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
             };
             ToolTip.SetTip(text, "클릭하면 이 간선의 조건·해금을 편집합니다.");
@@ -1038,6 +1131,8 @@ public partial class ChapterGraphView : UserControl
                 FontSize = 10,
                 Opacity = 0.75,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                // 배경 없는 TextBlock은 글자 획 위만 클릭된다 — 행 전체가 눌리게 깔아 둔다.
+                Background = Brushes.Transparent,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
             };
 
