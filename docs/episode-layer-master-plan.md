@@ -7,6 +7,7 @@
 | **이 문서** | 진행 상태 · 착수 순서와 이유 · 완성 기준(게이트) · 세션 프롬프트 | 최상위 |
 | `work-orders/chapter-graph-orders.md` | **상세 규격 정본** — 변수 2층, 세 보증, 파이프라인, 엑셀 시트 규격, G1–G9 작업 내용 | 이 문서가 참조 |
 | `chapter-graph-sample.xlsx` | 엑셀 규격 실물 견본 | 규격의 살아있는 예 |
+| `chapter-layer-guide.md` | **사용 안내서** — 화면 조작·작업 흐름·조건식 문법·거부 사유 | 규격의 사용자 얼굴 |
 | `vntool-master-plan.md` | 기존 툴(대사노드·연출)의 최상위 | **별개 레이어.** §0-3 참조 |
 | `runtime-contract.md` | 런타임 규약 (C1·C2·C3·C5·D4가 이 레이어에 직결) | 충돌 시 계약서 우선 |
 | ARCHITECTURE.md (루트) | 코드 구조 원칙 | 충돌 시 그쪽 우선 |
