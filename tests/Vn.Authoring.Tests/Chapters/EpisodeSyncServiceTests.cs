@@ -8,7 +8,8 @@ namespace Vn.Authoring.Tests.Chapters;
 
 /// <summary>
 /// G5 — 에피소드 워크북 저장 → 대사노드 반영의 한 판. 파이프라인 ③→④→⑤가 실제로 이어지고,
-/// 새 LineId가 워크북 B열로 되돌아오며, 거부·삭제가 목록으로 보고된다.
+/// 새 LineId가 프로젝트 신원 맵(<c>ExcelLineMap</c>)에 기록되며(v4 — 워크북은 불변),
+/// 거부·삭제가 목록으로 보고된다.
 /// </summary>
 public sealed class EpisodeSyncServiceTests : IDisposable
 {
@@ -67,7 +68,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
 
         Assert.True(second.Applied);
-        Assert.Empty(second.WrittenBackLineIds);
+        Assert.Empty(second.IssuedLineIds);
         Assert.Empty(second.Pruned);
 
         // 노드가 또 생기지 않았다 — 이름으로 찾아 재사용한다.
@@ -75,35 +76,69 @@ public sealed class EpisodeSyncServiceTests : IDisposable
             node => node.Name == "Story_ch05_02");
     }
 
-    // ── LineId 되쓰기 ───────────────────────────────────────────────────────
+    // ── 행 신원 (v4 — 워크북은 불변, 신원은 프로젝트가 갖는다) ──────────────
 
     [Fact]
-    public void 새_행에_발급된_LineId가_워크북_B열에_되써진다()
+    public void 새_행의_LineId가_프로젝트_신원_맵에_기록되고_워크북은_바이트_그대로다()
     {
+        // 이 테스트가 v4의 수용 기준이다: 어떤 동기화 경로도 대본 파일을 건드리지 않는다.
+        // 구글 드라이브 .xlsm 사건의 재발 방지 — writer가 하나면 형식이 뒤집힐 수 없다.
         (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
         string workbook = WriteMinimalEpisode("ep_new.xlsx", lineIdForSecondRow: null);
+        byte[] before = File.ReadAllBytes(workbook);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(
             editor, Definition, fileId, workbook, chapter);
 
         Assert.True(report.Applied, string.Join(" / ", report.Problems));
-        Assert.Null(report.WriteBackFailure);
-        string issued = Assert.Single(report.WrittenBackLineIds);
+        string issued = Assert.Single(report.IssuedLineIds);
 
-        // 워크북을 다시 읽으면 B열에 새 신원이 있다 — 다음 왕복부터는 ID 매칭이다.
-        EpisodeWorkbookModel reread = EpisodeWorkbookReader.Read(
-            workbook, ["신뢰높음"], ["trust", "anger", "fatigue"]);
+        // 워크북은 단 한 바이트도 바뀌지 않았다.
+        Assert.Equal(before, File.ReadAllBytes(workbook));
 
-        Assert.Equal(issued, reread.FindByIndex(20)!.LineId);
+        // 신원은 프로젝트가 갖는다 — 인덱스 20의 새 줄이 발급 ID로 매였다.
+        DialogueNode node = (DialogueNode)editor.Project.FindNode(report.DialogueNodeId)!;
+        Assert.Equal(issued, node.ExcelLineMap[20]);
+        Assert.Equal("ln_0001", node.ExcelLineMap[10]); // B열 값은 이행 seed로 흡수됐다
 
-        // 되쓰기 뒤의 동기화는 변경 없음이다 — 왕복이 닫혔다.
+        // 다음 동기화는 매핑으로 ID 매칭 — 변경 없음, 왕복이 닫혔다.
         EpisodeSyncReport after = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
-        Assert.Empty(after.WrittenBackLineIds);
+        Assert.Empty(after.IssuedLineIds);
+        Assert.Empty(after.Pruned);
     }
 
     [Fact]
-    public void 워크북이_잠겨_있으면_되쓰지_않고_사유를_남긴다()
+    public void 대사를_고쳐도_인덱스가_같으면_신원이_유지된다()
     {
+        // 신원의 키가 인덱스인 이유 — 작가가 가장 많이 하는 행동(대사 수정)에서
+        // 연출 바인딩이 끊기면 안 된다.
+        (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
+        string workbook = WriteMinimalEpisode("ep_edit.xlsx", lineIdForSecondRow: null);
+
+        EpisodeSyncReport first = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+        string issued = Assert.Single(first.IssuedLineIds);
+
+        // 시트에서 하듯 둘째 줄의 대사만 고친다 (B열은 아무도 안 쓴다).
+        WriteRows(workbook,
+        [
+            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
+            ["10", "ln_0001", null, null, null, null, null, "라루", "첫 줄", null, null],
+            ["20", null, null, null, null, null, null, "윌로", "고친 둘째 줄", null, null]
+        ]);
+
+        EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+
+        Assert.True(second.Applied, string.Join(" / ", second.Problems));
+        Assert.Empty(second.IssuedLineIds); // 새 ID가 발급되지 않았다 — 같은 줄의 수정이다
+
+        DialogueNode node = (DialogueNode)editor.Project.FindNode(second.DialogueNodeId)!;
+        Assert.Equal(issued, node.ExcelLineMap[20]); // 신원 유지
+    }
+
+    [Fact]
+    public void 워크북이_읽기_공유_잠금이어도_동기화가_끝까지_된다()
+    {
+        // v4에서는 쓸 것이 없으므로 "되쓰기 실패"라는 상태 자체가 없다.
         (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
         string workbook = WriteMinimalEpisode("ep_locked.xlsx", lineIdForSecondRow: null);
 
@@ -112,11 +147,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
             EpisodeSyncReport report = EpisodeSyncService.Sync(
                 editor, Definition, fileId, workbook, chapter);
 
-            // 반영은 됐다 — 읽기는 공유 잠금과 공존한다. 못 한 것은 되쓰기뿐이고, 사유가 남는다.
             Assert.True(report.Applied);
-            Assert.NotNull(report.WriteBackFailure);
-            Assert.Contains("낡은 상태", report.WriteBackFailure);
-            Assert.Empty(report.WrittenBackLineIds);
+            Assert.Single(report.IssuedLineIds);
+            Assert.Equal(0, report.RejectionCount);
         }
     }
 
@@ -290,10 +323,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Assert.Equal("메모", sheet.Cell(1, 11).GetString());
         Assert.Equal(10, sheet.Cell(2, 1).GetDouble());
 
-        // LineId 열은 잠기고 나머지는 열려 있다 — B열만 툴 소유라는 §3.2 그대로.
-        Assert.True(sheet.Protection.IsProtected);
-        Assert.True(sheet.Cell(3, 2).Style.Protection.Locked);
-        Assert.False(sheet.Cell(3, 9).Style.Protection.Locked);
+        // 시트 보호는 없다 (v4) — 툴이 이 파일을 쓰지 않으므로 지킬 셀이 없고,
+        // 외부 편집기(구글 시트)가 재저장할 때 깨질 것도 하나 줄었다.
+        Assert.False(sheet.Protection.IsProtected);
 
         // 유형·태그 드롭다운이 걸려 있다.
         Assert.Equal(2, sheet.DataValidations.Count());

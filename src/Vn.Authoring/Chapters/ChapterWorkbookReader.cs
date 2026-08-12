@@ -413,7 +413,8 @@ public static class ChapterWorkbookReader
                 ChapterDiagnosticCode.StatCountOutOfRange,
                 path, sheet.Name, null, null,
                 $"Tier 2 스탯이 {stats.Count}개입니다. 규격은 2~5개를 전제합니다(§0) — " +
-                "많아질수록 도달성 증명(G7)의 상태공간이 급격히 커집니다."));
+                "많아질수록 도달성 증명(G7)의 상태공간이 급격히 커집니다. " +
+                "스탯의 원천은 game.definition.json의 변수이고, `스탯` 시트는 그 거울입니다."));
         }
 
         return stats;

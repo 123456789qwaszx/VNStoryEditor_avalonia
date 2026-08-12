@@ -8,9 +8,11 @@ namespace Vn.Authoring.Chapters;
 ///
 /// <b>산출 순서 그대로다</b> — 파서(<c>ScenarioTextParser</c>)가 같은 텍스트를 읽으면 같은
 /// 순서의 줄 목록이 나오므로, 이 목록과 파서 결과는 자리로 맞물린다. G5가 이 맞물림으로
-/// 새로 발급된 LineId를 워크북의 정확한 행에 되쓴다.
+/// 새로 발급된 LineId를 그 행의 <b>인덱스</b>에 매어 프로젝트 신원 맵에 기록한다(v4 —
+/// 워크북에는 쓰지 않는다).
 /// </summary>
-public sealed record EpisodeFlattenedLine(int SourceRow, string? LineId);
+/// <param name="Index">행의 A열 인덱스 — 신원 맵의 키.</param>
+public sealed record EpisodeFlattenedLine(int SourceRow, int Index, string? LineId);
 
 /// <param name="Lines">산출된 대사·옵션 줄의 출처. 텍스트의 줄 순서와 같다.</param>
 public sealed record EpisodeFlattenResult(
@@ -46,9 +48,14 @@ public sealed record EpisodeFlattenResult(
 public static class EpisodeFlattener
 {
     /// <param name="conditions">챕터 `조건` 시트의 라벨 → 조건 (G-7). 식은 Yarn으로 번역돼 실린다.</param>
+    /// <param name="identity">
+    /// 행 신원 — 인덱스(A열) → LineId (v4). 프로젝트의 <c>ExcelLineMap</c>이 원천이고,
+    /// 여기 없는 행만 B열 값을 쓴다(과거 파일의 이행 seed). null이면 B열만 본다.
+    /// </param>
     public static EpisodeFlattenResult Flatten(
         EpisodeWorkbookModel model,
-        IReadOnlyDictionary<string, ChapterCondition> conditions)
+        IReadOnlyDictionary<string, ChapterCondition> conditions,
+        IReadOnlyDictionary<int, string>? identity = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(conditions);
@@ -68,25 +75,31 @@ public static class EpisodeFlattener
             {
                 case EpisodeRowKind.If:
                     EmitCondition(model, row, position, mainFlow, conditions,
-                        builder, emitted, diagnostics);
+                        builder, emitted, diagnostics, identity);
                     break;
 
                 case EpisodeRowKind.Choice:
-                    ReportChoiceLineId(model, row, diagnostics);
+                    ReportChoiceLineId(model, row, diagnostics, identity);
                     break;
 
                 case EpisodeRowKind.Option:
-                    EmitOption(model, row, builder, emitted, diagnostics);
+                    EmitOption(model, row, builder, emitted, diagnostics, identity);
                     break;
 
                 default:
-                    EmitDialogue(model, row, builder, emitted, diagnostics, indent: 0);
+                    EmitDialogue(model, row, builder, emitted, diagnostics, indent: 0, identity);
                     break;
             }
         }
 
         return new EpisodeFlattenResult(builder.ToString(), emitted, diagnostics);
     }
+
+    /// <summary>행의 유효 LineId — 매핑(인덱스 키)이 우선, 없으면 B열(이행 seed).</summary>
+    private static string? IdOf(EpisodeRow row, IReadOnlyDictionary<int, string>? identity) =>
+        identity is not null && identity.TryGetValue(row.Index, out string? mapped)
+            ? mapped
+            : row.LineId;
 
     // ── 조건 ────────────────────────────────────────────────────────────────
 
@@ -98,7 +111,8 @@ public static class EpisodeFlattener
         IReadOnlyDictionary<string, ChapterCondition> conditions,
         StringBuilder builder,
         List<EpisodeFlattenedLine> emitted,
-        List<ChapterDiagnostic> diagnostics)
+        List<ChapterDiagnostic> diagnostics,
+        IReadOnlyDictionary<int, string>? identity)
     {
         string? expression = Expression(model, row, conditions, diagnostics);
 
@@ -119,7 +133,7 @@ public static class EpisodeFlattener
 
         foreach (EpisodeRow inner in section.Rows)
         {
-            EmitDialogue(model, inner, builder, emitted, diagnostics, indent: 1);
+            EmitDialogue(model, inner, builder, emitted, diagnostics, indent: 1, identity);
         }
 
         builder.Append("<<endif>>\n");
@@ -141,9 +155,12 @@ public static class EpisodeFlattener
     /// 기존 툴이 "선택 블록을 여는 줄"을 라인으로 갖게 되면 그때 열린다.
     /// </summary>
     private static void ReportChoiceLineId(
-        EpisodeWorkbookModel model, EpisodeRow row, List<ChapterDiagnostic> diagnostics)
+        EpisodeWorkbookModel model,
+        EpisodeRow row,
+        List<ChapterDiagnostic> diagnostics,
+        IReadOnlyDictionary<int, string>? identity)
     {
-        if (row.LineId is not { Length: > 0 } lineId)
+        if (IdOf(row, identity) is not { Length: > 0 } lineId)
         {
             return;
         }
@@ -164,17 +181,20 @@ public static class EpisodeFlattener
         EpisodeRow row,
         StringBuilder builder,
         List<EpisodeFlattenedLine> emitted,
-        List<ChapterDiagnostic> diagnostics)
+        List<ChapterDiagnostic> diagnostics,
+        IReadOnlyDictionary<int, string>? identity)
     {
         builder.Append("-> ").Append(row.Text);
 
-        if (row.LineId is { Length: > 0 } optionId)
+        string? effectiveId = IdOf(row, identity);
+
+        if (effectiveId is { Length: > 0 } optionId)
         {
             builder.Append(" #line:").Append(optionId);
         }
 
         builder.Append('\n');
-        emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.LineId));
+        emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.Index, effectiveId));
 
         if (row.In is null || !model.Sections.TryGetValue(row.In.Value, out EpisodeSection? section))
         {
@@ -183,7 +203,7 @@ public static class EpisodeFlattener
 
         foreach (EpisodeRow inner in section.Rows)
         {
-            EmitDialogue(model, inner, builder, emitted, diagnostics, indent: 1);
+            EmitDialogue(model, inner, builder, emitted, diagnostics, indent: 1, identity);
         }
     }
 
@@ -330,21 +350,36 @@ public static class EpisodeFlattener
         StringBuilder builder,
         List<EpisodeFlattenedLine> emitted,
         List<ChapterDiagnostic> diagnostics,
-        int indent)
+        int indent,
+        IReadOnlyDictionary<int, string>? identity)
     {
         // 화자도 내용도 없는 행은 산출하지 않는다. 텍스트의 빈 줄은 파서가 건너뛰므로,
         // 여기서 내보내면 산출 목록과 파서 결과의 자리 맞물림이 어긋난다 — 그 맞물림이
-        // LineId 되쓰기(G5)의 근거라 어긋나면 엉뚱한 행에 ID가 적힌다. 조용히는 안 넘긴다.
+        // LineId 되쓰기(G5)의 근거라 어긋나면 엉뚱한 행에 ID가 적힌다.
         if (string.IsNullOrWhiteSpace(row.Speaker) && string.IsNullOrWhiteSpace(row.Text))
         {
-            diagnostics.Add(new ChapterDiagnostic(
-                ChapterDiagnosticSeverity.Info,
-                ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                model.SourcePath,
-                model.SheetName,
-                row.SourceRow,
-                null,
-                $"인덱스 {row.Index} 행은 화자·내용이 모두 비어 있어 산출물에 나오지 않습니다."));
+            // 인덱스만 있고 나머지가 전부 빈 행은 <b>아직 안 쓴 자리</b>다 — 템플릿이 스스로
+            // 넣어 준 시작 행(인덱스 10)이 그렇다. 사람이 아무것도 하지 않았는데 알림이
+            // 뜨면, 그 알림은 읽을거리가 아니라 소음이 된다. 반쯤 채운 행만 말해 준다.
+            bool untouched =
+                string.IsNullOrWhiteSpace(row.ConditionLabel) &&
+                string.IsNullOrWhiteSpace(row.Memo) &&
+                row.StatChanges.Count == 0 &&
+                row.In is null &&
+                string.IsNullOrWhiteSpace(row.OutTarget) &&
+                row.Tag == EpisodeRowTag.None;
+
+            if (!untouched)
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Info,
+                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                    model.SourcePath,
+                    model.SheetName,
+                    row.SourceRow,
+                    null,
+                    $"인덱스 {row.Index} 행은 화자·내용이 모두 비어 있어 산출물에 나오지 않습니다."));
+            }
 
             return;
         }
@@ -358,13 +393,15 @@ public static class EpisodeFlattener
 
         builder.Append(row.Text);
 
-        if (row.LineId is { Length: > 0 } lineId)
+        string? effectiveId = IdOf(row, identity);
+
+        if (effectiveId is { Length: > 0 } lineId)
         {
             builder.Append(" #line:").Append(lineId);
         }
 
         builder.Append('\n');
-        emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.LineId));
+        emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.Index, effectiveId));
     }
 
     private const int ColumnLineId = 2;

@@ -23,10 +23,13 @@ public sealed record EpisodePrunedLogic(
 /// 에피소드 워크북 하나의 동기화 결과. 배지·보고 패널이 이걸 그대로 그린다 —
 /// 적용했으면 무엇이 어떻게 이어졌는지, 안 했으면 왜인지가 전부 담긴다.
 /// </summary>
-/// <param name="WrittenBackLineIds">워크북 B열에 되쓴 새 LineId들.</param>
-/// <param name="WriteBackFailure">
-/// 되쓰기를 못 한 사유. 엑셀이 파일을 잠그고 있으면 여기 남고, 워크북의 B열은 낡은 상태다 —
-/// 다음 저장 때 다시 시도된다.
+/// <param name="IssuedLineIds">
+/// 새 줄에 발급되어 프로젝트 신원 맵(<c>ExcelLineMap</c>)에 기록된 LineId들 (v4 —
+/// 워크북에는 아무것도 쓰지 않는다. 대본 파일의 writer는 사람뿐이다).
+/// </param>
+/// <param name="NotYetWritten">
+/// 대사를 아직 한 줄도 쓰지 않은 워크북인가. <b>거부가 아니다</b> — 툴이 방금 만들어 준 빈
+/// 표에 대고 "반영 거부"라고 말하면, 아무것도 잘못하지 않은 사람이 고칠 것을 찾게 된다.
 /// </param>
 public sealed record EpisodeSyncReport(
     string EpisodeId,
@@ -36,19 +39,21 @@ public sealed record EpisodeSyncReport(
     IReadOnlyList<ChapterDiagnostic> Diagnostics,
     IReadOnlyList<string> Problems,
     IReadOnlyList<EpisodePrunedLogic> Pruned,
-    IReadOnlyList<string> WrittenBackLineIds,
-    string? WriteBackFailure)
+    IReadOnlyList<string> IssuedLineIds,
+    bool NotYetWritten = false)
 {
     public bool HasErrors =>
-        !Applied ||
-        Problems.Count > 0 ||
-        Diagnostics.Any(item => item.Severity == ChapterDiagnosticSeverity.Error);
+        !NotYetWritten &&
+        (!Applied ||
+         Problems.Count > 0 ||
+         Diagnostics.Any(item => item.Severity == ChapterDiagnosticSeverity.Error));
 
-    /// <summary>배지에 올릴 거부·경고 건수.</summary>
+    /// <summary>배지에 올릴 거부·경고 건수. 아직 안 쓴 워크북은 세지 않는다.</summary>
     public int RejectionCount =>
-        Problems.Count +
-        Diagnostics.Count(item => item.Severity == ChapterDiagnosticSeverity.Error) +
-        (WriteBackFailure is null ? 0 : 1);
+        NotYetWritten
+            ? 0
+            : Problems.Count +
+              Diagnostics.Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
 }
 
 /// <summary>
@@ -95,9 +100,29 @@ public static class EpisodeSyncService
         var conditions = (chapter?.Conditions ?? Array.Empty<ChapterCondition>() as IReadOnlyList<ChapterCondition>)
             .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
 
-        EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(model, conditions);
+        // 행 신원의 원천은 프로젝트의 ExcelLineMap이다(v4). 노드가 아직 없으면(첫 동기화)
+        // 매핑도 없다 — B열 값이 이행 seed로 쓰인다. 여기서 노드를 만들지는 않는다:
+        // 깨진·빈 워크북이 노드를 남기면 안 되기 때문이다.
+        IReadOnlyDictionary<int, string>? identity =
+            FindNode(editor, NodeNameFor(episodeId, chapter))?.ExcelLineMap;
+
+        EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(model, conditions, identity);
 
         var diagnostics = model.Diagnostics.Concat(flattened.Diagnostics).ToList();
+
+        // 아직 대사를 한 줄도 쓰지 않았다면 반영할 것이 없다 — 거부가 아니라 "아직"이다.
+        // 툴이 방금 만들어 준 빈 워크북이 스스로 거부당하는 일은 없어야 한다.
+        if (!model.HasErrors && !flattened.HasErrors && flattened.Text.Trim().Length == 0)
+        {
+            return new EpisodeSyncReport(
+                episodeId, workbookPath, DialogueNodeId: null,
+                Applied: false,
+                diagnostics,
+                Array.Empty<string>(),
+                Array.Empty<EpisodePrunedLogic>(),
+                Array.Empty<string>(),
+                NotYetWritten: true);
+        }
 
         if (model.HasErrors || flattened.HasErrors)
         {
@@ -126,15 +151,13 @@ public static class EpisodeSyncService
                 diagnostics,
                 outcome.Problems.Concat([outcome.Summary()]).Distinct().ToList(),
                 Array.Empty<EpisodePrunedLogic>(),
-                Array.Empty<string>(),
-                WriteBackFailure: null);
+                Array.Empty<string>());
         }
 
         IReadOnlyList<EpisodePrunedLogic> pruned =
             CollectPruned(outcome.Plan!, extensionsBefore, exitsBefore);
 
-        (IReadOnlyList<string> written, string? writeFailure) =
-            WriteBackNewLineIds(workbookPath, model.SheetName, flattened, outcome.Plan!);
+        IReadOnlyList<string> issued = RecordLineIdentity(node, model, flattened, outcome.Plan!);
 
         return new EpisodeSyncReport(
             episodeId, workbookPath, node.Id,
@@ -142,9 +165,79 @@ public static class EpisodeSyncService
             diagnostics,
             outcome.Problems,
             pruned,
-            written,
-            writeFailure);
+            issued);
     }
+
+    /// <summary>
+    /// 행 신원 기록 (v4) — <b>워크북에는 아무것도 쓰지 않는다.</b> 유효 ID 전부(기존 유지 +
+    /// 방금 발급 + B열 seed)를 인덱스에 매어 노드의 <see cref="DialogueNode.ExcelLineMap"/>에
+    /// 다시 적는다. 매핑은 대사 줄 상태와 같은 저장 단위(프로젝트)로 함께 커밋·롤백된다.
+    /// </summary>
+    private static IReadOnlyList<string> RecordLineIdentity(
+        DialogueNode node,
+        EpisodeWorkbookModel model,
+        EpisodeFlattenResult flattened,
+        ScriptSyncPlan plan)
+    {
+        // 새로 발급된 ID — 산출 위치로 맞물린다(Inserted의 NewIndex = 산출 줄 번호).
+        Dictionary<int, string> assigned = plan.Entries
+            .Where(entry => entry.Kind == ScriptSyncKind.Inserted &&
+                            entry.NewIndex is not null &&
+                            entry.LineId is not null)
+            .ToDictionary(entry => entry.NewIndex!.Value, entry => entry.LineId!);
+
+        var issued = new List<string>();
+        var next = new Dictionary<int, string>();
+
+        for (int position = 0; position < flattened.Lines.Count; position++)
+        {
+            EpisodeFlattenedLine line = flattened.Lines[position];
+
+            if (line.LineId is { } keptId)
+            {
+                next[line.Index] = keptId;
+            }
+            else if (assigned.TryGetValue(position, out string? newId))
+            {
+                next[line.Index] = newId;
+                issued.Add(newId);
+            }
+        }
+
+        // 산출에 실리지 않는 행(CHOICE 등)의 신원은 유지한다 — 행이 아직 존재한다면.
+        HashSet<int> liveIndexes = model.Rows.Select(row => row.Index).ToHashSet();
+
+        foreach ((int index, string lineId) in node.ExcelLineMap)
+        {
+            if (!next.ContainsKey(index) && liveIndexes.Contains(index))
+            {
+                next[index] = lineId;
+            }
+        }
+
+        if (!next.OrderBy(pair => pair.Key).SequenceEqual(node.ExcelLineMap.OrderBy(pair => pair.Key)))
+        {
+            node.ExcelLineMap.Clear();
+
+            foreach ((int index, string lineId) in next)
+            {
+                node.ExcelLineMap[index] = lineId;
+            }
+        }
+
+        return issued;
+    }
+
+    /// <summary>이 에피소드가 반영될 노드의 이름 — 챕터의 `대사엔트리`, 없으면 EpisodeId.</summary>
+    private static string NodeNameFor(string episodeId, ChapterGraphModel? chapter) =>
+        chapter?.FindEpisode(episodeId)?.DialogueEntry is { Length: > 0 } entry
+            ? entry
+            : episodeId;
+
+    private static DialogueNode? FindNode(ProjectEditor editor, string name) =>
+        editor.Project.EnumerateNodes()
+            .OfType<DialogueNode>()
+            .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));
 
     /// <summary>
     /// 반영 대상 대사노드. 이름의 원천은 챕터 `에피소드` 시트의 `대사엔트리`다 — 런타임이
@@ -153,15 +246,9 @@ public static class EpisodeSyncService
     private static DialogueNode FindOrCreateNode(
         ProjectEditor editor, string fileId, string episodeId, ChapterGraphModel? chapter)
     {
-        string name = chapter?.FindEpisode(episodeId)?.DialogueEntry is { Length: > 0 } entry
-            ? entry
-            : episodeId;
+        string name = NodeNameFor(episodeId, chapter);
 
-        DialogueNode? existing = editor.Project.EnumerateNodes()
-            .OfType<DialogueNode>()
-            .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));
-
-        if (existing is not null)
+        if (FindNode(editor, name) is { } existing)
         {
             return existing;
         }
@@ -272,89 +359,6 @@ public static class EpisodeSyncService
 
     // ── LineId 되쓰기 ───────────────────────────────────────────────────────
 
-    /// <summary>
-    /// 새로 발급된 LineId를 워크북 B열에 되쓴다. <b>B열 말고는 어떤 셀도 건드리지 않는다</b> —
-    /// §3.2가 B열만 툴 소유로 정했다.
-    ///
-    /// 산출 줄 목록(<see cref="EpisodeFlattenResult.Lines"/>)과 동기화 계획의 새 줄 번호가
-    /// 같은 텍스트에서 나왔으므로 자리로 맞물린다. 그 맞물림으로 "이 행의 새 ID"를 찾는다.
-    ///
-    /// 엑셀이 파일을 잠그고 있으면 쓰지 않고 사유를 남긴다 — 워크북은 낡은 상태가 되고,
-    /// 기획자가 파일을 닫은 뒤의 다음 저장에서 다시 시도된다.
-    /// </summary>
-    private static (IReadOnlyList<string> Written, string? Failure) WriteBackNewLineIds(
-        string workbookPath,
-        string sheetName,
-        EpisodeFlattenResult flattened,
-        ScriptSyncPlan plan)
-    {
-        // 새 줄 번호 → 발급된 ID. Inserted만 — 나머지는 워크북이 이미 아는 신원이다.
-        Dictionary<int, string> assigned = plan.Entries
-            .Where(entry => entry.Kind == ScriptSyncKind.Inserted &&
-                            entry.NewIndex is not null &&
-                            entry.LineId is not null)
-            .ToDictionary(entry => entry.NewIndex!.Value, entry => entry.LineId!);
-
-        if (assigned.Count == 0)
-        {
-            return (Array.Empty<string>(), null);
-        }
-
-        var writes = new List<(int Row, string LineId)>();
-
-        for (int position = 0; position < flattened.Lines.Count; position++)
-        {
-            EpisodeFlattenedLine line = flattened.Lines[position];
-
-            if (line.LineId is null && assigned.TryGetValue(position, out string? newId))
-            {
-                writes.Add((line.SourceRow, newId));
-            }
-        }
-
-        if (writes.Count == 0)
-        {
-            return (Array.Empty<string>(), null);
-        }
-
-        try
-        {
-            // 원본을 메모리로 복사해 연다. 이유 둘 — ① 경로 생성자는 실패 시 핸들을 놓지 않는다
-            // (리더와 같은 이유). ② ClosedXML은 저장할 때 원본 스트림을 다시 읽으므로, 파일
-            // 스트림을 살려 둔 채 같은 파일에 SaveAs를 하면 우리 자신의 읽기 핸들과 부딪친다.
-            // 메모리 사본이면 원본 파일 핸들은 복사 순간에만 잡힌다.
-            using var memory = new MemoryStream();
-
-            using (var stream = new FileStream(
-                       workbookPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            {
-                stream.CopyTo(memory);
-            }
-
-            memory.Position = 0;
-
-            using var workbook = new XLWorkbook(memory);
-            IXLWorksheet sheet = workbook.Worksheets.First(item =>
-                string.Equals(item.Name, sheetName, StringComparison.Ordinal));
-
-            foreach ((int row, string lineId) in writes)
-            {
-                sheet.Cell(row, 2).SetValue(lineId);
-            }
-
-            // 엑셀이 잠갔으면 여기서 깨끗하게 던지고 아래에서 사유가 된다.
-            workbook.SaveAs(workbookPath);
-
-            return (writes.Select(write => write.LineId).ToList(), null);
-        }
-        catch (Exception exception)
-        {
-            return (Array.Empty<string>(),
-                $"새 LineId {writes.Count}개를 워크북에 되쓰지 못했습니다(파일이 잠겨 있을 수 있습니다): " +
-                exception.Message + " — 워크북의 LineId 열은 낡은 상태이며 다음 저장 때 다시 시도됩니다.");
-        }
-    }
-
     private static EpisodeSyncReport Refused(
         string episodeId,
         string workbookPath,
@@ -362,5 +366,5 @@ public static class EpisodeSyncService
         IReadOnlyList<string> problems) =>
         new(episodeId, workbookPath, DialogueNodeId: null,
             Applied: false, diagnostics, problems,
-            Array.Empty<EpisodePrunedLogic>(), Array.Empty<string>(), WriteBackFailure: null);
+            Array.Empty<EpisodePrunedLogic>(), Array.Empty<string>());
 }

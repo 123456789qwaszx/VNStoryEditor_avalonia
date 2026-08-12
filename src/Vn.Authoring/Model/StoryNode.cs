@@ -270,6 +270,17 @@ public sealed class DialogueNode : StoryNode
     /// <summary>갈래를 여는 줄의 Id → 그 갈래가 끝났을 때 이동할 노드.</summary>
     public Dictionary<string, string> BranchExits { get; init; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 에피소드 엑셀의 행 신원 — <b>인덱스(A열) → LineId</b> (v4, 2026-08-13 소유자 승인).
+    ///
+    /// 대본 파일의 유일한 writer는 사람이다. 툴은 LineId를 B열에 되쓰는 대신 여기(프로젝트,
+    /// 툴 소유)에 기억한다 — 매핑과 대사 줄 상태가 같은 저장 단위로 함께 커밋되고 함께
+    /// 롤백되므로 어긋나지 않는다. 키가 인덱스인 이유: 사람이 소유하는 행 신원이 이미
+    /// 인덱스이고(G-5, IN/OUT이 가리키는 그것), 대사를 고쳐도 인덱스는 남는다.
+    /// 엑셀과 무관한 노드에서는 비어 있다.
+    /// </summary>
+    public Dictionary<int, string> ExcelLineMap { get; init; } = new();
+
     public DialogueLineExtension? FindExtension(string? lineId)
     {
         return lineId is null
@@ -286,7 +297,8 @@ public sealed class DialogueNode : StoryNode
             ScriptId = ScriptId,
             LineExtensions = LineExtensions.Select(item => item.Clone()).ToList(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
-            BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal)
+            BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal),
+            ExcelLineMap = new Dictionary<int, string>(ExcelLineMap)
         };
     }
 }

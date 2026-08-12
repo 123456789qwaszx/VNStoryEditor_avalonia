@@ -36,9 +36,9 @@ public static class ChapterValidator
         {
             string? path = episodesFolder is null
                 ? null
-                : EpisodeLibrary.PathFor(episodesFolder, episode.EpisodeId);
+                : EpisodeLibrary.FindExisting(episodesFolder, episode.EpisodeId);
 
-            if (path is null || !File.Exists(path))
+            if (path is null)
             {
                 continue; // 아직 대본이 없는 에피소드는 정상이다 — 스탯을 바꾸지 않는 것으로 다룬다.
             }

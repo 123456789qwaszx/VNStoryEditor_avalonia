@@ -231,9 +231,7 @@ public partial class ChapterGraphView : UserControl
 
         foreach (ChapterEpisode episode in entry.Model.Episodes)
         {
-            string path = EpisodeLibrary.PathFor(folder, episode.EpisodeId);
-
-            if (!File.Exists(path))
+            if (EpisodeLibrary.FindExisting(folder, episode.EpisodeId) is not { } path)
             {
                 continue;
             }
@@ -251,9 +249,11 @@ public partial class ChapterGraphView : UserControl
         Draw();
 
         int rejected = _syncReports.Sum(report => report.RejectionCount);
+        int applied = _syncReports.Count(report => report.Applied);
+
         _session.SetStatus(rejected == 0
-            ? $"에피소드 {_syncReports.Count}개를 반영했습니다."
-            : $"에피소드 {_syncReports.Count}개 중 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+            ? $"에피소드 {applied}개를 반영했습니다."
+            : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
     }
 
     /// <summary>
@@ -270,13 +270,28 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
+        // .xlsx는 없는데 같은 이름의 .xlsm·.ods가 있다면, 사람이 쓴 원고가 그리로 옮겨 간
+        // 것이다(구글 시트로 열어 저장하면 형식이 바뀌기도 한다). 그 위에 빈 워크북을 새로
+        // 만들면 원고가 화면에서 사라진 것처럼 보인다 — 만들지 않고 그 파일을 열어 준다.
+        if (EpisodeLibrary.FindExisting(folder, episodeId) is null &&
+            EpisodeLibrary.FindOtherFormat(folder, episodeId) is { } other)
+        {
+            _session?.SetStatus(
+                $"'{IoPath.GetFileName(other)}'가 있어 새 워크북을 만들지 않았습니다. " +
+                "툴은 .xlsx만 읽습니다 — 그 파일을 .xlsx로 저장(또는 이름 변경)해 주세요.");
+            OpenWorkbookFile(other);
+            return;
+        }
+
         if (EpisodeLibrary.EnsureWorkbook(folder, episodeId))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
             StartWatchingEpisodes(folder);
         }
 
-        string target = EpisodeLibrary.PathFor(folder, episodeId);
+        // 이미 있는 파일이면 그 파일을 연다 — 이름이 정규화만 다른 경우에도 같은 파일이다.
+        string target = EpisodeLibrary.FindExisting(folder, episodeId)
+            ?? EpisodeLibrary.PathFor(folder, episodeId);
         string? handler = WorkbookHandlerProbe();
 
         if (!SpreadsheetAssociation.IsSpreadsheetHandler(handler))
@@ -1269,6 +1284,15 @@ public partial class ChapterGraphView : UserControl
         if (result.Written)
         {
             _selectedEpisodeId = episodeId;
+
+            // 대본 워크북도 지금 만든다 (v4) — "노드를 클릭해야 생긴다"는 느슨함을 없앤다.
+            // 생성은 없던 파일을 만드는 것이라 단일 writer 원칙과 충돌하지 않고,
+            // 이후 툴은 이 파일을 다시는 쓰지 않는다.
+            if (EpisodeLibrary.FolderFor(_session?.ProjectPath) is { } episodesFolder &&
+                EpisodeLibrary.EnsureWorkbook(episodesFolder, episodeId))
+            {
+                StartWatchingEpisodes(episodesFolder);
+            }
         }
 
         Report(result, $"'{episodeId}' 행을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요.");
@@ -1358,10 +1382,12 @@ public partial class ChapterGraphView : UserControl
             ? $"검증 보고 — 오류 없음 (알림 {all.Count}건)"
             : $"검증 보고 — 오류 {errors} · 경고 {warnings}";
 
-        if (_syncReports.Count > 0)
+        int synced = _syncReports.Count(report => !report.NotYetWritten);
+
+        if (synced > 0)
         {
             header += rejected == 0
-                ? $" · 동기화 {_syncReports.Count}건 반영"
+                ? $" · 동기화 {synced}건 반영"
                 : $" · 동기화 거부·경고 {rejected}건";
         }
 
@@ -1415,6 +1441,12 @@ public partial class ChapterGraphView : UserControl
     {
         foreach (EpisodeSyncReport report in _syncReports)
         {
+            // 아직 대사를 안 쓴 워크북은 아예 말하지 않는다 — 잘못한 것이 없다.
+            if (report.NotYetWritten)
+            {
+                continue;
+            }
+
             string summary = report.Applied
                 ? $"에피소드 {report.EpisodeId} — 반영됨"
                 : $"에피소드 {report.EpisodeId} — 반영 거부";
@@ -1444,17 +1476,11 @@ public partial class ChapterGraphView : UserControl
                     $"  {pruned.Describe()}", Brushes.DarkGoldenrod, dim: false));
             }
 
-            if (report.WrittenBackLineIds.Count > 0)
+            if (report.IssuedLineIds.Count > 0)
             {
                 DiagnosticsPanel.Children.Add(DiagnosticLine(
-                    $"  새 LineId {report.WrittenBackLineIds.Count}개를 워크북에 되썼습니다.",
+                    $"  새 줄 {report.IssuedLineIds.Count}개에 LineId를 발급했습니다 (프로젝트에 기록 — 워크북은 건드리지 않음).",
                     null, dim: true));
-            }
-
-            if (report.WriteBackFailure is not null)
-            {
-                DiagnosticsPanel.Children.Add(DiagnosticLine(
-                    $"  {report.WriteBackFailure}", Brushes.DarkGoldenrod, dim: false));
             }
         }
     }
