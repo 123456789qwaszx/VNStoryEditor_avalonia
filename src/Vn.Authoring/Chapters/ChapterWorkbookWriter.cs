@@ -65,8 +65,9 @@ public static class ChapterWorkbookWriter
     /// 다음 에피소드 추가 — 분기 저작의 핵심 동작. 행 추가와 간선 연결이 <b>한 번의 저장</b>이다
     /// (둘 중 하나만 성공한 채 남지 않는다).
     ///
-    /// 첫 자리는 툴이 제안한다: <b>부모의 오른쪽(+220), 이미 나간 분기 아래로 차례로(+110)</b>.
-    /// 이것은 자동 레이아웃이 아니다 — 새 노드의 시작 위치일 뿐이고, 기존 노드는 절대 움직이지
+    /// 첫 자리(x·y)는 호출자가 <see cref="ChapterBranchPlanner.SuggestPlacement"/>로 계산해서
+    /// 넘긴다 — 깊이(열)와 그 열의 빈 줄을 아는 것은 그래프 모델이지 워크북 행이 아니다.
+    /// 이것은 자동 레이아웃이 아니다: 새 노드의 시작 위치일 뿐이고, 기존 노드는 절대 움직이지
     /// 않으며, 이후 자리는 사람이 드래그로 소유한다(G-2 v2).
     /// </summary>
     public static ChapterWriteResult AddNextEpisode(
@@ -74,6 +75,8 @@ public static class ChapterWorkbookWriter
         string parentEpisodeId,
         string newEpisodeId,
         string title,
+        double x,
+        double y,
         string? optionLabel = null) =>
         Mutate(path, workbook =>
         {
@@ -84,30 +87,41 @@ public static class ChapterWorkbookWriter
                 throw new InvalidOperationException($"EpisodeId '{newEpisodeId}'가 이미 있습니다.");
             }
 
-            int parentRow = FindRow(episodes, parentEpisodeId)
-                ?? throw new InvalidOperationException($"부모 에피소드 '{parentEpisodeId}'가 없습니다.");
-
-            double parentX = episodes.Cell(parentRow, 6).TryGetValue(out double px) ? px : 0;
-            double parentY = episodes.Cell(parentRow, 7).TryGetValue(out double py) ? py : 0;
-
-            IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
-
-            int siblingCount = edges.RowsUsed().Skip(1).Count(row =>
-                string.Equals(row.Cell(1).GetString(), parentEpisodeId, StringComparison.Ordinal));
+            if (FindRow(episodes, parentEpisodeId) is null)
+            {
+                throw new InvalidOperationException($"부모 에피소드 '{parentEpisodeId}'가 없습니다.");
+            }
 
             int newRow = NextRow(episodes);
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
             episodes.Cell(newRow, 2).SetValue(title);
             episodes.Cell(newRow, 4).SetValue("Main");
-            episodes.Cell(newRow, 6).SetValue(Math.Round(parentX + 220, 2));
-            episodes.Cell(newRow, 7).SetValue(Math.Round(parentY + (siblingCount * 110), 2));
+            episodes.Cell(newRow, 6).SetValue(Math.Round(x, 2));
+            episodes.Cell(newRow, 7).SetValue(Math.Round(y, 2));
 
+            IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
             int edgeRow = NextRow(edges);
             edges.Cell(edgeRow, 1).SetValue(parentEpisodeId);
             edges.Cell(edgeRow, 2).SetValue(newEpisodeId);
             Set(edges, edgeRow, 3, optionLabel);
             edges.Cell(edgeRow, 5).SetValue("FALSE");
         });
+
+    /// <summary>
+    /// [깊이 정렬] — 여러 노드의 X·Y를 <b>한 번의 저장</b>으로 쓴다. 사람이 놓은 배치를
+    /// 통째로 덮는 쓰기이므로 삭제와 같은 급으로 취급해 <c>.bak</c>을 남긴다.
+    /// </summary>
+    public static ChapterWriteResult SetEpisodePositions(
+        string path, IReadOnlyList<(string EpisodeId, double X, double Y)> positions) =>
+        Mutate(path, workbook =>
+        {
+            foreach ((string episodeId, double x, double y) in positions)
+            {
+                (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
+                sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
+                sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
+            }
+        }, backup: true);
 
     /// <summary>속성 패널의 [적용]. null이 아닌 필드만 그 셀에 쓴다.</summary>
     public static ChapterWriteResult UpdateEpisode(

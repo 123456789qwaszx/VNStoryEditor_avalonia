@@ -214,21 +214,18 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     // ── 다음 에피소드 (분기 저작) ───────────────────────────────────────────
 
     [Fact]
-    public void 다음_에피소드는_부모_오른쪽에_순서대로_서고_간선이_이어진다()
+    public void 다음_에피소드는_받은_자리에_서고_간선이_이어진다()
     {
+        // 자리 계산은 ChapterBranchPlanner의 일이다(깊이 기반) — 작성기는 받은 좌표를 그대로 쓴다.
         string path = Copy();
 
-        // main05.end(680, 0)에서 분기 셋을 연달아 만든다.
-        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_a", "갈래 A").Written);
-        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_b", "갈래 B", "B를 고른다").Written);
-        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_c", "갈래 C").Written);
+        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_a", "갈래 A", 1100, 0).Written);
+        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_b", "갈래 B", 1100, 110, "B를 고른다").Written);
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
 
-        // 부모 오른쪽(+220), 형제 순서대로 아래로(+110).
-        Assert.Equal((900d, 0d), (reread.FindEpisode("ep_a")!.X, reread.FindEpisode("ep_a")!.Y));
-        Assert.Equal((900d, 110d), (reread.FindEpisode("ep_b")!.X, reread.FindEpisode("ep_b")!.Y));
-        Assert.Equal((900d, 220d), (reread.FindEpisode("ep_c")!.X, reread.FindEpisode("ep_c")!.Y));
+        Assert.Equal((1100d, 0d), (reread.FindEpisode("ep_a")!.X, reread.FindEpisode("ep_a")!.Y));
+        Assert.Equal((1100d, 110d), (reread.FindEpisode("ep_b")!.X, reread.FindEpisode("ep_b")!.Y));
 
         // 간선이 함께 이어졌고 라벨이 실렸다.
         Assert.Contains(reread.Edges, edge =>
@@ -239,13 +236,33 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     }
 
     [Fact]
+    public void 깊이_정렬이_여러_위치를_한_저장으로_쓰고_bak을_남긴다()
+    {
+        string path = Copy();
+
+        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePositions(path,
+        [
+            ("main05.01", 0, 0),
+            ("main05.02", 220, 0),
+            ("branch05.02A", 440, 0)
+        ]);
+
+        Assert.True(result.Written);
+        Assert.True(File.Exists(path + ".bak"), "배치를 통째로 덮는 쓰기는 .bak을 남겨야 한다");
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
+        Assert.Equal((220d, 0d), (reread.FindEpisode("main05.02")!.X, reread.FindEpisode("main05.02")!.Y));
+        Assert.Equal((440d, 0d), (reread.FindEpisode("branch05.02A")!.X, reread.FindEpisode("branch05.02A")!.Y));
+    }
+
+    [Fact]
     public void 다음_에피소드의_중복_Id는_행도_간선도_남기지_않는다()
     {
         // 원자성 — 행 추가와 간선 연결이 한 저장이다. 절반만 성공한 워크북은 없다.
         string path = Copy();
 
         ChapterWriteResult result = ChapterWorkbookWriter.AddNextEpisode(
-            path, "main05.end", "main05.02", "겹침");
+            path, "main05.end", "main05.02", "겹침", 1100, 0);
 
         Assert.False(result.Written);
 

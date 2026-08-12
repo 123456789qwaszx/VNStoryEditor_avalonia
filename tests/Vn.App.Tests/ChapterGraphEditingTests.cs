@@ -111,15 +111,35 @@ public sealed class ChapterGraphEditingTests
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
 
-        // 노드가 부모 오른쪽에 생겼고 간선이 라벨과 함께 이어졌다 — 클릭 한 번의 결과다.
+        // 노드가 자기 깊이 열에 생겼고 간선이 라벨과 함께 이어졌다 — 클릭 한 번의 결과다.
+        // main05.end의 깊이는 4(01→02→A→03→end 최장 경로)이므로 새 노드는 열 5 = X 1100이다.
         ChapterEpisode added = reread.FindEpisode("ep_epilogue")!;
-        Assert.Equal(900d, added.X);
+        Assert.Equal(1100d, added.X);
         Assert.Contains(reread.Edges, edge =>
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_epilogue" &&
             edge.OptionLabel == "에필로그를 본다");
 
         // 입력 칸은 비워져 다음 분기를 바로 이어 만들 수 있다.
         Assert.Equal(string.Empty, view.FindControl<TextBox>("NewNextIdBox")!.Text);
+    });
+
+    [Fact]
+    public void 깊이_정렬이_열을_세워_엑셀_좌표를_다시_쓴다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        view.AlignByDepth();
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+
+        // 합류 노드 main05.03의 깊이는 3(02→A→03이 최장) — 손으로 둔 440이 아니라 660 열로 선다.
+        Assert.Equal(660d, reread.FindEpisode("main05.03")!.X);
+        Assert.Equal(880d, reread.FindEpisode("main05.end")!.X);
+        Assert.Equal(440d, reread.FindEpisode("branch05.02A")!.X);
+
+        // 사람 배치를 통째로 덮었으므로 되돌릴 .bak이 남는다.
+        Assert.True(File.Exists(project.ChapterPath + ".bak"));
     });
 
     [Fact]

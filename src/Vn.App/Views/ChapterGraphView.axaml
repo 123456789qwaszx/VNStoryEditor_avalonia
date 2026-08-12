@@ -6,7 +6,7 @@
                 Padding="10,8"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="챕터"
                            FontSize="11"
@@ -27,8 +27,14 @@
                         Content="＋ 에피소드"
                         Margin="6,0,0,0"
                         ToolTip.Tip="에피소드 행을 시트에 더합니다. Id·대사엔트리는 우측 패널에서 채우세요." />
+                <!-- 명시 동작이다 — 자동 레이아웃이 아니다. 누르기 전 배치는 .bak으로 남는다. -->
+                <Button Grid.Column="6"
+                        x:Name="AlignButton"
+                        Content="깊이 정렬"
+                        Margin="6,0,0,0"
+                        ToolTip.Tip="시작에서의 깊이대로 열을 세웁니다 (합류는 가장 깊은 부모 다음 열). 지금 배치는 .bak으로 남습니다." />
 
-                <StackPanel Grid.Column="6"
+                <StackPanel Grid.Column="7"
                             Orientation="Horizontal"
                             Margin="12,0,0,0"
                             Spacing="6">
@@ -46,7 +52,7 @@
                 </StackPanel>
 
                 <!-- G-2 v2 — 엑셀이 원본이고 툴 편집은 해당 셀에 즉시 저장된다. -->
-                <Border Grid.Column="8"
+                <Border Grid.Column="9"
                         Padding="7,3"
                         CornerRadius="3"
                         Background="#22808080">

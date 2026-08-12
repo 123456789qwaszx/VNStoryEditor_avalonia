@@ -25,6 +25,7 @@ public sealed class ChapterGraphSyncViewTests
 
         var opened = new List<string>();
         view.OpenWorkbookFile = opened.Add;
+        view.WorkbookHandlerProbe = () => @"C:\Program Files\Microsoft Office\EXCEL.EXE";
 
         view.OpenEpisode("main05.03");
 

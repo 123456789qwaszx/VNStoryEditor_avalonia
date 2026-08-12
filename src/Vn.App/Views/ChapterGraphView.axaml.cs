@@ -42,11 +42,25 @@ public partial class ChapterGraphView : UserControl
     private bool _updatingCombo;
 
     /// <summary>
-    /// 워크북을 여는 손. 기본은 OS 기본 연결(엑셀)이고, 화면 없는 검증이 실제 엑셀을
+    /// 워크북을 여는 손. 기본은 OS 기본 연결이고, 화면 없는 검증이 실제 엑셀을
     /// 띄우지 않도록 갈아끼울 수 있다.
     /// </summary>
     internal Action<string> OpenWorkbookFile { get; set; } = path =>
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
+    /// <summary>
+    /// .xlsx 기본 앱의 실행 파일을 묻는 손. OS 연결을 맹신하면 엑셀 없는 기계에서
+    /// 엉뚱한 앱(실사례: 챗지피티)이 뜨므로, 열기 전에 이걸로 확인한다.
+    /// </summary>
+    internal Func<string?> WorkbookHandlerProbe { get; set; } =
+        SpreadsheetAssociation.ResolveXlsxHandler;
+
+    /// <summary>스프레드시트 앱이 없을 때의 대안 — 탐색기에서 파일을 선택해 보여 준다.</summary>
+    internal Action<string> RevealInFolder { get; set; } = path =>
+        Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
+        {
+            UseShellExecute = true
+        });
 
     /// <summary>챕터 목록이 다시 읽혔다. 왼쪽 패널(MainWindow)이 이걸 듣고 목록을 다시 그린다.</summary>
     internal event Action<IReadOnlyList<ChapterEntry>>? EntriesReloaded;
@@ -108,6 +122,7 @@ public partial class ChapterGraphView : UserControl
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "기존 에피소드 연결", AddEdgeFromPanel);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
+        AlignButton.Click += (_, _) => UiGuard.Run(_session, "깊이 정렬", AlignByDepth);
         SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
         CreateNextButton.Click += (_, _) => UiGuard.Run(_session, "다음 에피소드 추가", CreateNextEpisodeFromPanel);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
@@ -264,7 +279,21 @@ public partial class ChapterGraphView : UserControl
             StartWatchingEpisodes(folder);
         }
 
-        OpenWorkbookFile(EpisodeLibrary.PathFor(folder, episodeId));
+        string target = EpisodeLibrary.PathFor(folder, episodeId);
+        string? handler = WorkbookHandlerProbe();
+
+        if (!SpreadsheetAssociation.IsSpreadsheetHandler(handler))
+        {
+            // 편집할 수 없는 앱에 워크북을 던지지 않는다 — 폴더에서 보여 주고 사유를 말한다.
+            RevealInFolder(target);
+            _session?.SetStatus(handler is null
+                ? ".xlsx에 연결된 앱이 없어 폴더에서 파일을 보여 줍니다. 엑셀이나 LibreOffice Calc로 열어 주세요."
+                : $".xlsx의 기본 앱({IoPath.GetFileName(handler)})이 스프레드시트가 아니라서 폴더에서 보여 줍니다. " +
+                  "우클릭 → 연결 프로그램에서 스프레드시트 앱을 고르세요.");
+            return;
+        }
+
+        OpenWorkbookFile(target);
     }
 
     private void Reload()
@@ -1161,8 +1190,17 @@ public partial class ChapterGraphView : UserControl
             ? null
             : NewNextLabelBox.Text.Trim();
 
+        if (SelectedModel is not { } model || model.FindEpisode(parent) is null)
+        {
+            _session?.SetStatus("그래프를 다시 읽는 중입니다. 잠시 후 다시 시도해 주세요.");
+            return;
+        }
+
+        // 자리는 깊이가 정한다: 부모 깊이 + 1 열, 그 열의 빈 줄 (겹침 없음, 합류 대비).
+        (double x, double y) = ChapterBranchPlanner.SuggestPlacement(model, parent);
+
         ChapterWriteResult result = ChapterWorkbookWriter.AddNextEpisode(
-            path, parent, newId, title: newId, optionLabel: label);
+            path, parent, newId, title: newId, x, y, optionLabel: label);
 
         if (result.Written)
         {
@@ -1171,6 +1209,32 @@ public partial class ChapterGraphView : UserControl
         }
 
         Report(result, $"'{newId}'를 만들어 {parent}의 다음으로 이었습니다.");
+    }
+
+    /// <summary>
+    /// [깊이 정렬] — 도달 가능한 노드 전부를 깊이 열로 세운다. 사람이 놓은 배치를 덮는
+    /// 명시 동작이므로(자동이 아니다) 쓰기 직전 상태가 .bak으로 남는다.
+    /// </summary>
+    internal void AlignByDepth()
+    {
+        if (SelectedModel is not { } model || SelectedChapterPath is not { } path)
+        {
+            _session?.SetStatus("챕터를 먼저 선택해 주세요.");
+            return;
+        }
+
+        IReadOnlyList<(string EpisodeId, double X, double Y)> positions =
+            ChapterBranchPlanner.AlignByDepth(model);
+
+        if (positions.Count == 0)
+        {
+            _session?.SetStatus("정렬할 노드가 없습니다.");
+            return;
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePositions(path, positions);
+
+        Report(result, $"{positions.Count}개 노드를 깊이 열로 세웠습니다. 이전 배치는 .bak에 있습니다.");
     }
 
     private void RefreshConditionList(ChapterGraphModel? model)

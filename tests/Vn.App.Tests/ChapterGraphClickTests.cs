@@ -56,12 +56,35 @@ public sealed class ChapterGraphClickTests
 
         var opened = new List<string>();
         view.OpenWorkbookFile = opened.Add;
+        view.WorkbookHandlerProbe = () => @"C:\Program Files\Microsoft Office\EXCEL.EXE";
 
         Avalonia.Point center = CardCenter(window, canvas, "main05.02");
         Click(window, center);
         Click(window, center);
 
         Assert.Contains(opened, path => path.Contains("main05.02"));
+    });
+
+    [Fact]
+    public void 기본_앱이_스프레드시트가_아니면_열지_않고_폴더를_보여준다() => HeadlessUi.Run(() =>
+    {
+        // 실사례 — .xlsx가 챗지피티에 연결된 기계에서 더블클릭이 챗지피티를 열었다.
+        // 편집할 수 없는 앱에 워크북을 던지지 않는다: 폴더에서 보여 주고 사유를 말한다.
+        using var project = new TempProject(SamplePath);
+        (Window window, Canvas canvas, ChapterGraphView view) = Show(project);
+
+        var opened = new List<string>();
+        var revealed = new List<string>();
+        view.OpenWorkbookFile = opened.Add;
+        view.RevealInFolder = revealed.Add;
+        view.WorkbookHandlerProbe = () => @"C:\Users\me\AppData\Local\ChatGPT\ChatGPT.exe";
+
+        Avalonia.Point center = CardCenter(window, canvas, "main05.02");
+        Click(window, center);
+        Click(window, center);
+
+        Assert.Empty(opened);
+        Assert.Contains(revealed, path => path.Contains("main05.02"));
     });
 
     [Fact]
