@@ -1,0 +1,495 @@
+namespace Vn.Authoring.Chapters;
+
+/// <param name="ReachableEpisodeIds">시작 에피소드에서 어떤 플레이로든 닿을 수 있는 에피소드.</param>
+/// <param name="ExplorationComplete">
+/// 상태공간을 끝까지 훑었는가. 상한에 걸려 중단했으면 false이고, 그때 "도달 불가"는
+/// 단정이 아니라 경고로 낮춰 보고돼 있다 — 증명하지 못한 것을 오류라고 말하지 않는다.
+/// </param>
+public sealed record ChapterReachabilityResult(
+    IReadOnlySet<string> ReachableEpisodeIds,
+    IReadOnlyList<ChapterDiagnostic> Diagnostics,
+    bool ExplorationComplete)
+{
+    public bool HasErrors =>
+        Diagnostics.Any(item => item.Severity == ChapterDiagnosticSeverity.Error);
+}
+
+/// <summary>
+/// 정적 도달성 증명 (G7, §0.5 보증 2) — "작가가 무엇을 저장하든, 특정 에피소드로 절대 못 가는
+/// 상태를 만들 수 없다"의 장치.
+///
+/// 상태 = (에피소드, 스탯 정수 벡터). 스탯이 2~5개·정수·`최소~최대` 유한 범위라 상태공간이
+/// 유한하고 <b>완전 탐색이 된다</b> — 경계값 버그를 막으려던 정수 고정(G-3)이 이 증명을
+/// 가능하게 만들었다. float이면 여기서 결정 불가능이다.
+///
+/// 에피소드 하나를 플레이하면 스탯이 그 에피소드의 증감 범위(<see cref="EpisodeStatRangeCalculator"/>)
+/// 안에서 변한다. 범위는 과대근사이므로 "도달 가능" 판정은 넓게, 즉 <b>진짜 도달 불가를
+/// 놓치는 일은 없게</b> 잡힌다.
+///
+/// <c>cleared:</c> 조건은 도달 가능 집합 자체를 참조하므로 고정점 반복으로 푼다 —
+/// 집합은 단조 증가라 반드시 수렴한다.
+/// </summary>
+public static class ChapterReachabilityProver
+{
+    /// <summary>완전 탐색 상한. 스탯 5개 × 범위 0~10이라도 이 안에 넉넉히 든다.</summary>
+    private const int StateLimit = 250_000;
+
+    /// <param name="episodeDeltas">
+    /// EpisodeId → (스탯키 → 증감 범위). 워크북이 없는 에피소드는 항목이 없어도 되고,
+    /// 그때는 "스탯을 바꾸지 않는 에피소드"로 다룬다.
+    /// </param>
+    public static ChapterReachabilityResult Prove(
+        ChapterGraphModel chapter,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, StatDeltaRange>> episodeDeltas)
+    {
+        ArgumentNullException.ThrowIfNull(chapter);
+        ArgumentNullException.ThrowIfNull(episodeDeltas);
+
+        var diagnostics = new List<ChapterDiagnostic>();
+
+        if (chapter.Episodes.Count == 0)
+        {
+            return new ChapterReachabilityResult(
+                new HashSet<string>(StringComparer.Ordinal), diagnostics, ExplorationComplete: true);
+        }
+
+        // 시작 규칙은 모델의 것 하나를 쓴다 — G8의 StartEpisodeId와 갈리면 안 된다.
+        ChapterEpisode start = chapter.StartEpisode!;
+        string[] statKeys = chapter.Stats.Select(stat => stat.Key).ToArray();
+
+        var reachable = new HashSet<string>(StringComparer.Ordinal);
+        bool complete = true;
+        int[] maxSeen = chapter.Stats.Select(stat => stat.Initial).ToArray();
+        int[] minSeen = chapter.Stats.Select(stat => stat.Initial).ToArray();
+
+        // cleared:가 도달 가능 집합을 참조하므로, 집합이 자라지 않을 때까지 탐색을 반복한다.
+        while (true)
+        {
+            (HashSet<string> found, bool finished) =
+                Explore(chapter, episodeDeltas, start, statKeys, reachable, maxSeen, minSeen);
+
+            complete &= finished;
+            AddReachableAttachments(chapter, found, maxSeen, minSeen);
+
+            if (found.Count == reachable.Count)
+            {
+                break;
+            }
+
+            reachable = found;
+        }
+
+        ReportUnreachable(chapter, reachable, maxSeen, minSeen, complete, diagnostics);
+
+        return new ChapterReachabilityResult(reachable, diagnostics, complete);
+    }
+
+    // ── 탐색 ────────────────────────────────────────────────────────────────
+
+    private static (HashSet<string> Reachable, bool Complete) Explore(
+        ChapterGraphModel chapter,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, StatDeltaRange>> episodeDeltas,
+        ChapterEpisode start,
+        string[] statKeys,
+        IReadOnlySet<string> clearedAssumption,
+        int[] maxSeen,
+        int[] minSeen)
+    {
+        var reachable = new HashSet<string>(StringComparer.Ordinal) { start.EpisodeId };
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<(string EpisodeId, int[] Stats)>();
+
+        int[] initial = chapter.Stats.Select(stat => stat.Initial).ToArray();
+        queue.Enqueue((start.EpisodeId, initial));
+        visited.Add(StateKey(start.EpisodeId, initial));
+
+        while (queue.Count > 0)
+        {
+            if (visited.Count > StateLimit)
+            {
+                return (reachable, false);
+            }
+
+            (string episodeId, int[] stats) = queue.Dequeue();
+
+            // 이 에피소드를 플레이해 나올 수 있는 모든 스탯 벡터로.
+            foreach (int[] played in PlayOutcomes(chapter, episodeDeltas, episodeId, stats))
+            {
+                Observe(played, maxSeen, minSeen);
+
+                foreach (ChapterEdge edge in chapter.Edges.Where(edge =>
+                             string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal)))
+                {
+                    ChapterEpisode? target = chapter.FindEpisode(edge.ToEpisodeId);
+
+                    if (target is null)
+                    {
+                        continue; // 없는 도착지는 구조 검증이 이미 오류로 잡았다.
+                    }
+
+                    if (!Satisfied(chapter, edge.ConditionLabel, played, clearedAssumption) ||
+                        !Satisfied(chapter, target.VisibleConditionLabel, played, clearedAssumption) ||
+                        !Satisfied(chapter, target.UnlockConditionLabel, played, clearedAssumption))
+                    {
+                        continue;
+                    }
+
+                    reachable.Add(target.EpisodeId);
+                    string key = StateKey(target.EpisodeId, played);
+
+                    if (visited.Add(key))
+                    {
+                        queue.Enqueue((target.EpisodeId, played));
+                    }
+                }
+            }
+        }
+
+        return (reachable, true);
+    }
+
+    /// <summary>
+    /// 에피소드 하나를 플레이한 뒤 가능한 스탯 벡터 전부 — 각 스탯이 자기 증감 범위 안의
+    /// 아무 값이나 더해질 수 있다(과대근사). `최소~최대`는 탐색 경계라 밖은 잘라낸다.
+    /// </summary>
+    private static IEnumerable<int[]> PlayOutcomes(
+        ChapterGraphModel chapter,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, StatDeltaRange>> episodeDeltas,
+        string episodeId,
+        int[] stats)
+    {
+        if (!episodeDeltas.TryGetValue(episodeId, out IReadOnlyDictionary<string, StatDeltaRange>? deltas) ||
+            chapter.Stats.Count == 0)
+        {
+            yield return stats;
+            yield break;
+        }
+
+        var current = (int[])stats.Clone();
+        IEnumerator<int[]> Combos(int index)
+        {
+            if (index == chapter.Stats.Count)
+            {
+                yield return (int[])current.Clone();
+                yield break;
+            }
+
+            ChapterStat stat = chapter.Stats[index];
+            StatDeltaRange range = deltas.GetValueOrDefault(stat.Key, StatDeltaRange.Zero);
+
+            for (int delta = range.Minimum; delta <= range.Maximum; delta++)
+            {
+                current[index] = Math.Clamp(stats[index] + delta, stat.Minimum, stat.Maximum);
+
+                foreach (int[] combo in EnumeratorToEnumerable(Combos(index + 1)))
+                {
+                    yield return combo;
+                }
+            }
+
+            current[index] = stats[index];
+        }
+
+        foreach (int[] combo in EnumeratorToEnumerable(Combos(0)).Distinct(IntArrayComparer.Instance))
+        {
+            yield return combo;
+        }
+    }
+
+    private static IEnumerable<int[]> EnumeratorToEnumerable(IEnumerator<int[]> source)
+    {
+        while (source.MoveNext())
+        {
+            yield return source.Current;
+        }
+    }
+
+    private static bool Satisfied(
+        ChapterGraphModel chapter,
+        string? conditionLabel,
+        int[] stats,
+        IReadOnlySet<string> cleared)
+    {
+        if (string.IsNullOrEmpty(conditionLabel))
+        {
+            return true;
+        }
+
+        ChapterCondition? condition = chapter.FindCondition(conditionLabel);
+
+        if (condition is null || !condition.IsValid)
+        {
+            // 미정의·깨진 라벨은 구조 검증의 오류다. 여기서는 "지나갈 수 없음"으로만 다룬다 —
+            // 깨진 조건을 통과시켜 도달 가능을 부풀리지 않는다.
+            return false;
+        }
+
+        foreach (ConditionTerm term in condition.Parsed)
+        {
+            bool holds = term.Kind == ConditionTermKind.EpisodeCleared
+                ? cleared.Contains(term.Key)
+                : CompareStat(chapter, term, stats);
+
+            if (!holds)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool CompareStat(ChapterGraphModel chapter, ConditionTerm term, int[] stats)
+    {
+        int index = IndexOfStat(chapter, term.Key);
+
+        if (index < 0)
+        {
+            return false; // 미등록 스탯키 — 구조 검증이 이미 오류로 잡았다.
+        }
+
+        return term.Comparison switch
+        {
+            ConditionComparison.AtLeast => stats[index] >= term.Value,
+            ConditionComparison.AtMost => stats[index] <= term.Value,
+            _ => stats[index] == term.Value
+        };
+    }
+
+    /// <summary>
+    /// 부착(Attachment) 에피소드는 간선으로 들어가는 노드가 아니다 — 런타임이 부모 곁에
+    /// 띄우는 사이드이며 `NextOption`의 대상이 될 수 없다(런타임 확인). 그래서 도달 판정도
+    /// 간선이 아니라 <b>관문 조건이 어느 도달 상태에서든 만족될 수 있는가</b>로 한다.
+    ///
+    /// 만족 가능성은 탐색이 본 스탯의 겉둘레(최소·최대)로 판정한다 — 과대근사라 "도달 가능"이
+    /// 넓게 잡히고, 부착의 진짜 도달 불가(예: 영원히 못 미치는 스탯 관문)는 그대로 잡힌다.
+    /// v1의 Attachment은 읽고 표시까지다(D5) — 이 근사가 그 범위에 맞는 값이다.
+    /// </summary>
+    private static void AddReachableAttachments(
+        ChapterGraphModel chapter,
+        HashSet<string> reachable,
+        int[] maxSeen,
+        int[] minSeen)
+    {
+        foreach (ChapterEpisode episode in chapter.Episodes.Where(episode =>
+                     string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase) &&
+                     !reachable.Contains(episode.EpisodeId)))
+        {
+            if (SatisfiableWithinEnvelope(chapter, episode.VisibleConditionLabel, reachable, maxSeen, minSeen) &&
+                SatisfiableWithinEnvelope(chapter, episode.UnlockConditionLabel, reachable, maxSeen, minSeen))
+            {
+                reachable.Add(episode.EpisodeId);
+            }
+        }
+    }
+
+    private static bool SatisfiableWithinEnvelope(
+        ChapterGraphModel chapter,
+        string? conditionLabel,
+        IReadOnlySet<string> cleared,
+        int[] maxSeen,
+        int[] minSeen)
+    {
+        if (string.IsNullOrEmpty(conditionLabel))
+        {
+            return true;
+        }
+
+        ChapterCondition? condition = chapter.FindCondition(conditionLabel);
+
+        if (condition is null || !condition.IsValid)
+        {
+            return false;
+        }
+
+        foreach (ConditionTerm term in condition.Parsed)
+        {
+            if (term.Kind == ConditionTermKind.EpisodeCleared)
+            {
+                if (!cleared.Contains(term.Key))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            int index = IndexOfStat(chapter, term.Key);
+
+            if (index < 0)
+            {
+                return false;
+            }
+
+            bool satisfiable = term.Comparison switch
+            {
+                ConditionComparison.AtLeast => maxSeen[index] >= term.Value,
+                ConditionComparison.AtMost => minSeen[index] <= term.Value,
+                _ => minSeen[index] <= term.Value && term.Value <= maxSeen[index]
+            };
+
+            if (!satisfiable)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // ── 보고 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 도달 불가를 <b>원인 조건까지 지목해</b> 보고한다 (Gate C 1번). 기본은 오류이고,
+    /// `도달불가 허용`이 켜진 에피소드는 알림으로 낮춘다 — 의도임이 표시된 것이므로(D3).
+    /// </summary>
+    private static void ReportUnreachable(
+        ChapterGraphModel chapter,
+        IReadOnlySet<string> reachable,
+        int[] maxSeen,
+        int[] minSeen,
+        bool complete,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        foreach (ChapterEpisode episode in chapter.Episodes.Where(episode =>
+                     !reachable.Contains(episode.EpisodeId)))
+        {
+            string cause = DiagnoseCause(chapter, episode, reachable, maxSeen, minSeen);
+
+            ChapterDiagnosticSeverity severity = episode.AllowUnreachable
+                ? ChapterDiagnosticSeverity.Info
+                : complete
+                    ? ChapterDiagnosticSeverity.Error
+                    : ChapterDiagnosticSeverity.Warning;
+
+            string prefix = episode.AllowUnreachable
+                ? $"'{episode.EpisodeId}'는 도달 불가이지만 `도달불가 허용`이 켜져 있습니다"
+                : complete
+                    ? $"'{episode.EpisodeId}'에 도달할 수 있는 경로가 없습니다"
+                    : $"'{episode.EpisodeId}'에 도달하는 경로를 찾지 못했습니다(탐색이 상한에서 중단됨)";
+
+            diagnostics.Add(new ChapterDiagnostic(
+                severity,
+                ChapterDiagnosticCode.EpisodeUnreachable,
+                chapter.SourcePath,
+                ChapterSheetNames.Episodes,
+                episode.SourceRow,
+                "A",
+                $"{prefix}. {cause}"));
+        }
+    }
+
+    private static string DiagnoseCause(
+        ChapterGraphModel chapter,
+        ChapterEpisode episode,
+        IReadOnlySet<string> reachable,
+        int[] maxSeen,
+        int[] minSeen)
+    {
+        List<ChapterEdge> incoming = chapter.Edges
+            .Where(edge => string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
+            .ToList();
+
+        if (incoming.Count == 0)
+        {
+            return "이 에피소드로 들어오는 간선이 `간선` 시트에 없습니다.";
+        }
+
+        if (incoming.All(edge => !reachable.Contains(edge.FromEpisodeId)))
+        {
+            return $"들어오는 간선의 출발점({string.Join(", ", incoming.Select(edge => edge.FromEpisodeId))})부터 " +
+                "도달 불가입니다.";
+        }
+
+        // 관문이 되는 조건들에서 만족 불가능한 항을 찾는다.
+        var labels = incoming.Select(edge => edge.ConditionLabel)
+            .Append(episode.VisibleConditionLabel)
+            .Append(episode.UnlockConditionLabel)
+            .Where(label => !string.IsNullOrEmpty(label))
+            .Distinct(StringComparer.Ordinal);
+
+        foreach (string? label in labels)
+        {
+            ChapterCondition? condition = chapter.FindCondition(label!);
+
+            if (condition is null)
+            {
+                continue;
+            }
+
+            foreach (ConditionTerm term in condition.Parsed)
+            {
+                if (term.Kind == ConditionTermKind.EpisodeCleared && !reachable.Contains(term.Key))
+                {
+                    return $"조건 '{label}'의 cleared:{term.Key}가 원인입니다 — '{term.Key}' 자체가 도달 불가입니다.";
+                }
+
+                int index = IndexOfStat(chapter, term.Key);
+
+                if (index < 0)
+                {
+                    continue;
+                }
+
+                if (term.Comparison == ConditionComparison.AtLeast && maxSeen[index] < term.Value)
+                {
+                    return $"조건 '{label}'의 '{term.Key} >= {term.Value}'가 원인입니다 — " +
+                        $"어떤 경로로도 {term.Key}는 최대 {maxSeen[index]}까지밖에 오르지 않습니다.";
+                }
+
+                if (term.Comparison == ConditionComparison.AtMost && minSeen[index] > term.Value)
+                {
+                    return $"조건 '{label}'의 '{term.Key} <= {term.Value}'가 원인입니다 — " +
+                        $"어떤 경로로도 {term.Key}는 최소 {minSeen[index]} 아래로 내려가지 않습니다.";
+                }
+            }
+        }
+
+        return "관문 조건들의 조합을 만족하는 경로가 없습니다.";
+    }
+
+    private static void Observe(int[] stats, int[] maxSeen, int[] minSeen)
+    {
+        for (int index = 0; index < stats.Length; index++)
+        {
+            maxSeen[index] = Math.Max(maxSeen[index], stats[index]);
+            minSeen[index] = Math.Min(minSeen[index], stats[index]);
+        }
+    }
+
+    private static int IndexOfStat(ChapterGraphModel chapter, string key)
+    {
+        for (int index = 0; index < chapter.Stats.Count; index++)
+        {
+            if (string.Equals(chapter.Stats[index].Key, key, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string StateKey(string episodeId, int[] stats) =>
+        episodeId + "|" + string.Join(',', stats);
+
+    private sealed class IntArrayComparer : IEqualityComparer<int[]>
+    {
+        public static IntArrayComparer Instance { get; } = new();
+
+        public bool Equals(int[]? left, int[]? right) =>
+            left is not null && right is not null && left.AsSpan().SequenceEqual(right);
+
+        public int GetHashCode(int[] value)
+        {
+            var hash = new HashCode();
+
+            foreach (int item in value)
+            {
+                hash.Add(item);
+            }
+
+            return hash.ToHashCode();
+        }
+    }
+}

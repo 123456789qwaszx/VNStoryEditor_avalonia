@@ -189,6 +189,11 @@ public static class ChapterWorkbookReader
             RequireConditionLabel(visible, conditionLabels, path, sheet.Name, row, 8, "표시조건", diagnostics);
             RequireConditionLabel(unlock, conditionLabels, path, sheet.Name, row, 9, "해금조건", diagnostics);
 
+            // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름일 때만 읽는다.
+            bool allowUnreachable =
+                string.Equals(Text(sheet, HeaderRow, 12), "도달불가 허용", StringComparison.Ordinal) &&
+                Boolean(sheet, row, 12, path, diagnostics);
+
             episodes.Add(new ChapterEpisode(
                 episodeId,
                 Text(sheet, row, 2),
@@ -201,7 +206,8 @@ public static class ChapterWorkbookReader
                 unlock,
                 Optional(sheet, row, 10),
                 Optional(sheet, row, 11),
-                row));
+                row,
+                allowUnreachable));
         }
 
         return episodes;
@@ -682,7 +688,20 @@ public static class ChapterWorkbookReader
 
             for (int column = expected.Count + 1; column <= width; column++)
             {
-                ignored.Add($"{ColumnName(column)}열('{Text(sheet, HeaderRow, column)}')");
+                string extra = Text(sheet, HeaderRow, column);
+
+                // `도달불가 허용`(D3)은 규격이 아는 선택 열이다 — 지나친 것이 아니다.
+                if (string.Equals(extra, "도달불가 허용", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                ignored.Add($"{ColumnName(column)}열('{extra}')");
+            }
+
+            if (ignored.Count == 0)
+            {
+                return;
             }
 
             diagnostics.Add(Diagnostic(

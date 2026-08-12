@@ -7,6 +7,10 @@ namespace Vn.Authoring.Chapters;
 /// <param name="Index">"05"·"05A"·"★"처럼 사람이 붙이는 표시용 순번. 숫자가 아니어도 된다.</param>
 /// <param name="DialogueEntry">런타임이 재생할 대사 엔트리 이름. 비면 오류다.</param>
 /// <param name="SourceRow">엑셀 행 번호. 진단이 사람에게 자리를 짚어 주는 근거다.</param>
+/// <param name="AllowUnreachable">
+/// `도달불가 허용` 열(선택)이 켜져 있는가 (D3). 도달성 증명이 이 에피소드의 도달 불가를
+/// 오류가 아니라 알림으로 낮추되, 그 사실은 그래프에 표시된다 — 조용히 넘기지 않는다.
+/// </param>
 public sealed record ChapterEpisode(
     string EpisodeId,
     string Title,
@@ -19,7 +23,8 @@ public sealed record ChapterEpisode(
     string? UnlockConditionLabel,
     string? EndingKey,
     string? Memo,
-    int SourceRow)
+    int SourceRow,
+    bool AllowUnreachable = false)
 {
     public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
 
@@ -135,6 +140,13 @@ public sealed class ChapterGraphModel
 
     public IEnumerable<ChapterDiagnostic> Errors =>
         Diagnostics.Where(item => item.Severity == ChapterDiagnosticSeverity.Error);
+
+    /// <summary>
+    /// 시작 에피소드 = `에피소드` 시트의 첫 행. 규격에 시작 열이 없어 <b>읽는 순서가 곧 정의</b>다.
+    /// 도달성 증명(G7)과 내보내기(G8)의 `StartEpisodeId`가 같은 이 규칙 하나를 쓴다 —
+    /// 런타임은 이 값이 비면 도달 제한을 아예 걸지 않으므로, 두 곳이 갈리면 안 된다.
+    /// </summary>
+    public ChapterEpisode? StartEpisode => Episodes.Count > 0 ? Episodes[0] : null;
 
     public ChapterEpisode? FindEpisode(string episodeId) =>
         Episodes.FirstOrDefault(item => string.Equals(item.EpisodeId, episodeId, StringComparison.Ordinal));
