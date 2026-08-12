@@ -1,0 +1,165 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Vn.Authoring.Chapters;
+
+/// <summary>내보내기 결과. 거부됐으면 JSON이 없고 사유가 전부 담긴다 (Gate C 3번).</summary>
+public sealed record ChapterExportResult(
+    string? Json,
+    ChapterValidationResult Validation)
+{
+    public bool Refused => Json is null;
+}
+
+/// <summary>
+/// G8 — 런타임 `ChapterEpisodeProgressionSO` 대응 JSON을 낸다.
+///
+/// <b>필드는 런타임 저작 타입과 1:1이다</b> — `EpisodeNodeDefinition`·`EpisodeNextOption`·
+/// `EpisodeCondition`의 필드 이름을 그대로 쓰고, 이 레이어의 확장은 `Position`(G-2 —
+/// 게임 내 그래프도 같은 구도) 하나뿐이다. enum은 이름 문자열로 낸다 — 순서 재배열에
+/// 깨지지 않고, 수입기가 이름으로 맵핑한다.
+///
+/// <b>검증 오류가 있으면 거부한다</b>(Gate C 3번) — 내보내기 전에 무결성이 잡혀야 런타임에
+/// 쓰레기가 넘어가지 않는다. <b>픽스처는 싣지 않는다</b> — 테스트 데이터다(§3.1).
+/// </summary>
+public static class ChapterProgressionExporter
+{
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    public static ChapterExportResult Export(ChapterGraphModel chapter, string? episodesFolder)
+    {
+        ArgumentNullException.ThrowIfNull(chapter);
+
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder);
+
+        if (validation.HasErrors)
+        {
+            return new ChapterExportResult(null, validation);
+        }
+
+        var payload = new ChapterJson
+        {
+            ChapterId = chapter.ChapterId,
+            DisplayName = chapter.ChapterId,
+            StartEpisodeId = chapter.StartEpisode?.EpisodeId ?? string.Empty,
+            Nodes = chapter.Episodes.Select(episode => Node(chapter, episode)).ToList()
+        };
+
+        return new ChapterExportResult(JsonSerializer.Serialize(payload, Options), validation);
+    }
+
+    private static NodeJson Node(ChapterGraphModel chapter, ChapterEpisode episode) => new()
+    {
+        EpisodeId = episode.EpisodeId,
+        Title = episode.Title,
+        IndexText = episode.Index,
+        Kind = string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase)
+            ? "Attachment"
+            : "Main",
+        DialogueEntryId = episode.DialogueEntry,
+        VisibleConditions = Conditions(chapter, episode.VisibleConditionLabel),
+        UnlockConditions = Conditions(chapter, episode.UnlockConditionLabel),
+        NextOptions = chapter.Edges
+            .Where(edge => string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
+            .Select(edge => new NextOptionJson
+            {
+                TargetEpisodeId = edge.ToEpisodeId,
+                ChoiceLabel = edge.OptionLabel ?? string.Empty,
+                Conditions = Conditions(chapter, edge.ConditionLabel),
+                HideWhenLocked = edge.HideWhenLocked,
+                LockedReasonText = edge.LockedMessage ?? string.Empty
+            })
+            .ToList(),
+        IsChapterEndingCandidate = episode.IsEnding,
+        EndingKey = episode.EndingKey ?? string.Empty,
+        DesignerNote = episode.Memo ?? string.Empty,
+        Position = new PositionJson { X = episode.X, Y = episode.Y }
+    };
+
+    /// <summary>
+    /// 챕터 조건 → 런타임 `EpisodeCondition`. 스탯 항은 <c>Stat + GreaterOrEqual/LessOrEqual/Equal</c>,
+    /// <c>cleared:</c>는 <c>EpisodeCleared + Exists</c>다. `!=`(NotEqual)는 파서가 아직 닫혀
+    /// 있으므로(D7 — 런타임 확인 후 개방 대기) 여기 나올 수 없다.
+    /// </summary>
+    private static List<ConditionJson> Conditions(ChapterGraphModel chapter, string? label)
+    {
+        if (string.IsNullOrEmpty(label) || chapter.FindCondition(label) is not { } condition)
+        {
+            return new List<ConditionJson>();
+        }
+
+        return condition.Parsed.Select(term => term.Kind == ConditionTermKind.EpisodeCleared
+            ? new ConditionJson { Kind = "EpisodeCleared", Key = term.Key, Op = "Exists" }
+            : new ConditionJson
+            {
+                Kind = "Stat",
+                Key = term.Key,
+                Op = term.Comparison switch
+                {
+                    ConditionComparison.AtLeast => "GreaterOrEqual",
+                    ConditionComparison.AtMost => "LessOrEqual",
+                    _ => "Equal"
+                },
+                IntValue = term.Value
+            }).ToList();
+    }
+
+    // ── JSON 모양 — 런타임 저작 타입과 1:1 ──────────────────────────────────
+
+    private sealed class ChapterJson
+    {
+        public string ChapterId { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string StartEpisodeId { get; set; } = string.Empty;
+        public List<NodeJson> Nodes { get; set; } = new();
+        public List<object> EndingRules { get; set; } = new();  // v1은 읽고 표시까지 (D5)
+    }
+
+    private sealed class NodeJson
+    {
+        public string EpisodeId { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string IndexText { get; set; } = string.Empty;
+        public string Kind { get; set; } = "Main";
+        public string DialogueEntryId { get; set; } = string.Empty;
+        public List<ConditionJson> VisibleConditions { get; set; } = new();
+        public List<ConditionJson> UnlockConditions { get; set; } = new();
+        public List<NextOptionJson> NextOptions { get; set; } = new();
+        public List<object> Attachments { get; set; } = new();  // v1 비범위 (D5)
+        public bool IsChapterEndingCandidate { get; set; }
+        public string EndingKey { get; set; } = string.Empty;
+        public string DesignerNote { get; set; } = string.Empty;
+
+        /// <summary>이 레이어의 확장 (G-2) — 게임 내 그래프가 같은 구도로 그린다.</summary>
+        public PositionJson Position { get; set; } = new();
+    }
+
+    private sealed class NextOptionJson
+    {
+        public string TargetEpisodeId { get; set; } = string.Empty;
+        public string ChoiceLabel { get; set; } = string.Empty;
+        public List<ConditionJson> Conditions { get; set; } = new();
+        public bool HideWhenLocked { get; set; }
+        public string LockedReasonText { get; set; } = string.Empty;
+    }
+
+    private sealed class ConditionJson
+    {
+        public string Kind { get; set; } = string.Empty;
+        public string Key { get; set; } = string.Empty;
+        public string Op { get; set; } = string.Empty;
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int IntValue { get; set; }
+    }
+
+    private sealed class PositionJson
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+}
