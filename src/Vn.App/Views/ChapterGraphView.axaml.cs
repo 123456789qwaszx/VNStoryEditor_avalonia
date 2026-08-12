@@ -122,9 +122,7 @@ public partial class ChapterGraphView : UserControl
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "기존 에피소드 연결", AddEdgeFromPanel);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
-        AlignButton.Click += (_, _) => UiGuard.Run(_session, "깊이 정렬", AlignByDepth);
         SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
-        CreateNextButton.Click += (_, _) => UiGuard.Run(_session, "다음 에피소드 추가", CreateNextEpisodeFromPanel);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
 
@@ -417,8 +415,6 @@ public partial class ChapterGraphView : UserControl
         _cardBase.Clear();
         _lineByEdge.Clear();
         _lineBase.Clear();
-        _hitByEdge.Clear();
-        _labelByEdge.Clear();
 
         // 그릴 것이 없으면 판도 없다. 이걸 지우지 않으면 큰 챕터를 보다가 못 읽는 챕터로
         // 넘어갔을 때 텅 빈 캔버스가 이전 크기 그대로 남아 스크롤만 넓어진다.
@@ -451,11 +447,21 @@ public partial class ChapterGraphView : UserControl
         }
 
         ChapterGraphModel model = entry.Model;
-        var layout = ChapterGraphLayout.For(model.Episodes, CardWidth, CardHeight, CanvasMargin);
-        _layout = layout; // 드래그 역산(캔버스 → 엑셀 좌표)의 근거
 
-        GraphCanvas.Width = layout.Width;
-        GraphCanvas.Height = layout.Height;
+        // 배치는 깊이 레이아웃이 소유한다 (v3) — 열 = 깊이, 드래그 없음.
+        // 흐름(간선)이 바뀌면 자리가 저절로 따라온다.
+        _placed = ChapterBranchPlanner.Layout(model)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => (X: pair.Value.X + CanvasMargin, Y: pair.Value.Y + CanvasMargin),
+                StringComparer.Ordinal);
+
+        GraphCanvas.Width = _placed.Count == 0
+            ? CanvasMargin * 2
+            : _placed.Values.Max(position => position.X) + CardWidth + CanvasMargin;
+        GraphCanvas.Height = _placed.Count == 0
+            ? CanvasMargin * 2
+            : _placed.Values.Max(position => position.Y) + CardHeight + CanvasMargin;
 
         RefreshFixtureCombo(model);
         (IReadOnlySet<string> path, IReadOnlySet<(string, string)> pathEdges) = WalkSelectedFixture(model);
@@ -463,13 +469,12 @@ public partial class ChapterGraphView : UserControl
         // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
         foreach (ChapterEdge edge in model.Edges)
         {
-            DrawEdge(model, layout, edge,
-                onPath: pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
+            DrawEdge(edge, onPath: pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
         }
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
-            DrawEpisode(model, layout, episode, onPath: path.Contains(episode.EpisodeId));
+            DrawEpisode(model, episode, onPath: path.Contains(episode.EpisodeId));
         }
 
         DrawDiagnostics(model);
@@ -540,20 +545,17 @@ public partial class ChapterGraphView : UserControl
         return (nodes, edges);
     }
 
-    private void DrawEdge(
-        ChapterGraphModel model, ChapterGraphLayout layout, ChapterEdge edge, bool onPath)
+    private void DrawEdge(ChapterEdge edge, bool onPath)
     {
-        ChapterEpisode? from = model.FindEpisode(edge.FromEpisodeId);
-        ChapterEpisode? to = model.FindEpisode(edge.ToEpisodeId);
-
-        if (from is null || to is null)
+        if (!_placed.TryGetValue(edge.FromEpisodeId, out (double X, double Y) fromPos) ||
+            !_placed.TryGetValue(edge.ToEpisodeId, out (double X, double Y) toPos))
         {
             // 끝점이 없는 간선은 그리지 않는다. 이미 오류로 보고돼 있고, 허공에 매다는 편이 나쁘다.
             return;
         }
 
-        (double x1, double y1) = layout.Center(from, CardWidth, CardHeight);
-        (double x2, double y2) = layout.Center(to, CardWidth, CardHeight);
+        (double x1, double y1) = (fromPos.X + (CardWidth / 2), fromPos.Y + (CardHeight / 2));
+        (double x2, double y2) = (toPos.X + (CardWidth / 2), toPos.Y + (CardHeight / 2));
 
         var line = new Line
         {
@@ -607,7 +609,6 @@ public partial class ChapterGraphView : UserControl
             UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
         };
         GraphCanvas.Children.Add(hit);
-        _hitByEdge[(fromId, toId)] = hit;
 
         string label = string.Join(" · ", new[]
         {
@@ -641,56 +642,9 @@ public partial class ChapterGraphView : UserControl
         Canvas.SetLeft(text, ((x1 + x2) / 2) - (text.DesiredSize.Width / 2));
         Canvas.SetTop(text, ((y1 + y2) / 2) - (text.DesiredSize.Height / 2));
         GraphCanvas.Children.Add(text);
-        _labelByEdge[(fromId, toId)] = text;
     }
 
-    /// <summary>
-    /// 드래그 중 간선·라벨이 카드를 따라온다. 놓기 전에도 그래프가 찢어져 보이지 않게 하는
-    /// 화면상의 추종일 뿐, 엑셀에 쓰는 것은 여전히 놓는 순간의 X·Y 한 번이다.
-    /// </summary>
-    private void FollowEdges(string episodeId, double cardLeft, double cardTop)
-    {
-        var center = new Point(cardLeft + (CardWidth / 2), cardTop + (CardHeight / 2));
-
-        foreach (((string fromId, string toId), Line line) in _lineByEdge)
-        {
-            bool follows = false;
-
-            if (string.Equals(fromId, episodeId, StringComparison.Ordinal))
-            {
-                line.StartPoint = center;
-                follows = true;
-            }
-
-            if (string.Equals(toId, episodeId, StringComparison.Ordinal))
-            {
-                line.EndPoint = center;
-                follows = true;
-            }
-
-            if (!follows)
-            {
-                continue;
-            }
-
-            if (_hitByEdge.TryGetValue((fromId, toId), out Line? hit))
-            {
-                hit.StartPoint = line.StartPoint;
-                hit.EndPoint = line.EndPoint;
-            }
-
-            if (_labelByEdge.TryGetValue((fromId, toId), out Border? label))
-            {
-                Canvas.SetLeft(label,
-                    ((line.StartPoint.X + line.EndPoint.X) / 2) - (label.DesiredSize.Width / 2));
-                Canvas.SetTop(label,
-                    ((line.StartPoint.Y + line.EndPoint.Y) / 2) - (label.DesiredSize.Height / 2));
-            }
-        }
-    }
-
-    private void DrawEpisode(
-        ChapterGraphModel model, ChapterGraphLayout layout, ChapterEpisode episode, bool onPath)
+    private void DrawEpisode(ChapterGraphModel model, ChapterEpisode episode, bool onPath)
     {
         // 워크북의 오류든 도달 불가든 노드에는 같은 ⚠로 선다 — 기획자에게는 둘 다 "고칠 것"이다.
         bool hasError = model.EpisodeHasError(episode) || IsUnreachable(episode);
@@ -751,13 +705,6 @@ public partial class ChapterGraphView : UserControl
             Opacity = 0.6,
             TextTrimming = TextTrimming.CharacterEllipsis
         });
-        body.Children.Add(new TextBlock
-        {
-            Text = $"{episode.Kind} · {episode.Index} · {episode.DialogueEntry}",
-            FontSize = 9,
-            Opacity = 0.45,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        });
 
         var card = new Border
         {
@@ -799,8 +746,8 @@ public partial class ChapterGraphView : UserControl
             card.Background = new SolidColorBrush(Color.Parse("#F0EDF7EF"));
         }
 
-        // 클릭 = 선택(속성 패널) · 드래그 = 이동(놓으면 엑셀 X·Y에 저장, G-2 v2) ·
-        // 더블클릭 = 에피소드 엑셀 열기. 기존 시나리오 그래프와 같은 문법이다.
+        // 클릭 = 선택(속성 패널) · 더블클릭 = 에피소드 엑셀 열기. 드래그는 없다(v3) —
+        // 배치는 깊이 레이아웃이 소유하고, 흐름을 바꾸면 자리가 따라온다.
         WireCardInteraction(card, episode);
         card.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
 
@@ -808,7 +755,7 @@ public partial class ChapterGraphView : UserControl
         _cardById[episode.EpisodeId] = card;
         _cardBase[episode.EpisodeId] = (card.BorderBrush, card.BorderThickness);
 
-        (double x, double y) = layout.Place(episode);
+        (double x, double y) = _placed[episode.EpisodeId];
         Canvas.SetLeft(card, x);
         Canvas.SetTop(card, y);
         GraphCanvas.Children.Add(card);
@@ -823,15 +770,13 @@ public partial class ChapterGraphView : UserControl
         !validation.Reachability.ReachableEpisodeIds.Contains(episode.EpisodeId) &&
         !episode.AllowUnreachable;
 
-    // ── 편집 (G-2 v2) ───────────────────────────────────────────────────────
+    // ── 편집 (G-2 v2 → v3: 배치는 깊이 레이아웃 소유, 드래그 없음) ──────────
 
     private string? _selectedEpisodeId;
-    private ChapterGraphLayout? _layout;
-    private Border? _dragCard;
-    private ChapterEpisode? _dragEpisode;
-    private Point _dragPointerStart;
-    private (double Left, double Top) _dragCardStart;
-    private bool _dragMoved;
+
+    /// <summary>이번 그리기의 캔버스 배치 — <see cref="ChapterBranchPlanner.Layout"/> + 여백.</summary>
+    private IReadOnlyDictionary<string, (double X, double Y)> _placed =
+        new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
 
     /// <summary>선택된 챕터의 워크북 경로. 편집이 쓰는 대상이다.</summary>
     private string? SelectedChapterPath =>
@@ -844,7 +789,7 @@ public partial class ChapterGraphView : UserControl
     {
         card.PointerPressed += (_, e) =>
         {
-            // 오른쪽·가운데 단추로는 선택도 드래그도 시작하지 않는다.
+            // 오른쪽·가운데 단추로는 선택하지 않는다.
             if (!e.GetCurrentPoint(card).Properties.IsLeftButtonPressed)
             {
                 return;
@@ -852,86 +797,13 @@ public partial class ChapterGraphView : UserControl
 
             e.Handled = true; // 캔버스(빈 공간 = 선택 해제)로 흘러가면 방금 한 선택이 풀린다
             SelectEpisode(episode.EpisodeId);
-
-            _dragCard = card;
-            _dragEpisode = episode;
-            _dragPointerStart = e.GetPosition(GraphCanvas);
-            _dragCardStart = (Canvas.GetLeft(card), Canvas.GetTop(card));
-            _dragMoved = false;
-            e.Pointer.Capture(card);
-        };
-
-        card.PointerMoved += (_, e) =>
-        {
-            if (!ReferenceEquals(_dragCard, card))
-            {
-                return;
-            }
-
-            Point now = e.GetPosition(GraphCanvas);
-            Vector delta = now - _dragPointerStart;
-
-            // 손떨림을 드래그로 세지 않는다 — 4px 문턱.
-            if (!_dragMoved && Math.Abs(delta.X) < 4 && Math.Abs(delta.Y) < 4)
-            {
-                return;
-            }
-
-            _dragMoved = true;
-            Canvas.SetLeft(card, _dragCardStart.Left + delta.X);
-            Canvas.SetTop(card, _dragCardStart.Top + delta.Y);
-            FollowEdges(episode.EpisodeId, _dragCardStart.Left + delta.X, _dragCardStart.Top + delta.Y);
-        };
-
-        card.PointerReleased += (_, e) =>
-        {
-            if (!ReferenceEquals(_dragCard, card))
-            {
-                return;
-            }
-
-            Border dragged = _dragCard;
-            ChapterEpisode target = _dragEpisode!;
-            _dragCard = null;
-            _dragEpisode = null;
-            e.Pointer.Capture(null);
-
-            if (_dragMoved)
-            {
-                UiGuard.Run(_session, "노드 위치 저장", () =>
-                    CommitNodePosition(target.EpisodeId, Canvas.GetLeft(dragged), Canvas.GetTop(dragged)));
-            }
         };
 
         card.DoubleTapped += (_, e) =>
         {
             e.Handled = true;
-
-            // 둘째 탭의 PointerPressed가 시작해 둔 드래그 상태를 걷는다 — 열기와 이동이 겹치면 안 된다.
-            _dragCard = null;
-            _dragEpisode = null;
-
             UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
         };
-    }
-
-    /// <summary>
-    /// 드래그로 놓은 캔버스 좌표를 엑셀 좌표로 되돌려(배치의 평행이동 역산) 그 행의 X·Y 셀에
-    /// 쓴다. 저장이 끝나면 폴더 감시가 다시 읽어 그래프·간선이 따라온다.
-    /// </summary>
-    internal void CommitNodePosition(string episodeId, double canvasX, double canvasY)
-    {
-        if (SelectedChapterPath is not { } path || _layout is not { } layout)
-        {
-            return;
-        }
-
-        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePosition(
-            path, episodeId, canvasX - layout.OffsetX, canvasY - layout.OffsetY);
-
-        _session?.SetStatus(result.Written
-            ? $"'{episodeId}' 위치를 엑셀에 저장했습니다."
-            : result.Failure!);
     }
 
     /// <summary>선택은 노드 아니면 간선 하나다 — 패널이 무엇을 편집하는지 애매하면 안 된다.</summary>
@@ -946,9 +818,6 @@ public partial class ChapterGraphView : UserControl
     private readonly Dictionary<(string, string), Line> _lineByEdge = new();
     private readonly Dictionary<(string, string), (IBrush? Stroke, double Thickness)> _lineBase = new();
 
-    // 드래그 중 간선 추종용 — 보이는 선과 함께 히트 선·라벨도 따라와야 한다.
-    private readonly Dictionary<(string, string), Line> _hitByEdge = new();
-    private readonly Dictionary<(string, string), Border> _labelByEdge = new();
 
     internal void SelectEpisode(string? episodeId)
     {
@@ -1033,17 +902,7 @@ public partial class ChapterGraphView : UserControl
 
         IdBox.Text = episode.EpisodeId;
         TitleBox.Text = episode.Title;
-        IndexBox.Text = episode.Index;
-        EntryBox.Text = episode.DialogueEntry;
         EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
-        MemoBox.Text = episode.Memo ?? string.Empty;
-        AllowUnreachableCheck.IsChecked = episode.AllowUnreachable;
-
-        KindCombo.ItemsSource = new[] { "Main", "Attachment" };
-        KindCombo.SelectedItem =
-            string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase)
-                ? "Attachment"
-                : "Main";
 
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
@@ -1167,75 +1026,6 @@ public partial class ChapterGraphView : UserControl
         Report(result, $"간선 {key.From}→{key.To}을 지웠습니다.");
     }
 
-    /// <summary>
-    /// [＋ 분기] — 분기 저작의 핵심 동작. Id 하나로 새 에피소드가 만들어져 부모 오른쪽에
-    /// 순서대로 서고 간선이 이어진다. 부모 선택은 유지된다 — 분기를 연달아 추가하는 흐름이라서다.
-    /// </summary>
-    internal void CreateNextEpisodeFromPanel()
-    {
-        if (_selectedEpisodeId is not { } parent || SelectedChapterPath is not { } path)
-        {
-            return;
-        }
-
-        string newId = NewNextIdBox.Text?.Trim() ?? string.Empty;
-
-        if (newId.Length == 0)
-        {
-            _session?.SetStatus("새 분기의 Id를 적어 주세요.");
-            return;
-        }
-
-        string? label = string.IsNullOrWhiteSpace(NewNextLabelBox.Text)
-            ? null
-            : NewNextLabelBox.Text.Trim();
-
-        if (SelectedModel is not { } model || model.FindEpisode(parent) is null)
-        {
-            _session?.SetStatus("그래프를 다시 읽는 중입니다. 잠시 후 다시 시도해 주세요.");
-            return;
-        }
-
-        // 자리는 깊이가 정한다: 부모 깊이 + 1 열, 그 열의 빈 줄 (겹침 없음, 합류 대비).
-        (double x, double y) = ChapterBranchPlanner.SuggestPlacement(model, parent);
-
-        ChapterWriteResult result = ChapterWorkbookWriter.AddNextEpisode(
-            path, parent, newId, title: newId, x, y, optionLabel: label);
-
-        if (result.Written)
-        {
-            NewNextIdBox.Text = string.Empty;
-            NewNextLabelBox.Text = string.Empty;
-        }
-
-        Report(result, $"'{newId}'를 만들어 {parent}의 다음으로 이었습니다.");
-    }
-
-    /// <summary>
-    /// [깊이 정렬] — 도달 가능한 노드 전부를 깊이 열로 세운다. 사람이 놓은 배치를 덮는
-    /// 명시 동작이므로(자동이 아니다) 쓰기 직전 상태가 .bak으로 남는다.
-    /// </summary>
-    internal void AlignByDepth()
-    {
-        if (SelectedModel is not { } model || SelectedChapterPath is not { } path)
-        {
-            _session?.SetStatus("챕터를 먼저 선택해 주세요.");
-            return;
-        }
-
-        IReadOnlyList<(string EpisodeId, double X, double Y)> positions =
-            ChapterBranchPlanner.AlignByDepth(model);
-
-        if (positions.Count == 0)
-        {
-            _session?.SetStatus("정렬할 노드가 없습니다.");
-            return;
-        }
-
-        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePositions(path, positions);
-
-        Report(result, $"{positions.Count}개 노드를 깊이 열로 세웠습니다. 이전 배치는 .bak에 있습니다.");
-    }
 
     private void RefreshConditionList(ChapterGraphModel? model)
     {
@@ -1289,20 +1079,16 @@ public partial class ChapterGraphView : UserControl
             ? string.Empty
             : UnlockCombo.SelectedItem as string;
 
+        // 인덱스·종류·대사엔트리·메모·도달불가 허용은 패널에서 뺐다(v3 — 흐름 저작에 필요한
+        // 최소만). 그 열들은 엑셀에서 여전히 고칠 수 있고, 대사엔트리는 생성 시 EpisodeId로
+        // 자동이다.
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
             path,
             episode.EpisodeId,
             title: Changed(TitleBox.Text, episode.Title),
-            index: Changed(IndexBox.Text, episode.Index),
-            kind: Changed(KindCombo.SelectedItem as string, episode.Kind),
-            dialogueEntry: Changed(EntryBox.Text, episode.DialogueEntry),
             visibleConditionLabel: Changed(visible, episode.VisibleConditionLabel ?? string.Empty),
             unlockConditionLabel: Changed(unlock, episode.UnlockConditionLabel ?? string.Empty),
-            endingKey: Changed(EndingKeyBox.Text, episode.EndingKey ?? string.Empty),
-            memo: Changed(MemoBox.Text, episode.Memo ?? string.Empty),
-            allowUnreachable: AllowUnreachableCheck.IsChecked == episode.AllowUnreachable
-                ? null
-                : AllowUnreachableCheck.IsChecked);
+            endingKey: Changed(EndingKeyBox.Text, episode.EndingKey ?? string.Empty));
 
         Report(result, $"'{episode.EpisodeId}' 속성을 엑셀에 저장했습니다.");
     }
@@ -1363,6 +1149,12 @@ public partial class ChapterGraphView : UserControl
         Report(result, $"'{episodeId}' 행과 그 간선·픽스처 참조를 지웠습니다. 에피소드 엑셀 파일은 그대로입니다.");
     }
 
+    /// <summary>
+    /// [＋ 에피소드] — 에피소드가 선택돼 있으면 <b>그 자식으로</b> 만들어 간선까지 잇는다
+    /// (자리 = 부모 깊이 + 1 열, v3 소유자 지시). 선택이 없으면 홀로 선 노드다.
+    /// Id는 자동 발명하지 않되 빈 워크북을 부를 수는 없으니, 겹치지 않는 자리표시 Id를 주고
+    /// 사람이 패널에서 [개명]으로 정하게 한다.
+    /// </summary>
     internal void AddEpisodeFromToolbar()
     {
         if (SelectedChapterPath is not { } path || SelectedModel is not { } model)
@@ -1371,8 +1163,6 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        // Id는 자동 발명하지 않되 빈 워크북을 부를 수는 없으니, 겹치지 않는 자리표시 Id를 주고
-        // 사람이 패널에서 [개명]으로 정하게 한다. 위치는 가장 오른쪽 노드 옆이다.
         int number = 1;
         while (model.FindEpisode($"new{number:D2}") is not null)
         {
@@ -1380,9 +1170,20 @@ public partial class ChapterGraphView : UserControl
         }
 
         string episodeId = $"new{number:D2}";
-        double x = model.Episodes.Count == 0 ? 0 : model.Episodes.Max(episode => episode.X) + 220;
+        string? parent = _selectedEpisodeId is { } id && model.FindEpisode(id) is not null ? id : null;
 
-        ChapterWriteResult result = ChapterWorkbookWriter.AddEpisode(path, episodeId, "새 에피소드", x, 0);
+        ChapterWriteResult result;
+
+        if (parent is not null)
+        {
+            (double x, double y) = ChapterBranchPlanner.SuggestPlacement(model, parent);
+            result = ChapterWorkbookWriter.AddNextEpisode(path, parent, episodeId, "새 에피소드", x, y);
+        }
+        else
+        {
+            double x = model.Episodes.Count == 0 ? 0 : model.Episodes.Max(episode => episode.X) + 220;
+            result = ChapterWorkbookWriter.AddEpisode(path, episodeId, "새 에피소드", x, 0);
+        }
 
         if (result.Written)
         {

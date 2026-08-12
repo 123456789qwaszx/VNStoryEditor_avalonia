@@ -94,29 +94,29 @@ public sealed class ChapterBranchPlannerTests
     }
 
     [Fact]
-    public void 깊이_정렬은_열을_세우고_도달_불가는_건드리지_않는다()
+    public void 화면_배치는_열이_깊이고_고아는_아래_줄에_선다()
     {
+        // 뷰는 이 배치를 그릴 때마다 다시 계산한다(v3) — 엑셀 X·Y와 무관하게 흐름이 자리를 정한다.
         ChapterGraphModel model = Model(
             [Episode("root", 10, 20), Episode("a", 900, -50), Episode("b", 30, 400),
              Episode("c", 500, 0), Episode("orphan", 777, 888)],
             [Edge("root", "a"), Edge("root", "b"), Edge("a", "c"), Edge("b", "c")]);
 
-        IReadOnlyList<(string EpisodeId, double X, double Y)> positions =
-            ChapterBranchPlanner.AlignByDepth(model);
+        IReadOnlyDictionary<string, (double X, double Y)> placed =
+            ChapterBranchPlanner.Layout(model);
 
-        var byId = positions.ToDictionary(p => p.EpisodeId);
+        // 열 = 깊이 (원점 기준). 합류 c는 열 2.
+        Assert.Equal((0d, 0d), placed["root"]);
+        Assert.Equal(220d, placed["a"].X);
+        Assert.Equal(220d, placed["b"].X);
+        Assert.Equal(440d, placed["c"].X);
 
-        // 열 = 깊이 (시작 노드의 X가 원점).
-        Assert.Equal(10, byId["root"].X);
-        Assert.Equal(10 + 220, byId["a"].X);
-        Assert.Equal(10 + 220, byId["b"].X);
-        Assert.Equal(10 + 440, byId["c"].X);
+        // 같은 열 안 순서 = 시트 행 순서 (a가 b보다 먼저 적힘).
+        Assert.Equal(0d, placed["a"].Y);
+        Assert.Equal(110d, placed["b"].Y);
 
-        // 같은 열 안에서는 현재 Y 순서 보존: a(-50)가 b(400) 위.
-        Assert.Equal(20, byId["a"].Y);
-        Assert.Equal(20 + 110, byId["b"].Y);
-
-        // 간선이 없는 노드는 정렬 대상이 아니다 — 이미 ⚠로 보고되는 것을 옮겨 숨기지 않는다.
-        Assert.DoesNotContain(positions, p => p.EpisodeId == "orphan");
+        // 간선 없는 고아는 그래프 아래 줄에 따로 선다 — 겹쳐 숨기지 않는다.
+        Assert.True(placed["orphan"].Y > placed["b"].Y + ChapterBranchPlanner.RowHeight,
+            $"고아가 그래프와 겹친다: Y={placed["orphan"].Y}");
     }
 }

@@ -6,7 +6,7 @@
                 Padding="10,8"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="챕터"
                            FontSize="11"
@@ -26,15 +26,9 @@
                         x:Name="AddEpisodeButton"
                         Content="＋ 에피소드"
                         Margin="6,0,0,0"
-                        ToolTip.Tip="에피소드 행을 시트에 더합니다. Id·대사엔트리는 우측 패널에서 채우세요." />
-                <!-- 명시 동작이다 — 자동 레이아웃이 아니다. 누르기 전 배치는 .bak으로 남는다. -->
-                <Button Grid.Column="6"
-                        x:Name="AlignButton"
-                        Content="깊이 정렬"
-                        Margin="6,0,0,0"
-                        ToolTip.Tip="시작에서의 깊이대로 열을 세웁니다 (합류는 가장 깊은 부모 다음 열). 지금 배치는 .bak으로 남습니다." />
+                        ToolTip.Tip="선택된 에피소드의 다음으로 새 에피소드를 만들어 잇습니다. 선택이 없으면 홀로 섭니다. 이름은 우측 [개명]으로." />
 
-                <StackPanel Grid.Column="7"
+                <StackPanel Grid.Column="6"
                             Orientation="Horizontal"
                             Margin="12,0,0,0"
                             Spacing="6">
@@ -52,7 +46,7 @@
                 </StackPanel>
 
                 <!-- G-2 v2 — 엑셀이 원본이고 툴 편집은 해당 셀에 즉시 저장된다. -->
-                <Border Grid.Column="9"
+                <Border Grid.Column="8"
                         Padding="7,3"
                         CornerRadius="3"
                         Background="#22808080">
@@ -91,7 +85,7 @@
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="10" Spacing="6">
                     <TextBlock x:Name="NoSelectionText"
-                               Text="노드를 클릭하면 여기서 편집합니다.&#x0A;더블클릭 = 에피소드 엑셀 열기&#x0A;드래그 = 위치 이동(엑셀 X·Y에 저장)"
+                               Text="노드 클릭 = 선택 · 더블클릭 = 대본 엑셀 열기&#x0A;선택한 뒤 [＋ 에피소드] = 다음 에피소드로 잇기&#x0A;간선(선·라벨) 클릭 = 조건·해금 편집"
                                FontSize="11"
                                Opacity="0.55"
                                TextWrapping="Wrap" />
@@ -108,35 +102,18 @@
 
                         <TextBox x:Name="TitleBox" FontSize="11" PlaceholderText="제목" />
 
-                        <Grid ColumnDefinitions="*,6,*">
-                            <TextBox Grid.Column="0" x:Name="IndexBox" FontSize="11" PlaceholderText="인덱스" />
-                            <ComboBox Grid.Column="2" x:Name="KindCombo" FontSize="11" />
-                        </Grid>
-
-                        <TextBox x:Name="EntryBox" FontSize="11" PlaceholderText="대사엔트리 (런타임이 재생할 이름)" />
-
                         <TextBlock Text="표시조건 / 해금조건" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
                         <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch" />
                         <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch" />
 
                         <TextBox x:Name="EndingKeyBox" FontSize="11" PlaceholderText="엔딩키 (비면 엔딩 아님)" />
-                        <TextBox x:Name="MemoBox" FontSize="11" PlaceholderText="메모" />
-                        <CheckBox x:Name="AllowUnreachableCheck" Content="도달불가 허용" FontSize="11"
-                                  ToolTip.Tip="의도적으로 닿을 수 없는 노드(폐기 예정·미완성)임을 표시합니다. 도달성 검증이 오류 대신 알림으로 낮춥니다." />
 
                         <Button x:Name="ApplyButton" Content="적용" HorizontalAlignment="Stretch" />
 
                         <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12" Margin="0,10,0,0" />
-                        <!-- 목록의 줄을 클릭하면 그 간선이 선택되어 조건·해금을 편집한다. -->
+                        <!-- 목록의 줄을 클릭하면 그 간선이 선택되어 조건·해금을 편집한다.
+                             새 분기는 툴바 [＋ 에피소드](선택된 노드의 자식으로)가 만든다. -->
                         <StackPanel x:Name="EdgeListPanel" Spacing="3" />
-
-                        <!-- 분기 저작의 핵심 — Id 하나로 새 에피소드가 만들어져 부모 오른쪽에 서고 간선이 이어진다. -->
-                        <Grid ColumnDefinitions="*,6,*,Auto">
-                            <TextBox Grid.Column="0" x:Name="NewNextIdBox" FontSize="11" PlaceholderText="새 분기 Id" />
-                            <TextBox Grid.Column="2" x:Name="NewNextLabelBox" FontSize="11" PlaceholderText="선택지 라벨(선택)" />
-                            <Button Grid.Column="3" x:Name="CreateNextButton" Content="＋ 분기" FontSize="11" Margin="4,0,0,0"
-                                    ToolTip.Tip="새 에피소드를 만들어 이 노드의 다음으로 잇습니다. 부모 오른쪽에 순서대로 배치됩니다." />
-                        </Grid>
 
                         <!-- 이미 있는 에피소드로 잇기 (합류·순환). -->
                         <Grid ColumnDefinitions="*,6,*,Auto">

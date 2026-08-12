@@ -26,21 +26,14 @@ public sealed record ChapterWriteResult(bool Written, string? Failure)
 /// </summary>
 public static class ChapterWorkbookWriter
 {
-    // ── 위치 (드래그) ───────────────────────────────────────────────────────
-
-    /// <summary>드래그로 놓은 자리. 그 에피소드 행의 F(X)·G(Y) 두 셀만 쓴다.</summary>
-    public static ChapterWriteResult SetEpisodePosition(
-        string path, string episodeId, double x, double y) =>
-        Mutate(path, workbook =>
-        {
-            (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
-            sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
-            sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
-        });
-
     // ── 에피소드 ────────────────────────────────────────────────────────────
 
-    /// <summary>새 에피소드 행을 `에피소드` 시트 끝에 더한다. Id는 호출자가 정한다(자동 발명 금지).</summary>
+    /// <summary>
+    /// 새 에피소드 행을 `에피소드` 시트 끝에 더한다. Id는 호출자가 정한다(자동 발명 금지).
+    /// 대사엔트리는 <b>EpisodeId와 같게</b> 자동으로 채운다(v3 규약) — 기획자가 관리할 값이
+    /// 아니고, 에피소드 워크북도 EpisodeId로 이름 붙으므로 하나면 된다. 엑셀에서 다르게
+    /// 적으면 그 값이 이긴다(사람이 이긴다).
+    /// </summary>
     public static ChapterWriteResult AddEpisode(
         string path, string episodeId, string title, double x, double y) =>
         Mutate(path, workbook =>
@@ -56,19 +49,17 @@ public static class ChapterWorkbookWriter
             sheet.Cell(row, 1).SetValue(episodeId);
             sheet.Cell(row, 2).SetValue(title);
             sheet.Cell(row, 4).SetValue("Main");
+            sheet.Cell(row, 5).SetValue(episodeId);
             sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
             sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
-            // 대사엔트리(E)는 비워 둔다 — 비면 오류로 잡히므로 사람이 채울 때까지 검증이 알려 준다.
         });
 
     /// <summary>
     /// 다음 에피소드 추가 — 분기 저작의 핵심 동작. 행 추가와 간선 연결이 <b>한 번의 저장</b>이다
     /// (둘 중 하나만 성공한 채 남지 않는다).
     ///
-    /// 첫 자리(x·y)는 호출자가 <see cref="ChapterBranchPlanner.SuggestPlacement"/>로 계산해서
-    /// 넘긴다 — 깊이(열)와 그 열의 빈 줄을 아는 것은 그래프 모델이지 워크북 행이 아니다.
-    /// 이것은 자동 레이아웃이 아니다: 새 노드의 시작 위치일 뿐이고, 기존 노드는 절대 움직이지
-    /// 않으며, 이후 자리는 사람이 드래그로 소유한다(G-2 v2).
+    /// x·y는 호출자가 <see cref="ChapterBranchPlanner.SuggestPlacement"/>로 계산해서 넘긴다.
+    /// 화면 배치는 깊이 레이아웃이 소유하므로(v3) 이 셀은 내보내기의 Position에나 쓰인다.
     /// </summary>
     public static ChapterWriteResult AddNextEpisode(
         string path,
@@ -96,6 +87,7 @@ public static class ChapterWorkbookWriter
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
             episodes.Cell(newRow, 2).SetValue(title);
             episodes.Cell(newRow, 4).SetValue("Main");
+            episodes.Cell(newRow, 5).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
             episodes.Cell(newRow, 6).SetValue(Math.Round(x, 2));
             episodes.Cell(newRow, 7).SetValue(Math.Round(y, 2));
 
@@ -107,21 +99,6 @@ public static class ChapterWorkbookWriter
             edges.Cell(edgeRow, 5).SetValue("FALSE");
         });
 
-    /// <summary>
-    /// [깊이 정렬] — 여러 노드의 X·Y를 <b>한 번의 저장</b>으로 쓴다. 사람이 놓은 배치를
-    /// 통째로 덮는 쓰기이므로 삭제와 같은 급으로 취급해 <c>.bak</c>을 남긴다.
-    /// </summary>
-    public static ChapterWriteResult SetEpisodePositions(
-        string path, IReadOnlyList<(string EpisodeId, double X, double Y)> positions) =>
-        Mutate(path, workbook =>
-        {
-            foreach ((string episodeId, double x, double y) in positions)
-            {
-                (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
-                sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
-                sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
-            }
-        }, backup: true);
 
     /// <summary>속성 패널의 [적용]. null이 아닌 필드만 그 셀에 쓴다.</summary>
     public static ChapterWriteResult UpdateEpisode(
@@ -189,6 +166,13 @@ public static class ChapterWorkbookWriter
             }
 
             episodes.Cell(episodeRow, 1).SetValue(newId);
+
+            // 대사엔트리 = EpisodeId 규약(v3)을 따르던 행이면 함께 따라간다.
+            // 사람이 다르게 적어 둔 값은 건드리지 않는다.
+            if (string.Equals(episodes.Cell(episodeRow, 5).GetString(), oldId, StringComparison.Ordinal))
+            {
+                episodes.Cell(episodeRow, 5).SetValue(newId);
+            }
 
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
 

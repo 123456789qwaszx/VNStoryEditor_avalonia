@@ -32,26 +32,6 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         return path;
     }
 
-    // ── 위치 (드래그) ───────────────────────────────────────────────────────
-
-    [Fact]
-    public void 드래그_위치가_그_행의_X_Y_셀에만_써진다()
-    {
-        string path = Copy();
-
-        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePosition(path, "main05.02", 300, -50);
-
-        Assert.True(result.Written, result.Failure);
-
-        ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
-        Assert.Equal((300d, -50d), (reread.FindEpisode("main05.02")!.X, reread.FindEpisode("main05.02")!.Y));
-
-        // 다른 노드·다른 칸은 그대로다 — 왕복 성립.
-        Assert.Equal((0d, 0d), (reread.FindEpisode("main05.01")!.X, reread.FindEpisode("main05.01")!.Y));
-        Assert.Equal("조용한 복도", reread.FindEpisode("main05.02")!.Title);
-        Assert.Empty(reread.Errors);
-    }
-
     [Fact]
     public void 잠긴_워크북에는_쓰지_않고_사유를_돌려준다()
     {
@@ -60,7 +40,7 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
 
         using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePosition(path, "main05.02", 1, 1);
+            ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(path, "main05.02", title: "잠금 시험");
 
             Assert.False(result.Written);
             Assert.NotNull(result.Failure);
@@ -85,10 +65,27 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.Equal("새 화", added.Title);
         Assert.Equal((900d, 40d), (added.X, added.Y));
 
-        // 대사엔트리가 비어 있으므로 검증이 알린다 — 사람이 채울 때까지 조용히 넘어가지 않는다.
-        Assert.Contains(reread.Errors, item =>
-            item.Code == ChapterDiagnosticCode.DialogueEntryBlank &&
-            item.Message.Contains("main05.04"));
+        // 대사엔트리 = EpisodeId 자동 규약(v3) — 기획자가 관리할 값이 아니라서 툴이 채운다.
+        Assert.Equal("main05.04", added.DialogueEntry);
+        Assert.Empty(reread.Errors);
+    }
+
+    [Fact]
+    public void 개명하면_규약을_따르던_대사엔트리가_함께_따라간다()
+    {
+        string path = Copy();
+        Assert.True(ChapterWorkbookWriter.AddEpisode(path, "ep_x", "새 화", 0, 300).Written);
+
+        Assert.True(ChapterWorkbookWriter.RenameEpisode(path, "ep_x", "ep_y").Written);
+
+        // 규약(엔트리 = Id)을 따르던 행은 따라가고 —
+        Assert.Equal("ep_y", ChapterWorkbookReader.Read(path).FindEpisode("ep_y")!.DialogueEntry);
+
+        // 사람이 규약과 다르게 적어 둔 엔트리는 건드리지 않는다.
+        Assert.True(ChapterWorkbookWriter.UpdateEpisode(path, "ep_y", dialogueEntry: "Story_custom").Written);
+        Assert.True(ChapterWorkbookWriter.RenameEpisode(path, "ep_y", "ep_z").Written);
+        Assert.Equal("Story_custom",
+            ChapterWorkbookReader.Read(path).FindEpisode("ep_z")!.DialogueEntry);
     }
 
     [Fact]
@@ -236,26 +233,6 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     }
 
     [Fact]
-    public void 깊이_정렬이_여러_위치를_한_저장으로_쓰고_bak을_남긴다()
-    {
-        string path = Copy();
-
-        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePositions(path,
-        [
-            ("main05.01", 0, 0),
-            ("main05.02", 220, 0),
-            ("branch05.02A", 440, 0)
-        ]);
-
-        Assert.True(result.Written);
-        Assert.True(File.Exists(path + ".bak"), "배치를 통째로 덮는 쓰기는 .bak을 남겨야 한다");
-
-        ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
-        Assert.Equal((220d, 0d), (reread.FindEpisode("main05.02")!.X, reread.FindEpisode("main05.02")!.Y));
-        Assert.Equal((440d, 0d), (reread.FindEpisode("branch05.02A")!.X, reread.FindEpisode("branch05.02A")!.Y));
-    }
-
-    [Fact]
     public void 다음_에피소드의_중복_Id는_행도_간선도_남기지_않는다()
     {
         // 원자성 — 행 추가와 간선 연결이 한 저장이다. 절반만 성공한 워크북은 없다.
@@ -313,9 +290,9 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.True(File.Exists(backup));
         Assert.Equal(before, File.ReadAllBytes(backup));  // 지우기 직전 상태 그대로
 
-        // 위치 쓰기 같은 비파괴 쓰기는 백업을 만들지 않는다 — 굴림이 덮어쓰지 않게.
+        // 속성 편집 같은 비파괴 쓰기는 백업을 만들지 않는다 — 굴림이 덮어쓰지 않게.
         File.Delete(backup);
-        Assert.True(ChapterWorkbookWriter.SetEpisodePosition(path, "main05.01", 5, 5).Written);
+        Assert.True(ChapterWorkbookWriter.UpdateEpisode(path, "main05.01", title: "새 제목").Written);
         Assert.False(File.Exists(backup));
     }
 

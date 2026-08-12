@@ -1,13 +1,14 @@
 namespace Vn.Authoring.Chapters;
 
 /// <summary>
-/// 분기 저작의 자리 계산 — 깊이(depth) 기반. 챕터 그래프는 왼쪽에서 오른쪽으로 흐르는
+/// 챕터 그래프의 배치 계산 — 깊이(depth) 기반. 챕터 그래프는 왼쪽에서 오른쪽으로 흐르는
 /// 이야기이므로, 노드의 열(column)은 시작 에피소드에서 그 노드까지의 <b>가장 긴 경로</b>로
 /// 정한다. 합류 노드(두 분기가 다시 만나는 곳)는 가장 깊은 부모보다 한 열 오른쪽에 서서
 /// 간선이 뒤로 꺾이지 않는다.
 ///
-/// <b>여기는 계산만 한다 — 쓰지 않는다.</b> 제안은 새 노드의 첫 자리([＋ 분기])이고,
-/// 정렬은 사람이 [깊이 정렬] 버튼을 눌렀을 때만 쓰인다(자동 레이아웃 금지, G-2 v2).
+/// <b>배치는 툴이 소유한다 (v3, 2026-08-12 소유자 개정).</b> 뷰는 그릴 때마다
+/// <see cref="Layout"/>을 다시 계산한다 — 드래그가 없으므로 사람이 지킬 배치도 없고,
+/// 흐름(간선)이 바뀌면 자리가 저절로 따라온다. 엑셀 X·Y 셀은 내보내기의 Position에나 쓰인다.
 /// </summary>
 public static class ChapterBranchPlanner
 {
@@ -103,22 +104,18 @@ public static class ChapterBranchPlanner
     }
 
     /// <summary>
-    /// [깊이 정렬] — 도달 가능한 노드 전부를 깊이 열로 세운다. 열 안 순서는 현재 Y 순서를
-    /// 보존한다(사람이 위아래로 나눠 둔 의도가 남는다). 도달 불가 노드는 건드리지 않는다.
+    /// 화면 배치 전체 — 원점 (0,0) 기준. 열 = 깊이, 열 안 순서 = 시트 행 순서(사람이 정한
+    /// 유일한 순서). 간선이 없어 깊이가 없는 노드는 맨 아래 줄에 따로 세운다 — 이미 ⚠로
+    /// 보고되는 것을 겹쳐 숨기지 않는다.
     /// </summary>
-    public static IReadOnlyList<(string EpisodeId, double X, double Y)> AlignByDepth(
-        ChapterGraphModel model)
+    public static IReadOnlyDictionary<string, (double X, double Y)> Layout(ChapterGraphModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         IReadOnlyDictionary<string, int> depths = Depths(model);
+        var positions = new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
 
-        if (model.StartEpisode is not { } start)
-        {
-            return [];
-        }
-
-        var positions = new List<(string EpisodeId, double X, double Y)>();
+        int deepestSlot = 0;
 
         foreach (IGrouping<int, ChapterEpisode> column in model.Episodes
                      .Where(episode => depths.ContainsKey(episode.EpisodeId))
@@ -126,16 +123,23 @@ public static class ChapterBranchPlanner
         {
             int slot = 0;
 
-            foreach (ChapterEpisode episode in column
-                         .OrderBy(episode => episode.Y)
-                         .ThenBy(episode => episode.EpisodeId, StringComparer.Ordinal))
+            foreach (ChapterEpisode episode in column) // Episodes는 시트 행 순서다
             {
-                positions.Add((
-                    episode.EpisodeId,
-                    start.X + (column.Key * ColumnWidth),
-                    start.Y + (slot * RowHeight)));
+                positions[episode.EpisodeId] = (column.Key * ColumnWidth, slot * RowHeight);
+                deepestSlot = Math.Max(deepestSlot, slot);
                 slot++;
             }
+        }
+
+        // 고아(간선 없음 = 도달 불가) — 그래프 아래에 한 줄로.
+        int orphanColumn = 0;
+        double orphanY = (deepestSlot + 2) * RowHeight;
+
+        foreach (ChapterEpisode episode in model.Episodes
+                     .Where(episode => !depths.ContainsKey(episode.EpisodeId)))
+        {
+            positions[episode.EpisodeId] = (orphanColumn * ColumnWidth, orphanY);
+            orphanColumn++;
         }
 
         return positions;

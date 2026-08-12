@@ -37,28 +37,26 @@ public sealed class ChapterGraphViewRenderTests
     });
 
     [Fact]
-    public void 그려진_노드의_상대_위치가_엑셀의_X_Y와_같다() => HeadlessUi.Run(() =>
+    public void 그려진_노드는_깊이_열에_선다() => HeadlessUi.Run(() =>
     {
+        // v3 — 배치는 깊이 레이아웃이 소유한다. 열 = 시작에서의 가장 긴 경로.
+        // 견본의 흐름: 01 → 02 → (A) → 03 → end, A는 02의 분기이자 03으로 합류.
         using var project = new TempProject(SamplePath);
         (Canvas canvas, _) = Render(project);
 
         IReadOnlyDictionary<string, (double X, double Y)> placed = Placements(canvas);
 
-        // 지시서가 콕 집은 것 — 신뢰 분기가 문 너머보다 위에 있어야 한다 (Y가 작다).
-        Assert.True(
-            placed["branch05.02A"].Y < placed["main05.03"].Y,
-            $"branch05.02A(Y={placed["branch05.02A"].Y})가 " +
-            $"main05.03(Y={placed["main05.03"].Y})보다 위여야 한다");
-
-        // 엑셀의 간격이 화면에서도 그대로다. 평행이동 하나뿐이므로 차이가 보존된다.
         Assert.Equal(220, placed["main05.02"].X - placed["main05.01"].X);
-        Assert.Equal(440, placed["main05.03"].X - placed["main05.01"].X);
-        Assert.Equal(680, placed["main05.end"].X - placed["main05.01"].X);
-        Assert.Equal(240, placed["main05.03"].Y - placed["branch05.02A"].Y);
-        Assert.Equal(170, placed["attach05.02s"].Y - placed["main05.01"].Y);
+        Assert.Equal(440, placed["branch05.02A"].X - placed["main05.01"].X);
 
-        // 같은 X를 가진 둘은 화면에서도 같은 X다 (자동 레이아웃이 끼어들지 않았다).
-        Assert.Equal(placed["branch05.02A"].X, placed["main05.03"].X);
+        // 합류 노드는 가장 깊은 부모(A, 깊이 2) 다음 열이다 — 간선이 뒤로 꺾이지 않는다.
+        Assert.Equal(660, placed["main05.03"].X - placed["main05.01"].X);
+        Assert.Equal(880, placed["main05.end"].X - placed["main05.01"].X);
+
+        // 간선 없는 부착 노드는 그래프 아래 줄에 따로 선다.
+        Assert.True(
+            placed["attach05.02s"].Y > placed["main05.01"].Y,
+            $"attach05.02s(Y={placed["attach05.02s"].Y})는 본류(Y={placed["main05.01"].Y}) 아래여야 한다");
     });
 
     [Fact]

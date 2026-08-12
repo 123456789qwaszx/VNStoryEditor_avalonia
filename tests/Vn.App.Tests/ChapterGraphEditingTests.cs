@@ -27,29 +27,14 @@ public sealed class ChapterGraphEditingTests
 
         Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
         Assert.Equal("조용한 복도", view.FindControl<TextBox>("TitleBox")!.Text);
-        Assert.Equal("Story_ch05_02", view.FindControl<TextBox>("EntryBox")!.Text);
 
-        // 제목을 고치고 적용 → 엑셀 셀이 바뀐다. 나머지는 그대로다.
+        // 제목을 고치고 적용 → 엑셀 셀이 바뀐다. 패널에서 뺀 필드(대사엔트리 등, v3)는 그대로다.
         view.FindControl<TextBox>("TitleBox")!.Text = "고친 복도";
         view.ApplySelectedProperties();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
         Assert.Equal("고친 복도", reread.FindEpisode("main05.02")!.Title);
         Assert.Equal("Story_ch05_02", reread.FindEpisode("main05.02")!.DialogueEntry);
-    });
-
-    [Fact]
-    public void 드래그_커밋이_평행이동을_역산해_엑셀_좌표로_쓴다() => HeadlessUi.Run(() =>
-    {
-        using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, _) = Show(project);
-
-        // 견본의 최소 좌표는 X=0·Y=-120이므로 배치 여백이 60이면 캔버스 (60,180) = 엑셀 (0,0)이다.
-        view.CommitNodePosition("main05.01", 160, 240);
-
-        ChapterEpisode moved = ChapterWorkbookReader.Read(project.ChapterPath).FindEpisode("main05.01")!;
-        Assert.Equal(100d, moved.X);
-        Assert.Equal(60d, moved.Y);
     });
 
     [Fact]
@@ -99,47 +84,27 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 분기_추가가_한_동작으로_노드와_간선을_만든다() => HeadlessUi.Run(() =>
+    public void 선택한_노드의_자식으로_에피소드가_생기고_간선이_이어진다() => HeadlessUi.Run(() =>
     {
+        // v3 — [＋ 에피소드]는 선택된 노드의 다음으로 만든다. 흐름 연결이 기본값이다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
         view.SelectEpisode("main05.end");
-        view.FindControl<TextBox>("NewNextIdBox")!.Text = "ep_epilogue";
-        view.FindControl<TextBox>("NewNextLabelBox")!.Text = "에필로그를 본다";
-        view.CreateNextEpisodeFromPanel();
+        view.AddEpisodeFromToolbar();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEpisode added = reread.FindEpisode("new01")!;
 
-        // 노드가 자기 깊이 열에 생겼고 간선이 라벨과 함께 이어졌다 — 클릭 한 번의 결과다.
-        // main05.end의 깊이는 4(01→02→A→03→end 최장 경로)이므로 새 노드는 열 5 = X 1100이다.
-        ChapterEpisode added = reread.FindEpisode("ep_epilogue")!;
-        Assert.Equal(1100d, added.X);
+        // 간선이 함께 이어졌고, 대사엔트리는 EpisodeId로 자동이다.
         Assert.Contains(reread.Edges, edge =>
-            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_epilogue" &&
-            edge.OptionLabel == "에필로그를 본다");
+            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "new01");
+        Assert.Equal("new01", added.DialogueEntry);
 
-        // 입력 칸은 비워져 다음 분기를 바로 이어 만들 수 있다.
-        Assert.Equal(string.Empty, view.FindControl<TextBox>("NewNextIdBox")!.Text);
-    });
-
-    [Fact]
-    public void 깊이_정렬이_열을_세워_엑셀_좌표를_다시_쓴다() => HeadlessUi.Run(() =>
-    {
-        using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, _) = Show(project);
-
-        view.AlignByDepth();
-
-        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
-
-        // 합류 노드 main05.03의 깊이는 3(02→A→03이 최장) — 손으로 둔 440이 아니라 660 열로 선다.
-        Assert.Equal(660d, reread.FindEpisode("main05.03")!.X);
-        Assert.Equal(880d, reread.FindEpisode("main05.end")!.X);
-        Assert.Equal(440d, reread.FindEpisode("branch05.02A")!.X);
-
-        // 사람 배치를 통째로 덮었으므로 되돌릴 .bak이 남는다.
-        Assert.True(File.Exists(project.ChapterPath + ".bak"));
+        // 새 노드가 선택되어 바로 [개명]할 수 있다 (감시 대신 직접 다시 읽게 한다).
+        view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("new01", view.FindControl<TextBox>("IdBox")!.Text);
     });
 
     [Fact]
