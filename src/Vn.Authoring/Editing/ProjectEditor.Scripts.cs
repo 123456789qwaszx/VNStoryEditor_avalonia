@@ -136,10 +136,14 @@ public sealed partial class ProjectEditor
 
             ScenarioStructureIntent? intent = parsed.Lines[index].Transition;
             LineConditionTransition? current = node.FindExtension(lineId)?.Transition;
+            bool intentIsChoice = intent?.Kind
+                is ConditionTransitionKind.BeginChoice
+                or ConditionTransitionKind.BeginNextOption
+                or ConditionTransitionKind.EndChoice;
 
-            // 선택 전환은 이 입력면의 어휘가 아니다 — 텍스트에 안 보였다고 지우면
-            // 붙여넣기 한 번에 선택지 구조가 조용히 무너진다.
-            if (current?.IsChoiceKind == true)
+            // 텍스트에 선택 전환이 안 보였다고 기존 것을 지우지 않는다 — 손으로 쓴 대본
+            // 붙여넣기 한 번에 선택지 구조가 조용히 무너진다. 조건 전환을 얹으려는 것만 막는다.
+            if (current?.IsChoiceKind == true && !intentIsChoice)
             {
                 if (intent is not null)
                 {
@@ -154,34 +158,55 @@ public sealed partial class ProjectEditor
 
             if (intent is not null)
             {
-                if (intent.Kind == ConditionTransitionKind.EndIf)
+                switch (intent.Kind)
                 {
-                    desired = LineConditionTransition.EndIf();
-                }
-                else
-                {
-                    AvailableCondition? condition = conditions.Conditions.FirstOrDefault(item =>
-                        string.Equals(item.Expression.Trim(), intent.Expression, StringComparison.Ordinal));
+                    case ConditionTransitionKind.EndIf:
+                        desired = LineConditionTransition.EndIf();
+                        break;
 
-                    if (condition is null)
+                    // 옵션 줄(->)이 파서를 지나 여기 온다 (G3-2). OptionId는 만들지 않는다 —
+                    // 텍스트에는 옵션의 안정 식별자가 없고, 있던 것은 아래 비교가 보존한다.
+                    case ConditionTransitionKind.BeginChoice:
+                        desired = LineConditionTransition.BeginChoice();
+                        break;
+
+                    case ConditionTransitionKind.BeginNextOption:
+                        desired = LineConditionTransition.BeginNextOption();
+                        break;
+
+                    case ConditionTransitionKind.EndChoice:
+                        desired = LineConditionTransition.EndChoice();
+                        break;
+
+                    default:
                     {
-                        // 비슷한 식을 추측해 잇지 않는다. 조건은 설정노드에서 먼저 만들어야 한다.
-                        problems.Add(
-                            $"<<{(intent.Kind == ConditionTransitionKind.BeginIf ? "if" : "elseif")} {intent.Expression}>> — " +
-                            "이 노드가 쓸 수 있는 조건 중에 같은 식이 없습니다. 전환은 반영하지 않았습니다.");
-                        continue;
-                    }
+                        AvailableCondition? condition = conditions.Conditions.FirstOrDefault(item =>
+                            string.Equals(item.Expression.Trim(), intent.Expression, StringComparison.Ordinal));
 
-                    desired = intent.Kind == ConditionTransitionKind.BeginIf
-                        ? LineConditionTransition.BeginIf(condition.Id)
-                        : LineConditionTransition.BeginElseIf(condition.Id);
+                        if (condition is null)
+                        {
+                            // 비슷한 식을 추측해 잇지 않는다. 조건은 설정노드에서 먼저 만들어야 한다.
+                            problems.Add(
+                                $"<<{(intent.Kind == ConditionTransitionKind.BeginIf ? "if" : "elseif")} {intent.Expression}>> — " +
+                                "이 노드가 쓸 수 있는 조건 중에 같은 식이 없습니다. 전환은 반영하지 않았습니다.");
+                            continue;
+                        }
+
+                        desired = intent.Kind == ConditionTransitionKind.BeginIf
+                            ? LineConditionTransition.BeginIf(condition.Id)
+                            : LineConditionTransition.BeginElseIf(condition.Id);
+                        break;
+                    }
                 }
             }
 
+            // 선택 전환은 Kind만 비교한다 — 텍스트에는 옵션의 안정 식별자(op_)가 없으므로,
+            // 같은 종류면 기존 OptionId를 그대로 둔다. 지우면 순서 변경 감지(C3 경고)가 죽는다.
             bool same = (current is null && desired is null) ||
                 (current is not null && desired is not null &&
                  current.Kind == desired.Kind &&
-                 string.Equals(current.ConditionId, desired.ConditionId, StringComparison.Ordinal));
+                 (desired.IsChoiceKind ||
+                  string.Equals(current.ConditionId, desired.ConditionId, StringComparison.Ordinal)));
 
             if (!same)
             {

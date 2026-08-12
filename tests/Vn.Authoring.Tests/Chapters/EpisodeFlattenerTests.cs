@@ -17,13 +17,21 @@ public sealed class EpisodeFlattenerTests : IDisposable
     private static readonly string[] Labels = ["신뢰높음", "분노누적", "지쳐있음", "복도완료"];
     private static readonly string[] Stats = ["trust", "anger", "fatigue"];
 
-    private static readonly Dictionary<string, string> Expressions = new(StringComparer.Ordinal)
+    // 라벨 → 챕터 조건. 식은 기획자 언어이고, 평평화가 Yarn으로 번역해 싣는다.
+    private static readonly Dictionary<string, ChapterCondition> Expressions =
+        new[]
+        {
+            Condition("신뢰높음", "trust >= 3"),
+            Condition("분노누적", "anger >= 5"),
+            Condition("지쳐있음", "fatigue >= 4; anger <= 2"),
+            Condition("복도완료", "cleared:main05.02")
+        }.ToDictionary(condition => condition.Label, StringComparer.Ordinal);
+
+    private static ChapterCondition Condition(string label, string expression)
     {
-        ["신뢰높음"] = "trust >= 3",
-        ["분노누적"] = "anger >= 5",
-        ["지쳐있음"] = "fatigue >= 4; anger <= 2",
-        ["복도완료"] = "cleared:main05.02"
-    };
+        ConditionParseResult parsed = ConditionExpressionParser.Parse(expression, Stats);
+        return new ChapterCondition(label, expression, null, parsed.Terms, parsed.IsValid, SourceRow: 2);
+    }
 
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(), "vn-flatten-tests", Guid.NewGuid().ToString("N"));
@@ -56,7 +64,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
             """
             윌로: 복도는 생각보다 조용했다. #line:ln_0001
             라루: 여기서 잠깐 쉬어도 될까? #line:ln_0002
-            <<if trust >= 3>>
+            <<if $trust >= 3>>
                 윌로: 어머니가 같은 말을 했었다. #line:ln_0100
                 라루: …그 얘기 해준 적 있었나? #line:ln_0101
                 윌로: 아니. 처음 해. #line:ln_0102
@@ -131,13 +139,13 @@ public sealed class EpisodeFlattenerTests : IDisposable
         var rows = Baseline();
         rows[3][4] = "빈식";
 
-        EpisodeFlattenResult result = Flatten(rows, new Dictionary<string, string>(Expressions)
+        EpisodeFlattenResult result = Flatten(rows, new Dictionary<string, ChapterCondition>(Expressions)
         {
-            ["빈식"] = "   "
+            ["빈식"] = Condition("빈식", "   ")
         });
 
-        // 빈 식은 조건라벨 단계에서 이미 거부된다 — 조립기까지 가지 않는다.
-        Assert.Contains(result.Errors, item => item.Message.Contains("식을 챕터", StringComparison.Ordinal));
+        // 빈 식은 번역 단계에서 이미 거부된다 — 조립기까지 가지 않는다.
+        Assert.Contains(result.Errors, item => item.Message.Contains("유효하지 않아", StringComparison.Ordinal));
         Assert.DoesNotContain("<<if >>", result.Text, StringComparison.Ordinal);
     }
 
@@ -251,7 +259,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
     }
 
     private EpisodeFlattenResult Flatten(
-        string?[][] rows, IReadOnlyDictionary<string, string>? expressions = null)
+        string?[][] rows, IReadOnlyDictionary<string, ChapterCondition>? expressions = null)
     {
         string path = Path.Combine(_directory, $"ep_{Guid.NewGuid():N}.xlsx");
 
