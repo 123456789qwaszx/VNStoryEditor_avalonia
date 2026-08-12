@@ -102,6 +102,56 @@ public sealed class NewProjectNoiseTests : IDisposable
         Assert.Equal(manuscript, EpisodeLibrary.FindExisting(episodes, "ep02"));
     }
 
+    [Fact]
+    public void 템플릿은_인덱스가_미리_깔려_있어_그냥_아래로_타이핑하면_전부_읽힌다()
+    {
+        // 실사례 — 시트에서 여러 줄을 썼는데 첫 줄만 잡혔다. 인덱스 없는 행은 표의 일부가
+        // 아니라서, 템플릿이 첫 행에만 10을 깔아 주면 둘째 줄부터 전부 버려졌다.
+        string episodes = Path.Combine(_directory, "episodes");
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep_type");
+        string path = EpisodeLibrary.PathFor(episodes, "ep_type");
+
+        // 작가가 하는 그대로: 번호는 건드리지 않고 화자·내용만 세 줄 채운다.
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
+        {
+            var sheet = workbook.Worksheets.First();
+            sheet.Cell(2, 8).SetValue("라루"); sheet.Cell(2, 9).SetValue("첫 줄");
+            sheet.Cell(3, 8).SetValue("윌로"); sheet.Cell(3, 9).SetValue("둘째 줄");
+            sheet.Cell(4, 8).SetValue("라루"); sheet.Cell(4, 9).SetValue("셋째 줄");
+            workbook.Save();
+        }
+
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
+        EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(
+            model, new Dictionary<string, ChapterCondition>());
+
+        Assert.Equal(3, flattened.Lines.Count);           // 세 줄 전부 산출된다
+        Assert.Contains("윌로: 둘째 줄", flattened.Text);
+        Assert.Empty(flattened.Errors);
+    }
+
+    [Fact]
+    public void 인덱스_없는_행에_대사가_있으면_조용히_버리지_않고_경고한다()
+    {
+        string episodes = Path.Combine(_directory, "episodes");
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep_warn");
+        string path = EpisodeLibrary.PathFor(episodes, "ep_warn");
+
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
+        {
+            var sheet = workbook.Worksheets.First();
+            sheet.Cell(3, 1).Clear();                     // 인덱스를 지우고
+            sheet.Cell(3, 9).SetValue("버려질 뻔한 대사"); // 내용만 남긴다
+            workbook.Save();
+        }
+
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
+
+        Assert.Contains(model.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("A열에 번호를 적어 주세요"));
+    }
+
     private static byte[] ReadTemplateBytes(string folder)
     {
         EpisodeLibrary.EnsureWorkbook(folder, "__template");

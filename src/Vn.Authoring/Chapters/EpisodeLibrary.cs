@@ -158,8 +158,14 @@ public static class EpisodeLibrary
         // 회색 배경만 유지한다(과거 파일과 열 배치가 같아야 규격 문서가 하나로 통한다).
         sheet.Column(2).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
 
-        // 10·20·30 방식(G-5)의 첫 자리. 빈 파일보다 시작점이 있는 파일이 규격을 가르친다.
-        sheet.Cell(2, 1).SetValue(10);
+        // 인덱스를 미리 다 깔아 준다 (10·20·30 방식, G-5). 작가는 번호를 신경 쓰지 않고
+        // 그 옆 칸(화자·내용)만 채우면 된다 — 인덱스 없는 행은 표의 일부가 아니라서,
+        // 시트에서 그냥 아래로 타이핑하면 대사가 조용히 버려지는 함정이 실제로 있었다.
+        // 사이에 끼울 때만 사람이 15 같은 빈 숫자를 적는다(그래서 십 단위다).
+        for (int row = 2; row <= TemplateRows; row++)
+        {
+            sheet.Cell(row, 1).SetValue((row - 1) * 10);
+        }
 
         sheet.Column(9).Width = 50;   // 내용
         sheet.Column(11).Width = 24;  // 메모

@@ -124,12 +124,22 @@ public static class EpisodeWorkbookReader
             if (rawIndex.Length == 0)
             {
                 // 인덱스 없는 행은 IN/OUT이 가리킬 수 없으므로 표의 일부가 아니다.
-                // 견본의 설명문 줄들이 여기 걸린다 — 오류가 아니라 알림이다.
+                // 다만 화자나 내용이 적혀 있다면 그건 설명문이 아니라 **버려지는 대사**다 —
+                // 조용히 넘기면 "여러 줄을 썼는데 안 나온다"가 된다(실사례). 크게 말한다.
+                bool looksLikeDialogue =
+                    Cell(sheet, row, ColumnSpeaker).Length > 0 ||
+                    Cell(sheet, row, ColumnText).Length > 0;
+
                 diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Info,
+                    looksLikeDialogue
+                        ? ChapterDiagnosticSeverity.Warning
+                        : ChapterDiagnosticSeverity.Info,
                     ChapterDiagnosticCode.EpisodeIdBlank,
                     path, sheet.Name, row, ColumnIndex,
-                    "인덱스가 없어 표의 행으로 읽지 않았습니다."));
+                    looksLikeDialogue
+                        ? "화자·내용이 있는데 인덱스(A열)가 비어 이 행을 건너뜁니다 — " +
+                          "A열에 번호를 적어 주세요(위 행보다 큰 수, 10·20·30 방식)."
+                        : "인덱스가 없어 표의 행으로 읽지 않았습니다."));
                 continue;
             }
 
