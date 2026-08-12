@@ -84,6 +84,39 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 개명하면_대본_파일과_대사_노드가_함께_따라간다() => HeadlessUi.Run(() =>
+    {
+        // 실사례 — 개명이 챕터 시트만 따라가서, 옛 이름의 .xlsm이 원고를 든 채 남고
+        // 새 이름으로 빈 워크북이 하나 더 생겼다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        view.AddEpisodeFromToolbar(); // new01 + 대본 워크북 생성
+        view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 대사 노드가 이미 서 있는 상황을 흉내낸다 (규약: 노드 이름 = 에피소드 Id).
+        string fileId = session.EnsureChapterBoard("ch05");
+        session.Editor.AddDialogueNode(fileId, name: "new01");
+
+        view.SelectEpisode("new01");
+        view.FindControl<TextBox>("IdBox")!.Text = "ep_renamed";
+        view.RenameSelectedEpisode();
+
+        string episodes = Path.Combine(Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes");
+
+        // 대본 파일이 새 이름으로 옮겨졌고, 옛 이름은 남지 않았다.
+        Assert.NotNull(EpisodeLibrary.FindExisting(episodes, "ep_renamed"));
+        Assert.Null(EpisodeLibrary.FindExisting(episodes, "new01"));
+
+        // 대사 노드도 새 이름이다 — 새로 만들지 않고 이름만 바꿔 연출·신원이 보존된다.
+        Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.Name == "ep_renamed");
+        Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.Name == "new01");
+    });
+
+    [Fact]
     public void 선택한_노드의_자식으로_에피소드가_생기고_간선이_이어진다() => HeadlessUi.Run(() =>
     {
         // v3 — [＋ 에피소드]는 선택된 노드의 다음으로 만든다. 흐름 연결이 기본값이다.

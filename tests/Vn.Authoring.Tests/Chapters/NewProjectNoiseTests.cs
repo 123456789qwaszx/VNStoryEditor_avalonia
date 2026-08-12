@@ -152,6 +152,26 @@ public sealed class NewProjectNoiseTests : IDisposable
             item.Message.Contains("A열에 번호를 적어 주세요"));
     }
 
+    [Fact]
+    public void 대본_파일_개명은_xlsm_확장자를_그대로_따라간다()
+    {
+        // 개명은 이동일 뿐 내용을 건드리지 않는다 — 구글이 .xlsm으로 바꿔 둔 파일이면
+        // .xlsm 그대로 새 이름이 된다.
+        string episodes = Path.Combine(_directory, "episodes");
+        Directory.CreateDirectory(episodes);
+        File.WriteAllBytes(Path.Combine(episodes, "ep_old.xlsm"), ReadTemplateBytes(episodes));
+
+        Assert.Null(EpisodeLibrary.RenameWorkbook(episodes, "ep_old", "ep_new"));
+
+        Assert.True(File.Exists(Path.Combine(episodes, "ep_new.xlsm")));
+        Assert.False(File.Exists(Path.Combine(episodes, "ep_old.xlsm")));
+
+        // 없는 파일 개명은 실패가 아니다(아직 대본 전) · 겹치면 사유를 말한다.
+        Assert.Null(EpisodeLibrary.RenameWorkbook(episodes, "ep_none", "ep_x"));
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep_taken");
+        Assert.Contains("이미 있어", EpisodeLibrary.RenameWorkbook(episodes, "ep_new", "ep_taken"));
+    }
+
     private static byte[] ReadTemplateBytes(string folder)
     {
         EpisodeLibrary.EnsureWorkbook(folder, "__template");

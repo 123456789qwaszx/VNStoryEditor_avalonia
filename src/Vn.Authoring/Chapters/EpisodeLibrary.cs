@@ -75,6 +75,41 @@ public static class EpisodeLibrary
     private static string Normalize(string value) =>
         value.Trim().Normalize(NormalizationForm.FormC);
 
+    /// <summary>
+    /// 에피소드 개명을 대본 파일이 따라간다. 파일을 옛 이름에 버려두면 원고가 고아가 되고,
+    /// 새 이름을 더블클릭하는 순간 빈 워크북이 하나 더 생긴다(실사례). 확장자는 지금 것을
+    /// 그대로 유지한다(.xlsm이면 .xlsm으로) — 내용은 건드리지 않는 이동뿐이다.
+    /// </summary>
+    /// <returns>실패 사유. null이면 성공(옮길 파일이 없던 경우 포함 — 아직 대본 전이면 정상).</returns>
+    public static string? RenameWorkbook(string folder, string oldId, string newId)
+    {
+        string? source = FindExisting(folder, oldId);
+
+        if (source is null)
+        {
+            return null; // 대본을 아직 안 만들었다 — 옮길 것이 없다.
+        }
+
+        if (FindExisting(folder, newId) is { } taken)
+        {
+            return $"'{Path.GetFileName(taken)}'가 이미 있어 대본 파일을 옮기지 못했습니다. " +
+                   "파일을 먼저 정리해 주세요.";
+        }
+
+        string target = Path.Combine(folder, newId + Path.GetExtension(source));
+
+        try
+        {
+            File.Move(source, target);
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return $"대본 파일을 옮기지 못했습니다(엑셀·시트가 열고 있을 수 있습니다): {exception.Message} — " +
+                   $"파일을 닫고 '{Path.GetFileName(source)}'를 '{newId}'로 직접 바꿔 주세요.";
+        }
+    }
+
     /// <summary>툴이 읽지 못하는 스프레드시트 형식 (.xlsm은 v4.1부터 정식으로 읽는다).</summary>
     private static readonly string[] OtherSpreadsheetExtensions = [".xlsb", ".xls", ".ods"];
 

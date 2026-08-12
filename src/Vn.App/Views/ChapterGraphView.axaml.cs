@@ -1234,14 +1234,47 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        ChapterWriteResult result = ChapterWorkbookWriter.RenameEpisode(path, oldId, newId);
+        string? episodesFolder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
 
-        if (result.Written)
+        // 새 이름의 대본 파일이 이미 있으면 시작도 하지 않는다 — 챕터만 개명된 채
+        // 원고가 옛 이름에 남는 어중간한 상태를 만들지 않는다.
+        if (episodesFolder is not null &&
+            EpisodeLibrary.FindExisting(episodesFolder, oldId) is not null &&
+            EpisodeLibrary.FindExisting(episodesFolder, newId) is not null)
         {
-            _selectedEpisodeId = newId;
+            _session?.SetStatus(
+                $"'{newId}' 이름의 대본 파일이 이미 있어 개명하지 않았습니다. 파일을 먼저 정리해 주세요.");
+            return;
         }
 
-        Report(result, $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처 참조가 함께 따라갔습니다.");
+        ChapterWriteResult result = ChapterWorkbookWriter.RenameEpisode(path, oldId, newId);
+
+        if (!result.Written)
+        {
+            Report(result, string.Empty);
+            return;
+        }
+
+        _selectedEpisodeId = newId;
+
+        // 대본 파일이 따라간다 — 옛 이름에 버려두면 원고가 고아가 되고 빈 워크북이 하나 더 생긴다.
+        string? moveFailure = episodesFolder is null
+            ? null
+            : EpisodeLibrary.RenameWorkbook(episodesFolder, oldId, newId);
+
+        // 대사 노드도 따라간다 — 규약(대사엔트리 = Id)을 따르던 노드만. 노드를 새로 만들지
+        // 않고 이름만 바꾸므로 줄·연출·행 신원(ExcelLineMap)이 전부 보존된다.
+        if (_session is { } session &&
+            session.Project.EnumerateNodes().OfType<Vn.Authoring.Model.DialogueNode>()
+                .FirstOrDefault(node => string.Equals(node.Name, oldId, StringComparison.Ordinal))
+            is { } dialogueNode)
+        {
+            session.Editor.RenameNode(dialogueNode.Id, newId);
+        }
+
+        _session?.SetStatus(moveFailure is null
+            ? $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처·대본 파일·대사 노드가 함께 따라갔습니다."
+            : $"'{oldId}' → '{newId}' 개명했습니다. 단, {moveFailure}");
     }
 
     internal void AddEdgeFromPanel()
