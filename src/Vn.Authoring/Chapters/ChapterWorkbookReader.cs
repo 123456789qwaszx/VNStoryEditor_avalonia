@@ -1,4 +1,5 @@
 using System.Globalization;
+using ClosedXML.Excel;
 using Vn.Authoring.Definition;
 
 namespace Vn.Authoring.Chapters;
@@ -8,6 +9,10 @@ namespace Vn.Authoring.Chapters;
 ///
 /// <b>읽기 전용이다.</b> 이 클래스는 워크북에 쓰지 않는다 — 위치도 조건도 엑셀이 소유하고(G-2),
 /// 뷰의 드래그가 파일로 돌아가는 경로는 존재하지 않는다.
+///
+/// <b>엑셀 접근은 ClosedXML 하나로 한다.</b> 손수 만든 OOXML 리더는 제거했다 — xlsx를 읽는 길이
+/// 둘이면 규약 사본이고, G5가 드롭다운·색·시트보호를 쓴 워크북을 <i>생성</i>하는 순간
+/// 손수 쓰기는 손수 읽기보다 훨씬 위험해진다.
 ///
 /// <b>열은 자리로 읽고 머리글로 검산한다.</b> 규격이 A~K 자리를 못박았으므로 자리로 읽되,
 /// 머리글이 다르면 경고를 낸다. 머리글로만 읽으면 규격에 없는 배치를 조용히 받아들이게 되고,
@@ -36,11 +41,17 @@ public static class ChapterWorkbookReader
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        XlsxWorkbook workbook = XlsxWorkbook.Open(path);
+        if (!File.Exists(path))
+        {
+            throw new XlsxReadException(path, $"워크북 파일이 없습니다: {path}");
+        }
+
+        using XLWorkbook workbook = OpenWorkbook(path);
+
         var diagnostics = new List<ChapterDiagnostic>();
         string chapterId = Path.GetFileNameWithoutExtension(path);
 
-        foreach (XlsxSheet sheet in workbook.Sheets)
+        foreach (IXLWorksheet sheet in workbook.Worksheets)
         {
             if (!ChapterSheetNames.All.Contains(sheet.Name))
             {
@@ -83,15 +94,44 @@ public static class ChapterWorkbookReader
             diagnostics);
     }
 
+    /// <summary>
+    /// 열기 실패는 종류를 가리지 않고 하나로 모은다. 호출자(<see cref="ChapterLibrary"/>)가
+    /// 챕터 하나를 건너뛸지 정하려면 "이 파일을 못 열었다"만 알면 되고, ClosedXML이 내는
+    /// 예외 종류를 저작 코드가 알아야 할 이유가 없다.
+    ///
+    /// <b>파일 핸들은 우리가 연다 — <c>new XLWorkbook(path)</c>를 쓰지 않는다.</b> 경로 생성자는
+    /// xlsx가 아닌 파일에서 예외를 던지면서 <b>열어 둔 핸들을 놓지 않는다</b>(확인함: 그 뒤
+    /// 삭제·덮어쓰기가 전부 막힌다). 챕터 폴더에 깨진 워크북이 하나 있으면 파일 감시가 저장마다
+    /// 다시 읽으므로 핸들이 계속 쌓인다. 우리 <c>using</c> 안에서 열면 실패해도 반드시 풀린다.
+    ///
+    /// <c>FileShare.ReadWrite</c>인 이유: 기획자가 엑셀에서 워크북을 열어 둔 채로도 읽어야 한다.
+    /// 그게 이 레이어의 일상적인 상태다.
+    ///
+    /// 스트림을 바로 닫아도 되는 이유: <see cref="XLWorkbook"/>은 생성자에서 통째로 읽어들인다
+    /// (닫은 뒤에도 셀이 읽히는 것을 확인함). 지연 읽기가 아니다.
+    /// </summary>
+    private static XLWorkbook OpenWorkbook(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return new XLWorkbook(stream);
+        }
+        catch (Exception exception)
+        {
+            throw new XlsxReadException(path, $"워크북을 읽지 못했습니다: {exception.Message}", exception);
+        }
+    }
+
     // ── 에피소드 ────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<ChapterEpisode> ReadEpisodes(
-        XlsxWorkbook workbook,
+        XLWorkbook workbook,
         string path,
         IReadOnlyCollection<string> conditionLabels,
         List<ChapterDiagnostic> diagnostics)
     {
-        XlsxSheet? sheet = RequireSheet(workbook, ChapterSheetNames.Episodes, path, diagnostics);
+        IXLWorksheet? sheet = RequireSheet(workbook, ChapterSheetNames.Episodes, path, diagnostics);
 
         if (sheet is null)
         {
@@ -170,13 +210,13 @@ public static class ChapterWorkbookReader
     // ── 간선 ────────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<ChapterEdge> ReadEdges(
-        XlsxWorkbook workbook,
+        XLWorkbook workbook,
         string path,
         IReadOnlyCollection<string> episodeIds,
         IReadOnlyCollection<string> conditionLabels,
         List<ChapterDiagnostic> diagnostics)
     {
-        XlsxSheet? sheet = RequireSheet(workbook, ChapterSheetNames.Edges, path, diagnostics);
+        IXLWorksheet? sheet = RequireSheet(workbook, ChapterSheetNames.Edges, path, diagnostics);
 
         if (sheet is null)
         {
@@ -224,12 +264,12 @@ public static class ChapterWorkbookReader
     // ── 조건 ────────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<ChapterCondition> ReadConditions(
-        XlsxWorkbook workbook,
+        XLWorkbook workbook,
         string path,
         IReadOnlyCollection<string> statKeys,
         List<ChapterDiagnostic> diagnostics)
     {
-        XlsxSheet? sheet = RequireSheet(workbook, ChapterSheetNames.Conditions, path, diagnostics);
+        IXLWorksheet? sheet = RequireSheet(workbook, ChapterSheetNames.Conditions, path, diagnostics);
 
         if (sheet is null)
         {
@@ -298,12 +338,12 @@ public static class ChapterWorkbookReader
     // ── 스탯 ────────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<ChapterStat> ReadStats(
-        XlsxWorkbook workbook,
+        XLWorkbook workbook,
         string path,
         GameDefinition? definition,
         List<ChapterDiagnostic> diagnostics)
     {
-        XlsxSheet? sheet = RequireSheet(workbook, ChapterSheetNames.Stats, path, diagnostics);
+        IXLWorksheet? sheet = RequireSheet(workbook, ChapterSheetNames.Stats, path, diagnostics);
 
         if (sheet is null)
         {
@@ -376,13 +416,13 @@ public static class ChapterWorkbookReader
     // ── 픽스처 ──────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<ChapterFixture> ReadFixtures(
-        XlsxWorkbook workbook,
+        XLWorkbook workbook,
         string path,
         IReadOnlyList<ChapterStat> stats,
         IReadOnlyCollection<string> episodeIds,
         List<ChapterDiagnostic> diagnostics)
     {
-        XlsxSheet? sheet = workbook.Find(ChapterSheetNames.Fixtures);
+        IXLWorksheet? sheet = FindSheet(workbook, ChapterSheetNames.Fixtures);
 
         if (sheet is null)
         {
@@ -536,13 +576,17 @@ public static class ChapterWorkbookReader
         }
     }
 
-    private static XlsxSheet? RequireSheet(
-        XlsxWorkbook workbook,
+    private static IXLWorksheet? FindSheet(XLWorkbook workbook, string sheetName) =>
+        workbook.Worksheets.FirstOrDefault(sheet =>
+            string.Equals(sheet.Name, sheetName, StringComparison.Ordinal));
+
+    private static IXLWorksheet? RequireSheet(
+        XLWorkbook workbook,
         string sheetName,
         string path,
         List<ChapterDiagnostic> diagnostics)
     {
-        XlsxSheet? sheet = workbook.Find(sheetName);
+        IXLWorksheet? sheet = FindSheet(workbook, sheetName);
 
         if (sheet is null)
         {
@@ -557,14 +601,14 @@ public static class ChapterWorkbookReader
     }
 
     /// <summary>머리글 행의 첫 빈 칸 앞까지가 데이터 블록이다.</summary>
-    private static int DataWidth(XlsxSheet sheet)
+    private static int DataWidth(IXLWorksheet sheet)
     {
         int width = 0;
-        int last = sheet.LastColumn(HeaderRow);
+        int last = sheet.Row(HeaderRow).LastCellUsed()?.Address.ColumnNumber ?? 0;
 
         for (int column = 1; column <= last; column++)
         {
-            if (sheet.Cell(HeaderRow, column) is null)
+            if (Text(sheet, HeaderRow, column).Length == 0)
             {
                 break;
             }
@@ -576,7 +620,7 @@ public static class ChapterWorkbookReader
     }
 
     private static void VerifyHeaders(
-        XlsxSheet sheet,
+        IXLWorksheet sheet,
         IReadOnlyList<string> expected,
         string path,
         List<ChapterDiagnostic> diagnostics)
@@ -607,7 +651,7 @@ public static class ChapterWorkbookReader
 
             for (int column = expected.Count + 1; column <= width; column++)
             {
-                ignored.Add($"{XlsxWorkbook.ColumnName(column)}열('{Text(sheet, HeaderRow, column)}')");
+                ignored.Add($"{ColumnName(column)}열('{Text(sheet, HeaderRow, column)}')");
             }
 
             diagnostics.Add(Diagnostic(
@@ -618,20 +662,45 @@ public static class ChapterWorkbookReader
         }
     }
 
-    private static IEnumerable<int> DataRows(XlsxSheet sheet) =>
-        sheet.RowNumbers.Where(row => row > HeaderRow && sheet.RowHasValues(row));
+    /// <summary>
+    /// 머리글 아래에서 <b>글자가 있는</b> 행. 서식만 남고 값이 없는 행은 데이터가 아니다 —
+    /// 엑셀에서 지운 행이 "빈 행 하나"로 남아 EpisodeId 누락 오류를 뿜으면 거짓 경보가 된다.
+    /// </summary>
+    private static IEnumerable<int> DataRows(IXLWorksheet sheet) =>
+        sheet.RowsUsed()
+            .Select(row => row.RowNumber())
+            .Where(row => row > HeaderRow && RowHasText(sheet, row))
+            .OrderBy(row => row);
 
-    private static string Text(XlsxSheet sheet, int row, int column) =>
-        sheet.Cell(row, column)?.Trim() ?? string.Empty;
+    private static bool RowHasText(IXLWorksheet sheet, int row)
+    {
+        IXLRangeRow used = sheet.Row(row).RowUsed();
+        return used.Cells().Any(cell => CellText(cell).Length > 0);
+    }
 
-    private static string? Optional(XlsxSheet sheet, int row, int column)
+    /// <summary>
+    /// 셀 하나의 표시 문자열. 숫자는 <b>고정 문화권</b>으로 찍는다 — 사용자 문화권에 맡기면
+    /// 소수점이 쉼표가 되는 곳에서 좌표·스탯이 조용히 다르게 읽힌다.
+    /// </summary>
+    private static string CellText(IXLCell cell) => cell.DataType switch
+    {
+        XLDataType.Blank => string.Empty,
+        XLDataType.Number => cell.GetDouble().ToString(CultureInfo.InvariantCulture),
+        XLDataType.Boolean => cell.GetBoolean() ? "TRUE" : "FALSE",
+        _ => cell.GetString().Trim()
+    };
+
+    private static string Text(IXLWorksheet sheet, int row, int column) =>
+        CellText(sheet.Cell(row, column));
+
+    private static string? Optional(IXLWorksheet sheet, int row, int column)
     {
         string value = Text(sheet, row, column);
         return value.Length == 0 ? null : value;
     }
 
     private static double Number(
-        XlsxSheet sheet,
+        IXLWorksheet sheet,
         int row,
         int column,
         string path,
@@ -660,7 +729,7 @@ public static class ChapterWorkbookReader
     }
 
     private static int Integer(
-        XlsxSheet sheet,
+        IXLWorksheet sheet,
         int row,
         int column,
         string path,
@@ -696,7 +765,7 @@ public static class ChapterWorkbookReader
     }
 
     private static bool Boolean(
-        XlsxSheet sheet,
+        IXLWorksheet sheet,
         int row,
         int column,
         string path,
@@ -772,6 +841,10 @@ public static class ChapterWorkbookReader
             $"{field} '{episodeId}'가 `에피소드` 시트에 없습니다."));
     }
 
+    /// <summary>1 → "A", 28 → "AB". 열 이름 규약은 ClosedXML의 것 하나를 쓴다.</summary>
+    private static string ColumnName(int column) =>
+        column > 0 ? XLHelper.GetColumnLetterFromNumber(column) : "?";
+
     private static ChapterDiagnostic Cell(
         ChapterDiagnosticSeverity severity,
         ChapterDiagnosticCode code,
@@ -780,7 +853,7 @@ public static class ChapterWorkbookReader
         int row,
         int column,
         string message) =>
-        new(severity, code, path, sheetName, row, XlsxWorkbook.ColumnName(column), message);
+        new(severity, code, path, sheetName, row, ColumnName(column), message);
 
     private static ChapterDiagnostic Diagnostic(
         ChapterDiagnosticSeverity severity,

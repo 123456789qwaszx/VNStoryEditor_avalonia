@@ -9,6 +9,10 @@
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.1" />
 	<PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
     <PackageVersion Include="YarnSpinner.Compiler" Version="3.2.1" />
+    <!-- 챕터·에피소드 엑셀 (G1 읽기 · G5 쓰기). MIT — 의존 트리도 전부 MIT이고
+         SixLabors.Fonts만 Apache-2.0이다. 손수 OOXML을 쓰는 길은 여기서 닫는다:
+         G5가 드롭다운(데이터 유효성)·색·시트보호를 써야 하는데 그건 손으로 쓸 물건이 아니다. -->
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
     <!-- 툴 안 오디오 미리 듣기 (W62) — mp3·wav는 NAudio, ogg는 NAudio.Vorbis(NVorbis). -->
     <PackageVersion Include="NAudio" Version="2.2.1" />
     <PackageVersion Include="NAudio.Vorbis" Version="1.5.0" />

@@ -7,6 +7,10 @@
     <InternalsVisibleTo Include="Vn.Authoring.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <!-- 챕터·에피소드 워크북 읽기·쓰기의 유일한 통로 (G1·G5). -->
+    <PackageReference Include="ClosedXML" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- 런타임에서 복사 반입한 연출 코어 (H-4). 무대 상태 계산은 이 한 벌만 쓴다 (H-2). -->
     <ProjectReference Include="..\Ked.Presentation.Core\Ked.Presentation.Core.csproj" />
   </ItemGroup>
