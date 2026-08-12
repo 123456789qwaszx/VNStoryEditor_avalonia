@@ -79,6 +79,14 @@ public partial class ChapterGraphView : UserControl
             _selectedFixture = picked == "(끄기)" ? null : picked;
             Draw();
         };
+
+        // 편집 (G-2 v2) — 전부 엑셀 셀에 써지고, 저장 감시가 다시 읽어 화면이 따라온다.
+        ApplyButton.Click += (_, _) => UiGuard.Run(_session, "속성 저장", ApplySelectedProperties);
+        RenameButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
+        AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 추가", AddEdgeFromPanel);
+        DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
+        AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
+        SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
     }
 
     internal void Attach(AuthoringSession session)
@@ -379,6 +387,7 @@ public partial class ChapterGraphView : UserControl
 
         ChapterGraphModel model = entry.Model;
         var layout = ChapterGraphLayout.For(model.Episodes, CardWidth, CardHeight, CanvasMargin);
+        _layout = layout; // 드래그 역산(캔버스 → 엑셀 좌표)의 근거
 
         GraphCanvas.Width = layout.Width;
         GraphCanvas.Height = layout.Height;
@@ -399,6 +408,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         DrawDiagnostics(model);
+        RefreshPropertyPanel();
     }
 
     // ── 픽스처 (G6) ─────────────────────────────────────────────────────────
@@ -622,10 +632,16 @@ public partial class ChapterGraphView : UserControl
             card.Background = new SolidColorBrush(Color.Parse("#F0EDF7EF"));
         }
 
-        // 클릭 = 에피소드 엑셀 열기 (G5). 드래그가 아니다 — 이 뷰에 드래그는 없다.
-        card.PointerPressed += (_, _) =>
-            UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
+        // 클릭 = 선택(속성 패널) · 드래그 = 이동(놓으면 엑셀 X·Y에 저장, G-2 v2) ·
+        // 더블클릭 = 에피소드 엑셀 열기. 기존 시나리오 그래프와 같은 문법이다.
+        WireCardInteraction(card, episode);
         card.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+
+        if (string.Equals(episode.EpisodeId, _selectedEpisodeId, StringComparison.Ordinal))
+        {
+            card.BorderBrush = new SolidColorBrush(Color.Parse("#3D7BD9"));
+            card.BorderThickness = new Thickness(2.4);
+        }
 
         (double x, double y) = layout.Place(episode);
         Canvas.SetLeft(card, x);
@@ -641,6 +657,359 @@ public partial class ChapterGraphView : UserControl
         _validation is { } validation &&
         !validation.Reachability.ReachableEpisodeIds.Contains(episode.EpisodeId) &&
         !episode.AllowUnreachable;
+
+    // ── 편집 (G-2 v2) ───────────────────────────────────────────────────────
+
+    private string? _selectedEpisodeId;
+    private ChapterGraphLayout? _layout;
+    private Border? _dragCard;
+    private ChapterEpisode? _dragEpisode;
+    private Point _dragPointerStart;
+    private (double Left, double Top) _dragCardStart;
+    private bool _dragMoved;
+
+    /// <summary>선택된 챕터의 워크북 경로. 편집이 쓰는 대상이다.</summary>
+    private string? SelectedChapterPath =>
+        _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId)?.Path;
+
+    private ChapterGraphModel? SelectedModel =>
+        _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId)?.Model;
+
+    private void WireCardInteraction(Border card, ChapterEpisode episode)
+    {
+        card.PointerPressed += (_, e) =>
+        {
+            SelectEpisode(episode.EpisodeId);
+
+            _dragCard = card;
+            _dragEpisode = episode;
+            _dragPointerStart = e.GetPosition(GraphCanvas);
+            _dragCardStart = (Canvas.GetLeft(card), Canvas.GetTop(card));
+            _dragMoved = false;
+            e.Pointer.Capture(card);
+        };
+
+        card.PointerMoved += (_, e) =>
+        {
+            if (!ReferenceEquals(_dragCard, card))
+            {
+                return;
+            }
+
+            Point now = e.GetPosition(GraphCanvas);
+            Vector delta = now - _dragPointerStart;
+
+            // 손떨림을 드래그로 세지 않는다 — 4px 문턱.
+            if (!_dragMoved && Math.Abs(delta.X) < 4 && Math.Abs(delta.Y) < 4)
+            {
+                return;
+            }
+
+            _dragMoved = true;
+            Canvas.SetLeft(card, _dragCardStart.Left + delta.X);
+            Canvas.SetTop(card, _dragCardStart.Top + delta.Y);
+        };
+
+        card.PointerReleased += (_, e) =>
+        {
+            if (!ReferenceEquals(_dragCard, card))
+            {
+                return;
+            }
+
+            Border dragged = _dragCard;
+            ChapterEpisode target = _dragEpisode!;
+            _dragCard = null;
+            _dragEpisode = null;
+            e.Pointer.Capture(null);
+
+            if (_dragMoved)
+            {
+                UiGuard.Run(_session, "노드 위치 저장", () =>
+                    CommitNodePosition(target.EpisodeId, Canvas.GetLeft(dragged), Canvas.GetTop(dragged)));
+            }
+        };
+
+        card.DoubleTapped += (_, _) =>
+            UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
+    }
+
+    /// <summary>
+    /// 드래그로 놓은 캔버스 좌표를 엑셀 좌표로 되돌려(배치의 평행이동 역산) 그 행의 X·Y 셀에
+    /// 쓴다. 저장이 끝나면 폴더 감시가 다시 읽어 그래프·간선이 따라온다.
+    /// </summary>
+    internal void CommitNodePosition(string episodeId, double canvasX, double canvasY)
+    {
+        if (SelectedChapterPath is not { } path || _layout is not { } layout)
+        {
+            return;
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.SetEpisodePosition(
+            path, episodeId, canvasX - layout.OffsetX, canvasY - layout.OffsetY);
+
+        _session?.SetStatus(result.Written
+            ? $"'{episodeId}' 위치를 엑셀에 저장했습니다."
+            : result.Failure!);
+    }
+
+    internal void SelectEpisode(string? episodeId)
+    {
+        _selectedEpisodeId = episodeId;
+        Draw(); // Draw 끝에서 패널이 채워진다
+    }
+
+    /// <summary>선택된 에피소드의 현재 값으로 패널을 채운다. 값의 원천은 언제나 방금 읽은 모델이다.</summary>
+    private void RefreshPropertyPanel()
+    {
+        ChapterGraphModel? model = SelectedModel;
+        ChapterEpisode? episode = model?.FindEpisode(_selectedEpisodeId ?? string.Empty);
+
+        PropertyPanel.IsVisible = episode is not null;
+        NoSelectionText.IsVisible = episode is null;
+
+        RefreshConditionList(model);
+
+        if (model is null || episode is null)
+        {
+            return;
+        }
+
+        IdBox.Text = episode.EpisodeId;
+        TitleBox.Text = episode.Title;
+        IndexBox.Text = episode.Index;
+        EntryBox.Text = episode.DialogueEntry;
+        EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
+        MemoBox.Text = episode.Memo ?? string.Empty;
+        AllowUnreachableCheck.IsChecked = episode.AllowUnreachable;
+
+        KindCombo.ItemsSource = new[] { "Main", "Attachment" };
+        KindCombo.SelectedItem =
+            string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase)
+                ? "Attachment"
+                : "Main";
+
+        var labels = new List<string> { "(없음)" };
+        labels.AddRange(model.Conditions.Select(condition => condition.Label));
+        VisibleCombo.ItemsSource = labels;
+        UnlockCombo.ItemsSource = new List<string>(labels);
+        VisibleCombo.SelectedItem = episode.VisibleConditionLabel ?? "(없음)";
+        UnlockCombo.SelectedItem = episode.UnlockConditionLabel ?? "(없음)";
+
+        EdgeTargetCombo.ItemsSource = model.Episodes
+            .Where(candidate => candidate.EpisodeId != episode.EpisodeId)
+            .Select(candidate => candidate.EpisodeId)
+            .ToList();
+
+        RefreshEdgeList(model, episode);
+    }
+
+    private void RefreshEdgeList(ChapterGraphModel model, ChapterEpisode episode)
+    {
+        EdgeListPanel.Children.Clear();
+
+        foreach (ChapterEdge edge in model.Edges.Where(candidate =>
+                     string.Equals(candidate.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal)))
+        {
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+
+            string label = edge.IsPlainAdvance ? "(일반 진행)" : edge.OptionLabel!;
+            row.Children.Add(new TextBlock
+            {
+                Text = $"→ {edge.ToEpisodeId}  {label}",
+                FontSize = 11,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+
+            var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
+            Grid.SetColumn(remove, 1);
+            string to = edge.ToEpisodeId;
+            remove.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", () =>
+                Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, episode.EpisodeId, to),
+                    $"간선 {episode.EpisodeId}→{to}을 지웠습니다."));
+            row.Children.Add(remove);
+
+            EdgeListPanel.Children.Add(row);
+        }
+    }
+
+    private void RefreshConditionList(ChapterGraphModel? model)
+    {
+        ConditionListPanel.Children.Clear();
+
+        foreach (ChapterCondition condition in model?.Conditions ?? Enumerable.Empty<ChapterCondition>())
+        {
+            var line = new TextBlock
+            {
+                Text = $"{condition.Label} = {condition.Expression}",
+                FontSize = 10,
+                Opacity = 0.75,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+            };
+
+            // 클릭하면 편집 칸으로 올라온다 — 라벨이 같으면 [조건 추가/수정]이 수정이 된다.
+            line.PointerPressed += (_, _) =>
+            {
+                ConditionLabelBox.Text = condition.Label;
+                ConditionExprBox.Text = condition.Expression;
+            };
+
+            ConditionListPanel.Children.Add(line);
+        }
+    }
+
+    /// <summary>속성 패널의 [적용]. 모델의 현재 값과 다른 필드만 셀에 쓴다.</summary>
+    internal void ApplySelectedProperties()
+    {
+        ChapterGraphModel? model = SelectedModel;
+        ChapterEpisode? episode = model?.FindEpisode(_selectedEpisodeId ?? string.Empty);
+
+        if (model is null || episode is null || SelectedChapterPath is not { } path)
+        {
+            return;
+        }
+
+        string? Changed(string? boxValue, string? current)
+        {
+            string value = boxValue?.Trim() ?? string.Empty;
+            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
+        }
+
+        string? visible = VisibleCombo.SelectedItem as string == "(없음)"
+            ? string.Empty
+            : VisibleCombo.SelectedItem as string;
+        string? unlock = UnlockCombo.SelectedItem as string == "(없음)"
+            ? string.Empty
+            : UnlockCombo.SelectedItem as string;
+
+        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
+            path,
+            episode.EpisodeId,
+            title: Changed(TitleBox.Text, episode.Title),
+            index: Changed(IndexBox.Text, episode.Index),
+            kind: Changed(KindCombo.SelectedItem as string, episode.Kind),
+            dialogueEntry: Changed(EntryBox.Text, episode.DialogueEntry),
+            visibleConditionLabel: Changed(visible, episode.VisibleConditionLabel ?? string.Empty),
+            unlockConditionLabel: Changed(unlock, episode.UnlockConditionLabel ?? string.Empty),
+            endingKey: Changed(EndingKeyBox.Text, episode.EndingKey ?? string.Empty),
+            memo: Changed(MemoBox.Text, episode.Memo ?? string.Empty),
+            allowUnreachable: AllowUnreachableCheck.IsChecked == episode.AllowUnreachable
+                ? null
+                : AllowUnreachableCheck.IsChecked);
+
+        Report(result, $"'{episode.EpisodeId}' 속성을 엑셀에 저장했습니다.");
+    }
+
+    internal void RenameSelectedEpisode()
+    {
+        string oldId = _selectedEpisodeId ?? string.Empty;
+        string newId = IdBox.Text?.Trim() ?? string.Empty;
+
+        if (oldId.Length == 0 || newId.Length == 0 ||
+            string.Equals(oldId, newId, StringComparison.Ordinal) ||
+            SelectedChapterPath is not { } path)
+        {
+            return;
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.RenameEpisode(path, oldId, newId);
+
+        if (result.Written)
+        {
+            _selectedEpisodeId = newId;
+        }
+
+        Report(result, $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처 참조가 함께 따라갔습니다.");
+    }
+
+    internal void AddEdgeFromPanel()
+    {
+        if (_selectedEpisodeId is not { } from ||
+            EdgeTargetCombo.SelectedItem is not string to ||
+            SelectedChapterPath is not { } path)
+        {
+            _session?.SetStatus("간선을 추가하려면 도착 에피소드를 골라 주세요.");
+            return;
+        }
+
+        string? label = string.IsNullOrWhiteSpace(EdgeLabelBox.Text) ? null : EdgeLabelBox.Text.Trim();
+
+        Report(ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label),
+            $"간선 {from}→{to}을 더했습니다.");
+        EdgeLabelBox.Text = string.Empty;
+    }
+
+    internal void DeleteSelectedEpisode()
+    {
+        if (_selectedEpisodeId is not { } episodeId || SelectedChapterPath is not { } path)
+        {
+            return;
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.RemoveEpisode(path, episodeId);
+
+        if (result.Written)
+        {
+            _selectedEpisodeId = null;
+        }
+
+        Report(result, $"'{episodeId}' 행과 그 간선·픽스처 참조를 지웠습니다. 에피소드 엑셀 파일은 그대로입니다.");
+    }
+
+    internal void AddEpisodeFromToolbar()
+    {
+        if (SelectedChapterPath is not { } path || SelectedModel is not { } model)
+        {
+            _session?.SetStatus("챕터를 먼저 선택해 주세요.");
+            return;
+        }
+
+        // Id는 자동 발명하지 않되 빈 워크북을 부를 수는 없으니, 겹치지 않는 자리표시 Id를 주고
+        // 사람이 패널에서 [개명]으로 정하게 한다. 위치는 가장 오른쪽 노드 옆이다.
+        int number = 1;
+        while (model.FindEpisode($"new{number:D2}") is not null)
+        {
+            number++;
+        }
+
+        string episodeId = $"new{number:D2}";
+        double x = model.Episodes.Count == 0 ? 0 : model.Episodes.Max(episode => episode.X) + 220;
+
+        ChapterWriteResult result = ChapterWorkbookWriter.AddEpisode(path, episodeId, "새 에피소드", x, 0);
+
+        if (result.Written)
+        {
+            _selectedEpisodeId = episodeId;
+        }
+
+        Report(result, $"'{episodeId}' 행을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요.");
+    }
+
+    internal void SaveConditionFromPanel()
+    {
+        string label = ConditionLabelBox.Text?.Trim() ?? string.Empty;
+        string expression = ConditionExprBox.Text?.Trim() ?? string.Empty;
+
+        if (label.Length == 0 || expression.Length == 0 || SelectedChapterPath is not { } path)
+        {
+            _session?.SetStatus("조건은 라벨과 식이 모두 있어야 합니다.");
+            return;
+        }
+
+        bool exists = SelectedModel?.FindCondition(label) is not null;
+
+        ChapterWriteResult result = exists
+            ? ChapterWorkbookWriter.UpdateCondition(path, label, expression)
+            : ChapterWorkbookWriter.AddCondition(path, label, expression);
+
+        Report(result, exists ? $"조건 '{label}'을 고쳤습니다." : $"조건 '{label}'을 더했습니다.");
+    }
+
+    /// <summary>쓰기 결과를 상태줄로. 성공이면 감시가 다시 읽어 화면이 따라온다.</summary>
+    private void Report(ChapterWriteResult result, string success) =>
+        _session?.SetStatus(result.Written ? success : result.Failure!);
 
     /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>
     internal static string EdgeTag(ChapterEdge edge) =>
