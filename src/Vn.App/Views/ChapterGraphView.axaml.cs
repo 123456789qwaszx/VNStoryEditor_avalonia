@@ -92,7 +92,13 @@ public partial class ChapterGraphView : UserControl
     {
         InitializeComponent();
 
-        ReloadButton.Click += (_, _) => UiGuard.Run(_session, "챕터 다시 읽기", Reload);
+        // 챕터와 에피소드를 함께 따라잡는다 — 클라우드 동기화가 늦게 내려놓은 저장을
+        // 기다리지 않고 사람이 지금 가져올 수 있는 유일한 손잡이다.
+        ReloadButton.Click += (_, _) => UiGuard.Run(_session, "다시 읽기", () =>
+        {
+            Reload();
+            SyncEpisodes();
+        });
         OpenFolderButton.Click += (_, _) => UiGuard.Run(_session, "챕터 폴더 열기", OpenFolder);
         ExportButton.Click += (_, _) => UiGuard.Run(_session, "챕터 내보내기", () => Export());
 
