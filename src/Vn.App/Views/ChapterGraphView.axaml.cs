@@ -388,6 +388,8 @@ public partial class ChapterGraphView : UserControl
         _cardBase.Clear();
         _lineByEdge.Clear();
         _lineBase.Clear();
+        _hitByEdge.Clear();
+        _labelByEdge.Clear();
 
         // 그릴 것이 없으면 판도 없다. 이걸 지우지 않으면 큰 챕터를 보다가 못 읽는 챕터로
         // 넘어갔을 때 텅 빈 캔버스가 이전 크기 그대로 남아 스크롤만 넓어진다.
@@ -576,6 +578,7 @@ public partial class ChapterGraphView : UserControl
             UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
         };
         GraphCanvas.Children.Add(hit);
+        _hitByEdge[(fromId, toId)] = hit;
 
         string label = string.Join(" · ", new[]
         {
@@ -609,6 +612,52 @@ public partial class ChapterGraphView : UserControl
         Canvas.SetLeft(text, ((x1 + x2) / 2) - (text.DesiredSize.Width / 2));
         Canvas.SetTop(text, ((y1 + y2) / 2) - (text.DesiredSize.Height / 2));
         GraphCanvas.Children.Add(text);
+        _labelByEdge[(fromId, toId)] = text;
+    }
+
+    /// <summary>
+    /// 드래그 중 간선·라벨이 카드를 따라온다. 놓기 전에도 그래프가 찢어져 보이지 않게 하는
+    /// 화면상의 추종일 뿐, 엑셀에 쓰는 것은 여전히 놓는 순간의 X·Y 한 번이다.
+    /// </summary>
+    private void FollowEdges(string episodeId, double cardLeft, double cardTop)
+    {
+        var center = new Point(cardLeft + (CardWidth / 2), cardTop + (CardHeight / 2));
+
+        foreach (((string fromId, string toId), Line line) in _lineByEdge)
+        {
+            bool follows = false;
+
+            if (string.Equals(fromId, episodeId, StringComparison.Ordinal))
+            {
+                line.StartPoint = center;
+                follows = true;
+            }
+
+            if (string.Equals(toId, episodeId, StringComparison.Ordinal))
+            {
+                line.EndPoint = center;
+                follows = true;
+            }
+
+            if (!follows)
+            {
+                continue;
+            }
+
+            if (_hitByEdge.TryGetValue((fromId, toId), out Line? hit))
+            {
+                hit.StartPoint = line.StartPoint;
+                hit.EndPoint = line.EndPoint;
+            }
+
+            if (_labelByEdge.TryGetValue((fromId, toId), out Border? label))
+            {
+                Canvas.SetLeft(label,
+                    ((line.StartPoint.X + line.EndPoint.X) / 2) - (label.DesiredSize.Width / 2));
+                Canvas.SetTop(label,
+                    ((line.StartPoint.Y + line.EndPoint.Y) / 2) - (label.DesiredSize.Height / 2));
+            }
+        }
     }
 
     private void DrawEpisode(
@@ -802,6 +851,7 @@ public partial class ChapterGraphView : UserControl
             _dragMoved = true;
             Canvas.SetLeft(card, _dragCardStart.Left + delta.X);
             Canvas.SetTop(card, _dragCardStart.Top + delta.Y);
+            FollowEdges(episode.EpisodeId, _dragCardStart.Left + delta.X, _dragCardStart.Top + delta.Y);
         };
 
         card.PointerReleased += (_, e) =>
@@ -866,6 +916,10 @@ public partial class ChapterGraphView : UserControl
         new(StringComparer.Ordinal);
     private readonly Dictionary<(string, string), Line> _lineByEdge = new();
     private readonly Dictionary<(string, string), (IBrush? Stroke, double Thickness)> _lineBase = new();
+
+    // 드래그 중 간선 추종용 — 보이는 선과 함께 히트 선·라벨도 따라와야 한다.
+    private readonly Dictionary<(string, string), Line> _hitByEdge = new();
+    private readonly Dictionary<(string, string), Border> _labelByEdge = new();
 
     internal void SelectEpisode(string? episodeId)
     {

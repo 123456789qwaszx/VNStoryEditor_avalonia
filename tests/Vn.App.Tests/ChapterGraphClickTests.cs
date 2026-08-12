@@ -122,6 +122,29 @@ public sealed class ChapterGraphClickTests
         Assert.Equal(before.Y + 25, after.Y);
     });
 
+    [Fact]
+    public void 드래그_중에_간선이_카드를_따라온다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (Window window, Canvas canvas, _) = Show(project);
+
+        Line edge = canvas.Children.OfType<Line>()
+            .Single(line => (line.Tag as string) == "main05.01→main05.02");
+        Avalonia.Point before = edge.StartPoint;
+
+        // 누르고 끄는 중 — 아직 놓지 않았다. 간선이 카드 중심을 따라와야 그래프가 찢어져
+        // 보이지 않는다(엑셀 쓰기는 여전히 놓는 순간 한 번뿐).
+        Avalonia.Point start = CardCenter(window, canvas, "main05.01");
+        window.MouseDown(start, MouseButton.Left);
+        window.MouseMove(new Avalonia.Point(start.X + 50, start.Y + 30));
+
+        Assert.Equal(before.X + 50, edge.StartPoint.X, 3);
+        Assert.Equal(before.Y + 30, edge.StartPoint.Y, 3);
+
+        window.MouseUp(new Avalonia.Point(start.X + 50, start.Y + 30), MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static void Click(Window window, Avalonia.Point point)
