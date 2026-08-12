@@ -136,6 +136,27 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     }
 
     [Fact]
+    public void 공백_있는_미등록_화자는_합쳐지기_전에_경고한다()
+    {
+        // 실사례 — 화자 칸에 문장을 적자 대사와 합쳐져 지문이 됐는데, 아무도 왜인지
+        // 말해 주지 않았다. 조용한 병합이 가장 나쁘다.
+        (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
+
+        string workbook = Path.Combine(_directory, "ep_space.xlsx");
+        WriteRows(workbook,
+        [
+            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
+            ["10", null, null, null, null, null, null, "3시 13에 고쳤는데", "3시 10분으로 되있네", null, null]
+        ]);
+
+        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+
+        Assert.Contains(report.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("합쳐져 지문이 됩니다"));
+    }
+
+    [Fact]
     public void 워크북이_읽기_공유_잠금이어도_동기화가_끝까지_된다()
     {
         // v4에서는 쓸 것이 없으므로 "되쓰기 실패"라는 상태 자체가 없다.

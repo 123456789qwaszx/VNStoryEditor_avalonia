@@ -127,7 +127,7 @@ public static class ScenarioTextParser
             }
 
             (string tagless, string? lineId) = SplitLineTag(line);
-            (string speaker, string body) = SplitSpeaker(tagless);
+            (string speaker, string body) = SplitSpeaker(tagless, definition);
             bool unregistered = speaker.Length > 0 &&
                 definition.FindSpeakerCharacterId(speaker) is null;
 
@@ -190,7 +190,7 @@ public static class ScenarioTextParser
     }
 
     /// <summary>첫 콜론 기준, 접두에 공백이 없을 때만 화자다.</summary>
-    private static (string Speaker, string Text) SplitSpeaker(string line)
+    private static (string Speaker, string Text) SplitSpeaker(string line, GameDefinition definition)
     {
         int colon = line.IndexOf(':');
 
@@ -201,7 +201,13 @@ public static class ScenarioTextParser
 
         string prefix = line[..colon];
 
-        if (prefix.Any(char.IsWhiteSpace))
+        // 접두에 공백이 있으면 산문("그는 말했다: …")일 수 있어 화자로 삼지 않는다 — 단,
+        // 등록된 화자명과 <b>다듬기 없이 정확히</b> 같으면 그 이름이다("늙은 상인"처럼 공백
+        // 있는 이름도 이름이다). 정확 일치만 받아야 "윌로 : …"(이름 뒤 공백)가 지문이라는
+        // 기존 규칙이 그대로 산다. 등록부는 명시적 어휘라 산문과 헷갈릴 일이 없다.
+        if (prefix.Any(char.IsWhiteSpace) &&
+            !definition.Speakers.Any(speaker =>
+                string.Equals(speaker.Name, prefix, StringComparison.Ordinal)))
         {
             return (string.Empty, line);
         }

@@ -68,6 +68,27 @@ public class ScenarioPasteTests
     }
 
     [Fact]
+    public void 공백_있는_이름도_등록돼_있으면_화자다()
+    {
+        // 실사례 — 화자 칸의 공백 있는 이름이 지문으로 합쳐져 "화자와 내용이 합쳐진다"로
+        // 보였다. 등록된 이름과 다듬기 없이 정확히 일치할 때만 예외를 연다: 미등록 산문
+        // ("그는 말했다: …")과 이름 뒤 공백("윌로 : …")은 여전히 지문이다.
+        GameDefinition definition = GameDefinition.Parse("""
+            { "speakers": [ { "name": "늙은 상인", "characterId": "merchant" } ] }
+            """)!;
+
+        ScenarioParseResult parsed = ScenarioTextParser.Parse("""
+            늙은 상인: 어서 오게.
+            그는 말했다: 이건 지문이다.
+            늙은 상인 : 이름 뒤 공백은 지문이다.
+            """, definition);
+
+        Assert.Equal(("늙은 상인", "어서 오게."), (parsed.Lines[0].Speaker, parsed.Lines[0].Text));
+        Assert.Equal(string.Empty, parsed.Lines[1].Speaker);
+        Assert.Equal(string.Empty, parsed.Lines[2].Speaker);
+    }
+
+    [Fact]
     public void 수정_삽입_삭제_후에도_나머지_LineId가_전부_보존된다()
     {
         // 수용 기준 2 — 테스트로 고정. 수정 3줄(1·4·8) + 삽입 1줄(2 뒤) + 삭제 1줄(6).

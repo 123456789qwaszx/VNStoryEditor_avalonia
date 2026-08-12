@@ -110,6 +110,24 @@ public static class EpisodeSyncService
 
         var diagnostics = model.Diagnostics.Concat(flattened.Diagnostics).ToList();
 
+        // 공백 있는 미등록 화자는 파서가 산문으로 보아 대사와 합쳐진다("화자와 내용이
+        // 합쳐진다" — 실사례). 등록된 이름이면 공백이 있어도 통과하므로, 여기 걸리는 것은
+        // 오타이거나 아직 등록 안 된 이름이다 — 조용히 합쳐지기 전에 말해 준다.
+        foreach (EpisodeRow row in model.Rows)
+        {
+            if (row.Speaker.Any(char.IsWhiteSpace) &&
+                definition.FindSpeakerCharacterId(row.Speaker) is null)
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                    workbookPath, model.SheetName, row.SourceRow, "H",
+                    $"화자 '{row.Speaker}'에 공백이 있는데 등록된 화자가 아니라서, 대사와 " +
+                    "합쳐져 지문이 됩니다. 화자 칸에는 이름만 적거나 game.definition.json의 " +
+                    "speakers에 그 이름을 등록해 주세요."));
+            }
+        }
+
         // 아직 대사를 한 줄도 쓰지 않았다면 반영할 것이 없다 — 거부가 아니라 "아직"이다.
         // 툴이 방금 만들어 준 빈 워크북이 스스로 거부당하는 일은 없어야 한다.
         if (!model.HasErrors && !flattened.HasErrors && flattened.Text.Trim().Length == 0)
