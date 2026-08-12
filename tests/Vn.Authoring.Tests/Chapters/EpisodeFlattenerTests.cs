@@ -1,5 +1,8 @@
 using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Definition;
+using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Tests.Chapters;
 
@@ -136,6 +139,34 @@ public sealed class EpisodeFlattenerTests : IDisposable
         // 빈 식은 조건라벨 단계에서 이미 거부된다 — 조립기까지 가지 않는다.
         Assert.Contains(result.Errors, item => item.Message.Contains("식을 챕터", StringComparison.Ordinal));
         Assert.DoesNotContain("<<if >>", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 평평화_산출물을_기존_파서가_한_줄도_남기지_않고_읽는다()
+    {
+        // G3의 증명 — 새 임포터를 만들지 않았다. 엑셀에서 나온 텍스트가 X12(a) 파서를
+        // 그대로 지나며, 조건·옵션·본문·LineId가 전부 해석된다.
+        EpisodeFlattenResult flattened = FlattenSample();
+
+        ScenarioParseResult parsed = ScenarioTextParser.Parse(
+            flattened.Text,
+            GameDefinition.Parse("""
+                { "speakers": [ { "name": "라루", "characterId": "laru" },
+                                { "name": "윌로", "characterId": "willo" } ] }
+                """)!);
+
+        Assert.Empty(parsed.UnparsedLines);
+
+        // 평평화가 실은 LineId 전부가 파서를 지나 그대로 나온다.
+        Assert.Equal(
+            flattened.EmittedLineIds,
+            parsed.Lines.Where(line => line.LineId is not null).Select(line => line.LineId!));
+
+        // 조건 갈래와 선택 블록이 구조로 잡힌다.
+        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginIf);
+        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.EndIf);
+        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginChoice);
+        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginNextOption);
     }
 
     // ── §3.3 규칙 6 — OUT 대조 ──────────────────────────────────────────────

@@ -49,6 +49,7 @@ public static class ScenarioTextParser
         var lines = new List<ScenarioLine>();
         var unparsed = new List<string>();
         ScenarioStructureIntent? pending = null;
+        bool inChoice = false;
 
         foreach (string raw in (text ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
         {
@@ -72,12 +73,57 @@ public static class ScenarioTextParser
                 continue;
             }
 
-            if (line.StartsWith("->", StringComparison.Ordinal) ||
-                line.StartsWith("<<", StringComparison.Ordinal) ||
+            if (line.StartsWith(OptionMarker, StringComparison.Ordinal))
+            {
+                if (pending is not null)
+                {
+                    unparsed.Add($"{line} — 옵션 줄에는 조건 전환을 함께 붙일 수 없습니다. " +
+                        $"앞의 '{Describe(pending)}'가 붙을 곳이 없습니다.");
+                    pending = null;
+                    continue;
+                }
+
+                (string optionText, string? optionId) =
+                    SplitLineTag(line[OptionMarker.Length..].Trim());
+
+                // 첫 옵션이 블록을 열고, 뒤따르는 옵션은 같은 블록의 다음 갈래다(깊이는 늘지 않는다).
+                lines.Add(new ScenarioLine(
+                    string.Empty,
+                    optionText,
+                    SpeakerUnregistered: false,
+                    new ScenarioStructureIntent(
+                        inChoice ? ConditionTransitionKind.BeginNextOption : ConditionTransitionKind.BeginChoice,
+                        null),
+                    optionId));
+
+                inChoice = true;
+                continue;
+            }
+
+            if (line.StartsWith("<<", StringComparison.Ordinal) ||
                 line.StartsWith("[", StringComparison.Ordinal))
             {
                 unparsed.Add(line);
                 continue;
+            }
+
+            // 선택 블록 안에서는 들여쓰기가 소속을 정한다 — 들여쓴 줄은 옵션 본문이고,
+            // 들여쓰기가 풀린 줄은 블록을 닫는다. Yarn이 옵션 소속을 표기하는 방식 그대로다.
+            if (inChoice && !IsIndented(raw))
+            {
+                inChoice = false;
+
+                if (pending is null)
+                {
+                    pending = new ScenarioStructureIntent(ConditionTransitionKind.EndChoice, null);
+                }
+                else
+                {
+                    unparsed.Add($"{line} — 선택 블록을 닫는 자리에 '{Describe(pending)}'가 겹칩니다. " +
+                        "전환 슬롯은 라인당 하나입니다.");
+                    pending = null;
+                    continue;
+                }
             }
 
             (string tagless, string? lineId) = SplitLineTag(line);
@@ -96,6 +142,19 @@ public static class ScenarioTextParser
 
         return new ScenarioParseResult(lines, unparsed);
     }
+
+    private const string OptionMarker = "->";
+
+    /// <summary>
+    /// 선택 블록 안에서 옵션 본문임을 나타내는 들여쓰기가 있는가.
+    ///
+    /// <b>이 파서에서 들여쓰기가 의미를 갖는 유일한 자리다.</b> 블록 밖에서는 지금까지대로
+    /// 모두 다듬어 읽는다 — 사람이 붙여넣는 텍스트의 들여쓰기는 대개 뜻이 없기 때문이다.
+    /// 선택 블록 안에서만은 뜻이 있다: Yarn이 옵션 소속을 들여쓰기로 표기하므로,
+    /// 그것을 버리면 "옵션 본문"과 "블록 다음 줄"을 구별할 방법이 사라진다.
+    /// </summary>
+    private static bool IsIndented(string raw) =>
+        raw.Length > 0 && char.IsWhiteSpace(raw[0]);
 
     /// <summary>
     /// 줄 끝의 <c>#line:ln_0001</c>을 떼어낸다 (계약서 C1의 표기 그대로).

@@ -220,16 +220,17 @@ public class ScenarioPasteTests
     {
         (ProjectEditor editor, DialogueNode node) = BuildEditor();
 
+        // 규칙 개정(G3-2): 옵션 줄(`->`)은 이제 이 파서의 범위다 — 엑셀 평평화 산출물이
+        // 옵션을 담고 오기 때문이다. 남은 미해석은 연출 커맨드와 장식 줄 둘이다.
         ScenarioPasteOutcome outcome = editor.ApplyScenarioText(node.Id, """
             라루: 첫 줄
-            -> 선택지 라벨은 이 파서의 비범위다
             <<camera_shake>>
             [주의] 장식 줄
             윌로: 둘째 줄
             """, Definition, confirmDeletes: true);
 
         Assert.True(outcome.Applied);
-        Assert.Equal(3, outcome.Parsed.UnparsedLines.Count);
+        Assert.Equal(2, outcome.Parsed.UnparsedLines.Count);
         Assert.Equal(2, editor.Project.FindScript(node.ScriptId)!.ActiveLines.Count());
     }
 
