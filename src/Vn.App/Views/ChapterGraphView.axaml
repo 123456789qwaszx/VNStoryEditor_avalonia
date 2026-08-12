@@ -94,27 +94,27 @@
                         <TextBlock Text="에피소드" FontWeight="SemiBold" FontSize="12" />
 
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" x:Name="IdBox" FontSize="11" Watermark="EpisodeId" />
+                            <TextBox Grid.Column="0" x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId" />
                             <Button Grid.Column="1" x:Name="RenameButton" Content="개명" FontSize="11"
                                     Margin="4,0,0,0"
                                     ToolTip.Tip="간선·픽스처 참조가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
                         </Grid>
 
-                        <TextBox x:Name="TitleBox" FontSize="11" Watermark="제목" />
+                        <TextBox x:Name="TitleBox" FontSize="11" PlaceholderText="제목" />
 
                         <Grid ColumnDefinitions="*,6,*">
-                            <TextBox Grid.Column="0" x:Name="IndexBox" FontSize="11" Watermark="인덱스" />
+                            <TextBox Grid.Column="0" x:Name="IndexBox" FontSize="11" PlaceholderText="인덱스" />
                             <ComboBox Grid.Column="2" x:Name="KindCombo" FontSize="11" />
                         </Grid>
 
-                        <TextBox x:Name="EntryBox" FontSize="11" Watermark="대사엔트리 (런타임이 재생할 이름)" />
+                        <TextBox x:Name="EntryBox" FontSize="11" PlaceholderText="대사엔트리 (런타임이 재생할 이름)" />
 
                         <TextBlock Text="표시조건 / 해금조건" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
                         <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch" />
                         <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch" />
 
-                        <TextBox x:Name="EndingKeyBox" FontSize="11" Watermark="엔딩키 (비면 엔딩 아님)" />
-                        <TextBox x:Name="MemoBox" FontSize="11" Watermark="메모" />
+                        <TextBox x:Name="EndingKeyBox" FontSize="11" PlaceholderText="엔딩키 (비면 엔딩 아님)" />
+                        <TextBox x:Name="MemoBox" FontSize="11" PlaceholderText="메모" />
                         <CheckBox x:Name="AllowUnreachableCheck" Content="도달불가 허용" FontSize="11"
                                   ToolTip.Tip="의도적으로 닿을 수 없는 노드(폐기 예정·미완성)임을 표시합니다. 도달성 검증이 오류 대신 알림으로 낮춥니다." />
 
@@ -125,7 +125,7 @@
 
                         <Grid ColumnDefinitions="*,6,*,Auto">
                             <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11" />
-                            <TextBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11" Watermark="선택지 라벨(비면 일반 진행)" />
+                            <TextBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11" PlaceholderText="선택지 라벨(비면 일반 진행)" />
                             <Button Grid.Column="3" x:Name="AddEdgeButton" Content="＋" FontSize="11" Margin="4,0,0,0" />
                         </Grid>
 
@@ -140,8 +140,8 @@
                     <StackPanel x:Name="ConditionSection" Spacing="4" Margin="0,14,0,0">
                         <TextBlock Text="조건 (라벨 ↔ 식)" FontWeight="SemiBold" FontSize="12" />
                         <StackPanel x:Name="ConditionListPanel" Spacing="2" />
-                        <TextBox x:Name="ConditionLabelBox" FontSize="11" Watermark="라벨" />
-                        <TextBox x:Name="ConditionExprBox" FontSize="11" Watermark="식 — 예: trust >= 3 (AND는 ;)" />
+                        <TextBox x:Name="ConditionLabelBox" FontSize="11" PlaceholderText="라벨" />
+                        <TextBox x:Name="ConditionExprBox" FontSize="11" PlaceholderText="식 — 예: trust >= 3 (AND는 ;)" />
                         <Button x:Name="SaveConditionButton" Content="조건 추가/수정" HorizontalAlignment="Stretch" FontSize="11" />
                     </StackPanel>
                 </StackPanel>

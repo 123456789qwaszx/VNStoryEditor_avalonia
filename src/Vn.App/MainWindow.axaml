@@ -55,36 +55,22 @@
                             BorderThickness="0,0,0,1">
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="2">
-                                <TextBlock Text="시나리오 파일" FontWeight="SemiBold" />
+                                <TextBlock Text="챕터" FontWeight="SemiBold" />
                                 <TextBlock x:Name="ActiveFileSummaryText"
                                            FontSize="11"
                                            Opacity="0.65"
                                            TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                            <!-- 파일 추가 (W50) — 파일 하나가 노드 그래프 판 하나다. -->
+                            <!-- 챕터 v2 (G-1 v2) — 탐색의 기본 단위는 챕터이고, 챕터마다 판이 하나다. -->
                             <Button Grid.Column="1"
                                     x:Name="AddFileButton"
                                     Content="＋"
                                     FontSize="12"
                                     Padding="7,2"
                                     VerticalAlignment="Top"
-                                    ToolTip.Tip="시나리오 파일 추가 — 파일마다 노드 그래프 판을 하나씩 갖습니다." />
+                                    ToolTip.Tip="새 챕터 — chapters/ 폴더에 규격 워크북을 만들고 판을 엽니다." />
                         </Grid>
                     </Border>
-
-                    <Grid Grid.Row="1"
-                          ColumnDefinitions="54,*"
-                          Margin="10,8,10,4">
-                        <TextBlock Grid.Column="0"
-                                   Text="그래프"
-                                   FontSize="10"
-                                   Opacity="0.55"
-                                   HorizontalAlignment="Center" />
-                        <TextBlock Grid.Column="1"
-                                   Text="현재 작업 파일"
-                                   FontSize="10"
-                                   Opacity="0.55" />
-                    </Grid>
 
                     <ScrollViewer Grid.Row="2"
                                   HorizontalScrollBarVisibility="Disabled"

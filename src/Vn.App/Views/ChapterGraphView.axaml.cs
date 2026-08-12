@@ -48,6 +48,28 @@ public partial class ChapterGraphView : UserControl
     internal Action<string> OpenWorkbookFile { get; set; } = path =>
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
+    /// <summary>챕터 목록이 다시 읽혔다. 왼쪽 패널(MainWindow)이 이걸 듣고 목록을 다시 그린다.</summary>
+    internal event Action<IReadOnlyList<ChapterEntry>>? EntriesReloaded;
+
+    /// <summary>폴더를 다시 훑고 감시를 다시 건다. 새 챕터를 만든 직후(폴더가 방금 생겼을 수 있다) 부른다.</summary>
+    internal void RefreshFromDisk() => WatchAndReload();
+
+    /// <summary>왼쪽 패널의 챕터 클릭이 이 뷰의 선택을 바꾼다.</summary>
+    internal void SelectChapter(string chapterId)
+    {
+        if (string.Equals(_selectedChapterId, chapterId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _selectedChapterId = chapterId;
+        _updatingCombo = true;
+        ChapterCombo.SelectedItem = chapterId;
+        _updatingCombo = false;
+        Validate();
+        Draw();
+    }
+
     public ChapterGraphView()
     {
         InitializeComponent();
@@ -178,15 +200,9 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        // 새 노드가 들어갈 판. 활성 파일이 없으면 첫 파일, 그것도 없으면(빈 프로젝트) 반영할
-        // 자리가 없으므로 멈추고 말한다 — 조용히 아무 데나 만들지 않는다.
-        string? fileId = _session.ActiveFileId ?? _session.Project.Files.FirstOrDefault()?.Id;
-
-        if (fileId is null)
-        {
-            _session.SetStatus("시나리오 파일이 없어 에피소드를 반영할 자리가 없습니다. 파일을 먼저 만들어 주세요.");
-            return;
-        }
+        // 새 노드가 들어갈 판 = 그 챕터의 판 (챕터=판 1:1, G-1 v2). 없으면 만든다 —
+        // 왼쪽 챕터 목록 클릭과 같은 규칙 하나를 쓴다.
+        string fileId = _session.EnsureChapterBoard(entry.ChapterId);
 
         foreach (ChapterEpisode episode in entry.Model.Episodes)
         {
@@ -259,6 +275,7 @@ public partial class ChapterGraphView : UserControl
 
         Validate();
         Draw();
+        EntriesReloaded?.Invoke(_entries);
     }
 
     /// <summary>

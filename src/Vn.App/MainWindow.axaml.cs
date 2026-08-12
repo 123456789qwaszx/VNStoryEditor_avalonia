@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Vn.App.Services;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
 using Vn.Authoring.Rendering;
@@ -29,7 +30,8 @@ public partial class MainWindow : Window
     private LiveOutputService? _liveOutput;
     private readonly DispatcherTimer _autoSaveTimer;
     private bool _restoredRecent;
-    private bool _rebuildingFileList;
+    /// <summary>왼쪽 챕터 목록의 데이터. 원천은 챕터 그래프 뷰의 읽기 하나다.</summary>
+    private IReadOnlyList<ChapterEntry> _chapters = Array.Empty<ChapterEntry>();
 
     public MainWindow()
     {
@@ -50,6 +52,13 @@ public partial class MainWindow : Window
         Closed += (_, _) => AudioPreview.StopAll();
 
         Graph.Attach(_session);
+        // 왼쪽 챕터 목록의 원천은 챕터 그래프 뷰가 읽은 목록 하나다 — 두 곳이 따로 읽으면
+        // 감시·재시도 규칙이 두 벌이 된다. Attach 전에 구독해야 첫 읽기부터 받는다.
+        ChapterGraph.EntriesReloaded += entries =>
+        {
+            _chapters = entries;
+            RebuildFileList();
+        };
         ChapterGraph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
@@ -101,7 +110,7 @@ public partial class MainWindow : Window
         _session.SelectionChanged += OnSelectionChanged;
         _session.FileGraphStateChanged += OnFileGraphStateChanged;
 
-        AddFileButton.Click += (_, _) => UiGuard.Run(_session, "파일 추가", ShowAddFileFlyout);
+        AddFileButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", ShowAddChapterFlyout);
         NewButton.Click += OnNewClick;
         OpenButton.Click += OnOpenClick;
         SaveButton.Click += OnSaveClick;
@@ -246,113 +255,138 @@ public partial class MainWindow : Window
     // ── 파일 ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 시나리오 파일 추가 (W50) — 파일 하나가 노드 그래프 판 하나다.
-    /// 이름은 비워도 된다(자동 이름). 새 파일이 곧 현재 작업 파일이 된다.
+    /// 새 챕터 (챕터 v2, G-1 v2) — chapters/ 폴더에 §3.1 규격 워크북을 만들고 그 판을 연다.
+    /// 스탯 시트는 game.definition의 변수로 채운다. Id는 사람이 정한다(자동 발명 금지).
     /// </summary>
-    private void ShowAddFileFlyout()
+    private void ShowAddChapterFlyout()
     {
-        var panel = new StackPanel { Spacing = 4, MinWidth = 200 };
+        var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
 
         var name = new TextBox
         {
-            PlaceholderText = "파일 이름 (예: 2장) — 비우면 자동",
+            PlaceholderText = "챕터 Id (예: ch06) — 파일 이름이 됩니다",
             FontSize = 11
         };
         panel.Children.Add(name);
 
-        var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+        var flyout = new Flyout { Content = panel };
 
-        var add = new Button
+        var create = new Button { Content = "만들기", HorizontalAlignment = HorizontalAlignment.Stretch };
+        create.Click += (_, _) => UiGuard.Run(_session, "새 챕터", () =>
         {
-            Content = "파일 추가",
-            FontSize = 11,
-            Padding = new Thickness(8, 3),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        add.Click += (_, _) => UiGuard.Run(_session, "파일 추가", () =>
-        {
-            string? fileName = string.IsNullOrWhiteSpace(name.Text) ? null : name.Text.Trim();
-            StoryFile file = _session.Editor.AddStoryFile(fileName);
-            _session.SelectFile(file.Id); // 새 파일이 곧 작업 판이다 — 새 노드가 여기로 간다
-            flyout.Hide();
-        });
-        panel.Children.Add(add);
+            string chapterId = name.Text?.Trim() ?? string.Empty;
 
-        // 다른 프로젝트의 .vnstory.json을 판째 들여온다 (W51). 딸린 대본도 함께 온다.
-        var import = new Button
-        {
-            Content = "기존 파일 가져오기…",
-            FontSize = 11,
-            Padding = new Thickness(8, 3),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        ToolTip.SetTip(import,
-            "다른 프로젝트의 story/*.vnstory.json을 이 프로젝트의 판으로 가져옵니다. " +
-            "대사 본문은 원본 프로젝트의 script 폴더가 옆에 있어야 함께 들어옵니다.");
-        import.Click += async (_, _) => await UiGuard.RunAsync(_session, "파일 가져오기", async () =>
-        {
-            flyout.Hide();
-
-            IStorageProvider? storage = GetTopLevel(this)?.StorageProvider;
-
-            if (storage is null || !storage.CanOpen)
+            if (chapterId.Length == 0)
             {
-                _session.SetStatus("이 환경에서는 파일 선택 창을 열 수 없습니다.");
+                _session.SetStatus("챕터 Id를 적어 주세요.");
                 return;
             }
 
-            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            string? folder = ChapterLibrary.FolderFor(_session.ProjectPath);
+
+            if (folder is null)
             {
-                Title = "가져올 시나리오 파일 (.vnstory.json, 여러 개 가능)",
-                AllowMultiple = true,
-                FileTypeFilter = new[]
-                {
-                    new FilePickerFileType("VnTool 시나리오 파일") { Patterns = new[] { "*.vnstory.json" } }
-                }
-            });
-
-            int importedFiles = 0;
-            int importedScripts = 0;
-            var problems = new List<string>();
-            string? lastFileId = null;
-
-            foreach (IStorageFile file in files)
-            {
-                if (file.TryGetLocalPath() is not { } localPath)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    StoryFileImportOutcome outcome = _session.Editor.ImportStoryFile(localPath);
-                    importedFiles++;
-                    importedScripts += outcome.ImportedScripts;
-                    problems.AddRange(outcome.Warnings);
-                    lastFileId = outcome.File.Id;
-                }
-                catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException)
-                {
-                    problems.Add(exception.Message);
-                }
+                _session.SetStatus("프로젝트를 먼저 저장해야 챕터 폴더 자리가 정해집니다.");
+                return;
             }
 
-            if (lastFileId is not null)
+            var stats = _session.Definition.Variables
+                .Select(variable => (variable.Name, variable.Name))
+                .ToList();
+
+            if (!ChapterWorkbookWriter.EnsureChapterWorkbook(folder, chapterId, stats))
             {
-                _session.SelectFile(lastFileId);
+                _session.SetStatus($"챕터 '{chapterId}'가 이미 있습니다.");
+                return;
             }
 
-            if (importedFiles > 0 || problems.Count > 0)
-            {
-                _session.SetStatus(
-                    $"파일 {importedFiles}개 · 대본 {importedScripts}개를 가져왔습니다." +
-                    (problems.Count > 0 ? $" · 확인 필요 {problems.Count}건: {problems[0]}" : string.Empty));
-            }
+            _session.SelectFile(_session.EnsureChapterBoard(chapterId));
+            ChapterGraph.RefreshFromDisk();
+            ChapterGraph.SelectChapter(chapterId);
+            flyout.Hide();
+            _session.SetStatus($"챕터 '{chapterId}'를 만들었습니다: {System.IO.Path.Combine(folder, chapterId + ".xlsx")}");
         });
-        panel.Children.Add(import);
+        panel.Children.Add(create);
 
         flyout.ShowAt(AddFileButton);
         name.Focus();
+    }
+
+    /// <summary>
+    /// 왼쪽 챕터 목록 (챕터 v2). 챕터 클릭 = 그 챕터의 판을 활성으로 + 챕터 그래프 선택.
+    /// 챕터가 없는 판은 목록에 없다 — 소유자 확정("완전 교체"). 기존 프로젝트는 챕터를
+    /// 만들어 옮긴다.
+    /// </summary>
+    private void RebuildFileList()
+    {
+        {
+            FileListPanel.Children.Clear();
+
+            foreach (ChapterEntry entry in _chapters)
+            {
+                string chapterId = entry.ChapterId;
+                string? boardId = _session.Project.Files.FirstOrDefault(file =>
+                    string.Equals(file.Name, chapterId, StringComparison.Ordinal))?.Id;
+                bool isActive = boardId is not null &&
+                    string.Equals(_session.ActiveFileId, boardId, StringComparison.Ordinal);
+
+                string subtitle = entry.Model is null
+                    ? "읽기 실패 — 검증 보고 참조"
+                    : $"에피소드 {entry.Model.Episodes.Count}개" +
+                      (entry.HasErrors ? " · ⚠ 오류" : string.Empty);
+
+                var row = new Border
+                {
+                    Padding = new Thickness(8, 6),
+                    CornerRadius = new CornerRadius(5),
+                    Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+                    Background = isActive
+                        ? new SolidColorBrush(Color.FromArgb(24, 37, 99, 235))
+                        : Brushes.Transparent,
+                    Child = new StackPanel
+                    {
+                        Spacing = 1,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = chapterId,
+                                FontWeight = FontWeight.SemiBold,
+                                TextTrimming = TextTrimming.CharacterEllipsis
+                            },
+                            new TextBlock
+                            {
+                                Text = subtitle,
+                                FontSize = 10,
+                                Opacity = 0.55,
+                                Foreground = entry.HasErrors ? Brushes.IndianRed : null,
+                                TextTrimming = TextTrimming.CharacterEllipsis
+                            }
+                        }
+                    }
+                };
+
+                row.PointerPressed += (_, _) => UiGuard.Run(_session, "챕터 선택", () =>
+                {
+                    _session.SelectFile(_session.EnsureChapterBoard(chapterId));
+                    ChapterGraph.SelectChapter(chapterId);
+                });
+
+                FileListPanel.Children.Add(row);
+            }
+
+            if (_chapters.Count == 0)
+            {
+                FileListPanel.Children.Add(new TextBlock
+                {
+                    Text = "챕터가 없습니다. ＋로 만들거나 chapters/ 폴더에 워크북을 넣으세요.",
+                    Margin = new Thickness(6, 10),
+                    Opacity = 0.55,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+        }
     }
 
     private async void OnNewClick(object? sender, RoutedEventArgs e)
@@ -834,223 +868,7 @@ public partial class MainWindow : Window
 
     // ── 화면 ────────────────────────────────────────────────────────────────
 
-    private void RebuildFileList()
-    {
-        _rebuildingFileList = true;
 
-        try
-        {
-            FileListPanel.Children.Clear();
-
-            foreach (StoryFile file in _session.Project.Files)
-            {
-                string fileId = file.Id;
-
-                var expanded = new CheckBox
-                {
-                    IsChecked = _session.IsFileExpanded(fileId),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                ToolTip.SetTip(expanded, "이 파일의 노드를 그래프에 펼쳐 표시");
-
-                expanded.IsCheckedChanged += (_, _) =>
-                {
-                    if (!_rebuildingFileList)
-                    {
-                        _session.SetFileExpanded(fileId, expanded: expanded.IsChecked == true);
-                    }
-                };
-
-                var active = new RadioButton
-                {
-                    GroupName = "ActiveStoryFile",
-                    IsChecked = string.Equals(_session.ActiveFileId, fileId, StringComparison.Ordinal),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    Content = new StackPanel
-                    {
-                        Spacing = 1,
-                        Children =
-                        {
-                            new TextBlock
-                            {
-                                Text = file.Name,
-                                FontWeight = FontWeight.SemiBold,
-                                TextTrimming = TextTrimming.CharacterEllipsis
-                            },
-                            new TextBlock
-                            {
-                                Text = $"{file.Nodes.Count}개 노드 · {file.RelativePath}",
-                                FontSize = 10,
-                                Opacity = 0.55,
-                                TextTrimming = TextTrimming.CharacterEllipsis
-                            }
-                        }
-                    }
-                };
-
-                active.IsCheckedChanged += (_, _) =>
-                {
-                    if (!_rebuildingFileList && active.IsChecked == true)
-                    {
-                        _session.SelectFile(fileId);
-                    }
-                };
-
-                var row = new Grid
-                {
-                    ColumnDefinitions = new ColumnDefinitions("54,*"),
-                    MinHeight = 42
-                };
-
-                Grid.SetColumn(expanded, 0);
-                Grid.SetColumn(active, 1);
-                row.Children.Add(expanded);
-                row.Children.Add(active);
-
-                var rowBorder = new Border
-                {
-                    Padding = new Thickness(2),
-                    CornerRadius = new CornerRadius(5),
-                    Background = string.Equals(_session.ActiveFileId, fileId, StringComparison.Ordinal)
-                        ? new SolidColorBrush(Color.FromArgb(24, 37, 99, 235))
-                        : Brushes.Transparent,
-                    Child = row
-                };
-
-                // 파일 행 우클릭 = 동작 목록 (W61). 라디오/체크박스가 이벤트를 먼저 먹어도
-                // 받도록 handledEventsToo로 듣는다.
-                rowBorder.AddHandler(
-                    PointerPressedEvent,
-                    (_, args) =>
-                    {
-                        if (args.GetCurrentPoint(rowBorder).Properties.IsRightButtonPressed)
-                        {
-                            ShowFileContextFlyout(rowBorder, fileId);
-                            args.Handled = true;
-                        }
-                    },
-                    RoutingStrategies.Bubble,
-                    handledEventsToo: true);
-
-                FileListPanel.Children.Add(rowBorder);
-            }
-
-            if (_session.Project.Files.Count == 0)
-            {
-                FileListPanel.Children.Add(new TextBlock
-                {
-                    Text = "StoryFile이 없습니다.",
-                    Margin = new Thickness(6, 10),
-                    Opacity = 0.55,
-                    TextWrapping = TextWrapping.Wrap
-                });
-            }
-        }
-        finally
-        {
-            _rebuildingFileList = false;
-        }
-    }
-
-    /// <summary>
-    /// 파일 행 우클릭 메뉴 (W61) — 이름 바꾸기와 제거. 제거는 되돌리기 한 번으로 복구되고,
-    /// 마지막 파일은 편집기가 거부한다(상태줄에 사유가 뜬다).
-    /// </summary>
-    private void ShowFileContextFlyout(Control anchor, string fileId)
-    {
-        if (_session.Project.FindFile(fileId) is not { } file)
-        {
-            return;
-        }
-
-        var panel = new StackPanel { Spacing = 2, MinWidth = 160 };
-        var flyout = new Flyout { Content = panel };
-
-        Button Item(string label, string tip)
-        {
-            var button = new Button
-            {
-                Content = label,
-                FontSize = 11,
-                Padding = new Thickness(10, 4),
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Background = Brushes.Transparent
-            };
-            ToolTip.SetTip(button, tip);
-            panel.Children.Add(button);
-            return button;
-        }
-
-        Button rename = Item("이름 바꾸기…", "이 파일의 표시 이름을 바꿉니다. 저장 파일명(RelativePath)은 그대로입니다.");
-        rename.Click += (_, _) =>
-        {
-            flyout.Hide();
-            ShowRenameFileFlyout(anchor, fileId);
-        };
-
-        panel.Children.Add(MenuSeparator());
-
-        Button remove = Item(
-            $"제거 (노드 {file.Nodes.Count}개 포함)",
-            "이 파일과 안의 노드를 프로젝트에서 뺍니다. 다른 판에서 이어지던 연결도 정리됩니다. 되돌리기로 복구할 수 있습니다.");
-        remove.Click += (_, _) =>
-        {
-            flyout.Hide();
-            string name = file.Name;
-
-            if (UiGuard.Run(_session, "파일 제거", () => _session.Editor.RemoveStoryFile(fileId)))
-            {
-                _session.SetStatus($"파일 '{name}' 제거 — 되돌리기(Ctrl+Z)로 복구할 수 있습니다.");
-            }
-        };
-
-        flyout.ShowAt(anchor, showAtPointer: true);
-    }
-
-    /// <summary>파일 이름 바꾸기 입력 (W61) — 우클릭 메뉴에서 이어지는 두 번째 단계.</summary>
-    private void ShowRenameFileFlyout(Control anchor, string fileId)
-    {
-        if (_session.Project.FindFile(fileId) is not { } file)
-        {
-            return;
-        }
-
-        var panel = new StackPanel { Spacing = 4, MinWidth = 200 };
-
-        var name = new TextBox
-        {
-            Text = file.Name,
-            FontSize = 11
-        };
-        panel.Children.Add(name);
-
-        var flyout = new Flyout { Content = panel };
-
-        var apply = new Button
-        {
-            Content = "이름 바꾸기",
-            FontSize = 11,
-            Padding = new Thickness(8, 3),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        apply.Click += (_, _) => UiGuard.Run(_session, "파일 이름 바꾸기", () =>
-        {
-            if (!string.IsNullOrWhiteSpace(name.Text))
-            {
-                _session.Editor.RenameStoryFile(fileId, name.Text.Trim());
-            }
-
-            flyout.Hide();
-        });
-        panel.Children.Add(apply);
-
-        flyout.ShowAt(anchor);
-        name.SelectAll();
-        name.Focus();
-    }
 
     private static Control MenuSeparator() => new Border
     {

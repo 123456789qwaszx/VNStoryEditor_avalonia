@@ -658,6 +658,20 @@ internal sealed class AuthoringSession
             .SelectMany(file => file.Nodes);
     }
 
+    /// <summary>
+    /// 챕터의 판 (챕터 v2, G-1 v2 — 챕터 = 판 1:1). 이름이 챕터 Id와 같은 StoryFile이 그
+    /// 챕터의 판이고, 없으면 만든다. 왼쪽 챕터 목록 클릭과 에피소드 동기화가 같은 이 규칙
+    /// 하나를 쓴다 — 두 곳이 갈리면 노드가 엉뚱한 판에 생긴다.
+    /// </summary>
+    internal string EnsureChapterBoard(string chapterId)
+    {
+        StoryFile? board = Project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+
+        board ??= Editor.AddStoryFile(chapterId);
+        return board.Id;
+    }
+
     internal void SelectFile(string? fileId)
     {
         if (fileId is not null && Project.FindFile(fileId) is null)
