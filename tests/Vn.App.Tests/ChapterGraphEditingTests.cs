@@ -98,6 +98,56 @@ public sealed class ChapterGraphEditingTests
         Assert.NotNull(afterRename.FindEpisode("main05.05"));
     });
 
+    [Fact]
+    public void 분기_추가가_한_동작으로_노드와_간선을_만든다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEpisode("main05.end");
+        view.FindControl<TextBox>("NewNextIdBox")!.Text = "ep_epilogue";
+        view.FindControl<TextBox>("NewNextLabelBox")!.Text = "에필로그를 본다";
+        view.CreateNextEpisodeFromPanel();
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+
+        // 노드가 부모 오른쪽에 생겼고 간선이 라벨과 함께 이어졌다 — 클릭 한 번의 결과다.
+        ChapterEpisode added = reread.FindEpisode("ep_epilogue")!;
+        Assert.Equal(900d, added.X);
+        Assert.Contains(reread.Edges, edge =>
+            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_epilogue" &&
+            edge.OptionLabel == "에필로그를 본다");
+
+        // 입력 칸은 비워져 다음 분기를 바로 이어 만들 수 있다.
+        Assert.Equal(string.Empty, view.FindControl<TextBox>("NewNextIdBox")!.Text);
+    });
+
+    [Fact]
+    public void 간선을_선택하면_패널이_차고_적용이_엑셀로_간다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEdgeKey("main05.02", "branch05.02A");
+
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
+        Assert.False(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
+        Assert.Equal("라루의 제안을 듣는다", view.FindControl<TextBox>("EdgeLabelEditBox")!.Text);
+        Assert.Equal("신뢰높음", view.FindControl<ComboBox>("EdgeConditionCombo")!.SelectedItem);
+
+        // 잠기면 숨김으로 바꾸고 안내문을 고쳐 적용 → 엑셀 셀로 간다.
+        view.FindControl<CheckBox>("EdgeHideCheck")!.IsChecked = true;
+        view.FindControl<TextBox>("EdgeLockedMsgBox")!.Text = "신뢰를 더 쌓아야 한다";
+        view.ApplyEdgeFromPanel();
+
+        ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
+
+        Assert.True(edge.HideWhenLocked);
+        Assert.Equal("신뢰를 더 쌓아야 한다", edge.LockedMessage);
+        Assert.Equal("신뢰높음", edge.ConditionLabel);  // 안 바꾼 필드는 그대로
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static (ChapterGraphView View, AuthoringSession Session) Show(TempProject project)

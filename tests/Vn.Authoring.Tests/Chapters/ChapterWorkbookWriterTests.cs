@@ -211,6 +211,76 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.True(condition.IsValid);
     }
 
+    // ── 다음 에피소드 (분기 저작) ───────────────────────────────────────────
+
+    [Fact]
+    public void 다음_에피소드는_부모_오른쪽에_순서대로_서고_간선이_이어진다()
+    {
+        string path = Copy();
+
+        // main05.end(680, 0)에서 분기 셋을 연달아 만든다.
+        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_a", "갈래 A").Written);
+        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_b", "갈래 B", "B를 고른다").Written);
+        Assert.True(ChapterWorkbookWriter.AddNextEpisode(path, "main05.end", "ep_c", "갈래 C").Written);
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
+
+        // 부모 오른쪽(+220), 형제 순서대로 아래로(+110).
+        Assert.Equal((900d, 0d), (reread.FindEpisode("ep_a")!.X, reread.FindEpisode("ep_a")!.Y));
+        Assert.Equal((900d, 110d), (reread.FindEpisode("ep_b")!.X, reread.FindEpisode("ep_b")!.Y));
+        Assert.Equal((900d, 220d), (reread.FindEpisode("ep_c")!.X, reread.FindEpisode("ep_c")!.Y));
+
+        // 간선이 함께 이어졌고 라벨이 실렸다.
+        Assert.Contains(reread.Edges, edge =>
+            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_b" &&
+            edge.OptionLabel == "B를 고른다");
+        Assert.Contains(reread.Edges, edge =>
+            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_a" && edge.IsPlainAdvance);
+    }
+
+    [Fact]
+    public void 다음_에피소드의_중복_Id는_행도_간선도_남기지_않는다()
+    {
+        // 원자성 — 행 추가와 간선 연결이 한 저장이다. 절반만 성공한 워크북은 없다.
+        string path = Copy();
+
+        ChapterWriteResult result = ChapterWorkbookWriter.AddNextEpisode(
+            path, "main05.end", "main05.02", "겹침");
+
+        Assert.False(result.Written);
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
+        Assert.DoesNotContain(reread.Edges, edge =>
+            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "main05.02");
+    }
+
+    [Fact]
+    public void 간선_속성_편집이_왕복한다()
+    {
+        string path = Copy();
+
+        Assert.True(ChapterWorkbookWriter.UpdateEdge(
+            path, "main05.02", "main05.03",
+            optionLabel: "몰래 문을 연다",
+            conditionLabel: "분노누적",
+            hideWhenLocked: true,
+            lockedMessage: "아직은 화가 부족하다").Written);
+
+        ChapterEdge edge = ChapterWorkbookReader.Read(path).Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "main05.03");
+
+        Assert.Equal("몰래 문을 연다", edge.OptionLabel);
+        Assert.Equal("분노누적", edge.ConditionLabel);
+        Assert.True(edge.HideWhenLocked);
+        Assert.Equal("아직은 화가 부족하다", edge.LockedMessage);
+
+        // 빈 문자열 = 지우기. 조건을 떼면 일반 통행이 된다.
+        Assert.True(ChapterWorkbookWriter.UpdateEdge(
+            path, "main05.02", "main05.03", conditionLabel: "").Written);
+        Assert.Null(ChapterWorkbookReader.Read(path).Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "main05.03").ConditionLabel);
+    }
+
     // ── 안전망·개명 ─────────────────────────────────────────────────────────
 
     [Fact]

@@ -105,10 +105,13 @@ public partial class ChapterGraphView : UserControl
         // 편집 (G-2 v2) — 전부 엑셀 셀에 써지고, 저장 감시가 다시 읽어 화면이 따라온다.
         ApplyButton.Click += (_, _) => UiGuard.Run(_session, "속성 저장", ApplySelectedProperties);
         RenameButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
-        AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 추가", AddEdgeFromPanel);
+        AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "기존 에피소드 연결", AddEdgeFromPanel);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
         SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
+        CreateNextButton.Click += (_, _) => UiGuard.Run(_session, "다음 에피소드 추가", CreateNextEpisodeFromPanel);
+        EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
+        EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
     }
 
     internal void Attach(AuthoringSession session)
@@ -529,10 +532,37 @@ public partial class ChapterGraphView : UserControl
             line.StrokeThickness = 3.2;
         }
 
+        bool isSelected = _selectedEdgeKey is { } key &&
+            key.From == edge.FromEpisodeId && key.To == edge.ToEpisodeId;
+
+        if (isSelected)
+        {
+            line.Stroke = new SolidColorBrush(Color.Parse("#3D7BD9"));
+            line.StrokeThickness = 3.4;
+        }
+
         // 간선의 정체를 시각 요소에 남긴다. 화면 없는 렌더 검증(Gate A)이 "무엇이 그려졌는지"를
         // 색·좌표로 역추론하지 않고 이름으로 확인할 수 있어야 한다.
         line.Tag = EdgeTag(edge);
         GraphCanvas.Children.Add(line);
+
+        // 1.6px 실선은 사람이 못 누른다 — 보이지 않는 굵은 히트 선을 위에 겹친다.
+        // Transparent는 히트 대상이다(null과 다르다). 카드가 나중에 그려져 그 위를 덮으므로
+        // 간선의 가운데 구간만 클릭된다 — 그게 맞다.
+        var hit = new Line
+        {
+            StartPoint = line.StartPoint,
+            EndPoint = line.EndPoint,
+            Stroke = Brushes.Transparent,
+            StrokeThickness = 14,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+        };
+
+        string fromId = edge.FromEpisodeId;
+        string toId = edge.ToEpisodeId;
+        hit.PointerPressed += (_, _) =>
+            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
+        GraphCanvas.Children.Add(hit);
 
         string label = string.Join(" · ", new[]
         {
@@ -566,6 +596,26 @@ public partial class ChapterGraphView : UserControl
         bool hasError = model.EpisodeHasError(episode) || IsUnreachable(episode);
 
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+
+        // 시작 에피소드(첫 행)가 곧 Root다 — 도달성의 씨앗이자 분기 저작의 출발점.
+        if (ReferenceEquals(model.StartEpisode, episode))
+        {
+            var root = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#3D7BD9")),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 0),
+                Child = new TextBlock
+                {
+                    Text = "ROOT",
+                    FontSize = 9,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = Brushes.White
+                }
+            };
+            ToolTip.SetTip(root, "시작 에피소드 — `에피소드` 시트의 첫 행입니다. 도달성 증명과 내보내기의 StartEpisodeId가 됩니다.");
+            header.Children.Add(root);
+        }
 
         if (episode.HasGate)
         {
@@ -770,22 +820,43 @@ public partial class ChapterGraphView : UserControl
             : result.Failure!);
     }
 
+    /// <summary>선택은 노드 아니면 간선 하나다 — 패널이 무엇을 편집하는지 애매하면 안 된다.</summary>
+    private (string From, string To)? _selectedEdgeKey;
+
     internal void SelectEpisode(string? episodeId)
     {
         _selectedEpisodeId = episodeId;
+        _selectedEdgeKey = null;
         Draw(); // Draw 끝에서 패널이 채워진다
     }
 
-    /// <summary>선택된 에피소드의 현재 값으로 패널을 채운다. 값의 원천은 언제나 방금 읽은 모델이다.</summary>
+    internal void SelectEdgeKey(string fromEpisodeId, string toEpisodeId)
+    {
+        _selectedEdgeKey = (fromEpisodeId, toEpisodeId);
+        _selectedEpisodeId = null;
+        Draw();
+    }
+
+    /// <summary>선택된 에피소드(또는 간선)의 현재 값으로 패널을 채운다. 원천은 언제나 방금 읽은 모델이다.</summary>
     private void RefreshPropertyPanel()
     {
         ChapterGraphModel? model = SelectedModel;
         ChapterEpisode? episode = model?.FindEpisode(_selectedEpisodeId ?? string.Empty);
+        ChapterEdge? edge = _selectedEdgeKey is { } key
+            ? model?.Edges.FirstOrDefault(candidate =>
+                candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To)
+            : null;
 
         PropertyPanel.IsVisible = episode is not null;
-        NoSelectionText.IsVisible = episode is null;
+        EdgePanel.IsVisible = edge is not null;
+        NoSelectionText.IsVisible = episode is null && edge is null;
 
         RefreshConditionList(model);
+
+        if (model is not null && edge is not null)
+        {
+            RefreshEdgePanel(model, edge);
+        }
 
         if (model is null || episode is null)
         {
@@ -831,24 +902,128 @@ public partial class ChapterGraphView : UserControl
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
 
             string label = edge.IsPlainAdvance ? "(일반 진행)" : edge.OptionLabel!;
-            row.Children.Add(new TextBlock
+            string condition = edge.ConditionLabel is null ? string.Empty : $"  [{edge.ConditionLabel}]";
+            var text = new TextBlock
             {
-                Text = $"→ {edge.ToEpisodeId}  {label}",
+                Text = $"→ {edge.ToEpisodeId}  {label}{condition}",
                 FontSize = 11,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            });
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+            };
+            ToolTip.SetTip(text, "클릭하면 이 간선의 조건·해금을 편집합니다.");
+
+            string from = edge.FromEpisodeId;
+            string to = edge.ToEpisodeId;
+            text.PointerPressed += (_, _) =>
+                UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(from, to));
+            row.Children.Add(text);
 
             var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
             Grid.SetColumn(remove, 1);
-            string to = edge.ToEpisodeId;
             remove.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", () =>
-                Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, episode.EpisodeId, to),
-                    $"간선 {episode.EpisodeId}→{to}을 지웠습니다."));
+                Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, from, to),
+                    $"간선 {from}→{to}을 지웠습니다."));
             row.Children.Add(remove);
 
             EdgeListPanel.Children.Add(row);
         }
+    }
+
+    /// <summary>간선 편집 패널 — "이 분기는 언제 보이고 언제 열리는가"를 채운다.</summary>
+    private void RefreshEdgePanel(ChapterGraphModel model, ChapterEdge edge)
+    {
+        EdgeFromToText.Text = $"{edge.FromEpisodeId} → {edge.ToEpisodeId}";
+        EdgeLabelEditBox.Text = edge.OptionLabel ?? string.Empty;
+        EdgeHideCheck.IsChecked = edge.HideWhenLocked;
+        EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
+
+        var labels = new List<string> { "(없음)" };
+        labels.AddRange(model.Conditions.Select(condition => condition.Label));
+        EdgeConditionCombo.ItemsSource = labels;
+        EdgeConditionCombo.SelectedItem = edge.ConditionLabel ?? "(없음)";
+    }
+
+    /// <summary>간선 패널의 [적용]. 바뀐 필드만 셀에 쓴다.</summary>
+    internal void ApplyEdgeFromPanel()
+    {
+        if (_selectedEdgeKey is not { } key || SelectedChapterPath is not { } path ||
+            SelectedModel?.Edges.FirstOrDefault(candidate =>
+                candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To) is not { } edge)
+        {
+            return;
+        }
+
+        string? Changed(string? boxValue, string? current)
+        {
+            string value = boxValue?.Trim() ?? string.Empty;
+            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
+        }
+
+        string? condition = EdgeConditionCombo.SelectedItem as string == "(없음)"
+            ? string.Empty
+            : EdgeConditionCombo.SelectedItem as string;
+
+        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
+            path, key.From, key.To,
+            optionLabel: Changed(EdgeLabelEditBox.Text, edge.OptionLabel ?? string.Empty),
+            conditionLabel: Changed(condition, edge.ConditionLabel ?? string.Empty),
+            hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
+            lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty));
+
+        Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
+    }
+
+    internal void DeleteSelectedEdge()
+    {
+        if (_selectedEdgeKey is not { } key || SelectedChapterPath is not { } path)
+        {
+            return;
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.RemoveEdge(path, key.From, key.To);
+
+        if (result.Written)
+        {
+            _selectedEdgeKey = null;
+        }
+
+        Report(result, $"간선 {key.From}→{key.To}을 지웠습니다.");
+    }
+
+    /// <summary>
+    /// [＋ 분기] — 분기 저작의 핵심 동작. Id 하나로 새 에피소드가 만들어져 부모 오른쪽에
+    /// 순서대로 서고 간선이 이어진다. 부모 선택은 유지된다 — 분기를 연달아 추가하는 흐름이라서다.
+    /// </summary>
+    internal void CreateNextEpisodeFromPanel()
+    {
+        if (_selectedEpisodeId is not { } parent || SelectedChapterPath is not { } path)
+        {
+            return;
+        }
+
+        string newId = NewNextIdBox.Text?.Trim() ?? string.Empty;
+
+        if (newId.Length == 0)
+        {
+            _session?.SetStatus("새 분기의 Id를 적어 주세요.");
+            return;
+        }
+
+        string? label = string.IsNullOrWhiteSpace(NewNextLabelBox.Text)
+            ? null
+            : NewNextLabelBox.Text.Trim();
+
+        ChapterWriteResult result = ChapterWorkbookWriter.AddNextEpisode(
+            path, parent, newId, title: newId, optionLabel: label);
+
+        if (result.Written)
+        {
+            NewNextIdBox.Text = string.Empty;
+            NewNextLabelBox.Text = string.Empty;
+        }
+
+        Report(result, $"'{newId}'를 만들어 {parent}의 다음으로 이었습니다.");
     }
 
     private void RefreshConditionList(ChapterGraphModel? model)

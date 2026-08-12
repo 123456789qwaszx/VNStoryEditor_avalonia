@@ -120,13 +120,24 @@
 
                         <Button x:Name="ApplyButton" Content="적용" HorizontalAlignment="Stretch" />
 
-                        <TextBlock Text="나가는 간선" FontWeight="SemiBold" FontSize="12" Margin="0,10,0,0" />
+                        <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12" Margin="0,10,0,0" />
+                        <!-- 목록의 줄을 클릭하면 그 간선이 선택되어 조건·해금을 편집한다. -->
                         <StackPanel x:Name="EdgeListPanel" Spacing="3" />
 
+                        <!-- 분기 저작의 핵심 — Id 하나로 새 에피소드가 만들어져 부모 오른쪽에 서고 간선이 이어진다. -->
+                        <Grid ColumnDefinitions="*,6,*,Auto">
+                            <TextBox Grid.Column="0" x:Name="NewNextIdBox" FontSize="11" PlaceholderText="새 분기 Id" />
+                            <TextBox Grid.Column="2" x:Name="NewNextLabelBox" FontSize="11" PlaceholderText="선택지 라벨(선택)" />
+                            <Button Grid.Column="3" x:Name="CreateNextButton" Content="＋ 분기" FontSize="11" Margin="4,0,0,0"
+                                    ToolTip.Tip="새 에피소드를 만들어 이 노드의 다음으로 잇습니다. 부모 오른쪽에 순서대로 배치됩니다." />
+                        </Grid>
+
+                        <!-- 이미 있는 에피소드로 잇기 (합류·순환). -->
                         <Grid ColumnDefinitions="*,6,*,Auto">
                             <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11" />
-                            <TextBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11" PlaceholderText="선택지 라벨(비면 일반 진행)" />
-                            <Button Grid.Column="3" x:Name="AddEdgeButton" Content="＋" FontSize="11" Margin="4,0,0,0" />
+                            <TextBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11" PlaceholderText="선택지 라벨(선택)" />
+                            <Button Grid.Column="3" x:Name="AddEdgeButton" Content="연결" FontSize="11" Margin="4,0,0,0"
+                                    ToolTip.Tip="이미 있는 에피소드를 다음으로 잇습니다." />
                         </Grid>
 
                         <Button x:Name="DeleteEpisodeButton"
@@ -134,6 +145,27 @@
                                 HorizontalAlignment="Stretch"
                                 Margin="0,10,0,0"
                                 ToolTip.Tip="행과 그 간선·픽스처 참조를 함께 지웁니다. 에피소드 엑셀 파일은 지우지 않습니다." />
+                    </StackPanel>
+
+                    <!-- 간선 편집 — 그래프에서 간선을 클릭하면 여기가 열린다. 선택지형 VN의
+                         "이 분기는 언제 보이고 언제 열리는가"를 여기서 정한다. -->
+                    <StackPanel x:Name="EdgePanel" Spacing="6" IsVisible="False">
+                        <TextBlock Text="간선" FontWeight="SemiBold" FontSize="12" />
+                        <TextBlock x:Name="EdgeFromToText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+
+                        <TextBox x:Name="EdgeLabelEditBox" FontSize="11"
+                                 PlaceholderText="선택지 라벨 (비면 분기 없는 일반 진행)" />
+
+                        <TextBlock Text="조건 — 이 분기를 고를 수 있으려면" FontSize="10" Opacity="0.6" />
+                        <ComboBox x:Name="EdgeConditionCombo" FontSize="11" HorizontalAlignment="Stretch" />
+
+                        <CheckBox x:Name="EdgeHideCheck" Content="잠기면 숨김" FontSize="11"
+                                  ToolTip.Tip="켜면 조건 미달일 때 선택지 자체가 안 보입니다. 끄면 잠긴 채 보이고 아래 안내문이 뜹니다." />
+                        <TextBox x:Name="EdgeLockedMsgBox" FontSize="11"
+                                 PlaceholderText="잠금 안내문 — 잠긴 채 보일 때 (예: 신뢰가 부족하다)" />
+
+                        <Button x:Name="EdgeApplyButton" Content="적용" HorizontalAlignment="Stretch" />
+                        <Button x:Name="EdgeDeleteButton" Content="간선 삭제" HorizontalAlignment="Stretch" />
                     </StackPanel>
 
                     <!-- 조건 시트 편집 — 라벨이 이미 있으면 수정, 없으면 추가. 식의 내용은 검증기가 잡는다. -->

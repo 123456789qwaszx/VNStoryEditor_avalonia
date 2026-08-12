@@ -32,7 +32,8 @@ public sealed class ChapterGraphViewRenderTests
         (Canvas canvas, _) = Render(project);
 
         Assert.Equal(6, NodeCards(canvas).Count);
-        Assert.Equal(5, canvas.Children.OfType<Line>().Count());
+        // 표식 있는 선만 센다 — 간선마다 보이지 않는 히트 선이 하나씩 겹쳐 있다(클릭용).
+        Assert.Equal(5, canvas.Children.OfType<Line>().Count(line => line.Tag is string));
     });
 
     [Fact]
@@ -67,6 +68,7 @@ public sealed class ChapterGraphViewRenderTests
         (Canvas canvas, _) = Render(project);
 
         string[] drawn = canvas.Children.OfType<Line>()
+            .Where(line => line.Tag is string)   // 히트 선(무표식)은 제외
             .Select(line => (string)line.Tag!)
             .OrderBy(tag => tag, StringComparer.Ordinal)
             .ToArray();
