@@ -18,23 +18,23 @@ public sealed class ChapterGraphEditingTests
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
     [Fact]
-    public void 선택하면_패널이_현재_값으로_차고_적용이_엑셀로_간다() => HeadlessUi.Run(() =>
+    public void 선택하면_엑셀_소유_값이_읽기_전용으로_선다() => HeadlessUi.Run(() =>
     {
+        // v3 최종 — 툴은 흐름(간선)과 신원(개명)만 쓴다. 값은 엑셀 소유이고 여기서는 읽기만.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        view.SelectEpisode("main05.02");
+        view.SelectEpisode("branch05.02A");
 
         Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("조용한 복도", view.FindControl<TextBox>("TitleBox")!.Text);
+        Assert.Equal("branch05.02A", view.FindControl<TextBox>("IdBox")!.Text);
 
-        // 제목을 고치고 적용 → 엑셀 셀이 바뀐다. 패널에서 뺀 필드(대사엔트리 등, v3)는 그대로다.
-        view.FindControl<TextBox>("TitleBox")!.Text = "고친 복도";
-        view.ApplySelectedProperties();
+        // 엑셀이 가진 값들이 한눈에 보이고, 고치는 자리가 엑셀임을 말해 준다.
+        string facts = view.FindControl<TextBlock>("EpisodeFactsText")!.Text!;
 
-        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
-        Assert.Equal("고친 복도", reread.FindEpisode("main05.02")!.Title);
-        Assert.Equal("Story_ch05_02", reread.FindEpisode("main05.02")!.DialogueEntry);
+        Assert.Contains("신뢰높음", facts);          // 이 노드의 표시조건
+        Assert.Contains("대사엔트리", facts);
+        Assert.Contains("엑셀에서 고칩니다", facts);
     });
 
     [Fact]

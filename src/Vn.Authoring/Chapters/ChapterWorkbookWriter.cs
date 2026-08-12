@@ -378,11 +378,19 @@ public static class ChapterWorkbookWriter
 
         using var workbook = new XLWorkbook();
 
-        AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
+        IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
             ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"]);
-        AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
+        IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
             ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문"]);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "조건식", "설명"]);
+
+        // 조건 라벨을 적는 세 열은 `조건` 시트의 라벨 열을 가리키는 드롭다운이 된다.
+        // 범위 참조라 조건을 더하면 목록이 저절로 따라온다 — 라벨은 손으로 적는 순간
+        // 오타가 유령 참조가 되므로, 엑셀 단에서 막는 편이 검증기가 뒤늦게 잡는 것보다 낫다.
+        AddConditionDropdown(episodeSheet, 8);   // 표시조건
+        AddConditionDropdown(episodeSheet, 9);   // 해금조건
+        AddConditionDropdown(edgeSheet, 4);      // 간선의 조건
+        AddYesNoDropdown(edgeSheet, 5);          // 잠금시 숨김
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
             ["스탯키", "표시명", "초기값", "최소", "최대"]);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Fixtures,
@@ -439,6 +447,21 @@ public static class ChapterWorkbookWriter
                 $"챕터 이름을 바꾸지 못했습니다(파일이 잠겨 있을 수 있습니다): {exception.Message}");
         }
     }
+
+    /// <summary>템플릿이 드롭다운을 까는 행 수. 이 아래로 더 쓰면 사람이 직접 적는다.</summary>
+    private const int DropdownRows = 200;
+
+    /// <summary>
+    /// 그 열을 `조건` 시트 라벨 열(A2:A200)을 가리키는 목록으로 만든다. 정적 목록이 아니라
+    /// <b>범위 참조</b>다 — 조건이 늘면 목록도 는다. 빈 칸(조건 없음)은 허용한다.
+    /// </summary>
+    private static void AddConditionDropdown(IXLWorksheet sheet, int column) =>
+        sheet.Range(2, column, DropdownRows, column).CreateDataValidation()
+            .List($"='{ChapterSheetNames.Conditions}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+
+    private static void AddYesNoDropdown(IXLWorksheet sheet, int column) =>
+        sheet.Range(2, column, DropdownRows, column).CreateDataValidation()
+            .List("\"TRUE,FALSE\"", inCellDropdown: true);
 
     private static IXLWorksheet AddSheetWithHeaders(XLWorkbook workbook, string name, string[] headers)
     {

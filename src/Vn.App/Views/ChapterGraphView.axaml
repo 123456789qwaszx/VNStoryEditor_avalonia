@@ -129,15 +129,14 @@
                                     ToolTip.Tip="간선·픽스처 참조가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
                         </Grid>
 
-                        <TextBox x:Name="TitleBox" FontSize="11" PlaceholderText="제목" />
-
-                        <TextBlock Text="표시조건 / 해금조건" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
-                        <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch" />
-                        <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch" />
-
-                        <TextBox x:Name="EndingKeyBox" FontSize="11" PlaceholderText="엔딩키 (비면 엔딩 아님)" />
-
-                        <Button x:Name="ApplyButton" Content="적용" HorizontalAlignment="Stretch" />
+                        <!-- 이 노드의 값(제목·엔딩키·표시/해금조건·인덱스·종류·메모)은 전부
+                             엑셀 소유다. 툴은 그래프의 형태 — 흐름과 신원 — 만 쓴다.
+                             값은 카드와 그 툴팁에서 읽는다. -->
+                        <TextBlock x:Name="EpisodeFactsText"
+                                   FontSize="10"
+                                   Opacity="0.6"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0" />
 
                         <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12" Margin="0,10,0,0" />
                         <!-- 목록의 줄을 클릭하면 그 간선이 선택되어 조건·해금을 편집한다.

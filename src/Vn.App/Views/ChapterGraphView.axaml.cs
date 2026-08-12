@@ -117,7 +117,6 @@ public partial class ChapterGraphView : UserControl
         };
 
         // 편집 (G-2 v2) — 전부 엑셀 셀에 써지고, 저장 감시가 다시 읽어 화면이 따라온다.
-        ApplyButton.Click += (_, _) => UiGuard.Run(_session, "속성 저장", ApplySelectedProperties);
         RenameButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "기존 에피소드 연결", AddEdgeFromPanel);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
@@ -688,9 +687,11 @@ public partial class ChapterGraphView : UserControl
             header.Children.Add(new TextBlock { Text = "⚠", FontSize = 11, Foreground = Brushes.IndianRed });
         }
 
+        bool hasTitle = !string.IsNullOrWhiteSpace(episode.Title);
+
         header.Children.Add(new TextBlock
         {
-            Text = string.IsNullOrWhiteSpace(episode.Title) ? episode.EpisodeId : episode.Title,
+            Text = hasTitle ? episode.Title : episode.EpisodeId,
             FontWeight = FontWeight.SemiBold,
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis
@@ -698,13 +699,18 @@ public partial class ChapterGraphView : UserControl
 
         var body = new StackPanel { Spacing = 1 };
         body.Children.Add(header);
-        body.Children.Add(new TextBlock
+
+        // 제목이 없으면 굵은 줄이 이미 Id다 — 같은 글자를 두 번 쓰지 않는다.
+        if (hasTitle)
         {
-            Text = episode.EpisodeId,
-            FontSize = 10,
-            Opacity = 0.6,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        });
+            body.Children.Add(new TextBlock
+            {
+                Text = episode.EpisodeId,
+                FontSize = 10,
+                Opacity = 0.6,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+        }
 
         var card = new Border
         {
@@ -927,19 +933,11 @@ public partial class ChapterGraphView : UserControl
         if (fill)
         {
             IdBox.Text = episode.EpisodeId;
-            TitleBox.Text = episode.Title;
-            EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
         }
 
-        // 목록(ItemsSource)은 언제나 새로 고친다 — 조건·에피소드가 늘었을 수 있다.
-        // 다만 고른 값은 채울 때가 아니면 사람이 고른 것을 지킨다.
-        var labels = new List<string> { "(없음)" };
-        labels.AddRange(model.Conditions.Select(condition => condition.Label));
-
-        SetItems(VisibleCombo, labels,
-            fill ? episode.VisibleConditionLabel ?? "(없음)" : VisibleCombo.SelectedItem as string);
-        SetItems(UnlockCombo, new List<string>(labels),
-            fill ? episode.UnlockConditionLabel ?? "(없음)" : UnlockCombo.SelectedItem as string);
+        // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
+        // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
+        EpisodeFactsText.Text = EpisodeFacts(episode);
 
         SetItems(EdgeTargetCombo,
             model.Episodes
@@ -949,6 +947,41 @@ public partial class ChapterGraphView : UserControl
             EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
 
         RefreshEdgeList(model, episode);
+    }
+
+    /// <summary>
+    /// 엑셀이 소유한 값들을 한 덩어리로. 비어 있는 것은 줄에 세우지 않는다 —
+    /// "(없음)"만 늘어놓으면 읽을거리가 아니라 소음이 된다.
+    /// </summary>
+    private static string EpisodeFacts(ChapterEpisode episode)
+    {
+        var facts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(episode.Title))
+        {
+            facts.Add($"제목: {episode.Title}");
+        }
+
+        facts.Add($"대사엔트리: {episode.DialogueEntry}");
+
+        if (!string.IsNullOrWhiteSpace(episode.VisibleConditionLabel))
+        {
+            facts.Add($"표시조건: {episode.VisibleConditionLabel}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(episode.UnlockConditionLabel))
+        {
+            facts.Add($"해금조건: {episode.UnlockConditionLabel}");
+        }
+
+        if (episode.IsEnding)
+        {
+            facts.Add($"엔딩키: {episode.EndingKey}");
+        }
+
+        facts.Add($"엑셀 {episode.SourceRow}행 — 이 값들은 엑셀에서 고칩니다");
+
+        return string.Join("\n", facts);
     }
 
     /// <summary>목록을 갈되 고른 값은 지킨다(그 값이 새 목록에 남아 있다면).</summary>
@@ -1141,44 +1174,6 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>속성 패널의 [적용]. 모델의 현재 값과 다른 필드만 셀에 쓴다.</summary>
-    internal void ApplySelectedProperties()
-    {
-        ChapterGraphModel? model = SelectedModel;
-        ChapterEpisode? episode = model?.FindEpisode(_selectedEpisodeId ?? string.Empty);
-
-        if (model is null || episode is null || SelectedChapterPath is not { } path)
-        {
-            _session?.SetStatus("에피소드를 다시 골라 주세요. 선택이 풀렸거나 그 에피소드가 사라졌습니다.");
-            return;
-        }
-
-        string? Changed(string? boxValue, string? current)
-        {
-            string value = boxValue?.Trim() ?? string.Empty;
-            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
-        }
-
-        string? visible = VisibleCombo.SelectedItem as string == "(없음)"
-            ? string.Empty
-            : VisibleCombo.SelectedItem as string;
-        string? unlock = UnlockCombo.SelectedItem as string == "(없음)"
-            ? string.Empty
-            : UnlockCombo.SelectedItem as string;
-
-        // 인덱스·종류·대사엔트리·메모·도달불가 허용은 패널에서 뺐다(v3 — 흐름 저작에 필요한
-        // 최소만). 그 열들은 엑셀에서 여전히 고칠 수 있고, 대사엔트리는 생성 시 EpisodeId로
-        // 자동이다.
-        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
-            path,
-            episode.EpisodeId,
-            title: Changed(TitleBox.Text, episode.Title),
-            visibleConditionLabel: Changed(visible, episode.VisibleConditionLabel ?? string.Empty),
-            unlockConditionLabel: Changed(unlock, episode.UnlockConditionLabel ?? string.Empty),
-            endingKey: Changed(EndingKeyBox.Text, episode.EndingKey ?? string.Empty));
-
-        Report(result, $"'{episode.EpisodeId}' 속성을 엑셀에 저장했습니다.");
-    }
-
     internal void RenameSelectedEpisode()
     {
         string oldId = _selectedEpisodeId ?? string.Empty;
@@ -1263,12 +1258,12 @@ public partial class ChapterGraphView : UserControl
         if (parent is not null)
         {
             (double x, double y) = ChapterBranchPlanner.SuggestPlacement(model, parent);
-            result = ChapterWorkbookWriter.AddNextEpisode(path, parent, episodeId, "새 에피소드", x, y);
+            result = ChapterWorkbookWriter.AddNextEpisode(path, parent, episodeId, title: string.Empty, x, y);
         }
         else
         {
             double x = model.Episodes.Count == 0 ? 0 : model.Episodes.Max(episode => episode.X) + 220;
-            result = ChapterWorkbookWriter.AddEpisode(path, episodeId, "새 에피소드", x, 0);
+            result = ChapterWorkbookWriter.AddEpisode(path, episodeId, title: string.Empty, x, 0);
         }
 
         if (result.Written)

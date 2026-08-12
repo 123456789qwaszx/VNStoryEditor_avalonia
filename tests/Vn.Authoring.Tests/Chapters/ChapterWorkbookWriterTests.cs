@@ -331,4 +331,32 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.Empty(model.Episodes);
         Assert.Empty(model.Errors);  // 5시트가 다 있어 시트 누락 오류가 없다
     }
+
+    [Fact]
+    public void 조건_라벨_열에_조건_시트를_가리키는_드롭다운이_깔린다()
+    {
+        // 조건 라벨은 엑셀에서 적는다(v3) — 손으로 적으면 오타가 유령 참조가 되므로,
+        // 목록을 엑셀 단에서 강제한다. 정적 목록이 아니라 범위 참조라 조건이 늘면 따라온다.
+        string folder = Path.Combine(_directory, "chapters");
+        ChapterWorkbookWriter.EnsureChapterWorkbook(folder, "ch07", [("trust", "신뢰")]);
+
+        using var workbook = new XLWorkbook(Path.Combine(folder, "ch07.xlsx"));
+
+        IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
+        IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
+
+        // 표시조건(H) · 해금조건(I) · 간선의 조건(D)
+        AssertConditionList(episodes, 2, 8);
+        AssertConditionList(episodes, 2, 9);
+        AssertConditionList(edges, 2, 4);
+    }
+
+    private static void AssertConditionList(IXLWorksheet sheet, int row, int column)
+    {
+        IXLDataValidation? validation = sheet.Cell(row, column).GetDataValidation();
+
+        Assert.NotNull(validation);
+        Assert.Equal(XLAllowedValues.List, validation.AllowedValues);
+        Assert.Contains(ChapterSheetNames.Conditions, validation.Value);
+    }
 }

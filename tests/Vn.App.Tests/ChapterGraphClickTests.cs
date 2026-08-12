@@ -40,7 +40,7 @@ public sealed class ChapterGraphClickTests
 
         // 선택은 됐고 —
         Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("조용한 복도", view.FindControl<TextBox>("TitleBox")!.Text);
+        Assert.Equal("main05.02", view.FindControl<TextBox>("IdBox")!.Text);
 
         // — 카드는 같은 인스턴스 그대로다. 누른 손 밑에서 캔버스를 다시 만들면
         // 드래그·더블클릭이 죽는다(원래 결함의 뿌리).
