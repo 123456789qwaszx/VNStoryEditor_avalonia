@@ -628,6 +628,16 @@ internal sealed class AuthoringSession
     }
 
     /// <summary>
+    /// 엑셀 동기화가 대본을 바꿨다 — 열려 있는 편집 화면(줄 목록·그래프)을 다시 만든다.
+    ///
+    /// 툴 안 타이핑은 편집 컨트롤을 보존해야 하지만(포커스가 날아간다), 바깥에서 온 변경은
+    /// 반대다: 보존하면 화면이 파일과 다른 거짓말을 한다 — "시트에서 고쳤는데 툴에
+    /// 반영이 안 된다"(실사례). 그래서 구조 변경으로 격상해 알린다.
+    /// </summary>
+    public void NotifyExternalScriptChange() =>
+        Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Structure));
+
+    /// <summary>
     /// 화자 목록을 <c>game.definition.json</c>에 쓴다 (X5, D-4 — 원천은 파일 하나다).
     /// 설정노드 UI는 이걸 부를 뿐 자체 사본을 갖지 않는다. 쓰고 나면 정의를 다시 읽어
     /// 대사노드 드롭다운·프리뷰 초상화 해석이 같은 원천의 새 값을 본다.

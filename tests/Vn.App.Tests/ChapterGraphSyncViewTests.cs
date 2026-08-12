@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Path = System.IO.Path;
 using Vn.App.Services;
+using Vn.Authoring.Editing;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Model;
@@ -80,6 +81,26 @@ public sealed class ChapterGraphSyncViewTests
 
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "Story_ch05_02");
+    });
+
+    [Fact]
+    public void 동기화가_반영되면_구조_변경으로_알려_열린_편집_화면이_다시_선다() => HeadlessUi.Run(() =>
+    {
+        // 실사례 — 시트에서 대사를 고치면 모델은 바뀌는데 열려 있는 줄 목록은 옛 줄을
+        // 들고 있었다. 대사 수정이 "타이핑 보호"(편집 컨트롤 보존) 경로로 전달됐기 때문이다.
+        // 바깥(엑셀)에서 온 변경은 구조 변경으로 격상해 화면을 다시 만들게 한다.
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+        File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
+
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        var kinds = new List<ProjectChangeKind>();
+        session.Changed += (_, args) => kinds.Add(args.Kind);
+
+        view.SyncEpisodes();
+
+        Assert.Contains(ProjectChangeKind.Structure, kinds);
     });
 
     [Fact]

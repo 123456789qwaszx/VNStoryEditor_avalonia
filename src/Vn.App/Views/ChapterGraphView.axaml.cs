@@ -273,6 +273,13 @@ public partial class ChapterGraphView : UserControl
         int rejected = _syncReports.Sum(report => report.RejectionCount);
         int applied = _syncReports.Count(report => report.Applied);
 
+        // 반영이 있었다면 열려 있는 편집 화면(줄 목록·그래프)을 다시 만들게 알린다 —
+        // 대사 수정은 "타이핑 보호" 경로로 전달되어 화면이 옛 줄을 그대로 들고 있었다(실사례).
+        if (applied > 0)
+        {
+            _session.NotifyExternalScriptChange();
+        }
+
         // 반영할 것이 하나도 없었다면 조용히 있는다 — "0개를 반영했습니다"는 소음이다.
         if (_syncReports.Count > 0)
         {
