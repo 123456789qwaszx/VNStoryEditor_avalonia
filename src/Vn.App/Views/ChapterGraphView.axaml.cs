@@ -82,6 +82,10 @@ public partial class ChapterGraphView : UserControl
         _updatingCombo = false;
         Validate();
         Draw();
+
+        // 이 챕터의 대본이 자기 판의 노드로 서 있도록 따라잡는다 — 챕터를 처음 고르는
+        // 순간이 곧 그 판을 처음 보는 순간이다.
+        SyncEpisodes();
     }
 
     public ChapterGraphView()
@@ -156,12 +160,24 @@ public partial class ChapterGraphView : UserControl
             StartWatching(folder);
         }
 
-        if (!string.Equals(_episodeWatcher?.Folder, episodes, StringComparison.OrdinalIgnoreCase))
+        bool episodesFolderChanged =
+            !string.Equals(_episodeWatcher?.Folder, episodes, StringComparison.OrdinalIgnoreCase);
+
+        if (episodesFolderChanged)
         {
             StartWatchingEpisodes(episodes);
         }
 
         Reload();
+
+        // 켤 때 한 번은 밀린 저장을 따라잡는다 — 감시는 "저장 순간"만 잡으므로, 툴이 꺼진
+        // 사이(시트·엑셀에서) 적힌 대사는 이게 없으면 영원히 안 불려온다. 폴더가 바뀐
+        // 첫 판에만 돈다: 상태줄 갱신이 세션 Changed를 울려 여기로 되돌아와도(같은 폴더)
+        // 다시 돌지 않아 맴돌이가 없다.
+        if (episodesFolderChanged && _episodeWatcher is not null)
+        {
+            SyncEpisodes();
+        }
     }
 
     /// <summary>
@@ -251,9 +267,13 @@ public partial class ChapterGraphView : UserControl
         int rejected = _syncReports.Sum(report => report.RejectionCount);
         int applied = _syncReports.Count(report => report.Applied);
 
-        _session.SetStatus(rejected == 0
-            ? $"에피소드 {applied}개를 반영했습니다."
-            : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+        // 반영할 것이 하나도 없었다면 조용히 있는다 — "0개를 반영했습니다"는 소음이다.
+        if (_syncReports.Count > 0)
+        {
+            _session.SetStatus(rejected == 0
+                ? $"에피소드 {applied}개를 반영했습니다."
+                : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+        }
     }
 
     /// <summary>

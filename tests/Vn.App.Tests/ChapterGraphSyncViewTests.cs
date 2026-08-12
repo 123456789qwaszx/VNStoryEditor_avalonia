@@ -67,6 +67,22 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
+    public void 툴이_꺼진_사이_적힌_대사도_열면_바로_노드로_선다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 보고 — 시트에서 대사를 쓰고 프로젝트를 다시 열었더니 시나리오 그래프에
+        // 노드가 없었다. 감시는 "저장 순간"만 잡으므로, 켤 때 한 번 따라잡아야 한다.
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+        File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
+
+        // Show가 곧 "툴을 켠다"다 — SyncEpisodes를 직접 부르지 않는다.
+        (_, AuthoringSession session) = Show(project);
+
+        Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.Name == "Story_ch05_02");
+    });
+
+    [Fact]
     public void 깨진_에피소드는_거부가_배지와_패널에_보인다() => HeadlessUi.Run(() =>
     {
         using var project = new TempProject(SamplePath);
