@@ -6,7 +6,7 @@
                 Padding="10,8"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="챕터"
                            FontSize="11"
@@ -16,8 +16,14 @@
                 <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" />
                 <Button Grid.Column="2" x:Name="ReloadButton" Content="다시 읽기" Margin="6,0,0,0" />
                 <Button Grid.Column="3" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
+                <!-- G8 — 검증을 통과해야만 나간다. 오류가 있으면 거부하고 사유를 보고 패널에 세운다. -->
+                <Button Grid.Column="4"
+                        x:Name="ExportButton"
+                        Content="내보내기"
+                        Margin="6,0,0,0"
+                        ToolTip.Tip="런타임 수입용 JSON을 exported/ 폴더에 씁니다. 검증 오류가 있으면 거부됩니다." />
 
-                <StackPanel Grid.Column="4"
+                <StackPanel Grid.Column="5"
                             Orientation="Horizontal"
                             Margin="12,0,0,0"
                             Spacing="6">
@@ -35,7 +41,7 @@
                 </StackPanel>
 
                 <!-- 읽기전용임을 화면이 스스로 말한다 (G-2). 드래그로 엑셀이 바뀌지 않는다. -->
-                <Border Grid.Column="6"
+                <Border Grid.Column="7"
                         Padding="7,3"
                         CornerRadius="3"
                         Background="#22808080">

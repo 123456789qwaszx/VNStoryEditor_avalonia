@@ -99,19 +99,36 @@ public sealed class ChapterGraphViewRenderTests
     });
 
     [Fact]
-    public void 오류가_없으면_검증_보고가_접힌_채로_건수를_말한다() => HeadlessUi.Run(() =>
+    public void 도달_불가가_원인_조건과_함께_검증_보고에_선다() => HeadlessUi.Run(() =>
     {
+        // 규칙 개정 — 도달성 증명(G7)이 뷰에 붙으면서, 견본 챕터의 실제 도달 불가가
+        // 화면에 뜬다. 에피소드 워크북이 없으면 스탯이 오르지 않으므로 신뢰높음(trust >= 3)이
+        // 영원히 닫히고 branch05.02A에 닿을 수 없다 — 저작 시점에 잡히는 것이 이 레이어의 목적이다.
         using var project = new TempProject(SamplePath);
-        (_, ChapterGraphView view) = Render(project);
+        (Canvas canvas, ChapterGraphView view) = Render(project);
 
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
 
-        // 오류가 없으면 저절로 펼치지 않는다 — 경고·알림 때문에 매번 펼쳐지면 배너가 된다.
-        Assert.False(expander.IsExpanded);
+        // 오류가 있으면 저절로 펼쳐진다.
+        Assert.True(expander.IsExpanded);
+        Assert.Contains("오류 1", (string)expander.Header!);
 
-        // 견본의 경고 3건은 스탯 3개가 game.definition.json(기본값은 variables가 비어 있다)에
-        // 없다는 것뿐이다. `스탯` 시트가 "읽기전용 미러"라는 규격 그대로의 보고다.
-        Assert.Equal("검증 보고 — 오류 0 · 경고 3", (string)expander.Header!);
+        // 경고 3건은 스탯 3개가 game.definition.json(기본값은 variables가 비어 있다)에 없다는
+        // 것뿐이다. `스탯` 시트가 "읽기전용 미러"라는 규격 그대로의 보고다.
+        Assert.Contains("경고 3", (string)expander.Header!);
+
+        // 원인 조건까지 짚는다.
+        var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
+        Assert.Contains(panel.Children.OfType<TextBlock>(), block =>
+            block.Text?.Contains("branch05.02A") == true &&
+            block.Text.Contains("trust >= 3"));
+
+        // 도달 불가 노드는 그래프에서도 ⚠로 선다.
+        Border card = canvas.Children.OfType<Border>()
+            .Single(border => (border.Tag as string) == "branch05.02A");
+
+        Assert.Contains(((StackPanel)card.Child!).Children.OfType<StackPanel>().Single()
+            .Children.OfType<TextBlock>(), mark => mark.Text == "⚠");
     });
 
     [Fact]

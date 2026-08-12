@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
+using IoPath = System.IO.Path;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -31,6 +32,9 @@ public partial class ChapterGraphView : UserControl
     private readonly List<ChapterEntry> _entries = new();
     private readonly List<EpisodeSyncReport> _syncReports = new();
 
+    /// <summary>선택된 챕터의 구조 검증 + 도달성 증명 결과 (G7). 워크북을 읽을 때 갱신된다.</summary>
+    private ChapterValidationResult? _validation;
+
     private AuthoringSession? _session;
     private ChapterFolderWatcher? _watcher;
     private ChapterFolderWatcher? _episodeWatcher;
@@ -50,6 +54,7 @@ public partial class ChapterGraphView : UserControl
 
         ReloadButton.Click += (_, _) => UiGuard.Run(_session, "챕터 다시 읽기", Reload);
         OpenFolderButton.Click += (_, _) => UiGuard.Run(_session, "챕터 폴더 열기", OpenFolder);
+        ExportButton.Click += (_, _) => UiGuard.Run(_session, "챕터 내보내기", () => Export());
 
         ChapterCombo.SelectionChanged += (_, _) =>
         {
@@ -192,6 +197,8 @@ public partial class ChapterGraphView : UserControl
                 entry.Model));
         }
 
+        // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
+        Validate();
         Draw();
 
         int rejected = _syncReports.Sum(report => report.RejectionCount);
@@ -242,7 +249,27 @@ public partial class ChapterGraphView : UserControl
         ChapterCombo.SelectedItem = _selectedChapterId;
         _updatingCombo = false;
 
+        Validate();
         Draw();
+    }
+
+    /// <summary>
+    /// 구조 검증 + 도달성 증명 (G7). 워크북을 읽을 때마다 한 번 돌려 두고 화면은 그 결과를
+    /// 그리기만 한다 — 픽스처를 바꿀 때마다 상태공간을 다시 훑을 이유가 없다.
+    /// </summary>
+    private void Validate()
+    {
+        _validation = null;
+
+        ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+
+        if (entry?.Model is null)
+        {
+            return;
+        }
+
+        _validation = ChapterValidator.Validate(
+            entry.Model, EpisodeLibrary.FolderFor(_session?.ProjectPath));
     }
 
     private void OpenFolder()
@@ -263,6 +290,54 @@ public partial class ChapterGraphView : UserControl
         }
 
         Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+    }
+
+    /// <summary>런타임 수입물이 나가는 자리. 에셋과 같은 규약 폴더 방식이다 — 매니페스트 없음.</summary>
+    public const string ExportFolderName = "exported";
+
+    /// <summary>
+    /// G8 — 런타임 수입용 JSON을 쓴다. <b>검증을 통과해야만 나간다</b>(Gate C 3번) —
+    /// 오류가 있으면 파일을 만들지 않고 사유를 보고 패널에 세운다. 쓰레기가 런타임으로
+    /// 넘어가는 것보다 내보내기가 실패하는 편이 낫다.
+    /// </summary>
+    internal string? Export()
+    {
+        ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+
+        if (entry?.Model is null || _session?.ProjectPath is null)
+        {
+            _session?.SetStatus("내보낼 챕터가 없습니다.");
+            return null;
+        }
+
+        ChapterExportResult result = ChapterProgressionExporter.Export(
+            entry.Model, EpisodeLibrary.FolderFor(_session.ProjectPath));
+
+        // 거부 사유도 화면에 세운다 — 상태줄 한 줄로는 무엇이 왜인지 알 수 없다.
+        _validation = result.Validation;
+        Draw();
+
+        if (result.Refused)
+        {
+            int errors = result.Validation.All
+                .Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
+
+            DiagnosticsExpander.IsExpanded = true;
+            _session.SetStatus(
+                $"내보내기를 거부했습니다 — 검증 오류 {errors}건. 아래 검증 보고를 확인하세요.");
+
+            return null;
+        }
+
+        string folder = IoPath.Combine(
+            IoPath.GetDirectoryName(IoPath.GetFullPath(_session.ProjectPath))!, ExportFolderName);
+
+        Directory.CreateDirectory(folder);
+        string path = IoPath.Combine(folder, entry.ChapterId + ".progression.json");
+        File.WriteAllText(path, result.Json!, new System.Text.UTF8Encoding(false));
+
+        _session.SetStatus($"내보냈습니다: {path}");
+        return path;
     }
 
     // ── 그리기 ──────────────────────────────────────────────────────────────
@@ -460,7 +535,8 @@ public partial class ChapterGraphView : UserControl
     private void DrawEpisode(
         ChapterGraphModel model, ChapterGraphLayout layout, ChapterEpisode episode, bool onPath)
     {
-        bool hasError = model.EpisodeHasError(episode);
+        // 워크북의 오류든 도달 불가든 노드에는 같은 ⚠로 선다 — 기획자에게는 둘 다 "고칠 것"이다.
+        bool hasError = model.EpisodeHasError(episode) || IsUnreachable(episode);
 
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
 
@@ -557,6 +633,15 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Children.Add(card);
     }
 
+    /// <summary>
+    /// 도달성 증명이 "닿을 수 없다"고 한 에피소드인가 (G7). `도달불가 허용`이 켜진 노드는
+    /// 의도된 것이므로 오류 표식을 달지 않는다 — 대신 그 사실이 진단 목록에 알림으로 선다(D3).
+    /// </summary>
+    private bool IsUnreachable(ChapterEpisode episode) =>
+        _validation is { } validation &&
+        !validation.Reachability.ReachableEpisodeIds.Contains(episode.EpisodeId) &&
+        !episode.AllowUnreachable;
+
     /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>
     internal static string EdgeTag(ChapterEdge edge) =>
         $"{edge.FromEpisodeId}→{edge.ToEpisodeId}";
@@ -602,12 +687,19 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private void DrawDiagnostics(ChapterGraphModel model)
     {
-        int errors = model.Diagnostics.Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
-        int warnings = model.Diagnostics.Count(item => item.Severity == ChapterDiagnosticSeverity.Warning);
+        // 워크북 읽기 진단 + 검증기(구조·교차·도달성) 진단을 한 목록으로 본다.
+        // 같은 진단이 두 곳에서 나올 수 있으므로(리더가 낸 것을 검증기가 다시 담는다) 겹은 지운다.
+        List<ChapterDiagnostic> all = model.Diagnostics
+            .Concat(_validation?.All ?? Enumerable.Empty<ChapterDiagnostic>())
+            .Distinct()
+            .ToList();
+
+        int errors = all.Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
+        int warnings = all.Count(item => item.Severity == ChapterDiagnosticSeverity.Warning);
         int rejected = _syncReports.Sum(report => report.RejectionCount);
 
         string header = errors + warnings == 0
-            ? $"검증 보고 — 오류 없음 (알림 {model.Diagnostics.Count}건)"
+            ? $"검증 보고 — 오류 없음 (알림 {all.Count}건)"
             : $"검증 보고 — 오류 {errors} · 경고 {warnings}";
 
         if (_syncReports.Count > 0)
@@ -620,7 +712,15 @@ public partial class ChapterGraphView : UserControl
         DiagnosticsExpander.Header = header;
         DiagnosticsExpander.IsExpanded = errors > 0 || rejected > 0;
 
-        if (model.Diagnostics.Count == 0 && _syncReports.Count == 0)
+        // 탐색이 상한에서 멈췄으면 "도달 불가"가 단정이 아니라는 사실을 먼저 말한다.
+        if (_validation is { Reachability.ExplorationComplete: false })
+        {
+            DiagnosticsPanel.Children.Add(DiagnosticLine(
+                "도달성 탐색이 상한에서 중단됐습니다 — 아래의 도달 불가는 단정이 아니라 " +
+                "'경로를 찾지 못했다'입니다.", Brushes.DarkGoldenrod, dim: false, bold: true));
+        }
+
+        if (all.Count == 0 && _syncReports.Count == 0)
         {
             DiagnosticsPanel.Children.Add(new TextBlock
             {
@@ -632,7 +732,7 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        foreach (ChapterDiagnostic diagnostic in model.Diagnostics
+        foreach (ChapterDiagnostic diagnostic in all
                      .OrderByDescending(item => item.Severity)
                      .ThenBy(item => item.Sheet, StringComparer.Ordinal)
                      .ThenBy(item => item.Row ?? 0))

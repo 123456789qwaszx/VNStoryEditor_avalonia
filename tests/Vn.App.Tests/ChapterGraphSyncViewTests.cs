@@ -92,6 +92,65 @@ public sealed class ChapterGraphSyncViewTests
             node => node.Name == "Story_ch05_01");
     });
 
+    // ── G8 내보내기 버튼 ────────────────────────────────────────────────────
+
+    [Fact]
+    public void 검증_오류가_있으면_내보내기가_거부되고_보고가_펼쳐진다() => HeadlessUi.Run(() =>
+    {
+        // 견본 챕터는 에피소드 워크북 없이는 branch05.02A가 도달 불가다 → 거부.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        string? path = view.Export();
+
+        Assert.Null(path);
+        Assert.Contains("거부", session.StatusMessage);
+        Assert.True(view.FindControl<Expander>("DiagnosticsExpander")!.IsExpanded);
+        Assert.False(Directory.Exists(project.ExportFolder));
+    });
+
+    [Fact]
+    public void 검증을_통과하면_규약_폴더에_JSON이_나간다() => HeadlessUi.Run(() =>
+    {
+        // 도달 불가를 `도달불가 허용`(D3)으로 명시 예외 처리하면 검증을 통과한다.
+        using var project = new TempProject(SamplePath);
+        AllowUnreachable(project.ChapterPath, "branch05.02A");
+
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        string? path = view.Export();
+
+        Assert.NotNull(path);
+        Assert.True(File.Exists(path));
+        Assert.Equal(
+            Path.Combine(project.ExportFolder, "ch05.progression.json"), path);
+        Assert.Contains("내보냈습니다", session.StatusMessage);
+
+        string json = File.ReadAllText(path!);
+        Assert.Contains("\"StartEpisodeId\": \"main05.01\"", json);
+        Assert.DoesNotContain("기본 루트", json);   // 픽스처는 섞이지 않는다
+    });
+
+    /// <summary>`도달불가 허용` 열(L)을 켠다 — D3의 명시 예외.</summary>
+    private static void AllowUnreachable(string chapterPath, string episodeId)
+    {
+        using var memory = new MemoryStream(File.ReadAllBytes(chapterPath));
+        using var workbook = new ClosedXML.Excel.XLWorkbook(memory);
+        ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheet("에피소드");
+
+        sheet.Cell(1, 12).SetValue("도달불가 허용");
+
+        foreach (ClosedXML.Excel.IXLRow row in sheet.RowsUsed().Skip(1))
+        {
+            if (row.Cell(1).GetString() == episodeId)
+            {
+                row.Cell(12).SetValue("TRUE");
+            }
+        }
+
+        workbook.SaveAs(chapterPath);
+    }
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static (ChapterGraphView View, AuthoringSession Session) Show(TempProject project)
@@ -143,6 +202,11 @@ public sealed class ChapterGraphSyncViewTests
         public string ManifestPath { get; }
 
         public string EpisodesFolder => Path.Combine(_directory, EpisodeLibrary.FolderName);
+
+        public string ExportFolder => Path.Combine(_directory, ChapterGraphView.ExportFolderName);
+
+        public string ChapterPath =>
+            Path.Combine(_directory, ChapterLibrary.FolderName, "ch05.xlsx");
 
         public void Dispose()
         {
