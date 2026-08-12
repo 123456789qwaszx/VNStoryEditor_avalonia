@@ -865,11 +865,18 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    /// <summary>선택된 에피소드(또는 간선)의 현재 값으로 패널을 채운다. 원천은 언제나 방금 읽은 모델이다.</summary>
-    /// <param name="preserveTyping">
-    /// 저장 감시가 부른 다시 그리기라면 참 — 사람이 패널 글상자에 입력 중일 때 그 값을
-    /// 모델 값으로 덮어쓰지 않는다. 선택이 바뀌어 부르는 쪽은 거짓(새 값으로 반드시 찬다).
-    /// </param>
+    /// <summary>편집 칸을 마지막으로 채운 선택. 같은 선택이면 다시 채우지 않는다.</summary>
+    private (string? Episode, (string From, string To)? Edge) _panelFilledFor;
+
+    /// <summary>
+    /// 선택된 에피소드(또는 간선)의 현재 값으로 패널을 채운다. 원천은 언제나 방금 읽은 모델이다.
+    ///
+    /// <b>편집 칸은 선택이 바뀔 때만 채운다.</b> 저장 감시는 언제든 울리는데(엑셀이 파일을
+    /// 건드리기만 해도) 그때마다 칸을 모델 값으로 되돌리면, 적어 두고 아직 [적용]하지 않은
+    /// 글자가 조용히 사라진다 — 사람 눈에는 "적용을 눌러도 안 바뀐다"로 보인다.
+    /// 포커스가 어디 있는지로 판정하던 이전 방식은 콤보·체크박스를 만진 순간 뚫렸다.
+    /// </summary>
+    /// <param name="preserveTyping">저장 감시가 부른 다시 그리기라면 참.</param>
     private void RefreshPropertyPanel(bool preserveTyping = false)
     {
         ChapterGraphModel? model = SelectedModel;
@@ -879,20 +886,22 @@ public partial class ChapterGraphView : UserControl
                 candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To)
             : null;
 
-        if (preserveTyping && (episode is not null || edge is not null) && IsTypingInPanel())
-        {
-            return;
-        }
-
         PropertyPanel.IsVisible = episode is not null;
         EdgePanel.IsVisible = edge is not null;
         NoSelectionText.IsVisible = episode is null && edge is null;
+
+        (string? Episode, (string From, string To)? Edge) selection =
+            (episode?.EpisodeId,
+                edge is null ? null : (edge.FromEpisodeId, edge.ToEpisodeId));
+
+        bool fill = !preserveTyping || selection != _panelFilledFor;
+        _panelFilledFor = selection;
 
         RefreshConditionList(model);
 
         if (model is not null && edge is not null)
         {
-            RefreshEdgePanel(model, edge);
+            RefreshEdgePanel(model, edge, fill);
         }
 
         if (model is null || episode is null)
@@ -900,30 +909,39 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        IdBox.Text = episode.EpisodeId;
-        TitleBox.Text = episode.Title;
-        EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
+        if (fill)
+        {
+            IdBox.Text = episode.EpisodeId;
+            TitleBox.Text = episode.Title;
+            EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
+        }
 
+        // 목록(ItemsSource)은 언제나 새로 고친다 — 조건·에피소드가 늘었을 수 있다.
+        // 다만 고른 값은 채울 때가 아니면 사람이 고른 것을 지킨다.
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
-        VisibleCombo.ItemsSource = labels;
-        UnlockCombo.ItemsSource = new List<string>(labels);
-        VisibleCombo.SelectedItem = episode.VisibleConditionLabel ?? "(없음)";
-        UnlockCombo.SelectedItem = episode.UnlockConditionLabel ?? "(없음)";
 
-        EdgeTargetCombo.ItemsSource = model.Episodes
-            .Where(candidate => candidate.EpisodeId != episode.EpisodeId)
-            .Select(candidate => candidate.EpisodeId)
-            .ToList();
+        SetItems(VisibleCombo, labels,
+            fill ? episode.VisibleConditionLabel ?? "(없음)" : VisibleCombo.SelectedItem as string);
+        SetItems(UnlockCombo, new List<string>(labels),
+            fill ? episode.UnlockConditionLabel ?? "(없음)" : UnlockCombo.SelectedItem as string);
+
+        SetItems(EdgeTargetCombo,
+            model.Episodes
+                .Where(candidate => candidate.EpisodeId != episode.EpisodeId)
+                .Select(candidate => candidate.EpisodeId)
+                .ToList(),
+            EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
 
         RefreshEdgeList(model, episode);
     }
 
-    /// <summary>오른쪽 패널의 글상자에 키보드 포커스가 있는가 — 입력 중 덮어쓰기 방지의 판정.</summary>
-    private bool IsTypingInPanel() =>
-        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox box &&
-        box.GetVisualAncestors().Any(ancestor =>
-            ReferenceEquals(ancestor, PropertyPanel) || ReferenceEquals(ancestor, EdgePanel));
+    /// <summary>목록을 갈되 고른 값은 지킨다(그 값이 새 목록에 남아 있다면).</summary>
+    private static void SetItems(ComboBox combo, IReadOnlyList<string> items, string? selected)
+    {
+        combo.ItemsSource = items;
+        combo.SelectedItem = selected is not null && items.Contains(selected) ? selected : null;
+    }
 
     private void RefreshEdgeList(ChapterGraphModel model, ChapterEpisode episode)
     {
@@ -965,18 +983,68 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    /// <summary>간선 편집 패널 — "이 분기는 언제 보이고 언제 열리는가"를 채운다.</summary>
-    private void RefreshEdgePanel(ChapterGraphModel model, ChapterEdge edge)
+    /// <summary>
+    /// 간선 편집 패널 — "이 분기는 언제 보이고 언제 열리는가"를 채운다.
+    /// <paramref name="fill"/>이 거짓이면 사람이 적던 값을 지킨다(위 설명 참조).
+    /// </summary>
+    private void RefreshEdgePanel(ChapterGraphModel model, ChapterEdge edge, bool fill)
     {
-        EdgeFromToText.Text = $"{edge.FromEpisodeId} → {edge.ToEpisodeId}";
-        EdgeLabelEditBox.Text = edge.OptionLabel ?? string.Empty;
-        EdgeHideCheck.IsChecked = edge.HideWhenLocked;
-        EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
+        EdgeFromToPanel.Children.Clear();
+        EdgeFromToPanel.Children.Add(EpisodeLink(model, edge.FromEpisodeId));
+        EdgeFromToPanel.Children.Add(new TextBlock
+        {
+            Text = "→",
+            FontSize = 11,
+            Opacity = 0.5,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+        });
+        EdgeFromToPanel.Children.Add(EpisodeLink(model, edge.ToEpisodeId));
+
+        if (fill)
+        {
+            EdgeLabelEditBox.Text = edge.OptionLabel ?? string.Empty;
+            EdgeHideCheck.IsChecked = edge.HideWhenLocked;
+            EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
+        }
 
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
-        EdgeConditionCombo.ItemsSource = labels;
-        EdgeConditionCombo.SelectedItem = edge.ConditionLabel ?? "(없음)";
+
+        SetItems(EdgeConditionCombo, labels,
+            fill ? edge.ConditionLabel ?? "(없음)" : EdgeConditionCombo.SelectedItem as string);
+    }
+
+    /// <summary>
+    /// 간선 패널에서 그 끝의 에피소드로 건너뛰는 고리. 누르면 그 에피소드가 선택되어
+    /// 속성 패널(Id [개명]·제목)이 열린다 — 간선을 보다가 에피소드 이름을 고치려 할 때
+    /// 노드를 다시 찾아 클릭하지 않아도 된다.
+    /// </summary>
+    private Control EpisodeLink(ChapterGraphModel model, string episodeId)
+    {
+        string title = model.FindEpisode(episodeId)?.Title ?? string.Empty;
+
+        var link = new TextBlock
+        {
+            Text = title.Length == 0 || string.Equals(title, episodeId, StringComparison.Ordinal)
+                ? episodeId
+                : $"{episodeId} ({title})",
+            FontSize = 11,
+            TextDecorations = TextDecorations.Underline,
+            Foreground = new SolidColorBrush(Color.Parse("#3D7BD9")),
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Background = Brushes.Transparent,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+        };
+
+        ToolTip.SetTip(link, "이 에피소드를 선택합니다 — 이름·제목은 거기서 고칩니다.");
+
+        link.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            UiGuard.Run(_session, "에피소드 선택", () => SelectEpisode(episodeId));
+        };
+
+        return link;
     }
 
     /// <summary>간선 패널의 [적용]. 바뀐 필드만 셀에 쓴다.</summary>
@@ -986,6 +1054,8 @@ public partial class ChapterGraphView : UserControl
             SelectedModel?.Edges.FirstOrDefault(candidate =>
                 candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To) is not { } edge)
         {
+            // 조용한 무동작 금지 — 사람에게는 "눌러도 아무 일이 없다"가 된다.
+            _session?.SetStatus("간선을 다시 골라 주세요. 선택이 풀렸거나 그 간선이 사라졌습니다.");
             return;
         }
 
@@ -1063,6 +1133,7 @@ public partial class ChapterGraphView : UserControl
 
         if (model is null || episode is null || SelectedChapterPath is not { } path)
         {
+            _session?.SetStatus("에피소드를 다시 골라 주세요. 선택이 풀렸거나 그 에피소드가 사라졌습니다.");
             return;
         }
 

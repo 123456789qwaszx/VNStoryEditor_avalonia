@@ -108,6 +108,39 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 간선_이름을_고치면_엑셀로_간다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEdgeKey("main05.02", "branch05.02A");
+        view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "새 선택지 이름";
+        view.ApplyEdgeFromPanel();
+
+        ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
+
+        Assert.Equal("새 선택지 이름", edge.OptionLabel);
+    });
+
+    [Fact]
+    public void 라벨_없던_간선에_이름을_붙일_수_있다() => HeadlessUi.Run(() =>
+    {
+        // 일반 진행(라벨 없음) 간선을 선택지로 바꾸는 흐름 — 저작 중 가장 흔한 편집이다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEdgeKey("main05.01", "main05.02");
+        view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "복도로 간다";
+        view.ApplyEdgeFromPanel();
+
+        ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.02");
+
+        Assert.Equal("복도로 간다", edge.OptionLabel);
+    });
+
+    [Fact]
     public void 간선을_선택하면_패널이_차고_적용이_엑셀로_간다() => HeadlessUi.Run(() =>
     {
         using var project = new TempProject(SamplePath);

@@ -134,10 +134,13 @@
                          "이 분기는 언제 보이고 언제 열리는가"를 여기서 정한다. -->
                     <StackPanel x:Name="EdgePanel" Spacing="6" IsVisible="False">
                         <TextBlock Text="간선" FontWeight="SemiBold" FontSize="12" />
-                        <TextBlock x:Name="EdgeFromToText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                        <!-- 양 끝 에피소드는 누를 수 있다 — 간선을 보다가 "저 에피소드 이름을
+                             고쳐야겠다"가 되는 흐름이 실제 저작의 대부분이다. -->
+                        <StackPanel x:Name="EdgeFromToPanel" Orientation="Horizontal" Spacing="4" />
 
                         <TextBox x:Name="EdgeLabelEditBox" FontSize="11"
-                                 PlaceholderText="선택지 라벨 (비면 분기 없는 일반 진행)" />
+                                 PlaceholderText="선택지 문구 — 플레이어가 보는 버튼 글자"
+                                 ToolTip.Tip="에피소드 이름이 아닙니다. 에피소드 이름·제목은 위의 에피소드를 눌러 편집하세요. 비우면 분기 없는 일반 진행입니다." />
 
                         <TextBlock Text="조건 — 이 분기를 고를 수 있으려면" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeConditionCombo" FontSize="11" HorizontalAlignment="Stretch" />
