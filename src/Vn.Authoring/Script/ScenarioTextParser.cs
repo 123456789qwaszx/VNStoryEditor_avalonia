@@ -7,11 +7,16 @@ namespace Vn.Authoring.Script;
 public sealed record ScenarioStructureIntent(ConditionTransitionKind Kind, string? Expression);
 
 /// <summary>파싱된 대본 한 줄. <see cref="Transition"/>은 바로 앞의 조건 토큰이다.</summary>
+/// <param name="LineId">
+/// 줄 끝의 <c>#line:</c> 태그에서 떼어낸 신원 (계약서 C1). 태그가 없으면 null이고,
+/// 그때는 동기화가 <b>내용으로</b> 짝을 찾는다. 있으면 <b>ID로</b> 찾는다 — 그쪽이 확실하다.
+/// </param>
 public sealed record ScenarioLine(
     string Speaker,
     string Text,
     bool SpeakerUnregistered,
-    ScenarioStructureIntent? Transition);
+    ScenarioStructureIntent? Transition,
+    string? LineId = null);
 
 public sealed record ScenarioParseResult(
     IReadOnlyList<ScenarioLine> Lines,
@@ -75,11 +80,12 @@ public static class ScenarioTextParser
                 continue;
             }
 
-            (string speaker, string body) = SplitSpeaker(line);
+            (string tagless, string? lineId) = SplitLineTag(line);
+            (string speaker, string body) = SplitSpeaker(tagless);
             bool unregistered = speaker.Length > 0 &&
                 definition.FindSpeakerCharacterId(speaker) is null;
 
-            lines.Add(new ScenarioLine(speaker, body, unregistered, pending));
+            lines.Add(new ScenarioLine(speaker, body, unregistered, pending, lineId));
             pending = null;
         }
 
@@ -89,6 +95,39 @@ public static class ScenarioTextParser
         }
 
         return new ScenarioParseResult(lines, unparsed);
+    }
+
+    /// <summary>
+    /// 줄 끝의 <c>#line:ln_0001</c>을 떼어낸다 (계약서 C1의 표기 그대로).
+    ///
+    /// <b>왜 떼어야 하는가</b> — 떼지 않으면 태그가 대사 본문의 일부가 되어, 같은 줄을 다시
+    /// 읽을 때마다 내용 비교가 어긋나고 동기화가 "고쳐진 줄"로 착각한다. 엑셀 경로는 시트의
+    /// LineId 열로 신원을 이미 알고 있으므로, 그 지식을 텍스트 경계에서 버리면 확실한 ID 매칭이
+    /// 내용 추정으로 격하된다.
+    ///
+    /// 사람이 손으로 붙여넣는 경로도 함께 이득이다 — 내보낸 <c>.yarn</c>에서 복사한 줄에
+    /// 태그가 붙어 있어도 신원이 유지된다.
+    ///
+    /// 마지막 <c>#line:</c>만 본다. 뒤에 공백이 있으면 태그가 아니라 본문의 일부로 둔다.
+    /// </summary>
+    private static (string Body, string? LineId) SplitLineTag(string line)
+    {
+        const string Marker = " #line:";
+        int at = line.LastIndexOf(Marker, StringComparison.Ordinal);
+
+        if (at < 0)
+        {
+            return (line, null);
+        }
+
+        string id = line[(at + Marker.Length)..];
+
+        if (id.Length == 0 || id.Any(char.IsWhiteSpace))
+        {
+            return (line, null);
+        }
+
+        return (line[..at].TrimEnd(), id);
     }
 
     /// <summary>첫 콜론 기준, 접두에 공백이 없을 때만 화자다.</summary>

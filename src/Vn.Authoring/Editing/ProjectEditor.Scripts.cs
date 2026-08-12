@@ -83,7 +83,10 @@ public sealed partial class ProjectEditor
 
         var parsedScript = new ParsedScript(
             parsed.Lines
-                .Select((line, index) => new ParsedScriptLine(index + 1, line.Speaker, line.Text))
+                // 파서가 떼어낸 #line: 신원을 그대로 넘긴다. 여기서 버리면 동기화가 ID를 못 보고
+                // 내용 추정으로 되돌아간다 — 엑셀 경로에서는 그게 통째 거부의 원인이 된다.
+                .Select((line, index) =>
+                    new ParsedScriptLine(index + 1, line.Speaker, line.Text, line.LineId))
                 .ToList(),
             Array.Empty<ScriptParseProblem>(),
             Convert.ToHexString(

@@ -29,7 +29,16 @@ public sealed record ScriptParseProblem(
     string Message);
 
 /// <param name="SourceLineNumber">작가 파일에서의 1부터 시작하는 물리 줄 번호.</param>
-public sealed record ParsedScriptLine(int SourceLineNumber, string Speaker, string Text);
+/// <param name="LineId">
+/// 입력이 이미 알고 있는 줄의 신원(<c>#line:</c> 태그나 엑셀의 LineId 열에서 온다).
+/// <b>있으면 동기화가 위치·내용이 아니라 이것으로 짝을 찾는다</b> — 신원은 ID이지 위치가 아니다.
+/// 평평한 대본 파일처럼 신원을 모르는 입력은 null로 두고, 그때는 내용 기반 매칭이 그대로 돈다.
+/// </param>
+public sealed record ParsedScriptLine(
+    int SourceLineNumber,
+    string Speaker,
+    string Text,
+    string? LineId = null);
 
 public sealed class ParsedScript
 {
