@@ -119,7 +119,16 @@
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
-            <views:GraphEditorView Grid.Column="2" x:Name="Graph" />
+            <!-- 에피소드 레이어는 별도 탭이다 (G-1) — 기존 대사·연출 그래프는 그대로 두고
+                 옆에 붙인다. 두 화면은 데이터도 편집 경로도 공유하지 않는다. -->
+            <TabControl Grid.Column="2" x:Name="MainTabs" Padding="0">
+                <TabItem Header="시나리오 그래프">
+                    <views:GraphEditorView x:Name="Graph" />
+                </TabItem>
+                <TabItem Header="챕터 그래프">
+                    <views:ChapterGraphView x:Name="ChapterGraph" />
+                </TabItem>
+            </TabControl>
 
             <GridSplitter Grid.Column="3"
                           ResizeDirection="Columns"

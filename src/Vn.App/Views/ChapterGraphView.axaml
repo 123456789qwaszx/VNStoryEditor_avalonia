@@ -1,0 +1,68 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.ChapterGraphView">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0"
+                Padding="10,8"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="챕터"
+                           FontSize="11"
+                           Opacity="0.6"
+                           VerticalAlignment="Center"
+                           Margin="0,0,6,0" />
+                <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" />
+                <Button Grid.Column="2" x:Name="ReloadButton" Content="다시 읽기" Margin="6,0,0,0" />
+                <Button Grid.Column="3" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
+
+                <TextBlock Grid.Column="4"
+                           x:Name="PixtureText"
+                           FontSize="11"
+                           Opacity="0.6"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0" />
+
+                <!-- 읽기전용임을 화면이 스스로 말한다 (G-2). 드래그로 엑셀이 바뀌지 않는다. -->
+                <Border Grid.Column="6"
+                        Padding="7,3"
+                        CornerRadius="3"
+                        Background="#22808080">
+                    <TextBlock Text="읽기 전용 · 위치와 관계는 엑셀이 소유합니다"
+                               FontSize="10"
+                               Opacity="0.75" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <ScrollViewer x:Name="GraphScroll"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
+                <Canvas x:Name="GraphCanvas" Background="Transparent" />
+            </ScrollViewer>
+
+            <TextBlock x:Name="EmptyText"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextAlignment="Center"
+                       Opacity="0.55"
+                       TextWrapping="Wrap"
+                       MaxWidth="420" />
+        </Grid>
+
+        <Border Grid.Row="2"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,1,0,0">
+            <Expander x:Name="DiagnosticsExpander"
+                      Header="검증 보고"
+                      Padding="0"
+                      HorizontalAlignment="Stretch">
+                <ScrollViewer MaxHeight="180" HorizontalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="DiagnosticsPanel" Margin="10,6" Spacing="2" />
+                </ScrollViewer>
+            </Expander>
+        </Border>
+    </Grid>
+</UserControl>

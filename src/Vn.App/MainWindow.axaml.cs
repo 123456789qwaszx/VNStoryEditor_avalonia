@@ -50,6 +50,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => AudioPreview.StopAll();
 
         Graph.Attach(_session);
+        ChapterGraph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
         PresentationEditor.Attach(_session);
