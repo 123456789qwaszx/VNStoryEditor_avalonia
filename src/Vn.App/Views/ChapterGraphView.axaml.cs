@@ -12,12 +12,12 @@ using Vn.Authoring.Chapters;
 namespace Vn.App.Views;
 
 /// <summary>
-/// 챕터·에피소드 그래프 뷰 (G4). <b>별도 화면이고 기존 대사·연출 그래프는 손대지 않는다</b> (G-1).
+/// 챕터·에피소드 그래프 뷰 (G4·G5). <b>별도 화면이고 기존 대사·연출 그래프는 손대지 않는다</b> (G-1).
 ///
-/// <b>읽기 전용이다 — 구조적으로.</b> 이 클래스에는 드래그 핸들러도, 편집 명령도,
-/// <c>ProjectEditor</c> 호출도 없다. 위치와 관계의 소유자는 엑셀이고(G-2) 이 화면은
-/// <see cref="ChapterWorkbookReader"/>가 읽어 준 것을 그릴 뿐이다. "드래그해도 엑셀이 바뀌지 않는다"는
-/// 약속을 코드로 지키는 방법은 <b>쓰는 길을 아예 만들지 않는 것</b>이다.
+/// <b>그래프는 읽기 전용이다 — 구조적으로.</b> 드래그 핸들러가 없고, 위치·관계의 소유자는
+/// 엑셀이다(G-2). 이 화면이 파일에 쓰는 것은 둘뿐이며 그래프와 무관하다: 없는 에피소드
+/// 워크북의 생성(<see cref="EpisodeLibrary"/>)과 동기화의 LineId 되쓰기(B열) — 둘 다 노드
+/// 클릭·저장 감시(G5)의 일이다.
 ///
 /// 오류가 있어도 읽힌 데까지 그린다. 빈 화면 + "오류"보다, 그려진 그래프 옆에 무엇이 어디서
 /// 잘못됐는지 세워 두는 편이 고칠 자리를 알려 준다(규칙 14).
@@ -29,11 +29,20 @@ public partial class ChapterGraphView : UserControl
     private const double CanvasMargin = 60;
 
     private readonly List<ChapterEntry> _entries = new();
+    private readonly List<EpisodeSyncReport> _syncReports = new();
 
     private AuthoringSession? _session;
     private ChapterFolderWatcher? _watcher;
+    private ChapterFolderWatcher? _episodeWatcher;
     private string? _selectedChapterId;
     private bool _updatingCombo;
+
+    /// <summary>
+    /// 워크북을 여는 손. 기본은 OS 기본 연결(엑셀)이고, 화면 없는 검증이 실제 엑셀을
+    /// 띄우지 않도록 갈아끼울 수 있다.
+    /// </summary>
+    internal Action<string> OpenWorkbookFile { get; set; } = path =>
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
 
     public ChapterGraphView()
     {
@@ -67,10 +76,16 @@ public partial class ChapterGraphView : UserControl
     private void WatchAndReload()
     {
         string? folder = ChapterLibrary.FolderFor(_session?.ProjectPath);
+        string? episodes = EpisodeLibrary.FolderFor(_session?.ProjectPath);
 
         if (!string.Equals(_watcher?.Folder, folder, StringComparison.OrdinalIgnoreCase))
         {
             StartWatching(folder);
+        }
+
+        if (!string.Equals(_episodeWatcher?.Folder, episodes, StringComparison.OrdinalIgnoreCase))
+        {
+            StartWatchingEpisodes(episodes);
         }
 
         Reload();
@@ -94,6 +109,105 @@ public partial class ChapterGraphView : UserControl
         _watcher = new ChapterFolderWatcher(
             folder,
             () => Dispatcher.UIThread.Post(() => UiGuard.Run(_session, "챕터 워크북 반영", Reload)));
+    }
+
+    /// <summary>
+    /// 에피소드 저장 → 대사노드 반영 (G5). 챕터 감시와 같은 감시자를 episodes/에 하나 더 둔다.
+    /// </summary>
+    private void StartWatchingEpisodes(string? folder)
+    {
+        _episodeWatcher?.Dispose();
+        _episodeWatcher = null;
+
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        _episodeWatcher = new ChapterFolderWatcher(
+            folder,
+            () => Dispatcher.UIThread.Post(() => UiGuard.Run(_session, "에피소드 반영", SyncEpisodes)));
+    }
+
+    /// <summary>
+    /// 선택된 챕터의 에피소드 워크북 전부를 대사노드로 반영한다.
+    ///
+    /// 감시자는 어느 파일이 바뀌었는지 말하지 않으므로(저장 한 번이 이벤트 여러 개라 어차피
+    /// 뭉개진다) 전부 다시 돈다 — 바뀌지 않은 워크북은 "변경 없음"으로 끝나 비용이 잔잔하다.
+    /// </summary>
+    internal void SyncEpisodes()
+    {
+        _syncReports.Clear();
+
+        if (_session is null)
+        {
+            return;
+        }
+
+        string? folder = EpisodeLibrary.FolderFor(_session.ProjectPath);
+        ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+
+        if (folder is null || !Directory.Exists(folder) || entry?.Model is null)
+        {
+            return;
+        }
+
+        // 새 노드가 들어갈 판. 활성 파일이 없으면 첫 파일, 그것도 없으면(빈 프로젝트) 반영할
+        // 자리가 없으므로 멈추고 말한다 — 조용히 아무 데나 만들지 않는다.
+        string? fileId = _session.ActiveFileId ?? _session.Project.Files.FirstOrDefault()?.Id;
+
+        if (fileId is null)
+        {
+            _session.SetStatus("시나리오 파일이 없어 에피소드를 반영할 자리가 없습니다. 파일을 먼저 만들어 주세요.");
+            return;
+        }
+
+        foreach (ChapterEpisode episode in entry.Model.Episodes)
+        {
+            string path = EpisodeLibrary.PathFor(folder, episode.EpisodeId);
+
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            _syncReports.Add(EpisodeSyncService.Sync(
+                _session.Editor,
+                _session.Definition,
+                fileId,
+                path,
+                entry.Model));
+        }
+
+        Draw();
+
+        int rejected = _syncReports.Sum(report => report.RejectionCount);
+        _session.SetStatus(rejected == 0
+            ? $"에피소드 {_syncReports.Count}개를 반영했습니다."
+            : $"에피소드 {_syncReports.Count}개 중 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+    }
+
+    /// <summary>
+    /// 노드 클릭 → 에피소드 엑셀 열기 (G5). 워크북이 없으면 §3.2 규격대로 만들어서 연다 —
+    /// 기획자가 머리글 11개를 손으로 칠 이유가 없다.
+    /// </summary>
+    internal void OpenEpisode(string episodeId)
+    {
+        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
+
+        if (folder is null)
+        {
+            _session?.SetStatus("프로젝트를 먼저 저장해야 에피소드 폴더 자리가 정해집니다.");
+            return;
+        }
+
+        if (EpisodeLibrary.EnsureWorkbook(folder, episodeId))
+        {
+            _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
+            StartWatchingEpisodes(folder);
+        }
+
+        OpenWorkbookFile(EpisodeLibrary.PathFor(folder, episodeId));
     }
 
     private void Reload()
@@ -331,6 +445,11 @@ public partial class ChapterGraphView : UserControl
             card.BorderBrush = new SolidColorBrush(Color.Parse("#C08A3E"));
         }
 
+        // 클릭 = 에피소드 엑셀 열기 (G5). 드래그가 아니다 — 이 뷰에 드래그는 없다.
+        card.PointerPressed += (_, _) =>
+            UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
+        card.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+
         (double x, double y) = layout.Place(episode);
         Canvas.SetLeft(card, x);
         Canvas.SetTop(card, y);
@@ -387,19 +506,31 @@ public partial class ChapterGraphView : UserControl
                 : $"활성 픽스처: {active.Name}";
     }
 
-    /// <summary>오류·경고·정보를 심각도 순으로. 각 줄이 파일·시트·행·열을 그대로 말한다.</summary>
+    /// <summary>
+    /// 오류·경고·정보를 심각도 순으로, 그 뒤에 에피소드 동기화 보고를. 각 줄이 파일·시트·행·열을
+    /// 그대로 말하고, 머리글의 배지가 거부 건수를 든다(G5).
+    /// </summary>
     private void DrawDiagnostics(ChapterGraphModel model)
     {
         int errors = model.Diagnostics.Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
         int warnings = model.Diagnostics.Count(item => item.Severity == ChapterDiagnosticSeverity.Warning);
+        int rejected = _syncReports.Sum(report => report.RejectionCount);
 
-        DiagnosticsExpander.Header = errors + warnings == 0
+        string header = errors + warnings == 0
             ? $"검증 보고 — 오류 없음 (알림 {model.Diagnostics.Count}건)"
             : $"검증 보고 — 오류 {errors} · 경고 {warnings}";
 
-        DiagnosticsExpander.IsExpanded = errors > 0;
+        if (_syncReports.Count > 0)
+        {
+            header += rejected == 0
+                ? $" · 동기화 {_syncReports.Count}건 반영"
+                : $" · 동기화 거부·경고 {rejected}건";
+        }
 
-        if (model.Diagnostics.Count == 0)
+        DiagnosticsExpander.Header = header;
+        DiagnosticsExpander.IsExpanded = errors > 0 || rejected > 0;
+
+        if (model.Diagnostics.Count == 0 && _syncReports.Count == 0)
         {
             DiagnosticsPanel.Children.Add(new TextBlock
             {
@@ -416,19 +547,80 @@ public partial class ChapterGraphView : UserControl
                      .ThenBy(item => item.Sheet, StringComparer.Ordinal)
                      .ThenBy(item => item.Row ?? 0))
         {
-            DiagnosticsPanel.Children.Add(new TextBlock
-            {
-                Text = diagnostic.Describe(),
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = diagnostic.Severity switch
+            DiagnosticsPanel.Children.Add(DiagnosticLine(
+                diagnostic.Describe(),
+                diagnostic.Severity switch
                 {
                     ChapterDiagnosticSeverity.Error => Brushes.IndianRed,
                     ChapterDiagnosticSeverity.Warning => Brushes.DarkGoldenrod,
                     _ => null
                 },
-                Opacity = diagnostic.Severity == ChapterDiagnosticSeverity.Info ? 0.6 : 1
-            });
+                dim: diagnostic.Severity == ChapterDiagnosticSeverity.Info));
+        }
+
+        DrawSyncReports();
+    }
+
+    /// <summary>
+    /// 에피소드 동기화 결과. 거부·삭제·함께 접힌 논리를 <b>목록으로</b> 보인다 —
+    /// 조용한 무반영이 최악이다(G3-1·G3-2).
+    /// </summary>
+    private void DrawSyncReports()
+    {
+        foreach (EpisodeSyncReport report in _syncReports)
+        {
+            string summary = report.Applied
+                ? $"에피소드 {report.EpisodeId} — 반영됨"
+                : $"에피소드 {report.EpisodeId} — 반영 거부";
+
+            DiagnosticsPanel.Children.Add(DiagnosticLine(
+                summary, report.Applied ? null : Brushes.IndianRed, dim: false, bold: true));
+
+            foreach (string problem in report.Problems)
+            {
+                DiagnosticsPanel.Children.Add(DiagnosticLine($"  {problem}", Brushes.IndianRed, dim: false));
+            }
+
+            foreach (ChapterDiagnostic diagnostic in report.Diagnostics
+                         .Where(item => item.Severity != ChapterDiagnosticSeverity.Info))
+            {
+                DiagnosticsPanel.Children.Add(DiagnosticLine(
+                    $"  {diagnostic.Describe()}",
+                    diagnostic.Severity == ChapterDiagnosticSeverity.Error
+                        ? Brushes.IndianRed
+                        : Brushes.DarkGoldenrod,
+                    dim: false));
+            }
+
+            foreach (EpisodePrunedLogic pruned in report.Pruned)
+            {
+                DiagnosticsPanel.Children.Add(DiagnosticLine(
+                    $"  {pruned.Describe()}", Brushes.DarkGoldenrod, dim: false));
+            }
+
+            if (report.WrittenBackLineIds.Count > 0)
+            {
+                DiagnosticsPanel.Children.Add(DiagnosticLine(
+                    $"  새 LineId {report.WrittenBackLineIds.Count}개를 워크북에 되썼습니다.",
+                    null, dim: true));
+            }
+
+            if (report.WriteBackFailure is not null)
+            {
+                DiagnosticsPanel.Children.Add(DiagnosticLine(
+                    $"  {report.WriteBackFailure}", Brushes.DarkGoldenrod, dim: false));
+            }
         }
     }
+
+    private static TextBlock DiagnosticLine(
+        string text, IBrush? foreground, bool dim, bool bold = false) => new()
+    {
+        Text = text,
+        FontSize = 11,
+        TextWrapping = TextWrapping.Wrap,
+        Foreground = foreground,
+        FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
+        Opacity = dim ? 0.6 : 1
+    };
 }
