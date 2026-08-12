@@ -32,6 +32,7 @@ public enum ChapterDiagnosticCode
     EdgeEndpointUnknown,
     EdgeEndpointBlank,
     BooleanNotRecognized,
+    FormulaWithoutCachedValue,
     FixtureStatColumnUnknown,
     FixtureChoiceMalformed,
     EndingKeyBlank

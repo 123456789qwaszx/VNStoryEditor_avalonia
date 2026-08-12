@@ -31,8 +31,7 @@ public partial class ChapterGraphView : UserControl
     private readonly List<ChapterEntry> _entries = new();
 
     private AuthoringSession? _session;
-    private FileSystemWatcher? _watcher;
-    private DispatcherTimer? _reloadDebounce;
+    private ChapterFolderWatcher? _watcher;
     private string? _selectedChapterId;
     private bool _updatingCombo;
 
@@ -69,7 +68,7 @@ public partial class ChapterGraphView : UserControl
     {
         string? folder = ChapterLibrary.FolderFor(_session?.ProjectPath);
 
-        if (!string.Equals(_watcher?.Path, folder, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(_watcher?.Folder, folder, StringComparison.OrdinalIgnoreCase))
         {
             StartWatching(folder);
         }
@@ -78,8 +77,8 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
-    /// 엑셀 저장 → 뷰 즉시 갱신 (Gate A). 엑셀은 임시 파일로 쓰고 이름을 바꾸므로
-    /// 생성·변경·이름변경을 모두 받고, 한 번의 저장이 여러 이벤트를 내므로 잠깐 모아서 한 번만 읽는다.
+    /// 엑셀 저장 → 뷰 즉시 갱신 (Gate A). 감시·디바운스는 <see cref="ChapterFolderWatcher"/>가
+    /// 하고, 여기서는 그 알림을 UI 스레드로 옮겨 다시 그리기만 한다.
     /// </summary>
     private void StartWatching(string? folder)
     {
@@ -91,39 +90,10 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        var watcher = new FileSystemWatcher(folder, "*.xlsx")
-        {
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
-        };
-
-        watcher.Changed += OnWorkbookTouched;
-        watcher.Created += OnWorkbookTouched;
-        watcher.Deleted += OnWorkbookTouched;
-        watcher.Renamed += OnWorkbookTouched;
-        watcher.EnableRaisingEvents = true;
-
-        _watcher = watcher;
-    }
-
-    private void OnWorkbookTouched(object sender, FileSystemEventArgs e) =>
-        Dispatcher.UIThread.Post(() =>
-        {
-            _reloadDebounce?.Stop();
-            _reloadDebounce ??= CreateDebounce();
-            _reloadDebounce.Start();
-        });
-
-    private DispatcherTimer CreateDebounce()
-    {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            UiGuard.Run(_session, "챕터 워크북 반영", Reload);
-        };
-
-        return timer;
+        // 알림은 워커 스레드에서 온다 — 화면을 만지기 전에 반드시 UI 스레드로 건너간다.
+        _watcher = new ChapterFolderWatcher(
+            folder,
+            () => Dispatcher.UIThread.Post(() => UiGuard.Run(_session, "챕터 워크북 반영", Reload)));
     }
 
     private void Reload()
@@ -174,6 +144,11 @@ public partial class ChapterGraphView : UserControl
     {
         GraphCanvas.Children.Clear();
         DiagnosticsPanel.Children.Clear();
+
+        // 그릴 것이 없으면 판도 없다. 이걸 지우지 않으면 큰 챕터를 보다가 못 읽는 챕터로
+        // 넘어갔을 때 텅 빈 캔버스가 이전 크기 그대로 남아 스크롤만 넓어진다.
+        GraphCanvas.Width = 0;
+        GraphCanvas.Height = 0;
 
         ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
 
@@ -251,6 +226,9 @@ public partial class ChapterGraphView : UserControl
             line.StrokeDashArray = new AvaloniaList<double> { 4, 3 };
         }
 
+        // 간선의 정체를 시각 요소에 남긴다. 화면 없는 렌더 검증(Gate A)이 "무엇이 그려졌는지"를
+        // 색·좌표로 역추론하지 않고 이름으로 확인할 수 있어야 한다.
+        line.Tag = EdgeTag(edge);
         GraphCanvas.Children.Add(line);
 
         string label = string.Join(" · ", new[]
@@ -339,7 +317,10 @@ public partial class ChapterGraphView : UserControl
                     ? new SolidColorBrush(Color.Parse("#C09A3E"))
                     : new SolidColorBrush(Color.Parse("#7F8A96")),
             Background = new SolidColorBrush(Color.Parse("#FAFBFCFD")),
-            Child = body
+            Child = body,
+            // 노드 카드임을 EpisodeId로 표시한다. 간선 라벨도 Border라서, 표식이 없으면
+            // 검증이 카드와 라벨을 구별하지 못한다.
+            Tag = episode.EpisodeId
         };
 
         ToolTip.SetTip(card, Tooltip(episode));
@@ -355,6 +336,10 @@ public partial class ChapterGraphView : UserControl
         Canvas.SetTop(card, y);
         GraphCanvas.Children.Add(card);
     }
+
+    /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>
+    internal static string EdgeTag(ChapterEdge edge) =>
+        $"{edge.FromEpisodeId}→{edge.ToEpisodeId}";
 
     private static string GateSummary(ChapterEpisode episode) => string.Join(" · ", new[]
     {

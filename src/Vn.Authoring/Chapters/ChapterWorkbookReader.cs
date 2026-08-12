@@ -619,12 +619,43 @@ public static class ChapterWorkbookReader
         return width;
     }
 
+    /// <summary>
+    /// 수식은 있는데 계산된 값이 없는 셀을 알린다.
+    ///
+    /// 엑셀은 저장할 때 수식의 결과를 함께 담지만, 프로그램으로 만든 워크북은 수식만 적고
+    /// 결과를 비워 두는 일이 있다. 그런 셀은 파일 안에서 <b>빈 칸</b>이라 그냥 두면
+    /// "조건식이 비어 있습니다" 같은 엉뚱한 보고가 나가고, 기획자는 자기 화면에 글자가
+    /// 보이는데 왜 비었다는지 알 수 없다. 무엇이 문제인지 그대로 말한다(규칙 14).
+    /// </summary>
+    private static void ReportUncachedFormulas(
+        IXLWorksheet sheet,
+        string path,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        foreach (IXLCell cell in sheet.CellsUsed(XLCellsUsedOptions.All, cell => cell.HasFormula))
+        {
+            if (CellText(cell).Length > 0)
+            {
+                continue;
+            }
+
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.FormulaWithoutCachedValue,
+                path, sheet.Name, cell.Address.RowNumber, cell.Address.ColumnNumber,
+                "수식은 있는데 계산된 값이 저장돼 있지 않습니다. " +
+                "이 워크북을 엑셀에서 한 번 열어 저장하면 값이 함께 담깁니다."));
+        }
+    }
+
     private static void VerifyHeaders(
         IXLWorksheet sheet,
         IReadOnlyList<string> expected,
         string path,
         List<ChapterDiagnostic> diagnostics)
     {
+        ReportUncachedFormulas(sheet, path, diagnostics);
+
         for (int index = 0; index < expected.Count; index++)
         {
             int column = index + 1;

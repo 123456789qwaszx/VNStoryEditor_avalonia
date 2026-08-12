@@ -16,6 +16,9 @@
     <!-- 툴 안 오디오 미리 듣기 (W62) — mp3·wav는 NAudio, ogg는 NAudio.Vorbis(NVorbis). -->
     <PackageVersion Include="NAudio" Version="2.2.1" />
     <PackageVersion Include="NAudio.Vorbis" Version="1.5.0" />
+    <!-- 화면 없는 렌더 검증 (Gate A). 창을 띄우지 않고 시각 트리와 배치를 그대로 확인한다 —
+         전역 입력 주입으로 남의 창을 누르는 짓을 하지 않기 위한 대체 수단이다. Avalonia와 같은 MIT. -->
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
