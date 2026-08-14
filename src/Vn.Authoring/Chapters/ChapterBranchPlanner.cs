@@ -15,8 +15,8 @@ public static class ChapterBranchPlanner
     /// <summary>열 간격. 카드 폭(190)보다 넉넉해 간선이 보인다.</summary>
     public const double ColumnWidth = 220;
 
-    /// <summary>줄 간격. 카드 높이(74)보다 넉넉하다.</summary>
-    public const double RowHeight = 110;
+    /// <summary>줄 간격. 카드 높이(74) + 선택지 포트(최대 3줄, 2026-08-15)보다 넉넉하다.</summary>
+    public const double RowHeight = 150;
 
     /// <summary>
     /// 시작 에피소드에서 각 에피소드까지의 깊이(가장 긴 경로). 도달할 수 없는 노드는

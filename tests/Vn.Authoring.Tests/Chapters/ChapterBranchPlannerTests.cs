@@ -113,7 +113,7 @@ public sealed class ChapterBranchPlannerTests
 
         // 같은 열 안 순서 = 시트 행 순서 (a가 b보다 먼저 적힘).
         Assert.Equal(0d, placed["a"].Y);
-        Assert.Equal(110d, placed["b"].Y);
+        Assert.Equal(ChapterBranchPlanner.RowHeight, placed["b"].Y);
 
         // 간선 없는 고아는 그래프 아래 줄에 따로 선다 — 겹쳐 숨기지 않는다.
         Assert.True(placed["orphan"].Y > placed["b"].Y + ChapterBranchPlanner.RowHeight,

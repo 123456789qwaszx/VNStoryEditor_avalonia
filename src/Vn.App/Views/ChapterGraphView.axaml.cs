@@ -533,6 +533,14 @@ public partial class ChapterGraphView : UserControl
         RefreshFixtureCombo(model);
         (IReadOnlySet<string> path, IReadOnlySet<(string, string)> pathEdges) = WalkSelectedFixture(model);
 
+        // 에피소드별 선택지(대본 OPTION) — 포트 그리기와 간선 그리기가 같은 목록 하나를 본다.
+        _optionsByEpisode.Clear();
+
+        foreach (ChapterEpisode episode in model.Episodes)
+        {
+            _optionsByEpisode[episode.EpisodeId] = ReadEpisodeOptions(episode.EpisodeId);
+        }
+
         // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
         DrawEpisodeRails(model, pathEdges);
 
@@ -609,10 +617,21 @@ public partial class ChapterGraphView : UserControl
         return (nodes, edges);
     }
 
+    /// <summary>포트 줄 높이 — 카드가 선택지 수만큼 아래로 자란다.</summary>
+    private const double PortRowHeight = 18;
+
+    /// <summary>에피소드 → 대본 OPTION 목록. Draw가 채우고 카드·간선이 함께 본다.</summary>
+    private readonly Dictionary<string, List<string>> _optionsByEpisode = new(StringComparer.Ordinal);
+
+    /// <summary>선택지 포트의 세로 자리 — 카드 그리기와 간선 그리기가 같은 산식을 쓴다.</summary>
+    private static double PortY(double cardY, int index) =>
+        cardY + CardHeight - 7 + index * PortRowHeight + PortRowHeight / 2;
+
     /// <summary>
-    /// 간선 그리기의 갈림 (2026-08-15 소유자) — <b>선택지가 있는 에피소드는 포트 철도</b>
-    /// (노드 아래 선택지 포트마다 자기 간선), 없는 에피소드는 기존 직행선. 옵션 원천은
-    /// 라벨 콤보와 같다: 그 에피소드 대본의 OPTION.
+    /// 간선 그리기의 갈림 (2026-08-15 소유자 개정 2) — <b>선택지 포트는 카드 오른쪽</b>이다.
+    /// 시나리오 그래프의 조건 갈래 포트와 같은 문법: 카드 오른변에 포트가 뚫리고 각 포트에서
+    /// 자기 간선이 나간다(선택지는 많아야 3개). 아래로 줄기를 빼는 철도 흉내는 폐기.
+    /// 선택지 없는 에피소드는 기존 중앙 직행선 그대로.
     /// </summary>
     private void DrawEpisodeRails(ChapterGraphModel model, IReadOnlySet<(string, string)> pathEdges)
     {
@@ -622,9 +641,9 @@ public partial class ChapterGraphView : UserControl
                 .Where(edge => string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
                 .ToList();
 
-            List<string> options = ReadEpisodeOptions(episode.EpisodeId);
+            List<string> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
 
-            if (options.Count == 0)
+            if (options.Count == 0 || !_placed.TryGetValue(episode.EpisodeId, out (double X, double Y) position))
             {
                 // 선택지 없음 — 진행(그리고 유령 라벨 간선)은 중앙 직행선 그대로.
                 foreach (ChapterEdge edge in edges)
@@ -635,79 +654,45 @@ public partial class ChapterGraphView : UserControl
                 continue;
             }
 
-            if (!_placed.TryGetValue(episode.EpisodeId, out (double X, double Y) position))
-            {
-                continue;
-            }
-
-            // 포트 순서 = 대본의 OPTION 순서 → 유령 간선 → 잔존 진행(검증이 경고하는 것).
-            var plan = new List<(ChapterEdge? Edge, string? Option)>();
-            var consumed = new HashSet<ChapterEdge>();
-
-            foreach (string option in options)
+            for (int index = 0; index < options.Count; index++)
             {
                 ChapterEdge? match = edges.FirstOrDefault(edge =>
                     !edge.IsPlainAdvance &&
-                    string.Equals(edge.OptionLabel, option, StringComparison.Ordinal));
+                    string.Equals(edge.OptionLabel, options[index], StringComparison.Ordinal));
 
                 if (match is not null)
                 {
-                    consumed.Add(match);
+                    DrawPortEdge(match,
+                        new Point(position.X + CardWidth + 5, PortY(position.Y, index)),
+                        pathEdges);
                 }
-
-                plan.Add((match, option));
             }
 
-            foreach (ChapterEdge ghost in edges.Where(edge => !edge.IsPlainAdvance && !consumed.Contains(edge)))
+            // 유령 간선·잔존 진행(검증이 경고하는 것들)은 직행선으로 — 실재는 숨기지 않는다.
+            foreach (ChapterEdge stray in edges.Where(edge =>
+                         edge.IsPlainAdvance ||
+                         !options.Contains(edge.OptionLabel ?? string.Empty)))
             {
-                plan.Add((ghost, null));
+                DrawDirectEdge(stray, pathEdges.Contains((stray.FromEpisodeId, stray.ToEpisodeId)));
             }
-
-            foreach (ChapterEdge plain in edges.Where(edge => edge.IsPlainAdvance))
-            {
-                plan.Add((plain, null));
-            }
-
-            double trunkX = position.X + 22;
-            double branchY = position.Y + CardHeight + 22;
-
-            foreach ((ChapterEdge? edge, string? option) in plan)
-            {
-                DrawPortBranch(edge, option, trunkX, branchY, pathEdges);
-                branchY += 32;
-            }
-
-            var trunk = new Line
-            {
-                StartPoint = new Point(trunkX, position.Y + CardHeight),
-                EndPoint = new Point(trunkX, branchY - 32),
-                Stroke = new SolidColorBrush(Color.Parse("#8894A0")),
-                StrokeThickness = 1.6,
-                IsHitTestVisible = false
-            };
-            GraphCanvas.Children.Add(trunk);
         }
     }
 
-    /// <summary>선택지 포트 하나와 그 간선. 간선 없는 옵션은 ⏹ 종료 스텁이다(낙하 없음).</summary>
-    private void DrawPortBranch(
-        ChapterEdge? edge, string? option, double trunkX, double y, IReadOnlySet<(string, string)> pathEdges)
+    /// <summary>포트에서 도착 카드로 — 같은 높이면 왼쪽 진입(▶), 위·아래면 가운데로 꺾어 진입.</summary>
+    private void DrawPortEdge(ChapterEdge edge, Point port, IReadOnlySet<(string, string)> pathEdges)
     {
-        bool onPath = edge is not null &&
-            pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId));
+        bool onPath = pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId));
 
-        IBrush stroke = edge is null
-            ? new SolidColorBrush(Color.FromArgb(120, 136, 148, 160))
-            : onPath
-                ? new SolidColorBrush(Color.Parse("#3E9B57"))
-                : edge.ConditionLabel is null
-                    ? new SolidColorBrush(Color.Parse("#8894A0"))
-                    : new SolidColorBrush(Color.Parse("#C08A3E"));
+        IBrush stroke = onPath
+            ? new SolidColorBrush(Color.Parse("#3E9B57"))
+            : edge.ConditionLabel is null
+                ? new SolidColorBrush(Color.Parse("#8894A0"))
+                : new SolidColorBrush(Color.Parse("#C08A3E"));
         double thickness = onPath ? 3.2 : 1.6;
 
         var segments = new List<Line>();
 
-        Line Segment(double x1, double y1, double x2, double y2)
+        void Segment(double x1, double y1, double x2, double y2)
         {
             var line = new Line
             {
@@ -715,109 +700,50 @@ public partial class ChapterGraphView : UserControl
                 EndPoint = new Point(x2, y2),
                 Stroke = stroke,
                 StrokeThickness = thickness,
+                Tag = EdgeTag(edge),
                 IsHitTestVisible = false
             };
 
-            if (edge is { HideWhenLocked: true })
+            if (edge.HideWhenLocked)
             {
                 line.StrokeDashArray = new AvaloniaList<double> { 4, 3 };
             }
 
-            if (edge is not null)
-            {
-                line.Tag = EdgeTag(edge);
-            }
-
             GraphCanvas.Children.Add(line);
             segments.Add(line);
-            return line;
         }
 
-        Segment(trunkX, y, trunkX + 8, y);
-
-        // 포트 칩 — ● 선택지 문구 (유령은 간선 라벨, 잔존 진행은 ○ 진행). 조건은 [라벨]로 병기.
-        string body = edge is { IsPlainAdvance: true }
-            ? "○ 진행"
-            : $"● {option ?? edge?.OptionLabel}";
-        string condition = edge?.ConditionLabel is { } gate ? $" [{gate}]" : string.Empty;
-
-        var chip = new TextBlock
+        if (!_placed.TryGetValue(edge.ToEpisodeId, out (double X, double Y) target))
         {
-            Text = body + condition,
-            FontSize = 10,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = edge is null ? stroke : new SolidColorBrush(Color.Parse("#C06A14")),
-            Opacity = edge is null ? 0.75 : option is null && edge is { IsPlainAdvance: false } ? 0.5 : 1,
-            Background = Brushes.Transparent,
-            Cursor = edge is null
-                ? Avalonia.Input.Cursor.Default
-                : new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
-        };
-        ToolTip.SetTip(chip, edge is null
-            ? "간선 없는 선택지 — 이 길을 고르면 챕터 진행이 여기서 끝납니다. [연결]에서 이 라벨을 골라 이으세요."
-            : option is null && !edge.IsPlainAdvance
-                ? "이 문구의 OPTION이 대본에 없습니다 — 검증 보고를 확인하세요."
-                : "클릭하면 이 간선의 조건·해금·스탯변화를 편집합니다.");
-
-        chip.Measure(Size.Infinity);
-        Canvas.SetLeft(chip, trunkX + 12);
-        Canvas.SetTop(chip, y - chip.DesiredSize.Height / 2);
-
-        if (edge is not null)
-        {
-            string from = edge.FromEpisodeId;
-            string to = edge.ToEpisodeId;
-            string labelKey = EdgeLabelKey(edge);
-            chip.PointerPressed += (_, e) =>
-            {
-                e.Handled = true;
-                UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(from, to, labelKey));
-            };
+            return; // 없는 도착지는 구조 검증이 이미 잡았다.
         }
 
-        GraphCanvas.Children.Add(chip);
-        double cursorX = trunkX + 12 + chip.DesiredSize.Width + 5;
+        var targetRect = new Rect(target.X, target.Y, CardWidth, CardHeight);
+        double y = port.Y;
 
-        if (edge is null)
+        if (y >= targetRect.Y && y <= targetRect.Bottom)
         {
-            // 안 이은 선택지 = 종료 (낙하 없음 — 2026-08-15).
-            Segment(cursorX, y, cursorX + 12, y);
-            var stop = new TextBlock { Text = "⏹", FontSize = 9, Opacity = 0.5, IsHitTestVisible = false };
-            stop.Measure(Size.Infinity);
-            Canvas.SetLeft(stop, cursorX + 15);
-            Canvas.SetTop(stop, y - stop.DesiredSize.Height / 2);
-            GraphCanvas.Children.Add(stop);
-            return;
+            Segment(port.X, y, targetRect.X - 8, y);
+            AddEdgeArrow(targetRect.X - 7, y, stroke, pointRight: true);
         }
-
-        if (_placed.TryGetValue(edge.ToEpisodeId, out (double X, double Y) target))
+        else
         {
-            var targetRect = new Rect(target.X, target.Y, CardWidth, CardHeight);
+            double midX = (port.X + targetRect.X) / 2;
+            Segment(port.X, y, midX, y);
 
-            if (y >= targetRect.Y && y <= targetRect.Bottom)
-            {
-                Segment(cursorX, y, targetRect.X - 8, y);
-                AddEdgeArrow(targetRect.X - 7, y, stroke, pointRight: true);
-            }
-            else
-            {
-                double midX = targetRect.X + CardWidth / 2;
-                Segment(cursorX, y, midX, y);
-
-                bool above = targetRect.Bottom < y;
-                double endY = above ? targetRect.Bottom + 8 : targetRect.Y - 8;
-                Segment(midX, y, midX, endY);
-                AddEdgeArrow(midX, above ? endY - 1 : endY + 1, stroke, pointRight: false, pointUp: above);
-            }
+            double targetY = targetRect.Y + CardHeight / 2;
+            Segment(midX, y, midX, targetY);
+            Segment(midX, targetY, targetRect.X - 8, targetY);
+            AddEdgeArrow(targetRect.X - 7, targetY, stroke, pointRight: true);
         }
 
         RegisterEdgeLines(edge, segments, stroke, thickness);
 
-        // 가로 본선 위 히트 선 — 칩 밖에서도 간선을 누를 수 있다.
+        // 첫 가로 구간 위 히트 선 — 포트 밖에서도 간선을 누를 수 있다.
         var hit = new Line
         {
-            StartPoint = new Point(trunkX, y),
-            EndPoint = segments[^1].EndPoint.Y == y ? segments[^1].EndPoint : new Point(segments[^1].StartPoint.X, y),
+            StartPoint = segments[0].StartPoint,
+            EndPoint = segments[0].EndPoint,
             Stroke = Brushes.Transparent,
             StrokeThickness = 12,
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
@@ -1052,10 +978,15 @@ public partial class ChapterGraphView : UserControl
             });
         }
 
+        // 선택지 포트 (2026-08-15 소유자) — 시나리오 그래프의 조건 갈래 포트처럼 카드
+        // 오른변에 뚫린다. 카드는 선택지 수만큼 아래로 자라고(많아야 3개), 문구·원은
+        // 간선 그리기와 같은 PortY 산식으로 캔버스에 앉는다 — 줄과 선이 어긋날 수 없다.
+        List<string> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
+
         var card = new Border
         {
             Width = CardWidth,
-            Height = CardHeight,
+            Height = CardHeight + options.Count * PortRowHeight,
             Padding = new Thickness(9, 7),
             CornerRadius = new CornerRadius(5),
             BorderThickness = new Thickness(hasError ? 2 : 1),
@@ -1105,6 +1036,88 @@ public partial class ChapterGraphView : UserControl
         Canvas.SetLeft(card, x);
         Canvas.SetTop(card, y);
         GraphCanvas.Children.Add(card);
+
+        DrawOptionPorts(model, episode, options, x, y);
+    }
+
+    /// <summary>
+    /// 카드 오른변의 선택지 포트들 — 문구(카드 안 오른쪽 정렬) + 테두리 위의 원.
+    /// 간선이 이어진 포트는 채워진 원(클릭 = 간선 선택), 안 이어진 포트는 빈 원
+    /// (= 이 길은 종료. 클릭 = 에피소드 선택 + [연결] 라벨 미리 골라 줌).
+    /// </summary>
+    private void DrawOptionPorts(
+        ChapterGraphModel model, ChapterEpisode episode, IReadOnlyList<string> options, double x, double y)
+    {
+        for (int index = 0; index < options.Count; index++)
+        {
+            string option = options[index];
+            double portY = PortY(y, index);
+
+            ChapterEdge? wired = model.Edges.FirstOrDefault(edge =>
+                string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
+                !edge.IsPlainAdvance &&
+                string.Equals(edge.OptionLabel, option, StringComparison.Ordinal));
+
+            var label = new TextBlock
+            {
+                Text = wired?.ConditionLabel is { } gate ? $"{option} [{gate}]" : option,
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.Parse("#C06A14")),
+                Opacity = wired is null ? 0.65 : 1,
+                MaxWidth = CardWidth - 24,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Background = Brushes.Transparent,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+            };
+            label.Measure(Size.Infinity);
+            Canvas.SetLeft(label, x + CardWidth - 12 - label.DesiredSize.Width);
+            Canvas.SetTop(label, portY - label.DesiredSize.Height / 2);
+
+            var port = new Avalonia.Controls.Shapes.Ellipse
+            {
+                Width = 9,
+                Height = 9,
+                Stroke = new SolidColorBrush(Color.Parse("#C06A14")),
+                StrokeThickness = 1.6,
+                Fill = wired is null ? Brushes.Transparent : new SolidColorBrush(Color.Parse("#C06A14")),
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+            };
+            Canvas.SetLeft(port, x + CardWidth - 4.5);
+            Canvas.SetTop(port, portY - 4.5);
+
+            string tip = wired is null
+                ? "간선 없는 선택지 — 이 길을 고르면 챕터 진행이 여기서 끝납니다. 누르면 [연결]에 이 라벨을 미리 골라 둡니다."
+                : "클릭하면 이 간선의 조건·해금·스탯변화를 편집합니다.";
+            ToolTip.SetTip(label, tip);
+            ToolTip.SetTip(port, tip);
+
+            string episodeId = episode.EpisodeId;
+            string capturedOption = option;
+            ChapterEdge? capturedEdge = wired;
+
+            void OnPressed(object? _, Avalonia.Input.PointerPressedEventArgs e)
+            {
+                e.Handled = true;
+                UiGuard.Run(_session, "선택지 포트", () =>
+                {
+                    if (capturedEdge is not null)
+                    {
+                        SelectEdgeKey(capturedEdge.FromEpisodeId, capturedEdge.ToEpisodeId, EdgeLabelKey(capturedEdge));
+                    }
+                    else
+                    {
+                        SelectEpisode(episodeId);
+                        EdgeLabelBox.SelectedItem = capturedOption; // [연결] 준비 완료 — 도착만 고르면 된다
+                    }
+                });
+            }
+
+            label.PointerPressed += OnPressed;
+            port.PointerPressed += OnPressed;
+
+            GraphCanvas.Children.Add(label);
+            GraphCanvas.Children.Add(port);
+        }
     }
 
     /// <summary>
