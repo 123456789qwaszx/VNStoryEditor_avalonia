@@ -121,9 +121,11 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     }
 
     [Fact]
-    public void 간선과_에피소드_OPTION_개수가_어긋나면_검증이_잡는다()
+    public void 간선의_선택지가_에피소드_OPTION에_없으면_유령_간선으로_잡는다()
     {
-        // G7 구조 검증 — 챕터 간선의 선택지 2개 vs 에피소드 OPTION 1개.
+        // G7 구조 검증(포트 규칙 개정) — 짝은 개수·순서가 아니라 <b>라벨</b>이다.
+        // 견본 간선 2개("라루의 제안을 듣는다"·"혼자 문을 연다")와 어느 것도 안 맞는 옵션 하나
+        // → 간선 둘 다 도착지가 영원히 안 쓰이는 유령이 된다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
         string episodes = Path.Combine(_directory, "episodes");
         Directory.CreateDirectory(episodes);
@@ -138,11 +140,72 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
 
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
 
-        ChapterDiagnostic mismatch = Assert.Single(validation.Diagnostics,
+        List<ChapterDiagnostic> ghosts = validation.Diagnostics
+            .Where(item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch)
+            .ToList();
+
+        Assert.Equal(2, ghosts.Count);
+        Assert.All(ghosts, item => Assert.Equal(ChapterDiagnosticSeverity.Error, item.Severity));
+        Assert.Contains(ghosts, item => item.Message.Contains("라루의 제안을 듣는다"));
+        Assert.Contains(ghosts, item => item.Message.Contains("혼자 문을 연다"));
+    }
+
+    [Fact]
+    public void 간선_없는_옵션은_에피소드_종료라_오류가_아니다()
+    {
+        // 소유자 실사례 — 옵션 하나는 IN으로 에피소드 안에서 흐르고, 하나는 문서 끝
+        // (= 에피소드 종료, Gate B 포트 규칙). 챕터에는 무조건 진행 간선뿐이었는데
+        // 옛 개수 일치 규칙이 여기에 오류를 냈다.
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
+        string episodes = Path.Combine(_directory, "episodes");
+        Directory.CreateDirectory(episodes);
+
+        // main05.01은 견본에서 선택지 간선이 없는 에피소드다(무조건 진행만).
+        WriteRows(Path.Combine(episodes, "main05.01.xlsx"),
+        [
+            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
+            ["10", "ln_1001", null, null, null, null, null, "윌로", "첫 줄", null, null],
+            ["20", "ln_1002", "CHOICE", null, null, null, null, null, null, null, null],
+            ["30", "ln_1003", "OPTION", null, null, "100", null, null, "안에서 흐른다", null, null],
+            ["40", "ln_1004", "OPTION", null, null, null, null, null, "여기서 끝난다", null, null],
+            ["100", "ln_1005", null, "INPUT", null, null, null, "윌로", "안쪽 구간", null, null],
+            ["110", "ln_1006", null, "OUT", null, null, "END", "윌로", "구간 끝", null, null]
+        ]);
+
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
+
+        Assert.DoesNotContain(validation.Diagnostics,
+            item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch);
+    }
+
+    [Fact]
+    public void IN으로_해소되는_옵션에_간선까지_있으면_죽은_간선_경고를_한다()
+    {
+        // 라벨은 맞는데 옵션이 IN으로 안에서 흐른다 — 안이 이기므로 간선 도착지는 죽는다.
+        // 반대쪽 옵션("혼자 문을 연다")은 간선과 라벨이 맞고 IN이 없으니 조용해야 한다.
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
+        string episodes = Path.Combine(_directory, "episodes");
+        Directory.CreateDirectory(episodes);
+
+        WriteRows(Path.Combine(episodes, "main05.02.xlsx"),
+        [
+            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
+            ["10", "ln_2001", null, null, null, null, null, "윌로", "첫 줄", null, null],
+            ["20", "ln_2002", "CHOICE", null, null, null, null, null, null, null, null],
+            ["30", "ln_2003", "OPTION", null, null, "100", null, null, "라루의 제안을 듣는다", null, null],
+            ["40", "ln_2004", "OPTION", null, null, null, null, null, "혼자 문을 연다", null, null],
+            ["100", "ln_2005", null, "INPUT", null, null, null, "라루", "안쪽 구간", null, null],
+            ["110", "ln_2006", null, "OUT", null, null, "END", "라루", "구간 끝", null, null]
+        ]);
+
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
+
+        ChapterDiagnostic dead = Assert.Single(validation.Diagnostics,
             item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch);
 
-        Assert.Contains("간선`에 2개", mismatch.Message);
-        Assert.Contains("OPTION에 1개", mismatch.Message);
+        Assert.Equal(ChapterDiagnosticSeverity.Warning, dead.Severity);
+        Assert.Contains("라루의 제안을 듣는다", dead.Message);
+        Assert.Contains("안이 이기므로", dead.Message);
     }
 
     // ── G6 — 픽스처 경로 ────────────────────────────────────────────────────
