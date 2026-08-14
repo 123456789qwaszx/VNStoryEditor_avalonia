@@ -113,7 +113,8 @@ public sealed class ChapterGraphEditingTests
 
         // 대사 노드가 이미 서 있는 상황을 흉내낸다 (규약: 노드 이름 = 에피소드 Id).
         string fileId = session.EnsureChapterBoard("ch05");
-        session.Editor.AddDialogueNode(fileId, name: "new01");
+        DialogueNode standing = session.Editor.AddDialogueNode(fileId, name: "new01");
+        standing.ExcelEpisodeId = "new01";
 
         view.SelectEpisode("new01");
         view.FindControl<TextBox>("IdBox")!.Text = "ep_renamed";
@@ -126,9 +127,49 @@ public sealed class ChapterGraphEditingTests
         Assert.Null(EpisodeLibrary.FindExisting(episodes, "new01"));
 
         // 대사 노드도 새 이름이다 — 새로 만들지 않고 이름만 바꿔 연출·신원이 보존된다.
+        // 엑셀 표식(ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 시나리오 그래프가
+        // 챕터 밖 노드로 보고 레일을 끊는다.
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            node => node.Name == "ep_renamed");
+            node => node.Name == "ep_renamed" && node.ExcelEpisodeId == "ep_renamed");
         Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.Name == "new01");
+    });
+
+    [Fact]
+    public void 잠긴_대본_파일이면_개명_전체가_멈춘다() => HeadlessUi.Run(() =>
+    {
+        // 실사례 (2026-08-15) — 엑셀이 원고를 열어 둔 채 개명하면 챕터·노드만 새 이름이 되고
+        // 원고는 옛 이름에 남았다. 새 이름을 여는 순간 빈 워크북이 생겨 "파일이 새로
+        // 만들어진다"로 보였다. 파일을 못 옮기면 아무것도 바뀌지 않아야 한다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        view.AddEpisodeFromToolbar(); // new01 + 대본 워크북 생성
+        view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        session.Editor.AddDialogueNode(fileId, name: "new01");
+
+        string episodes = Path.Combine(Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes");
+        string workbook = EpisodeLibrary.FindExisting(episodes, "new01")!;
+
+        view.SelectEpisode("new01");
+        view.FindControl<TextBox>("IdBox")!.Text = "ep_locked";
+
+        // 엑셀이 잡고 있는 상황 — 공유 삭제 없이 연 핸들은 이동(File.Move)을 막는다.
+        using (File.Open(workbook, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            view.RenameSelectedEpisode();
+        }
+
+        // 전부 그대로다 — 챕터 시트도, 대사 노드도, 파일도.
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+        Assert.NotNull(reread.FindEpisode("new01"));
+        Assert.Null(reread.FindEpisode("ep_locked"));
+        Assert.NotNull(EpisodeLibrary.FindExisting(episodes, "new01"));
+        Assert.Null(EpisodeLibrary.FindExisting(episodes, "ep_locked"));
+        Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "new01");
     });
 

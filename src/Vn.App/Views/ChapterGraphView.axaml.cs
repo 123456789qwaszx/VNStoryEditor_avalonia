@@ -1757,34 +1757,54 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
+        // 대본 파일을 <b>먼저</b> 옮긴다 — 엑셀이 잠그고 있으면 여기서 전부 멈춘다. 챕터만
+        // 개명된 채 원고가 옛 이름에 남으면, 새 이름을 여는 순간 빈 워크북이 생겨 원고가
+        // 고아가 된다(실사례 2026-08-15: new02 원고가 남고 빈 rrr.xlsx가 생겼다).
+        string? moveFailure = episodesFolder is null
+            ? null
+            : EpisodeLibrary.RenameWorkbook(episodesFolder, oldId, newId);
+
+        if (moveFailure is not null)
+        {
+            _session?.SetStatus($"개명하지 않았습니다 — {moveFailure}");
+            return;
+        }
+
         ChapterWriteResult result = ChapterWorkbookWriter.RenameEpisode(path, oldId, newId);
 
         if (!result.Written)
         {
+            // 챕터 쪽이 거부됐다 — 옮긴 대본 파일을 되돌려 원상태로 맞춘다.
+            if (episodesFolder is not null)
+            {
+                EpisodeLibrary.RenameWorkbook(episodesFolder, newId, oldId);
+            }
+
             Report(result, string.Empty);
             return;
         }
 
         _selectedEpisodeId = newId;
 
-        // 대본 파일이 따라간다 — 옛 이름에 버려두면 원고가 고아가 되고 빈 워크북이 하나 더 생긴다.
-        string? moveFailure = episodesFolder is null
-            ? null
-            : EpisodeLibrary.RenameWorkbook(episodesFolder, oldId, newId);
-
         // 대사 노드도 따라간다 — 규약(대사엔트리 = Id)을 따르던 노드만. 노드를 새로 만들지
-        // 않고 이름만 바꾸므로 줄·연출·행 신원(ExcelLineMap)이 전부 보존된다.
+        // 않고 이름만 바꾸므로 줄·연출·행 신원(ExcelLineMap)이 전부 보존된다. 엑셀 표식
+        // (ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 시나리오 그래프가 챕터 밖 노드로
+        // 보고 레일을 끊는다.
         if (_session is { } session &&
             session.Project.EnumerateNodes().OfType<Vn.Authoring.Model.DialogueNode>()
                 .FirstOrDefault(node => string.Equals(node.Name, oldId, StringComparison.Ordinal))
             is { } dialogueNode)
         {
+            if (dialogueNode.ExcelEpisodeId is not null)
+            {
+                dialogueNode.ExcelEpisodeId = newId;
+            }
+
             session.Editor.RenameNode(dialogueNode.Id, newId);
         }
 
-        _session?.SetStatus(moveFailure is null
-            ? $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처·대본 파일·대사 노드가 함께 따라갔습니다."
-            : $"'{oldId}' → '{newId}' 개명했습니다. 단, {moveFailure}");
+        _session?.SetStatus(
+            $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처·대본 파일·대사 노드가 함께 따라갔습니다.");
     }
 
     internal void AddEdgeFromPanel()
