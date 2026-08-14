@@ -65,6 +65,16 @@ public sealed class ChapterGraphSyncViewTests
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
         Assert.Contains(panel.Children.OfType<TextBlock>(),
             block => block.Text?.Contains("에피소드 main05.02 — 반영됨") == true);
+
+        // 동기화 보고가 목록 맨 위다 — 사람이 방금 한 행동의 결과를 알림 더미 아래
+        // 스크롤 밖에 묻지 않는다(실사례: "숫자는 2개라는데 볼 방법이 없어").
+        List<string> texts = panel.Children.OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .ToList();
+        int syncIndex = texts.FindIndex(text => text.Contains("반영됨"));
+        int firstDiagnosticIndex = texts.FindIndex(text => text.Contains(".xlsx ·"));
+        Assert.True(firstDiagnosticIndex < 0 || syncIndex < firstDiagnosticIndex,
+            $"동기화 줄({syncIndex})이 진단({firstDiagnosticIndex})보다 아래에 있습니다.");
     });
 
     [Fact]

@@ -204,7 +204,12 @@
                             Margin="10,4,10,0"
                             HorizontalAlignment="Right"
                             ToolTip.Tip="아래 목록 전체를 클립보드로 복사합니다. 줄 하나만 필요하면 드래그로 선택해도 됩니다." />
-                    <ScrollViewer Grid.Row="1" MaxHeight="180" HorizontalScrollBarVisibility="Auto">
+                    <!-- AllowAutoHide=False — 목록이 길 때 "아래 더 있다"가 보여야 한다.
+                         숨는 오버레이 스크롤바는 동기화 보고가 묻혀 있다는 사실 자체를 숨겼다(실사례). -->
+                    <ScrollViewer Grid.Row="1"
+                                  MaxHeight="220"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  AllowAutoHide="False">
                         <StackPanel x:Name="DiagnosticsPanel" Margin="10,6" Spacing="2" />
                     </ScrollViewer>
                 </Grid>

@@ -1445,8 +1445,10 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
-    /// 오류·경고·정보를 심각도 순으로, 그 뒤에 에피소드 동기화 보고를. 각 줄이 파일·시트·행·열을
-    /// 그대로 말하고, 머리글의 배지가 거부 건수를 든다(G5).
+    /// 에피소드 동기화 보고를 먼저, 그 뒤에 오류·경고·정보를 심각도 순으로. 동기화는 사람이
+    /// 방금 한 행동의 결과인데 목록 끝에 두면 알림 더미에 묻혀 스크롤 밖으로 나간다(실사례 —
+    /// "숫자는 2개라는데 볼 방법이 없어"). 각 줄이 파일·시트·행·열을 그대로 말하고,
+    /// 머리글의 배지가 거부 건수를 든다(G5).
     /// </summary>
     private void DrawDiagnostics(ChapterGraphModel model)
     {
@@ -1498,6 +1500,8 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
+        DrawSyncReports();
+
         foreach (ChapterDiagnostic diagnostic in all
                      .OrderByDescending(item => item.Severity)
                      .ThenBy(item => item.Sheet, StringComparer.Ordinal)
@@ -1515,7 +1519,6 @@ public partial class ChapterGraphView : UserControl
         }
 
         OfferStatRegistration(model, all);
-        DrawSyncReports();
     }
 
     /// <summary>
