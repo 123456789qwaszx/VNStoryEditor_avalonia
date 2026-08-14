@@ -32,6 +32,9 @@ public partial class ChapterGraphView : UserControl
     private readonly List<ChapterEntry> _entries = new();
     private readonly List<EpisodeSyncReport> _syncReports = new();
 
+    /// <summary>판 수준 경고 (2단계 가드레일) — 자유 노드의 Tier 2 스탯 set 등.</summary>
+    private readonly List<ChapterDiagnostic> _boardWarnings = new();
+
     /// <summary>선택된 챕터의 구조 검증 + 도달성 증명 결과 (G7). 워크북을 읽을 때 갱신된다.</summary>
     private ChapterValidationResult? _validation;
 
@@ -265,6 +268,16 @@ public partial class ChapterGraphView : UserControl
                 path,
                 entry.Model));
         }
+
+        // 챕터 조건을 판의 모든 대사 노드(자유 노드 포함)에 공급한다 — 작가가 조건
+        // 드롭다운에서 A 계층 라벨을 바로 고른다. 멱등이라 매번 불러도 안전하다.
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            _session.Editor, _session.Definition, fileId, entry.Model);
+
+        // 가드레일 — 자유 노드가 Tier 2 스탯을 set으로 바꾸면 도달성 증명이 장님이 된다.
+        _boardWarnings.Clear();
+        _boardWarnings.AddRange(
+            EpisodeSyncService.WarnFreeNodeStatWrites(_session.Editor, fileId, entry.Model));
 
         // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
         Validate();
@@ -1437,6 +1450,7 @@ public partial class ChapterGraphView : UserControl
         // 같은 진단이 두 곳에서 나올 수 있으므로(리더가 낸 것을 검증기가 다시 담는다) 겹은 지운다.
         List<ChapterDiagnostic> all = model.Diagnostics
             .Concat(_validation?.All ?? Enumerable.Empty<ChapterDiagnostic>())
+            .Concat(_boardWarnings)
             .Distinct()
             .ToList();
 

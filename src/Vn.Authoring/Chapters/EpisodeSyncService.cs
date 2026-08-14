@@ -355,6 +355,117 @@ public static class EpisodeSyncService
         }
     }
 
+    /// <summary>
+    /// 챕터의 조건 <b>전부</b>를 그 판의 모든 대사 노드가 쓸 수 있게 공급한다 (2단계 4번).
+    /// 작가의 자유 노드가 조건 드롭다운에서 챕터 라벨(A 계층)을 바로 고르게 하는 자리다 —
+    /// 설정노드를 손으로 찾아 잇는 절차가 없어야 "개발자를 안 부르고" 조건을 건다.
+    /// 링크·조건 모두 멱등이다(있으면 다시 만들지 않는다).
+    /// </summary>
+    public static void SupplyChapterConditionsToBoard(
+        ProjectEditor editor,
+        GameDefinition definition,
+        string fileId,
+        ChapterGraphModel chapter)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(chapter);
+
+        List<(string Label, string Yarn)> translatable = chapter.Conditions
+            .Select(condition => (condition.Label, Translated: ConditionYarnTranslator.Translate(condition)))
+            .Where(pair => pair.Translated.IsTranslatable)
+            .Select(pair => (pair.Label, pair.Translated.Yarn!))
+            .ToList();
+
+        if (translatable.Count == 0)
+        {
+            return;
+        }
+
+        string supplyName = $"챕터 {chapter.ChapterId} 조건";
+
+        SetNode? supply = editor.Project.EnumerateNodes().OfType<SetNode>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, supplyName, StringComparison.Ordinal));
+
+        supply ??= editor.AddSetNode(fileId, name: supplyName);
+
+        HashSet<string> known = supply.Conditions
+            .Select(condition => condition.Expression.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach ((string label, string yarn) in translatable)
+        {
+            if (known.Add(yarn))
+            {
+                editor.AddCondition(supply.Id, label, yarn);
+            }
+        }
+
+        StoryFile? file = editor.Project.Files.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, fileId, StringComparison.Ordinal));
+
+        foreach (DialogueNode dialogue in (file?.Nodes ?? []).OfType<DialogueNode>())
+        {
+            editor.AddSettingsLink(supply.Id, dialogue.Id);
+        }
+    }
+
+    /// <summary>
+    /// 가드레일 (2단계 4번) — 작가의 자유 노드가 Tier 2 스탯(A 계층)에 <c>&lt;&lt;set&gt;&gt;</c>을
+    /// 걸면 경고한다. 스탯 변화의 원천은 엑셀 J열 하나여야 도달성 증명이 참을 말한다 —
+    /// 자유 노드의 set은 증명이 못 보는 뒷길이 된다. 막지는 않는다(재생은 되니까), 크게 말한다.
+    /// </summary>
+    public static IReadOnlyList<ChapterDiagnostic> WarnFreeNodeStatWrites(
+        ProjectEditor editor,
+        string fileId,
+        ChapterGraphModel chapter)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(chapter);
+
+        HashSet<string> statKeys = chapter.Stats
+            .Select(stat => stat.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (statKeys.Count == 0)
+        {
+            return Array.Empty<ChapterDiagnostic>();
+        }
+
+        StoryFile? file = editor.Project.Files.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, fileId, StringComparison.Ordinal));
+
+        var warnings = new List<ChapterDiagnostic>();
+
+        foreach (DialogueNode dialogue in (file?.Nodes ?? []).OfType<DialogueNode>())
+        {
+            if (dialogue.ExcelEpisodeId is not null)
+            {
+                continue; // 엑셀노드의 스탯변화는 J열이 원천 — 여기 대상이 아니다
+            }
+
+            foreach (DialogueLineExtension extension in dialogue.LineExtensions)
+            {
+                foreach (SetOperation operation in extension.SetOperations)
+                {
+                    string variable = operation.Variable.TrimStart('$');
+
+                    if (statKeys.Contains(variable))
+                    {
+                        warnings.Add(new ChapterDiagnostic(
+                            ChapterDiagnosticSeverity.Warning,
+                            ChapterDiagnosticCode.StatKeyUnknown,
+                            chapter.SourcePath, null, null, null,
+                            $"자유 노드 '{dialogue.Name}'이 스탯 '{variable}'을 set으로 바꿉니다 — " +
+                            "스탯 변화의 원천은 에피소드 엑셀의 `스탯변화` 열 하나여야 도달성 증명이 " +
+                            "정확합니다. 자유 노드에서는 로컬 변수를 쓰고, 스탯은 엑셀에서 바꿔 주세요."));
+                    }
+                }
+            }
+        }
+
+        return warnings;
+    }
+
     private static IReadOnlyList<EpisodePrunedLogic> CollectPruned(
         ScriptSyncPlan plan,
         IReadOnlyDictionary<string, DialogueLineExtension> extensionsBefore,

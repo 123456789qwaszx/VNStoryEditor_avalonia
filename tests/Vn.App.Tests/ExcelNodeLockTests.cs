@@ -74,6 +74,67 @@ public sealed class ExcelNodeLockTests
         Assert.StartsWith("📄 엑셀", card.Badge);
     });
 
+    [Fact]
+    public void 자유_노드가_챕터_조건을_바로_쓴다() => HeadlessUi.Run(() =>
+    {
+        // 2단계 4번 — 작가가 설정노드를 손으로 잇지 않아도, 판 위의 자유 노드가
+        // 조건 드롭다운에서 챕터 라벨(A 계층)을 바로 고를 수 있어야 한다.
+        (_, AuthoringSession session, _) = ShowSyncedNode();
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬");
+
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(
+            Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
+
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            session.Editor, session.Definition, fileId, chapter);
+
+        Vn.Authoring.Flow.AvailableConditionCatalog available =
+            Vn.Authoring.Flow.AvailableConditionResolver.Resolve(
+                session.Project, free.Id, session.Definition);
+
+        Assert.Contains(available.Conditions, condition => condition.Name == "신뢰높음");
+
+        // 멱등 — 두 번 불러도 공급 노드·조건이 늘지 않는다.
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            session.Editor, session.Definition, fileId, chapter);
+
+        Assert.Single(session.Project.EnumerateNodes().OfType<SetNode>(),
+            node => node.Name == "챕터 ch05 조건");
+    });
+
+    [Fact]
+    public void 자유_노드가_스탯을_set으로_바꾸면_경고한다() => HeadlessUi.Run(() =>
+    {
+        // 가드레일 — 스탯 변화의 원천은 엑셀 J열 하나여야 도달성 증명이 참을 말한다.
+        (_, AuthoringSession session, _) = ShowSyncedNode();
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "몰래스탯");
+        string lineId = session.Project.FindScript(free.ScriptId)!.ActiveLines.First().Id;
+        session.Editor.SetLineSetOperations(free.Id, lineId,
+        [
+            new SetOperation { Variable = "trust", Operator = SetOperatorKind.Add, Value = "1" }
+        ]);
+
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(
+            Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
+
+        var warnings = EpisodeSyncService.WarnFreeNodeStatWrites(session.Editor, fileId, chapter);
+
+        Assert.Contains(warnings, warning =>
+            warning.Severity == ChapterDiagnosticSeverity.Warning &&
+            warning.Message.Contains("몰래스탯") &&
+            warning.Message.Contains("trust"));
+
+        // 엑셀노드는 대상이 아니다 — J열이 원천이니까.
+        Assert.DoesNotContain(warnings, warning => warning.Message.Contains("Story_ch05_02"));
+    });
+
+    private static string EpisodesRoot(AuthoringSession session) =>
+        EpisodeLibrary.FolderFor(session.ProjectPath)!;
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <summary>견본 에피소드를 동기화해 엑셀노드를 만들고, 그 노드를 편집기에 띄운다.</summary>
