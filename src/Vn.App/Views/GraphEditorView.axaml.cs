@@ -297,15 +297,25 @@ public partial class GraphEditorView : UserControl
                 Padding = new Thickness(8, 3),
                 Background = new SolidColorBrush(
                     isActive ? Color.FromArgb(220, 61, 123, 217) : Color.FromArgb(160, 107, 114, 128)),
-                IsHitTestVisible = false,
+                Cursor = new Cursor(StandardCursorType.Hand),
                 Child = new TextBlock
                 {
-                    Text = $"챕터 {chapterName}",
+                    Text = $"챕터 {chapterName} ⌄",
                     FontSize = 11,
                     FontWeight = FontWeight.SemiBold,
                     Foreground = Brushes.White
                 }
             };
+            ToolTip.SetTip(label, "클릭하면 이 챕터를 표 형태로 접습니다. 접힌 표를 더블클릭하면 다시 펼칩니다.");
+
+            // 이름표만 히트 대상이다(프레임은 아님) — 클릭 = 접기 (PDF 9장 "체크해제하면 표형태").
+            string frameFileId = group.Key;
+            label.PointerPressed += (_, args) =>
+            {
+                args.Handled = true;
+                _session?.SetFileExpanded(frameFileId, expanded: false);
+            };
+
             Canvas.SetLeft(label, area.X + 12);
             Canvas.SetTop(label, area.Y + 10);
 
@@ -635,6 +645,15 @@ public partial class GraphEditorView : UserControl
             }
 
             args.Handled = true;
+        };
+
+        // 접힌 표를 더블클릭 = 펼치기 — 이름표 클릭(접기)의 짝이다.
+        ToolTip.SetTip(visual, "더블클릭하면 이 챕터를 펼칩니다.");
+        visual.DoubleTapped += (_, args) =>
+        {
+            args.Handled = true;
+            _draggingProxyFileId = null; // 둘째 누름이 시작한 끌기 상태를 걷는다
+            _session?.SetFileExpanded(file.FileId, expanded: true);
         };
 
         return new FileProxyVisual(file.FileId, visual, rows);

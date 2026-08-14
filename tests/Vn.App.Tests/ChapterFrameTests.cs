@@ -35,8 +35,8 @@ public sealed class ChapterFrameTests
             .Select(text => text!)
             .ToList();
 
-        Assert.Contains("챕터 ch01", labels);
-        Assert.Contains("챕터 ch02", labels);
+        Assert.Contains(labels, label => label.StartsWith("챕터 ch01", StringComparison.Ordinal));
+        Assert.Contains(labels, label => label.StartsWith("챕터 ch02", StringComparison.Ordinal));
 
         // 프레임은 히트 대상이 아니고(클릭·드래그 무영향), 카드보다 앞 인덱스(= 뒤에 깔림)다.
         Border frame = canvas.Children.OfType<Border>()
@@ -47,6 +47,42 @@ public sealed class ChapterFrameTests
         Assert.True(
             canvas.Children.IndexOf(frame) < canvas.Children.IndexOf(card),
             "챕터 박스는 노드 카드 뒤에 깔려야 한다");
+    });
+
+    [Fact]
+    public void 이름표를_클릭하면_접히고_표를_펼침으로_되돌린다() => HeadlessUi.Run(() =>
+    {
+        // PDF 9장 — "특정 챕터를 체크해제하면 표형태로 접힘". 손잡이는 이름표 클릭이다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        string ch01 = session.EnsureChapterBoard("ch01");
+        session.Editor.AddDialogueNode(ch01, name: "ep_a");
+        graph.Rebuild();
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+        Border label = canvas.Children.OfType<Border>().First(border =>
+            (border.Child as TextBlock)?.Text?.StartsWith("챕터 ch01") == true);
+
+        label.RaiseEvent(new Avalonia.Input.PointerPressedEventArgs(
+            label, new Avalonia.Input.Pointer(0, Avalonia.Input.PointerType.Mouse, true),
+            label, default, 0,
+            new Avalonia.Input.PointerPointProperties(
+                Avalonia.Input.RawInputModifiers.LeftMouseButton,
+                Avalonia.Input.PointerUpdateKind.LeftButtonPressed),
+            Avalonia.Input.KeyModifiers.None));
+
+        // 세션의 펼침 상태가 접힘으로 바뀌었고, 다시 그리면 표 프록시가 선다.
+        Assert.DoesNotContain(ch01, session.ExpandedFileIds);
+
+        graph.Rebuild();
+        Assert.Contains(canvas.Children.OfType<Border>(),
+            border => (border.Tag as string) == ch01); // 표 프록시 (Tag = FileId)
+
+        // 펼침 기계의 역방향 — 표가 다시 카드가 된다.
+        session.SetFileExpanded(ch01, expanded: true);
+        graph.Rebuild();
+        Assert.Contains(canvas.Children.OfType<Border>(),
+            border => (border.Child as TextBlock)?.Text?.StartsWith("챕터 ch01") == true);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────
