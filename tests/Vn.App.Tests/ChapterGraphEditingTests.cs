@@ -56,9 +56,12 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
+        // 라벨은 대본의 OPTION에서 고른다 (2026-08-15) — 대본에 그 선택지를 먼저 깔아 둔다.
+        WriteOptionsWorkbook(project.EpisodesFolder, "main05.01", "지름길");
+
         view.SelectEpisode("main05.01");
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
-        view.FindControl<TextBox>("EdgeLabelBox")!.Text = "지름길";
+        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "지름길";
         view.AddEdgeFromPanel();
 
         view.FindControl<TextBox>("ConditionLabelBox")!.Text = "새조건";
@@ -182,30 +185,42 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 간선_이름을_고치면_엑셀로_간다() => HeadlessUi.Run(() =>
+    public void 간선_라벨을_드롭다운으로_바꾸고_떼면_일반_진행이_된다() => HeadlessUi.Run(() =>
     {
+        // 라벨은 자유 입력이 아니라 대본 OPTION의 드롭다운이다 (2026-08-15 소유자).
         using var project = new TempProject(SamplePath);
+        WriteOptionsWorkbook(project.EpisodesFolder, "main05.02", "라루의 제안을 듣는다", "혼자 문을 연다");
         (ChapterGraphView view, _) = Show(project);
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
-        view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "새 선택지 이름";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 현재 라벨이 골라져 있고, 후보는 대본의 OPTION들 + (진행)이다.
+        var combo = view.FindControl<ComboBox>("EdgeLabelEditBox")!;
+        Assert.Equal("라루의 제안을 듣는다", combo.SelectedItem);
+        Assert.Contains("혼자 문을 연다", (System.Collections.Generic.IEnumerable<string>)combo.ItemsSource!);
+
+        // (진행)으로 떼면 일반 진행이 된다.
+        combo.SelectedItem = "(진행)";
         view.ApplyEdgeFromPanel();
 
         ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
 
-        Assert.Equal("새 선택지 이름", edge.OptionLabel);
+        Assert.True(edge.IsPlainAdvance);
     });
 
     [Fact]
-    public void 라벨_없던_간선에_이름을_붙일_수_있다() => HeadlessUi.Run(() =>
+    public void 라벨_없던_간선에_대본의_선택지를_붙일_수_있다() => HeadlessUi.Run(() =>
     {
         // 일반 진행(라벨 없음) 간선을 선택지로 바꾸는 흐름 — 저작 중 가장 흔한 편집이다.
         using var project = new TempProject(SamplePath);
+        WriteOptionsWorkbook(project.EpisodesFolder, "main05.01", "복도로 간다");
         (ChapterGraphView view, _) = Show(project);
 
         view.SelectEdgeKey("main05.01", "main05.02");
-        view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "복도로 간다";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "복도로 간다";
         view.ApplyEdgeFromPanel();
 
         ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
@@ -224,7 +239,7 @@ public sealed class ChapterGraphEditingTests
 
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
         Assert.False(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("라루의 제안을 듣는다", view.FindControl<TextBox>("EdgeLabelEditBox")!.Text);
+        Assert.Equal("라루의 제안을 듣는다", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
         Assert.Equal("신뢰높음", view.FindControl<ComboBox>("EdgeConditionCombo")!.SelectedItem);
 
         // 잠기면 숨김으로 바꾸고 안내문을 고쳐 적용 → 엑셀 셀로 간다.
@@ -279,6 +294,8 @@ public sealed class ChapterGraphEditingTests
         public string ChapterPath =>
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch05.xlsx");
 
+        public string EpisodesFolder => Path.Combine(_directory, "episodes");
+
         public void Dispose()
         {
             if (Directory.Exists(_directory))
@@ -286,5 +303,33 @@ public sealed class ChapterGraphEditingTests
                 Directory.Delete(_directory, recursive: true);
             }
         }
+    }
+
+    /// <summary>라벨 드롭다운의 원천 — 그 에피소드 대본에 CHOICE/OPTION을 깔아 준다.</summary>
+    internal static void WriteOptionsWorkbook(string episodesFolder, string episodeId, params string[] options)
+    {
+        Directory.CreateDirectory(episodesFolder);
+
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
+        string[] headers = ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
+
+        for (int column = 1; column <= headers.Length; column++)
+        {
+            sheet.Cell(1, column).SetValue(headers[column - 1]);
+        }
+
+        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 8).SetValue("윌로"); sheet.Cell(2, 9).SetValue("첫 줄");
+        sheet.Cell(3, 1).SetValue(20); sheet.Cell(3, 3).SetValue("CHOICE");
+
+        for (int index = 0; index < options.Length; index++)
+        {
+            int row = 4 + index;
+            sheet.Cell(row, 1).SetValue(30 + index * 10);
+            sheet.Cell(row, 3).SetValue("OPTION");
+            sheet.Cell(row, 9).SetValue(options[index]);
+        }
+
+        workbook.SaveAs(Path.Combine(episodesFolder, episodeId + ".xlsx"));
     }
 }

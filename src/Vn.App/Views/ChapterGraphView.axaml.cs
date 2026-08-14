@@ -1044,6 +1044,10 @@ public partial class ChapterGraphView : UserControl
                 .ToList(),
             EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
 
+        // 라벨 후보 = 이 에피소드 대본의 OPTION들 (자유 입력 폐지 — 오타는 유령 간선).
+        SetItems(EdgeLabelBox, EdgeLabelChoices(episode.EpisodeId),
+            EdgeLabelBox.SelectedItem as string);
+
         RefreshEdgeList(model, episode);
     }
 
@@ -1207,11 +1211,19 @@ public partial class ChapterGraphView : UserControl
 
         if (fill)
         {
-            EdgeLabelEditBox.Text = edge.OptionLabel ?? string.Empty;
             EdgeHideCheck.IsChecked = edge.HideWhenLocked;
             EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
             EdgeStatsBox.Text = StatChangesText(edge);
         }
+
+        // 라벨은 출발 에피소드 대본의 OPTION에서 고른다. 현재 값이 짝 잃은 옛 라벨이라도
+        // 목록에 세워 보이게 한다(ensure) — 검증 보고가 어긋남을 따로 잡는다.
+        string currentLabel = string.IsNullOrWhiteSpace(edge.OptionLabel)
+            ? PlainAdvanceLabel
+            : edge.OptionLabel!;
+        SetItems(EdgeLabelEditBox,
+            EdgeLabelChoices(edge.FromEpisodeId, ensure: currentLabel == PlainAdvanceLabel ? null : currentLabel),
+            fill ? currentLabel : EdgeLabelEditBox.SelectedItem as string);
 
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
@@ -1277,9 +1289,13 @@ public partial class ChapterGraphView : UserControl
             ? string.Empty
             : EdgeConditionCombo.SelectedItem as string;
 
+        string pickedLabel = EdgeLabelEditBox.SelectedItem as string == PlainAdvanceLabel
+            ? string.Empty
+            : (EdgeLabelEditBox.SelectedItem as string ?? string.Empty);
+
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
             path, key.From, key.To,
-            optionLabel: Changed(EdgeLabelEditBox.Text, edge.OptionLabel ?? string.Empty),
+            optionLabel: Changed(pickedLabel, edge.OptionLabel ?? string.Empty),
             conditionLabel: Changed(condition, edge.ConditionLabel ?? string.Empty),
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
             lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
@@ -1289,7 +1305,7 @@ public partial class ChapterGraphView : UserControl
         if (result.Written)
         {
             // 라벨을 고쳤으면 선택의 신원도 따라간다 — 안 따라가면 다시 읽는 순간 선택이 풀린다.
-            _selectedEdgeKey = (key.From, key.To, EdgeLabelEditBox.Text?.Trim() ?? string.Empty);
+            _selectedEdgeKey = (key.From, key.To, pickedLabel);
         }
 
         Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
@@ -1498,11 +1514,50 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        string? label = string.IsNullOrWhiteSpace(EdgeLabelBox.Text) ? null : EdgeLabelBox.Text.Trim();
+        string? picked = EdgeLabelBox.SelectedItem as string;
+        string? label = picked is null or PlainAdvanceLabel ? null : picked;
 
         Report(ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label),
             $"간선 {from}→{to}을 더했습니다.");
-        EdgeLabelBox.Text = string.Empty;
+        EdgeLabelBox.SelectedItem = null;
+    }
+
+    /// <summary>무라벨 진행을 콤보에 세우는 표기. 셀에는 빈칸으로 간다.</summary>
+    private const string PlainAdvanceLabel = "(진행)";
+
+    /// <summary>
+    /// 라벨 후보 = 그 에피소드 대본의 OPTION 문구들 (2026-08-15 소유자 — 라벨은 에디터
+    /// 자유 입력이 아니라 에피소드 끝 선택지에서 고른다). 자유 입력은 오타 하나가 유령
+    /// 간선이 됐다 — 조건 콤보와 같은 원리로 원천에서 고른다. <paramref name="ensure"/>는
+    /// 현재 값(짝 잃은 옛 라벨이라도)이 목록에 보이게 하는 안전핀이다.
+    /// </summary>
+    private List<string> EdgeLabelChoices(string episodeId, string? ensure = null)
+    {
+        var items = new List<string> { PlainAdvanceLabel };
+        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
+
+        if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
+        {
+            try
+            {
+                items.AddRange(EpisodeWorkbookReader.Read(path).Rows
+                    .Where(row => row.Kind == EpisodeRowKind.Option)
+                    .Select(row => row.Text)
+                    .Where(text => text.Length > 0)
+                    .Distinct(StringComparer.Ordinal));
+            }
+            catch (XlsxReadException)
+            {
+                // 대본을 못 읽으면 후보 없이 (진행)만 — 검증 보고가 원인을 따로 세운다.
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(ensure) && !items.Contains(ensure))
+        {
+            items.Add(ensure);
+        }
+
+        return items;
     }
 
     internal void DeleteSelectedEpisode()

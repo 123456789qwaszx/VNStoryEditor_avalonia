@@ -33,9 +33,12 @@ public sealed class ChapterEdgeLabelTests
         Assert.Contains(ChapterWorkbookReader.Read(project.ChapterPath).Edges,
             edge => edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
 
-        // 그 간선을 고르고 이름을 붙인다.
+        // 라벨은 대본의 OPTION에서 고른다 (2026-08-15) — 대본에 선택지를 깔고 드롭다운으로.
+        ChapterGraphEditingTests.WriteOptionsWorkbook(project.EpisodesFolder, "new01", "왼쪽 길로 간다");
+
         view.SelectEdgeKey("new01", "new02");
-        view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "왼쪽 길로 간다";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "왼쪽 길로 간다";
         view.ApplyEdgeFromPanel();
 
         ChapterEdge saved = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(edge =>
@@ -105,11 +108,13 @@ public sealed class ChapterEdgeLabelTests
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        view.SelectEdgeKey("new01", "new02");
-        view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "오른쪽 길로 간다";
+        ChapterGraphEditingTests.WriteOptionsWorkbook(project.EpisodesFolder, "new01", "오른쪽 길로 간다");
 
-        // 글상자에 포커스가 없는 상태(콤보·체크박스를 만졌거나 마우스만 올려 둔 상태)에서
-        // 감시가 울린다.
+        view.SelectEdgeKey("new01", "new02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "오른쪽 길로 간다";
+
+        // 고른 값에 포커스가 없는 상태에서 감시가 울린다 — 고른 값이 모델 값으로 되돌아가면 안 된다.
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -161,6 +166,8 @@ public sealed class ChapterEdgeLabelTests
 
         public string ChapterPath =>
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx");
+
+        public string EpisodesFolder => Path.Combine(_directory, "episodes");
 
         public void Dispose()
         {

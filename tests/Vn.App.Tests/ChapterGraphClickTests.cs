@@ -104,7 +104,7 @@ public sealed class ChapterGraphClickTests
         Click(window, center);
 
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
-        Assert.Equal("라루의 제안을 듣는다", view.FindControl<TextBox>("EdgeLabelEditBox")!.Text);
+        Assert.Equal("라루의 제안을 듣는다", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
     });
 
     [Fact]
