@@ -17,8 +17,11 @@ public static class EpisodeWorkbookReader
 {
     private const int HeaderRow = 1;
 
+    // 9열 (2026-08-14 소유자 개정 — 스탯변화·메모 폐지). 대사 중 A계층(스탯) 직접 조작은
+    // 설계 미스였다: 세이브/로드 복귀·도달성 증명이 못 보는 값 변화가 대본 안에 숨는다.
+    // 옛 11열 파일도 앞 9열이 맞으면 그대로 읽힌다 — J·K열만 무시된다(값이 있으면 경고).
     private static readonly string[] Headers =
-        ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"];
+        ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
 
     private const int ColumnIndex = 1;
     private const int ColumnLineId = 2;
@@ -29,16 +32,15 @@ public static class EpisodeWorkbookReader
     private const int ColumnOut = 7;
     private const int ColumnSpeaker = 8;
     private const int ColumnText = 9;
-    private const int ColumnStatChanges = 10;
-    private const int ColumnMemo = 11;
+
+    /// <summary>옛 규격의 J열. 헤더가 이 이름일 때만 값 존재를 검사해 경고한다.</summary>
+    private const int LegacyStatColumn = 10;
 
     /// <param name="conditionLabels">챕터 `조건` 시트의 라벨 (G-7). 여기 없는 라벨은 오류다.</param>
-    /// <param name="statKeys">챕터 `스탯` 시트의 키. `스탯변화`가 이걸로 검사된다.</param>
     /// <exception cref="XlsxReadException">파일을 열 수 없을 때.</exception>
     public static EpisodeWorkbookModel Read(
         string path,
-        IReadOnlyCollection<string>? conditionLabels = null,
-        IReadOnlyCollection<string>? statKeys = null)
+        IReadOnlyCollection<string>? conditionLabels = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -48,7 +50,6 @@ public static class EpisodeWorkbookReader
         }
 
         conditionLabels ??= Array.Empty<string>();
-        statKeys ??= Array.Empty<string>();
 
         using XLWorkbook workbook = Open(path);
 
@@ -72,8 +73,10 @@ public static class EpisodeWorkbookReader
                 diagnostics);
         }
 
+        WarnLegacyStatColumn(sheet, path, diagnostics);
+
         IReadOnlyList<EpisodeRow> rows =
-            ReadRows(sheet, path, conditionLabels, statKeys, diagnostics);
+            ReadRows(sheet, path, conditionLabels, diagnostics);
 
         IReadOnlyDictionary<int, EpisodeSection> sections =
             BuildSections(sheet, path, rows, diagnostics);
@@ -104,13 +107,40 @@ public static class EpisodeWorkbookReader
                 string.Equals(Cell(sheet, HeaderRow, offset + 1), header, StringComparison.Ordinal))
                 .All(matches => matches));
 
+    /// <summary>
+    /// 옛 규격(11열) 파일의 스탯변화(J열)에 값이 있으면 한 번 크게 말한다 — 더 이상 읽지
+    /// 않으므로(소유자 결정 2026-08-14) 조용히 무시하면 수치가 말없이 사라진 것이 된다.
+    /// </summary>
+    private static void WarnLegacyStatColumn(
+        IXLWorksheet sheet, string path, List<ChapterDiagnostic> diagnostics)
+    {
+        if (!string.Equals(Cell(sheet, HeaderRow, LegacyStatColumn), "스탯변화", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        bool anyValue = sheet.RowsUsed().Any(row =>
+            row.RowNumber() > HeaderRow &&
+            row.Cell(LegacyStatColumn).GetString().Trim().Length > 0);
+
+        if (anyValue)
+        {
+            diagnostics.Add(new ChapterDiagnostic(
+                ChapterDiagnosticSeverity.Warning,
+                ChapterDiagnosticCode.StatKeyUnknown,
+                path, sheet.Name, null, "J",
+                "스탯변화(J열)는 더 이상 읽지 않습니다 — 대사 중의 A계층(스탯) 직접 조작은 " +
+                "설계에서 뺐습니다(2026-08-14 소유자 결정). 이 열의 값들은 무시됩니다. " +
+                "수치 조정 방식은 별도로 정해집니다."));
+        }
+    }
+
     // ── 행 ──────────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<EpisodeRow> ReadRows(
         IXLWorksheet sheet,
         string path,
         IReadOnlyCollection<string> conditionLabels,
-        IReadOnlyCollection<string> statKeys,
         List<ChapterDiagnostic> diagnostics)
     {
         var rows = new List<EpisodeRow>();
@@ -217,20 +247,6 @@ public static class EpisodeWorkbookReader
             int? sectionCall = ReadIn(sheet, row, kind, path, diagnostics);
             string? outTarget = ReadOut(sheet, row, tag, path, diagnostics);
 
-            StatDeltaParseResult deltas =
-                StatDeltaParser.Parse(Cell(sheet, row, ColumnStatChanges), statKeys);
-
-            foreach (ConditionParseProblem problem in deltas.Problems)
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    problem.Kind == ConditionProblemKind.UnknownStatKey
-                        ? ChapterDiagnosticCode.StatKeyUnknown
-                        : ChapterDiagnosticCode.StatValueNotInteger,
-                    path, sheet.Name, row, ColumnStatChanges,
-                    problem.Message));
-            }
-
             var parsed = new EpisodeRow(
                 index,
                 lineId,
@@ -241,8 +257,6 @@ public static class EpisodeWorkbookReader
                 outTarget,
                 Cell(sheet, row, ColumnSpeaker),
                 Cell(sheet, row, ColumnText),
-                deltas.Deltas,
-                Optional(sheet, row, ColumnMemo),
                 row);
 
             // 인덱스만 있고 아무것도 안 쓴 행은 표의 일부가 아니다 — 템플릿이 500행까지

@@ -78,18 +78,16 @@ public static class EpisodeSyncService
 
         string episodeId = Path.GetFileNameWithoutExtension(workbookPath);
 
-        // 챕터가 없으면 라벨·스탯 검사는 빈 목록으로 돈다 — 조건라벨이 전부 미정의 오류가 되므로
+        // 챕터가 없으면 라벨 검사는 빈 목록으로 돈다 — 조건라벨이 전부 미정의 오류가 되므로
         // 조용히 통과하는 일은 없다.
         string[] labels = chapter?.Conditions.Select(condition => condition.Label).ToArray()
-            ?? Array.Empty<string>();
-        string[] stats = chapter?.Stats.Select(stat => stat.Key).ToArray()
             ?? Array.Empty<string>();
 
         EpisodeWorkbookModel model;
 
         try
         {
-            model = EpisodeWorkbookReader.Read(workbookPath, labels, stats);
+            model = EpisodeWorkbookReader.Read(workbookPath, labels);
         }
         catch (XlsxReadException exception)
         {
@@ -411,8 +409,9 @@ public static class EpisodeSyncService
 
     /// <summary>
     /// 가드레일 (2단계 4번) — 작가의 자유 노드가 Tier 2 스탯(A 계층)에 <c>&lt;&lt;set&gt;&gt;</c>을
-    /// 걸면 경고한다. 스탯 변화의 원천은 엑셀 J열 하나여야 도달성 증명이 참을 말한다 —
-    /// 자유 노드의 set은 증명이 못 보는 뒷길이 된다. 막지는 않는다(재생은 되니까), 크게 말한다.
+    /// 걸면 경고한다. 대사 중의 스탯 직접 조작은 설계에서 통째로 뺐다(2026-08-14 — J열 폐지):
+    /// 세이브/로드 복귀·도달성 증명이 못 보는 값 변화가 대본에 숨는다.
+    /// 막지는 않는다(재생은 되니까), 크게 말한다.
     /// </summary>
     public static IReadOnlyList<ChapterDiagnostic> WarnFreeNodeStatWrites(
         ProjectEditor editor,
@@ -440,7 +439,7 @@ public static class EpisodeSyncService
         {
             if (dialogue.ExcelEpisodeId is not null)
             {
-                continue; // 엑셀노드의 스탯변화는 J열이 원천 — 여기 대상이 아니다
+                continue; // 엑셀노드의 본문은 동기화 산출물 — set이 애초에 못 붙는다
             }
 
             foreach (DialogueLineExtension extension in dialogue.LineExtensions)
@@ -456,10 +455,68 @@ public static class EpisodeSyncService
                             ChapterDiagnosticCode.StatKeyUnknown,
                             chapter.SourcePath, null, null, null,
                             $"자유 노드 '{dialogue.Name}'이 스탯 '{variable}'을 set으로 바꿉니다 — " +
-                            "스탯 변화의 원천은 에피소드 엑셀의 `스탯변화` 열 하나여야 도달성 증명이 " +
-                            "정확합니다. 자유 노드에서는 로컬 변수를 쓰고, 스탯은 엑셀에서 바꿔 주세요."));
+                            "대사 중의 스탯 직접 조작은 설계에서 뺐습니다(세이브/로드·도달성 증명이 " +
+                            "못 봅니다). 로컬 변수를 쓰세요. 수치 조정 방식은 별도로 정해집니다."));
                     }
                 }
+            }
+        }
+
+        return warnings;
+    }
+
+    /// <summary>
+    /// 가드레일 — 판 위 노드의 출구(기본·갈래)가 엑셀노드를 가리키면 경고 (소유자 결정
+    /// 2026-08-14). 에피소드 사이의 흐름은 챕터 간선이 소유하므로, 이 점프는 챕터 장부
+    /// (표시/해금 검사·에피소드 끝 스탯 환산·cleared 기록)를 전부 지나친다. 게다가 Yarn
+    /// 점프는 노드 처음부터 다시 재생하므로 같은 에피소드로의 "복귀"도 함정이다.
+    /// 편집기는 후보에서 빼지만, 이미 있는 연결(옛 프로젝트)은 막지 않고 크게 말한다.
+    /// </summary>
+    public static IReadOnlyList<ChapterDiagnostic> WarnExitsIntoExcelNodes(
+        ProjectEditor editor,
+        string fileId,
+        ChapterGraphModel chapter)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(chapter);
+
+        Dictionary<string, DialogueNode> excelNodes = editor.Project.EnumerateNodes()
+            .OfType<DialogueNode>()
+            .Where(node => node.ExcelEpisodeId is not null)
+            .ToDictionary(node => node.Id, node => node, StringComparer.Ordinal);
+
+        if (excelNodes.Count == 0)
+        {
+            return Array.Empty<ChapterDiagnostic>();
+        }
+
+        StoryFile? file = editor.Project.Files.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, fileId, StringComparison.Ordinal));
+
+        var warnings = new List<ChapterDiagnostic>();
+
+        foreach (DialogueNode dialogue in (file?.Nodes ?? []).OfType<DialogueNode>())
+        {
+            void Check(string? targetId, string exitKind)
+            {
+                if (targetId is not null && excelNodes.TryGetValue(targetId, out DialogueNode? target))
+                {
+                    warnings.Add(new ChapterDiagnostic(
+                        ChapterDiagnosticSeverity.Warning,
+                        ChapterDiagnosticCode.ExitIntoExcelNode,
+                        chapter.SourcePath, null, null, null,
+                        $"노드 '{dialogue.Name}'의 {exitKind}가 엑셀노드 '{target.Name}'을 가리킵니다 — " +
+                        "에피소드 사이의 흐름은 챕터 간선(기획자)이 정합니다. 이 점프는 표시/해금·" +
+                        "cleared 기록을 지나치고, 도착 노드를 처음부터 다시 재생합니다. 출구를 " +
+                        "자유 노드로 바꾸거나 비워 주세요(비우면 에피소드 종료)."));
+                }
+            }
+
+            Check(dialogue.DefaultExitTargetNodeId, "기본 출구");
+
+            foreach ((_, string targetId) in dialogue.BranchExits)
+            {
+                Check(targetId, "갈래 출구");
             }
         }
 

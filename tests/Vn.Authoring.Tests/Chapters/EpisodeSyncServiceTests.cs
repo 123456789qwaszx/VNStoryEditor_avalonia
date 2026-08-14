@@ -429,9 +429,11 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         using var workbook = new XLWorkbook(stream);
         IXLWorksheet sheet = workbook.Worksheets.First();
 
-        // §3.2의 11열 머리글이 그대로 있고, 리더가 이 워크북을 읽을 수 있다.
+        // §3.2의 9열 머리글 (2026-08-14 개정 — 스탯변화·메모 폐지)이 그대로 있고,
+        // 리더가 이 워크북을 읽을 수 있다.
         Assert.Equal("인덱스", sheet.Cell(1, 1).GetString());
-        Assert.Equal("메모", sheet.Cell(1, 11).GetString());
+        Assert.Equal("내용", sheet.Cell(1, 9).GetString());
+        Assert.Equal(string.Empty, sheet.Cell(1, 10).GetString());
         Assert.Equal(10, sheet.Cell(2, 1).GetDouble());
 
         // 시트 보호는 없다 (v4) — 툴이 이 파일을 쓰지 않으므로 지킬 셀이 없고,

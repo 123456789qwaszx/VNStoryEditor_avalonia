@@ -25,10 +25,8 @@ public static class ChapterValidator
         ArgumentNullException.ThrowIfNull(chapter);
 
         var diagnostics = new List<ChapterDiagnostic>(chapter.Diagnostics);
-        var deltas = new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal);
 
         string[] labels = chapter.Conditions.Select(condition => condition.Label).ToArray();
-        string[] statKeys = chapter.Stats.Select(stat => stat.Key).ToArray();
         var conditionsByLabel = chapter.Conditions
             .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
 
@@ -47,7 +45,7 @@ public static class ChapterValidator
 
             try
             {
-                model = EpisodeWorkbookReader.Read(path, labels, statKeys);
+                model = EpisodeWorkbookReader.Read(path, labels);
             }
             catch (XlsxReadException exception)
             {
@@ -65,11 +63,14 @@ public static class ChapterValidator
             diagnostics.AddRange(flattened.Diagnostics);
 
             VerifyOptionsMatchEdges(chapter, episode, model, diagnostics);
-
-            deltas[episode.EpisodeId] = EpisodeStatRangeCalculator.Calculate(model, statKeys);
         }
 
-        ChapterReachabilityResult reachability = ChapterReachabilityProver.Prove(chapter, deltas);
+        // 에피소드는 더 이상 스탯을 바꾸지 않는다 (2026-08-14 — 스탯변화 J열 폐지).
+        // 증감 0으로 증명한다: 스탯 관문은 초기값만으로 판정된다. 수치 조정의 새 경로가
+        // 정해지면 그 원천이 여기로 다시 흘러든다.
+        ChapterReachabilityResult reachability = ChapterReachabilityProver.Prove(
+            chapter,
+            new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal));
 
         return new ChapterValidationResult(diagnostics, reachability);
     }

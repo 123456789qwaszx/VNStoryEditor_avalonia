@@ -65,6 +65,55 @@ public sealed class ExcelNodeLockTests
     });
 
     [Fact]
+    public void 출구_후보에_엑셀노드가_없다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 결정 (2026-08-14) — 에피소드 사이 흐름은 챕터 간선(기획자) 소유다.
+        // 자유 노드의 출구로 엑셀노드를 고를 수 있으면 챕터 장부(표시/해금·스탯 환산·
+        // cleared)를 지나치는 뒷길이 생기고, Yarn 점프라 "복귀"도 처음부터 다시 재생된다.
+        (DialogueNodeEditor editor, AuthoringSession session, _) = ShowSyncedNode();
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "곁가지");
+        session.Editor.AddDialogueNode(fileId, name: "곁가지2");
+
+        editor.Show(free.Id);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var targets = (List<StoryNode>)editor.FindControl<ComboBox>("DefaultExitCombo")!.Tag!;
+
+        // 자유 노드는 후보다 — 자유끼리는 넘길 수 있다.
+        Assert.Contains(targets, target => target.Name == "곁가지2");
+        Assert.DoesNotContain(targets, target =>
+            target is DialogueNode { ExcelEpisodeId: not null });
+
+        // 출구가 꺼져 있으면 그 의미를 화면이 말한다 — 챕터 판이므로 "에피소드 종료".
+        var hint = editor.FindControl<TextBlock>("ExitHintText")!;
+        Assert.True(hint.IsVisible);
+        Assert.Contains("에피소드 종료", hint.Text);
+    });
+
+    [Fact]
+    public void 엑셀노드로_향하는_출구는_검증이_크게_말한다() => HeadlessUi.Run(() =>
+    {
+        // 편집기는 후보에서 빼지만, 이미 있는 연결(옛 프로젝트)은 막지 않고 경고한다.
+        (_, AuthoringSession session, string excelNodeId) = ShowSyncedNode();
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "우회로");
+        session.Editor.SetExitTarget(free.Id, Vn.Authoring.Flow.ExitPortKind.Default, null, excelNodeId);
+
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(
+            Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
+
+        var warnings = EpisodeSyncService.WarnExitsIntoExcelNodes(session.Editor, fileId, chapter);
+
+        ChapterDiagnostic warning = Assert.Single(warnings);
+        Assert.Equal(ChapterDiagnosticSeverity.Warning, warning.Severity);
+        Assert.Contains("우회로", warning.Message);
+        Assert.Contains("챕터 간선", warning.Message);
+    });
+
+    [Fact]
     public void 자유_노드는_그대로_편집된다() => HeadlessUi.Run(() =>
     {
         var session = new AuthoringSession();

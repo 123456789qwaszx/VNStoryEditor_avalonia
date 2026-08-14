@@ -36,7 +36,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     [Fact]
     public void 견본_에피소드_시트를_머리글로_찾아_오류_없이_읽는다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
         Assert.Empty(model.Errors);
         Assert.Equal("견본_에피소드 main05.02", model.SheetName);
@@ -46,7 +46,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     [Fact]
     public void 행_유형이_규격대로_읽힌다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
         Assert.Equal(EpisodeRowKind.Dialogue, model.FindByIndex(10)!.Kind);
         Assert.Equal(EpisodeRowKind.If, model.FindByIndex(30)!.Kind);
@@ -65,7 +65,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     [Fact]
     public void 구간이_INPUT부터_OUT까지_양끝_포함으로_묶인다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
         Assert.Equal(2, model.Sections.Count);
 
@@ -82,7 +82,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     [Fact]
     public void 주_흐름은_구간에_속하지_않는_행들이다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
         Assert.Equal(
             [10, 20, 30, 40, 50, 60, 70, 71, 72],
@@ -92,7 +92,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     [Fact]
     public void IN은_IF와_OPTION_양쪽에_붙는다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
         Assert.Equal(900, model.FindByIndex(30)!.In);   // 조건이 구간으로
         Assert.Equal(920, model.FindByIndex(71)!.In);   // 선택지 옵션도 구간으로 (G-6c)
@@ -100,22 +100,23 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     }
 
     [Fact]
-    public void 스탯변화가_정수_증감으로_읽힌다()
+    public void 옛_규격의_스탯변화_값은_무시하되_한_번_크게_말한다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        // 2026-08-14 소유자 개정 — 대사 중 A계층(스탯) 직접 조작 폐지. 견본은 옛 11열
+        // 규격이라 J열에 값이 있다: 조용히 사라지면 수치가 말없이 증발한 것이 되므로
+        // 파일당 한 번 경고한다. 오류는 아니다 — 대본 자체는 멀쩡하다.
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
-        StatDelta fatigue = Assert.Single(model.FindByIndex(20)!.StatChanges);
-        Assert.Equal("fatigue", fatigue.Key);
-        Assert.Equal(1, fatigue.Amount);
-
-        Assert.Equal("trust", Assert.Single(model.FindByIndex(50)!.StatChanges).Key);
-        Assert.Empty(model.FindByIndex(10)!.StatChanges);
+        ChapterDiagnostic legacy = Assert.Single(model.Diagnostics, item =>
+            item.Message.Contains("스탯변화(J열)는 더 이상 읽지 않습니다"));
+        Assert.Equal(ChapterDiagnosticSeverity.Warning, legacy.Severity);
+        Assert.Empty(model.Errors);
     }
 
     [Fact]
     public void 인덱스가_없는_설명_줄은_표의_행으로_읽지_않고_알린다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
 
         // 견본 시트 아래쪽 설명문들. 조용히 버리지 않고 알림으로 남긴다(규칙 14).
         Assert.Contains(model.Diagnostics, item =>
@@ -256,26 +257,19 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     }
 
     [Fact]
-    public void 스탯변화의_미등록_키는_오류다()
+    public void 옛_규격_J열의_값은_오류가_아니라_경고_하나다()
     {
-        var rows = Baseline();
-        rows[1][9] = "karma +1";
-
-        ChapterDiagnostic problem = SingleError(rows, "karma");
-
-        Assert.Equal("J", problem.Column);
-        Assert.Contains("trust", problem.Message);
-    }
-
-    [Fact]
-    public void 스탯변화의_소수점은_오류다()
-    {
+        // J열 폐지(2026-08-14) 이후 — 문법이 틀렸든 맞았든 파싱 자체가 없다.
+        // 값이 있으면 파일당 한 번 "더 이상 읽지 않는다"고 경고하고, 대본은 멀쩡히 읽힌다.
         var rows = Baseline();
         rows[1][9] = "trust +1.5";
 
-        ChapterDiagnostic problem = SingleError(rows, "정수");
+        EpisodeWorkbookModel model = Read(rows);
 
-        Assert.Equal("J", problem.Column);
+        Assert.Empty(model.Errors);
+        Assert.Single(model.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("스탯변화(J열)는 더 이상 읽지 않습니다"));
     }
 
     [Fact]
@@ -289,7 +283,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
             workbook.SaveAs(path);
         }
 
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, Labels);
 
         ChapterDiagnostic problem = Assert.Single(model.Errors);
         Assert.Equal(ChapterDiagnosticCode.SheetMissing, problem.Code);
@@ -329,7 +323,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
             workbook.SaveAs(path);
         }
 
-        return EpisodeWorkbookReader.Read(path, Labels, Stats);
+        return EpisodeWorkbookReader.Read(path, Labels);
     }
 
     /// <summary>견본과 같은 모양의 최소 에피소드. 각 테스트는 한 칸만 망가뜨린다.</summary>

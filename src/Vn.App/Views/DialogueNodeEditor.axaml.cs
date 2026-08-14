@@ -1693,10 +1693,7 @@ public partial class DialogueNodeEditor : UserControl
     /// <summary>갈래 출구 편집 — 그래프의 분기 간선과 같은 SetExitTarget 하나를 부른다.</summary>
     private Control BuildExitEditor(DialogueNode node, ConditionBranch branch)
     {
-        List<StoryNode> targets = _session!.Project.EnumerateNodes()
-            .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
-            .Where(other => other is not PresentationNode)
-            .ToList();
+        List<StoryNode> targets = ExitTargets(node); // 엑셀노드 제외 — 기본 출구와 같은 규칙
 
         var combo = new ComboBox
         {
@@ -1712,7 +1709,7 @@ public partial class DialogueNodeEditor : UserControl
         {
             if (!_building && combo.SelectedIndex >= 0 && combo.SelectedIndex < targets.Count)
             {
-                _session.Editor.SetExitTarget(
+                _session!.Editor.SetExitTarget(
                     node.Id, ExitPortKind.Branch, branch.OpenLineId, targets[combo.SelectedIndex].Id);
             }
         };
@@ -2197,12 +2194,21 @@ public partial class DialogueNodeEditor : UserControl
 
     // ── 기본 출구 ───────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// 출구 후보 — <b>엑셀노드는 뺀다</b> (소유자 결정 2026-08-14). 에피소드 사이의 흐름은
+    /// 챕터 간선(기획자) 소유라, 자유 노드에서 엑셀노드로 점프하면 챕터 장부(표시/해금·
+    /// 스탯 환산·cleared 기록)를 전부 지나친다. 같은 에피소드로의 "복귀"도 함정이다 —
+    /// Yarn 점프는 노드 처음부터 다시 재생한다.
+    /// </summary>
+    private List<StoryNode> ExitTargets(DialogueNode node) => _session!.Project.EnumerateNodes()
+        .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
+        .Where(other => other is not PresentationNode)
+        .Where(other => other is not DialogueNode { ExcelEpisodeId: not null })
+        .ToList();
+
     private void BuildDefaultExit(DialogueNode node)
     {
-        List<StoryNode> targets = _session!.Project.EnumerateNodes()
-            .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
-            .Where(other => other is not PresentationNode)
-            .ToList();
+        List<StoryNode> targets = ExitTargets(node);
 
         DefaultExitCombo.ItemsSource = targets.Select(target => target.Name).ToList();
         DefaultExitCombo.Tag = targets;
@@ -2214,6 +2220,20 @@ public partial class DialogueNodeEditor : UserControl
         DefaultExitCombo.SelectedIndex = connected
             ? targets.FindIndex(target => string.Equals(target.Id, node.DefaultExitTargetNodeId, StringComparison.Ordinal))
             : -1;
+
+        // "출구가 없으면 무슨 일이 일어나는가"를 화면이 말한다 (소유자 보고 — 의미는 있는데
+        // 아는 방법이 없었다). 챕터 판이면 에피소드 종료이고, 다음은 기획자의 간선이 정한다.
+        bool onChapterBoard = _session!.Project.FindFileContainingNode(node.Id)?.Nodes
+            .OfType<DialogueNode>()
+            .Any(item => item.ExcelEpisodeId is not null) == true;
+
+        ExitHintText.IsVisible = !connected;
+        ExitHintText.Text = node.ExcelEpisodeId is not null
+            ? "출구 없음 = 에피소드 종료. 다음 에피소드는 챕터 간선(기획자)이 정합니다. " +
+              "끝에 곁가지를 붙이려면 자유 노드를 대상으로 고르세요."
+            : onChapterBoard
+                ? "출구 없음 = 여기서 에피소드 종료. 다음 에피소드는 챕터 간선(기획자)이 정합니다."
+                : "출구 없음 — 대화가 여기서 끝납니다.";
     }
 
     private void OnDefaultExitToggled()
@@ -2224,6 +2244,7 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         DefaultExitCombo.IsEnabled = DefaultExitCheck.IsChecked == true;
+        ExitHintText.IsVisible = DefaultExitCheck.IsChecked != true;
 
         if (DefaultExitCheck.IsChecked != true)
         {

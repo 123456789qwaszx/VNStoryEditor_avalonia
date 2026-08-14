@@ -111,7 +111,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
     [Fact]
     public void CHOICE_행을_뺀_모든_LineId가_산출물에_나온다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
         EpisodeFlattenResult result = EpisodeFlattener.Flatten(model, Expressions);
 
         // CHOICE 행의 LineId만 실리지 않는다 — Yarn에 "선택 시작" 줄이 없어 붙일 자리가 없다.
@@ -254,7 +254,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
 
     private static EpisodeFlattenResult FlattenSample()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
         return EpisodeFlattener.Flatten(model, Expressions);
     }
 
@@ -282,7 +282,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
         }
 
         var labels = (expressions ?? Expressions).Keys.ToArray();
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, labels, Stats);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, labels);
 
         return EpisodeFlattener.Flatten(model, expressions ?? Expressions);
     }

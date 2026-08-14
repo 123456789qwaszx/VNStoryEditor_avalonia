@@ -69,6 +69,11 @@
                                           HorizontalAlignment="Stretch"
                                           PlaceholderText="대상 노드" />
                             </Grid>
+                            <!-- 출구가 꺼져 있을 때 무슨 일이 일어나는지 — 침묵이 의문을 만들었다. -->
+                            <TextBlock x:Name="ExitHintText"
+                                       FontSize="10"
+                                       Opacity="0.6"
+                                       TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                 </Grid>

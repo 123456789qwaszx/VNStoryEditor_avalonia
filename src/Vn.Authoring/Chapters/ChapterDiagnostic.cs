@@ -35,6 +35,7 @@ public enum ChapterDiagnosticCode
     FormulaWithoutCachedValue,
     EpisodeUnreachable,
     OptionEdgeMismatch,
+    ExitIntoExcelNode,
     FixtureStatColumnUnknown,
     FixtureChoiceMalformed,
     EndingKeyBlank

@@ -363,8 +363,6 @@ public static class EpisodeFlattener
             // 뜨면, 그 알림은 읽을거리가 아니라 소음이 된다. 반쯤 채운 행만 말해 준다.
             bool untouched =
                 string.IsNullOrWhiteSpace(row.ConditionLabel) &&
-                string.IsNullOrWhiteSpace(row.Memo) &&
-                row.StatChanges.Count == 0 &&
                 row.In is null &&
                 string.IsNullOrWhiteSpace(row.OutTarget) &&
                 row.Tag == EpisodeRowTag.None;

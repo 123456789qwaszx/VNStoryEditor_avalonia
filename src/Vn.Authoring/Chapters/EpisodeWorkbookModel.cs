@@ -37,12 +37,12 @@ public enum EpisodeRowTag
 }
 
 /// <summary>
-/// 에피소드 워크북 한 행 (§3.2의 11열).
+/// 에피소드 워크북 한 행 (§3.2의 9열 — 2026-08-14 소유자 개정으로 스탯변화·메모 폐지.
+/// 대사 중의 A계층 직접 조작은 세이브/로드·도달성이 못 보는 값 변화라 설계에서 뺐다).
 /// </summary>
 /// <param name="Index">A열. 10·20·30 방식(G-5). <c>IN</c>/<c>OUT</c>이 이 값으로 서로를 가리킨다.</param>
 /// <param name="LineId">B열. 대사·선택지 행만 갖는다. 비어 있으면 아직 ID가 없는 새 행이다.</param>
 /// <param name="OutTarget">G열. 나갈 목적지 인덱스이거나 <see cref="EpisodeFlow.EndMarker"/>다.</param>
-/// <param name="StatChanges">J열. Tier 1에 누적됐다가 에피소드 끝에서 1회 환산된다(§0).</param>
 /// <param name="SourceRow">엑셀 행 번호. 진단이 자리를 짚는 근거다.</param>
 public sealed record EpisodeRow(
     int Index,
@@ -54,8 +54,6 @@ public sealed record EpisodeRow(
     string? OutTarget,
     string Speaker,
     string Text,
-    IReadOnlyList<StatDelta> StatChanges,
-    string? Memo,
     int SourceRow)
 {
     /// <summary>라인인가 — LineId를 받아 연출·세이브 타깃이 될 수 있는가.</summary>
@@ -72,9 +70,7 @@ public sealed record EpisodeRow(
         Text.Length == 0 &&
         ConditionLabel is null &&
         In is null &&
-        OutTarget is null &&
-        StatChanges.Count == 0 &&
-        string.IsNullOrEmpty(Memo);
+        OutTarget is null;
 
     /// <summary>이 행이 구간을 부르는가 (조건이든 선택지 옵션이든).</summary>
     public bool CallsSection => In is not null;

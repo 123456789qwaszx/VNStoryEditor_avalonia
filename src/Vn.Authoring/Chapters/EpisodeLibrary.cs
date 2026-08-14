@@ -174,8 +174,9 @@ public static class EpisodeLibrary
         // 어차피 머리글로 시트를 찾으므로 이름은 아무래도 좋다 — 그러면 안 낡는 이름이 낫다.
         IXLWorksheet sheet = workbook.AddWorksheet("대본");
 
+        // 9열 (2026-08-14 소유자 개정) — 스탯변화·메모 폐지. 대사 중 A계층 조작은 설계 미스.
         string[] headers =
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"];
+            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
@@ -207,7 +208,6 @@ public static class EpisodeLibrary
         }
 
         sheet.Column(9).Width = 50;   // 내용
-        sheet.Column(11).Width = 24;  // 메모
 
         workbook.SaveAs(path);
         return true;

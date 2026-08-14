@@ -14,27 +14,16 @@ public sealed class ChapterReachabilityTests
     // ── 견본 — 전부 도달 가능 ───────────────────────────────────────────────
 
     [Fact]
-    public void 견본_챕터는_모든_에피소드가_도달_가능하다()
+    public void 견본_챕터는_증감_0으로도_주_경로가_전부_도달_가능하다()
     {
+        // 2026-08-14 개정 — 에피소드는 더 이상 스탯을 바꾸지 않는다(J열 폐지). 검증기가
+        // 실제로 쓰는 모양 그대로, 증감 0으로 증명한다: 스탯 관문이 없는 주 경로와
+        // cleared: 관문은 여전히 전부 열린다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
 
-        // 견본 에피소드 워크북(main05.02)의 실제 증감 범위를 쓴다 — trust는 최대 +2까지 오른다
-        // (구간 +1, 옵션 구간 +1) → 신뢰높음(trust >= 3)은... 초기값 0이면 못 넘는다!
-        // 그래서 이 검증이 의미가 있다: 견본의 branch05.02A는 견본 데이터만으로 정말 도달
-        // 가능한가? — trust 범위가 [0,2]라 trust >= 3은 한 바퀴로는 불가능하지만, 챕터에
-        // 사이클이 없으므로 영구 불가다. 견본이 실제로 이 모양이라면 그것도 발견이다.
-        EpisodeWorkbookModel episode = EpisodeWorkbookReader.Read(
-            SamplePath,
-            chapter.Conditions.Select(condition => condition.Label).ToArray(),
-            chapter.Stats.Select(stat => stat.Key).ToArray());
-
-        var deltas = new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal)
-        {
-            ["main05.02"] = EpisodeStatRangeCalculator.Calculate(
-                episode, chapter.Stats.Select(stat => stat.Key).ToArray())
-        };
-
-        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter, deltas);
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(
+            chapter,
+            new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal));
 
         Assert.True(result.ExplorationComplete);
 
@@ -49,26 +38,16 @@ public sealed class ChapterReachabilityTests
     }
 
     [Fact]
-    public void 견본의_신뢰_분기는_견본_데이터만으로는_도달_불가이고_원인이_지목된다()
+    public void 스탯_관문_분기는_증감_0에서_도달_불가이고_원인이_지목된다()
     {
-        // 견본의 정직한 상태: 신뢰높음은 trust >= 3인데 main05.02가 줄 수 있는 trust는
-        // 최대 +2다(구간 +1 · 옵션 구간 +1). 초기값 0 → 최대 2 → 분기가 열리지 않는다.
-        // 이것이 "저작 시점에 잡힌다"의 실물이다 — 픽스처(신뢰 루트)는 trust=5로 우회해
-        // 볼 수 있지만, 실플레이 경로는 존재하지 않는다.
+        // 스탯을 바꾸는 경로가 없으므로 trust는 초기값 0에 머문다 → 신뢰높음(trust >= 3)
+        // 관문은 영원히 닫혀 있고, 증명이 그 원인 조건까지 지목한다. 수치 조정의 새 경로가
+        // 정해지면 그 증감이 이 증명으로 다시 흘러들어 판정이 바뀐다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
-        string[] statKeys = chapter.Stats.Select(stat => stat.Key).ToArray();
 
-        EpisodeWorkbookModel episode = EpisodeWorkbookReader.Read(
-            SamplePath,
-            chapter.Conditions.Select(condition => condition.Label).ToArray(),
-            statKeys);
-
-        var deltas = new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal)
-        {
-            ["main05.02"] = EpisodeStatRangeCalculator.Calculate(episode, statKeys)
-        };
-
-        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter, deltas);
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(
+            chapter,
+            new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal));
 
         Assert.DoesNotContain("branch05.02A", result.ReachableEpisodeIds);
 
@@ -80,7 +59,7 @@ public sealed class ChapterReachabilityTests
 
         // 원인 조건까지 지목한다 — 어느 조건이, 왜 불가능한지.
         Assert.Contains("trust >= 3", problem.Message);
-        Assert.Contains("최대 2", problem.Message);
+        Assert.Contains("최대 0", problem.Message);
     }
 
     // ── 인위적 도달 불가 (Gate C 1번) ───────────────────────────────────────

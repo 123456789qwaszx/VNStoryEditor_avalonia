@@ -278,10 +278,12 @@ public partial class ChapterGraphView : UserControl
         EpisodeSyncService.SupplyChapterConditionsToBoard(
             _session.Editor, _session.Definition, fileId, entry.Model);
 
-        // 가드레일 — 자유 노드가 Tier 2 스탯을 set으로 바꾸면 도달성 증명이 장님이 된다.
+        // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
         _boardWarnings.Clear();
         _boardWarnings.AddRange(
             EpisodeSyncService.WarnFreeNodeStatWrites(_session.Editor, fileId, entry.Model));
+        _boardWarnings.AddRange(
+            EpisodeSyncService.WarnExitsIntoExcelNodes(_session.Editor, fileId, entry.Model));
 
         // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
         Validate();
