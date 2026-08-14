@@ -154,9 +154,30 @@
                                     ToolTip.Tip="간선·픽스처 참조가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
                         </Grid>
 
-                        <!-- 이 노드의 값(제목·엔딩키·표시/해금조건·인덱스·종류·메모)은 전부
-                             엑셀 소유다. 툴은 그래프의 형태 — 흐름과 신원 — 만 쓴다.
-                             값은 카드와 그 툴팁에서 읽는다. -->
+                        <!-- 값 편집 복원 (2026-08-15 소유자) — v3의 최소화가 테스트 편의였는데
+                             실사용에서 편집 창구를 가렸다. 쓰기는 여전히 그 셀 하나다(G-2 v2). -->
+                        <TextBox x:Name="TitleBox" FontSize="11"
+                                 PlaceholderText="제목 — 카드에 표시 (비면 Id가 보임)"
+                                 Margin="0,4,0,0" />
+
+                        <TextBlock Text="표시조건 — 목록에 보이려면" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
+                        <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch" />
+                        <TextBlock Text="해금조건 — 고를 수 있으려면" FontSize="10" Opacity="0.6" />
+                        <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch" />
+
+                        <Grid ColumnDefinitions="*,6,*" Margin="0,4,0,0">
+                            <TextBox Grid.Column="0" x:Name="EndingKeyBox" FontSize="11"
+                                     PlaceholderText="엔딩키"
+                                     ToolTip.Tip="적으면 이 에피소드가 엔딩 후보가 됩니다." />
+                            <TextBox Grid.Column="2" x:Name="MemoBox" FontSize="11"
+                                     PlaceholderText="메모" />
+                        </Grid>
+
+                        <Button x:Name="ApplyEpisodeButton" Content="적용"
+                                HorizontalAlignment="Stretch" FontSize="11" Margin="0,4,0,0"
+                                ToolTip.Tip="바뀐 값만 챕터 엑셀의 해당 셀에 씁니다." />
+
+                        <!-- 남은 읽기 전용 값(인덱스·종류·대사엔트리 등) — 고치는 곳은 엑셀. -->
                         <TextBlock x:Name="EpisodeFactsText"
                                    FontSize="10"
                                    Opacity="0.6"

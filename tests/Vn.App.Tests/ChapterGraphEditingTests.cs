@@ -18,23 +18,36 @@ public sealed class ChapterGraphEditingTests
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
     [Fact]
-    public void 선택하면_엑셀_소유_값이_읽기_전용으로_선다() => HeadlessUi.Run(() =>
+    public void 값_편집이_복원되어_적용이_엑셀_셀로_왕복한다() => HeadlessUi.Run(() =>
     {
-        // v3 최종 — 툴은 흐름(간선)과 신원(개명)만 쓴다. 값은 엑셀 소유이고 여기서는 읽기만.
+        // 2026-08-15 소유자 복원 — v3의 "최소만 남기고 삭제"가 테스트 편의였는데 실사용에서
+        // 편집 창구를 가렸다. 제목·표시/해금·엔딩키·메모가 패널로 돌아왔고, 쓰기는 여전히
+        // 그 셀 하나다(G-2 v2 외과수술). 남은 값(대사엔트리 등)은 계속 읽기 전용.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
         view.SelectEpisode("branch05.02A");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
         Assert.Equal("branch05.02A", view.FindControl<TextBox>("IdBox")!.Text);
 
-        // 엑셀이 가진 값들이 한눈에 보이고, 고치는 자리가 엑셀임을 말해 준다.
-        string facts = view.FindControl<TextBlock>("EpisodeFactsText")!.Text!;
+        // 선택하면 현재 값이 채워진다 — 해금조건 콤보에 이 노드의 신뢰높음이 골라져 있다.
+        Assert.Equal("신뢰높음", view.FindControl<ComboBox>("UnlockCombo")!.SelectedItem);
 
-        Assert.Contains("신뢰높음", facts);          // 이 노드의 표시조건
-        Assert.Contains("대사엔트리", facts);
-        Assert.Contains("엑셀에서 고칩니다", facts);
+        view.FindControl<TextBox>("TitleBox")!.Text = "라루의 새 제안";
+        view.FindControl<ComboBox>("VisibleCombo")!.SelectedItem = "지쳐있음";
+        view.ApplyEpisodeFromPanel();
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEpisode episode = reread.FindEpisode("branch05.02A")!;
+
+        Assert.Equal("라루의 새 제안", episode.Title);
+        Assert.Equal("지쳐있음", episode.VisibleConditionLabel);
+        Assert.Equal("신뢰높음", episode.UnlockConditionLabel); // 안 바꾼 값은 그대로
+
+        // 편집 칸이 없는 값은 여전히 읽기 전용으로 보인다.
+        Assert.Contains("대사엔트리", view.FindControl<TextBlock>("EpisodeFactsText")!.Text!);
     });
 
     [Fact]

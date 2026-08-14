@@ -137,6 +137,7 @@ public partial class ChapterGraphView : UserControl
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
         SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
+        ApplyEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 저장", ApplyEpisodeFromPanel);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
         CopyDiagnosticsButton.Click += async (_, _) =>
@@ -1002,7 +1003,19 @@ public partial class ChapterGraphView : UserControl
         if (fill)
         {
             IdBox.Text = episode.EpisodeId;
+
+            // 값 편집 칸 (2026-08-15 복원) — 선택이 바뀔 때만 채운다(_panelFilledFor 규칙 그대로).
+            TitleBox.Text = episode.Title;
+            EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
+            MemoBox.Text = episode.Memo ?? string.Empty;
         }
+
+        var gateLabels = new List<string> { "(없음)" };
+        gateLabels.AddRange(model.Conditions.Select(condition => condition.Label));
+        SetItems(VisibleCombo, gateLabels,
+            fill ? episode.VisibleConditionLabel ?? "(없음)" : VisibleCombo.SelectedItem as string);
+        SetItems(UnlockCombo, gateLabels,
+            fill ? episode.UnlockConditionLabel ?? "(없음)" : UnlockCombo.SelectedItem as string);
 
         // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
         // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
@@ -1092,33 +1105,23 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private static string EpisodeFacts(ChapterEpisode episode)
     {
-        var facts = new List<string>();
+        // 제목·표시/해금·엔딩키·메모는 위의 편집 칸이 맡는다(2026-08-15 복원) —
+        // 여기는 편집 칸이 없는 나머지 값만.
+        var facts = new List<string> { $"대사엔트리: {episode.DialogueEntry}" };
 
-        if (!string.IsNullOrWhiteSpace(episode.Title))
+        if (!string.IsNullOrWhiteSpace(episode.Index))
         {
-            facts.Add($"제목: {episode.Title}");
+            facts.Add($"인덱스: {episode.Index}");
         }
 
-        facts.Add($"대사엔트리: {episode.DialogueEntry}");
-
-        if (!string.IsNullOrWhiteSpace(episode.VisibleConditionLabel))
+        if (!string.IsNullOrWhiteSpace(episode.Kind))
         {
-            facts.Add($"표시조건: {episode.VisibleConditionLabel}");
+            facts.Add($"종류: {episode.Kind}");
         }
 
-        if (!string.IsNullOrWhiteSpace(episode.UnlockConditionLabel))
-        {
-            facts.Add($"해금조건: {episode.UnlockConditionLabel}");
-        }
+        facts.Add($"엑셀 {episode.SourceRow}행");
 
-        if (episode.IsEnding)
-        {
-            facts.Add($"엔딩키: {episode.EndingKey}");
-        }
-
-        facts.Add($"엑셀 {episode.SourceRow}행 — 이 값들은 엑셀에서 고칩니다");
-
-        return string.Join("\n", facts);
+        return string.Join(" · ", facts);
     }
 
     /// <summary>목록을 갈되 고른 값은 지킨다(그 값이 새 목록에 남아 있다면).</summary>
@@ -1269,6 +1272,44 @@ public partial class ChapterGraphView : UserControl
     /// <summary>간선 스탯변화를 시트 문법 그대로 — 패널 칸과 셀이 같은 글을 쓴다.</summary>
     private static string StatChangesText(ChapterEdge edge) => string.Join("; ", edge.StatChanges
         .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}"));
+
+    /// <summary>
+    /// 에피소드 값 편집의 [적용] (2026-08-15 복원) — 바뀐 필드만 챕터 시트의 그 셀에 쓴다
+    /// (G-2 v2 셀 단위 외과수술). 원본은 계속 엑셀이고, 저장 감시가 다시 읽어 화면이 따라온다.
+    /// </summary>
+    internal void ApplyEpisodeFromPanel()
+    {
+        if (_selectedEpisodeId is not { } episodeId || SelectedChapterPath is not { } path ||
+            SelectedModel?.FindEpisode(episodeId) is not { } episode)
+        {
+            _session?.SetStatus("에피소드를 다시 골라 주세요. 선택이 풀렸거나 그 에피소드가 사라졌습니다.");
+            return;
+        }
+
+        string? Changed(string? boxValue, string? current)
+        {
+            string value = boxValue?.Trim() ?? string.Empty;
+            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
+        }
+
+        string? Gate(ComboBox combo, string? current)
+        {
+            string? picked = combo.SelectedItem as string == "(없음)"
+                ? string.Empty
+                : combo.SelectedItem as string;
+            return Changed(picked, current ?? string.Empty);
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
+            path, episodeId,
+            title: Changed(TitleBox.Text, episode.Title),
+            visibleConditionLabel: Gate(VisibleCombo, episode.VisibleConditionLabel),
+            unlockConditionLabel: Gate(UnlockCombo, episode.UnlockConditionLabel),
+            endingKey: Changed(EndingKeyBox.Text, episode.EndingKey),
+            memo: Changed(MemoBox.Text, episode.Memo));
+
+        Report(result, $"에피소드 {episodeId}를 저장했습니다.");
+    }
 
     internal void DeleteSelectedEdge()
     {
