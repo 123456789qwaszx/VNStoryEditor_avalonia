@@ -433,6 +433,14 @@ public partial class GraphEditorView : UserControl
 
             foreach ((string episodeId, (DialogueNode node, Rect rect)) in spots)
             {
+                // 챕터에서 지운 에피소드의 노드가 판에 남아 있으면 레일을 긋지 않는다 —
+                // 챕터 밖의 노드에 진행·종료를 그리는 것은 거짓말이다(동기화 보고의 몫).
+                if (chapter.Episodes.All(episode =>
+                        !string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
                 List<ChapterEdge> edges = chapter.Edges
                     .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
                     .ToList();
@@ -487,12 +495,13 @@ public partial class GraphEditorView : UserControl
             {
                 consumedEdges.Add(match);
 
-                // 도착 노드가 아직 동기화 전이면 긋지 않는다(거짓말 금지). 챕터 수준에서는
-                // 이어져 있는 옵션이므로 스텁으로도 내놓지 않는다.
-                if (spots.TryGetValue(match.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
-                {
-                    branches.Add((match, port, target.Rect));
-                }
+                // 도착 노드가 아직 동기화 전이어도 가지는 보인다 — 숨기면 선택지가 통째로
+                // 사라져 그래프가 고장 난 것처럼 보인다(소유자 보고 2026-08-15). 없는 노드로
+                // 선을 긋는 대신 "동기화 전" 표식에서 멈춘다.
+                branches.Add((match, port,
+                    spots.TryGetValue(match.ToEpisodeId, out (DialogueNode Node, Rect Rect) target)
+                        ? target.Rect
+                        : null));
             }
             else
             {
@@ -505,19 +514,19 @@ public partial class GraphEditorView : UserControl
         foreach (ChapterEdge edge in edges.Where(edge =>
                      !edge.IsPlainAdvance && !consumedEdges.Contains(edge)))
         {
-            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
-            {
-                branches.Add((edge, null, target.Rect));
-            }
+            branches.Add((edge, null,
+                spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target)
+                    ? target.Rect
+                    : null));
         }
 
-        // 무라벨 진행 — 선택이 아니라 낙하이므로 맨 아래.
+        // 무라벨 진행 — 선택지가 없는 에피소드의 (선택지 없음) 길.
         foreach (ChapterEdge edge in edges.Where(edge => edge.IsPlainAdvance))
         {
-            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
-            {
-                branches.Add((edge, defaultPort, target.Rect));
-            }
+            branches.Add((edge, defaultPort,
+                spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target)
+                    ? target.Rect
+                    : null));
         }
 
         // 나가는 간선이 하나도 없는 에피소드(엔딩) — 기본 출구의 종료 스텁 (에필로그 자유 씬 자리).
@@ -694,6 +703,29 @@ public partial class GraphEditorView : UserControl
             }
 
             laneEnd = new Point(junctionX, junctionY);
+        }
+        else if (edge is not null)
+        {
+            // 동기화 전 스텁 — 간선은 있는데 도착 에피소드가 아직 이 판에 없다. 없는 노드로
+            // 선을 긋는 대신 여기서 멈추고, 어디로 가는 길인지는 문구가 말한다.
+            var pending = new TextBlock
+            {
+                Text = $"▢ {edge.ToEpisodeId} (동기화 전)",
+                FontSize = 10,
+                Opacity = 0.55,
+                Foreground = RailChipBrush
+            };
+            ToolTip.SetTip(pending,
+                $"도착 에피소드 '{edge.ToEpisodeId}'가 아직 이 판에 없습니다 — " +
+                "챕터 그래프의 동기화로 노드를 만들면 여기로 이어집니다.");
+            pending.Measure(Size.Infinity);
+
+            _railVisuals.Add(RailLine(cursorX, y, cursorX + 18, y));
+            Canvas.SetLeft(pending, cursorX + 22);
+            Canvas.SetTop(pending, y - pending.DesiredSize.Height / 2);
+            _railVisuals.Add(pending);
+
+            laneEnd = new Point(cursorX + 18, y);
         }
         else
         {

@@ -98,9 +98,10 @@ public sealed class ChapterRailTests
     });
 
     [Fact]
-    public void 아직_동기화_전인_에피소드로는_선을_긋지_않는다() => HeadlessUi.Run(() =>
+    public void 동기화_전인_도착은_스텁으로_보인다() => HeadlessUi.Run(() =>
     {
-        // 없는 노드로 선을 그으면 거짓말이다 — 동기화가 노드를 세우면 따라 나타난다.
+        // 없는 노드로 선을 그으면 거짓말이지만, 가지를 통째로 숨기면 선택지가 사라져
+        // 고장으로 보인다(소유자 보고 2026-08-15). 가지는 "동기화 전" 스텁에서 멈춘다.
         (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
 
         AddExcelNode(session, fileId, "EP00"); // EP01은 아직 없다
@@ -111,7 +112,28 @@ public sealed class ChapterRailTests
         graph.Rebuild();
 
         var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+        Assert.Contains(canvas.Children.OfType<TextBlock>(), block =>
+            (block.Text ?? "").Contains("EP01", StringComparison.Ordinal) &&
+            (block.Text ?? "").Contains("동기화 전", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 챕터에서_지운_에피소드_노드에는_레일이_없다() => HeadlessUi.Run(() =>
+    {
+        // 챕터 밖의 노드에 진행·종료를 그리는 것은 거짓말이다 — 동기화 보고가 알릴 일이다.
+        (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
+
+        AddExcelNode(session, fileId, "EP99"); // 챕터에는 없는 에피소드
+
+        graph.SupplyChapters([Chapter("ch01",
+            episodes: ["EP00"],
+            edges: [])]);
+        graph.Rebuild();
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
         Assert.Empty(canvas.Children.OfType<Line>());
+        Assert.DoesNotContain(canvas.Children.OfType<TextBlock>(),
+            block => (block.Text ?? "").Contains('⏹'));
     });
 
     [Fact]
