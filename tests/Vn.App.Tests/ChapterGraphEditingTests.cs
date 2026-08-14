@@ -258,6 +258,41 @@ public sealed class ChapterGraphEditingTests
         Assert.Equal("신뢰높음", edge.ConditionLabel);  // 안 바꾼 필드는 그대로
     });
 
+    [Fact]
+    public void 선택지_있는_에피소드는_포트_철도로_그려진다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-15 소유자 — 라벨을 간선 정중앙에 띄우는 대신, 노드 아래 선택지 포트마다
+        // 자기 간선을 단다. 간선 없는 옵션은 ⏹ 스텁(낙하 없음), 칩 클릭 = 간선 선택.
+        using var project = new TempProject(SamplePath);
+        WriteOptionsWorkbook(project.EpisodesFolder,
+            "main05.02", "라루의 제안을 듣는다", "혼자 문을 연다", "셋째 길");
+        (ChapterGraphView view, _) = Show(project);
+
+        var canvas = view.FindControl<Canvas>("GraphCanvas")!;
+        List<TextBlock> chips = canvas.Children.OfType<TextBlock>()
+            .Where(block => (block.Text ?? "").StartsWith("●", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Contains(chips, chip => chip.Text!.StartsWith("● 라루의 제안을 듣는다"));
+        Assert.Contains(chips, chip => chip.Text!.StartsWith("● 혼자 문을 연다"));
+        Assert.Contains(chips, chip => chip.Text!.StartsWith("● 셋째 길")); // 안 이은 옵션도 포트로
+        Assert.Contains(canvas.Children.OfType<TextBlock>(), block => block.Text == "⏹");
+
+        // 칩 클릭 = 그 간선 선택 — 패널이 열리고 라벨이 골라져 있다.
+        TextBlock laru = chips.Single(chip => chip.Text!.StartsWith("● 라루의 제안을 듣는다"));
+        laru.RaiseEvent(new Avalonia.Input.PointerPressedEventArgs(
+            laru, new Avalonia.Input.Pointer(0, Avalonia.Input.PointerType.Mouse, true),
+            laru, default, 0,
+            new Avalonia.Input.PointerPointProperties(
+                Avalonia.Input.RawInputModifiers.LeftMouseButton,
+                Avalonia.Input.PointerUpdateKind.LeftButtonPressed),
+            Avalonia.Input.KeyModifiers.None));
+
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
+        Assert.Equal("라루의 제안을 듣는다",
+            view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static (ChapterGraphView View, AuthoringSession Session) Show(TempProject project)
