@@ -262,6 +262,15 @@ public sealed class DialogueNode : StoryNode
     public string? ScriptId { get; set; }
 
     /// <summary>
+    /// 이 대본의 원본인 에피소드 엑셀의 Id. null이면 작가 소유의 자유 노드다.
+    ///
+    /// 값이 있으면 <b>엑셀노드</b>다(2단계 무대의 본류): 본문·화자·줄 구성은 엑셀이 소유하고
+    /// 툴에서는 읽기 전용이다 — 여기서 고쳐도 다음 동기화가 엑셀 내용으로 되돌리므로,
+    /// 고칠 수 있는 것처럼 보이는 화면이 곧 원고 증발 사고다. 출구·연출은 툴 소유로 남는다.
+    /// </summary>
+    public string? ExcelEpisodeId { get; set; }
+
+    /// <summary>
     /// LineId별 대사 논리. 목록 순서는 파일에서 읽는 순서일 뿐이고 실행 순서가 아니다.
     /// 실행 순서는 언제나 대본이 정한다.
     /// </summary>
@@ -295,6 +304,7 @@ public sealed class DialogueNode : StoryNode
         {
             Layout = Layout.Clone(),
             ScriptId = ScriptId,
+            ExcelEpisodeId = ExcelEpisodeId,
             LineExtensions = LineExtensions.Select(item => item.Clone()).ToList(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
             BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal),

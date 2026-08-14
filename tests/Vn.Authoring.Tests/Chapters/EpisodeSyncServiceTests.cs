@@ -51,6 +51,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         DialogueNode node = Assert.IsType<DialogueNode>(editor.Project.FindNode(report.DialogueNodeId));
         Assert.Equal("Story_ch05_02", node.Name);
 
+        // 엑셀노드 표식 — 편집기가 이걸 보고 본문을 읽기 전용으로 잠근다.
+        Assert.Equal("main05.02", node.ExcelEpisodeId);
+
         // 워크북의 LineId(CHOICE 제외)가 전부 대본에 들어왔고 신원이 그대로다.
         Assert.Equal(
             ["ln_0001", "ln_0002", "ln_0100", "ln_0101", "ln_0102",

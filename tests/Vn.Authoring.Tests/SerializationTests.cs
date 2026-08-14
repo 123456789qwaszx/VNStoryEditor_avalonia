@@ -44,6 +44,18 @@ public class SerializationTests
     }
 
     [Fact]
+    public void 엑셀노드_표식이_프로젝트와_함께_왕복한다()
+    {
+        // 이 표식이 사라지면 편집기가 엑셀 소유 대본을 자유 노드로 착각해 잠금이 풀린다.
+        var sample = new Sample();
+        sample.Dialogue.ExcelEpisodeId = "ep_hallway";
+
+        StoryProject reloaded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(sample.Project));
+
+        Assert.Equal("ep_hallway", reloaded.FindDialogue(sample.Dialogue.Id)!.ExcelEpisodeId);
+    }
+
+    [Fact]
     public void 엑셀_행_신원_맵이_프로젝트와_함께_왕복한다()
     {
         // v4 — 행 신원(인덱스 → LineId)은 대본 파일이 아니라 프로젝트가 갖는다.

@@ -150,6 +150,11 @@ public static class EpisodeSyncService
         }
 
         DialogueNode node = FindOrCreateNode(editor, fileId, episodeId, chapter);
+
+        // 엑셀노드 표식 — 이 노드의 본문은 엑셀 소유다. 편집기가 이 값을 보고 읽기 전용으로
+        // 잠근다(툴에서 고친 본문은 다음 동기화가 되돌리므로, 고쳐지는 척하는 화면이 더 나쁘다).
+        node.ExcelEpisodeId = episodeId;
+
         EnsureConditionSupply(editor, definition, fileId, node, model, chapter);
 
         // G3-2 — 지워질 줄이 소유하던 논리를 세려면 지우기 전의 모습이 필요하다.

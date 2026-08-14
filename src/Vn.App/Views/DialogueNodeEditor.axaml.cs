@@ -42,6 +42,14 @@ public partial class DialogueNodeEditor : UserControl
     private string? _selectedLineId;
     private readonly Dictionary<string, Border> _stageLineCards = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 지금 보는 노드가 엑셀노드인가 (<see cref="DialogueNode.ExcelEpisodeId"/>).
+    /// 참이면 본문·화자·줄 구성은 읽기 전용이다 — 원본이 엑셀이라, 여기서 고쳐도 다음
+    /// 동기화가 되돌린다. 고쳐지는 척하다 증발하는 것이 가장 나쁜 화면이다.
+    /// 출구·연출·발행은 툴 소유 그대로다.
+    /// </summary>
+    private bool _excelOwned;
+
     /// <summary>갈래 시작 줄(라벨·조건) → 블록/갈래 (W36-a). 클릭하면 그 갈래가 선택으로 남는다.</summary>
     private readonly Dictionary<string, (BranchFlow.Block Block, int BranchIndex)> _branchStarts =
         new(StringComparer.Ordinal);
@@ -82,10 +90,44 @@ public partial class DialogueNodeEditor : UserControl
         };
     }
 
+    /// <summary>
+    /// 엑셀노드의 본문 편집 시도를 막고, 어디서 고치는지 말한다. 참이면 호출자는 그냥 돌아간다.
+    /// </summary>
+    private bool BlockIfExcelOwned(string what)
+    {
+        if (!_excelOwned)
+        {
+            return false;
+        }
+
+        _session?.SetStatus(
+            $"{what}은(는) 엑셀에서 합니다 — 이 대본의 원본은 에피소드 엑셀입니다. " +
+            "챕터 그래프에서 노드를 더블클릭하면 열립니다.");
+        return true;
+    }
+
+    /// <summary>엑셀노드임을 목록 맨 위에서 말한다 — 읽기 전용의 이유와 갈 곳까지.</summary>
+    private static Border BuildExcelOwnedBanner(DialogueNode node) => new()
+    {
+        Background = new SolidColorBrush(Color.FromArgb(34, 61, 123, 217)),
+        CornerRadius = new CornerRadius(4),
+        Padding = new Thickness(8, 5),
+        Margin = new Thickness(0, 0, 0, 4),
+        Child = new TextBlock
+        {
+            Text = $"📄 엑셀노드 — 원본: 에피소드 '{node.ExcelEpisodeId}'. " +
+                   "본문·화자·줄 구성은 엑셀에서 고칩니다(챕터 그래프에서 더블클릭). " +
+                   "여기서는 연출과 출구만 편집합니다.",
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.9
+        }
+    };
+
     /// <summary>빈 공간의 줄 메뉴 (W49) — 여기서의 추가는 언제나 맨 아래, 삭제는 대상이 없어 잠긴다.</summary>
     private void ShowEmptyAreaFlyout()
     {
-        if (_session?.Project.FindDialogue(_nodeId) is null)
+        if (BlockIfExcelOwned("줄 추가") || _session?.Project.FindDialogue(_nodeId) is null)
         {
             return;
         }
@@ -127,7 +169,8 @@ public partial class DialogueNodeEditor : UserControl
 
     private void AddLineAtEnd()
     {
-        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
+        if (BlockIfExcelOwned("줄 추가") ||
+            _session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
         {
             return;
         }
@@ -196,7 +239,14 @@ public partial class DialogueNodeEditor : UserControl
 
         try
         {
+            _excelOwned = node.ExcelEpisodeId is not null;
+
             NameBox.Text = node.Name;
+            // 엑셀노드의 이름은 챕터 `대사엔트리`가 원천이다 — 여기서 바꾸면 다음 동기화가
+            // 같은 이름의 노드를 못 찾아 빈 노드를 새로 만든다.
+            NameBox.IsReadOnly = _excelOwned;
+            AddLineButton.IsEnabled = !_excelOwned;
+            ApplyScenarioButton.IsEnabled = !_excelOwned;
 
             BuildScriptSummary(node);
 
@@ -214,6 +264,11 @@ public partial class DialogueNodeEditor : UserControl
                 flow.Lines.All(item => !string.Equals(item.Line.LineId, _selectedLineId, StringComparison.Ordinal)))
             {
                 _selectedLineId = flow.Lines.FirstOrDefault()?.Line.LineId;
+            }
+
+            if (_excelOwned)
+            {
+                LineHost.Children.Add(BuildExcelOwnedBanner(node));
             }
 
             if (flow.Lines.Count > 0)
@@ -537,7 +592,8 @@ public partial class DialogueNodeEditor : UserControl
     /// <summary>줄 카드 우클릭 메뉴 (W47) — 추가·삭제는 ＋ 플라이아웃과 같은 편집 경로 하나를 쓴다.</summary>
     private void ShowLineContextFlyout(Control anchor, string lineId)
     {
-        if (_session?.Project.FindDialogue(_nodeId) is not { } node || node.ScriptId is not { } scriptId)
+        if (BlockIfExcelOwned("줄 추가·삭제") ||
+            _session?.Project.FindDialogue(_nodeId) is not { } node || node.ScriptId is not { } scriptId)
         {
             return;
         }
@@ -942,7 +998,8 @@ public partial class DialogueNodeEditor : UserControl
 
     private void AddLine()
     {
-        if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
+        if (BlockIfExcelOwned("줄 추가") ||
+            _session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
         {
             return;
         }
@@ -1116,8 +1173,15 @@ public partial class DialogueNodeEditor : UserControl
             MinHeight = 26,
             Padding = new Thickness(6, 3),
             VerticalContentAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 0, 0, 0)
+            Margin = new Thickness(4, 0, 0, 0),
+            // 엑셀노드의 본문은 읽기 전용 — 원본은 엑셀이고, 여기서 고친 글은 다음 동기화가 되돌린다.
+            IsReadOnly = _excelOwned
         };
+
+        if (_excelOwned)
+        {
+            ToolTip.SetTip(text, "본문은 엑셀에서 고칩니다 — 챕터 그래프에서 노드를 더블클릭하면 열립니다.");
+        }
 
         AutoCompleteBox? speaker = null;
         string scriptId = script.ScriptId ?? string.Empty;
@@ -1165,7 +1229,8 @@ public partial class DialogueNodeEditor : UserControl
                     .Where(item => item.Length > 0)
                     .ToList(),
                 FilterMode = AutoCompleteFilterMode.Contains,
-                MinimumPrefixLength = 0
+                MinimumPrefixLength = 0,
+                IsEnabled = !_excelOwned // 화자도 본문과 함께 엑셀 소유다
             };
             speaker.TextChanged += (_, _) => Commit();
 
@@ -1438,48 +1503,63 @@ public partial class DialogueNodeEditor : UserControl
             });
         }
 
-        // 조건 추가/변경·선택지 시작 — 무엇이 가능한지는 기존 ConditionChoices가 정한다.
-        Section("조건 / 선택지");
-        panel.Children.Add(BuildConditionBox(node, resolved));
-
-        Section("Set");
-        IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
-        var addSet = new Button { Content = "+ set", FontSize = 10, Padding = new Thickness(7, 2) };
-        ToolTip.SetTip(addSet, "이 줄에 도달했을 때 실행할 <<set>>을 더합니다.");
-
-        addSet.Click += (_, _) =>
+        if (_excelOwned)
         {
-            if (_building)
+            // 엑셀노드 — 조건·선택지·Set의 원본은 엑셀이다. 이 메뉴에는 툴 소유인 출구만 남는다.
+            panel.Children.Add(new TextBlock
             {
-                return;
-            }
-
-            List<SetOperation> next = CurrentSets(node, resolved.Line.LineId);
-            next.Add(new SetOperation
-            {
-                Variable = registered.FirstOrDefault()?.Variable ?? string.Empty,
-                Operator = SetOperatorKind.Add,
-                Value = "1"
-            });
-            _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, next);
-        };
-
-        if (registered.Count == 0 && resolved.Line.Sets.Count == 0)
-        {
-            var setRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            setRow.Children.Add(addSet);
-            setRow.Children.Add(new TextBlock
-            {
-                Text = "설정노드를 연결하고 변수를 등록하면 드롭다운으로 고릅니다.",
+                Text = "📄 엑셀노드 — 조건·선택지·스탯변화는 엑셀에서 고칩니다.",
                 FontSize = 10,
-                Opacity = 0.55,
-                VerticalAlignment = VerticalAlignment.Center
+                Opacity = 0.65,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
             });
-            panel.Children.Add(setRow);
         }
         else
         {
-            panel.Children.Add(addSet);
+            // 조건 추가/변경·선택지 시작 — 무엇이 가능한지는 기존 ConditionChoices가 정한다.
+            Section("조건 / 선택지");
+            panel.Children.Add(BuildConditionBox(node, resolved));
+
+            Section("Set");
+            IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
+            var addSet = new Button { Content = "+ set", FontSize = 10, Padding = new Thickness(7, 2) };
+            ToolTip.SetTip(addSet, "이 줄에 도달했을 때 실행할 <<set>>을 더합니다.");
+
+            addSet.Click += (_, _) =>
+            {
+                if (_building)
+                {
+                    return;
+                }
+
+                List<SetOperation> next = CurrentSets(node, resolved.Line.LineId);
+                next.Add(new SetOperation
+                {
+                    Variable = registered.FirstOrDefault()?.Variable ?? string.Empty,
+                    Operator = SetOperatorKind.Add,
+                    Value = "1"
+                });
+                _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, next);
+            };
+
+            if (registered.Count == 0 && resolved.Line.Sets.Count == 0)
+            {
+                var setRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+                setRow.Children.Add(addSet);
+                setRow.Children.Add(new TextBlock
+                {
+                    Text = "설정노드를 연결하고 변수를 등록하면 드롭다운으로 고릅니다.",
+                    FontSize = 10,
+                    Opacity = 0.55,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                panel.Children.Add(setRow);
+            }
+            else
+            {
+                panel.Children.Add(addSet);
+            }
         }
 
         // 출구는 선택·조건 갈래의 마지막 줄에서만 매달 수 있다.
@@ -1490,13 +1570,38 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         // ▲▼✕ 행 버튼이 사라진 자리의 대체 진입점 — 행에서는 치웠지만 기능은 남긴다.
+        // 엑셀노드에서는 줄 구성이 엑셀 소유라 아예 내놓지 않는다(각 동작에 가드도 있다).
+        if (_excelOwned)
+        {
+            new Flyout { Content = panel }.ShowAt(anchor);
+            return;
+        }
+
         Section("줄");
         string scriptId = script.ScriptId ?? string.Empty;
         string lineId = resolved.Line.LineId;
         var lineRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        lineRow.Children.Add(SmallButton("▲ 위로", () => _session!.Editor.MoveScriptLine(scriptId, lineId, -1)));
-        lineRow.Children.Add(SmallButton("▼ 아래로", () => _session!.Editor.MoveScriptLine(scriptId, lineId, 1)));
-        Button remove = SmallButton("✕ 삭제", () => _session!.Editor.RetireScriptLine(scriptId, lineId));
+        lineRow.Children.Add(SmallButton("▲ 위로", () =>
+        {
+            if (!BlockIfExcelOwned("줄 이동"))
+            {
+                _session!.Editor.MoveScriptLine(scriptId, lineId, -1);
+            }
+        }));
+        lineRow.Children.Add(SmallButton("▼ 아래로", () =>
+        {
+            if (!BlockIfExcelOwned("줄 이동"))
+            {
+                _session!.Editor.MoveScriptLine(scriptId, lineId, 1);
+            }
+        }));
+        Button remove = SmallButton("✕ 삭제", () =>
+        {
+            if (!BlockIfExcelOwned("줄 삭제"))
+            {
+                _session!.Editor.RetireScriptLine(scriptId, lineId);
+            }
+        });
         ToolTip.SetTip(remove, "대본에서 이 줄을 뺍니다. LineId는 은퇴 상태로 남습니다.");
         lineRow.Children.Add(remove);
         panel.Children.Add(lineRow);
@@ -2125,6 +2230,11 @@ public partial class DialogueNodeEditor : UserControl
 
     private void CommitName()
     {
+        if (_excelOwned)
+        {
+            return; // 이름의 원천은 챕터 `대사엔트리` — 개명은 챕터 그래프의 [개명]으로.
+        }
+
         if (!_building && _session is not null && _nodeId is not null)
         {
             _session.Editor.RenameNode(_nodeId, NameBox.Text ?? string.Empty);

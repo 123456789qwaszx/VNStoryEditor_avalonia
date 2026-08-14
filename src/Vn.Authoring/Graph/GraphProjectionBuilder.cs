@@ -274,7 +274,11 @@ public static class GraphProjectionBuilder
             {
                 DialogueResult? latest = project.Results.DialogueResultsOf(dialogue.Id).LastOrDefault();
                 string script = project.FindScript(dialogue.ScriptId)?.Name ?? "대본 없음";
-                return latest is null ? script : $"{script} · v{latest.Identity.Version} 발행";
+                string badge = latest is null ? script : $"{script} · v{latest.Identity.Version} 발행";
+
+                // 엑셀노드 표식 — 카드만 봐도 "이 본문은 엑셀 소유"임이 보여야,
+                // 열어 보고 나서야 잠긴 것을 아는 헛걸음이 없다.
+                return dialogue.ExcelEpisodeId is null ? badge : $"📄 엑셀 · {badge}";
             }
 
             case PresentationNode presentation:

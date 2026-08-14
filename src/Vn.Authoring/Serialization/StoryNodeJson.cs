@@ -145,6 +145,11 @@ internal static class StoryNodeJson
             json["script"] = node.ScriptId;
         }
 
+        if (node.ExcelEpisodeId is not null)
+        {
+            json["excelEpisode"] = node.ExcelEpisodeId;
+        }
+
         var lines = new JsonArray();
 
         foreach (DialogueLineExtension extension in node.LineExtensions)
@@ -454,7 +459,11 @@ internal static class StoryNodeJson
 
     private static DialogueNode ReadDialogueNode(JsonObject json, string id, string name)
     {
-        var node = new DialogueNode(id, name) { ScriptId = (string?)json["script"] };
+        var node = new DialogueNode(id, name)
+        {
+            ScriptId = (string?)json["script"],
+            ExcelEpisodeId = (string?)json["excelEpisode"]
+        };
         HashSet<string> lineIds = new(StringComparer.Ordinal);
 
         foreach (JsonNode? item in json["lines"]?.AsArray() ?? new JsonArray())
