@@ -30,6 +30,20 @@ public static class ChapterValidator
         var conditionsByLabel = chapter.Conditions
             .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
 
+        // 무라벨(진행) 간선은 에피소드당 최대 1개 — 둘 이상이면 어디로 진행할지 모호하다.
+        foreach (IGrouping<string, ChapterEdge> plainGroup in chapter.Edges
+                     .Where(edge => edge.IsPlainAdvance)
+                     .GroupBy(edge => edge.FromEpisodeId, StringComparer.Ordinal)
+                     .Where(group => group.Count() > 1))
+        {
+            diagnostics.Add(new ChapterDiagnostic(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.OptionEdgeMismatch,
+                chapter.SourcePath, ChapterSheetNames.Edges, null, null,
+                $"'{plainGroup.Key}'에서 나가는 무라벨(진행) 간선이 {plainGroup.Count()}개입니다 — " +
+                "어디로 진행할지 정할 수 없습니다. 하나만 남기거나 선택지 라벨을 붙여 주세요."));
+        }
+
         foreach (ChapterEpisode episode in chapter.Episodes)
         {
             string? path = episodesFolder is null
@@ -94,14 +108,32 @@ public static class ChapterValidator
                 !edge.IsPlainAdvance)
             .ToList();
 
+        List<EpisodeRow> options = model.Rows
+            .Where(row => row.Kind == EpisodeRowKind.Option)
+            .ToList();
+
+        // 선택지가 있으면 진행 간선이 낄 자리가 없다 (2026-08-15 소유자 — 선택지가 제시되면
+        // 둘 다 안 고를 수 없으므로 낙하가 없다. 안 이은 옵션 = 종료).
+        if (options.Count > 0)
+        {
+            foreach (ChapterEdge plain in chapter.Edges.Where(edge =>
+                         string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
+                         edge.IsPlainAdvance))
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.OptionEdgeMismatch,
+                    chapter.SourcePath, ChapterSheetNames.Edges, plain.SourceRow, null,
+                    $"'{episode.EpisodeId}'는 선택지가 있는데 무라벨(진행) 간선이 " +
+                    $"{plain.ToEpisodeId}로 나 있습니다 — 선택지가 제시되면 진행을 탈 수 없습니다. " +
+                    "이 간선에 선택지 라벨을 붙이거나 지워 주세요."));
+            }
+        }
+
         if (choiceEdges.Count == 0)
         {
             return; // 안 이은 옵션 = 에피소드 종료 — 검사할 짝이 없다.
         }
-
-        List<EpisodeRow> options = model.Rows
-            .Where(row => row.Kind == EpisodeRowKind.Option)
-            .ToList();
 
         foreach (ChapterEdge edge in choiceEdges)
         {

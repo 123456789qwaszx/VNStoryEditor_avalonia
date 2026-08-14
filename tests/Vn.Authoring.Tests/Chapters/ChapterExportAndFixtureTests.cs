@@ -174,8 +174,17 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
 
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
 
-        Assert.DoesNotContain(validation.Diagnostics,
-            item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch);
+        // 안 이은 옵션은 오류가 아니다 — 종료다.
+        Assert.DoesNotContain(validation.Diagnostics, item =>
+            item.Code == ChapterDiagnosticCode.OptionEdgeMismatch &&
+            item.Severity == ChapterDiagnosticSeverity.Error);
+
+        // 다만 선택지가 생긴 에피소드에 무라벨(진행) 간선이 남아 있으면 경고한다
+        // (2026-08-15 2차 개정 — 선택지가 제시되면 진행을 탈 수 없다. 낙하는 없다).
+        Assert.Contains(validation.Diagnostics, item =>
+            item.Code == ChapterDiagnosticCode.OptionEdgeMismatch &&
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("진행을 탈 수 없습니다"));
     }
 
     [Fact]

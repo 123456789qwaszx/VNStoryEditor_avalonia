@@ -195,7 +195,7 @@
                             <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11" />
                             <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11"
                                       PlaceholderText="선택지"
-                                      ToolTip.Tip="이 에피소드 대본의 OPTION 중에서 고릅니다. (진행) = 선택지 없는 무조건 진행. 목록이 비어 있으면 대본에 CHOICE/OPTION을 먼저 쓰세요." />
+                                      ToolTip.Tip="대본에 선택지가 있으면 그 OPTION 중에서 고릅니다(안 이은 옵션 = 종료). 선택지가 없으면 (선택지 없음) 하나 — 무조건 진행입니다." />
                             <Button Grid.Column="3" x:Name="AddEdgeButton" Content="연결" FontSize="11" Margin="4,0,0,0"
                                     ToolTip.Tip="이미 있는 에피소드를 다음으로 잇습니다." />
                         </Grid>
@@ -217,7 +217,7 @@
 
                         <TextBlock Text="선택지 — 출발 에피소드 대본의 OPTION" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeLabelEditBox" FontSize="11" HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="플레이어가 보는 버튼 글자 — 출발 에피소드 대본의 OPTION에서 고릅니다. (진행) = 선택지 없는 무조건 진행." />
+                                  ToolTip.Tip="플레이어가 보는 버튼 글자 — 출발 에피소드 대본의 OPTION에서 고릅니다. 선택지가 없는 에피소드만 (선택지 없음) = 무조건 진행." />
 
                         <TextBlock Text="조건 — 이 분기를 고를 수 있으려면" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeConditionCombo" FontSize="11" HorizontalAlignment="Stretch" />

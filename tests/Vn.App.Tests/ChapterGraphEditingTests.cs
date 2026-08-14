@@ -185,9 +185,10 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 간선_라벨을_드롭다운으로_바꾸고_떼면_일반_진행이_된다() => HeadlessUi.Run(() =>
+    public void 간선_라벨은_대본_OPTION의_드롭다운이고_선택지가_있으면_진행이_없다() => HeadlessUi.Run(() =>
     {
-        // 라벨은 자유 입력이 아니라 대본 OPTION의 드롭다운이다 (2026-08-15 소유자).
+        // 2026-08-15 소유자 2차 개정 — 선택지가 제시되면 둘 다 안 고를 수 없으므로
+        // 진행(무라벨)이 낄 자리가 없다. 후보는 대본의 OPTION들뿐이다.
         using var project = new TempProject(SamplePath);
         WriteOptionsWorkbook(project.EpisodesFolder, "main05.02", "라루의 제안을 듣는다", "혼자 문을 연다");
         (ChapterGraphView view, _) = Show(project);
@@ -195,19 +196,21 @@ public sealed class ChapterGraphEditingTests
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 현재 라벨이 골라져 있고, 후보는 대본의 OPTION들 + (진행)이다.
         var combo = view.FindControl<ComboBox>("EdgeLabelEditBox")!;
         Assert.Equal("라루의 제안을 듣는다", combo.SelectedItem);
-        Assert.Contains("혼자 문을 연다", (System.Collections.Generic.IEnumerable<string>)combo.ItemsSource!);
 
-        // (진행)으로 떼면 일반 진행이 된다.
-        combo.SelectedItem = "(진행)";
+        var items = ((System.Collections.Generic.IEnumerable<string>)combo.ItemsSource!).ToList();
+        Assert.Contains("혼자 문을 연다", items);
+        Assert.DoesNotContain("(선택지 없음)", items); // 선택지가 있으면 진행은 못 고른다
+
+        // 다른 옵션으로 바꾼다 — 신원(라벨)이 따라가고 셀에 써진다.
+        combo.SelectedItem = "혼자 문을 연다";
         view.ApplyEdgeFromPanel();
 
         ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
 
-        Assert.True(edge.IsPlainAdvance);
+        Assert.Equal("혼자 문을 연다", edge.OptionLabel);
     });
 
     [Fact]

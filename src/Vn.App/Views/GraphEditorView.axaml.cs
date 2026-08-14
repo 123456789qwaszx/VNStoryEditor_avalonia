@@ -804,7 +804,8 @@ public partial class GraphEditorView : UserControl
         }
         else
         {
-            Row("이 길은 여기서 에피소드가 끝납니다 — 다음은 챕터 간선이 정합니다.", opacity: 0.6);
+            Row("안 이은 선택지 — 이 길을 고르면 (씬 후) 챕터 진행이 여기서 끝납니다. " +
+                "이어가려면 챕터 그래프에서 이 선택지에 간선을 이으세요.", opacity: 0.6);
         }
 
         if (port is null)
@@ -862,7 +863,7 @@ public partial class GraphEditorView : UserControl
             panel.Children.Add(detach);
         }
 
-        Row("씬이 끝나면(출구 없음) 에피소드가 끝나고 챕터가 이어받습니다.", opacity: 0.5);
+        Row("씬이 끝나면(출구 없음) 에피소드가 끝납니다 — 간선이 있으면 그 길로, 없으면 챕터 진행 종료.", opacity: 0.5);
 
         new Flyout { Content = panel }.ShowAt(anchor);
     }

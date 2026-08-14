@@ -1216,13 +1216,13 @@ public partial class ChapterGraphView : UserControl
             EdgeStatsBox.Text = StatChangesText(edge);
         }
 
-        // 라벨은 출발 에피소드 대본의 OPTION에서 고른다. 현재 값이 짝 잃은 옛 라벨이라도
-        // 목록에 세워 보이게 한다(ensure) — 검증 보고가 어긋남을 따로 잡는다.
+        // 라벨은 출발 에피소드 대본의 OPTION에서 고른다. 현재 값(짝 잃은 라벨·잔존 진행
+        // 간선)은 목록에 세워 보이게 한다(ensure) — 검증 보고가 어긋남을 따로 잡는다.
         string currentLabel = string.IsNullOrWhiteSpace(edge.OptionLabel)
             ? PlainAdvanceLabel
             : edge.OptionLabel!;
         SetItems(EdgeLabelEditBox,
-            EdgeLabelChoices(edge.FromEpisodeId, ensure: currentLabel == PlainAdvanceLabel ? null : currentLabel),
+            EdgeLabelChoices(edge.FromEpisodeId, ensure: currentLabel),
             fill ? currentLabel : EdgeLabelEditBox.SelectedItem as string);
 
         var labels = new List<string> { "(없음)" };
@@ -1522,25 +1522,26 @@ public partial class ChapterGraphView : UserControl
         EdgeLabelBox.SelectedItem = null;
     }
 
-    /// <summary>무라벨 진행을 콤보에 세우는 표기. 셀에는 빈칸으로 간다.</summary>
-    private const string PlainAdvanceLabel = "(진행)";
+    /// <summary>무라벨 진행의 콤보 표기 — 선택지 없는 에피소드의 유일한 다음. 셀에는 빈칸으로 간다.</summary>
+    private const string PlainAdvanceLabel = "(선택지 없음)";
 
     /// <summary>
-    /// 라벨 후보 = 그 에피소드 대본의 OPTION 문구들 (2026-08-15 소유자 — 라벨은 에디터
-    /// 자유 입력이 아니라 에피소드 끝 선택지에서 고른다). 자유 입력은 오타 하나가 유령
-    /// 간선이 됐다 — 조건 콤보와 같은 원리로 원천에서 고른다. <paramref name="ensure"/>는
-    /// 현재 값(짝 잃은 옛 라벨이라도)이 목록에 보이게 하는 안전핀이다.
+    /// 라벨 후보 (2026-08-15 소유자, 2차 개정) — <b>선택지가 있으면 그 OPTION들뿐이고,
+    /// 없으면 (선택지 없음)뿐이다.</b> 낙하 규칙은 없다: 선택지가 제시되면 둘 다 안 고를
+    /// 수 없으므로 진행 간선이 낄 자리가 없다. 안 이은 옵션은 진짜 종료다.
+    /// <paramref name="ensure"/>는 현재 값(짝 잃은 라벨·잔존 진행 간선)이 보이게 하는
+    /// 안전핀 — 어긋남 자체는 검증 보고가 잡는다.
     /// </summary>
     private List<string> EdgeLabelChoices(string episodeId, string? ensure = null)
     {
-        var items = new List<string> { PlainAdvanceLabel };
+        var options = new List<string>();
         string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
 
         if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
         {
             try
             {
-                items.AddRange(EpisodeWorkbookReader.Read(path).Rows
+                options.AddRange(EpisodeWorkbookReader.Read(path).Rows
                     .Where(row => row.Kind == EpisodeRowKind.Option)
                     .Select(row => row.Text)
                     .Where(text => text.Length > 0)
@@ -1548,9 +1549,11 @@ public partial class ChapterGraphView : UserControl
             }
             catch (XlsxReadException)
             {
-                // 대본을 못 읽으면 후보 없이 (진행)만 — 검증 보고가 원인을 따로 세운다.
+                // 대본을 못 읽으면 선택지 없음으로 다룬다 — 검증 보고가 원인을 따로 세운다.
             }
         }
+
+        List<string> items = options.Count == 0 ? [PlainAdvanceLabel] : options;
 
         if (!string.IsNullOrWhiteSpace(ensure) && !items.Contains(ensure))
         {
