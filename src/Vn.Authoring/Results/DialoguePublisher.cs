@@ -226,7 +226,10 @@ public static class DialoguePublisher
         AddScriptProblems(project, node, problems);
         AddChoiceOrderProblems(project, node, lines, problems);
 
-        // 닫히지 않은 선택 블록은 Pres 사본의 if/endif 짝을 만들 수 없다.
+        // 선택지로 끝나는 노드는 정상이다 (2단계 포트 규칙, 2026-08-14 소유자 승인) —
+        // 옵션들이 곧 노드의 끝이고, 이어진 옵션은 출구로 점프, 안 이은 옵션은 에피소드
+        // 종료다. 합성기가 문서 끝에서 블록을 닫는다. 다만 "잊고 안 닫은" 경우와 화면상
+        // 구분이 안 되므로, 막지 않고 알리기만 한다.
         bool choiceOpen = false;
 
         foreach (DialogueResultLine line in lines)
@@ -245,8 +248,9 @@ public static class DialoguePublisher
             problems.Add(new PublishProblem(
                 PublishProblemKind.InvalidChoiceOption,
                 null,
-                "선택 블록이 닫히지 않았습니다. 블록 뒤 첫 일반 줄에 '선택지 끝'을 지정하세요.",
-                IsBlocking: true));
+                "선택 블록이 문서 끝까지 열려 있습니다 — 이 옵션들이 노드의 끝입니다. " +
+                "이어지는 줄을 두려면 블록 뒤 첫 일반 줄에 '선택지 끝'을 지정하세요.",
+                IsBlocking: false));
         }
 
         var assignments = ConnectedSetNodeResolver.Resolve(project, node.Id)

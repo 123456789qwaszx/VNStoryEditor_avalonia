@@ -355,9 +355,22 @@ public static class ResultDocumentComposer
 
         if (options.IncludeExecutionJumps && pendingBranchJump is { } lastPending)
         {
-            // 구조가 올바르면 endif가 갈래를 닫아 여기 도달하지 않지만,
-            // 잘못된 구조라도 출구를 조용히 버리지는 않는다.
+            // 선택지로 끝나는 노드의 마지막 옵션 출구가 여기로 온다 — 닫는 전환이 없어도
+            // 출구를 조용히 버리지 않는다(순서: 옵션 본문 안에서 점프가 먼저, 닫힘은 그 뒤).
             AddBranchJump(segments, project, lastPending.Source, lastPending.Target);
+        }
+
+        if (choiceOpen && showDialogue)
+        {
+            // 문서 끝까지 열린 선택 블록 — 옵션들이 곧 노드의 끝이다(포트 규칙: 이어진
+            // 옵션은 점프, 안 이은 옵션은 에피소드 종료). Pres 사본의 합성 조건($__ch)과
+            // 이미터의 들여쓰기 짝을 위해 여기서 닫는다.
+            segments.Add(new RenderedSegment(
+                Id: $"node:{dialogue.SourceNodeId}:trailing-choice-end",
+                Kind: RenderedSegmentKind.ChoiceEnd,
+                Layer: DocumentLayer.Dialogue,
+                Source: nodeSource,
+                ChoiceBlockOrdinal: choiceBlockOrdinal));
         }
 
         if (options.IncludeExecutionJumps && dialogue.DefaultExitTargetNodeId is { } defaultTarget)

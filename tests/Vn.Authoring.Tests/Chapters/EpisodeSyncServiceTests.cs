@@ -326,6 +326,93 @@ public sealed class EpisodeSyncServiceTests : IDisposable
             errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
     }
 
+    [Fact]
+    public void 선택지로_끝나는_에피소드가_발행되고_옵션_출구가_점프로_나간다()
+    {
+        // 2단계 포트 규칙 (2026-08-14 소유자 승인) — 엑셀이 선택지를 선언하고, 각 옵션의
+        // 도착은 작가가 보드에서 잇는다. 안 이은 옵션 = 에피소드 종료. 이 규칙으로
+        // Gate B의 반칸("선택지로 끝나는 견본은 발행 거부")이 닫힌다.
+        (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
+        string workbook = CopySampleAs("main05.02.xlsx");
+
+        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+        Assert.True(report.Applied, string.Join(" / ", report.Problems));
+
+        DialogueNode node = (DialogueNode)editor.Project.FindNode(report.DialogueNodeId)!;
+
+        // 견본은 선택지로 끝난다 — 옵션 줄이 실제로 있다.
+        List<DialogueLineExtension> options = node.LineExtensions
+            .Where(extension => extension.Transition?.OpensOption == true)
+            .ToList();
+        Assert.NotEmpty(options);
+
+        // 첫 옵션만 작가의 곁가지로 잇는다. 나머지는 안 잇는다(= 그 자리에서 에피소드 종료).
+        DialogueNode side = editor.AddDialogueNode(fileId, name: "곁가지_창고");
+        editor.SetScriptLineText(
+            editor.EnsureDialogueScript(side.Id).Id,
+            editor.Project.FindScript(side.ScriptId)!.ActiveLines.First().Id,
+            "라루", "여긴 창고야.");
+        editor.SetExitTarget(node.Id, Vn.Authoring.Flow.ExitPortKind.Branch, options[0].LineId, side.Id);
+
+        // 발행이 더는 거부되지 않는다 — 열린 채 끝난 블록은 알림일 뿐이다.
+        Assert.DoesNotContain(
+            editor.InspectDialoguePublish(node.Id, Definition).Problems,
+            problem => problem.IsBlocking);
+
+        Vn.Authoring.Results.DialogueResult published =
+            editor.PublishDialogue(node.Id, Definition).Result;
+        Vn.Authoring.Results.DialogueResult sidePublished =
+            editor.PublishDialogue(side.Id, Definition).Result;
+
+        // 이미터 → 실컴파일. 곁가지도 함께 내보내야 점프 대상이 실재한다.
+        Vn.Authoring.Rendering.YarnBundle bundle =
+            Vn.Authoring.Rendering.YarnBundleEmitter.Emit(published, project: editor.Project);
+        Vn.Authoring.Rendering.YarnBundle sideBundle =
+            Vn.Authoring.Rendering.YarnBundleEmitter.Emit(sidePublished, project: editor.Project);
+
+        string compileDirectory = Path.Combine(_directory, "compile-trailing");
+        Directory.CreateDirectory(compileDirectory);
+        Vn.Authoring.Rendering.YarnBundleEmitter.WriteBundles([bundle, sideBundle], compileDirectory);
+
+        var utf8 = new System.Text.UTF8Encoding(false);
+        File.WriteAllText(Path.Combine(compileDirectory, "Demo.yarnproject"),
+            """
+            {
+              "projectFileVersion": 3,
+              "baseLanguage": "ko",
+              "sourceFiles": [ "**/*.yarn" ],
+              "excludeFiles": []
+            }
+            """, utf8);
+        File.WriteAllText(Path.Combine(compileDirectory, "game.schema.json"),
+            """
+            { "schemaVersion": 1,
+              "variables": [
+                { "id": "$trust", "type": "number" },
+                { "id": "$anger", "type": "number" },
+                { "id": "$fatigue", "type": "number" }
+              ],
+              "commands": [] }
+            """, utf8);
+
+        Vn.Core.Analysis.AnalysisReport compiled = new Vn.Core.VnProjectAnalyzer().Analyze(
+            Path.Combine(compileDirectory, "Demo.yarnproject"),
+            Path.Combine(compileDirectory, "game.schema.json"));
+
+        var errors = compiled.Diagnostics
+            .Where(item => item.Severity == Vn.Core.Diagnostics.DiagnosticSeverity.Error)
+            .ToList();
+
+        Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
+            Environment.NewLine,
+            errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
+
+        // 이어진 옵션은 곁가지로 점프한다 — 산출 Yarn에 실재해야 한다.
+        string yarn = string.Join("\n", Directory.EnumerateFiles(compileDirectory, "*.yarn")
+            .Select(File.ReadAllText));
+        Assert.Contains("곁가지_창고", yarn);
+    }
+
     // ── 워크북 생성 (G5의 쓰기 절반) ────────────────────────────────────────
 
     [Fact]

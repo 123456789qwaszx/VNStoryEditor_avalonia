@@ -123,14 +123,23 @@ public class ChoiceTests
     }
 
     [Fact]
-    public void 닫히지_않은_선택_블록은_발행을_막는다()
+    public void 끝까지_열린_선택_블록은_발행되고_알림만_남는다()
     {
+        // 규칙 개정 (2026-08-14 소유자 승인, 2단계 포트 규칙) — 선택지로 끝나는 노드는
+        // 정상이다. 옵션들이 곧 노드의 끝이고, 이어진 옵션은 출구로 점프하며 안 이은
+        // 옵션은 에피소드 종료다. 예전에는 발행을 막았다(Gate B 반칸의 정체).
         var sample = new Sample();
         sample.Line("라벨", LineConditionTransition.BeginChoice());
         sample.Line("본문");
 
-        Assert.Throws<Vn.Authoring.Editing.PublishRejectedException>(
-            () => sample.Editor.PublishDialogue(sample.Dialogue.Id));
+        Vn.Authoring.Results.DialogueDraft draft =
+            sample.Editor.InspectDialoguePublish(sample.Dialogue.Id);
+
+        Assert.True(draft.CanPublish);
+        Assert.Contains(draft.Problems, problem =>
+            !problem.IsBlocking && problem.Message.Contains("문서 끝까지 열려"));
+
+        sample.Editor.PublishDialogue(sample.Dialogue.Id); // 막히지 않는다
     }
 
     // ── OptionId 정체성 ─────────────────────────────────────────────────────
