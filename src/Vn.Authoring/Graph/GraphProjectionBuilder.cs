@@ -17,11 +17,16 @@ public static class GraphProjectionBuilder
     private const double EmptyProxyStartY = 80;
     private const double EmptyProxyGapX = 280;
 
+    /// <param name="positionOverrides">
+    /// 노드 자리 재지정 (T3 타임라인 배치) — 챕터 판의 엑셀노드·배선된 씬은 레이아웃이
+    /// 자리를 소유하므로, 뷰가 계산한 자리가 저장된 Layout을 대신한다. 없는 노드는 Layout.
+    /// </param>
     public static GraphProjection Build(
         StoryProject project,
         IReadOnlySet<string> expandedFileIds,
         GameDefinition? definition = null,
-        GraphFilter? filter = null)
+        GraphFilter? filter = null,
+        IReadOnlyDictionary<string, GraphPosition>? positionOverrides = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(expandedFileIds);
@@ -64,12 +69,17 @@ public static class GraphProjectionBuilder
                         continue;
                     }
 
+                    GraphPosition position = positionOverrides is not null &&
+                        positionOverrides.TryGetValue(node.Id, out GraphPosition overridden)
+                        ? overridden
+                        : new GraphPosition(node.Layout.X, node.Layout.Y);
+
                     items.Add(new ExpandedNodeProjection(
                         file.Id,
                         node.Id,
                         node.Name,
                         KindOf(node),
-                        new GraphPosition(node.Layout.X, node.Layout.Y),
+                        position,
                         portsByNodeId[node.Id],
                         BadgeFor(node, project)));
                 }

@@ -53,14 +53,140 @@ public partial class GraphEditorView : UserControl
     /// </summary>
     private IReadOnlyList<ChapterEntry> _chapters = Array.Empty<ChapterEntry>();
 
+    /// <summary>철도가 자리를 소유하는 노드들 (T3) — 엑셀노드 + 배선된 씬. 드래그 대상이 아니다.</summary>
+    private readonly HashSet<string> _railManagedNodeIds = new(StringComparer.Ordinal);
+
+    private const double RailColumnPitch = 430;  // 챕터 열 하나 = 씬 클립이 들어갈 폭
+    private const double RailRowPitch = 190;     // 챕터 줄 하나 = 가지들이 들어갈 높이
+    private const double RailChainStartX = 150;  // 분기점에서 첫 클립까지
+    private const double RailChainGapX = 60;     // 클립 사이
+
     internal void SupplyChapters(IReadOnlyList<ChapterEntry> entries)
     {
         _chapters = entries;
 
         if (_projection is not null)
         {
-            DrawChapterRails();
+            Rebuild(); // 배치까지 챕터를 따라가므로(T3) 전체를 다시 그린다.
         }
+    }
+
+    /// <summary>
+    /// 타임라인 배치 (T3) — 챕터 판의 엑셀노드는 챕터 그래프와 <b>같은 깊이 레이아웃</b>의
+    /// 투영으로 서고(두 화면이 같은 지도), 간선에 배선된 씬 체인은 그 가지 위에 순서대로
+    /// 선다. 클립 간격은 고정이고 간선이 내용만큼 길어진다(소유자 개정 — 균등 분할 아님).
+    /// 배선 안 된 자유 노드만 저장된 Layout·드래그가 남는다.
+    /// </summary>
+    private IReadOnlyDictionary<string, GraphPosition>? ComputeRailLayout()
+    {
+        _railManagedNodeIds.Clear();
+
+        if (_session is null || _chapters.Count == 0)
+        {
+            return null;
+        }
+
+        var overrides = new Dictionary<string, GraphPosition>(StringComparer.Ordinal);
+
+        foreach (StoryFile file in _session.Project.Files)
+        {
+            if (!_session.ExpandedFileIds.Contains(file.Id))
+            {
+                continue;
+            }
+
+            ChapterGraphModel? chapter = _chapters
+                .FirstOrDefault(entry => string.Equals(entry.ChapterId, file.Name, StringComparison.Ordinal))
+                ?.Model;
+
+            if (chapter is null)
+            {
+                continue;
+            }
+
+            var excelByEpisode = file.Nodes.OfType<DialogueNode>()
+                .Where(node => node.ExcelEpisodeId is not null)
+                .ToDictionary(node => node.ExcelEpisodeId!, node => node, StringComparer.Ordinal);
+
+            if (excelByEpisode.Count == 0)
+            {
+                continue;
+            }
+
+            // 판 원점 = 지금 노드들의 최소 좌표 — 판이 서 있던 자리를 지키며 안에서만 정렬한다.
+            double originX = file.Nodes.Min(node => node.Layout.X);
+            double originY = file.Nodes.Min(node => node.Layout.Y);
+
+            IReadOnlyDictionary<string, (double X, double Y)> layout = ChapterBranchPlanner.Layout(chapter);
+
+            foreach ((string episodeId, (double x, double y)) in layout)
+            {
+                if (excelByEpisode.TryGetValue(episodeId, out DialogueNode? node))
+                {
+                    overrides[node.Id] = new GraphPosition(
+                        originX + x / ChapterBranchPlanner.ColumnWidth * RailColumnPitch,
+                        originY + y / ChapterBranchPlanner.RowHeight * RailRowPitch);
+                    _railManagedNodeIds.Add(node.Id);
+                }
+            }
+
+            // 배선된 씬 체인 — 가지 자리(DrawRailsFrom과 같은 순서 규칙)를 따라 선다.
+            foreach ((string episodeId, DialogueNode source) in excelByEpisode)
+            {
+                if (!overrides.TryGetValue(source.Id, out GraphPosition sourcePosition))
+                {
+                    continue; // 챕터 시트에 없는(깊이 없는) 노드 — 자유 배치로 남긴다.
+                }
+
+                List<ChapterEdge> edges = chapter.Edges
+                    .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
+                    .ToList();
+
+                List<(ChapterEdge? Edge, ExitPort? Port)> plan = RailBranchPlan(
+                    source, edges, excelByEpisode.ContainsKey);
+
+                for (int index = 0; index < plan.Count; index++)
+                {
+                    if (plan[index].Port is not { } port)
+                    {
+                        continue;
+                    }
+
+                    // 가지 Y — 그리기와 같은 산식(카드 높이는 추정치, 철도는 실측 카드로 잇는다).
+                    double branchY = sourcePosition.Y + 100 + RailFirstDrop + index * RailBranchGap;
+                    double clipX = sourcePosition.X + RailTrunkInset + RailChainStartX;
+
+                    foreach (string chainId in ChainNodeIds(port, file))
+                    {
+                        overrides[chainId] = new GraphPosition(clipX, branchY - 34);
+                        _railManagedNodeIds.Add(chainId);
+                        clipX += CardWidth + RailChainGapX;
+                    }
+                }
+            }
+        }
+
+        return overrides.Count == 0 ? null : overrides;
+    }
+
+    /// <summary>배선된 체인의 노드 Id들 — 첫 배선에서 기본 출구를 따라. 같은 판의 자유 노드만.</summary>
+    private List<string> ChainNodeIds(ExitPort port, StoryFile file)
+    {
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? currentId = port.TargetNodeId;
+
+        while (currentId is not null &&
+               seen.Add(currentId) &&
+               file.Nodes.FirstOrDefault(node =>
+                   string.Equals(node.Id, currentId, StringComparison.Ordinal))
+                   is DialogueNode { ExcelEpisodeId: null } free)
+        {
+            ids.Add(free.Id);
+            currentId = free.DefaultExitTargetNodeId;
+        }
+
+        return ids;
     }
 
     private AuthoringSession? _session;
@@ -213,7 +339,8 @@ public partial class GraphEditorView : UserControl
             _session.Project,
             _session.ExpandedFileIds,
             _session.Definition,
-            CurrentFilter);
+            CurrentFilter,
+            ComputeRailLayout());
 
         GraphCanvas.Children.Clear();
         _cards.Clear();
@@ -457,14 +584,43 @@ public partial class GraphEditorView : UserControl
         IReadOnlyDictionary<string, Rect> nodeRects,
         IReadOnlyList<DialogueNode> freeNodes)
     {
+        List<(ChapterEdge? Edge, ExitPort? Port)> plan = RailBranchPlan(
+            source, edges, spots.ContainsKey);
+
+        if (plan.Count == 0)
+        {
+            return;
+        }
+
+        double trunkX = sourceRect.X + RailTrunkInset;
+        double branchY = sourceRect.Bottom + RailFirstDrop;
+
+        foreach ((ChapterEdge? edge, ExitPort? port) in plan)
+        {
+            Rect? target = edge is not null ? spots[edge.ToEpisodeId].Rect : null;
+            DrawRailBranch(source, edge, port, trunkX, branchY, target, nodeRects, freeNodes);
+            branchY += RailBranchGap;
+        }
+
+        _railVisuals.Add(RailLine(trunkX, sourceRect.Bottom, trunkX, branchY - RailBranchGap));
+    }
+
+    /// <summary>
+    /// 가지 순서 하나의 정의 — 그리기와 배치(T3)가 같은 계획을 본다. 순서는 시트 순서가
+    /// 아니라 <b>읽는 순서</b>다(소유자): ① 선택지 = 대본의 OPTION 순서(간선 유무 무관 —
+    /// 이것이 에피소드 끝의 그 선택이다) ② 유령 간선 ③ 무라벨 진행(낙하) ④ 엔딩 스텁.
+    /// 도착 에피소드가 아직 판에 없는 간선은 계획에서 빠진다(거짓말 금지).
+    /// </summary>
+    private List<(ChapterEdge? Edge, ExitPort? Port)> RailBranchPlan(
+        DialogueNode source,
+        IReadOnlyList<ChapterEdge> edges,
+        Func<string, bool> hasEpisode)
+    {
         IReadOnlyList<ExitPort> ports = NodeConnections.PortsOf(source, _session!.Project, _session.Definition);
         List<ExitPort> optionPorts = ports.Where(port => port.IsChoice).ToList();
         ExitPort? defaultPort = ports.FirstOrDefault(port => port.Kind == ExitPortKind.Default);
 
-        // 가지 순서는 시트 순서가 아니라 <b>읽는 순서</b>다(소유자 보고 — 진행이 선택지 위에
-        // 서니 헷갈린다): ① 선택지들 = 대본의 OPTION 순서 그대로(간선 유무와 무관하게 한
-        // 묶음 — 이것이 에피소드 끝의 그 선택이다) ② 무라벨 진행 ③ 엔딩 스텁.
-        var branches = new List<(ChapterEdge? Edge, ExitPort? Port, Rect? Target)>();
+        var plan = new List<(ChapterEdge? Edge, ExitPort? Port)>();
         var consumedEdges = new HashSet<ChapterEdge>();
 
         foreach (ExitPort port in optionPorts)
@@ -477,60 +633,36 @@ public partial class GraphEditorView : UserControl
             {
                 consumedEdges.Add(match);
 
-                // 도착 노드가 아직 동기화 전이면 긋지 않는다(거짓말 금지). 챕터 수준에서는
-                // 이어져 있는 옵션이므로 스텁으로도 내놓지 않는다.
-                if (spots.TryGetValue(match.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
+                if (hasEpisode(match.ToEpisodeId))
                 {
-                    branches.Add((match, port, target.Rect));
+                    plan.Add((match, port));
                 }
             }
             else
             {
                 // 간선 없는 옵션 = 에피소드 종료(Gate B) — 종료 스텁. 씬을 달면 씬 후 종료다.
-                branches.Add((null, port, null));
+                plan.Add((null, port));
             }
         }
 
-        // 유령 간선 — 라벨이 대본의 어느 옵션과도 안 맞는다. 시트 순서대로 선택지 묶음 뒤에.
         foreach (ChapterEdge edge in edges.Where(edge =>
-                     !edge.IsPlainAdvance && !consumedEdges.Contains(edge)))
+                     !edge.IsPlainAdvance && !consumedEdges.Contains(edge) && hasEpisode(edge.ToEpisodeId)))
         {
-            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
-            {
-                branches.Add((edge, null, target.Rect));
-            }
+            plan.Add((edge, null));
         }
 
-        // 무라벨 진행 — 선택이 아니라 낙하이므로 맨 아래.
-        foreach (ChapterEdge edge in edges.Where(edge => edge.IsPlainAdvance))
+        foreach (ChapterEdge edge in edges.Where(edge =>
+                     edge.IsPlainAdvance && hasEpisode(edge.ToEpisodeId)))
         {
-            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
-            {
-                branches.Add((edge, defaultPort, target.Rect));
-            }
+            plan.Add((edge, defaultPort));
         }
 
-        // 나가는 간선이 하나도 없는 에피소드(엔딩) — 기본 출구의 종료 스텁 (에필로그 자유 씬 자리).
         if (edges.Count == 0 && optionPorts.Count == 0 && defaultPort is not null)
         {
-            branches.Add((null, defaultPort, null));
+            plan.Add((null, defaultPort));
         }
 
-        if (branches.Count == 0)
-        {
-            return;
-        }
-
-        double trunkX = sourceRect.X + RailTrunkInset;
-        double branchY = sourceRect.Bottom + RailFirstDrop;
-
-        foreach ((ChapterEdge? edge, ExitPort? port, Rect? target) in branches)
-        {
-            DrawRailBranch(source, edge, port, trunkX, branchY, target, nodeRects, freeNodes);
-            branchY += RailBranchGap;
-        }
-
-        _railVisuals.Add(RailLine(trunkX, sourceRect.Bottom, trunkX, branchY - RailBranchGap));
+        return plan;
     }
 
     private void DrawRailBranch(
@@ -880,7 +1012,8 @@ public partial class GraphEditorView : UserControl
             _session.Project,
             _session.ExpandedFileIds,
             _session.Definition,
-            CurrentFilter);
+            CurrentFilter,
+            ComputeRailLayout());
 
         foreach (ExpandedNodeProjection node in _projection.Items.OfType<ExpandedNodeProjection>())
         {
@@ -1842,6 +1975,17 @@ public partial class GraphEditorView : UserControl
 
         _multiSelected.Clear(); // 무리 밖 카드를 잡으면 단일 선택으로 돌아간다
         HighlightSelection();
+
+        // T3 (T-D1) — 철도가 자리를 소유하는 노드(엑셀노드·배선된 씬)는 드래그하지 않는다.
+        // 체인 배치가 간선 소유여야 챕터 그래프와 같은 지도로 남는다. 배선을 떼면 풀린다.
+        if (_railManagedNodeIds.Contains(card.NodeId))
+        {
+            _session?.SetStatus(
+                "이 노드의 자리는 타임라인이 정합니다 — 엑셀노드는 챕터 흐름을, 배선된 씬은 간선을 따라갑니다. " +
+                "자유롭게 옮기려면 칩에서 배선을 떼세요.");
+            args.Handled = true;
+            return;
+        }
 
         _draggingCard = card;
         Point position = args.GetPosition(GraphCanvas);

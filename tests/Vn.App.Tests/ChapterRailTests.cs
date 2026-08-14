@@ -180,12 +180,47 @@ public sealed class ChapterRailTests
 
         graph.Rebuild();
 
-        // 씬 카드로 진입하는 선 — 같은 높이면 왼쪽(x=카드-8), 아니면 카드 가운데(x=700+105)로 꺾인다.
+        // T3 — 배선된 씬은 드래그 자리(700,420)를 떠나 간선 가지 위로 이동한다.
+        double freeLeft = canvas.Children.OfType<Border>()
+            .Where(border => border.Tag as string == free.Id)
+            .Select(Canvas.GetLeft)
+            .Single();
+        Assert.NotEqual(700, freeLeft);
+
+        // 철도는 이동한 씬 카드로 진입한다 — 왼쪽(x=카드-8) 또는 카드 가운데로 꺾어서.
         Assert.Contains(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
-            line => Math.Abs(line.EndPoint.X - (700 - 8)) < 0.5 ||
-                    Math.Abs(line.EndPoint.X - (700 + 105)) < 0.5);
+            line => Math.Abs(line.EndPoint.X - (freeLeft - 8)) < 0.5 ||
+                    Math.Abs(line.EndPoint.X - (freeLeft + 105)) < 0.5);
 
         Directory.Delete(episodes, recursive: true);
+    });
+
+    [Fact]
+    public void 챕터_판의_엑셀노드는_깊이_레이아웃의_투영으로_선다() => HeadlessUi.Run(() =>
+    {
+        // T3 — 두 화면이 같은 지도: 시나리오 그래프의 엑셀노드 배치가 챕터 깊이 레이아웃을
+        // 따른다. 판의 원점(기존 최소 좌표)은 지키고 안에서만 정렬한다.
+        (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
+
+        DialogueNode ep00 = AddExcelNode(session, fileId, "EP00");
+        DialogueNode ep01 = AddExcelNode(session, fileId, "EP01");
+        ep00.Layout.X = 100; ep00.Layout.Y = 100;
+        ep01.Layout.X = 100; ep01.Layout.Y = 300; // 저장된 자리 — 레이아웃이 무시한다
+
+        graph.SupplyChapters([Chapter("ch01",
+            episodes: ["EP00", "EP01"],
+            edges: [("EP00", "EP01", "라루를 믿는다", null)])]);
+        graph.Rebuild();
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+        double LeftOf(DialogueNode node) => canvas.Children.OfType<Border>()
+            .Where(border => border.Tag as string == node.Id)
+            .Select(Canvas.GetLeft)
+            .Single();
+
+        // 깊이 0 → 원점, 깊이 1 → 한 열 오른쪽 (열 간격 = 타임라인 폭).
+        Assert.Equal(100, LeftOf(ep00));
+        Assert.Equal(100 + 430, LeftOf(ep01));
     });
 
     private static void WriteEpisode(string path)
