@@ -61,6 +61,21 @@ public sealed record EpisodeRow(
     /// <summary>라인인가 — LineId를 받아 연출·세이브 타깃이 될 수 있는가.</summary>
     public bool IsLine => Kind is not EpisodeRowKind.If;
 
+    /// <summary>
+    /// 인덱스만 있고 아무것도 안 쓴 행 — 템플릿이 미리 깔아 둔 자리다.
+    /// 표의 일부가 아니므로 검증·평평화 어디에서도 세지 않는다(리더가 걸러 낸다).
+    /// </summary>
+    public bool IsBlank =>
+        Kind == EpisodeRowKind.Dialogue &&
+        Tag == EpisodeRowTag.None &&
+        Speaker.Length == 0 &&
+        Text.Length == 0 &&
+        ConditionLabel is null &&
+        In is null &&
+        OutTarget is null &&
+        StatChanges.Count == 0 &&
+        string.IsNullOrEmpty(Memo);
+
     /// <summary>이 행이 구간을 부르는가 (조건이든 선택지 옵션이든).</summary>
     public bool CallsSection => In is not null;
 }

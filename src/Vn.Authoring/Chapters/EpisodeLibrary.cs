@@ -168,7 +168,11 @@ public static class EpisodeLibrary
         Directory.CreateDirectory(folder);
 
         using var workbook = new XLWorkbook();
-        IXLWorksheet sheet = workbook.AddWorksheet(Truncate(episodeId, 31)); // 엑셀 시트 이름 상한
+
+        // 시트 이름은 고정 "대본" — 에피소드 Id로 지으면 개명 때 파일만 옮겨지고(내용 불변,
+        // v4) 탭 이름이 옛 Id로 남아 진단 메시지에 낡은 이름이 찍힌다(실사례). 리더는
+        // 어차피 머리글로 시트를 찾으므로 이름은 아무래도 좋다 — 그러면 안 낡는 이름이 낫다.
+        IXLWorksheet sheet = workbook.AddWorksheet("대본");
 
         string[] headers =
             ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"];
@@ -209,6 +213,4 @@ public static class EpisodeLibrary
         return true;
     }
 
-    private static string Truncate(string value, int max) =>
-        value.Length <= max ? value : value[..max];
 }

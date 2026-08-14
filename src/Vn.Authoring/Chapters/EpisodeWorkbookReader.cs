@@ -231,7 +231,7 @@ public static class EpisodeWorkbookReader
                     problem.Message));
             }
 
-            rows.Add(new EpisodeRow(
+            var parsed = new EpisodeRow(
                 index,
                 lineId,
                 kind,
@@ -243,7 +243,18 @@ public static class EpisodeWorkbookReader
                 Cell(sheet, row, ColumnText),
                 deltas.Deltas,
                 Optional(sheet, row, ColumnMemo),
-                row));
+                row);
+
+            // 인덱스만 있고 아무것도 안 쓴 행은 표의 일부가 아니다 — 템플릿이 500행까지
+            // 미리 깔아 둔 자리라서, 여기서 거르지 않으면 "CHOICE 뒤에 대사가 있다" 같은
+            // 검사들이 빈자리를 대사로 세어 엉뚱한 오류를 낸다(실사례). 인덱스는 위의
+            // 중복·오름차순 검사에 이미 참여했으므로 질서는 지켜진 뒤다.
+            if (parsed.IsBlank)
+            {
+                continue;
+            }
+
+            rows.Add(parsed);
         }
 
         return rows;

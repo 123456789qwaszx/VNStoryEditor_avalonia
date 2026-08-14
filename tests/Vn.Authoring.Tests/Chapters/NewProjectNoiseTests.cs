@@ -172,6 +172,42 @@ public sealed class NewProjectNoiseTests : IDisposable
         Assert.Contains("이미 있어", EpisodeLibrary.RenameWorkbook(episodes, "ep_new", "ep_taken"));
     }
 
+    [Fact]
+    public void 템플릿의_빈_행은_CHOICE_뒤에_있어도_오류가_아니다()
+    {
+        // 실사례 — 템플릿이 인덱스를 500행까지 깔아 두자, CHOICE 블록 뒤의 빈 자리들이
+        // "구간 밖 대사"로 세어져 멀쩡한 시트에 오류가 났다. 인덱스만 있는 행은 표의
+        // 일부가 아니다.
+        string episodes = Path.Combine(_directory, "episodes");
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep_choice");
+        string path = EpisodeLibrary.PathFor(episodes, "ep_choice");
+
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
+        {
+            var sheet = workbook.Worksheets.First();
+            // 소유자 시트의 축소판: 대사 → CHOICE/OPTION → (빈 행들) → 구간.
+            sheet.Cell(2, 8).SetValue("윌로"); sheet.Cell(2, 9).SetValue("첫 줄");      // 10
+            sheet.Cell(3, 3).SetValue("CHOICE");                                        // 20
+            sheet.Cell(4, 3).SetValue("OPTION"); sheet.Cell(4, 6).SetValue(300);        // 30, IN=300
+            sheet.Cell(4, 9).SetValue("라루를 믿는다");
+            sheet.Cell(5, 3).SetValue("OPTION"); sheet.Cell(5, 9).SetValue("손을 잡는다"); // 40
+            // 6~29행: 템플릿이 깔아 둔 인덱스만 있는 빈 행들 (그대로 둔다)
+            sheet.Cell(31, 1).SetValue(300); sheet.Cell(31, 4).SetValue("INPUT");
+            sheet.Cell(31, 8).SetValue("윌로"); sheet.Cell(31, 9).SetValue("라루?");
+            sheet.Cell(32, 1).SetValue(310); sheet.Cell(32, 4).SetValue("OUT");
+            sheet.Cell(32, 7).SetValue("END");
+            sheet.Cell(32, 8).SetValue("윌로"); sheet.Cell(32, 9).SetValue("고마워요.");
+            workbook.Save();
+        }
+
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
+
+        // 빈 자리들이 대사로 세어지지 않았다 — "CHOICE 뒤 구간 밖 대사" 오류 없음.
+        Assert.DoesNotContain(model.Diagnostics, item =>
+            item.Message.Contains("CHOICE 블록 뒤"));
+        Assert.Empty(model.Errors);
+    }
+
     private static byte[] ReadTemplateBytes(string folder)
     {
         EpisodeLibrary.EnsureWorkbook(folder, "__template");
