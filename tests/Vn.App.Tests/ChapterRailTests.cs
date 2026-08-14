@@ -4,6 +4,8 @@ using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Flow;
+using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
 using Vn.Authoring.Serialization;
 
@@ -95,6 +97,91 @@ public sealed class ChapterRailTests
         var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
         Assert.Empty(canvas.Children.OfType<Line>());
     });
+
+    [Fact]
+    public void 옵션_포트가_칩으로_이사하고_스텁과_체인이_선다() => HeadlessUi.Run(() =>
+    {
+        // T2 — 실제 동기화로 옵션 줄이 있는 엑셀노드를 만든다: CHOICE + 옵션 둘.
+        (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
+
+        string episodes = Path.Combine(Path.GetTempPath(), "vn-rail-ep", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(episodes);
+        string workbook = Path.Combine(episodes, "EP00.xlsx");
+        WriteEpisode(workbook);
+
+        ChapterEntry entry = Chapter("ch01",
+            episodes: ["EP00", "EP01"],
+            edges: [("EP00", "EP01", "라루를 믿는다", "trust +1")]);
+
+        EpisodeSyncReport report = EpisodeSyncService.Sync(
+            session.Editor, session.Definition, fileId, workbook, entry.Model);
+        Assert.True(report.Applied, string.Join(" / ", report.Problems));
+
+        AddExcelNode(session, fileId, "EP01");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬A");
+        free.Layout.X = 700;
+        free.Layout.Y = 420;
+
+        graph.SupplyChapters([entry]);
+        graph.Rebuild();
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+
+        // ① 엑셀노드 카드에서 옵션·기본 포트가 사라졌다 — 칩으로 이사(IF 갈래만 남는다).
+        DialogueNode excel = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(node => node.ExcelEpisodeId == "EP00");
+        ExpandedNodeProjection projected = GraphProjectionBuilder
+            .Build(session.Project, session.Project.Files.Select(file => file.Id)
+                .ToHashSet(StringComparer.Ordinal))
+            .Items.OfType<ExpandedNodeProjection>()
+            .Single(item => item.NodeId == excel.Id);
+
+        Assert.DoesNotContain(projected.OutputPorts,
+            port => port.Kind == GraphOutputPortKind.ExecutionDefault);
+        Assert.DoesNotContain(projected.OutputPorts, port => port.ExecutionPort is { IsChoice: true });
+
+        // ② 간선 짝 옵션은 간선 칩, 안 이은 옵션은 종료 스텁.
+        List<string> chips = canvas.Children.OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .Where(text => text.StartsWith("●", StringComparison.Ordinal))
+            .ToList();
+        Assert.Contains("● 라루를 믿는다", chips);
+        Assert.Contains("● 의심한다", chips);
+        Assert.Contains(canvas.Children.OfType<TextBlock>(),
+            block => block.Text == "⏹ 종료");
+
+        // ③ 배선 — 스텁 옵션에 자유 씬을 달면(칩이 부르는 그 SetExitTarget) 철도가 씬을 경유한다.
+        ExitPort option = NodeConnections.PortsOf(excel, session.Project, session.Definition)
+            .Single(port => port.ChoiceText == "의심한다");
+        session.Editor.SetExitTarget(excel.Id, ExitPortKind.Branch, option.BranchOpenLineId, free.Id);
+
+        graph.Rebuild();
+
+        // 씬 카드로 진입하는 선 — 같은 높이면 왼쪽(x=카드-8), 아니면 카드 가운데(x=700+105)로 꺾인다.
+        Assert.Contains(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
+            line => Math.Abs(line.EndPoint.X - (700 - 8)) < 0.5 ||
+                    Math.Abs(line.EndPoint.X - (700 + 105)) < 0.5);
+
+        Directory.Delete(episodes, recursive: true);
+    });
+
+    private static void WriteEpisode(string path)
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook();
+        ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
+        string[] headers = ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
+
+        for (int column = 1; column <= headers.Length; column++)
+        {
+            sheet.Cell(1, column).SetValue(headers[column - 1]);
+        }
+
+        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 8).SetValue("윌로"); sheet.Cell(2, 9).SetValue("첫 줄");
+        sheet.Cell(3, 1).SetValue(20); sheet.Cell(3, 3).SetValue("CHOICE");
+        sheet.Cell(4, 1).SetValue(30); sheet.Cell(4, 3).SetValue("OPTION"); sheet.Cell(4, 9).SetValue("라루를 믿는다");
+        sheet.Cell(5, 1).SetValue(40); sheet.Cell(5, 3).SetValue("OPTION"); sheet.Cell(5, 9).SetValue("의심한다");
+        workbook.SaveAs(path);
+    }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 

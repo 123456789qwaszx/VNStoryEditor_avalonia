@@ -18,13 +18,17 @@ public enum ExitPortKind
 /// Settings·Presentation link는 실행 포트가 아니며 <see cref="StoryProject.Links"/>에 별도로 저장된다.
 /// 이 타입은 오직 다음 실행 노드를 결정하는 기본/조건 출구만 표현한다.
 /// </summary>
+/// <param name="IsChoice">선택지 옵션의 갈래인가 (IF 갈래와 구분 — 철도 배선 T2가 쓴다).</param>
+/// <param name="ChoiceText">옵션의 원문 라벨. 챕터 간선과 라벨 짝을 맞추는 열쇠다.</param>
 public sealed record ExitPort(
     ExitPortKind Kind,
     string NodeId,
     string? BranchOpenLineId,
     string Label,
     string? TargetNodeId,
-    int PaletteIndex)
+    int PaletteIndex,
+    bool IsChoice = false,
+    string? ChoiceText = null)
 {
     public bool IsConnected => TargetNodeId is not null;
 
@@ -78,7 +82,9 @@ public static class NodeConnections
                         ? ChoiceLabelFor(branch, flow)
                         : LabelFor(branch, project, definition, available),
                     branch.ExitTargetNodeId,
-                    branch.PaletteIndex));
+                    branch.PaletteIndex,
+                    IsChoice: branch.IsChoice,
+                    ChoiceText: branch.IsChoice ? flow.Script.Find(branch.OpenLineId)?.Text : null));
             }
 
             ports.Add(new ExitPort(

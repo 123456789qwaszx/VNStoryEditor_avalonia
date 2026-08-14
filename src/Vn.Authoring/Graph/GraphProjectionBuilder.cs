@@ -172,7 +172,17 @@ public static class GraphProjectionBuilder
         StoryProject project,
         GameDefinition? definition)
     {
-        var ports = NodeConnections.PortsOf(node, project, definition)
+        IEnumerable<Vn.Authoring.Flow.ExitPort> exits = NodeConnections.PortsOf(node, project, definition);
+
+        // T2 (철도 배선) — 엑셀노드의 선택지 옵션 포트와 기본 출구는 카드가 아니라
+        // 짝 간선의 칩에 산다. IF 갈래 출구는 카드에 남는다(내부 곁가지는 간선과 무관).
+        if (node is DialogueNode { ExcelEpisodeId: not null })
+        {
+            exits = exits.Where(exit =>
+                exit.Kind == Vn.Authoring.Flow.ExitPortKind.Branch && !exit.IsChoice);
+        }
+
+        var ports = exits
             .Select(exit => new GraphOutputPortProjection(
                 PortKey(exit),
                 exit.Kind == ExitPortKind.Default

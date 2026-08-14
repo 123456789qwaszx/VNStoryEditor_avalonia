@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Flow;
 using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
@@ -397,26 +398,42 @@ public partial class GraphEditorView : UserControl
                 continue; // 챕터 판이 아니다 — 일반 프로젝트는 아무 변화 없다.
             }
 
-            // 에피소드 Id → 카드 자리. 아직 동기화 전인 에피소드는 없는 것으로 둔다 —
-            // 없는 노드로 선을 그으면 거짓말이다.
-            var spots = new Dictionary<string, Rect>(StringComparer.Ordinal);
+            // 에피소드 Id → 엑셀노드·카드 자리, 그리고 판의 모든 노드 자리(체인 경유용).
+            // 아직 동기화 전인 에피소드는 없는 것으로 둔다 — 없는 노드로 선을 그으면 거짓말이다.
+            var spots = new Dictionary<string, (DialogueNode Node, Rect Rect)>(StringComparer.Ordinal);
+            var nodeRects = new Dictionary<string, Rect>(StringComparer.Ordinal);
+            var freeNodes = new List<DialogueNode>();
 
-            foreach (ExpandedNodeProjection node in group)
+            foreach (ExpandedNodeProjection item in group)
             {
-                if (_session.Project.FindNode(node.NodeId) is DialogueNode { ExcelEpisodeId: { } episodeId } &&
-                    FindCard(node.NodeId) is { } card)
+                if (FindCard(item.NodeId) is not { } card)
                 {
-                    spots[episodeId] = new Rect(
-                        node.Position.X, node.Position.Y, CardWidth, CardHeightOf(card));
+                    continue;
+                }
+
+                var rect = new Rect(item.Position.X, item.Position.Y, CardWidth, CardHeightOf(card));
+                nodeRects[item.NodeId] = rect;
+
+                if (_session.Project.FindNode(item.NodeId) is DialogueNode dialogue)
+                {
+                    if (dialogue.ExcelEpisodeId is { } episodeId)
+                    {
+                        spots[episodeId] = (dialogue, rect);
+                    }
+                    else
+                    {
+                        freeNodes.Add(dialogue);
+                    }
                 }
             }
 
-            foreach (IGrouping<string, ChapterEdge> fromGroup in chapter.Edges
-                         .Where(edge => spots.ContainsKey(edge.FromEpisodeId) &&
-                                        spots.ContainsKey(edge.ToEpisodeId))
-                         .GroupBy(edge => edge.FromEpisodeId, StringComparer.Ordinal))
+            foreach ((string episodeId, (DialogueNode node, Rect rect)) in spots)
             {
-                DrawRailsFrom(spots[fromGroup.Key], fromGroup.ToList(), spots);
+                List<ChapterEdge> edges = chapter.Edges
+                    .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
+                    .ToList();
+
+                DrawRailsFrom(node, rect, edges, spots, nodeRects, freeNodes);
             }
         }
 
@@ -427,68 +444,209 @@ public partial class GraphEditorView : UserControl
         }
     }
 
-    /// <summary>한 출발 카드의 줄기와 가지들. 시트 순서 = 가지 순서(위→아래).</summary>
-    private void DrawRailsFrom(Rect source, IReadOnlyList<ChapterEdge> edges, IReadOnlyDictionary<string, Rect> spots)
+    /// <summary>
+    /// 한 출발 카드의 줄기와 가지들 (T2). 가지 순서 = 간선 시트 순서, 그 뒤에 간선 없는
+    /// 옵션(= 에피소드 종료)의 스텁. 칩이 배선 진입점이다 — 옵션 포트와 기본 출구는 카드에서
+    /// 여기로 이사했다. 배선된 자유 씬 체인이 있으면 가지가 체인을 경유해 그려진다(T-R6).
+    /// </summary>
+    private void DrawRailsFrom(
+        DialogueNode source,
+        Rect sourceRect,
+        IReadOnlyList<ChapterEdge> edges,
+        IReadOnlyDictionary<string, (DialogueNode Node, Rect Rect)> spots,
+        IReadOnlyDictionary<string, Rect> nodeRects,
+        IReadOnlyList<DialogueNode> freeNodes)
     {
-        double trunkX = source.X + RailTrunkInset;
-        double branchY = source.Bottom + RailFirstDrop;
+        IReadOnlyList<ExitPort> ports = NodeConnections.PortsOf(source, _session!.Project, _session.Definition);
+        List<ExitPort> optionPorts = ports.Where(port => port.IsChoice).ToList();
+        ExitPort? defaultPort = ports.FirstOrDefault(port => port.Kind == ExitPortKind.Default);
+
+        var branches = new List<(ChapterEdge? Edge, ExitPort? Port, Rect? Target)>();
+        var consumed = new HashSet<ExitPort>();
 
         foreach (ChapterEdge edge in edges)
         {
-            DrawRailBranch(edge, trunkX, branchY, spots[edge.ToEpisodeId]);
+            ExitPort? port = edge.IsPlainAdvance
+                ? defaultPort
+                : optionPorts.FirstOrDefault(candidate =>
+                    string.Equals(candidate.ChoiceText, edge.OptionLabel, StringComparison.Ordinal));
+
+            if (port is not null)
+            {
+                consumed.Add(port);
+            }
+
+            // 도착 노드가 아직 동기화 전이면 이 간선은 긋지 않는다(거짓말 금지). 그 간선이
+            // 소비한 옵션도 스텁으로 내놓지 않는다 — 챕터 수준에서는 이어져 있는 옵션이다.
+            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
+            {
+                branches.Add((edge, port, target.Rect));
+            }
+        }
+
+        // 간선 없는 옵션 = 에피소드 종료(Gate B) — 종료 스텁. 자유 씬을 달면 씬 후 종료다.
+        foreach (ExitPort port in optionPorts.Where(port => !consumed.Contains(port)))
+        {
+            branches.Add((null, port, null));
+        }
+
+        // 나가는 간선이 하나도 없는 에피소드(엔딩) — 기본 출구의 종료 스텁 (에필로그 자유 씬 자리).
+        if (edges.Count == 0 && optionPorts.Count == 0 && defaultPort is not null)
+        {
+            branches.Add((null, defaultPort, null));
+        }
+
+        if (branches.Count == 0)
+        {
+            return;
+        }
+
+        double trunkX = sourceRect.X + RailTrunkInset;
+        double branchY = sourceRect.Bottom + RailFirstDrop;
+
+        foreach ((ChapterEdge? edge, ExitPort? port, Rect? target) in branches)
+        {
+            DrawRailBranch(source, edge, port, trunkX, branchY, target, nodeRects, freeNodes);
             branchY += RailBranchGap;
         }
 
-        // 수직 줄기 — 카드 바닥에서 마지막 가지까지.
-        _railVisuals.Add(RailLine(trunkX, source.Bottom, trunkX, branchY - RailBranchGap));
+        _railVisuals.Add(RailLine(trunkX, sourceRect.Bottom, trunkX, branchY - RailBranchGap));
     }
 
-    private void DrawRailBranch(ChapterEdge edge, double trunkX, double y, Rect target)
+    private void DrawRailBranch(
+        DialogueNode source,
+        ChapterEdge? edge,
+        ExitPort? port,
+        double trunkX,
+        double y,
+        Rect? target,
+        IReadOnlyDictionary<string, Rect> nodeRects,
+        IReadOnlyList<DialogueNode> freeNodes)
     {
         double cursorX = trunkX;
+        bool ghost = edge is not null && !edge.IsPlainAdvance && port is null;
 
-        if (!edge.IsPlainAdvance)
+        string chipText = edge is { IsPlainAdvance: true } || (edge is null && port?.Kind == ExitPortKind.Default)
+            ? "○ 진행"
+            : $"● {edge?.OptionLabel ?? port?.ChoiceText}";
+
+        var chip = new TextBlock
         {
-            // ● 문구 칩 — 기본 표시는 문구뿐이다(T-D4). 클릭하면 읽기 전용 상세.
-            var chip = new TextBlock
+            Text = chipText,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = RailChipBrush,
+            Opacity = ghost ? 0.45 : chipText == "○ 진행" ? 0.75 : 1,
+            Background = Brushes.Transparent,
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        ToolTip.SetTip(chip, ghost
+            ? "이 문구의 OPTION이 대본에 없습니다 — 챕터 그래프의 검증 보고를 확인하세요."
+            : "누르면 상세와 자유 씬 배선이 열립니다. 값 편집은 챕터 그래프에서.");
+
+        chip.Measure(Size.Infinity);
+
+        _railVisuals.Add(RailLine(trunkX, y, trunkX + 10, y));
+        Canvas.SetLeft(chip, trunkX + 14);
+        Canvas.SetTop(chip, y - chip.DesiredSize.Height / 2);
+
+        DialogueNode capturedSource = source;
+        ChapterEdge? capturedEdge = edge;
+        ExitPort? capturedPort = port;
+        chip.PointerPressed += (_, args) =>
+        {
+            args.Handled = true;
+            ShowRailChip(chip, capturedSource, capturedEdge, capturedPort, freeNodes);
+        };
+
+        _railVisuals.Add(chip);
+        cursorX = trunkX + 14 + chip.DesiredSize.Width + 6;
+
+        // 배선된 자유 씬 체인을 경유한다 — 씬은 간선 위의 클립이다(T-R6, 조언 문서 §9).
+        if (port is not null)
+        {
+            foreach (Rect clip in ChainRects(port, nodeRects))
             {
-                Text = $"● {edge.OptionLabel}",
-                FontSize = 11,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = RailChipBrush,
-                Background = Brushes.Transparent,
-                Cursor = new Cursor(StandardCursorType.Hand)
-            };
-            ToolTip.SetTip(chip, "선택지 — 누르면 조건·스탯변화를 보여 줍니다(읽기 전용, 편집은 챕터 그래프).");
-
-            chip.Measure(Size.Infinity);
-            double chipWidth = chip.DesiredSize.Width;
-
-            _railVisuals.Add(RailLine(trunkX, y, trunkX + 10, y));
-            Canvas.SetLeft(chip, trunkX + 14);
-            Canvas.SetTop(chip, y - chip.DesiredSize.Height / 2);
-
-            ChapterEdge captured = edge;
-            chip.PointerPressed += (_, args) =>
-            {
-                args.Handled = true;
-                ShowRailDetail(chip, captured);
-            };
-
-            _railVisuals.Add(chip);
-            cursorX = trunkX + 14 + chipWidth + 6;
+                (cursorX, y) = RouteInto(cursorX, y, clip);
+            }
         }
 
-        // 도착 카드로 — 같은 높이면 왼쪽으로 진입(▶), 위·아래면 카드 가운데로 꺾어 진입(▲▼).
+        if (target is { } targetRect)
+        {
+            RouteEnd(cursorX, y, targetRect);
+        }
+        else
+        {
+            // 종료 스텁 — 이 길은 여기서 에피소드가 끝난다. 다음은 챕터가 정한다(없으면 엔딩).
+            var stop = new TextBlock
+            {
+                Text = "⏹ 종료",
+                FontSize = 10,
+                Opacity = 0.6,
+                IsHitTestVisible = false
+            };
+            stop.Measure(Size.Infinity);
+
+            _railVisuals.Add(RailLine(cursorX, y, cursorX + 18, y));
+            Canvas.SetLeft(stop, cursorX + 22);
+            Canvas.SetTop(stop, y - stop.DesiredSize.Height / 2);
+            _railVisuals.Add(stop);
+        }
+    }
+
+    /// <summary>배선된 자유 씬 체인 — 첫 배선에서 출발해 기본 출구를 따라간다. 자유 노드만 잇는다.</summary>
+    private List<Rect> ChainRects(ExitPort port, IReadOnlyDictionary<string, Rect> nodeRects)
+    {
+        var rects = new List<Rect>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? currentId = port.TargetNodeId;
+
+        while (currentId is not null &&
+               seen.Add(currentId) &&
+               nodeRects.TryGetValue(currentId, out Rect rect) &&
+               _session!.Project.FindNode(currentId) is DialogueNode { ExcelEpisodeId: null } free)
+        {
+            rects.Add(rect);
+            currentId = free.DefaultExitTargetNodeId;
+        }
+
+        return rects;
+    }
+
+    /// <summary>클립(자유 씬) 카드로 들어갔다 오른쪽으로 나온다. 반환 = 다음 구간의 시작점.</summary>
+    private (double X, double Y) RouteInto(double x, double y, Rect rect)
+    {
+        if (y >= rect.Y && y <= rect.Bottom)
+        {
+            _railVisuals.Add(RailLine(x, y, rect.X - 8, y));
+            _railVisuals.Add(RailArrow(rect.X - 7, y, pointRight: true));
+        }
+        else
+        {
+            double midX = rect.X + rect.Width / 2;
+            _railVisuals.Add(RailLine(x, y, midX, y));
+
+            bool above = rect.Bottom < y;
+            double endY = above ? rect.Bottom + 8 : rect.Y - 8;
+            _railVisuals.Add(RailLine(midX, y, midX, endY));
+            _railVisuals.Add(RailArrow(midX, above ? endY - 1 : endY + 1, pointRight: false, pointUp: above));
+        }
+
+        return (rect.Right + 6, rect.Y + rect.Height / 2);
+    }
+
+    /// <summary>도착 카드로 — 같은 높이면 왼쪽 진입(▶), 위·아래면 카드 가운데로 꺾어 진입(▲▼).</summary>
+    private void RouteEnd(double x, double y, Rect target)
+    {
         if (y >= target.Y && y <= target.Bottom)
         {
-            _railVisuals.Add(RailLine(cursorX, y, target.X - 10, y));
+            _railVisuals.Add(RailLine(x, y, target.X - 10, y));
             _railVisuals.Add(RailArrow(target.X - 9, y, pointRight: true));
         }
         else
         {
             double midX = target.X + CardWidth / 2;
-            _railVisuals.Add(RailLine(cursorX, y, midX, y));
+            _railVisuals.Add(RailLine(x, y, midX, y));
 
             bool targetAbove = target.Bottom < y;
             double endY = targetAbove ? target.Bottom + 10 : target.Y - 10;
@@ -497,45 +655,118 @@ public partial class GraphEditorView : UserControl
         }
     }
 
-    /// <summary>읽기 전용 상세 — 배선·편집은 T2의 몫이고, 값 편집은 언제나 챕터 그래프/엑셀이다.</summary>
-    private void ShowRailDetail(Control anchor, ChapterEdge edge)
+    /// <summary>
+    /// 칩 클릭 — 상세(읽기 전용) + 자유 씬 배선 (T2). 배선의 데이터는 기존 그대로다:
+    /// 옵션 칩 = <c>SetExitTarget(Branch, 옵션 줄)</c>, 진행 칩 = <c>SetExitTarget(Default)</c>.
+    /// 간선 값(문구·조건·스탯변화)은 여기서 못 고친다 — 챕터 소유(T-R1).
+    /// </summary>
+    private void ShowRailChip(
+        Control anchor,
+        DialogueNode source,
+        ChapterEdge? edge,
+        ExitPort? port,
+        IReadOnlyList<DialogueNode> freeNodes)
     {
-        var panel = new StackPanel { Spacing = 3, MinWidth = 200 };
+        var panel = new StackPanel { Spacing = 3, MinWidth = 230 };
 
-        void Line(string text, bool bold = false, double opacity = 1) => panel.Children.Add(new TextBlock
+        void Row(string text, bool bold = false, double opacity = 1) => panel.Children.Add(new TextBlock
         {
             Text = text,
             FontSize = 11,
             FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
             Opacity = opacity,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 260
         });
 
-        Line(edge.OptionLabel ?? "(진행)", bold: true);
-        Line($"{edge.FromEpisodeId} → {edge.ToEpisodeId}", opacity: 0.7);
+        Row(edge?.OptionLabel ?? port?.ChoiceText ?? "(진행)", bold: true);
 
-        if (!string.IsNullOrWhiteSpace(edge.ConditionLabel))
+        if (edge is not null)
         {
-            Line($"조건: {edge.ConditionLabel}", opacity: 0.85);
+            Row($"{edge.FromEpisodeId} → {edge.ToEpisodeId}", opacity: 0.7);
+
+            if (!string.IsNullOrWhiteSpace(edge.ConditionLabel))
+            {
+                Row($"조건: {edge.ConditionLabel}", opacity: 0.85);
+            }
+
+            if (edge.StatChanges.Count > 0)
+            {
+                Row("스탯변화: " + string.Join("; ", edge.StatChanges
+                    .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}")), opacity: 0.85);
+            }
+
+            if (edge.HideWhenLocked)
+            {
+                Row("잠기면 숨김", opacity: 0.7);
+            }
+
+            if (!string.IsNullOrWhiteSpace(edge.LockedMessage))
+            {
+                Row($"잠금 안내: {edge.LockedMessage}", opacity: 0.7);
+            }
+        }
+        else
+        {
+            Row("이 길은 여기서 에피소드가 끝납니다 — 다음은 챕터 간선이 정합니다.", opacity: 0.6);
         }
 
-        if (edge.StatChanges.Count > 0)
+        if (port is null)
         {
-            Line("스탯변화: " + string.Join("; ", edge.StatChanges
-                .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}")), opacity: 0.85);
+            // 유령 간선 — 라벨 짝이 없어 배선할 자리가 없다. 검증 보고가 이미 오류를 세웠다.
+            Row("이 문구의 OPTION이 대본에 없습니다 — 문구 오타이거나 옵션이 지워졌습니다. " +
+                "챕터 그래프의 검증 보고를 확인하세요.", opacity: 0.7);
+            new Flyout { Content = panel }.ShowAt(anchor);
+            return;
         }
 
-        if (edge.HideWhenLocked)
+        // ── 자유 씬 배선 ──
+        Row("이 길 위의 자유 씬", bold: true, opacity: 0.8);
+
+        List<DialogueNode> candidates = freeNodes
+            .Where(node => !string.Equals(node.Id, port.TargetNodeId, StringComparison.Ordinal))
+            .ToList();
+
+        var combo = new ComboBox
         {
-            Line("잠기면 숨김", opacity: 0.7);
+            ItemsSource = candidates.Select(node => node.Name).ToList(),
+            PlaceholderText = candidates.Count == 0 ? "판에 자유 노드가 없습니다" : "자유 씬 달기…",
+            FontSize = 11,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsEnabled = candidates.Count > 0
+        };
+
+        string sourceId = source.Id;
+        ExitPortKind kind = port.Kind;
+        string? openLineId = port.BranchOpenLineId;
+
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex >= 0 && combo.SelectedIndex < candidates.Count)
+            {
+                _session!.Editor.SetExitTarget(
+                    sourceId, kind, openLineId, candidates[combo.SelectedIndex].Id);
+            }
+        };
+
+        panel.Children.Add(combo);
+
+        if (port.TargetNodeId is { } wired)
+        {
+            string wiredName = _session!.Project.FindNode(wired)?.Name ?? wired;
+            var detach = new Button
+            {
+                Content = $"'{wiredName}' 떼기",
+                FontSize = 10,
+                Padding = new Thickness(8, 2),
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            detach.Click += (_, _) =>
+                _session!.Editor.SetExitTarget(sourceId, kind, openLineId, null);
+            panel.Children.Add(detach);
         }
 
-        if (!string.IsNullOrWhiteSpace(edge.LockedMessage))
-        {
-            Line($"잠금 안내: {edge.LockedMessage}", opacity: 0.7);
-        }
-
-        Line("편집은 챕터 그래프에서 · 씬 배선은 T2에서 열립니다.", opacity: 0.5);
+        Row("씬이 끝나면(출구 없음) 에피소드가 끝나고 챕터가 이어받습니다.", opacity: 0.5);
 
         new Flyout { Content = panel }.ShowAt(anchor);
     }
