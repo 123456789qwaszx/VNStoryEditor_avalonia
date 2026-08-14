@@ -70,6 +70,9 @@ public partial class ChapterGraphView : UserControl
     /// <summary>챕터 목록이 다시 읽혔다. 왼쪽 패널(MainWindow)이 이걸 듣고 목록을 다시 그린다.</summary>
     internal event Action<IReadOnlyList<ChapterEntry>>? EntriesReloaded;
 
+    /// <summary>지금 그려진 챕터. 메인 창 우측의 챕터 데이터 패널이 이걸 받아 같은 것을 본다.</summary>
+    internal event Action<ChapterEntry?>? ChapterShown;
+
     /// <summary>폴더를 다시 훑고 감시를 다시 건다. 새 챕터를 만든 직후(폴더가 방금 생겼을 수 있다) 부른다.</summary>
     internal void RefreshFromDisk() => WatchAndReload();
 
@@ -486,6 +489,7 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Height = 0;
 
         ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+        ChapterShown?.Invoke(entry);
 
         if (entry is null)
         {
@@ -980,6 +984,8 @@ public partial class ChapterGraphView : UserControl
             (episode?.EpisodeId,
                 edge is null ? null : (edge.FromEpisodeId, edge.ToEpisodeId));
 
+        FillDialoguePreview(episode?.EpisodeId);
+
         bool fill = !preserveTyping || selection != _panelFilledFor;
         _panelFilledFor = selection;
 
@@ -1003,7 +1009,6 @@ public partial class ChapterGraphView : UserControl
         // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
         // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
         EpisodeFactsText.Text = EpisodeFacts(episode);
-        FillDialoguePreview(episode.EpisodeId);
 
         SetItems(EdgeTargetCombo,
             model.Episodes
@@ -1016,12 +1021,19 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
-    /// 선택된 에피소드의 대사를 워크북에서 바로 읽어 세운다 — 시나리오 그래프까지 안 가도
-    /// 챕터 그래프에서 방금 쓴 대사를 확인한다(소유자 요청). 읽기 전용이고 고치는 곳은 엑셀이다.
-    /// 아직 대본이 없거나 빈 에피소드면 섹션째 접는다 — 빈 틀은 소음이다.
+    /// [대사] 탭 — 선택된 에피소드의 대사를 워크북에서 바로 읽어 세운다. 시나리오 그래프까지
+    /// 안 가도 챕터 그래프에서 방금 쓴 대사를 확인한다(소유자 요청). 읽기 전용이고 고치는
+    /// 곳은 엑셀이다. 선택이 없거나 대본이 비면 그 사실을 말한다.
     /// </summary>
-    private void FillDialoguePreview(string episodeId)
+    private void FillDialoguePreview(string? episodeId)
     {
+        if (episodeId is null)
+        {
+            DialoguePreviewHeader.Text = "에피소드를 선택하면 그 대사가 여기 보입니다.";
+            DialoguePreviewText.Text = string.Empty;
+            return;
+        }
+
         string preview = string.Empty;
         string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
 
@@ -1041,8 +1053,9 @@ public partial class ChapterGraphView : UserControl
             }
         }
 
-        DialoguePreviewHeader.IsVisible = preview.Length > 0;
-        DialoguePreviewBorder.IsVisible = preview.Length > 0;
+        DialoguePreviewHeader.Text = preview.Length > 0
+            ? $"{episodeId} — 읽기 전용 · 고치는 곳은 엑셀입니다 (노드 더블클릭)."
+            : $"{episodeId} — 아직 적힌 대사가 없습니다. 노드를 더블클릭해 엑셀에서 쓰세요.";
         DialoguePreviewText.Text = preview;
     }
 

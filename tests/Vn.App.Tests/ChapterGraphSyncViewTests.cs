@@ -78,10 +78,10 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 에피소드를_고르면_챕터_그래프에서_대사가_읽힌다() => HeadlessUi.Run(() =>
+    public void 에피소드를_고르면_대사_탭에서_대사가_읽힌다() => HeadlessUi.Run(() =>
     {
-        // 소유자 요청 — 시나리오 그래프까지 안 가도, 챕터 그래프에서 노드를 고르면
-        // 그 에피소드의 대사가 (읽기 전용으로) 보여야 한다.
+        // 소유자 요청 — 시나리오 그래프까지 안 가도, 챕터 그래프의 [대사] 탭에서
+        // 고른 에피소드의 대사가 (읽기 전용으로) 보여야 한다.
         using var project = new TempProject(SamplePath);
         Directory.CreateDirectory(project.EpisodesFolder);
         File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
@@ -92,13 +92,46 @@ public sealed class ChapterGraphSyncViewTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         var preview = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
-        Assert.True(preview.IsVisible || view.FindControl<Border>("DialoguePreviewBorder")!.IsVisible);
         Assert.Contains("▶ 라루의 제안을 듣는다", preview.Text);
 
-        // 아직 대본 없는 에피소드는 빈 틀 대신 섹션째 접는다.
+        // 아직 대본 없는 에피소드는 빈 화면 대신 그 사실을 말한다.
         view.SelectEpisode("main05.01");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.False(view.FindControl<Border>("DialoguePreviewBorder")!.IsVisible);
+        Assert.Equal(string.Empty, preview.Text);
+        Assert.Contains("아직 적힌 대사가 없습니다",
+            view.FindControl<TextBlock>("DialoguePreviewHeader")!.Text);
+    });
+
+    [Fact]
+    public void 챕터_데이터_패널이_다섯_시트를_읽기_전용으로_세운다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 보고 — 챕터 그래프 화면의 우측에 대사 편집·발행·무대 프리뷰가 보이는데
+        // 그 화면 것이 아니다. 챕터 엑셀의 에피소드·간선·조건·스탯·픽스처를 보인다.
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+        (ChapterGraphView view, _) = Show(project);
+
+        var data = new ChapterDataView();
+        view.ChapterShown += entry => data.Show(entry);
+
+        var window = new Window { Width = 460, Height = 800, Content = data };
+        window.Show();
+
+        view.SyncEpisodes(); // Draw가 돌며 ChapterShown이 실린다
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var panel = data.FindControl<StackPanel>("Sections")!;
+        List<string> texts = panel.Children.OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .ToList();
+
+        Assert.Contains(texts, text => text.StartsWith("에피소드 ("));
+        Assert.Contains(texts, text => text.StartsWith("간선 ("));
+        Assert.Contains(texts, text => text.StartsWith("조건 ("));
+        Assert.Contains(texts, text => text.StartsWith("스탯 ("));
+        Assert.Contains(texts, text => text.StartsWith("픽스처 ("));
+        Assert.Contains(texts, text => text.Contains("main05.02 → branch05.02A"));
+        Assert.Contains(texts, text => text.Contains("신뢰높음"));
     });
 
     [Fact]

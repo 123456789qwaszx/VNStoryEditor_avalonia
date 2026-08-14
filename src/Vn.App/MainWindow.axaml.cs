@@ -59,6 +59,16 @@ public partial class MainWindow : Window
             _chapters = entries;
             RebuildFileList();
         };
+        // 챕터 그래프 화면의 우측은 대사 편집기가 아니라 챕터 엑셀 내용이다(소유자 보고 —
+        // "발행·무대 프리뷰는 여기서 필요 없는 정보"). 탭 전환이 두 패널을 갈아끼우고,
+        // 데이터는 챕터 그래프 뷰가 방금 그린 모델 그대로를 받는다.
+        ChapterGraph.ChapterShown += entry => ChapterData.Show(entry);
+        MainTabs.SelectionChanged += (_, _) =>
+        {
+            bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
+            EditorColumn.IsVisible = !chapterMode;
+            ChapterData.IsVisible = chapterMode;
+        };
         ChapterGraph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
