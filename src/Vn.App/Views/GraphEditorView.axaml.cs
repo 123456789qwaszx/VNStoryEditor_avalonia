@@ -1115,7 +1115,7 @@ public partial class GraphEditorView : UserControl
 
             card.Visual.BorderBrush = selected || grouped
                 ? new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB))
-                : new SolidColorBrush(Color.FromArgb(90, 128, 128, 128));
+                : new SolidColorBrush(card.Style.Border);
 
             card.Visual.BorderThickness = new Thickness(selected || grouped ? 2 : 1);
         }
@@ -1149,16 +1149,67 @@ public partial class GraphEditorView : UserControl
         }
     }
 
+    /// <summary>노드 종 하나의 시각 언어 — 등뼈(왼쪽 색 막대)·바탕·테두리·모서리·아이콘.</summary>
+    private readonly record struct CardStyle(
+        Color Accent, Color Background, Color Border, double Radius, string Icon);
+
+    /// <summary>
+    /// 종별 시각 체계 (2026-08-15 소유자 — "대본노드와 엑셀노드가 똑같이 생겨서 구분이 어렵다").
+    /// 색 하나에 기대지 않고 세 채널을 겹친다: 등뼈 색 + 아이콘 + 카드 형태.
+    /// 엑셀노드만 <b>각진 미색 서류</b>다(기획의 공식 문서, 본문 잠김) — 작가의 자유 씬은
+    /// 둥근 흰 원고(✎)라서 섞여 있어도 한눈에 갈린다. 미니맵·접힌 목록도 같은 언어를 쓴다.
+    /// </summary>
+    private static CardStyle CardStyleFor(GraphNodeKind kind, bool excelOwned) => kind switch
+    {
+        GraphNodeKind.Dialogue when excelOwned => new CardStyle(
+            Color.FromRgb(0xD9, 0x77, 0x06), Color.FromRgb(0xFB, 0xF6, 0xEA),
+            Color.FromRgb(0xE3, 0xD5, 0xB7), 4, "📄"),
+        GraphNodeKind.Dialogue => new CardStyle(
+            Color.FromRgb(0x0D, 0x94, 0x88), Colors.White,
+            Color.FromArgb(90, 128, 128, 128), 10, "✎"),
+        GraphNodeKind.Set => new CardStyle(
+            Color.FromRgb(0x3B, 0x82, 0xF6), Color.FromRgb(0xEF, 0xF6, 0xFF),
+            Color.FromArgb(90, 128, 128, 128), 10, "⚙"),
+        GraphNodeKind.Presentation => new CardStyle(
+            Color.FromRgb(0x8B, 0x5C, 0xF6), Color.FromRgb(0xFA, 0xF5, 0xFF),
+            Color.FromArgb(90, 128, 128, 128), 10, "🎬"),
+        _ => new CardStyle(
+            Color.FromRgb(0x22, 0xC5, 0x5E), Color.FromRgb(0xF0, 0xFD, 0xF4),
+            Color.FromArgb(90, 128, 128, 128), 10, "🧰")
+    };
+
+    private bool IsExcelOwned(string nodeId) =>
+        _session?.Project.FindNode(nodeId) is DialogueNode { ExcelEpisodeId: not null };
+
     private NodeCard BuildCard(ExpandedNodeProjection node)
     {
+        CardStyle style = CardStyleFor(node.NodeKind, IsExcelOwned(node.NodeId));
+
         var body = new StackPanel { Spacing = 0 };
 
-        body.Children.Add(new TextBlock
+        var titleIcon = new TextBlock
+        {
+            Text = style.Icon,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(style.Accent),
+            Margin = new Thickness(0, 0, 5, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var titleName = new TextBlock
         {
             Text = node.NodeName,
             FontWeight = FontWeight.SemiBold,
-            TextTrimming = TextTrimming.CharacterEllipsis
-        });
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        Grid.SetColumn(titleIcon, 0);
+        Grid.SetColumn(titleName, 1);
+        title.Children.Add(titleIcon);
+        title.Children.Add(titleName);
+        body.Children.Add(title);
 
         body.Children.Add(new TextBlock
         {
@@ -1171,25 +1222,35 @@ public partial class GraphEditorView : UserControl
             Margin = new Thickness(0, 1, 0, 6)
         });
 
+        // 등뼈 — 카드 왼쪽의 종 색 막대. 선택 테두리(파랑 2px)와 채널이 겹치지 않는다.
+        var spine = new Border
+        {
+            Width = 3,
+            Background = new SolidColorBrush(style.Accent),
+            CornerRadius = new CornerRadius(1.5),
+            Margin = new Thickness(0, 1, 7, 1),
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        Grid.SetColumn(spine, 0);
+        Grid.SetColumn(body, 1);
+        layout.Children.Add(spine);
+        layout.Children.Add(body);
+
         var card = new Border
         {
             Width = CardWidth,
             Padding = new Thickness(CardPadding),
-            CornerRadius = new CornerRadius(8),
-            Background = node.NodeKind switch
-            {
-                GraphNodeKind.Set => new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF)),
-                GraphNodeKind.Presentation => new SolidColorBrush(Color.FromRgb(0xFA, 0xF5, 0xFF)),
-                GraphNodeKind.CommandSupply => new SolidColorBrush(Color.FromRgb(0xF0, 0xFD, 0xF4)),
-                _ => new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF))
-            },
+            CornerRadius = new CornerRadius(style.Radius),
+            Background = new SolidColorBrush(style.Background),
             BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(90, 128, 128, 128)),
-            Child = body,
+            BorderBrush = new SolidColorBrush(style.Border),
+            Child = layout,
             Tag = node.NodeId
         };
 
-        var visual = new NodeCard(node.NodeId, node.NodeKind, card, node.OutputPorts);
+        var visual = new NodeCard(node.NodeId, node.NodeKind, card, node.OutputPorts, style);
 
         for (int index = 0; index < node.OutputPorts.Count; index++)
         {
@@ -1348,7 +1409,8 @@ public partial class GraphEditorView : UserControl
 
         var name = new TextBlock
         {
-            Text = entry.NodeName,
+            // 접힌 목록에도 종 아이콘 — 카드와 같은 시각 언어.
+            Text = $"{CardStyleFor(entry.NodeKind, IsExcelOwned(entry.NodeId)).Icon} {entry.NodeName}",
             FontSize = 10,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center
@@ -1894,13 +1956,7 @@ public partial class GraphEditorView : UserControl
                 Canvas.GetTop(card.Visual),
                 CardWidth,
                 CardHeightOf(card),
-                card.NodeKind switch
-                {
-                    GraphNodeKind.Set => Color.FromRgb(0x3B, 0x82, 0xF6),
-                    GraphNodeKind.Presentation => Color.FromRgb(0x8B, 0x5C, 0xF6),
-                    GraphNodeKind.CommandSupply => Color.FromRgb(0x22, 0xC5, 0x5E),
-                    _ => Color.FromRgb(0x9C, 0xA3, 0xAF)
-                });
+                card.Style.Accent); // 카드와 같은 시각 언어 — 미니맵에서도 엑셀·자유가 갈린다.
         }
 
         foreach (FileProxyVisual proxy in _proxies)
@@ -2550,18 +2606,21 @@ public partial class GraphEditorView : UserControl
             string nodeId,
             GraphNodeKind nodeKind,
             Border visual,
-            IReadOnlyList<GraphOutputPortProjection> ports)
+            IReadOnlyList<GraphOutputPortProjection> ports,
+            CardStyle style)
         {
             NodeId = nodeId;
             NodeKind = nodeKind;
             Visual = visual;
             Ports = ports;
+            Style = style;
         }
 
         public string NodeId { get; }
         public GraphNodeKind NodeKind { get; }
         public Border Visual { get; }
         public IReadOnlyList<GraphOutputPortProjection> Ports { get; }
+        public CardStyle Style { get; }
 
         public int PortIndex(string? key)
         {

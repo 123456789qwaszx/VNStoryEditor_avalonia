@@ -181,6 +181,53 @@ public sealed class ExcelNodeLockTests
     });
 
     [Fact]
+    public void 챕터_조건_공급노드는_시나리오_그래프에_보이지_않는다() => HeadlessUi.Run(() =>
+    {
+        // A 계층 격리 (2026-08-15 소유자) — 챕터의 조건 식(스탯 변수)은 기획자의 자료다.
+        // 공급 설정노드가 시나리오 그래프에 카드·링크로 서 있으면 작가에게 노출된다.
+        // 데이터(공급·드롭다운 라벨)는 살아 있되, 화면에서는 존재하지 않는다.
+        (_, AuthoringSession session, _) = ShowSyncedNode();
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬");
+
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(
+            Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
+
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            session.Editor, session.Definition, fileId, chapter);
+
+        SetNode supply = session.Project.EnumerateNodes().OfType<SetNode>()
+            .Single(node => node.Name == "챕터 ch05 조건");
+
+        // 펼친 판 — 카드도, 조건 공급 간선도 없다.
+        Vn.Authoring.Graph.GraphProjection expanded = Vn.Authoring.Graph.GraphProjectionBuilder.Build(
+            session.Project,
+            session.Project.Files.Select(file => file.Id).ToHashSet(StringComparer.Ordinal));
+
+        Assert.DoesNotContain(expanded.Items.OfType<Vn.Authoring.Graph.ExpandedNodeProjection>(),
+            item => item.NodeId == supply.Id);
+        Assert.DoesNotContain(expanded.Connections,
+            connection => connection.SourceNodeId == supply.Id || connection.TargetNodeId == supply.Id);
+
+        // 접힌 파일 프록시의 행 목록에도 없다.
+        Vn.Authoring.Graph.GraphProjection collapsed = Vn.Authoring.Graph.GraphProjectionBuilder.Build(
+            session.Project, new HashSet<string>(StringComparer.Ordinal));
+
+        Assert.DoesNotContain(
+            collapsed.Items.OfType<Vn.Authoring.Graph.CollapsedFileProjection>()
+                .SelectMany(proxy => proxy.Nodes),
+            entry => entry.NodeId == supply.Id);
+
+        // 공급 자체는 살아 있다 — 작가는 라벨만 본다.
+        Vn.Authoring.Flow.AvailableConditionCatalog available =
+            Vn.Authoring.Flow.AvailableConditionResolver.Resolve(
+                session.Project, free.Id, session.Definition);
+
+        Assert.Contains(available.Conditions, condition => condition.Name == "신뢰높음");
+    });
+
+    [Fact]
     public void 자유_노드가_스탯을_set으로_바꾸면_경고한다() => HeadlessUi.Run(() =>
     {
         // 가드레일 — 스탯 변화의 원천은 엑셀 J열 하나여야 도달성 증명이 참을 말한다.

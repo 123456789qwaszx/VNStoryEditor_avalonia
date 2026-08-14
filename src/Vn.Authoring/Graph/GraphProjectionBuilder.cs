@@ -33,6 +33,12 @@ public static class GraphProjectionBuilder
         var kindByNodeId = new Dictionary<string, GraphNodeKind>(StringComparer.Ordinal);
         var portsByNodeId = new Dictionary<string, IReadOnlyList<GraphOutputPortProjection>>(StringComparer.Ordinal);
 
+        // A 계층 격리 (2026-08-15 소유자) — 챕터 조건 공급 설정노드는 동기화의 배관이지
+        // 작가의 데이터가 아니다. 식(스탯 변수)이 시나리오 그래프에 노출되면 안 되므로
+        // 카드도 공급 링크도 그리지 않는다. 공급 자체는 데이터에 그대로 살아 있어서
+        // 조건 드롭다운의 라벨과 <<if>> 역조회는 변함없이 동작한다.
+        var hiddenSupplyNodeIds = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (StoryFile file in project.Files)
         {
             for (int index = 0; index < file.Nodes.Count; index++)
@@ -42,6 +48,14 @@ public static class GraphProjectionBuilder
                 rowIndexByNodeId[node.Id] = index;
                 kindByNodeId[node.Id] = KindOf(node);
                 portsByNodeId[node.Id] = BuildPorts(node, project, definition);
+
+                if (node is SetNode && string.Equals(
+                        node.Name,
+                        Chapters.EpisodeSyncService.ConditionSupplyNodeName(file.Name),
+                        StringComparison.Ordinal))
+                {
+                    hiddenSupplyNodeIds.Add(node.Id);
+                }
             }
         }
 
@@ -59,7 +73,7 @@ public static class GraphProjectionBuilder
             {
                 foreach (StoryNode node in file.Nodes)
                 {
-                    if (!filter.Shows(KindOf(node)))
+                    if (!filter.Shows(KindOf(node)) || hiddenSupplyNodeIds.Contains(node.Id))
                     {
                         continue;
                     }
@@ -78,7 +92,7 @@ public static class GraphProjectionBuilder
             }
 
             IReadOnlyList<CollapsedNodeEntry> entries = file.Nodes
-                .Where(node => filter.Shows(KindOf(node)))
+                .Where(node => filter.Shows(KindOf(node)) && !hiddenSupplyNodeIds.Contains(node.Id))
                 .Select(node => new CollapsedNodeEntry(
                     node.Id,
                     node.Name,
@@ -118,9 +132,11 @@ public static class GraphProjectionBuilder
                 continue;
             }
 
-            // 간선 정합: 한쪽 끝 노드가 필터로 숨으면 간선도 숨는다.
+            // 간선 정합: 한쪽 끝 노드가 필터나 공급 숨김으로 안 보이면 간선도 숨는다.
             if (!filter.Shows(kindByNodeId[raw.SourceNodeId]) ||
-                !filter.Shows(kindByNodeId[raw.TargetNodeId]))
+                !filter.Shows(kindByNodeId[raw.TargetNodeId]) ||
+                hiddenSupplyNodeIds.Contains(raw.SourceNodeId) ||
+                hiddenSupplyNodeIds.Contains(raw.TargetNodeId))
             {
                 continue;
             }

@@ -118,6 +118,29 @@ public sealed class ChapterRailTests
     });
 
     [Fact]
+    public void 엑셀노드와_자유_씬은_한눈에_갈린다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 보고 (2026-08-15) — "대본노드와 엑셀노드가 똑같이 생겨서 구분이 어렵다."
+        // 종별 시각 언어: 엑셀노드 = 각진 미색 서류(📄), 자유 씬 = 둥근 흰 원고(✎).
+        (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
+
+        DialogueNode excel = AddExcelNode(session, fileId, "EP00");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬");
+        graph.Rebuild();
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+        Border excelCard = canvas.Children.OfType<Border>()
+            .Single(border => Equals(border.Tag, excel.Id));
+        Border freeCard = canvas.Children.OfType<Border>()
+            .Single(border => Equals(border.Tag, free.Id));
+
+        Assert.NotEqual(freeCard.CornerRadius, excelCard.CornerRadius);
+        Assert.NotEqual(
+            ((Avalonia.Media.SolidColorBrush)freeCard.Background!).Color,
+            ((Avalonia.Media.SolidColorBrush)excelCard.Background!).Color);
+    });
+
+    [Fact]
     public void 챕터에서_지운_에피소드_노드에는_레일이_없다() => HeadlessUi.Run(() =>
     {
         // 챕터 밖의 노드에 진행·종료를 그리는 것은 거짓말이다 — 동기화 보고가 알릴 일이다.

@@ -290,6 +290,12 @@ public static class EpisodeSyncService
     }
 
     /// <summary>
+    /// 챕터 조건 공급 설정노드의 이름 규약 — 이 이름이 곧 신원이다. 동기화(생성·dedupe)와
+    /// 그래프 프로젝션(작가 화면에서 숨김)이 같은 규칙 하나를 쓴다.
+    /// </summary>
+    public static string ConditionSupplyNodeName(string chapterId) => $"챕터 {chapterId} 조건";
+
+    /// <summary>
     /// 챕터 `조건` 시트의 라벨↔식을 설정노드로 만들어 대사노드에 잇는다 (G3 —
     /// "조건 행 → <c>ConditionDefinition{Name=라벨, Expression=식}</c> 생성·dedupe(식 기준)").
     ///
@@ -327,7 +333,7 @@ public static class EpisodeSyncService
             return;
         }
 
-        string supplyName = $"챕터 {chapter.ChapterId} 조건";
+        string supplyName = ConditionSupplyNodeName(chapter.ChapterId);
 
         SetNode? supply = editor.Project.EnumerateNodes().OfType<SetNode>()
             .FirstOrDefault(candidate => string.Equals(candidate.Name, supplyName, StringComparison.Ordinal));
@@ -379,7 +385,7 @@ public static class EpisodeSyncService
             return;
         }
 
-        string supplyName = $"챕터 {chapter.ChapterId} 조건";
+        string supplyName = ConditionSupplyNodeName(chapter.ChapterId);
 
         SetNode? supply = editor.Project.EnumerateNodes().OfType<SetNode>()
             .FirstOrDefault(candidate => string.Equals(candidate.Name, supplyName, StringComparison.Ordinal));
