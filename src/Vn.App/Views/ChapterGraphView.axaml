@@ -203,6 +203,12 @@
                         <TextBox x:Name="EdgeLockedMsgBox" FontSize="11"
                                  PlaceholderText="잠금 안내문 — 잠긴 채 보일 때 (예: 신뢰가 부족하다)" />
 
+                        <!-- 스탯이 변하는 유일한 자리 (2026-08-14) — 이 간선을 타는 순간 1회 커밋. -->
+                        <TextBlock Text="스탯변화 — 이 길을 고르면" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
+                        <TextBox x:Name="EdgeStatsBox" FontSize="11"
+                                 PlaceholderText="예: trust +1; fatigue -1 (정수만, ;로 나열)"
+                                 ToolTip.Tip="에피소드 사이를 건너는 순간 1회 반영됩니다. 스탯 시트에 있는 키만 쓸 수 있고, 도달성 증명이 이 값 그대로 전이합니다." />
+
                         <Button x:Name="EdgeApplyButton" Content="적용" HorizontalAlignment="Stretch" />
                         <Button x:Name="EdgeDeleteButton" Content="간선 삭제" HorizontalAlignment="Stretch" />
                     </StackPanel>

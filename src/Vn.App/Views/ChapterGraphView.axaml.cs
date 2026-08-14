@@ -1190,6 +1190,7 @@ public partial class ChapterGraphView : UserControl
             EdgeLabelEditBox.Text = edge.OptionLabel ?? string.Empty;
             EdgeHideCheck.IsChecked = edge.HideWhenLocked;
             EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
+            EdgeStatsBox.Text = StatChangesText(edge);
         }
 
         var labels = new List<string> { "(없음)" };
@@ -1259,10 +1260,15 @@ public partial class ChapterGraphView : UserControl
             optionLabel: Changed(EdgeLabelEditBox.Text, edge.OptionLabel ?? string.Empty),
             conditionLabel: Changed(condition, edge.ConditionLabel ?? string.Empty),
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
-            lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty));
+            lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
+            statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)));
 
         Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
     }
+
+    /// <summary>간선 스탯변화를 시트 문법 그대로 — 패널 칸과 셀이 같은 글을 쓴다.</summary>
+    private static string StatChangesText(ChapterEdge edge) => string.Join("; ", edge.StatChanges
+        .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}"));
 
     internal void DeleteSelectedEdge()
     {

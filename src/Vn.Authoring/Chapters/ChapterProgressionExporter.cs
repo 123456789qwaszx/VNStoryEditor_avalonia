@@ -71,7 +71,10 @@ public static class ChapterProgressionExporter
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 HideWhenLocked = edge.HideWhenLocked,
-                LockedReasonText = edge.LockedMessage ?? string.Empty
+                LockedReasonText = edge.LockedMessage ?? string.Empty,
+                StatChanges = edge.StatChanges
+                    .Select(delta => new StatChangeJson { Key = delta.Key, Amount = delta.Amount })
+                    .ToList()
             })
             .ToList(),
         IsChapterEndingCandidate = episode.IsEnding,
@@ -145,6 +148,18 @@ public static class ChapterProgressionExporter
         public List<ConditionJson> Conditions { get; set; } = new();
         public bool HideWhenLocked { get; set; }
         public string LockedReasonText { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 이 간선을 타는 순간 1회 커밋할 스탯 증감 (2026-08-14 — 스탯이 변하는 유일한 자리).
+        /// 런타임은 에피소드 전환 시점에 원자적으로 반영해야 한다(스탯 시트의 최소/최대로 clamp).
+        /// </summary>
+        public List<StatChangeJson> StatChanges { get; set; } = new();
+    }
+
+    private sealed class StatChangeJson
+    {
+        public string Key { get; set; } = string.Empty;
+        public int Amount { get; set; }
     }
 
     private sealed class ConditionJson

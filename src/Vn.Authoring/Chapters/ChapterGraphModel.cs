@@ -49,6 +49,14 @@ public sealed record ChapterEdge(
 {
     /// <summary>선택지 라벨이 비면 분기 없는 일반 진행이다 (§3.1).</summary>
     public bool IsPlainAdvance => string.IsNullOrWhiteSpace(OptionLabel);
+
+    /// <summary>
+    /// `스탯변화` 열 (2026-08-14) — 이 간선을 타는 순간 1회 커밋되는 증감. 스탯이 변하는
+    /// 유일한 자리다: 에피소드 안에서는 변하지 않으므로 세이브/로드 복귀가 일관되고,
+    /// 도달성 증명이 근사 없이 정확값으로 전이한다. 조건 판정은 커밋 <b>전</b> 값으로 한다
+    /// (플레이어가 선택지를 보는 시점의 값).
+    /// </summary>
+    public IReadOnlyList<StatDelta> StatChanges { get; init; } = [];
 }
 
 /// <summary>

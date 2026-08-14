@@ -10,8 +10,9 @@ public sealed record FixtureWalkResult(
 /// G6 — 픽스처("이 조건에서 어디로 가나")의 실제 경로를 계산한다.
 ///
 /// 도달성 증명("어떤 조건에서든 갈 수 있나")과는 다른 도구다: 증명은 모든 가능성을 탐색하고,
-/// 픽스처는 <b>고정된 스탯과 고정된 선택</b>으로 한 판을 걸어 본다. 스탯은 픽스처 값으로
-/// 고정된다 — 재생루트를 눈으로 확인하는 도구라, 변화량까지 시뮬하면 "이 조건에서"가 아니게 된다.
+/// 픽스처는 <b>시작 스탯과 고정된 선택</b>으로 한 판을 걸어 본다. 픽스처 스탯은 시작값이고,
+/// 걷는 동안 간선의 `스탯변화`가 그대로 커밋된다 (2026-08-14 — 증감이 정확값이 되면서
+/// 결정론적 시뮬이 가능해졌다. 옛 에피소드 범위 근사 시절에는 불가능해서 고정값으로 걸었다).
 /// </summary>
 public static class ChapterFixtureWalker
 {
@@ -72,6 +73,7 @@ public static class ChapterFixtureWalker
                     $"고정 선택 열에 '{current}→…'을 적어 주세요.");
             }
 
+            stats = ChapterReachabilityProver.ApplyDeltas(chapter, stats, next.StatChanges);
             current = next.ToEpisodeId;
         }
     }

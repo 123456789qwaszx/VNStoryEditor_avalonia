@@ -34,16 +34,14 @@ public static class ChapterReachabilityProver
     /// <summary>완전 탐색 상한. 스탯 5개 × 범위 0~10이라도 이 안에 넉넉히 든다.</summary>
     private const int StateLimit = 250_000;
 
-    /// <param name="episodeDeltas">
-    /// EpisodeId → (스탯키 → 증감 범위). 워크북이 없는 에피소드는 항목이 없어도 되고,
-    /// 그때는 "스탯을 바꾸지 않는 에피소드"로 다룬다.
-    /// </param>
-    public static ChapterReachabilityResult Prove(
-        ChapterGraphModel chapter,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, StatDeltaRange>> episodeDeltas)
+    /// <summary>
+    /// 스탯 증감의 원천은 <b>간선</b> 하나다 (2026-08-14 소유자 결정). 에피소드 안에서는
+    /// 스탯이 변하지 않으므로, 옛 "에피소드별 증감 범위" 과대근사 없이 간선의 정확값으로
+    /// 전이한다 — 증명이 근사가 아니게 됐다.
+    /// </summary>
+    public static ChapterReachabilityResult Prove(ChapterGraphModel chapter)
     {
         ArgumentNullException.ThrowIfNull(chapter);
-        ArgumentNullException.ThrowIfNull(episodeDeltas);
 
         var diagnostics = new List<ChapterDiagnostic>();
 
@@ -55,7 +53,6 @@ public static class ChapterReachabilityProver
 
         // 시작 규칙은 모델의 것 하나를 쓴다 — G8의 StartEpisodeId와 갈리면 안 된다.
         ChapterEpisode start = chapter.StartEpisode!;
-        string[] statKeys = chapter.Stats.Select(stat => stat.Key).ToArray();
 
         var reachable = new HashSet<string>(StringComparer.Ordinal);
         bool complete = true;
@@ -66,7 +63,7 @@ public static class ChapterReachabilityProver
         while (true)
         {
             (HashSet<string> found, bool finished) =
-                Explore(chapter, episodeDeltas, start, statKeys, reachable, maxSeen, minSeen);
+                Explore(chapter, start, reachable, maxSeen, minSeen);
 
             complete &= finished;
             AddReachableAttachments(chapter, found, maxSeen, minSeen);
@@ -88,9 +85,7 @@ public static class ChapterReachabilityProver
 
     private static (HashSet<string> Reachable, bool Complete) Explore(
         ChapterGraphModel chapter,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, StatDeltaRange>> episodeDeltas,
         ChapterEpisode start,
-        string[] statKeys,
         IReadOnlySet<string> clearedAssumption,
         int[] maxSeen,
         int[] minSeen)
@@ -102,6 +97,7 @@ public static class ChapterReachabilityProver
         int[] initial = chapter.Stats.Select(stat => stat.Initial).ToArray();
         queue.Enqueue((start.EpisodeId, initial));
         visited.Add(StateKey(start.EpisodeId, initial));
+        Observe(initial, maxSeen, minSeen);
 
         while (queue.Count > 0)
         {
@@ -112,35 +108,34 @@ public static class ChapterReachabilityProver
 
             (string episodeId, int[] stats) = queue.Dequeue();
 
-            // 이 에피소드를 플레이해 나올 수 있는 모든 스탯 벡터로.
-            foreach (int[] played in PlayOutcomes(chapter, episodeDeltas, episodeId, stats))
+            foreach (ChapterEdge edge in chapter.Edges.Where(edge =>
+                         string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal)))
             {
-                Observe(played, maxSeen, minSeen);
+                ChapterEpisode? target = chapter.FindEpisode(edge.ToEpisodeId);
 
-                foreach (ChapterEdge edge in chapter.Edges.Where(edge =>
-                             string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal)))
+                if (target is null)
                 {
-                    ChapterEpisode? target = chapter.FindEpisode(edge.ToEpisodeId);
+                    continue; // 없는 도착지는 구조 검증이 이미 오류로 잡았다.
+                }
 
-                    if (target is null)
-                    {
-                        continue; // 없는 도착지는 구조 검증이 이미 오류로 잡았다.
-                    }
+                // 관문 판정은 커밋 전 값으로 — 플레이어가 선택지를 보는 시점의 값이다.
+                if (!Satisfied(chapter, edge.ConditionLabel, stats, clearedAssumption) ||
+                    !Satisfied(chapter, target.VisibleConditionLabel, stats, clearedAssumption) ||
+                    !Satisfied(chapter, target.UnlockConditionLabel, stats, clearedAssumption))
+                {
+                    continue;
+                }
 
-                    if (!Satisfied(chapter, edge.ConditionLabel, played, clearedAssumption) ||
-                        !Satisfied(chapter, target.VisibleConditionLabel, played, clearedAssumption) ||
-                        !Satisfied(chapter, target.UnlockConditionLabel, played, clearedAssumption))
-                    {
-                        continue;
-                    }
+                // 간선을 타는 순간 증감이 1회 커밋된다 — 근사 없는 정확 전이.
+                int[] next = ApplyDeltas(chapter, stats, edge.StatChanges);
+                Observe(next, maxSeen, minSeen);
 
-                    reachable.Add(target.EpisodeId);
-                    string key = StateKey(target.EpisodeId, played);
+                reachable.Add(target.EpisodeId);
+                string key = StateKey(target.EpisodeId, next);
 
-                    if (visited.Add(key))
-                    {
-                        queue.Enqueue((target.EpisodeId, played));
-                    }
+                if (visited.Add(key))
+                {
+                    queue.Enqueue((target.EpisodeId, next));
                 }
             }
         }
@@ -148,60 +143,33 @@ public static class ChapterReachabilityProver
         return (reachable, true);
     }
 
-    /// <summary>
-    /// 에피소드 하나를 플레이한 뒤 가능한 스탯 벡터 전부 — 각 스탯이 자기 증감 범위 안의
-    /// 아무 값이나 더해질 수 있다(과대근사). `최소~최대`는 탐색 경계라 밖은 잘라낸다.
-    /// </summary>
-    private static IEnumerable<int[]> PlayOutcomes(
-        ChapterGraphModel chapter,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, StatDeltaRange>> episodeDeltas,
-        string episodeId,
-        int[] stats)
+    /// <summary>간선 증감 커밋. `최소~최대`는 탐색 경계라 밖은 잘라낸다.</summary>
+    internal static int[] ApplyDeltas(
+        ChapterGraphModel chapter, int[] stats, IReadOnlyList<StatDelta> deltas)
     {
-        if (!episodeDeltas.TryGetValue(episodeId, out IReadOnlyDictionary<string, StatDeltaRange>? deltas) ||
-            chapter.Stats.Count == 0)
+        if (deltas.Count == 0)
         {
-            yield return stats;
-            yield break;
+            return stats;
         }
 
-        var current = (int[])stats.Clone();
-        IEnumerator<int[]> Combos(int index)
+        var next = (int[])stats.Clone();
+
+        foreach (StatDelta delta in deltas)
         {
-            if (index == chapter.Stats.Count)
+            for (int index = 0; index < chapter.Stats.Count; index++)
             {
-                yield return (int[])current.Clone();
-                yield break;
-            }
-
-            ChapterStat stat = chapter.Stats[index];
-            StatDeltaRange range = deltas.GetValueOrDefault(stat.Key, StatDeltaRange.Zero);
-
-            for (int delta = range.Minimum; delta <= range.Maximum; delta++)
-            {
-                current[index] = Math.Clamp(stats[index] + delta, stat.Minimum, stat.Maximum);
-
-                foreach (int[] combo in EnumeratorToEnumerable(Combos(index + 1)))
+                if (string.Equals(chapter.Stats[index].Key, delta.Key, StringComparison.Ordinal))
                 {
-                    yield return combo;
+                    next[index] = Math.Clamp(
+                        next[index] + delta.Amount,
+                        chapter.Stats[index].Minimum,
+                        chapter.Stats[index].Maximum);
+                    break;
                 }
             }
-
-            current[index] = stats[index];
         }
 
-        foreach (int[] combo in EnumeratorToEnumerable(Combos(0)).Distinct(IntArrayComparer.Instance))
-        {
-            yield return combo;
-        }
-    }
-
-    private static IEnumerable<int[]> EnumeratorToEnumerable(IEnumerator<int[]> source)
-    {
-        while (source.MoveNext())
-        {
-            yield return source.Current;
-        }
+        return next;
     }
 
     private static bool Satisfied(

@@ -65,12 +65,8 @@ public static class ChapterValidator
             VerifyOptionsMatchEdges(chapter, episode, model, diagnostics);
         }
 
-        // 에피소드는 더 이상 스탯을 바꾸지 않는다 (2026-08-14 — 스탯변화 J열 폐지).
-        // 증감 0으로 증명한다: 스탯 관문은 초기값만으로 판정된다. 수치 조정의 새 경로가
-        // 정해지면 그 원천이 여기로 다시 흘러든다.
-        ChapterReachabilityResult reachability = ChapterReachabilityProver.Prove(
-            chapter,
-            new Dictionary<string, IReadOnlyDictionary<string, StatDeltaRange>>(StringComparer.Ordinal));
+        // 스탯 증감의 원천은 간선이다 (2026-08-14) — 증명기가 챕터 모델에서 직접 읽는다.
+        ChapterReachabilityResult reachability = ChapterReachabilityProver.Prove(chapter);
 
         return new ChapterValidationResult(diagnostics, reachability);
     }

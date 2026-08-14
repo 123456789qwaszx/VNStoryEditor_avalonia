@@ -30,7 +30,7 @@ public static class ChapterWorkbookReader
         ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"];
 
     private static readonly string[] EdgeHeaders =
-        ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문"];
+        ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문", "스탯변화"];
 
     private static readonly string[] ConditionHeaders = ["라벨", "조건식", "설명"];
 
@@ -78,7 +78,8 @@ public static class ChapterWorkbookReader
         HashSet<string> episodeIds =
             episodes.Select(episode => episode.EpisodeId).ToHashSet(StringComparer.Ordinal);
 
-        IReadOnlyList<ChapterEdge> edges = ReadEdges(workbook, path, episodeIds, conditionLabels, diagnostics);
+        IReadOnlyList<ChapterEdge> edges =
+            ReadEdges(workbook, path, episodeIds, conditionLabels, statKeys, diagnostics);
         IReadOnlyList<ChapterFixture> fixtures = ReadFixtures(workbook, path, stats, episodeIds, diagnostics);
 
         VerifyClearedTargets(conditions, episodeIds, path, diagnostics);
@@ -220,6 +221,7 @@ public static class ChapterWorkbookReader
         string path,
         IReadOnlyCollection<string> episodeIds,
         IReadOnlyCollection<string> conditionLabels,
+        IReadOnlyCollection<string> statKeys,
         List<ChapterDiagnostic> diagnostics)
     {
         IXLWorksheet? sheet = RequireSheet(workbook, ChapterSheetNames.Edges, path, diagnostics);
@@ -229,7 +231,7 @@ public static class ChapterWorkbookReader
             return Array.Empty<ChapterEdge>();
         }
 
-        VerifyHeaders(sheet, EdgeHeaders, path, diagnostics);
+        VerifyHeaders(sheet, EdgeHeaders, path, diagnostics, optionalTrailing: 1);
 
         var edges = new List<ChapterEdge>();
 
@@ -254,6 +256,22 @@ public static class ChapterWorkbookReader
             string? conditionLabel = Optional(sheet, row, 4);
             RequireConditionLabel(conditionLabel, conditionLabels, path, sheet.Name, row, 4, "조건", diagnostics);
 
+            // 스탯변화 (G열, 2026-08-14) — 이 간선을 타는 순간 1회 커밋. 스탯이 변하는
+            // 유일한 자리라, 미등록 키·정수 아님은 여기서 바로 오류다.
+            StatDeltaParseResult deltas = StatDeltaParser.Parse(
+                Text(sheet, row, 7), statKeys);
+
+            foreach (ConditionParseProblem problem in deltas.Problems)
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Error,
+                    problem.Kind == ConditionProblemKind.UnknownStatKey
+                        ? ChapterDiagnosticCode.StatKeyUnknown
+                        : ChapterDiagnosticCode.StatValueNotInteger,
+                    path, sheet.Name, row, 7,
+                    problem.Message));
+            }
+
             edges.Add(new ChapterEdge(
                 from,
                 to,
@@ -261,7 +279,10 @@ public static class ChapterWorkbookReader
                 conditionLabel,
                 Boolean(sheet, row, 5, path, diagnostics),
                 Optional(sheet, row, 6),
-                row));
+                row)
+            {
+                StatChanges = deltas.Deltas
+            });
         }
 
         return edges;
@@ -655,11 +676,16 @@ public static class ChapterWorkbookReader
         }
     }
 
+    /// <param name="optionalTrailing">
+    /// 끝에서부터 이 개수의 머리글은 없어도 된다(빈칸 허용) — 규격이 늘어나기 전의 파일을
+    /// 소음 없이 받기 위해서다. 간선의 `스탯변화`(2026-08-14 추가)가 그 경우다.
+    /// </param>
     private static void VerifyHeaders(
         IXLWorksheet sheet,
         IReadOnlyList<string> expected,
         string path,
-        List<ChapterDiagnostic> diagnostics)
+        List<ChapterDiagnostic> diagnostics,
+        int optionalTrailing = 0)
     {
         ReportUncachedFormulas(sheet, path, diagnostics);
 
@@ -671,6 +697,11 @@ public static class ChapterWorkbookReader
             if (string.Equals(actual, expected[index], StringComparison.Ordinal))
             {
                 continue;
+            }
+
+            if (actual.Length == 0 && index >= expected.Count - optionalTrailing)
+            {
+                continue; // 옛 규격 파일 — 나중에 추가된 꼬리 열이 아직 없다. 정상이다.
             }
 
             diagnostics.Add(Cell(

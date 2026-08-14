@@ -299,7 +299,8 @@ public static class ChapterWorkbookWriter
         string? optionLabel = null,
         string? conditionLabel = null,
         bool? hideWhenLocked = null,
-        string? lockedMessage = null) =>
+        string? lockedMessage = null,
+        string? statChanges = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -318,6 +319,7 @@ public static class ChapterWorkbookWriter
             }
 
             Set(sheet, row.RowNumber(), 6, lockedMessage);
+            Set(sheet, row.RowNumber(), 7, statChanges); // 스탯변화 — 문법 검사는 리더가 한다
         });
 
     // ── 조건 ────────────────────────────────────────────────────────────────
@@ -381,7 +383,7 @@ public static class ChapterWorkbookWriter
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
             ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
-            ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문"]);
+            ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문", "스탯변화"]);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "조건식", "설명"]);
 
         // 조건 라벨을 적는 세 열은 `조건` 시트의 라벨 열을 가리키는 드롭다운이 된다.
