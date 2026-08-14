@@ -194,9 +194,20 @@
                       Header="검증 보고"
                       Padding="0"
                       HorizontalAlignment="Stretch">
-                <ScrollViewer MaxHeight="180" HorizontalScrollBarVisibility="Auto">
-                    <StackPanel x:Name="DiagnosticsPanel" Margin="10,6" Spacing="2" />
-                </ScrollViewer>
+                <Grid RowDefinitions="Auto,*">
+                    <!-- 보고를 그대로 들고 나갈 수 있어야 한다 — 협업자·세션에 붙여넣는 용도. -->
+                    <Button Grid.Row="0"
+                            x:Name="CopyDiagnosticsButton"
+                            Content="보고 복사"
+                            FontSize="10"
+                            Padding="8,2"
+                            Margin="10,4,10,0"
+                            HorizontalAlignment="Right"
+                            ToolTip.Tip="아래 목록 전체를 클립보드로 복사합니다. 줄 하나만 필요하면 드래그로 선택해도 됩니다." />
+                    <ScrollViewer Grid.Row="1" MaxHeight="180" HorizontalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="DiagnosticsPanel" Margin="10,6" Spacing="2" />
+                    </ScrollViewer>
+                </Grid>
             </Expander>
         </Border>
     </Grid>

@@ -600,6 +600,13 @@ internal sealed class AuthoringSession
             }
         }
 
+        // 정의 파일 — 없으면 뼈대를 깐다. 손으로 만들어야 하는 파일이면 새 프로젝트마다
+        // 스탯 경고부터 맞는다(실사례). 있는 파일은 불가침.
+        if (GameDefinitionStore.EnsureBeside(ProjectPath))
+        {
+            created = true;
+        }
+
         // 기본 튜닝 — 재지정(runtimeTuningPath)이 없고 규약 폴더가 비었을 때만.
         if (string.IsNullOrWhiteSpace(Definition.RuntimeTuningPath))
         {
@@ -654,6 +661,29 @@ internal sealed class AuthoringSession
         Definition = GameDefinition.LoadBeside(ProjectPath);
         SetStatus($"{GameDefinition.FileName}에 화자 {Definition.Speakers.Count}명을 저장했습니다.");
         return true;
+    }
+
+    /// <summary>
+    /// 스탯 키를 <c>game.definition.json</c>의 variables에 더한다 — 검증 보고의 [등록] 단추 전용.
+    /// 존재의 원천은 정의 파일이므로(§3.1) 자동 쓰기가 아니라 사람이 누른 순간에만 쓰고,
+    /// 없는 이름만 더한다. 쓰고 나면 정의를 다시 읽어 챕터 검증이 새 원천을 본다.
+    /// </summary>
+    public bool RegisterVariables(IReadOnlyList<VariableSpec> variables)
+    {
+        if (ProjectPath is null)
+        {
+            SetStatus("스탯은 game.definition.json에 등록됩니다. 프로젝트를 먼저 저장해 주세요.");
+            return false;
+        }
+
+        int added = GameDefinitionStore.AddVariables(ProjectPath, variables);
+        Definition = GameDefinition.LoadBeside(ProjectPath);
+
+        SetStatus(added > 0
+            ? $"{GameDefinition.FileName}에 변수 {added}개를 등록했습니다."
+            : "새로 등록할 변수가 없습니다 — 이미 정의 파일에 있습니다.");
+
+        return added > 0;
     }
 
     public bool IsFileExpanded(string fileId)

@@ -4,12 +4,14 @@ using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using IoPath = System.IO.Path;
+using Avalonia.Input.Platform;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Definition;
 
 namespace Vn.App.Views;
 
@@ -137,6 +139,8 @@ public partial class ChapterGraphView : UserControl
         SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
+        CopyDiagnosticsButton.Click += async (_, _) =>
+            await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
 
         // 빈 판 클릭 = 선택 해제. 카드·간선·라벨 핸들러가 각자 누름을 소비하므로(e.Handled)
         // 여기까지 흘러오는 왼쪽 누름은 진짜 빈 공간뿐이다.
@@ -1510,7 +1514,90 @@ public partial class ChapterGraphView : UserControl
                 dim: diagnostic.Severity == ChapterDiagnosticSeverity.Info));
         }
 
+        OfferStatRegistration(model, all);
         DrawSyncReports();
+    }
+
+    /// <summary>
+    /// "스탯이 정의 파일에 없다" 경고 밑에 [등록] 단추를 세운다. 시트를 자동으로 믿고 쓰면
+    /// 오타까지 게임 어휘가 되므로, 정의 파일 쓰기는 사람이 이 단추를 누른 순간에만 일어난다.
+    /// </summary>
+    private void OfferStatRegistration(ChapterGraphModel model, List<ChapterDiagnostic> all)
+    {
+        if (_session?.ProjectPath is null ||
+            all.All(item => item.Code != ChapterDiagnosticCode.StatMissingFromGameDefinition))
+        {
+            return;
+        }
+
+        GameDefinition definition = _session.Definition;
+
+        VariableSpec[] missing = model.Stats
+            .Where(stat => !definition.Variables.Any(variable =>
+                string.Equals(variable.Name, stat.Key, StringComparison.Ordinal)))
+            .Select(stat => new VariableSpec
+            {
+                Name = stat.Key,
+                Type = "number",
+                Description = string.IsNullOrWhiteSpace(stat.DisplayName) ? null : stat.DisplayName
+            })
+            .ToArray();
+
+        if (missing.Length == 0)
+        {
+            return;
+        }
+
+        var register = new Button
+        {
+            Content = $"이 스탯 {missing.Length}개를 {GameDefinition.FileName}에 등록",
+            FontSize = 10,
+            Padding = new Thickness(8, 2),
+            Margin = new Thickness(0, 4, 0, 2)
+        };
+
+        ToolTip.SetTip(register,
+            "정의 파일의 variables에 없는 이름만 더합니다. 값(초기/최소/최대)은 계속 스탯 시트가 소유합니다.");
+
+        register.Click += (_, _) => UiGuard.Run(_session, "스탯 등록", () =>
+        {
+            if (_session.RegisterVariables(missing))
+            {
+                Reload(); // 새 정의로 다시 읽어 경고가 걷힌 화면을 보인다
+            }
+        });
+
+        DiagnosticsPanel.Children.Add(register);
+    }
+
+    /// <summary>
+    /// 보고를 텍스트 그대로 클립보드에 — 협업자나 세션에 붙여넣는 통로. 화면에 그려진
+    /// 줄이 곧 복사되는 줄이다(별도 조립 없음 — 두 벌이면 어긋난다).
+    /// </summary>
+    private async Task CopyDiagnosticsAsync()
+    {
+        var lines = new List<string>();
+
+        if (DiagnosticsExpander.Header is string header)
+        {
+            lines.Add(header);
+        }
+
+        lines.AddRange(DiagnosticsPanel.Children
+            .OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .Where(text => text.Length > 0));
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+
+        if (clipboard is null)
+        {
+            _session?.SetStatus("클립보드에 접근할 수 없습니다.");
+            return;
+        }
+
+        await clipboard.SetTextAsync(string.Join(Environment.NewLine, lines));
+        _session?.SetStatus($"검증 보고 {lines.Count}줄을 복사했습니다.");
     }
 
     /// <summary>
@@ -1565,8 +1652,9 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
+    // SelectableTextBlock — [보고 복사]가 전체를 들고 가고, 드래그는 한 줄만 집어 간다.
     private static TextBlock DiagnosticLine(
-        string text, IBrush? foreground, bool dim, bool bold = false) => new()
+        string text, IBrush? foreground, bool dim, bool bold = false) => new SelectableTextBlock
     {
         Text = text,
         FontSize = 11,
