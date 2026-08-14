@@ -1175,12 +1175,15 @@ public partial class DialogueNodeEditor : UserControl
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0, 0, 0),
             // 엑셀노드의 본문은 읽기 전용 — 원본은 엑셀이고, 여기서 고친 글은 다음 동기화가 되돌린다.
-            IsReadOnly = _excelOwned
+            IsReadOnly = _excelOwned,
+            // 캐럿조차 안 선다 — 읽기 전용이어도 클릭이 먹으면 "열려 있는 것처럼 보인다"(실사용 보고).
+            IsHitTestVisible = !_excelOwned
         };
 
         if (_excelOwned)
         {
-            ToolTip.SetTip(text, "본문은 엑셀에서 고칩니다 — 챕터 그래프에서 노드를 더블클릭하면 열립니다.");
+            text.Opacity = 0.8;
+            ToolTip.SetTip(row, "본문은 엑셀에서 고칩니다 — 챕터 그래프에서 노드를 더블클릭하면 열립니다.");
         }
 
         AutoCompleteBox? speaker = null;
@@ -1361,6 +1364,23 @@ public partial class DialogueNodeEditor : UserControl
         return rail.Children.Count > 0 ? rail : null;
     }
 
+    /// <summary>엑셀노드용 표시 전용 칩 — 태그 버튼과 같은 모양이되 누를 수 없다. 잠김이 모양으로 보인다.</summary>
+    private static Border TagChip(string text, IBrush background) => new()
+    {
+        Child = new TextBlock
+        {
+            Text = text,
+            FontSize = 9,
+            FontWeight = FontWeight.Bold,
+            Foreground = Brushes.White
+        },
+        Background = background,
+        Padding = new Thickness(6, 2),
+        CornerRadius = new CornerRadius(3),
+        Margin = new Thickness(0, 0, 4, 0),
+        VerticalAlignment = VerticalAlignment.Center
+    };
+
     private static Button TagButton(string text, IBrush background)
     {
         return new Button
@@ -1413,6 +1433,15 @@ public partial class DialogueNodeEditor : UserControl
             _ => ("조건 종료", neutral)
         };
 
+        // 엑셀노드 — 조건·선택지의 원본은 엑셀(E열·CHOICE/OPTION 행)이다. 정보는 보이되
+        // 편집 플라이아웃은 열리지 않는다. 여기서 고친 것은 다음 동기화가 되돌리기 때문이다.
+        if (_excelOwned)
+        {
+            Control chip = TagChip(label, background);
+            ToolTip.SetTip(chip, "조건·선택지는 엑셀에서 고칩니다 — E열(조건라벨)·CHOICE/OPTION 행.");
+            return chip;
+        }
+
         Button tag = TagButton(label, background);
         ToolTip.SetTip(tag, "누르면 이 줄의 조건·선택 전환을 고칩니다.");
 
@@ -1440,9 +1469,18 @@ public partial class DialogueNodeEditor : UserControl
         int operationIndex,
         SetOperation operation)
     {
-        Button tag = TagButton(
-            $"set {operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}",
-            new SolidColorBrush(Color.FromArgb(200, 37, 99, 235)));
+        string summary = $"set {operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}";
+        var blue = new SolidColorBrush(Color.FromArgb(200, 37, 99, 235));
+
+        // 엑셀노드 — 스탯변화의 원본은 엑셀 J열이다. 보이되 고쳐지지 않는다.
+        if (_excelOwned)
+        {
+            Control chip = TagChip(summary, blue);
+            ToolTip.SetTip(chip, "스탯변화는 엑셀에서 고칩니다 — J열 (예: trust +3).");
+            return chip;
+        }
+
+        Button tag = TagButton(summary, blue);
         ToolTip.SetTip(tag, "누르면 이 <<set>>을 고치거나 지웁니다.");
 
         tag.Click += (_, _) =>

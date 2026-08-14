@@ -78,6 +78,30 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
+    public void 에피소드를_고르면_챕터_그래프에서_대사가_읽힌다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 요청 — 시나리오 그래프까지 안 가도, 챕터 그래프에서 노드를 고르면
+        // 그 에피소드의 대사가 (읽기 전용으로) 보여야 한다.
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+        File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
+
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var preview = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
+        Assert.True(preview.IsVisible || view.FindControl<Border>("DialoguePreviewBorder")!.IsVisible);
+        Assert.Contains("▶ 라루의 제안을 듣는다", preview.Text);
+
+        // 아직 대본 없는 에피소드는 빈 틀 대신 섹션째 접는다.
+        view.SelectEpisode("main05.01");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(view.FindControl<Border>("DialoguePreviewBorder")!.IsVisible);
+    });
+
+    [Fact]
     public void 툴이_꺼진_사이_적힌_대사도_열면_바로_노드로_선다() => HeadlessUi.Run(() =>
     {
         // 소유자 보고 — 시트에서 대사를 쓰고 프로젝트를 다시 열었더니 시나리오 그래프에

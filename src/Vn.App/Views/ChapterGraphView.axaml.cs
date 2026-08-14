@@ -1003,6 +1003,7 @@ public partial class ChapterGraphView : UserControl
         // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
         // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
         EpisodeFactsText.Text = EpisodeFacts(episode);
+        FillDialoguePreview(episode.EpisodeId);
 
         SetItems(EdgeTargetCombo,
             model.Episodes
@@ -1012,6 +1013,66 @@ public partial class ChapterGraphView : UserControl
             EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
 
         RefreshEdgeList(model, episode);
+    }
+
+    /// <summary>
+    /// 선택된 에피소드의 대사를 워크북에서 바로 읽어 세운다 — 시나리오 그래프까지 안 가도
+    /// 챕터 그래프에서 방금 쓴 대사를 확인한다(소유자 요청). 읽기 전용이고 고치는 곳은 엑셀이다.
+    /// 아직 대본이 없거나 빈 에피소드면 섹션째 접는다 — 빈 틀은 소음이다.
+    /// </summary>
+    private void FillDialoguePreview(string episodeId)
+    {
+        string preview = string.Empty;
+        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
+
+        if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
+        {
+            try
+            {
+                EpisodeWorkbookModel workbook = EpisodeWorkbookReader.Read(path);
+                preview = string.Join("\n", workbook.Rows
+                    .Where(row => !row.IsBlank)
+                    .Select(PreviewLine)
+                    .Where(line => line.Length > 0));
+            }
+            catch (XlsxReadException exception)
+            {
+                preview = $"대본을 읽지 못했습니다: {exception.Message}";
+            }
+        }
+
+        DialoguePreviewHeader.IsVisible = preview.Length > 0;
+        DialoguePreviewBorder.IsVisible = preview.Length > 0;
+        DialoguePreviewText.Text = preview;
+    }
+
+    /// <summary>워크북 한 행을 미리보기 한 줄로 — 시트의 모양을 그대로 옮기되 읽는 눈 기준으로.</summary>
+    private static string PreviewLine(EpisodeRow row)
+    {
+        string body = row.Kind switch
+        {
+            EpisodeRowKind.If => $"IF {row.ConditionLabel}" + (row.In is { } target ? $" → {target}" : string.Empty),
+            EpisodeRowKind.Choice => "── 선택 ──",
+            EpisodeRowKind.Option => $"▶ {row.Text}" + (row.In is { } into ? $" → {into}" : string.Empty),
+            _ => row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text
+        };
+
+        if (body.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        if (row.Tag == EpisodeRowTag.Input)
+        {
+            body = $"[{row.Index}] {body}"; // IN이 가리키는 구간의 문패
+        }
+
+        if (row.OutTarget is { Length: > 0 } exit)
+        {
+            body += $"  ⏎ {exit}";
+        }
+
+        return body;
     }
 
     /// <summary>

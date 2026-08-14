@@ -138,6 +138,29 @@
                                    TextWrapping="Wrap"
                                    Margin="0,2,0,0" />
 
+                        <!-- 대사 미리보기 — 시나리오 그래프까지 안 가도 여기서 읽는다.
+                             원천은 방금 읽은 에피소드 워크북이고, 고치는 곳은 엑셀이다. -->
+                        <TextBlock x:Name="DialoguePreviewHeader"
+                                   Text="대사 (읽기 전용 — 엑셀에서 고칩니다)"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Margin="0,10,0,0"
+                                   IsVisible="False" />
+                        <Border x:Name="DialoguePreviewBorder"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                                CornerRadius="4"
+                                Padding="6,4"
+                                MaxHeight="240"
+                                IsVisible="False">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" AllowAutoHide="False">
+                                <SelectableTextBlock x:Name="DialoguePreviewText"
+                                                     FontSize="11"
+                                                     TextWrapping="Wrap"
+                                                     LineHeight="17" />
+                            </ScrollViewer>
+                        </Border>
+
                         <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12" Margin="0,10,0,0" />
                         <!-- 목록의 줄을 클릭하면 그 간선이 선택되어 조건·해금을 편집한다.
                              새 분기는 툴바 [＋ 에피소드](선택된 노드의 자식으로)가 만든다. -->

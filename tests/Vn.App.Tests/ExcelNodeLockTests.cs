@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -35,6 +36,32 @@ public sealed class ExcelNodeLockTests
         int before = session.Project.FindScript(node.ScriptId)!.ActiveLines.Count();
         editor.FindControl<Button>("AddLineButton")!.Command?.Execute(null);
         Assert.Equal(before, session.Project.FindScript(node.ScriptId)!.ActiveLines.Count());
+    });
+
+    [Fact]
+    public void 엑셀노드는_본문_칸과_조건_set_태그까지_잠긴다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 보고 — 화자는 잠겼는데 본문 칸은 클릭하면 열려 보이고, 조건·set 태그는
+        // 눌러서 편집 플라이아웃이 열렸다. 읽기 전용이어도 "고쳐질 것 같은 모양"이면 실패다.
+        (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
+        var host = editor.FindControl<StackPanel>("LineHost")!;
+
+        // 본문 칸 — 캐럿조차 안 선다. (화자 자동완성 내부의 TextBox는 부모 비활성으로 이미 잠겨 제외.)
+        List<TextBox> bodies = host.GetVisualDescendants().OfType<TextBox>()
+            .Where(box => box.FindAncestorOfType<AutoCompleteBox>() is null)
+            .ToList();
+        Assert.NotEmpty(bodies);
+        Assert.All(bodies, box => Assert.False(box.IsHitTestVisible));
+
+        // 조건·선택·set 태그 — 버튼이 아니라 표시 전용 칩이다. 눌러 열 편집 길이 없다.
+        List<string> tagButtons = host.GetVisualDescendants().OfType<Button>()
+            .Select(button => (button.Content as TextBlock)?.Text ?? string.Empty)
+            .Where(text =>
+                text.StartsWith("set ", StringComparison.Ordinal) ||
+                text.StartsWith("선택 ", StringComparison.Ordinal) ||
+                text is "조건 종료" or "선택지 끝" or "신뢰높음")
+            .ToList();
+        Assert.Empty(tagButtons);
     });
 
     [Fact]
