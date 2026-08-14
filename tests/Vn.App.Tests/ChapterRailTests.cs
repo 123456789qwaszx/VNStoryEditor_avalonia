@@ -201,6 +201,19 @@ public sealed class ChapterRailTests
             line => Math.Abs(line.EndPoint.X - (700 - 8)) < 0.5 ||
                     Math.Abs(line.EndPoint.X - (700 + 105)) < 0.5);
 
+        // ④ (진행) 합류 (소유자 제안) — 척추 밖으로 확장한 웹의 노드 B: A의 갈래 출구로
+        // 이어지고 기본 출구는 비어 있다(= 진행). 그 출력이 레인 끝으로 이어져 보인다.
+        DialogueNode webB = session.Editor.AddDialogueNode(fileId, name: "곁가지B");
+        webB.Layout.X = 950;
+        webB.Layout.Y = 560;
+        free.BranchExits["ln_fake_option"] = webB.Id;
+
+        graph.Rebuild();
+
+        double webOutX = 950 + 210 + 6; // 카드 오른쪽 + 6
+        Assert.Contains(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
+            line => Math.Abs(line.StartPoint.X - webOutX) < 0.5);
+
         Directory.Delete(episodes, recursive: true);
     });
 

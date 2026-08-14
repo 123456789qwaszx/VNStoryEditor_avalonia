@@ -677,6 +677,8 @@ public partial class GraphEditorView : UserControl
             }
         }
 
+        Point laneEnd;
+
         if (target is { } targetRect)
         {
             // 도착 포트로 모인다 (소유자 보고 — 접점만 있고 가지는 직접 붙던 결함).
@@ -690,6 +692,8 @@ public partial class GraphEditorView : UserControl
             {
                 _railVisuals.Add(RailLine(junctionX, y, junctionX, junctionY));
             }
+
+            laneEnd = new Point(junctionX, junctionY);
         }
         else
         {
@@ -707,6 +711,77 @@ public partial class GraphEditorView : UserControl
             Canvas.SetLeft(stop, cursorX + 22);
             Canvas.SetTop(stop, y - stop.DesiredSize.Height / 2);
             _railVisuals.Add(stop);
+
+            laneEnd = new Point(cursorX + 18, y);
+        }
+
+        // (진행) 합류 (2026-08-15 소유자) — 척추(기본 출구 체인) 밖으로 확장한 커스텀 웹
+        // (선택지·조건 갈래로 이어진 자유 노드들)에서, 기본 출구가 빈 노드 = (진행)이다.
+        // 그 출력들을 이 레인의 끝(도착 접점 또는 ⏹)으로 모아 그린다 — "어디로 돌아가는지"가
+        // 눈에 보이고, 잇는 제스처는 출구를 비우는 것 하나다.
+        if (port is not null)
+        {
+            DrawAdvanceReturns(port, laneEnd, nodeRects);
+        }
+    }
+
+    /// <summary>
+    /// 옵션 배선에서 닿는 자유 웹 전체(기본 출구 + 갈래 출구)를 걷고, 척추 밖의
+    /// (진행) 노드(기본 출구 없음)마다 레인 끝으로 합류선을 긋는다.
+    /// </summary>
+    private void DrawAdvanceReturns(ExitPort port, Point laneEnd, IReadOnlyDictionary<string, Rect> nodeRects)
+    {
+        // 척추 — 이미 레인이 경유해 그렸다. 중복으로 긋지 않는다.
+        var spine = new HashSet<string>(StringComparer.Ordinal);
+        string? spineId = port.TargetNodeId;
+
+        while (spineId is not null && spine.Add(spineId) &&
+               _session!.Project.FindNode(spineId) is DialogueNode { ExcelEpisodeId: null } spineNode)
+        {
+            spineId = spineNode.DefaultExitTargetNodeId;
+        }
+
+        // 웹 전체 BFS — 갈래 출구까지.
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>();
+
+        if (port.TargetNodeId is { } first)
+        {
+            queue.Enqueue(first);
+        }
+
+        while (queue.Count > 0)
+        {
+            string id = queue.Dequeue();
+
+            if (!visited.Add(id) ||
+                _session!.Project.FindNode(id) is not DialogueNode { ExcelEpisodeId: null } node)
+            {
+                continue;
+            }
+
+            foreach (string next in node.BranchExits.Values)
+            {
+                queue.Enqueue(next);
+            }
+
+            if (node.DefaultExitTargetNodeId is { } defaultNext)
+            {
+                queue.Enqueue(defaultNext);
+            }
+            else if (!spine.Contains(id) && nodeRects.TryGetValue(id, out Rect rect))
+            {
+                // (진행) — 오른쪽에서 나와 레인 끝으로 직교 합류.
+                double outX = rect.Right + 6;
+                double outY = rect.Y + rect.Height / 2;
+
+                _railVisuals.Add(RailLine(outX, outY, laneEnd.X, outY));
+
+                if (Math.Abs(laneEnd.Y - outY) > 0.5)
+                {
+                    _railVisuals.Add(RailLine(laneEnd.X, outY, laneEnd.X, laneEnd.Y));
+                }
+            }
         }
     }
 

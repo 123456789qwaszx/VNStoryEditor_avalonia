@@ -86,10 +86,10 @@ public sealed class ExcelNodeLockTests
         Assert.DoesNotContain(targets, target =>
             target is DialogueNode { ExcelEpisodeId: not null });
 
-        // 출구가 꺼져 있으면 그 의미를 화면이 말한다 — 챕터 판이므로 "에피소드 종료".
+        // 출구가 꺼져 있으면 그 의미를 화면이 말한다 — 챕터 판의 자유 노드는 "(진행)".
         var hint = editor.FindControl<TextBlock>("ExitHintText")!;
         Assert.True(hint.IsVisible);
-        Assert.Contains("에피소드 종료", hint.Text);
+        Assert.Contains("(진행)", hint.Text);
     });
 
     [Fact]
