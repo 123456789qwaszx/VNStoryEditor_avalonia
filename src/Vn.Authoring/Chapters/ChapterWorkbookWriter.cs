@@ -245,6 +245,8 @@ public static class ChapterWorkbookWriter
         }, backup: true);
 
     // ── 간선 ────────────────────────────────────────────────────────────────
+    // 간선의 신원은 (출발, 도착, 선택지 라벨) 셋이다 (2026-08-15 소유자 — "여러 선택지가
+    // 같은 에피소드로 이어지는 경우가 많다"). 같은 출발·도착이라도 라벨이 다르면 다른 길이다.
 
     public static ChapterWriteResult AddEdge(
         string path,
@@ -256,14 +258,11 @@ public static class ChapterWorkbookWriter
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            bool duplicate = sheet.RowsUsed().Skip(1).Any(row =>
-                string.Equals(row.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
-                string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal));
-
-            if (duplicate)
+            if (FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, optionLabel) is not null)
             {
                 throw new InvalidOperationException(
-                    $"간선 {fromEpisodeId}→{toEpisodeId}이 이미 있습니다.");
+                    $"간선 {fromEpisodeId}→{toEpisodeId}" +
+                    $"{(string.IsNullOrWhiteSpace(optionLabel) ? "(진행)" : $" '{optionLabel}'")}이 이미 있습니다.");
             }
 
             int row = NextRow(sheet);
@@ -274,22 +273,26 @@ public static class ChapterWorkbookWriter
             sheet.Cell(row, 5).SetValue("FALSE");
         });
 
-    public static ChapterWriteResult RemoveEdge(string path, string fromEpisodeId, string toEpisodeId) =>
+    public static ChapterWriteResult RemoveEdge(
+        string path, string fromEpisodeId, string toEpisodeId, string? optionLabel = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            IXLRow? found = sheet.RowsUsed().Skip(1).FirstOrDefault(row =>
-                string.Equals(row.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
-                string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal));
-
-            if (found is null)
-            {
-                throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
-            }
+            IXLRow found = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, optionLabel)
+                ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
             found.Delete();
         }, backup: true);
+
+    /// <summary>라벨까지 맞는 행 — 라벨 null·빈칸은 무라벨 진행 행과 짝이다.</summary>
+    private static IXLRow? FindEdgeRow(
+        IXLWorksheet sheet, string fromEpisodeId, string toEpisodeId, string? optionLabel) =>
+        sheet.RowsUsed().Skip(1).FirstOrDefault(row =>
+            string.Equals(row.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
+            string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal) &&
+            string.Equals(row.Cell(3).GetString().Trim(), optionLabel?.Trim() ?? string.Empty,
+                StringComparison.Ordinal));
 
     /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다.</summary>
     public static ChapterWriteResult UpdateEdge(
@@ -300,14 +303,13 @@ public static class ChapterWorkbookWriter
         string? conditionLabel = null,
         bool? hideWhenLocked = null,
         string? lockedMessage = null,
-        string? statChanges = null) =>
+        string? statChanges = null,
+        string? matchOptionLabel = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            IXLRow row = sheet.RowsUsed().Skip(1).FirstOrDefault(candidate =>
-                    string.Equals(candidate.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
-                    string.Equals(candidate.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal))
+            IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchOptionLabel)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
             Set(sheet, row.RowNumber(), 3, optionLabel);

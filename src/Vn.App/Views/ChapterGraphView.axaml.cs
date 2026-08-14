@@ -533,10 +533,17 @@ public partial class ChapterGraphView : UserControl
         RefreshFixtureCombo(model);
         (IReadOnlySet<string> path, IReadOnlySet<(string, string)> pathEdges) = WalkSelectedFixture(model);
 
-        // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
+        // 간선을 먼저 그려야 노드 카드 아래로 깔린다. 같은 출발·도착의 평행 간선(선택지
+        // 여러 개가 같은 에피소드로)은 세로로 벌려 겹치지 않게 그린다.
+        var parallelCount = new Dictionary<(string, string), int>();
+
         foreach (ChapterEdge edge in model.Edges)
         {
-            DrawEdge(edge, onPath: pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
+            (string, string) pair = (edge.FromEpisodeId, edge.ToEpisodeId);
+            int parallel = parallelCount.GetValueOrDefault(pair);
+            parallelCount[pair] = parallel + 1;
+
+            DrawEdge(edge, onPath: pathEdges.Contains(pair), parallel);
         }
 
         foreach (ChapterEpisode episode in model.Episodes)
@@ -612,7 +619,7 @@ public partial class ChapterGraphView : UserControl
         return (nodes, edges);
     }
 
-    private void DrawEdge(ChapterEdge edge, bool onPath)
+    private void DrawEdge(ChapterEdge edge, bool onPath, int parallel = 0)
     {
         if (!_placed.TryGetValue(edge.FromEpisodeId, out (double X, double Y) fromPos) ||
             !_placed.TryGetValue(edge.ToEpisodeId, out (double X, double Y) toPos))
@@ -621,8 +628,10 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        (double x1, double y1) = (fromPos.X + (CardWidth / 2), fromPos.Y + (CardHeight / 2));
-        (double x2, double y2) = (toPos.X + (CardWidth / 2), toPos.Y + (CardHeight / 2));
+        // 평행 간선은 14px씩 아래로 벌린다 — 첫 간선은 제자리.
+        double shift = parallel * 14;
+        (double x1, double y1) = (fromPos.X + (CardWidth / 2), fromPos.Y + (CardHeight / 2) + shift);
+        (double x2, double y2) = (toPos.X + (CardWidth / 2), toPos.Y + (CardHeight / 2) + shift);
 
         var line = new Line
         {
@@ -655,8 +664,9 @@ public partial class ChapterGraphView : UserControl
         // 선택 강조는 제자리에서 입힌다(ApplySelectionVisuals) — 여기서는 기본 모습만 등록한다.
         string fromId = edge.FromEpisodeId;
         string toId = edge.ToEpisodeId;
-        _lineByEdge[(fromId, toId)] = line;
-        _lineBase[(fromId, toId)] = (line.Stroke, line.StrokeThickness);
+        string labelKey = EdgeLabelKey(edge);
+        _lineByEdge[(fromId, toId, labelKey)] = line;
+        _lineBase[(fromId, toId, labelKey)] = (line.Stroke, line.StrokeThickness);
 
         // 1.6px 실선은 사람이 못 누른다 — 보이지 않는 굵은 히트 선을 위에 겹친다.
         // Transparent는 히트 대상이다(null과 다르다). 카드가 나중에 그려져 그 위를 덮으므로
@@ -673,7 +683,7 @@ public partial class ChapterGraphView : UserControl
         hit.PointerPressed += (_, e) =>
         {
             e.Handled = true; // 캔버스(빈 공간 = 선택 해제)까지 흘러가면 곧바로 풀려 버린다
-            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
+            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId, labelKey));
         };
         GraphCanvas.Children.Add(hit);
 
@@ -702,7 +712,7 @@ public partial class ChapterGraphView : UserControl
         text.PointerPressed += (_, e) =>
         {
             e.Handled = true;
-            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId));
+            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId, labelKey));
         };
 
         text.Measure(Size.Infinity);
@@ -881,7 +891,11 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>선택은 노드 아니면 간선 하나다 — 패널이 무엇을 편집하는지 애매하면 안 된다.</summary>
-    private (string From, string To)? _selectedEdgeKey;
+    // 간선 신원 = (출발, 도착, 라벨) — 여러 선택지가 같은 에피소드로 이어질 수 있다
+    // (2026-08-15 소유자). Label은 정규화된 값(무라벨 진행 = 빈 문자열)이다.
+    private (string From, string To, string Label)? _selectedEdgeKey;
+
+    private static string EdgeLabelKey(ChapterEdge edge) => edge.OptionLabel?.Trim() ?? string.Empty;
 
     // 선택 강조는 다시 그리지 않고 제자리에서 바꾼다. 클릭 핸들러 안에서 캔버스를 다시 만들면
     // 방금 누른 카드가 파괴되어 더블클릭(둘째 탭이 다른 인스턴스에 떨어짐)과 드래그(캡처가
@@ -889,8 +903,8 @@ public partial class ChapterGraphView : UserControl
     private readonly Dictionary<string, Border> _cardById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (IBrush? Brush, Thickness Thickness)> _cardBase =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<(string, string), Line> _lineByEdge = new();
-    private readonly Dictionary<(string, string), (IBrush? Stroke, double Thickness)> _lineBase = new();
+    private readonly Dictionary<(string, string, string), Line> _lineByEdge = new();
+    private readonly Dictionary<(string, string, string), (IBrush? Stroke, double Thickness)> _lineBase = new();
 
 
     internal void SelectEpisode(string? episodeId)
@@ -902,9 +916,9 @@ public partial class ChapterGraphView : UserControl
         RefreshPropertyPanel();
     }
 
-    internal void SelectEdgeKey(string fromEpisodeId, string toEpisodeId)
+    internal void SelectEdgeKey(string fromEpisodeId, string toEpisodeId, string optionLabel = "")
     {
-        _selectedEdgeKey = (fromEpisodeId, toEpisodeId);
+        _selectedEdgeKey = (fromEpisodeId, toEpisodeId, optionLabel.Trim());
         _selectedEpisodeId = null;
         ShowEditTabForSelection(true);
         ApplySelectionVisuals();
@@ -934,7 +948,7 @@ public partial class ChapterGraphView : UserControl
             card.BorderThickness = thickness;
         }
 
-        foreach (((string, string) key, Line line) in _lineByEdge)
+        foreach (((string, string, string) key, Line line) in _lineByEdge)
         {
             (IBrush? stroke, double thickness) = _lineBase[key];
             line.Stroke = stroke;
@@ -955,7 +969,7 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>편집 칸을 마지막으로 채운 선택. 같은 선택이면 다시 채우지 않는다.</summary>
-    private (string? Episode, (string From, string To)? Edge) _panelFilledFor;
+    private (string? Episode, (string From, string To, string Label)? Edge) _panelFilledFor;
 
     /// <summary>
     /// 선택된 에피소드(또는 간선)의 현재 값으로 패널을 채운다. 원천은 언제나 방금 읽은 모델이다.
@@ -972,16 +986,18 @@ public partial class ChapterGraphView : UserControl
         ChapterEpisode? episode = model?.FindEpisode(_selectedEpisodeId ?? string.Empty);
         ChapterEdge? edge = _selectedEdgeKey is { } key
             ? model?.Edges.FirstOrDefault(candidate =>
-                candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To)
+                candidate.FromEpisodeId == key.From &&
+                candidate.ToEpisodeId == key.To &&
+                EdgeLabelKey(candidate) == key.Label)
             : null;
 
         PropertyPanel.IsVisible = episode is not null;
         EdgePanel.IsVisible = edge is not null;
         NoSelectionText.IsVisible = episode is null && edge is null;
 
-        (string? Episode, (string From, string To)? Edge) selection =
+        (string? Episode, (string From, string To, string Label)? Edge) selection =
             (episode?.EpisodeId,
-                edge is null ? null : (edge.FromEpisodeId, edge.ToEpisodeId));
+                edge is null ? null : (edge.FromEpisodeId, edge.ToEpisodeId, EdgeLabelKey(edge)));
 
         FillDialoguePreview(episode?.EpisodeId);
 
@@ -1156,14 +1172,15 @@ public partial class ChapterGraphView : UserControl
 
             string from = edge.FromEpisodeId;
             string to = edge.ToEpisodeId;
+            string labelKey = EdgeLabelKey(edge);
             text.PointerPressed += (_, _) =>
-                UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(from, to));
+                UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(from, to, labelKey));
             row.Children.Add(text);
 
             var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
             Grid.SetColumn(remove, 1);
             remove.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", () =>
-                Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, from, to),
+                Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, from, to, labelKey),
                     $"간선 {from}→{to}을 지웠습니다."));
             row.Children.Add(remove);
 
@@ -1241,7 +1258,9 @@ public partial class ChapterGraphView : UserControl
     {
         if (_selectedEdgeKey is not { } key || SelectedChapterPath is not { } path ||
             SelectedModel?.Edges.FirstOrDefault(candidate =>
-                candidate.FromEpisodeId == key.From && candidate.ToEpisodeId == key.To) is not { } edge)
+                candidate.FromEpisodeId == key.From &&
+                candidate.ToEpisodeId == key.To &&
+                EdgeLabelKey(candidate) == key.Label) is not { } edge)
         {
             // 조용한 무동작 금지 — 사람에게는 "눌러도 아무 일이 없다"가 된다.
             _session?.SetStatus("간선을 다시 골라 주세요. 선택이 풀렸거나 그 간선이 사라졌습니다.");
@@ -1264,7 +1283,14 @@ public partial class ChapterGraphView : UserControl
             conditionLabel: Changed(condition, edge.ConditionLabel ?? string.Empty),
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
             lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
-            statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)));
+            statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)),
+            matchOptionLabel: key.Label);
+
+        if (result.Written)
+        {
+            // 라벨을 고쳤으면 선택의 신원도 따라간다 — 안 따라가면 다시 읽는 순간 선택이 풀린다.
+            _selectedEdgeKey = (key.From, key.To, EdgeLabelEditBox.Text?.Trim() ?? string.Empty);
+        }
 
         Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
     }
@@ -1313,19 +1339,20 @@ public partial class ChapterGraphView : UserControl
 
     internal void DeleteSelectedEdge()
     {
-        if (_selectedEdgeKey is not { } key || SelectedChapterPath is not { } path)
+        if (_selectedEdgeKey is not { } deleteKey || SelectedChapterPath is not { } deletePath)
         {
             return;
         }
 
-        ChapterWriteResult result = ChapterWorkbookWriter.RemoveEdge(path, key.From, key.To);
+        ChapterWriteResult result = ChapterWorkbookWriter.RemoveEdge(
+            deletePath, deleteKey.From, deleteKey.To, deleteKey.Label);
 
         if (result.Written)
         {
             _selectedEdgeKey = null;
         }
 
-        Report(result, $"간선 {key.From}→{key.To}을 지웠습니다.");
+        Report(result, $"간선 {deleteKey.From}→{deleteKey.To}을 지웠습니다.");
     }
 
 
@@ -1574,7 +1601,8 @@ public partial class ChapterGraphView : UserControl
 
     /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>
     internal static string EdgeTag(ChapterEdge edge) =>
-        $"{edge.FromEpisodeId}→{edge.ToEpisodeId}";
+        $"{edge.FromEpisodeId}→{edge.ToEpisodeId}" +
+        (edge.IsPlainAdvance ? string.Empty : $" [{edge.OptionLabel}]");
 
     private static string GateSummary(ChapterEpisode episode) => string.Join(" · ", new[]
     {

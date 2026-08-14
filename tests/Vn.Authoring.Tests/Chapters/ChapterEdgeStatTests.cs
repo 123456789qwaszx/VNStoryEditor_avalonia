@@ -102,6 +102,39 @@ public sealed class ChapterEdgeStatTests : IDisposable
     }
 
     [Fact]
+    public void 여러_선택지가_같은_에피소드로_이어질_수_있다()
+    {
+        // 2026-08-15 소유자 — 간선 신원 = (출발, 도착, 라벨). 같은 도착이라도 라벨이
+        // 다르면 다른 길이고, 수정·삭제는 라벨까지 맞는 행 하나만 건드린다.
+        string path = BuildChapter(); // ep1→ep2 무라벨 진행이 이미 있다
+
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "선택A").Written);
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "선택B").Written);
+
+        // 정확히 같은 (출발·도착·라벨)만 중복이다.
+        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "선택A").Written);
+
+        // 라벨로 짚어 수정 — 다른 행은 그대로.
+        Assert.True(ChapterWorkbookWriter.UpdateEdge(
+            path, "ep1", "ep2", statChanges: "trust +2", matchOptionLabel: "선택B").Written);
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+        Assert.Equal(3, model.Edges.Count); // 진행 + 선택A + 선택B
+
+        ChapterEdge b = model.Edges.Single(edge => edge.OptionLabel == "선택B");
+        Assert.Equal(2, Assert.Single(b.StatChanges).Amount);
+        Assert.Empty(model.Edges.Single(edge => edge.OptionLabel == "선택A").StatChanges);
+
+        // 라벨로 짚어 삭제 — 그 행만 사라진다.
+        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "ep1", "ep2", "선택A").Written);
+        ChapterGraphModel after = ChapterWorkbookReader.Read(path);
+        Assert.Equal(2, after.Edges.Count);
+        Assert.DoesNotContain(after.Edges, edge => edge.OptionLabel == "선택A");
+        Assert.Contains(after.Edges, edge => edge.OptionLabel == "선택B");
+        Assert.Contains(after.Edges, edge => edge.IsPlainAdvance);
+    }
+
+    [Fact]
     public void 내보내기에_간선_스탯변화가_실린다()
     {
         string path = BuildChapter();

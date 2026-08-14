@@ -62,6 +62,9 @@ public sealed class ChapterRailTests
             .ToList();
 
         Assert.Single(chipXs);
+
+        // 도착 포트 — 들어오는 가지가 있는 카드(EP01·EP02) 앞에 접점이 선다.
+        Assert.Equal(2, canvas.Children.OfType<Ellipse>().Count(port => port.Width == 10));
     });
 
     [Fact]

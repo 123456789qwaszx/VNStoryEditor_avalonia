@@ -427,13 +427,22 @@ public partial class GraphEditorView : UserControl
                 }
             }
 
+            // 도착 포트 (2026-08-15 소유자) — 여러 선택지가 같은 에피소드로 이어지는 일이
+            // 많으므로, 들어오는 가지들은 도착 카드 앞의 접점 하나로 모인다.
+            var arrivals = new Dictionary<string, List<(string From, string Label)>>(StringComparer.Ordinal);
+
             foreach ((string episodeId, (DialogueNode node, Rect rect)) in spots)
             {
                 List<ChapterEdge> edges = chapter.Edges
                     .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
                     .ToList();
 
-                DrawRailsFrom(node, rect, edges, spots, nodeRects, freeNodes);
+                DrawRailsFrom(node, rect, edges, spots, nodeRects, freeNodes, arrivals);
+            }
+
+            foreach ((string toId, List<(string From, string Label)> incoming) in arrivals)
+            {
+                DrawArrivalPort(spots[toId].Rect, toId, incoming);
             }
         }
 
@@ -455,7 +464,8 @@ public partial class GraphEditorView : UserControl
         IReadOnlyList<ChapterEdge> edges,
         IReadOnlyDictionary<string, (DialogueNode Node, Rect Rect)> spots,
         IReadOnlyDictionary<string, Rect> nodeRects,
-        IReadOnlyList<DialogueNode> freeNodes)
+        IReadOnlyList<DialogueNode> freeNodes,
+        Dictionary<string, List<(string From, string Label)>> arrivals)
     {
         IReadOnlyList<ExitPort> ports = NodeConnections.PortsOf(source, _session!.Project, _session.Definition);
         List<ExitPort> optionPorts = ports.Where(port => port.IsChoice).ToList();
@@ -527,10 +537,86 @@ public partial class GraphEditorView : UserControl
         foreach ((ChapterEdge? edge, ExitPort? port, Rect? target) in branches)
         {
             DrawRailBranch(source, edge, port, trunkX, branchY, target, nodeRects, freeNodes);
+
+            if (edge is not null && target is not null)
+            {
+                // 도착 포트 장부 — 어느 에피소드의 어느 선택지가 여기로 들어오는가.
+                if (!arrivals.TryGetValue(edge.ToEpisodeId, out List<(string From, string Label)>? list))
+                {
+                    arrivals[edge.ToEpisodeId] = list = new List<(string, string)>();
+                }
+
+                list.Add((source.ExcelEpisodeId ?? source.Name,
+                    edge.IsPlainAdvance ? "(진행)" : edge.OptionLabel!));
+            }
+
             branchY += RailBranchGap;
         }
 
         _railVisuals.Add(RailLine(trunkX, sourceRect.Bottom, trunkX, branchY - RailBranchGap));
+    }
+
+    /// <summary>
+    /// 도착 포트 (2026-08-15 소유자) — 들어오는 가지들이 도착 카드 앞의 접점 하나로 모인다.
+    /// 누르면 어느 에피소드의 어느 선택지들이 여기로 이어지는지 목록이 열린다(읽기 전용 —
+    /// 잇고 끊는 곳은 출발 쪽 칩과 챕터 그래프다).
+    /// </summary>
+    private void DrawArrivalPort(Rect target, string episodeId, IReadOnlyList<(string From, string Label)> incoming)
+    {
+        double junctionX = target.X - 26;
+        double junctionY = target.Y + target.Height / 2;
+
+        _railVisuals.Add(RailLine(junctionX, junctionY, target.X - 10, junctionY));
+        _railVisuals.Add(RailArrow(target.X - 9, junctionY, pointRight: true));
+
+        var port = new Ellipse
+        {
+            Width = 10,
+            Height = 10,
+            Fill = RailChipBrush,
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        ToolTip.SetTip(port, $"들어오는 길 {incoming.Count}개 — 누르면 목록이 열립니다.");
+        Canvas.SetLeft(port, junctionX - 5);
+        Canvas.SetTop(port, junctionY - 5);
+
+        string captured = episodeId;
+        var capturedIncoming = incoming.ToList();
+        port.PointerPressed += (_, args) =>
+        {
+            args.Handled = true;
+
+            var panel = new StackPanel { Spacing = 3, MinWidth = 200 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = $"{captured}로 들어오는 길",
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold
+            });
+
+            foreach ((string from, string label) in capturedIncoming)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"{from} · {label}",
+                    FontSize = 11,
+                    Opacity = 0.85
+                });
+            }
+
+            panel.Children.Add(new TextBlock
+            {
+                Text = "잇고 끊는 곳은 출발 쪽 칩과 챕터 그래프입니다.",
+                FontSize = 10,
+                Opacity = 0.5,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 240
+            });
+
+            new Flyout { Content = panel }.ShowAt(port);
+        };
+
+        _railVisuals.Add(port);
     }
 
     private void DrawRailBranch(

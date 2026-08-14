@@ -32,18 +32,19 @@ public sealed class ChapterFixtureHighlightTests
         // 시트의 활성 픽스처(기본 루트)가 기본으로 골라져 있다.
         Assert.Equal("기본 루트", combo.SelectedItem);
 
+        // 간선 표식은 라벨까지 담는다 (2026-08-15 — 신원 = 출발·도착·라벨).
         string[] basicPath = HighlightedEdges(view);
-        Assert.Contains("main05.02→main05.03", basicPath);
-        Assert.DoesNotContain("main05.02→branch05.02A", basicPath);
+        Assert.Contains("main05.02→main05.03 [혼자 문을 연다]", basicPath);
+        Assert.DoesNotContain(basicPath, tag => tag.StartsWith("main05.02→branch05.02A"));
 
         // 신뢰 루트로 전환 → 경로가 신뢰 분기로 바뀐다.
         combo.SelectedItem = "신뢰 루트";
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         string[] trustPath = HighlightedEdges(view);
-        Assert.Contains("main05.02→branch05.02A", trustPath);
+        Assert.Contains("main05.02→branch05.02A [라루의 제안을 듣는다]", trustPath);
         Assert.Contains("branch05.02A→main05.03", trustPath);
-        Assert.DoesNotContain("main05.02→main05.03", trustPath);
+        Assert.DoesNotContain(trustPath, tag => tag.StartsWith("main05.02→main05.03"));
 
         // 끄면 하이라이트가 없다.
         combo.SelectedItem = "(끄기)";

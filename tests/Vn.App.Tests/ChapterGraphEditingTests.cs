@@ -1,4 +1,4 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -177,7 +177,7 @@ public sealed class ChapterGraphEditingTests
         Assert.Same(conditionTab, tabs.SelectedItem);
 
         // 간선을 고르면 다시 편집 탭.
-        view.SelectEdgeKey("main05.02", "branch05.02A");
+        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Assert.Same(editTab, tabs.SelectedItem);
     });
 
@@ -187,7 +187,7 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        view.SelectEdgeKey("main05.02", "branch05.02A");
+        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         view.FindControl<TextBox>("EdgeLabelEditBox")!.Text = "새 선택지 이름";
         view.ApplyEdgeFromPanel();
 
@@ -220,7 +220,7 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        view.SelectEdgeKey("main05.02", "branch05.02A");
+        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
 
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
         Assert.False(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);

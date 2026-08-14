@@ -71,12 +71,13 @@ public sealed class ChapterGraphViewRenderTests
             .OrderBy(tag => tag, StringComparer.Ordinal)
             .ToArray();
 
+        // 표식은 라벨까지 담는다 (2026-08-15 — 간선 신원 = 출발·도착·라벨).
         Assert.Equal(
             [
                 "branch05.02A→main05.03",
                 "main05.01→main05.02",
-                "main05.02→branch05.02A",
-                "main05.02→main05.03",
+                "main05.02→branch05.02A [라루의 제안을 듣는다]",
+                "main05.02→main05.03 [혼자 문을 연다]",
                 "main05.03→main05.end"
             ],
             drawn);
