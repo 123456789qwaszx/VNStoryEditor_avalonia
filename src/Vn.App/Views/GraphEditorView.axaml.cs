@@ -461,33 +461,53 @@ public partial class GraphEditorView : UserControl
         List<ExitPort> optionPorts = ports.Where(port => port.IsChoice).ToList();
         ExitPort? defaultPort = ports.FirstOrDefault(port => port.Kind == ExitPortKind.Default);
 
+        // 가지 순서는 시트 순서가 아니라 <b>읽는 순서</b>다(소유자 보고 — 진행이 선택지 위에
+        // 서니 헷갈린다): ① 선택지들 = 대본의 OPTION 순서 그대로(간선 유무와 무관하게 한
+        // 묶음 — 이것이 에피소드 끝의 그 선택이다) ② 무라벨 진행 ③ 엔딩 스텁.
         var branches = new List<(ChapterEdge? Edge, ExitPort? Port, Rect? Target)>();
-        var consumed = new HashSet<ExitPort>();
+        var consumedEdges = new HashSet<ChapterEdge>();
 
-        foreach (ChapterEdge edge in edges)
+        foreach (ExitPort port in optionPorts)
         {
-            ExitPort? port = edge.IsPlainAdvance
-                ? defaultPort
-                : optionPorts.FirstOrDefault(candidate =>
-                    string.Equals(candidate.ChoiceText, edge.OptionLabel, StringComparison.Ordinal));
+            ChapterEdge? match = edges.FirstOrDefault(edge =>
+                !edge.IsPlainAdvance &&
+                string.Equals(edge.OptionLabel, port.ChoiceText, StringComparison.Ordinal));
 
-            if (port is not null)
+            if (match is not null)
             {
-                consumed.Add(port);
+                consumedEdges.Add(match);
+
+                // 도착 노드가 아직 동기화 전이면 긋지 않는다(거짓말 금지). 챕터 수준에서는
+                // 이어져 있는 옵션이므로 스텁으로도 내놓지 않는다.
+                if (spots.TryGetValue(match.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
+                {
+                    branches.Add((match, port, target.Rect));
+                }
             }
-
-            // 도착 노드가 아직 동기화 전이면 이 간선은 긋지 않는다(거짓말 금지). 그 간선이
-            // 소비한 옵션도 스텁으로 내놓지 않는다 — 챕터 수준에서는 이어져 있는 옵션이다.
-            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
+            else
             {
-                branches.Add((edge, port, target.Rect));
+                // 간선 없는 옵션 = 에피소드 종료(Gate B) — 종료 스텁. 씬을 달면 씬 후 종료다.
+                branches.Add((null, port, null));
             }
         }
 
-        // 간선 없는 옵션 = 에피소드 종료(Gate B) — 종료 스텁. 자유 씬을 달면 씬 후 종료다.
-        foreach (ExitPort port in optionPorts.Where(port => !consumed.Contains(port)))
+        // 유령 간선 — 라벨이 대본의 어느 옵션과도 안 맞는다. 시트 순서대로 선택지 묶음 뒤에.
+        foreach (ChapterEdge edge in edges.Where(edge =>
+                     !edge.IsPlainAdvance && !consumedEdges.Contains(edge)))
         {
-            branches.Add((null, port, null));
+            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
+            {
+                branches.Add((edge, null, target.Rect));
+            }
+        }
+
+        // 무라벨 진행 — 선택이 아니라 낙하이므로 맨 아래.
+        foreach (ChapterEdge edge in edges.Where(edge => edge.IsPlainAdvance))
+        {
+            if (spots.TryGetValue(edge.ToEpisodeId, out (DialogueNode Node, Rect Rect) target))
+            {
+                branches.Add((edge, defaultPort, target.Rect));
+            }
         }
 
         // 나가는 간선이 하나도 없는 에피소드(엔딩) — 기본 출구의 종료 스텁 (에필로그 자유 씬 자리).

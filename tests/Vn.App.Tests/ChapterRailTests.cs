@@ -109,15 +109,23 @@ public sealed class ChapterRailTests
         string workbook = Path.Combine(episodes, "EP00.xlsx");
         WriteEpisode(workbook);
 
+        // 진행 간선을 시트에서 일부러 먼저 둔다 — 그래도 화면은 선택지가 위여야 한다.
         ChapterEntry entry = Chapter("ch01",
             episodes: ["EP00", "EP01"],
-            edges: [("EP00", "EP01", "라루를 믿는다", "trust +1")]);
+            edges:
+            [
+                ("EP00", "EP01", null, null),
+                ("EP00", "EP01", "라루를 믿는다", "trust +1")
+            ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(
             session.Editor, session.Definition, fileId, workbook, entry.Model);
         Assert.True(report.Applied, string.Join(" / ", report.Problems));
 
-        AddExcelNode(session, fileId, "EP01");
+        DialogueNode ep01 = AddExcelNode(session, fileId, "EP01");
+        ep01.Layout.X = 1200;
+        ep01.Layout.Y = 60;
+
         DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬A");
         free.Layout.X = 700;
         free.Layout.Y = 420;
@@ -149,6 +157,21 @@ public sealed class ChapterRailTests
         Assert.Contains("● 의심한다", chips);
         Assert.Contains(canvas.Children.OfType<TextBlock>(),
             block => block.Text == "⏹ 종료");
+
+        // 순서 — 선택지(대본 OPTION 순서)가 위, 진행이 아래 (소유자 보고: 반대면 헷갈린다).
+        // EP01(엔딩)의 진행 스텁도 있으므로 EP00 분기점(같은 X)의 칩들만 본다.
+        double trunkLeft = canvas.Children.OfType<TextBlock>()
+            .Where(block => block.Text == "● 라루를 믿는다")
+            .Select(Canvas.GetLeft)
+            .Single();
+
+        double TopOf(string text) => canvas.Children.OfType<TextBlock>()
+            .Where(block => block.Text == text && Math.Abs(Canvas.GetLeft(block) - trunkLeft) < 0.5)
+            .Select(Canvas.GetTop)
+            .Single();
+
+        Assert.True(TopOf("● 라루를 믿는다") < TopOf("● 의심한다"));
+        Assert.True(TopOf("● 의심한다") < TopOf("○ 진행"));
 
         // ③ 배선 — 스텁 옵션에 자유 씬을 달면(칩이 부르는 그 SetExitTarget) 철도가 씬을 경유한다.
         ExitPort option = NodeConnections.PortsOf(excel, session.Project, session.Definition)
@@ -185,10 +208,11 @@ public sealed class ChapterRailTests
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 
-    private static void AddExcelNode(AuthoringSession session, string fileId, string episodeId)
+    private static DialogueNode AddExcelNode(AuthoringSession session, string fileId, string episodeId)
     {
         DialogueNode node = session.Editor.AddDialogueNode(fileId, name: episodeId);
         node.ExcelEpisodeId = episodeId;
+        return node;
     }
 
     private static ChapterEntry Chapter(
