@@ -277,8 +277,15 @@ public static class GraphProjectionBuilder
                 string badge = latest is null ? script : $"{script} · v{latest.Identity.Version} 발행";
 
                 // 엑셀노드 표식 — 카드만 봐도 "이 본문은 엑셀 소유"임이 보여야,
-                // 열어 보고 나서야 잠긴 것을 아는 헛걸음이 없다.
-                return dialogue.ExcelEpisodeId is null ? badge : $"📄 엑셀 · {badge}";
+                // 열어 보고 나서야 잠긴 것을 아는 헛걸음이 없다. 줄 수는 타임라인 읽기의
+                // 눈금이다(T1) — 어느 에피소드가 무거운지 카드에서 보인다.
+                if (dialogue.ExcelEpisodeId is null)
+                {
+                    return badge;
+                }
+
+                int lineCount = project.FindScript(dialogue.ScriptId)?.ActiveLines.Count() ?? 0;
+                return $"📄 엑셀 · {badge} · {lineCount}줄";
             }
 
             case PresentationNode presentation:

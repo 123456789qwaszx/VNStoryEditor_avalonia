@@ -58,6 +58,8 @@ public partial class MainWindow : Window
         {
             _chapters = entries;
             RebuildFileList();
+            // 시나리오 그래프의 철도 배선(T1)도 같은 목록 하나를 본다 — 두 곳이 따로 읽지 않는다.
+            Graph.SupplyChapters(entries);
         };
         // 챕터 그래프 탭에서는 시나리오 계층의 chrome을 접는다(소유자 보고 — "발행·무대
         // 프리뷰는 이 화면에서 필요 없는 정보"). 우측 열이 통째로 접혀 그래프가 그 폭을

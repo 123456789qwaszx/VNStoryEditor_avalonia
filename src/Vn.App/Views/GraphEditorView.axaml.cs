@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
@@ -41,6 +42,25 @@ public partial class GraphEditorView : UserControl
 
     /// <summary>챕터(판) 박스 — 펼친 판의 노드들을 감싸는 배경 프레임 + 이름표 (2단계 무대 3번).</summary>
     private readonly List<Control> _frames = new();
+
+    /// <summary>챕터 간선의 철도 배선 (T1) — 미러 선·분기점·선택지 칩.</summary>
+    private readonly List<Control> _railVisuals = new();
+
+    /// <summary>
+    /// 챕터 그래프 뷰가 읽은 챕터 목록 (T1). 이 뷰는 챕터 워크북을 직접 읽지 않는다 —
+    /// 챕터 모델의 원천은 하나여야 감시·재시도 규칙이 두 벌이 되지 않는다.
+    /// </summary>
+    private IReadOnlyList<ChapterEntry> _chapters = Array.Empty<ChapterEntry>();
+
+    internal void SupplyChapters(IReadOnlyList<ChapterEntry> entries)
+    {
+        _chapters = entries;
+
+        if (_projection is not null)
+        {
+            DrawChapterRails();
+        }
+    }
 
     private AuthoringSession? _session;
     private GraphProjection? _projection;
@@ -328,6 +348,223 @@ public partial class GraphEditorView : UserControl
         {
             GraphCanvas.Children.Insert(index, _frames[index]);
         }
+
+        DrawChapterRails();
+    }
+
+    // ── 챕터 간선 철도 배선 (T1) ────────────────────────────────────────────
+
+    private static readonly IBrush RailBrush = new SolidColorBrush(Color.FromArgb(170, 120, 120, 120));
+    private static readonly IBrush RailChipBrush = new SolidColorBrush(Color.FromRgb(0xC0, 0x6A, 0x14));
+    private const double RailTrunkInset = 30;   // 출발 카드 왼쪽에서 줄기까지
+    private const double RailBranchGap = 44;    // 가지 사이 세로 간격
+    private const double RailFirstDrop = 36;    // 카드 아래 첫 가지까지
+
+    /// <summary>
+    /// 챕터 간선을 철도 노선처럼 (T1, 소유자 그림) — 출발 카드에서 수직 줄기가 내려오고,
+    /// 단일 분기점에서 가지들이 갈라져 도착 카드로 들어간다. 선택은 항상 에피소드 끝이므로
+    /// (CHOICE는 파일 맨 끝 0~1개) 분기점은 하나다 — Line 비율 같은 것은 존재하지 않는다.
+    /// 기본 칩은 문구만(T-D4 — 수치는 챕터 그래프의 책임), 클릭하면 읽기 전용 상세.
+    /// </summary>
+    private void DrawChapterRails()
+    {
+        foreach (Control visual in _railVisuals)
+        {
+            GraphCanvas.Children.Remove(visual);
+        }
+
+        _railVisuals.Clear();
+
+        if (_session is null || _projection is null || _chapters.Count == 0)
+        {
+            return;
+        }
+
+        foreach (IGrouping<string, ExpandedNodeProjection> group in _projection.Items
+                     .OfType<ExpandedNodeProjection>()
+                     .GroupBy(item => item.FileId, StringComparer.Ordinal))
+        {
+            string boardName = _session.Project.Files
+                .FirstOrDefault(file => string.Equals(file.Id, group.Key, StringComparison.Ordinal))
+                ?.Name ?? string.Empty;
+
+            ChapterGraphModel? chapter = _chapters
+                .FirstOrDefault(entry => string.Equals(entry.ChapterId, boardName, StringComparison.Ordinal))
+                ?.Model;
+
+            if (chapter is null)
+            {
+                continue; // 챕터 판이 아니다 — 일반 프로젝트는 아무 변화 없다.
+            }
+
+            // 에피소드 Id → 카드 자리. 아직 동기화 전인 에피소드는 없는 것으로 둔다 —
+            // 없는 노드로 선을 그으면 거짓말이다.
+            var spots = new Dictionary<string, Rect>(StringComparer.Ordinal);
+
+            foreach (ExpandedNodeProjection node in group)
+            {
+                if (_session.Project.FindNode(node.NodeId) is DialogueNode { ExcelEpisodeId: { } episodeId } &&
+                    FindCard(node.NodeId) is { } card)
+                {
+                    spots[episodeId] = new Rect(
+                        node.Position.X, node.Position.Y, CardWidth, CardHeightOf(card));
+                }
+            }
+
+            foreach (IGrouping<string, ChapterEdge> fromGroup in chapter.Edges
+                         .Where(edge => spots.ContainsKey(edge.FromEpisodeId) &&
+                                        spots.ContainsKey(edge.ToEpisodeId))
+                         .GroupBy(edge => edge.FromEpisodeId, StringComparer.Ordinal))
+            {
+                DrawRailsFrom(spots[fromGroup.Key], fromGroup.ToList(), spots);
+            }
+        }
+
+        // 프레임 뒤·카드 앞 — 프레임들 바로 다음 인덱스에 끼운다.
+        for (int index = 0; index < _railVisuals.Count; index++)
+        {
+            GraphCanvas.Children.Insert(_frames.Count + index, _railVisuals[index]);
+        }
+    }
+
+    /// <summary>한 출발 카드의 줄기와 가지들. 시트 순서 = 가지 순서(위→아래).</summary>
+    private void DrawRailsFrom(Rect source, IReadOnlyList<ChapterEdge> edges, IReadOnlyDictionary<string, Rect> spots)
+    {
+        double trunkX = source.X + RailTrunkInset;
+        double branchY = source.Bottom + RailFirstDrop;
+
+        foreach (ChapterEdge edge in edges)
+        {
+            DrawRailBranch(edge, trunkX, branchY, spots[edge.ToEpisodeId]);
+            branchY += RailBranchGap;
+        }
+
+        // 수직 줄기 — 카드 바닥에서 마지막 가지까지.
+        _railVisuals.Add(RailLine(trunkX, source.Bottom, trunkX, branchY - RailBranchGap));
+    }
+
+    private void DrawRailBranch(ChapterEdge edge, double trunkX, double y, Rect target)
+    {
+        double cursorX = trunkX;
+
+        if (!edge.IsPlainAdvance)
+        {
+            // ● 문구 칩 — 기본 표시는 문구뿐이다(T-D4). 클릭하면 읽기 전용 상세.
+            var chip = new TextBlock
+            {
+                Text = $"● {edge.OptionLabel}",
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = RailChipBrush,
+                Background = Brushes.Transparent,
+                Cursor = new Cursor(StandardCursorType.Hand)
+            };
+            ToolTip.SetTip(chip, "선택지 — 누르면 조건·스탯변화를 보여 줍니다(읽기 전용, 편집은 챕터 그래프).");
+
+            chip.Measure(Size.Infinity);
+            double chipWidth = chip.DesiredSize.Width;
+
+            _railVisuals.Add(RailLine(trunkX, y, trunkX + 10, y));
+            Canvas.SetLeft(chip, trunkX + 14);
+            Canvas.SetTop(chip, y - chip.DesiredSize.Height / 2);
+
+            ChapterEdge captured = edge;
+            chip.PointerPressed += (_, args) =>
+            {
+                args.Handled = true;
+                ShowRailDetail(chip, captured);
+            };
+
+            _railVisuals.Add(chip);
+            cursorX = trunkX + 14 + chipWidth + 6;
+        }
+
+        // 도착 카드로 — 같은 높이면 왼쪽으로 진입(▶), 위·아래면 카드 가운데로 꺾어 진입(▲▼).
+        if (y >= target.Y && y <= target.Bottom)
+        {
+            _railVisuals.Add(RailLine(cursorX, y, target.X - 10, y));
+            _railVisuals.Add(RailArrow(target.X - 9, y, pointRight: true));
+        }
+        else
+        {
+            double midX = target.X + CardWidth / 2;
+            _railVisuals.Add(RailLine(cursorX, y, midX, y));
+
+            bool targetAbove = target.Bottom < y;
+            double endY = targetAbove ? target.Bottom + 10 : target.Y - 10;
+            _railVisuals.Add(RailLine(midX, y, midX, endY));
+            _railVisuals.Add(RailArrow(midX, targetAbove ? endY - 1 : endY + 1, pointRight: false, pointUp: targetAbove));
+        }
+    }
+
+    /// <summary>읽기 전용 상세 — 배선·편집은 T2의 몫이고, 값 편집은 언제나 챕터 그래프/엑셀이다.</summary>
+    private void ShowRailDetail(Control anchor, ChapterEdge edge)
+    {
+        var panel = new StackPanel { Spacing = 3, MinWidth = 200 };
+
+        void Line(string text, bool bold = false, double opacity = 1) => panel.Children.Add(new TextBlock
+        {
+            Text = text,
+            FontSize = 11,
+            FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
+            Opacity = opacity,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        Line(edge.OptionLabel ?? "(진행)", bold: true);
+        Line($"{edge.FromEpisodeId} → {edge.ToEpisodeId}", opacity: 0.7);
+
+        if (!string.IsNullOrWhiteSpace(edge.ConditionLabel))
+        {
+            Line($"조건: {edge.ConditionLabel}", opacity: 0.85);
+        }
+
+        if (edge.StatChanges.Count > 0)
+        {
+            Line("스탯변화: " + string.Join("; ", edge.StatChanges
+                .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}")), opacity: 0.85);
+        }
+
+        if (edge.HideWhenLocked)
+        {
+            Line("잠기면 숨김", opacity: 0.7);
+        }
+
+        if (!string.IsNullOrWhiteSpace(edge.LockedMessage))
+        {
+            Line($"잠금 안내: {edge.LockedMessage}", opacity: 0.7);
+        }
+
+        Line("편집은 챕터 그래프에서 · 씬 배선은 T2에서 열립니다.", opacity: 0.5);
+
+        new Flyout { Content = panel }.ShowAt(anchor);
+    }
+
+    private static Line RailLine(double x1, double y1, double x2, double y2) => new()
+    {
+        StartPoint = new Point(x1, y1),
+        EndPoint = new Point(x2, y2),
+        Stroke = RailBrush,
+        StrokeThickness = 1.4,
+        IsHitTestVisible = false
+    };
+
+    private static Polygon RailArrow(double x, double y, bool pointRight, bool pointUp = false)
+    {
+        var arrow = new Polygon
+        {
+            Fill = RailBrush,
+            IsHitTestVisible = false,
+            Points = pointRight
+                ? [new Point(0, -4), new Point(7, 0), new Point(0, 4)]
+                : pointUp
+                    ? [new Point(-4, 0), new Point(0, -7), new Point(4, 0)]
+                    : [new Point(-4, 0), new Point(0, 7), new Point(4, 0)]
+        };
+
+        Canvas.SetLeft(arrow, x);
+        Canvas.SetTop(arrow, y);
+        return arrow;
     }
 
     /// <summary>
