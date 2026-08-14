@@ -103,35 +103,20 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 챕터_데이터_패널이_다섯_시트를_읽기_전용으로_세운다() => HeadlessUi.Run(() =>
+    public void 챕터_탭이_스탯과_픽스처를_읽기_전용으로_세운다() => HeadlessUi.Run(() =>
     {
-        // 소유자 보고 — 챕터 그래프 화면의 우측에 대사 편집·발행·무대 프리뷰가 보이는데
-        // 그 화면 것이 아니다. 챕터 엑셀의 에피소드·간선·조건·스탯·픽스처를 보인다.
+        // 소유자 점검 — 스탯·픽스처는 어디에서도 값이 안 보이던 표들이다. [챕터] 탭이
+        // 조건(편집) 아래에 읽기 전용으로 세운다. 에피소드·간선은 그래프가 이미 그린다.
         using var project = new TempProject(SamplePath);
-        Directory.CreateDirectory(project.EpisodesFolder);
         (ChapterGraphView view, _) = Show(project);
 
-        var data = new ChapterDataView();
-        view.ChapterShown += entry => data.Show(entry);
+        List<string> stats = view.FindControl<StackPanel>("StatListPanel")!
+            .Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
+        List<string> fixtures = view.FindControl<StackPanel>("FixtureListPanel")!
+            .Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
 
-        var window = new Window { Width = 460, Height = 800, Content = data };
-        window.Show();
-
-        view.SyncEpisodes(); // Draw가 돌며 ChapterShown이 실린다
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        var panel = data.FindControl<StackPanel>("Sections")!;
-        List<string> texts = panel.Children.OfType<TextBlock>()
-            .Select(block => block.Text ?? string.Empty)
-            .ToList();
-
-        Assert.Contains(texts, text => text.StartsWith("에피소드 ("));
-        Assert.Contains(texts, text => text.StartsWith("간선 ("));
-        Assert.Contains(texts, text => text.StartsWith("조건 ("));
-        Assert.Contains(texts, text => text.StartsWith("스탯 ("));
-        Assert.Contains(texts, text => text.StartsWith("픽스처 ("));
-        Assert.Contains(texts, text => text.Contains("main05.02 → branch05.02A"));
-        Assert.Contains(texts, text => text.Contains("신뢰높음"));
+        Assert.Contains(stats, text => text.Contains("trust") && text.Contains("초기"));
+        Assert.Contains(fixtures, text => text.Contains("신뢰 루트"));
     });
 
     [Fact]

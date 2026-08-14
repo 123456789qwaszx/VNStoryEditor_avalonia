@@ -57,7 +57,9 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" ColumnDefinitions="*,6,300">
+        <!-- 340 — 메인 우측 열이 챕터 모드에서 접히며 얻은 폭의 일부를 패널에 준다.
+             조건 식·대사 미리보기가 300에서는 줄바꿈으로 부서졌다. -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,6,340">
             <Grid Grid.Column="0">
                 <ScrollViewer x:Name="GraphScroll"
                               HorizontalScrollBarVisibility="Auto"
@@ -85,13 +87,16 @@
                  편집은 지금 고른 하나에 걸린다. 섞여 있으면 조건을 보려고 매번 스크롤해야 했다.
                  조건이 앞 탭이다 — 흐름을 잇기 전에 조건부터 정의하는 순서라서. -->
             <TabControl Grid.Column="2" x:Name="RightTabs" Padding="0">
-                <TabItem x:Name="ConditionTab" Header="조건" FontSize="12">
+                <!-- [챕터] — 판 전체에 걸린 표들. 조건은 여기서 편집하고(원천은 조건 시트),
+                     스탯·픽스처는 어디에서도 값이 안 보이던 것들이라 읽기 전용으로 세운다.
+                     에피소드·간선은 그래프가 이미 그리므로 여기 반복하지 않는다. -->
+                <TabItem x:Name="ConditionTab" Header="챕터" FontSize="12">
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
-                        <!-- 조건 시트 편집 — 라벨이 이미 있으면 수정, 없으면 추가.
-                             식의 내용은 검증기가 잡는다. -->
                         <StackPanel x:Name="ConditionSection" Margin="10" Spacing="4">
-                            <TextBlock Text="라벨 ↔ 식"
+                            <!-- 조건 시트 편집 — 라벨이 이미 있으면 수정, 없으면 추가.
+                                 식의 내용은 검증기가 잡는다. -->
+                            <TextBlock Text="조건 (라벨 ↔ 식)"
                                        FontWeight="SemiBold"
                                        FontSize="12" />
                             <TextBlock Text="식은 여기서 한 번만 정의하고, 에피소드·간선에서는 라벨로만 부릅니다. 식을 고치면 그 라벨을 쓰는 곳이 전부 따라 바뀝니다."
@@ -105,6 +110,26 @@
                                      PlaceholderText="식 — 예: trust >= 3 (AND는 ;)"
                                      ToolTip.Tip="쓸 수 있는 연산자는 &gt;= · &lt;= · == 셋뿐이고 값은 정수만 됩니다. 에피소드 클리어는 cleared:EpisodeId 입니다." />
                             <Button x:Name="SaveConditionButton" Content="조건 추가/수정" HorizontalAlignment="Stretch" FontSize="11" />
+
+                            <TextBlock Text="스탯"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,14,0,0" />
+                            <TextBlock Text="존재는 game.definition.json이, 값(초기·최소·최대)은 스탯 시트가 소유합니다. 여기서는 읽기만 합니다."
+                                       FontSize="10"
+                                       Opacity="0.55"
+                                       TextWrapping="Wrap" />
+                            <StackPanel x:Name="StatListPanel" Spacing="2" />
+
+                            <TextBlock Text="픽스처"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,14,0,0" />
+                            <TextBlock Text="재생루트를 눈으로 보기 위한 테스트 데이터 — 내보내기에 섞이지 않습니다. 전환은 툴바의 픽스처 콤보입니다."
+                                       FontSize="10"
+                                       Opacity="0.55"
+                                       TextWrapping="Wrap" />
+                            <StackPanel x:Name="FixtureListPanel" Spacing="2" />
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

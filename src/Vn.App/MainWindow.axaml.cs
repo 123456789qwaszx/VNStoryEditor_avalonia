@@ -59,15 +59,22 @@ public partial class MainWindow : Window
             _chapters = entries;
             RebuildFileList();
         };
-        // 챕터 그래프 화면의 우측은 대사 편집기가 아니라 챕터 엑셀 내용이다(소유자 보고 —
-        // "발행·무대 프리뷰는 여기서 필요 없는 정보"). 탭 전환이 두 패널을 갈아끼우고,
-        // 데이터는 챕터 그래프 뷰가 방금 그린 모델 그대로를 받는다.
-        ChapterGraph.ChapterShown += entry => ChapterData.Show(entry);
+        // 챕터 그래프 탭에서는 시나리오 계층의 chrome을 접는다(소유자 보고 — "발행·무대
+        // 프리뷰는 이 화면에서 필요 없는 정보"). 우측 열이 통째로 접혀 그래프가 그 폭을
+        // 얻고, 상단의 Yarn/CSV 내보내기도 숨는다 — 챕터 툴바의 [내보내기](진행 JSON)와
+        // 이름이 같아 한 화면에 "내보내기"가 둘 있으면 어느 쪽인지 헷갈린다.
         MainTabs.SelectionChanged += (_, _) =>
         {
             bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
-            EditorColumn.IsVisible = !chapterMode;
-            ChapterData.IsVisible = chapterMode;
+
+            RightColumn.IsVisible = !chapterMode;
+            RightSplitter.IsVisible = !chapterMode;
+            CenterColumns.ColumnDefinitions[3].Width = new GridLength(chapterMode ? 0 : 6);
+            CenterColumns.ColumnDefinitions[4].Width = new GridLength(chapterMode ? 0 : 460);
+
+            ExportButton.IsVisible = !chapterMode;
+            CsvExportButton.IsVisible = !chapterMode;
+            ExportFormatsButton.IsVisible = !chapterMode;
         };
         ChapterGraph.Attach(_session);
         DialogueEditor.Attach(_session);

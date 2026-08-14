@@ -70,9 +70,6 @@ public partial class ChapterGraphView : UserControl
     /// <summary>챕터 목록이 다시 읽혔다. 왼쪽 패널(MainWindow)이 이걸 듣고 목록을 다시 그린다.</summary>
     internal event Action<IReadOnlyList<ChapterEntry>>? EntriesReloaded;
 
-    /// <summary>지금 그려진 챕터. 메인 창 우측의 챕터 데이터 패널이 이걸 받아 같은 것을 본다.</summary>
-    internal event Action<ChapterEntry?>? ChapterShown;
-
     /// <summary>폴더를 다시 훑고 감시를 다시 건다. 새 챕터를 만든 직후(폴더가 방금 생겼을 수 있다) 부른다.</summary>
     internal void RefreshFromDisk() => WatchAndReload();
 
@@ -489,7 +486,6 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Height = 0;
 
         ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
-        ChapterShown?.Invoke(entry);
 
         if (entry is null)
         {
@@ -1284,8 +1280,56 @@ public partial class ChapterGraphView : UserControl
     }
 
 
+    /// <summary>
+    /// [챕터] 탭의 읽기 전용 표 둘 — 스탯·픽스처. 어디에서도 값이 안 보이던 것들이라
+    /// 여기 세운다(소유자 점검). 에피소드·간선은 그래프가 이미 그리므로 반복하지 않는다.
+    /// </summary>
+    private void RefreshChapterSheets(ChapterGraphModel? model)
+    {
+        StatListPanel.Children.Clear();
+        FixtureListPanel.Children.Clear();
+
+        static SelectableTextBlock SheetLine(string text, bool dim = false) => new()
+        {
+            Text = text,
+            FontSize = 10,
+            Opacity = dim ? 0.55 : 0.75,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        foreach (ChapterStat stat in model?.Stats ?? Enumerable.Empty<ChapterStat>())
+        {
+            string name = stat.DisplayName.Length > 0 && stat.DisplayName != stat.Key
+                ? $"{stat.Key} ({stat.DisplayName})"
+                : stat.Key;
+            StatListPanel.Children.Add(SheetLine($"{name} — 초기 {stat.Initial} · 범위 {stat.Minimum}~{stat.Maximum}"));
+        }
+
+        if (StatListPanel.Children.Count == 0)
+        {
+            StatListPanel.Children.Add(SheetLine("스탯 시트가 비어 있습니다.", dim: true));
+        }
+
+        foreach (ChapterFixture fixture in model?.Fixtures ?? Enumerable.Empty<ChapterFixture>())
+        {
+            string facts = string.Join(" · ", fixture.Stats
+                .Select(pair => $"{pair.Key} {pair.Value}")
+                .Concat(fixture.Choices.Select(choice => $"고정 {choice.From}→{choice.To}")));
+
+            FixtureListPanel.Children.Add(SheetLine(
+                $"{fixture.Name}{(fixture.IsActive ? " (활성)" : "")}" +
+                (facts.Length > 0 ? $" — {facts}" : string.Empty)));
+        }
+
+        if (FixtureListPanel.Children.Count == 0)
+        {
+            FixtureListPanel.Children.Add(SheetLine("픽스처 시트가 비어 있습니다.", dim: true));
+        }
+    }
+
     private void RefreshConditionList(ChapterGraphModel? model)
     {
+        RefreshChapterSheets(model);
         ConditionListPanel.Children.Clear();
 
         foreach (ChapterCondition condition in model?.Conditions ?? Enumerable.Empty<ChapterCondition>())

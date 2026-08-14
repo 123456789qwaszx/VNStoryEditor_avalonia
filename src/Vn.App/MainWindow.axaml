@@ -44,7 +44,7 @@
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
         </Border>
 
-        <Grid ColumnDefinitions="240,6,*,6,460">
+        <Grid x:Name="CenterColumns" ColumnDefinitions="240,6,*,6,460">
             <Border Grid.Column="0"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="0,0,1,0">
@@ -117,35 +117,33 @@
             </TabControl>
 
             <GridSplitter Grid.Column="3"
+                          x:Name="RightSplitter"
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
+            <!-- 시나리오 그래프의 우측 — 노드 편집기 + 무대 프리뷰. 챕터 그래프 탭에서는
+                 열째로 접힌다(스플리터 포함): 그 화면의 편집·보고는 전부 챕터 그래프 뷰 안에
+                 있고, 여기 남겨 두면 다른 화면의 발행·프리뷰가 소음이 된다(소유자 보고). -->
             <Border Grid.Column="4"
+                    x:Name="RightColumn"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1,0,0,0">
-                <Panel>
-                    <!-- 시나리오 그래프의 우측 — 노드 편집기 + 무대 프리뷰. -->
-                    <Grid x:Name="EditorColumn" RowDefinitions="*,Auto">
-                        <Panel Grid.Row="0">
-                            <views:DialogueNodeEditor x:Name="DialogueEditor" />
-                            <views:SetNodeEditor x:Name="SetEditor" />
-                            <views:PresentationNodeEditor x:Name="PresentationEditor" />
-                            <views:CommandSupplyNodeEditor x:Name="SupplyEditor" />
-                            <TextBlock x:Name="EmptyText"
-                                       Text="노드를 선택하면 여기서 편집합니다."
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Opacity="0.5" />
-                        </Panel>
+                <Grid RowDefinitions="*,Auto">
+                    <Panel Grid.Row="0">
+                        <views:DialogueNodeEditor x:Name="DialogueEditor" />
+                        <views:SetNodeEditor x:Name="SetEditor" />
+                        <views:PresentationNodeEditor x:Name="PresentationEditor" />
+                        <views:CommandSupplyNodeEditor x:Name="SupplyEditor" />
+                        <TextBlock x:Name="EmptyText"
+                                   Text="노드를 선택하면 여기서 편집합니다."
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.5" />
+                    </Panel>
 
-                        <!-- 대사·연출 편집기가 공유하는 하단 무대 프리뷰. 읽기 전용 소비자다. -->
-                        <views:MiniStagePreview Grid.Row="1" x:Name="StagePreview" />
-                    </Grid>
-
-                    <!-- 챕터 그래프의 우측 — 대사 편집기·프리뷰는 그 화면 것이 아니다(소유자 보고).
-                         대신 챕터 엑셀의 내용을 보인다. 탭 전환이 이 둘을 갈아끼운다. -->
-                    <views:ChapterDataView x:Name="ChapterData" IsVisible="False" />
-                </Panel>
+                    <!-- 대사·연출 편집기가 공유하는 하단 무대 프리뷰. 읽기 전용 소비자다. -->
+                    <views:MiniStagePreview Grid.Row="1" x:Name="StagePreview" />
+                </Grid>
             </Border>
         </Grid>
     </DockPanel>
