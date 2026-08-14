@@ -679,7 +679,17 @@ public partial class GraphEditorView : UserControl
 
         if (target is { } targetRect)
         {
-            RouteEnd(cursorX, y, targetRect);
+            // 도착 포트로 모인다 (소유자 보고 — 접점만 있고 가지는 직접 붙던 결함).
+            // 화살표는 포트의 몫이다 — 가지들은 접점까지만 간다.
+            double junctionX = targetRect.X - 26;
+            double junctionY = targetRect.Y + targetRect.Height / 2;
+
+            _railVisuals.Add(RailLine(cursorX, y, junctionX, y));
+
+            if (Math.Abs(junctionY - y) > 0.5)
+            {
+                _railVisuals.Add(RailLine(junctionX, y, junctionX, junctionY));
+            }
         }
         else
         {
@@ -739,26 +749,6 @@ public partial class GraphEditorView : UserControl
         }
 
         return (rect.Right + 6, rect.Y + rect.Height / 2);
-    }
-
-    /// <summary>도착 카드로 — 같은 높이면 왼쪽 진입(▶), 위·아래면 카드 가운데로 꺾어 진입(▲▼).</summary>
-    private void RouteEnd(double x, double y, Rect target)
-    {
-        if (y >= target.Y && y <= target.Bottom)
-        {
-            _railVisuals.Add(RailLine(x, y, target.X - 10, y));
-            _railVisuals.Add(RailArrow(target.X - 9, y, pointRight: true));
-        }
-        else
-        {
-            double midX = target.X + CardWidth / 2;
-            _railVisuals.Add(RailLine(x, y, midX, y));
-
-            bool targetAbove = target.Bottom < y;
-            double endY = targetAbove ? target.Bottom + 10 : target.Y - 10;
-            _railVisuals.Add(RailLine(midX, y, midX, endY));
-            _railVisuals.Add(RailArrow(midX, targetAbove ? endY - 1 : endY + 1, pointRight: false, pointUp: targetAbove));
-        }
     }
 
     /// <summary>

@@ -63,8 +63,21 @@ public sealed class ChapterRailTests
 
         Assert.Single(chipXs);
 
-        // 도착 포트 — 들어오는 가지가 있는 카드(EP01·EP02) 앞에 접점이 선다.
-        Assert.Equal(2, canvas.Children.OfType<Ellipse>().Count(port => port.Width == 10));
+        // 도착 포트 — 들어오는 가지가 있는 카드(EP01·EP02) 앞에 접점이 서고,
+        // 가지들은 카드에 직접 붙지 않고 그 접점 X로 모인다 (소유자 보고로 고정).
+        List<Ellipse> ports = canvas.Children.OfType<Ellipse>()
+            .Where(port => port.Width == 10)
+            .ToList();
+        Assert.Equal(2, ports.Count);
+
+        foreach (Ellipse port in ports)
+        {
+            double junctionX = Canvas.GetLeft(port) + 5;
+            double junctionY = Canvas.GetTop(port) + 5;
+            Assert.Contains(canvas.Children.OfType<Line>(), line =>
+                Math.Abs(line.EndPoint.X - junctionX) < 0.5 &&
+                (Math.Abs(line.EndPoint.Y - junctionY) < 0.5 || Math.Abs(line.StartPoint.X - junctionX) < 0.5));
+        }
     });
 
     [Fact]
