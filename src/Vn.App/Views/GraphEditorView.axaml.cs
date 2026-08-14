@@ -39,6 +39,9 @@ public partial class GraphEditorView : UserControl
     private readonly List<FileProxyVisual> _proxies = new();
     private readonly List<EdgeVisual> _edges = new();
 
+    /// <summary>챕터(판) 박스 — 펼친 판의 노드들을 감싸는 배경 프레임 + 이름표 (2단계 무대 3번).</summary>
+    private readonly List<Control> _frames = new();
+
     private AuthoringSession? _session;
     private GraphProjection? _projection;
 
@@ -195,6 +198,7 @@ public partial class GraphEditorView : UserControl
         _cards.Clear();
         _proxies.Clear();
         _edges.Clear();
+        _frames.Clear();
         _selectedEdge = null;
 
         foreach (GraphItemProjection item in _projection.Items)
@@ -211,6 +215,8 @@ public partial class GraphEditorView : UserControl
             }
         }
 
+        DrawChapterFrames();
+
         AddDialogueButton.IsEnabled = _session.ActiveFileId is not null;
         AddSetButton.IsEnabled = _session.ActiveFileId is not null;
         AddPresentationButton.IsEnabled = _session.ActiveFileId is not null;
@@ -219,6 +225,99 @@ public partial class GraphEditorView : UserControl
         HighlightSelection();
         RefreshMinimap();
         HandleBoardSwitch();
+    }
+
+    /// <summary>
+    /// 챕터(판) 박스 (2단계 무대 3번, PDF 3·9장) — 펼친 판마다 노드들을 감싸는 프레임과
+    /// 이름표를 카드 <b>뒤에</b> 깐다. 작가가 "이 노드가 어느 챕터 소속인지"를 보고 붙일
+    /// 곳을 정하는 무대다. 히트 대상이 아니라서 클릭·드래그·포트에 아무 영향이 없다.
+    /// </summary>
+    private void DrawChapterFrames()
+    {
+        foreach (Control frame in _frames)
+        {
+            GraphCanvas.Children.Remove(frame);
+        }
+
+        _frames.Clear();
+
+        if (_session is null || _projection is null)
+        {
+            return;
+        }
+
+        foreach (IGrouping<string, ExpandedNodeProjection> group in _projection.Items
+                     .OfType<ExpandedNodeProjection>()
+                     .GroupBy(item => item.FileId, StringComparer.Ordinal))
+        {
+            Rect? bounds = null;
+
+            foreach (ExpandedNodeProjection node in group)
+            {
+                if (FindCard(node.NodeId) is not { } card)
+                {
+                    continue;
+                }
+
+                var rect = new Rect(node.Position.X, node.Position.Y, CardWidth, CardHeightOf(card));
+                bounds = bounds is { } current ? current.Union(rect) : rect;
+            }
+
+            if (bounds is not { } area)
+            {
+                continue;
+            }
+
+            // 위쪽은 이름표 자리까지 여유를 둔다.
+            area = area.Inflate(new Thickness(24, 46, 24, 24));
+
+            bool isActive = string.Equals(group.Key, _session.ActiveFileId, StringComparison.Ordinal);
+            string chapterName = _session.Project.Files
+                .FirstOrDefault(file => string.Equals(file.Id, group.Key, StringComparison.Ordinal))
+                ?.Name ?? group.Key;
+
+            var frame = new Border
+            {
+                Width = area.Width,
+                Height = area.Height,
+                CornerRadius = new CornerRadius(12),
+                BorderThickness = new Thickness(isActive ? 1.6 : 1),
+                BorderBrush = new SolidColorBrush(
+                    isActive ? Color.FromArgb(150, 61, 123, 217) : Color.FromArgb(70, 128, 128, 128)),
+                Background = new SolidColorBrush(
+                    isActive ? Color.FromArgb(12, 61, 123, 217) : Color.FromArgb(8, 128, 128, 128)),
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(frame, area.X);
+            Canvas.SetTop(frame, area.Y);
+
+            var label = new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 3),
+                Background = new SolidColorBrush(
+                    isActive ? Color.FromArgb(220, 61, 123, 217) : Color.FromArgb(160, 107, 114, 128)),
+                IsHitTestVisible = false,
+                Child = new TextBlock
+                {
+                    Text = $"챕터 {chapterName}",
+                    FontSize = 11,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = Brushes.White
+                }
+            };
+            Canvas.SetLeft(label, area.X + 12);
+            Canvas.SetTop(label, area.Y + 10);
+
+            _frames.Add(frame);
+            _frames.Add(label);
+        }
+
+        // 카드·간선보다 뒤에 깔리도록 맨 앞 인덱스에 순서대로 끼운다.
+        for (int index = 0; index < _frames.Count; index++)
+        {
+            GraphCanvas.Children.Insert(index, _frames[index]);
+        }
     }
 
     /// <summary>
@@ -250,9 +349,13 @@ public partial class GraphEditorView : UserControl
                 GraphScroll.Offset = view.Offset;
                 RefreshMinimapViewport();
             }
+            else if (active is not null)
+            {
+                FitFile(active); // 처음 여는 챕터는 그 챕터 박스가 들어오게 (PDF 9장 "그 챕터로 이동")
+            }
             else
             {
-                FitAll(); // 처음 여는 판은 전체가 들어오게
+                FitAll();
             }
         }
 
@@ -314,6 +417,9 @@ public partial class GraphEditorView : UserControl
                 PositionEdge(edge);
             }
         }
+
+        // 노드가 움직이면 그 노드를 감싸는 챕터 박스도 따라 늘고 준다.
+        DrawChapterFrames();
 
         RefreshMinimap();
     }
@@ -919,6 +1025,48 @@ public partial class GraphEditorView : UserControl
         ZoomHost.LayoutTransform = new ScaleTransform(_zoom, _zoom);
         ZoomText.Text = $"{Math.Round(_zoom * 100)}%";
         ZoomHost.UpdateLayout(); // 새 크기를 알아야 오프셋 상한이 맞는다
+    }
+
+    /// <summary>
+    /// 특정 챕터(판)로 이동 — 그 판의 노드들이 여백을 두고 들어오는 배율과 위치.
+    /// 왼쪽 챕터 목록을 클릭했을 때 여러 챕터 박스 사이에서 그 챕터를 눈앞에 가져온다.
+    /// </summary>
+    private void FitFile(string fileId)
+    {
+        if (GraphScroll.Viewport.Width <= 0 || GraphScroll.Viewport.Height <= 0)
+        {
+            return;
+        }
+
+        Rect? bounds = null;
+
+        foreach (ExpandedNodeProjection node in (_projection?.Items ?? [])
+                     .OfType<ExpandedNodeProjection>()
+                     .Where(item => string.Equals(item.FileId, fileId, StringComparison.Ordinal)))
+        {
+            if (FindCard(node.NodeId) is not { } card)
+            {
+                continue;
+            }
+
+            var rect = new Rect(node.Position.X, node.Position.Y, CardWidth, CardHeightOf(card));
+            bounds = bounds is { } current ? current.Union(rect) : rect;
+        }
+
+        if (bounds is not { } area)
+        {
+            FitAll(); // 빈 판이거나 접혀 있다 — 전체 보기가 차선이다
+            return;
+        }
+
+        area = area.Inflate(80);
+        SetZoom(Math.Min(
+            1.0,
+            Math.Min(GraphScroll.Viewport.Width / area.Width, GraphScroll.Viewport.Height / area.Height)));
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, (area.Center.X * _zoom) - (GraphScroll.Viewport.Width / 2)),
+            Math.Max(0, (area.Center.Y * _zoom) - (GraphScroll.Viewport.Height / 2)));
+        RefreshMinimapViewport();
     }
 
     /// <summary>전체 보기 (GB-4) — 노드·프록시 전부가 여백을 두고 들어오는 배율과 위치.</summary>
