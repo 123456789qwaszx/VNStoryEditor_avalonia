@@ -33,6 +33,7 @@
 | 문서 | 무엇이 들어 있나 | 언제 읽나 |
 |---|---|---|
 | **이 문서** | 화면 조작·작업 흐름·엑셀 규격 요약 | 툴을 실제로 쓸 때 |
+| [`handoff/current-state.md`](handoff/current-state.md) | **인수인계 한 장.** 목적·계층 규칙·화면·코드 지도·남은 일 | 새 세션이 작업을 이어받을 때 |
 | [`work-orders/chapter-graph-orders.md`](work-orders/chapter-graph-orders.md) | **규격 원본.** §2 소유자 결정 8건 · §3 엑셀 규격(시트·열·구간 규칙) · §4 기능 G1–G9 | 규격의 정확한 문구가 필요할 때 |
 | [`episode-layer-master-plan.md`](episode-layer-master-plan.md) | §1 진행 상태표 · 게이트 A~D · 열린 질문 | "지금 어디까지 됐나"를 볼 때 |
 | [`run-log.md`](run-log.md) | 전 과정의 서술 기록. 스스로 내린 결정과 그 근거, 발견한 함정 | "왜 이렇게 됐나"를 따질 때 |
