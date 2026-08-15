@@ -246,8 +246,27 @@ public sealed class ChapterRailTests
             line => Math.Abs(line.EndPoint.X - (700 - 8)) < 0.5 ||
                     Math.Abs(line.EndPoint.X - (700 + 105)) < 0.5);
 
-        // ④ (진행) 합류 (소유자 제안) — 척추 밖으로 확장한 웹의 노드 B: A의 갈래 출구로
-        // 이어지고 기본 출구는 비어 있다(= 진행). 그 출력이 레인 끝으로 이어져 보인다.
+        // ④ 레일은 웹 <b>속</b>을 다시 긋지 않는다 (소유자 보고 — 레일이 체인을 관통해
+        // 작가의 실행 배선과 평행으로 겹쳐 가독성이 나빴다). 레일은 첫 씬의 입구까지만
+        // 대고, 두 번째 씬부터는 작가의 배선이 유일한 선이다.
+        DialogueNode sceneC = session.Editor.AddDialogueNode(fileId, name: "다음씬C");
+        sceneC.Layout.X = 960;
+        sceneC.Layout.Y = 300;
+        session.Editor.SetExitTarget(free.Id, ExitPortKind.Default, null, sceneC.Id);
+
+        graph.Rebuild();
+
+        Assert.DoesNotContain(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
+            line => Math.Abs(line.EndPoint.X - (960 - 8)) < 0.5 ||
+                    Math.Abs(line.EndPoint.X - (960 + 105)) < 0.5);
+
+        // 웹의 끝(sceneC, 기본 출구 없음 = 진행)에서 합류선이 레인 끝으로 나간다.
+        Assert.Contains(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
+            line => Math.Abs(line.StartPoint.X - (960 + 210 + 6)) < 0.5);
+
+        // ⑤ (진행) 합류 (소유자 제안) — 척추 밖으로 확장한 웹의 노드 B: A의 갈래 출구로
+        // 이어지고 기본 출구는 비어 있다(= 진행). 그 출력도 레인 끝으로 이어져 보인다.
+        // (가짜 LineId 배선이라 이 뒤로는 편집기를 부르지 않는다 — 검증기가 막는다.)
         DialogueNode webB = session.Editor.AddDialogueNode(fileId, name: "곁가지B");
         webB.Layout.X = 950;
         webB.Layout.Y = 560;

@@ -464,7 +464,8 @@ public partial class GraphEditorView : UserControl
     /// <summary>
     /// 한 출발 카드의 줄기와 가지들 (T2). 가지 순서 = 간선 시트 순서, 그 뒤에 간선 없는
     /// 옵션(= 에피소드 종료)의 스텁. 칩이 배선 진입점이다 — 옵션 포트와 기본 출구는 카드에서
-    /// 여기로 이사했다. 배선된 자유 씬 체인이 있으면 가지가 체인을 경유해 그려진다(T-R6).
+    /// 여기로 이사했다. 배선된 자유 씬이 있으면 가지는 <b>첫 씬의 입구까지만</b> 댄다 —
+    /// 웹 속은 작가의 실행 배선이 유일한 선이고, 끝은 (진행) 합류선이 레인 끝으로 모은다.
     /// </summary>
     private void DrawRailsFrom(
         DialogueNode source,
@@ -677,13 +678,20 @@ public partial class GraphEditorView : UserControl
         _railVisuals.Add(chip);
         cursorX = trunkX + 14 + chip.DesiredSize.Width + 6;
 
-        // 배선된 자유 씬 체인을 경유한다 — 씬은 간선 위의 클립이다(T-R6, 조언 문서 §9).
-        if (port is not null)
+        // 배선된 자유 씬이 있으면 레일은 <b>첫 씬의 입구까지만</b> 댄다 (소유자 보고
+        // 2026-08-15 — 레일이 체인을 관통해 그리니 작가의 실행 배선과 평행으로 겹쳐
+        // 가독성이 나빴다). 웹 속의 유일한 선은 작가의 배선이고, 웹의 끝(기본 출구 없음
+        // = 진행)은 합류선이 레인 끝으로 모은다.
+        List<Rect> chain = port is null ? new List<Rect>() : ChainRects(port, nodeRects);
+        bool web = chain.Count > 0;
+
+        if (web)
         {
-            foreach (Rect clip in ChainRects(port, nodeRects))
-            {
-                (cursorX, y) = RouteInto(cursorX, y, clip);
-            }
+            (cursorX, y) = RouteInto(cursorX, y, chain[0]);
+
+            // 스텁이 서야 한다면 웹 전체의 오른쪽 밖이다 — 합류선이 웹 속으로 되돌아
+            // 들어오는 모양을 만들지 않는다.
+            cursorX = Math.Max(cursorX, WebRight(port!, nodeRects, cursorX) + 12);
         }
 
         Point laneEnd;
@@ -695,11 +703,14 @@ public partial class GraphEditorView : UserControl
             double junctionX = targetRect.X - 26;
             double junctionY = targetRect.Y + targetRect.Height / 2;
 
-            _railVisuals.Add(RailLine(cursorX, y, junctionX, y));
-
-            if (Math.Abs(junctionY - y) > 0.5)
+            if (!web)
             {
-                _railVisuals.Add(RailLine(junctionX, y, junctionX, junctionY));
+                _railVisuals.Add(RailLine(cursorX, y, junctionX, y));
+
+                if (Math.Abs(junctionY - y) > 0.5)
+                {
+                    _railVisuals.Add(RailLine(junctionX, y, junctionX, junctionY));
+                }
             }
 
             laneEnd = new Point(junctionX, junctionY);
@@ -758,22 +769,12 @@ public partial class GraphEditorView : UserControl
     }
 
     /// <summary>
-    /// 옵션 배선에서 닿는 자유 웹 전체(기본 출구 + 갈래 출구)를 걷고, 척추 밖의
-    /// (진행) 노드(기본 출구 없음)마다 레인 끝으로 합류선을 긋는다.
+    /// 옵션 배선에서 닿는 자유 웹 전체(기본 출구 + 갈래 출구)를 걷고, (진행) 노드
+    /// (기본 출구 없음)마다 레인 끝으로 합류선을 긋는다. 레일은 웹 속을 다시 긋지
+    /// 않으므로(입구만 댄다) 척추 끝도 여기서 레인 끝에 닿는다.
     /// </summary>
     private void DrawAdvanceReturns(ExitPort port, Point laneEnd, IReadOnlyDictionary<string, Rect> nodeRects)
     {
-        // 척추 — 이미 레인이 경유해 그렸다. 중복으로 긋지 않는다.
-        var spine = new HashSet<string>(StringComparer.Ordinal);
-        string? spineId = port.TargetNodeId;
-
-        while (spineId is not null && spine.Add(spineId) &&
-               _session!.Project.FindNode(spineId) is DialogueNode { ExcelEpisodeId: null } spineNode)
-        {
-            spineId = spineNode.DefaultExitTargetNodeId;
-        }
-
-        // 웹 전체 BFS — 갈래 출구까지.
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<string>();
 
@@ -801,7 +802,7 @@ public partial class GraphEditorView : UserControl
             {
                 queue.Enqueue(defaultNext);
             }
-            else if (!spine.Contains(id) && nodeRects.TryGetValue(id, out Rect rect))
+            else if (nodeRects.TryGetValue(id, out Rect rect))
             {
                 // (진행) — 오른쪽에서 나와 레인 끝으로 직교 합류.
                 double outX = rect.Right + 6;
@@ -815,6 +816,47 @@ public partial class GraphEditorView : UserControl
                 }
             }
         }
+    }
+
+    /// <summary>옵션 배선에서 닿는 자유 웹의 오른쪽 끝 X — 스텁을 웹 밖에 세우기 위한 값.</summary>
+    private double WebRight(ExitPort port, IReadOnlyDictionary<string, Rect> nodeRects, double fallback)
+    {
+        double right = fallback;
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>();
+
+        if (port.TargetNodeId is { } first)
+        {
+            queue.Enqueue(first);
+        }
+
+        while (queue.Count > 0)
+        {
+            string id = queue.Dequeue();
+
+            if (!visited.Add(id) ||
+                _session!.Project.FindNode(id) is not DialogueNode { ExcelEpisodeId: null } node)
+            {
+                continue;
+            }
+
+            if (nodeRects.TryGetValue(id, out Rect rect))
+            {
+                right = Math.Max(right, rect.Right);
+            }
+
+            foreach (string next in node.BranchExits.Values)
+            {
+                queue.Enqueue(next);
+            }
+
+            if (node.DefaultExitTargetNodeId is { } defaultNext)
+            {
+                queue.Enqueue(defaultNext);
+            }
+        }
+
+        return right;
     }
 
     /// <summary>배선된 자유 씬 체인 — 첫 배선에서 출발해 기본 출구를 따라간다. 자유 노드만 잇는다.</summary>
