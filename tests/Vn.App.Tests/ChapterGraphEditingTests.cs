@@ -18,35 +18,34 @@ public sealed class ChapterGraphEditingTests
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
     [Fact]
-    public void 조건_콤보를_고르면_바로_엑셀_셀에_저장된다() => HeadlessUi.Run(() =>
+    public void 길의_관문_콤보가_엑셀_셀로_왕복한다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-16 소유자 — [적용] 단추 폐지. 표시·해금 콤보를 고르는 순간 그 셀이 써진다.
-        // 제목·엔딩키·메모 칸은 뺐다(그 값들은 엑셀에서). 기본은 읽기 전용이라 체크를 먼저 푼다.
+        // v8 (2026-08-16 소유자) — "보일지 말지는 이제 간선이 정한다". 표시·해금조건이
+        // 에피소드에서 길(간선)로 옮겨 왔고, 편집도 간선 패널에서 한다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
         view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
+        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
+        // 견본의 이 길에는 해금조건 '신뢰높음'이 걸려 있다.
+        Assert.Equal("신뢰높음", view.FindControl<ComboBox>("EdgeConditionCombo")!.SelectedItem);
+
+        view.FindControl<ComboBox>("EdgeVisibleCombo")!.SelectedItem = "지쳐있음";
+        view.ApplyEdgeFromPanel();
+
+        ChapterEdge reread = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(edge =>
+            edge.FromEpisodeId == "main05.02" && edge.ToEpisodeId == "branch05.02A");
+
+        Assert.Equal("지쳐있음", reread.VisibleConditionLabel);
+        Assert.Equal("신뢰높음", reread.ConditionLabel); // 안 바꾼 값은 그대로
+
+        // 에피소드 패널은 읽기 전용 정보만 남는다.
         view.SelectEpisode("branch05.02A");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("branch05.02A", view.FindControl<TextBox>("IdBox")!.Text);
-
-        // 선택하면 현재 값이 채워진다 — 해금조건 콤보에 이 노드의 신뢰높음이 골라져 있다.
-        Assert.Equal("신뢰높음", view.FindControl<ComboBox>("UnlockCombo")!.SelectedItem);
-
-        // 콤보를 고르는 것만으로 저장된다 — 단추가 없다.
-        view.FindControl<ComboBox>("VisibleCombo")!.SelectedItem = "지쳐있음";
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
-        ChapterEpisode episode = reread.FindEpisode("branch05.02A")!;
-
-        Assert.Equal("지쳐있음", episode.VisibleConditionLabel);
-        Assert.Equal("신뢰높음", episode.UnlockConditionLabel); // 안 바꾼 값은 그대로
-
-        // 편집 칸이 없는 값은 여전히 읽기 전용으로 보인다.
         Assert.Contains("대사엔트리", view.FindControl<TextBlock>("EpisodeFactsText")!.Text!);
     });
 

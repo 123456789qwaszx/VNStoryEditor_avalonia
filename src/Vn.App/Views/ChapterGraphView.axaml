@@ -138,7 +138,7 @@
                                   VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="10" Spacing="6">
                     <TextBlock x:Name="NoSelectionText"
-                               Text="노드 클릭 = 선택 · 더블클릭 = 대본 엑셀 열기&#x0A;선택한 뒤 [＋ 에피소드] = 다음 에피소드로 잇기&#x0A;간선(선·라벨) 클릭 = 조건·해금 편집"
+                               Text="노드 클릭 = 선택 · 더블클릭 = 대본 엑셀 열기&#x0A;선택한 뒤 [＋ 에피소드] = 다음 에피소드로 잇기&#x0A;선(길) 클릭 = 표시·해금조건과 스탯변화 편집"
                                FontSize="11"
                                Opacity="0.55"
                                TextWrapping="Wrap" />
@@ -151,12 +151,10 @@
                         <TextBox x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId"
                                  ToolTip.Tip="이름을 고치고 Enter를 누르면 개명됩니다 — 간선·픽스처·대본 파일·대사 노드가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
 
-                        <TextBlock Text="표시조건 — 목록에 보이려면" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
-                        <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="고르면 바로 엑셀 셀에 저장됩니다." />
-                        <TextBlock Text="해금조건 — 고를 수 있으려면" FontSize="10" Opacity="0.6" />
-                        <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="고르면 바로 엑셀 셀에 저장됩니다." />
+                        <!-- 표시·해금조건은 v8에서 간선으로 옮겨 갔다 ("보일지 말지는 길이 정한다").
+                             컨트롤은 남기되 감춘다 — 후속 정리·테스트가 참조한다. -->
+                        <ComboBox x:Name="VisibleCombo" IsVisible="False" />
+                        <ComboBox x:Name="UnlockCombo" IsVisible="False" />
 
                         <!-- 읽기 전용 값(대사엔트리·종류 등) — 고치는 곳은 엑셀. -->
                         <TextBlock x:Name="EpisodeFactsText"
@@ -197,22 +195,28 @@
                                 ToolTip.Tip="행과 그 간선·픽스처 참조를 함께 지웁니다. 에피소드 엑셀 파일은 지우지 않습니다." />
                     </StackPanel>
 
-                    <!-- 간선 편집 — 그래프에서 간선을 클릭하면 여기가 열린다. 선택지형 VN의
-                         "이 분기는 언제 보이고 언제 열리는가"를 여기서 정한다. -->
+                    <!-- 길(간선) 편집 — 그래프에서 선을 클릭하면 여기가 열린다. 선택지형 VN의
+                         "이 선택지는 언제 보이고 언제 열리는가"를 여기서 정한다. -->
                     <StackPanel x:Name="EdgePanel" Spacing="6" IsVisible="False">
-                        <TextBlock Text="간선" FontWeight="SemiBold" FontSize="12" />
+                        <TextBlock Text="선택지가 가는 길" FontWeight="SemiBold" FontSize="12" />
                         <!-- 양 끝 에피소드는 누를 수 있다 — 간선을 보다가 "저 에피소드 이름을
                              고쳐야겠다"가 되는 흐름이 실제 저작의 대부분이다. -->
                         <StackPanel x:Name="EdgeFromToPanel" Orientation="Horizontal" Spacing="4" />
 
-                        <TextBlock Text="선택지수 — 이 간선의 선택지 칸 수" FontSize="10" Opacity="0.6" />
+                        <TextBlock Text="선택지 — 이 길이 짝한 칸" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeLabelEditBox" FontSize="11" HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="늘리면 선택지 시트에 칸이 함께 섭니다. 문구는 그 칸의 대본 text에서 자유 수정 — 빈 대본은 보이지 않는 기본(조건 없는 간선과 짝, 에피소드당 하나)입니다." />
+                                  IsEnabled="False"
+                                  ToolTip.Tip="이 길과 짝한 선택지 칸(인덱스 · 대본)입니다. 문구는 챕터 엑셀 `선택지` 시트의 대본 칸에서 고칩니다 — 빈 대본은 보이지 않는 기본(조건 없는 길과 짝, 에피소드당 하나)입니다." />
 
-                        <TextBlock Text="조건 — 이 분기를 고를 수 있으려면" FontSize="10" Opacity="0.6" />
-                        <ComboBox x:Name="EdgeConditionCombo" FontSize="11" HorizontalAlignment="Stretch" />
+                        <TextBlock Text="표시조건 — 이 선택지가 보이려면" FontSize="10" Opacity="0.6" />
+                        <ComboBox x:Name="EdgeVisibleCombo" FontSize="11" HorizontalAlignment="Stretch"
+                                  ToolTip.Tip="미달이면 선택지가 목록에 아예 안 뜹니다. 비우면 언제나 보입니다." />
 
-                        <CheckBox x:Name="EdgeHideCheck" Content="잠기면 숨김" FontSize="11"
+                        <TextBlock Text="해금조건 — 보이지만 고를 수 있으려면" FontSize="10" Opacity="0.6" />
+                        <ComboBox x:Name="EdgeConditionCombo" FontSize="11" HorizontalAlignment="Stretch"
+                                  ToolTip.Tip="미달이면 잠긴 채 보이고 아래 안내문이 뜹니다(잠기면 숨김을 켜면 숨습니다)." />
+
+                        <CheckBox x:Name="EdgeHideCheck" Content="해금 미달이면 숨김" FontSize="11"
                                   ToolTip.Tip="켜면 조건 미달일 때 선택지 자체가 안 보입니다. 끄면 잠긴 채 보이고 아래 안내문이 뜹니다." />
                         <TextBox x:Name="EdgeLockedMsgBox" FontSize="11"
                                  PlaceholderText="잠금 안내문 — 잠긴 채 보일 때 (예: 신뢰가 부족하다)" />
@@ -224,7 +228,8 @@
                                  ToolTip.Tip="에피소드 사이를 건너는 순간 1회 반영됩니다. 스탯 시트에 있는 키만 쓸 수 있고, 도달성 증명이 이 값 그대로 전이합니다." />
 
                         <Button x:Name="EdgeApplyButton" Content="적용" HorizontalAlignment="Stretch" />
-                        <Button x:Name="EdgeDeleteButton" Content="간선 삭제" HorizontalAlignment="Stretch" />
+                        <Button x:Name="EdgeDeleteButton" Content="이 길 끊기" HorizontalAlignment="Stretch"
+                                ToolTip.Tip="간선 행을 지웁니다. 선택지 칸은 남습니다 — 다시 도착을 고르면 그 칸을 씁니다." />
                     </StackPanel>
                         </StackPanel>
                     </ScrollViewer>

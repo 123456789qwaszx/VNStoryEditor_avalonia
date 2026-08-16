@@ -68,14 +68,13 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.Equal(1, options.GetArrayLength());
         Assert.Equal("main05.03", options[0].GetProperty("TargetEpisodeId").GetString());
 
-        // 부착 노드는 Kind가 Attachment이고, 조건이 EpisodeCleared/Exists로 번역된다.
+        // 부착 노드는 Kind가 Attachment이다. v8에서 관문이 길(간선)로 내려가면서 노드의
+        // VisibleConditions/UnlockConditions는 비어 나간다 — ⚠ 간선이 없는 부착의 표시
+        // 제어는 아직 갈 곳이 없다(열린 항목: run-log 2026-08-16 v8).
         JsonElement attachment = nodes.EnumerateArray()
             .Single(node => node.GetProperty("EpisodeId").GetString() == "attach05.02s");
         Assert.Equal("Attachment", attachment.GetProperty("Kind").GetString());
-        JsonElement visible = attachment.GetProperty("VisibleConditions")[0];
-        Assert.Equal("EpisodeCleared", visible.GetProperty("Kind").GetString());
-        Assert.Equal("main05.02", visible.GetProperty("Key").GetString());
-        Assert.Equal("Exists", visible.GetProperty("Op").GetString());
+        Assert.Equal(0, attachment.GetProperty("VisibleConditions").GetArrayLength());
 
         // 엔딩 후보.
         JsonElement ending = nodes.EnumerateArray()

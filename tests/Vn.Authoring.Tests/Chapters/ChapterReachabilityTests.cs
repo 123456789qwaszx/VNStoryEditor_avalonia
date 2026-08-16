@@ -68,9 +68,9 @@ public sealed class ChapterReachabilityTests
             [
                 Episode("ep1", row: 2),
                 Episode("곁길", row: 3),
-                Episode("ep2", row: 4, unlock: "신뢰높음")
+                Episode("ep2", row: 4)
             ],
-            edges: [("ep1", "곁길", null, 1), ("ep1", "ep2", null, 0)],
+            edges: [("ep1", "곁길", null, 1), ("ep1", "ep2", "신뢰높음", 0)],
             conditions: [("신뢰높음", "trust >= 3")]);
 
         ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
@@ -93,9 +93,9 @@ public sealed class ChapterReachabilityTests
             [
                 Episode("ep1", row: 2),
                 Episode("ep2", row: 3),
-                Episode("ep3", row: 4, unlock: "신뢰높음")
+                Episode("ep3", row: 4)
             ],
-            edges: [("ep1", "ep2", null, 1), ("ep2", "ep1", null, 1), ("ep2", "ep3", null, 0)],
+            edges: [("ep1", "ep2", null, 1), ("ep2", "ep1", null, 1), ("ep2", "ep3", "신뢰높음", 0)],
             conditions: [("신뢰높음", "trust >= 3")]);
 
         ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
@@ -111,10 +111,10 @@ public sealed class ChapterReachabilityTests
             episodes:
             [
                 Episode("ep1", row: 2),
-                Episode("ep2", row: 3, unlock: "관문"),
-                Episode("ep3", row: 4, unlock: "완료조건")
+                Episode("ep2", row: 3),
+                Episode("ep3", row: 4)
             ],
-            edges: [("ep1", "ep2", null, 0), ("ep1", "ep3", null, 0)],
+            edges: [("ep1", "ep2", "관문", 0), ("ep1", "ep3", "완료조건", 0)],
             conditions: [("관문", "trust >= 5"), ("완료조건", "cleared:ep2")]);
 
         ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
@@ -172,9 +172,9 @@ public sealed class ChapterReachabilityTests
             episodes:
             [
                 Episode("ep1", row: 2),
-                Episode("ep2", row: 3, unlock: "신뢰높음")
+                Episode("ep2", row: 3)
             ],
-            edges: [("ep1", "ep1", null, 1), ("ep1", "ep2", null, 0)],
+            edges: [("ep1", "ep1", null, 1), ("ep1", "ep2", "신뢰높음", 0)],
             conditions: [("신뢰높음", "trust >= 3")],
             statMaximum: 2);
 
@@ -186,9 +186,9 @@ public sealed class ChapterReachabilityTests
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 
-    private static ChapterEpisode Episode(
-        string id, int row, string? unlock = null, bool allowUnreachable = false) =>
-        new(id, id, "01", "Main", $"Story_{id}", 0, 0, null, unlock, null, null, row, allowUnreachable);
+    /// <summary>v8 — 관문은 에피소드가 아니라 들어오는 길이 갖는다(간선 조건으로 준다).</summary>
+    private static ChapterEpisode Episode(string id, int row, bool allowUnreachable = false) =>
+        new(id, id, "01", "Main", $"Story_{id}", 0, 0, null, null, row, allowUnreachable);
 
     /// <param name="edges">TrustDelta — 그 간선을 타는 순간 커밋되는 trust 증감 (2026-08-14 규칙).</param>
     private static ChapterGraphModel Chapter(

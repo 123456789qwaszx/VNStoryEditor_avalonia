@@ -39,7 +39,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             IXLWorksheet episodes = workbook.AddWorksheet("에피소드");
             Header(episodes,
                 "EpisodeId", "제목", "종류", "대사엔트리",
-                "X", "Y", "표시조건", "해금조건", "엔딩키", "메모");
+                "X", "Y", "엔딩키", "메모");
 
             episodes.Cell(2, 1).SetValue("ep1");
             episodes.Cell(2, 2).SetValue("첫 화");
@@ -56,10 +56,10 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             episodes.Cell(3, 6).SetValue(170);
 
             IXLWorksheet edges = workbook.AddWorksheet("간선");
-            Header(edges, "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문");
+            Header(edges, "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문");
             edges.Cell(2, 1).SetValue("ep1");
             edges.Cell(2, 2).SetValue("ep2");
-            edges.Cell(2, 6).SetValue(true);       // 불리언 — 문자열 "TRUE"가 아니다
+            edges.Cell(2, 7).SetValue(true);       // 불리언 — 문자열 "TRUE"가 아니다 (v8: 잠금시 숨김 = G)
 
             IXLWorksheet conditions = workbook.AddWorksheet("조건");
             Header(conditions, "라벨", "스탯", "연산자", "값", "설명");
@@ -120,13 +120,13 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
         string path = Path.Combine(_directory, "shared.xlsx");
         XlsxTestWorkbook.Write(_directory, "shared.xlsx",
             ("에피소드", [
-                ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"],
+                ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"],
                 ["ep1", "Main", "Main", "Story_ep1", "0", "0", null, null, null, "Main"],
                 ["ep2", "Main", "Main", "Story_ep2", "200", "0", null, null, null, "Main"]
             ]),
             ("간선", [
-                ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"],
-                ["ep1", "ep2", null, null, null, "FALSE", null]
+                ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"],
+                ["ep1", "ep2", null, null, null, null, "FALSE", null]
             ]),
             ("조건", [
                 ["라벨", "스탯", "연산자", "값", "설명"],
@@ -160,14 +160,14 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             IXLWorksheet episodes = workbook.AddWorksheet("에피소드");
             Header(episodes,
                 "EpisodeId", "제목", "종류", "대사엔트리",
-                "X", "Y", "표시조건", "해금조건", "엔딩키", "메모");
+                "X", "Y", "엔딩키", "메모");
             episodes.Cell(2, 1).SetValue("ep1");
             episodes.Cell(2, 4).SetValue("Story_ep1");
             // 결과를 캐시하지 않은 수식 — 파일 안에서는 빈 칸이다.
             episodes.Cell(2, 2).FormulaA1 = "=\"제\" & \"목\"";
 
             Header(workbook.AddWorksheet("간선"),
-                "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문");
+                "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문");
             Header(workbook.AddWorksheet("조건"), "라벨", "스탯", "연산자", "값", "설명");
 
             IXLWorksheet stats = workbook.AddWorksheet("스탯");

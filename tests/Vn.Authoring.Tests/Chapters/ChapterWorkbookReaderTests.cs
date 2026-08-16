@@ -88,10 +88,13 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         Assert.True(model.FindEpisode("main05.end")!.IsEnding);
         Assert.Equal("ch05_normal", model.FindEpisode("main05.end")!.EndingKey);
 
-        Assert.True(model.FindEpisode("branch05.02A")!.HasGate);
-        Assert.Equal("신뢰높음", model.FindEpisode("branch05.02A")!.UnlockConditionLabel);
-        Assert.Equal("복도완료", model.FindEpisode("attach05.02s")!.VisibleConditionLabel);
-        Assert.False(model.FindEpisode("main05.01")!.HasGate);
+        // v8 — 관문은 그 에피소드로 들어오는 길이 갖는다.
+        ChapterEdge gated = model.Edges.Single(edge => edge.ToEpisodeId == "branch05.02A");
+        Assert.True(gated.HasGate);
+        Assert.Equal("신뢰높음", gated.ConditionLabel);
+
+        Assert.All(model.Edges.Where(edge => edge.ToEpisodeId == "main05.02"),
+            edge => Assert.False(edge.HasGate));
     }
 
     [Fact]
@@ -220,14 +223,15 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     [Fact]
     public void 미정의_조건_라벨이_오류로_잡힌다()
     {
+        // v8 — 관문은 간선의 것이다: 표시조건(E)·해금조건(F).
         var sheets = Baseline();
-        sheets[0].Rows[2][7] = "없는라벨";
+        sheets[1].Rows[1][5] = "없는라벨";
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.ConditionLabelUndefined);
 
-        Assert.Equal("에피소드", problem.Sheet);
-        Assert.Equal(3, problem.Row);
-        Assert.Equal("H", problem.Column);
+        Assert.Equal("간선", problem.Sheet);
+        Assert.Equal(2, problem.Row);
+        Assert.Equal("F", problem.Column);
         Assert.Contains("없는라벨", problem.Message);
     }
 
@@ -353,13 +357,13 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     private static (string Name, string?[][] Rows)[] Baseline() =>
     [
         ("에피소드", [
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"],
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"],
             ["ep1", "첫 화", "Main", "Story_ep1", "0", "0", null, null, null, null],
             ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null, null]
         ]),
         ("간선", [
-            ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"],
-            ["ep1", "ep2", null, null, null, "FALSE", null]
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"],
+            ["ep1", "ep2", null, null, null, null, "FALSE", null]
         ]),
         ("조건", [
             ["라벨", "스탯", "연산자", "값", "설명"],

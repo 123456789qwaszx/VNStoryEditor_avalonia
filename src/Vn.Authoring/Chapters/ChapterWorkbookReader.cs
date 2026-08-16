@@ -29,11 +29,13 @@ public static class ChapterWorkbookReader
     // 2026-08-16 소유자 개정 — 인덱스 열 폐지(안 쓰임), 간선의 스탯변화가 C열로,
     // `선택지 라벨`은 `선택지`로, 조건식은 스탯·연산자·값 세 칸으로, 스탯에 타입(선택 꼬리).
     // 구판 파일은 ChapterWorkbookMigrator가 이 모양으로 이행한다.
+    // v8 (2026-08-16 소유자) — 표시·해금조건이 에피소드에서 간선으로 옮겨 왔다:
+    // "보일지 말지는 이제 간선이 정한다".
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모", "선택지수"];
+        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모", "선택지수"];
 
     private static readonly string[] EdgeHeaders =
-        ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"];
+        ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"];
 
     private static readonly string[] ConditionHeaders = ["라벨", "스탯", "연산자", "값", "설명"];
 
@@ -200,16 +202,10 @@ public static class ChapterWorkbookReader
             double x = Number(sheet, row, 5, path, episodeId, diagnostics);
             double y = Number(sheet, row, 6, path, episodeId, diagnostics);
 
-            string? visible = Optional(sheet, row, 7);
-            string? unlock = Optional(sheet, row, 8);
-
-            RequireConditionLabel(visible, conditionLabels, path, sheet.Name, row, 7, "표시조건", diagnostics);
-            RequireConditionLabel(unlock, conditionLabels, path, sheet.Name, row, 8, "해금조건", diagnostics);
-
-            // 선택지수 (K열, v7 — 선택) — 이 에피소드의 Option 칸 수. 비면 1이다.
+            // 선택지수 (I열, v8에서 자리 이동 — 선택) — 이 에피소드의 Option 칸 수. 비면 1이다.
             string choiceCountText =
-                string.Equals(Text(sheet, HeaderRow, 11), "선택지수", StringComparison.Ordinal)
-                    ? Text(sheet, row, 11)
+                string.Equals(Text(sheet, HeaderRow, 9), "선택지수", StringComparison.Ordinal)
+                    ? Text(sheet, row, 9)
                     : string.Empty;
             int choiceCount = 1;
 
@@ -220,15 +216,23 @@ public static class ChapterWorkbookReader
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.StatValueNotInteger,
-                    path, sheet.Name, row, 11,
+                    path, sheet.Name, row, 9,
                     $"선택지수 '{choiceCountText}'을 1 이상의 정수로 읽지 못해 1로 봅니다."));
                 choiceCount = 1;
             }
 
-            // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리(K 또는 L)를 읽는다.
-            int allowColumn =
-                string.Equals(Text(sheet, HeaderRow, 12), "도달불가 허용", StringComparison.Ordinal) ? 12 :
-                string.Equals(Text(sheet, HeaderRow, 11), "도달불가 허용", StringComparison.Ordinal) ? 11 : 0;
+            // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
+            int allowColumn = 0;
+
+            for (int column = 9; column <= 12; column++)
+            {
+                if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
+                {
+                    allowColumn = column;
+                    break;
+                }
+            }
+
             bool allowUnreachable = allowColumn > 0 && Boolean(sheet, row, allowColumn, path, diagnostics);
 
             episodes.Add(new ChapterEpisode(
@@ -239,10 +243,8 @@ public static class ChapterWorkbookReader
                 dialogueEntry,
                 x,
                 y,
-                visible,
-                unlock,
-                Optional(sheet, row, 9),
-                Optional(sheet, row, 10),
+                Optional(sheet, row, 7),
+                Optional(sheet, row, 8),
                 row,
                 allowUnreachable)
             {
@@ -293,8 +295,11 @@ public static class ChapterWorkbookReader
             RequireEpisode(from, episodeIds, path, sheet.Name, row, 1, "출발", diagnostics);
             RequireEpisode(to, episodeIds, path, sheet.Name, row, 2, "도착", diagnostics);
 
-            string? conditionLabel = Optional(sheet, row, 5);
-            RequireConditionLabel(conditionLabel, conditionLabels, path, sheet.Name, row, 5, "조건", diagnostics);
+            // 관문 둘 (v8) — 표시조건(E): 목록에 보이려면, 해금조건(F): 고를 수 있으려면.
+            string? visibleLabel = Optional(sheet, row, 5);
+            string? conditionLabel = Optional(sheet, row, 6);
+            RequireConditionLabel(visibleLabel, conditionLabels, path, sheet.Name, row, 5, "표시조건", diagnostics);
+            RequireConditionLabel(conditionLabel, conditionLabels, path, sheet.Name, row, 6, "해금조건", diagnostics);
 
             // 스탯변화 (C열 — 2026-08-16 소유자 개정으로 앞당김) — 이 간선을 타는 순간 1회
             // 커밋. 스탯이 변하는 유일한 자리라, 미등록 키·정수 아님은 여기서 바로 오류다.
@@ -331,12 +336,13 @@ public static class ChapterWorkbookReader
                 to,
                 derivedLabel,
                 conditionLabel,
-                Boolean(sheet, row, 6, path, diagnostics),
-                Optional(sheet, row, 7),
+                Boolean(sheet, row, 7, path, diagnostics),
+                Optional(sheet, row, 8),
                 row)
             {
                 StatChanges = deltas.Deltas,
-                ChoiceIndex = choiceIndex
+                ChoiceIndex = choiceIndex,
+                VisibleConditionLabel = visibleLabel
             });
         }
 

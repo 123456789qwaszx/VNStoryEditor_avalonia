@@ -142,8 +142,7 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
             }
         };
-        VisibleCombo.SelectionChanged += (_, _) => AutoSaveGates();
-        UnlockCombo.SelectionChanged += (_, _) => AutoSaveGates();
+        // 관문은 v8에서 간선으로 옮겨 갔다 — 에피소드 콤보는 감춰져 있고 저장도 안 한다.
         AddNextEdgeButton.Click += (_, _) => UiGuard.Run(_session, "선택지 칸 추가", AddChoiceSlotFromPanel);
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
@@ -1073,10 +1072,11 @@ public partial class ChapterGraphView : UserControl
             header.Children.Add(root);
         }
 
-        if (episode.HasGate)
+        // 관문은 v8에서 길(간선)의 것이 됐다 — 카드는 "들어오는 길에 관문이 있다"를 표시한다.
+        if (GatedIncoming(model, episode) is { Count: > 0 } gatedPaths)
         {
             var lockMark = new TextBlock { Text = "🔒", FontSize = 11 };
-            ToolTip.SetTip(lockMark, GateSummary(episode));
+            ToolTip.SetTip(lockMark, GateSummary(gatedPaths));
             header.Children.Add(lockMark);
         }
 
@@ -1139,9 +1139,9 @@ public partial class ChapterGraphView : UserControl
             Tag = episode.EpisodeId
         };
 
-        ToolTip.SetTip(card, Tooltip(episode));
+        ToolTip.SetTip(card, Tooltip(model, episode));
 
-        if (episode.HasGate)
+        if (GatedIncoming(model, episode).Count > 0)
         {
             card.BorderThickness = new Thickness(1.6);
             card.BorderBrush = new SolidColorBrush(Color.Parse("#C08A3E"));
@@ -1435,13 +1435,6 @@ public partial class ChapterGraphView : UserControl
             {
                 IdBox.Text = episode.EpisodeId;
             }
-
-            var gateLabels = new List<string> { "(없음)" };
-            gateLabels.AddRange(model.Conditions.Select(condition => condition.Label));
-            SetItems(VisibleCombo, gateLabels,
-                fill ? episode.VisibleConditionLabel ?? "(없음)" : VisibleCombo.SelectedItem as string);
-            SetItems(UnlockCombo, gateLabels,
-                fill ? episode.UnlockConditionLabel ?? "(없음)" : UnlockCombo.SelectedItem as string);
 
             // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
             // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
@@ -1884,6 +1877,9 @@ public partial class ChapterGraphView : UserControl
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
 
+        // 관문 둘 — v8에서 에피소드에서 여기로 옮겨 왔다.
+        SetItems(EdgeVisibleCombo, labels,
+            fill ? edge.VisibleConditionLabel ?? "(없음)" : EdgeVisibleCombo.SelectedItem as string);
         SetItems(EdgeConditionCombo, labels,
             fill ? edge.ConditionLabel ?? "(없음)" : EdgeConditionCombo.SelectedItem as string);
     }
@@ -1941,13 +1937,13 @@ public partial class ChapterGraphView : UserControl
             return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
         }
 
-        string? condition = EdgeConditionCombo.SelectedItem as string == "(없음)"
-            ? string.Empty
-            : EdgeConditionCombo.SelectedItem as string;
+        string? Gate(ComboBox combo) =>
+            combo.SelectedItem as string == "(없음)" ? string.Empty : combo.SelectedItem as string;
 
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
             path, key.From, key.To,
-            conditionLabel: Changed(condition, edge.ConditionLabel ?? string.Empty),
+            visibleConditionLabel: Changed(Gate(EdgeVisibleCombo), edge.VisibleConditionLabel ?? string.Empty),
+            conditionLabel: Changed(Gate(EdgeConditionCombo), edge.ConditionLabel ?? string.Empty),
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
             lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
             statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)),
@@ -1961,43 +1957,16 @@ public partial class ChapterGraphView : UserControl
         .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}"));
 
     /// <summary>
-    /// 에피소드 값 편집의 [적용] (2026-08-15 복원) — 바뀐 필드만 챕터 시트의 그 셀에 쓴다
-    /// (G-2 v2 셀 단위 외과수술). 원본은 계속 엑셀이고, 저장 감시가 다시 읽어 화면이 따라온다.
+    /// 에피소드 값 저장 — 지금 이 패널에서 툴이 쓰는 값은 없다. 제목·엔딩키·메모는 칸을
+    /// 뺐고(2026-08-16), 표시·해금조건은 v8에서 길(간선)로 옮겨 갔다. 개명은 Enter가,
+    /// 선택지 칸은 목록이 맡는다. 라이터 경로는 살아 있으므로 필요하면 여기로 되돌아온다.
     /// </summary>
     internal void ApplyEpisodeFromPanel()
     {
-        if (_selectedEpisodeId is not { } episodeId || SelectedChapterPath is not { } path ||
-            SelectedModel?.FindEpisode(episodeId) is not { } episode)
+        if (_selectedEpisodeId is null || SelectedChapterPath is null)
         {
             _session?.SetStatus("에피소드를 다시 골라 주세요. 선택이 풀렸거나 그 에피소드가 사라졌습니다.");
-            return;
         }
-
-        // 제목·엔딩키·메모 칸은 폐지됐다 (2026-08-16 소유자) — 그 값들은 엑셀에서.
-        // 남은 것은 표시·해금 콤보 둘이고, 고르는 순간 여기로 와서 바뀐 셀만 쓴다.
-        string? Gate(ComboBox combo, string? current)
-        {
-            string? picked = combo.SelectedItem as string == "(없음)"
-                ? string.Empty
-                : combo.SelectedItem as string;
-            string value = picked?.Trim() ?? string.Empty;
-            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
-        }
-
-        string? visible = Gate(VisibleCombo, episode.VisibleConditionLabel);
-        string? unlock = Gate(UnlockCombo, episode.UnlockConditionLabel);
-
-        if (visible is null && unlock is null)
-        {
-            return; // 바뀐 것이 없다 — 파일을 건드리지 않는다.
-        }
-
-        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
-            path, episodeId,
-            visibleConditionLabel: visible,
-            unlockConditionLabel: unlock);
-
-        Report(result, $"에피소드 {episodeId}의 조건을 저장했습니다.");
     }
 
     internal void DeleteSelectedEdge()
@@ -2268,25 +2237,37 @@ public partial class ChapterGraphView : UserControl
         $"{edge.FromEpisodeId}→{edge.ToEpisodeId}" +
         (edge.IsPlainAdvance ? string.Empty : $" [{edge.OptionLabel}]");
 
-    private static string GateSummary(ChapterEpisode episode) => string.Join(" · ", new[]
-    {
-        episode.VisibleConditionLabel is null ? null : $"표시: {episode.VisibleConditionLabel}",
-        episode.UnlockConditionLabel is null ? null : $"해금: {episode.UnlockConditionLabel}"
-    }.Where(part => part is not null));
+    /// <summary>그 에피소드로 들어오는 길 가운데 관문이 걸린 것들 (v8 — 관문은 길의 것).</summary>
+    private static List<ChapterEdge> GatedIncoming(ChapterGraphModel model, ChapterEpisode episode) =>
+        model.Edges
+            .Where(edge =>
+                string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
+                edge.HasGate)
+            .ToList();
 
-    private static string Tooltip(ChapterEpisode episode)
+    private static string GateSummary(IReadOnlyList<ChapterEdge> gated) => string.Join("\n",
+        gated.Select(edge => string.Join(" · ", new[]
+        {
+            $"{edge.FromEpisodeId} →",
+            edge.VisibleConditionLabel is null ? null : $"표시: {edge.VisibleConditionLabel}",
+            edge.ConditionLabel is null ? null : $"해금: {edge.ConditionLabel}"
+        }.Where(part => part is not null))));
+
+    private static string Tooltip(ChapterGraphModel model, ChapterEpisode episode)
     {
         var lines = new List<string>
         {
             $"{episode.EpisodeId} ({episode.SourceRow}행)",
             $"대사엔트리: {episode.DialogueEntry}",
-            $"위치: X={episode.X:0.##} Y={episode.Y:0.##}"
+            $"위치: X={episode.X:0.##} Y={episode.Y:0.##}",
+            $"선택지 {episode.ChoiceCount}칸"
         };
 
-        string gate = GateSummary(episode);
+        string gate = GateSummary(GatedIncoming(model, episode));
 
         if (gate.Length > 0)
         {
+            lines.Add("들어오는 길의 관문 —");
             lines.Add(gate);
         }
 

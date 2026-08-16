@@ -19,8 +19,6 @@ public sealed record ChapterEpisode(
     string DialogueEntry,
     double X,
     double Y,
-    string? VisibleConditionLabel,
-    string? UnlockConditionLabel,
     string? EndingKey,
     string? Memo,
     int SourceRow,
@@ -34,19 +32,18 @@ public sealed record ChapterEpisode(
     public int ChoiceCount { get; init; } = 1;
 
     public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
-
-    /// <summary>표시·해금 중 하나라도 조건이 걸려 있으면 잠금 후보다.</summary>
-    public bool HasGate =>
-        !string.IsNullOrWhiteSpace(VisibleConditionLabel) ||
-        !string.IsNullOrWhiteSpace(UnlockConditionLabel);
 }
 
 /// <summary>
 /// `간선` 시트 한 행 = 다음 에피소드로 가는 길 하나. <b>간선 하나에 선택지 칸 하나가
 /// 1:1로 짝한다</b> (2026-08-16 v7) — `선택지` 열(D)이 짝 칸의 <b>인덱스</b>를 가리키고,
 /// <b>신원은 (출발, 선택지 인덱스)</b>다. 같은 도착으로 문구 여럿도 가능하다(인덱스가 다르니
-/// 다른 간선). 조건·잠금·스탯변화·도착은 전부 간선 소유.
+/// 다른 간선). 관문·잠금·스탯변화·도착은 전부 간선 소유.
 /// </summary>
+/// <param name="ConditionLabel">
+/// <b>해금조건</b> — 이 선택지를 고를 수 있으려면 (v8에서 열 이름이 `조건`→`해금조건`).
+/// 미달이면 잠긴 채 보이고, <see cref="HideWhenLocked"/>가 켜져 있으면 숨는다.
+/// </param>
 public sealed record ChapterEdge(
     string FromEpisodeId,
     string ToEpisodeId,
@@ -56,6 +53,18 @@ public sealed record ChapterEdge(
     string? LockedMessage,
     int SourceRow)
 {
+    /// <summary>
+    /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16 소유자: "보일지 말지는
+    /// 이제 간선이 정한다"). 에피소드 시트에 있던 관문 둘이 간선으로 옮겨 온 것이고, 비면
+    /// 언제나 보인다. 해금조건(<see cref="ConditionLabel"/>)과는 축이 다르다.
+    /// </summary>
+    public string? VisibleConditionLabel { get; init; }
+
+    /// <summary>표시·해금 중 하나라도 걸려 있으면 관문 있는 길이다 — 그래프가 색으로 알린다.</summary>
+    public bool HasGate =>
+        !string.IsNullOrWhiteSpace(VisibleConditionLabel) ||
+        !string.IsNullOrWhiteSpace(ConditionLabel);
+
     /// <summary>
     /// `선택지` 열 (D, v7) — 짝 칸의 인덱스. 비면 아직 칸과 짝하지 않은 구판·수기 행이다
     /// (검증이 짚는다).

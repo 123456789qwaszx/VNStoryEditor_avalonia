@@ -368,13 +368,11 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
 
         using var workbook = new XLWorkbook(Path.Combine(folder, "ch07.xlsx"));
 
-        IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
         IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
 
-        // 표시조건(G) · 해금조건(H) · 간선의 조건(E) — 2026-08-16 규격
-        AssertConditionList(episodes, 2, 7);
-        AssertConditionList(episodes, 2, 8);
+        // v8 — 관문은 간선이 갖는다: 표시조건(E) · 해금조건(F).
         AssertConditionList(edges, 2, 5);
+        AssertConditionList(edges, 2, 6);
     }
 
     private static void AssertConditionList(IXLWorksheet sheet, int row, int column)

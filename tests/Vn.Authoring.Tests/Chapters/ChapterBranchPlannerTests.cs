@@ -11,7 +11,6 @@ public sealed class ChapterBranchPlannerTests
 {
     private static ChapterEpisode Episode(string id, double x, double y) =>
         new(id, id, "10", "Main", $"Story_{id}", x, y,
-            VisibleConditionLabel: null, UnlockConditionLabel: null,
             EndingKey: null, Memo: null, SourceRow: 2, AllowUnreachable: false);
 
     private static ChapterEdge Edge(string from, string to) =>

@@ -51,10 +51,9 @@ public static class ChapterFixtureWalker
             List<ChapterEdge> passable = chapter.Edges
                 .Where(edge => string.Equals(edge.FromEpisodeId, current, StringComparison.Ordinal))
                 .Where(edge =>
-                    chapter.FindEpisode(edge.ToEpisodeId) is { } target &&
-                    Satisfied(chapter, edge.ConditionLabel, stats, cleared) &&
-                    Satisfied(chapter, target.VisibleConditionLabel, stats, cleared) &&
-                    Satisfied(chapter, target.UnlockConditionLabel, stats, cleared))
+                    chapter.FindEpisode(edge.ToEpisodeId) is not null &&
+                    Satisfied(chapter, edge.VisibleConditionLabel, stats, cleared) &&
+                    Satisfied(chapter, edge.ConditionLabel, stats, cleared))
                 .ToList();
 
             if (passable.Count == 0)

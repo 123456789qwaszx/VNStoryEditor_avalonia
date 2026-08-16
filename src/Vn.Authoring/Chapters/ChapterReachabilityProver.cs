@@ -119,9 +119,9 @@ public static class ChapterReachabilityProver
                 }
 
                 // 관문 판정은 커밋 전 값으로 — 플레이어가 선택지를 보는 시점의 값이다.
-                if (!Satisfied(chapter, edge.ConditionLabel, stats, clearedAssumption) ||
-                    !Satisfied(chapter, target.VisibleConditionLabel, stats, clearedAssumption) ||
-                    !Satisfied(chapter, target.UnlockConditionLabel, stats, clearedAssumption))
+                // 관문은 전부 간선이 갖는다 (v8) — 표시조건과 해금조건 둘 다 서야 탄다.
+                if (!Satisfied(chapter, edge.VisibleConditionLabel, stats, clearedAssumption) ||
+                    !Satisfied(chapter, edge.ConditionLabel, stats, clearedAssumption))
                 {
                     continue;
                 }
@@ -245,8 +245,17 @@ public static class ChapterReachabilityProver
                      string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase) &&
                      !reachable.Contains(episode.EpisodeId)))
         {
-            if (SatisfiableWithinEnvelope(chapter, episode.VisibleConditionLabel, reachable, maxSeen, minSeen) &&
-                SatisfiableWithinEnvelope(chapter, episode.UnlockConditionLabel, reachable, maxSeen, minSeen))
+            // v8 — 관문은 들어오는 길이 갖는다. 부착은 간선이 없을 수 있는데(사이드),
+            // 그때는 관문도 없으므로 겉둘레 안에서 언제나 성립한다.
+            List<ChapterEdge> incoming = chapter.Edges
+                .Where(edge => string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
+                .ToList();
+
+            bool satisfiable = incoming.Count == 0 || incoming.Any(edge =>
+                SatisfiableWithinEnvelope(chapter, edge.VisibleConditionLabel, reachable, maxSeen, minSeen) &&
+                SatisfiableWithinEnvelope(chapter, edge.ConditionLabel, reachable, maxSeen, minSeen));
+
+            if (satisfiable)
             {
                 reachable.Add(episode.EpisodeId);
             }
@@ -373,10 +382,9 @@ public static class ChapterReachabilityProver
                 "도달 불가입니다.";
         }
 
-        // 관문이 되는 조건들에서 만족 불가능한 항을 찾는다.
+        // 관문이 되는 조건들에서 만족 불가능한 항을 찾는다 (v8 — 전부 간선의 것).
         var labels = incoming.Select(edge => edge.ConditionLabel)
-            .Append(episode.VisibleConditionLabel)
-            .Append(episode.UnlockConditionLabel)
+            .Concat(incoming.Select(edge => edge.VisibleConditionLabel))
             .Where(label => !string.IsNullOrEmpty(label))
             .Distinct(StringComparer.Ordinal);
 

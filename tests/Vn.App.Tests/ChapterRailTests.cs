@@ -315,7 +315,7 @@ public sealed class ChapterRailTests
     {
         List<ChapterEpisode> episodeList = episodes
             .Select((id, index) => new ChapterEpisode(
-                id, id, "01", "Main", id, index * 100, 0, null, null, null, null, index + 2))
+                id, id, "01", "Main", id, index * 100, 0, null, null, index + 2))
             .ToList();
 
         List<ChapterEdge> edgeList = edges

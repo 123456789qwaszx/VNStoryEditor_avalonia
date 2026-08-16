@@ -57,7 +57,8 @@ public static class ChapterWorkbookMigrator
 
             MigrateEpisodes(workbook);
             MigrateEdges(workbook);
-            MigrateEdgeLabelsToChoiceSheet(workbook); // v6 — 선택지 문구 → 선택지 시트
+            MigrateEdgeLabelsToChoiceSheet(workbook); // v6·v7 — 선택지 문구 → 선택지 시트
+            MigrateGatesToEdges(workbook);            // v8 — 표시·해금조건 → 간선
             MigrateConditions(workbook);
             MigrateStats(workbook);
             RemoveEmptyFixtures(workbook);
@@ -88,7 +89,9 @@ public static class ChapterWorkbookMigrator
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
                 Find(workbook, ChapterSheetNames.Choices) is null) ||
                (Find(workbook, ChapterSheetNames.Episodes) is not null &&
-                Header(workbook, ChapterSheetNames.Episodes, 11) != "선택지수") ||
+                Header(workbook, ChapterSheetNames.Episodes, 9) != "선택지수") ||
+               Header(workbook, ChapterSheetNames.Episodes, 7) == "표시조건" ||  // v8 이전
+               Header(workbook, ChapterSheetNames.Edges, 5) == "조건" ||        // v8 이전
                Header(workbook, ChapterSheetNames.Conditions, 2) == "조건식" ||
                (Find(workbook, ChapterSheetNames.Stats) is not null &&
                 Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
@@ -212,15 +215,18 @@ public static class ChapterWorkbookMigrator
 
         edges.Cell(1, 4).SetValue("선택지");
 
-        // ── 에피소드의 선택지수(K) — 칸 수가 곧 선언값이다(최소 1).
-        if (Header(workbook, ChapterSheetNames.Episodes, 11) != "선택지수")
+        // ── 에피소드의 선택지수 — 칸 수가 곧 선언값이다(최소 1). 관문 열이 아직 있으면
+        //    (v8 이행 전) K, 이미 빠졌으면 I가 그 자리다.
+        int countColumn = Header(workbook, ChapterSheetNames.Episodes, 7) == "표시조건" ? 11 : 9;
+
+        if (Header(workbook, ChapterSheetNames.Episodes, countColumn) != "선택지수")
         {
-            if (Header(workbook, ChapterSheetNames.Episodes, 11) == "도달불가 허용")
+            if (Header(workbook, ChapterSheetNames.Episodes, countColumn) == "도달불가 허용")
             {
-                episodes.Column(11).InsertColumnsBefore(1);
+                episodes.Column(countColumn).InsertColumnsBefore(1);
             }
 
-            IXLCell header = episodes.Cell(1, 11);
+            IXLCell header = episodes.Cell(1, countColumn);
             header.SetValue("선택지수");
             header.Style.Font.SetBold(true);
             header.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
@@ -230,14 +236,14 @@ public static class ChapterWorkbookMigrator
         {
             string episodeId = row.Cell(1).GetString().Trim();
 
-            if (episodeId.Length == 0 || row.Cell(11).GetString().Trim().Length > 0)
+            if (episodeId.Length == 0 || row.Cell(countColumn).GetString().Trim().Length > 0)
             {
                 continue;
             }
 
             int slots = choices.RowsUsed().Skip(1).Count(slot =>
                 string.Equals(slot.Cell(1).GetString().Trim(), episodeId, StringComparison.Ordinal));
-            row.Cell(11).SetValue(Math.Max(1, slots));
+            row.Cell(countColumn).SetValue(Math.Max(1, slots));
         }
     }
 
@@ -284,6 +290,78 @@ public static class ChapterWorkbookMigrator
 
             sheet.Column(8).Delete();
         }
+    }
+
+    /// <summary>
+    /// v8 (2026-08-16 소유자) — "보일지 말지는 이제 간선이 정한다". 에피소드의 표시조건·
+    /// 해금조건을 <b>그 에피소드로 들어오는 간선들</b>에 옮기고, 에피소드에서는 두 열을 지운다.
+    /// 간선 쪽은 `조건`(해금)이 F로 밀리고 E가 표시조건이 된다.
+    ///
+    /// 간선에 이미 값이 있으면 그것을 남긴다(에피소드 값은 버려진다 — 원본은 .bak에 있다).
+    /// 여러 간선이 한 에피소드로 들어오면 <b>모두</b>가 같은 관문을 받는다 — 옛 의미
+    /// ("이 에피소드에 들어가려면")를 길 단위로 푼 것이다.
+    /// </summary>
+    private static void MigrateGatesToEdges(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Edges) is not { } edges ||
+            Find(workbook, ChapterSheetNames.Episodes) is not { } episodes)
+        {
+            return;
+        }
+
+        // ── 간선: `조건`(E) → 해금조건(F), E는 표시조건.
+        if (Header(workbook, ChapterSheetNames.Edges, 5) == "조건")
+        {
+            edges.Column(5).InsertColumnsBefore(1);
+            edges.Cell(1, 5).SetValue("표시조건");
+            edges.Cell(1, 6).SetValue("해금조건");
+        }
+
+        // ── 에피소드의 관문을 걷어 들어오는 간선에 나눠 준다.
+        bool episodeGates = Header(workbook, ChapterSheetNames.Episodes, 7) == "표시조건";
+
+        if (!episodeGates)
+        {
+            return;
+        }
+
+        var gates = new Dictionary<string, (string Visible, string Unlock)>(StringComparer.Ordinal);
+
+        foreach (IXLRow row in episodes.RowsUsed().Skip(1))
+        {
+            string episodeId = row.Cell(1).GetString().Trim();
+            string visible = row.Cell(7).GetString().Trim();
+            string unlock = row.Cell(8).GetString().Trim();
+
+            if (episodeId.Length > 0 && (visible.Length > 0 || unlock.Length > 0))
+            {
+                gates[episodeId] = (visible, unlock);
+            }
+        }
+
+        foreach (IXLRow row in edges.RowsUsed().Skip(1))
+        {
+            string to = row.Cell(2).GetString().Trim();
+
+            if (to.Length == 0 || !gates.TryGetValue(to, out (string Visible, string Unlock) gate))
+            {
+                continue;
+            }
+
+            if (gate.Visible.Length > 0 && row.Cell(5).GetString().Trim().Length == 0)
+            {
+                row.Cell(5).SetValue(gate.Visible);
+            }
+
+            if (gate.Unlock.Length > 0 && row.Cell(6).GetString().Trim().Length == 0)
+            {
+                row.Cell(6).SetValue(gate.Unlock);
+            }
+        }
+
+        // 에피소드에서 두 열을 지운다 — 관문의 주인이 하나여야 한다.
+        episodes.Column(7).Delete();
+        episodes.Column(7).Delete();
     }
 
     private static void MigrateConditions(XLWorkbook workbook)

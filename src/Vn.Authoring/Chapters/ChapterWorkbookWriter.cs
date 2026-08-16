@@ -55,24 +55,24 @@ public static class ChapterWorkbookWriter
             SetChoiceCount(sheet, row, 1); // 선택지수 기본 1 (v7)
         });
 
-    /// <summary>선택지수(K열, v7). 머리글이 없으면(구판) 처음 쓸 때 만든다.</summary>
+    /// <summary>선택지수(I열, v8에서 자리 이동). 머리글이 없으면(구판) 처음 쓸 때 만든다.</summary>
     private static void SetChoiceCount(IXLWorksheet episodes, int row, int count)
     {
-        if (!string.Equals(episodes.Cell(1, 11).GetString().Trim(), "선택지수", StringComparison.Ordinal))
+        if (!string.Equals(episodes.Cell(1, 9).GetString().Trim(), "선택지수", StringComparison.Ordinal))
         {
-            // `도달불가 허용`이 K에 있던 구판이면 한 칸 밀어 자리를 낸다.
-            if (string.Equals(episodes.Cell(1, 11).GetString().Trim(), "도달불가 허용", StringComparison.Ordinal))
+            // `도달불가 허용`이 그 자리에 있던 구판이면 한 칸 밀어 자리를 낸다.
+            if (string.Equals(episodes.Cell(1, 9).GetString().Trim(), "도달불가 허용", StringComparison.Ordinal))
             {
-                episodes.Column(11).InsertColumnsBefore(1);
+                episodes.Column(9).InsertColumnsBefore(1);
             }
 
-            IXLCell header = episodes.Cell(1, 11);
+            IXLCell header = episodes.Cell(1, 9);
             header.SetValue("선택지수");
             header.Style.Font.SetBold(true);
             header.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
         }
 
-        episodes.Cell(row, 11).SetValue(count);
+        episodes.Cell(row, 9).SetValue(count);
     }
 
     /// <summary>
@@ -119,15 +119,16 @@ public static class ChapterWorkbookWriter
         });
 
 
-    /// <summary>속성 패널의 [적용]. null이 아닌 필드만 그 셀에 쓴다.</summary>
+    /// <summary>
+    /// 속성 패널의 저장. null이 아닌 필드만 그 셀에 쓴다.
+    /// 표시·해금조건은 v8에서 간선으로 옮겨 갔다 — 여기 없다.
+    /// </summary>
     public static ChapterWriteResult UpdateEpisode(
         string path,
         string episodeId,
         string? title = null,
         string? kind = null,
         string? dialogueEntry = null,
-        string? visibleConditionLabel = null,
-        string? unlockConditionLabel = null,
         string? endingKey = null,
         string? memo = null,
         bool? allowUnreachable = null) =>
@@ -138,20 +139,18 @@ public static class ChapterWorkbookWriter
             Set(sheet, row, 2, title);
             Set(sheet, row, 3, kind);
             Set(sheet, row, 4, dialogueEntry);
-            Set(sheet, row, 7, visibleConditionLabel);
-            Set(sheet, row, 8, unlockConditionLabel);
-            Set(sheet, row, 9, endingKey);
-            Set(sheet, row, 10, memo);
+            Set(sheet, row, 7, endingKey);
+            Set(sheet, row, 8, memo);
 
             if (allowUnreachable is { } allowed)
             {
-                // `도달불가 허용`은 선택 열(K)이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
-                if (!string.Equals(sheet.Cell(1, 11).GetString(), "도달불가 허용", StringComparison.Ordinal))
+                // `도달불가 허용`은 선택 열(J)이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
+                if (!string.Equals(sheet.Cell(1, 10).GetString(), "도달불가 허용", StringComparison.Ordinal))
                 {
-                    sheet.Cell(1, 11).SetValue("도달불가 허용");
+                    sheet.Cell(1, 10).SetValue("도달불가 허용");
                 }
 
-                sheet.Cell(row, 11).SetValue(allowed ? "TRUE" : "FALSE");
+                sheet.Cell(row, 10).SetValue(allowed ? "TRUE" : "FALSE");
             }
         });
 
@@ -324,8 +323,8 @@ public static class ChapterWorkbookWriter
             edges.Cell(row, 1).SetValue(fromEpisodeId);
             edges.Cell(row, 2).SetValue(toEpisodeId);
             edges.Cell(row, 4).SetValue(int.TryParse(choiceIndex, out int numeric) ? numeric : 0);
-            Set(edges, row, 5, conditionLabel);
-            edges.Cell(row, 6).SetValue("FALSE");
+            Set(edges, row, 6, conditionLabel); // 해금조건 (v8 — E는 표시조건)
+            edges.Cell(row, 7).SetValue("FALSE");
         });
 
     /// <summary>그 선택지 칸이 향하는 도착을 바꾼다 — 칸(인덱스)은 그대로, 길만 옮긴다.</summary>
@@ -450,8 +449,8 @@ public static class ChapterWorkbookWriter
         edges.Cell(row, 1).SetValue(fromEpisodeId);
         edges.Cell(row, 2).SetValue(toEpisodeId);
         edges.Cell(row, 4).SetValue(index);
-        Set(edges, row, 5, conditionLabel);
-        edges.Cell(row, 6).SetValue("FALSE");
+        Set(edges, row, 6, conditionLabel); // 해금조건 (v8)
+        edges.Cell(row, 7).SetValue("FALSE");
     }
 
     /// <summary>간선 삭제 — 칸은 남는다(칸의 주인은 에피소드의 선택지수다). 다시 이으면 그 칸을 쓴다.</summary>
@@ -479,7 +478,7 @@ public static class ChapterWorkbookWriter
             (choiceIndex is null ||
              string.Equals(row.Cell(4).GetString().Trim(), choiceIndex.Trim(), StringComparison.Ordinal)));
 
-    /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다.</summary>
+    /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다 (관문 둘 포함 — v8).</summary>
     public static ChapterWriteResult UpdateEdge(
         string path,
         string fromEpisodeId,
@@ -488,7 +487,8 @@ public static class ChapterWorkbookWriter
         bool? hideWhenLocked = null,
         string? lockedMessage = null,
         string? statChanges = null,
-        string? matchChoiceIndex = null) =>
+        string? matchChoiceIndex = null,
+        string? visibleConditionLabel = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -496,14 +496,15 @@ public static class ChapterWorkbookWriter
             IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchChoiceIndex)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
-            Set(sheet, row.RowNumber(), 5, conditionLabel);
+            Set(sheet, row.RowNumber(), 5, visibleConditionLabel); // 표시조건
+            Set(sheet, row.RowNumber(), 6, conditionLabel);        // 해금조건
 
             if (hideWhenLocked is { } hide)
             {
-                sheet.Cell(row.RowNumber(), 6).SetValue(hide ? "TRUE" : "FALSE");
+                sheet.Cell(row.RowNumber(), 7).SetValue(hide ? "TRUE" : "FALSE");
             }
 
-            Set(sheet, row.RowNumber(), 7, lockedMessage);
+            Set(sheet, row.RowNumber(), 8, lockedMessage);
             Set(sheet, row.RowNumber(), 3, statChanges); // 스탯변화(C) — 문법 검사는 리더가 한다
         });
 
@@ -746,9 +747,9 @@ public static class ChapterWorkbookWriter
         // 픽스처 시트는 만들지 않는다 (2026-08-16 소유자 — 당장 안 쓰니 임시 제거.
         // 리더는 있으면 여전히 읽는다 — 되살릴 때 시트만 다시 만들면 된다).
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모", "선택지수"]);
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모", "선택지수"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
-            ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"]);
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
@@ -832,10 +833,10 @@ public static class ChapterWorkbookWriter
         IXLWorksheet statSheet,
         IXLWorksheet? choiceSheet = null)
     {
-        AddConditionDropdown(episodeSheet, 7);   // 표시조건
-        AddConditionDropdown(episodeSheet, 8);   // 해금조건
-        AddConditionDropdown(edgeSheet, 5);      // 간선의 조건
-        AddYesNoDropdown(edgeSheet, 6);          // 잠금시 숨김
+        // v8 — 관문은 간선의 것이다: 표시조건(E)·해금조건(F).
+        AddConditionDropdown(edgeSheet, 5);
+        AddConditionDropdown(edgeSheet, 6);
+        AddYesNoDropdown(edgeSheet, 7);          // 잠금시 숨김
 
         if (choiceSheet is not null)
         {

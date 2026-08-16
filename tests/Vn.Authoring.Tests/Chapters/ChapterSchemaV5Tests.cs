@@ -51,7 +51,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
         Assert.Equal("종류", episodes.Cell(1, 3).GetString());   // 인덱스가 없다
-        Assert.Equal("선택지수", episodes.Cell(1, 11).GetString()); // v7 — 칸 수는 에피소드가 정한다
+        Assert.Equal("선택지수", episodes.Cell(1, 9).GetString()); // v8 — 관문이 빠지며 자리 이동
 
         // 조건 시트 — 스탯은 스탯 시트를 가리키는 드롭다운, 연산자는 목록.
         IXLWorksheet conditions = workbook.Worksheet(ChapterSheetNames.Conditions);
@@ -89,8 +89,8 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         var edges = new List<string?[]>
         {
-            new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
-            new string?[] { "ep1", "ep2", null, null, null, "FALSE", null }
+            new string?[] { "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문" },
+            new string?[] { "ep1", "ep2", null, null, null, null, "FALSE", null }
         };
 
         if (edgeRows is not null)
@@ -102,7 +102,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         return XlsxTestWorkbook.Write(_directory, "structured.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모" },
+                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모" },
                 new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, null, null },
                 new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, null, null }
             }),
@@ -184,7 +184,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
                 ["trust", "신뢰", "0", "0", "10", null],
                 ["seen", "프롤로그", "FALSE", null, null, "bool"]
             ],
-            edgeRows: [["ep1", "ep2", "seen +1", null, null, "FALSE", null]]));
+            edgeRows: [["ep1", "ep2", "seen +1", null, null, null, "FALSE", null]]));
 
         Assert.Contains(model.Errors, item =>
             item.Sheet == ChapterSheetNames.Conditions && item.Message.Contains("bool 스탯"));
@@ -198,7 +198,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
     public void 간선의_스탯변화는_C열에서_읽힌다()
     {
         ChapterGraphModel model = ChapterWorkbookReader.Read(WriteChapter(
-            edgeRows: [["ep1", "ep2", "trust +2", "10", null, "FALSE", null]]));
+            edgeRows: [["ep1", "ep2", "trust +2", "10", null, null, "FALSE", null]]));
 
         Assert.False(model.HasErrors);
         ChapterEdge edge = Assert.Single(model.Edges);
@@ -271,15 +271,15 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         string path = XlsxTestWorkbook.Write(_directory, "v7.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모", "선택지수" },
-                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, null, null, "2" },
-                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, null, null, "1" }
+                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모", "선택지수" },
+                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, "2" },
+                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, "1" }
             }),
             ("간선", new[]
             {
-                new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
-                new string?[] { "ep1", "ep2", null, "10", null, "FALSE", null },
-                new string?[] { "ep1", "ep2", null, "20", null, "FALSE", null } // 같은 도착, 다른 칸
+                new string?[] { "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문" },
+                new string?[] { "ep1", "ep2", null, "10", null, null, "FALSE", null },
+                new string?[] { "ep1", "ep2", null, "20", null, null, "FALSE", null } // 같은 도착, 다른 칸
             }),
             ("조건", new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
             ("스탯", new[]
@@ -320,14 +320,14 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         string path = XlsxTestWorkbook.Write(_directory, "v7_gaps.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모", "선택지수" },
-                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, null, null, "2" },
-                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, null, null, "1" }
+                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모", "선택지수" },
+                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, "2" },
+                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, "1" }
             }),
             ("간선", new[]
             {
-                new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
-                new string?[] { "ep1", "ep2", null, "99", null, "FALSE", null } // 없는 칸을 가리킨다
+                new string?[] { "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문" },
+                new string?[] { "ep1", "ep2", null, "99", null, null, "FALSE", null } // 없는 칸을 가리킨다
             }),
             ("조건", new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
             ("스탯", new[]
@@ -366,7 +366,6 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         ChapterEpisode episode = Assert.Single(model.Episodes);
         Assert.Equal("첫 화", episode.Title);
         Assert.Equal("Story_ep1", episode.DialogueEntry);
-        Assert.Equal("신뢰높음", episode.UnlockConditionLabel);
         Assert.Equal("메모다", episode.Memo);
 
         ChapterEdge edge = Assert.Single(model.Edges);

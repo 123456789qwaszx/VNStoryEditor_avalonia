@@ -61,8 +61,10 @@ public static class ChapterProgressionExporter
             ? "Attachment"
             : "Main",
         DialogueEntryId = episode.DialogueEntry,
-        VisibleConditions = Conditions(chapter, episode.VisibleConditionLabel),
-        UnlockConditions = Conditions(chapter, episode.UnlockConditionLabel),
+        // v8 — 관문은 에피소드가 아니라 그 길(간선)이 갖는다. 노드의 두 필드는 스키마
+        // 1:1을 위해 남기되 비어 나간다(⚠ 런타임 수입기가 NextOption 쪽을 읽어야 한다).
+        VisibleConditions = [],
+        UnlockConditions = [],
         // v7 — 간선 하나 = NextOption 하나(간선과 선택지 칸이 1:1). 문구는 짝 칸의 대본
         // text(`OptionLabel`이 그 파생값)이고, 빈 칸이면 빈 문자열 = 보이지 않는 기본
         // (자동 진행). 조건·잠금·스탯변화·도착은 간선 것이다.
@@ -74,6 +76,7 @@ public static class ChapterProgressionExporter
             {
                 TargetEpisodeId = edge.ToEpisodeId,
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
+                VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 HideWhenLocked = edge.HideWhenLocked,
                 LockedReasonText = edge.LockedMessage ?? string.Empty,
@@ -172,6 +175,15 @@ public static class ChapterProgressionExporter
     {
         public string TargetEpisodeId { get; set; } = string.Empty;
         public string ChoiceLabel { get; set; } = string.Empty;
+
+        /// <summary>
+        /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16). 에피소드 노드의
+        /// `VisibleConditions`가 하던 일이 길 단위로 내려왔다. ⚠ 런타임 계약에 아직 없는
+        /// 필드다 — Gate D에서 수입기와 함께 확정할 것.
+        /// </summary>
+        public List<ConditionJson> VisibleConditions { get; set; } = new();
+
+        /// <summary><b>해금조건</b> — 보이지만 고를 수 있으려면.</summary>
         public List<ConditionJson> Conditions { get; set; } = new();
         public bool HideWhenLocked { get; set; }
         public string LockedReasonText { get; set; } = string.Empty;
