@@ -429,6 +429,31 @@ public partial class ChapterGraphView : UserControl
 
     private void Reload()
     {
+        // 구판 워크북 규격 이행 (2026-08-16) — 필요 없는 파일에는 손대지 않으므로 매번
+        // 불러도 쓰기는 구판을 처음 만난 그 한 번뿐이다. 실패(잠금)는 상태줄로 알리고
+        // 리더가 구판 그대로 읽으며 머리글 경고를 세운다.
+        if (ChapterLibrary.FolderFor(_session?.ProjectPath) is { } chapterFolder &&
+            Directory.Exists(chapterFolder))
+        {
+            foreach (string workbook in Directory.EnumerateFiles(chapterFolder, "*.xlsx")
+                         .Where(file => !IoPath.GetFileName(file).StartsWith("~$", StringComparison.Ordinal)))
+            {
+                ChapterWorkbookMigrator.MigrationResult migration =
+                    ChapterWorkbookMigrator.Migrate(workbook);
+
+                if (migration.Migrated)
+                {
+                    _session?.SetStatus(
+                        $"'{IoPath.GetFileName(workbook)}'를 새 시트 규격으로 이행했습니다" +
+                        "(이전 상태는 .bak). 엑셀이 열려 있었다면 닫았다 다시 열어 주세요.");
+                }
+                else if (migration.Failure is { } failure)
+                {
+                    _session?.SetStatus(failure);
+                }
+            }
+        }
+
         _entries.Clear();
         _entries.AddRange(ChapterLibrary.Load(
             ChapterLibrary.FolderFor(_session?.ProjectPath),

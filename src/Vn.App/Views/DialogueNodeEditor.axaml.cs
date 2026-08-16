@@ -1472,11 +1472,12 @@ public partial class DialogueNodeEditor : UserControl
         string summary = $"set {operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}";
         var blue = new SolidColorBrush(Color.FromArgb(200, 37, 99, 235));
 
-        // 엑셀노드 — 스탯변화의 원본은 엑셀 J열이다. 보이되 고쳐지지 않는다.
+        // 엑셀노드 — 스탯 조작의 주인은 챕터 간선의 스탯변화다(2026-08-14 폐지 결정).
+        // 보이되 고쳐지지 않는다.
         if (_excelOwned)
         {
             Control chip = TagChip(summary, blue);
-            ToolTip.SetTip(chip, "스탯변화는 엑셀에서 고칩니다 — J열 (예: trust +3).");
+            ToolTip.SetTip(chip, "스탯변화는 챕터 그래프의 간선에서 고칩니다 — 간선 시트 C열 (예: trust +3).");
             return chip;
         }
 

@@ -132,6 +132,8 @@ public static class ChapterFixtureWalker
                 {
                     ConditionComparison.AtLeast => stats[index] >= term.Value,
                     ConditionComparison.AtMost => stats[index] <= term.Value,
+                    ConditionComparison.Above => stats[index] > term.Value,
+                    ConditionComparison.Below => stats[index] < term.Value,
                     _ => stats[index] == term.Value
                 };
             }

@@ -41,7 +41,7 @@ public static class ChapterValidator
                 ChapterDiagnosticCode.OptionEdgeMismatch,
                 chapter.SourcePath, ChapterSheetNames.Edges, null, null,
                 $"'{plainGroup.Key}'에서 나가는 무라벨(진행) 간선이 {plainGroup.Count()}개입니다 — " +
-                "어디로 진행할지 정할 수 없습니다. 하나만 남기거나 선택지 라벨을 붙여 주세요."));
+                "어디로 진행할지 정할 수 없습니다. 하나만 남기거나 선택지를 붙여 주세요."));
         }
 
         foreach (ChapterEpisode episode in chapter.Episodes)
@@ -126,7 +126,7 @@ public static class ChapterValidator
                     chapter.SourcePath, ChapterSheetNames.Edges, plain.SourceRow, null,
                     $"'{episode.EpisodeId}'는 선택지가 있는데 무라벨(진행) 간선이 " +
                     $"{plain.ToEpisodeId}로 나 있습니다 — 선택지가 제시되면 진행을 탈 수 없습니다. " +
-                    "이 간선에 선택지 라벨을 붙이거나 지워 주세요."));
+                    "이 간선에 선택지를 붙이거나 지워 주세요."));
             }
         }
 

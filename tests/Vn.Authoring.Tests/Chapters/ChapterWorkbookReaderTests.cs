@@ -152,7 +152,7 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 미등록_스탯키가_시트_행_열까지_짚혀_보고된다()
     {
         var sheets = Baseline();
-        sheets[2].Rows[1][1] = "karma >= 3";
+        sheets[2].Rows[1][1] = "karma";
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.StatKeyUnknown);
 
@@ -168,7 +168,7 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 소수점이_오류로_잡힌다()
     {
         var sheets = Baseline();
-        sheets[2].Rows[1][1] = "trust >= 2.5";
+        sheets[2].Rows[1][3] = "2.5";
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.StatValueNotInteger);
 
@@ -194,13 +194,13 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 빈_대사엔트리가_오류로_잡힌다()
     {
         var sheets = Baseline();
-        sheets[0].Rows[1][4] = null;
+        sheets[0].Rows[1][3] = null;
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.DialogueEntryBlank);
 
         Assert.Equal("에피소드", problem.Sheet);
         Assert.Equal(2, problem.Row);
-        Assert.Equal("E", problem.Column);
+        Assert.Equal("D", problem.Column);
     }
 
     [Fact]
@@ -221,13 +221,13 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 미정의_조건_라벨이_오류로_잡힌다()
     {
         var sheets = Baseline();
-        sheets[0].Rows[2][8] = "없는라벨";
+        sheets[0].Rows[2][7] = "없는라벨";
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.ConditionLabelUndefined);
 
         Assert.Equal("에피소드", problem.Sheet);
         Assert.Equal(3, problem.Row);
-        Assert.Equal("I", problem.Column);
+        Assert.Equal("H", problem.Column);
         Assert.Contains("없는라벨", problem.Message);
     }
 
@@ -306,11 +306,11 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 진단은_파일_시트_행_열을_한_줄로_말한다()
     {
         var sheets = Baseline();
-        sheets[0].Rows[1][4] = null;
+        sheets[0].Rows[1][3] = null;
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.DialogueEntryBlank);
 
-        Assert.StartsWith("chapter.xlsx · 에피소드 · 2행 · E열 — ", problem.Describe());
+        Assert.StartsWith("chapter.xlsx · 에피소드 · 2행 · D열 — ", problem.Describe());
     }
 
     [Fact]
@@ -349,26 +349,26 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     private string WriteGenerated((string Name, string?[][] Rows)[] sheets) =>
         XlsxTestWorkbook.Write(_directory, "chapter.xlsx", sheets);
 
-    /// <summary>오류가 하나도 없는 최소 챕터. 각 테스트는 여기서 한 칸만 망가뜨린다.</summary>
+    /// <summary>오류가 하나도 없는 최소 챕터(2026-08-16 규격). 각 테스트는 여기서 한 칸만 망가뜨린다.</summary>
     private static (string Name, string?[][] Rows)[] Baseline() =>
     [
         ("에피소드", [
-            ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"],
-            ["ep1", "첫 화", "01", "Main", "Story_ep1", "0", "0", null, null, null, null],
-            ["ep2", "둘째 화", "02", "Main", "Story_ep2", "200", "0", null, null, null, null]
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"],
+            ["ep1", "첫 화", "Main", "Story_ep1", "0", "0", null, null, null, null],
+            ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null, null]
         ]),
         ("간선", [
-            ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문"],
-            ["ep1", "ep2", null, null, "FALSE", null]
+            ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"],
+            ["ep1", "ep2", null, null, null, "FALSE", null]
         ]),
         ("조건", [
-            ["라벨", "조건식", "설명"],
-            ["신뢰높음", "trust >= 3", "라루를 신뢰"]
+            ["라벨", "스탯", "연산자", "값", "설명"],
+            ["신뢰높음", "trust", ">=", "3", "라루를 신뢰"]
         ]),
         ("스탯", [
-            ["스탯키", "표시명", "초기값", "최소", "최대"],
-            ["trust", "신뢰", "0", "0", "10"],
-            ["anger", "분노", "0", "0", "10"]
+            ["스탯키", "표시명", "초기값", "최소", "최대", "타입"],
+            ["trust", "신뢰", "0", "0", "10", null],
+            ["anger", "분노", "0", "0", "10", null]
         ]),
         ("픽스처", [
             ["픽스처명", "활성", "trust", "anger", "고정 선택 (에피소드ID→도착ID)"],

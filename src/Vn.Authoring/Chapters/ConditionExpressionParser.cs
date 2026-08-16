@@ -20,7 +20,13 @@ public enum ConditionComparison
 {
     AtLeast,
     AtMost,
-    Exactly
+    Exactly,
+
+    /// <summary><c>&gt;</c> (2026-08-16 소유자 개방 — &lt;·&gt; 드롭다운).</summary>
+    Above,
+
+    /// <summary><c>&lt;</c> (2026-08-16 소유자 개방).</summary>
+    Below
 }
 
 /// <param name="Key">스탯키. <see cref="ConditionTermKind.EpisodeCleared"/>면 EpisodeId다.</param>
@@ -140,7 +146,7 @@ public static class ConditionExpressionParser
                 problems.Add(new ConditionParseProblem(
                     ConditionProblemKind.OperatorNotSupported,
                     term,
-                    $"'{term}' — 비교 연산자를 찾지 못했습니다. 쓸 수 있는 것은 >= · <= · == 이고, " +
+                    $"'{term}' — 비교 연산자를 찾지 못했습니다. 쓸 수 있는 것은 >= · <= · == · > · < 이고, " +
                     $"에피소드 클리어는 cleared:EpisodeId 입니다."));
                 continue;
             }
@@ -151,6 +157,34 @@ public static class ConditionExpressionParser
                     ConditionProblemKind.TermMalformed,
                     term,
                     $"'{term}' — 비교 왼쪽에 스탯키가 없습니다."));
+                continue;
+            }
+
+            // bool 리터럴 (2026-08-16) — bool 스탯의 조건은 `flag == true` 꼴이다.
+            // 값 공간은 0/1 하나다: true = 1, false = 0. 등호 비교에서만 의미가 있다.
+            if (TryParseBoolLiteral(value, out int boolValue))
+            {
+                if (comparison != ConditionComparison.Exactly)
+                {
+                    problems.Add(new ConditionParseProblem(
+                        ConditionProblemKind.TermMalformed,
+                        term,
+                        $"'{term}' — true/false는 == 로만 비교합니다."));
+                    continue;
+                }
+
+                if (!knownStatKeys.Contains(key))
+                {
+                    problems.Add(new ConditionParseProblem(
+                        ConditionProblemKind.UnknownStatKey,
+                        term,
+                        $"'{key}'는 `스탯` 시트에 없는 스탯키입니다. " +
+                        $"선언된 키: {(knownStatKeys.Count == 0 ? "(없음)" : string.Join(", ", knownStatKeys))}"));
+                    continue;
+                }
+
+                terms.Add(new ConditionTerm(
+                    ConditionTermKind.StatComparison, key, ConditionComparison.Exactly, boolValue));
                 continue;
             }
 
@@ -200,7 +234,9 @@ public static class ConditionExpressionParser
         [
             (">=", ConditionComparison.AtLeast),
             ("<=", ConditionComparison.AtMost),
-            ("==", ConditionComparison.Exactly)
+            ("==", ConditionComparison.Exactly),
+            (">", ConditionComparison.Above),
+            ("<", ConditionComparison.Below)
         ];
 
         foreach ((string token, ConditionComparison mapped) in operators)
@@ -222,5 +258,71 @@ public static class ConditionExpressionParser
         value = string.Empty;
         comparison = ConditionComparison.Exactly;
         return false;
+    }
+
+    private static bool TryParseBoolLiteral(string value, out int mapped)
+    {
+        if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = 1;
+            return true;
+        }
+
+        if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase))
+        {
+            mapped = 0;
+            return true;
+        }
+
+        mapped = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// 단일 항 조건식을 (스탯, 연산자, 값) 세 칸으로 분해한다 — `조건` 시트의 구조화 열
+    /// (2026-08-16)에 쓰기 위해서다. bool 항(<c>flag == true</c>)은 연산자 칸이 true/false가
+    /// 된다. 복합식(;)·cleared:·연산자 없는 원문은 분해하지 않는다(false) — 그런 식은
+    /// 스탯 칸에 원문 그대로 남는다(탈출구).
+    /// </summary>
+    public static bool TryDecomposeSingle(
+        string? expression, out string statKey, out string operatorText, out string valueText)
+    {
+        statKey = string.Empty;
+        operatorText = string.Empty;
+        valueText = string.Empty;
+
+        string source = (expression ?? string.Empty).Trim();
+
+        if (source.Length == 0 ||
+            source.Contains(';', StringComparison.Ordinal) ||
+            source.StartsWith(ClearedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!TrySplitComparison(source, out string key, out ConditionComparison comparison, out string value) ||
+            key.Length == 0 || value.Length == 0)
+        {
+            return false;
+        }
+
+        statKey = key;
+
+        if (TryParseBoolLiteral(value, out int boolValue) && comparison == ConditionComparison.Exactly)
+        {
+            operatorText = boolValue == 1 ? "true" : "false";
+            return true;
+        }
+
+        operatorText = comparison switch
+        {
+            ConditionComparison.AtLeast => ">=",
+            ConditionComparison.AtMost => "<=",
+            ConditionComparison.Above => ">",
+            ConditionComparison.Below => "<",
+            _ => "=="
+        };
+        valueText = value;
+        return true;
     }
 }

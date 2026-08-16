@@ -370,10 +370,10 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
         IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
 
-        // 표시조건(H) · 해금조건(I) · 간선의 조건(D)
+        // 표시조건(G) · 해금조건(H) · 간선의 조건(E) — 2026-08-16 규격
+        AssertConditionList(episodes, 2, 7);
         AssertConditionList(episodes, 2, 8);
-        AssertConditionList(episodes, 2, 9);
-        AssertConditionList(edges, 2, 4);
+        AssertConditionList(edges, 2, 5);
     }
 
     private static void AssertConditionList(IXLWorksheet sheet, int row, int column)

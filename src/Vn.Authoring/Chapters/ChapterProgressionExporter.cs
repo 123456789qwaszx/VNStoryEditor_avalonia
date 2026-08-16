@@ -105,6 +105,10 @@ public static class ChapterProgressionExporter
                 {
                     ConditionComparison.AtLeast => "GreaterOrEqual",
                     ConditionComparison.AtMost => "LessOrEqual",
+                    // 2026-08-16 소유자 개방 — 런타임 수입기(Gate D)가 아직 없으므로 이름을
+                    // 계약서에 함께 추가해야 한다(run-log 참조).
+                    ConditionComparison.Above => "GreaterThan",
+                    ConditionComparison.Below => "LessThan",
                     _ => "Equal"
                 },
                 IntValue = term.Value

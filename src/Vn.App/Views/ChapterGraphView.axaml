@@ -36,8 +36,9 @@
                                FontSize="11"
                                Opacity="0.6"
                                VerticalAlignment="Center" />
-                    <!-- 재생루트 하이라이트 (G6). 픽스처는 테스트 데이터라 내보내기에 섞이지 않는다. -->
-                    <ComboBox x:Name="FixtureCombo" MinWidth="130" FontSize="11" />
+                    <!-- 재생루트 하이라이트 (G6). 2026-08-16 소유자 — 당장 안 쓰니 임시 숨김.
+                         코드·리더는 그대로다 — 되살릴 때 IsVisible만 돌리면 된다. -->
+                    <ComboBox x:Name="FixtureCombo" MinWidth="130" FontSize="11" IsVisible="False" />
                     <TextBlock x:Name="FixtureStopText"
                                FontSize="10"
                                Opacity="0.7"
@@ -107,8 +108,8 @@
                             <StackPanel x:Name="ConditionListPanel" Spacing="2" />
                             <TextBox x:Name="ConditionLabelBox" FontSize="11" PlaceholderText="라벨 — 예: 신뢰높음" />
                             <TextBox x:Name="ConditionExprBox" FontSize="11"
-                                     PlaceholderText="식 — 예: trust >= 3 (AND는 ;)"
-                                     ToolTip.Tip="쓸 수 있는 연산자는 &gt;= · &lt;= · == 셋뿐이고 값은 정수만 됩니다. 에피소드 클리어는 cleared:EpisodeId 입니다." />
+                                     PlaceholderText="식 — 예: trust >= 3 · flag == true (AND는 ;)"
+                                     ToolTip.Tip="쓸 수 있는 연산자는 &gt;= · &lt;= · == · &gt; · &lt; 이고 값은 정수(bool 스탯은 true/false)입니다. 에피소드 클리어는 cleared:EpisodeId 입니다. 시트에는 스탯·연산자·값 세 칸으로 저장됩니다." />
                             <Button x:Name="SaveConditionButton" Content="조건 추가/수정" HorizontalAlignment="Stretch" FontSize="11" />
 
                             <TextBlock Text="스탯"
@@ -121,15 +122,18 @@
                                        TextWrapping="Wrap" />
                             <StackPanel x:Name="StatListPanel" Spacing="2" />
 
-                            <TextBlock Text="픽스처"
-                                       FontWeight="SemiBold"
-                                       FontSize="12"
-                                       Margin="0,14,0,0" />
-                            <TextBlock Text="재생루트를 눈으로 보기 위한 테스트 데이터 — 내보내기에 섞이지 않습니다. 전환은 툴바의 픽스처 콤보입니다."
-                                       FontSize="10"
-                                       Opacity="0.55"
-                                       TextWrapping="Wrap" />
-                            <StackPanel x:Name="FixtureListPanel" Spacing="2" />
+                            <!-- 픽스처 — 2026-08-16 소유자 임시 제거. 되살릴 때 IsVisible만 돌린다. -->
+                            <StackPanel x:Name="FixtureSection" IsVisible="False">
+                                <TextBlock Text="픽스처"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           Margin="0,14,0,0" />
+                                <TextBlock Text="재생루트를 눈으로 보기 위한 테스트 데이터 — 내보내기에 섞이지 않습니다. 전환은 툴바의 픽스처 콤보입니다."
+                                           FontSize="10"
+                                           Opacity="0.55"
+                                           TextWrapping="Wrap" />
+                                <StackPanel x:Name="FixtureListPanel" Spacing="2" />
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

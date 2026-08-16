@@ -221,20 +221,20 @@ public sealed class ChapterGraphSyncViewTests
         Assert.DoesNotContain("기본 루트", json);   // 픽스처는 섞이지 않는다
     });
 
-    /// <summary>`도달불가 허용` 열(L)을 켠다 — D3의 명시 예외.</summary>
+    /// <summary>`도달불가 허용` 열(K — 2026-08-16 인덱스 폐지 후)을 켠다 — D3의 명시 예외.</summary>
     private static void AllowUnreachable(string chapterPath, string episodeId)
     {
         using var memory = new MemoryStream(File.ReadAllBytes(chapterPath));
         using var workbook = new ClosedXML.Excel.XLWorkbook(memory);
         ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheet("에피소드");
 
-        sheet.Cell(1, 12).SetValue("도달불가 허용");
+        sheet.Cell(1, 11).SetValue("도달불가 허용");
 
         foreach (ClosedXML.Excel.IXLRow row in sheet.RowsUsed().Skip(1))
         {
             if (row.Cell(1).GetString() == episodeId)
             {
-                row.Cell(12).SetValue("TRUE");
+                row.Cell(11).SetValue("TRUE");
             }
         }
 

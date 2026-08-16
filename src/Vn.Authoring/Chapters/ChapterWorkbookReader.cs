@@ -26,15 +26,18 @@ public static class ChapterWorkbookReader
 {
     private const int HeaderRow = 1;
 
+    // 2026-08-16 소유자 개정 — 인덱스 열 폐지(안 쓰임), 간선의 스탯변화가 C열로,
+    // `선택지 라벨`은 `선택지`로, 조건식은 스탯·연산자·값 세 칸으로, 스탯에 타입(선택 꼬리).
+    // 구판 파일은 ChapterWorkbookMigrator가 이 모양으로 이행한다.
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"];
+        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"];
 
     private static readonly string[] EdgeHeaders =
-        ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문", "스탯변화"];
+        ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"];
 
-    private static readonly string[] ConditionHeaders = ["라벨", "조건식", "설명"];
+    private static readonly string[] ConditionHeaders = ["라벨", "스탯", "연산자", "값", "설명"];
 
-    private static readonly string[] StatHeaders = ["스탯키", "표시명", "초기값", "최소", "최대"];
+    private static readonly string[] StatHeaders = ["스탯키", "표시명", "초기값", "최소", "최대", "타입"];
 
     private static readonly string[] SpeakerHeaders = ["이름", "캐릭터키", "메모"];
 
@@ -87,6 +90,7 @@ public static class ChapterWorkbookReader
             ReadSpeakers(workbook, path, diagnostics, out bool hasSpeakerSheet);
 
         VerifyClearedTargets(conditions, episodeIds, path, diagnostics);
+        VerifyBoolStatUsage(stats, conditions, edges, path, diagnostics);
 
         return new ChapterGraphModel(
             chapterId,
@@ -176,43 +180,43 @@ public static class ChapterWorkbookReader
 
             seen[episodeId] = row;
 
-            string dialogueEntry = Text(sheet, row, 5);
+            string dialogueEntry = Text(sheet, row, 4);
 
             if (dialogueEntry.Length == 0)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.DialogueEntryBlank,
-                    path, sheet.Name, row, 5,
+                    path, sheet.Name, row, 4,
                     $"'{episodeId}'의 대사엔트리가 비어 있습니다. 런타임이 재생할 대상이 없습니다."));
             }
 
-            double x = Number(sheet, row, 6, path, episodeId, diagnostics);
-            double y = Number(sheet, row, 7, path, episodeId, diagnostics);
+            double x = Number(sheet, row, 5, path, episodeId, diagnostics);
+            double y = Number(sheet, row, 6, path, episodeId, diagnostics);
 
-            string? visible = Optional(sheet, row, 8);
-            string? unlock = Optional(sheet, row, 9);
+            string? visible = Optional(sheet, row, 7);
+            string? unlock = Optional(sheet, row, 8);
 
-            RequireConditionLabel(visible, conditionLabels, path, sheet.Name, row, 8, "표시조건", diagnostics);
-            RequireConditionLabel(unlock, conditionLabels, path, sheet.Name, row, 9, "해금조건", diagnostics);
+            RequireConditionLabel(visible, conditionLabels, path, sheet.Name, row, 7, "표시조건", diagnostics);
+            RequireConditionLabel(unlock, conditionLabels, path, sheet.Name, row, 8, "해금조건", diagnostics);
 
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름일 때만 읽는다.
             bool allowUnreachable =
-                string.Equals(Text(sheet, HeaderRow, 12), "도달불가 허용", StringComparison.Ordinal) &&
-                Boolean(sheet, row, 12, path, diagnostics);
+                string.Equals(Text(sheet, HeaderRow, 11), "도달불가 허용", StringComparison.Ordinal) &&
+                Boolean(sheet, row, 11, path, diagnostics);
 
             episodes.Add(new ChapterEpisode(
                 episodeId,
                 Text(sheet, row, 2),
+                string.Empty, // 인덱스 열 폐지 (2026-08-16) — 내보내기 IndexText만 빈 값으로 남는다
                 Text(sheet, row, 3),
-                Text(sheet, row, 4),
                 dialogueEntry,
                 x,
                 y,
                 visible,
                 unlock,
+                Optional(sheet, row, 9),
                 Optional(sheet, row, 10),
-                Optional(sheet, row, 11),
                 row,
                 allowUnreachable));
         }
@@ -237,7 +241,7 @@ public static class ChapterWorkbookReader
             return Array.Empty<ChapterEdge>();
         }
 
-        VerifyHeaders(sheet, EdgeHeaders, path, diagnostics, optionalTrailing: 1);
+        VerifyHeaders(sheet, EdgeHeaders, path, diagnostics);
 
         var edges = new List<ChapterEdge>();
 
@@ -259,13 +263,13 @@ public static class ChapterWorkbookReader
             RequireEpisode(from, episodeIds, path, sheet.Name, row, 1, "출발", diagnostics);
             RequireEpisode(to, episodeIds, path, sheet.Name, row, 2, "도착", diagnostics);
 
-            string? conditionLabel = Optional(sheet, row, 4);
-            RequireConditionLabel(conditionLabel, conditionLabels, path, sheet.Name, row, 4, "조건", diagnostics);
+            string? conditionLabel = Optional(sheet, row, 5);
+            RequireConditionLabel(conditionLabel, conditionLabels, path, sheet.Name, row, 5, "조건", diagnostics);
 
-            // 스탯변화 (G열, 2026-08-14) — 이 간선을 타는 순간 1회 커밋. 스탯이 변하는
-            // 유일한 자리라, 미등록 키·정수 아님은 여기서 바로 오류다.
+            // 스탯변화 (C열 — 2026-08-16 소유자 개정으로 앞당김) — 이 간선을 타는 순간 1회
+            // 커밋. 스탯이 변하는 유일한 자리라, 미등록 키·정수 아님은 여기서 바로 오류다.
             StatDeltaParseResult deltas = StatDeltaParser.Parse(
-                Text(sheet, row, 7), statKeys);
+                Text(sheet, row, 3), statKeys);
 
             foreach (ConditionParseProblem problem in deltas.Problems)
             {
@@ -274,17 +278,17 @@ public static class ChapterWorkbookReader
                     problem.Kind == ConditionProblemKind.UnknownStatKey
                         ? ChapterDiagnosticCode.StatKeyUnknown
                         : ChapterDiagnosticCode.StatValueNotInteger,
-                    path, sheet.Name, row, 7,
+                    path, sheet.Name, row, 3,
                     problem.Message));
             }
 
             edges.Add(new ChapterEdge(
                 from,
                 to,
-                Optional(sheet, row, 3),
+                Optional(sheet, row, 4),
                 conditionLabel,
-                Boolean(sheet, row, 5, path, diagnostics),
-                Optional(sheet, row, 6),
+                Boolean(sheet, row, 6, path, diagnostics),
+                Optional(sheet, row, 7),
                 row)
             {
                 StatChanges = deltas.Deltas
@@ -322,19 +326,50 @@ public static class ChapterWorkbookReader
                 continue;
             }
 
-            string expression = Text(sheet, row, 2);
+            // 2026-08-16 소유자 개정 — 조건은 스탯(드롭다운)·연산자(드롭다운)·값 세 칸으로
+            // 조립한다. 연산자·값이 비어 있으면 스탯 칸 전체를 원문 조건식으로 읽는다
+            // (탈출구 — cleared:, 복합식 `a; b`, 구판 이행분이 이 길로 산다).
+            string statCell = Text(sheet, row, 2);
+            string operatorCell = Text(sheet, row, 3);
+            string valueCell = Text(sheet, row, 4);
 
-            if (expression.Length == 0)
+            string expression;
+
+            if (statCell.Length == 0)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.ConditionExpressionBlank,
                     path, sheet.Name, row, 2,
-                    $"조건 '{label}'의 조건식이 비어 있습니다."));
+                    $"조건 '{label}'의 스탯 칸이 비어 있습니다. 스탯을 고르거나 조건식 원문을 적어 주세요."));
 
-                conditions.Add(new ChapterCondition(label, expression, Optional(sheet, row, 3),
+                conditions.Add(new ChapterCondition(label, string.Empty, Optional(sheet, row, 5),
                     Array.Empty<ConditionTerm>(), IsValid: false, row));
                 continue;
+            }
+
+            if (operatorCell.Length == 0 && valueCell.Length == 0)
+            {
+                expression = statCell; // 원문 그대로
+            }
+            else if (string.Equals(operatorCell, "true", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(operatorCell, "false", StringComparison.OrdinalIgnoreCase))
+            {
+                // bool — 연산자 칸이 곧 값이다. 값 칸은 쓰지 않는다(엑셀에서 회색).
+                if (valueCell.Length > 0)
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Warning,
+                        ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                        path, sheet.Name, row, 4,
+                        $"조건 '{label}'은 true/false 조건이라 값 칸을 쓰지 않습니다 — 무시했습니다."));
+                }
+
+                expression = $"{statCell} == {operatorCell.ToLowerInvariant()}";
+            }
+            else
+            {
+                expression = $"{statCell} {operatorCell} {valueCell}";
             }
 
             ConditionParseResult parsed = ConditionExpressionParser.Parse(expression, statKeys);
@@ -351,7 +386,7 @@ public static class ChapterWorkbookReader
             conditions.Add(new ChapterCondition(
                 label,
                 expression,
-                Optional(sheet, row, 3),
+                Optional(sheet, row, 5),
                 parsed.Terms,
                 parsed.IsValid,
                 row));
@@ -383,7 +418,7 @@ public static class ChapterWorkbookReader
             return Array.Empty<ChapterStat>();
         }
 
-        VerifyHeaders(sheet, StatHeaders, path, diagnostics);
+        VerifyHeaders(sheet, StatHeaders, path, diagnostics, optionalTrailing: 1); // 타입(F)은 나중 규격
 
         var stats = new List<ChapterStat>();
 
@@ -393,6 +428,51 @@ public static class ChapterWorkbookReader
 
             if (key.Length == 0)
             {
+                continue;
+            }
+
+            // 타입 (F열, 선택 — 2026-08-16 소유자). 비면 int. bool은 값 공간이 0/1 하나라
+            // 최소·최대 칸을 읽지 않고 경계를 0·1로 고정한다 — 프루버가 그대로 옳게 돈다.
+            string typeText = Text(sheet, row, 6);
+            ChapterStatType type = ChapterStatType.Int;
+
+            if (string.Equals(typeText, "bool", StringComparison.OrdinalIgnoreCase))
+            {
+                type = ChapterStatType.Bool;
+            }
+            else if (typeText.Length > 0 &&
+                     !string.Equals(typeText, "int", StringComparison.OrdinalIgnoreCase))
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                    path, sheet.Name, row, 6,
+                    $"스탯 '{key}'의 타입 '{typeText}'을 모릅니다 — int로 봅니다. 쓸 수 있는 것: int · bool."));
+            }
+
+            if (type == ChapterStatType.Bool)
+            {
+                string rawInitial = Text(sheet, row, 3);
+                int boolInitial = string.Equals(rawInitial, "TRUE", StringComparison.OrdinalIgnoreCase) ||
+                                  rawInitial == "1"
+                    ? 1
+                    : 0;
+
+                stats.Add(new ChapterStat(key, Text(sheet, row, 2), boolInitial, 0, 1, row,
+                    ChapterStatType.Bool));
+
+                if (definition is not null &&
+                    !definition.Variables.Any(variable =>
+                        string.Equals(variable.Name, key, StringComparison.Ordinal)))
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Warning,
+                        ChapterDiagnosticCode.StatMissingFromGameDefinition,
+                        path, sheet.Name, row, 1,
+                        $"스탯 '{key}'가 game.definition.json에 없습니다. " +
+                        "이 시트는 읽기전용 미러이고 원천은 정의 파일입니다(§3.1)."));
+                }
+
                 continue;
             }
 
@@ -460,13 +540,8 @@ public static class ChapterWorkbookReader
 
         if (sheet is null)
         {
-            // 픽스처는 테스트 데이터다 — 없어도 챕터는 성립한다.
-            diagnostics.Add(Diagnostic(
-                ChapterDiagnosticSeverity.Info,
-                ChapterDiagnosticCode.SheetMissing,
-                path, ChapterSheetNames.Fixtures, null, null,
-                "픽스처 시트가 없습니다. 재생루트 하이라이트(G6)를 쓰지 않는 챕터로 봅니다."));
-
+            // 픽스처는 테스트 데이터다 — 없어도 챕터는 성립하고, 2026-08-16부터는 새 챕터에
+            // 시트를 만들지도 않는다(소유자 임시 제거). 진단도 내지 않는다 — 없는 것이 기본이다.
             return Array.Empty<ChapterFixture>();
         }
 
@@ -634,6 +709,58 @@ public static class ChapterWorkbookReader
         }
 
         return speakers;
+    }
+
+    /// <summary>
+    /// bool 스탯(2026-08-16)의 어휘 검사 — 값 공간이 0/1 하나이므로 조건은 <c>== true/false</c>
+    /// 뿐이고, 간선 스탯변화의 증감(<c>+1</c>)은 의미가 없다. 조용히 이상한 값이 되기 전에
+    /// 자리를 짚어 말한다(규칙 14).
+    /// </summary>
+    private static void VerifyBoolStatUsage(
+        IReadOnlyList<ChapterStat> stats,
+        IReadOnlyList<ChapterCondition> conditions,
+        IReadOnlyList<ChapterEdge> edges,
+        string path,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        HashSet<string> boolKeys = stats
+            .Where(stat => stat.Type == ChapterStatType.Bool)
+            .Select(stat => stat.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (boolKeys.Count == 0)
+        {
+            return;
+        }
+
+        foreach (ChapterCondition condition in conditions)
+        {
+            foreach (ConditionTerm term in condition.Parsed.Where(term =>
+                         term.Kind == ConditionTermKind.StatComparison &&
+                         boolKeys.Contains(term.Key) &&
+                         (term.Comparison != ConditionComparison.Exactly ||
+                          term.Value is not (0 or 1))))
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticCode.ConditionExpressionMalformed,
+                    path, ChapterSheetNames.Conditions, condition.SourceRow, 3,
+                    $"조건 '{condition.Label}': '{term.Key}'는 bool 스탯입니다 — " +
+                    "연산자 칸에서 true 또는 false만 고를 수 있습니다."));
+            }
+        }
+
+        foreach (ChapterEdge edge in edges)
+        {
+            foreach (StatDelta delta in edge.StatChanges.Where(delta => boolKeys.Contains(delta.Key)))
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticCode.StatValueNotInteger,
+                    path, ChapterSheetNames.Edges, edge.SourceRow, 3,
+                    $"'{delta.Key}'는 bool 스탯이라 증감(스탯변화)을 쓸 수 없습니다."));
+            }
+        }
     }
 
     // ── 공통 ────────────────────────────────────────────────────────────────

@@ -32,21 +32,20 @@ public sealed class ChapterSpeakerTests : IDisposable
         {
             (ChapterSheetNames.Episodes, new[]
             {
-                new string?[] { "EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y" },
-                new string?[] { "ep01", null, null, "Main", "ep01", "0", "0" }
+                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y" },
+                new string?[] { "ep01", null, "Main", "ep01", "0", "0" }
             }),
             (ChapterSheetNames.Edges, new[]
             {
-                new string?[] { "출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문", "스탯변화" }
+                new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" }
             }),
-            (ChapterSheetNames.Conditions, new[] { new string?[] { "라벨", "조건식", "설명" } }),
+            (ChapterSheetNames.Conditions, new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
             (ChapterSheetNames.Stats, new[]
             {
-                new string?[] { "스탯키", "표시명", "초기값", "최소", "최대" },
-                new string?[] { "trust", "신뢰", "0", "0", "10" },
-                new string?[] { "fatigue", "피로", "0", "0", "10" }
-            }),
-            (ChapterSheetNames.Fixtures, new[] { new string?[] { "픽스처명", "활성", "고정 선택 (에피소드ID→도착ID)" } })
+                new string?[] { "스탯키", "표시명", "초기값", "최소", "최대", "타입" },
+                new string?[] { "trust", "신뢰", "0", "0", "10", null },
+                new string?[] { "fatigue", "피로", "0", "0", "10", null }
+            })
         };
 
         if (speakerRows.Length > 0)

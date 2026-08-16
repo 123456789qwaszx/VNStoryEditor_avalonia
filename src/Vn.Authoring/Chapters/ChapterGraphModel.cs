@@ -72,9 +72,20 @@ public sealed record ChapterCondition(
     bool IsValid,
     int SourceRow);
 
+/// <summary>스탯의 타입 (2026-08-16 소유자) — `타입` 열(선택, 비면 int)이 정한다.</summary>
+public enum ChapterStatType
+{
+    /// <summary>정수. 조건은 &lt; &gt; == &gt;= &lt;= 비교, 스탯변화는 증감.</summary>
+    Int,
+
+    /// <summary>참/거짓. 값 공간은 0/1이고 조건은 <c>== true/false</c>뿐이다.</summary>
+    Bool
+}
+
 /// <summary>
 /// `스탯` 시트 한 행 = Tier 2 키 하나. <see cref="Minimum"/>·<see cref="Maximum"/>는 장식이 아니라
-/// G7 도달성 증명의 <b>탐색 경계</b>다 (§7-5).
+/// G7 도달성 증명의 <b>탐색 경계</b>다 (§7-5). bool 스탯은 리더가 경계를 0·1로 고정한다 —
+/// 프루버·픽스처 워커는 타입을 몰라도 그대로 옳게 돈다.
 /// </summary>
 public sealed record ChapterStat(
     string Key,
@@ -82,7 +93,8 @@ public sealed record ChapterStat(
     int Initial,
     int Minimum,
     int Maximum,
-    int SourceRow);
+    int SourceRow,
+    ChapterStatType Type = ChapterStatType.Int);
 
 /// <summary>
 /// `화자` 시트 한 행 (2026-08-16 소유자 지시). 기획자가 챕터에서 화자를 등록하면

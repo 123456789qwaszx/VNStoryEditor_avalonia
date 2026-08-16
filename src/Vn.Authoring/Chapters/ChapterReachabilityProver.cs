@@ -220,6 +220,8 @@ public static class ChapterReachabilityProver
         {
             ConditionComparison.AtLeast => stats[index] >= term.Value,
             ConditionComparison.AtMost => stats[index] <= term.Value,
+            ConditionComparison.Above => stats[index] > term.Value,
+            ConditionComparison.Below => stats[index] < term.Value,
             _ => stats[index] == term.Value
         };
     }
@@ -293,6 +295,8 @@ public static class ChapterReachabilityProver
             {
                 ConditionComparison.AtLeast => maxSeen[index] >= term.Value,
                 ConditionComparison.AtMost => minSeen[index] <= term.Value,
+                ConditionComparison.Above => maxSeen[index] > term.Value,
+                ConditionComparison.Below => minSeen[index] < term.Value,
                 _ => minSeen[index] <= term.Value && term.Value <= maxSeen[index]
             };
 
@@ -399,15 +403,19 @@ public static class ChapterReachabilityProver
                     continue;
                 }
 
-                if (term.Comparison == ConditionComparison.AtLeast && maxSeen[index] < term.Value)
+                if (term.Comparison is ConditionComparison.AtLeast or ConditionComparison.Above &&
+                    maxSeen[index] < term.Value + (term.Comparison == ConditionComparison.Above ? 1 : 0))
                 {
-                    return $"조건 '{label}'의 '{term.Key} >= {term.Value}'가 원인입니다 — " +
+                    string op = term.Comparison == ConditionComparison.Above ? ">" : ">=";
+                    return $"조건 '{label}'의 '{term.Key} {op} {term.Value}'가 원인입니다 — " +
                         $"어떤 경로로도 {term.Key}는 최대 {maxSeen[index]}까지밖에 오르지 않습니다.";
                 }
 
-                if (term.Comparison == ConditionComparison.AtMost && minSeen[index] > term.Value)
+                if (term.Comparison is ConditionComparison.AtMost or ConditionComparison.Below &&
+                    minSeen[index] > term.Value - (term.Comparison == ConditionComparison.Below ? 1 : 0))
                 {
-                    return $"조건 '{label}'의 '{term.Key} <= {term.Value}'가 원인입니다 — " +
+                    string op = term.Comparison == ConditionComparison.Below ? "<" : "<=";
+                    return $"조건 '{label}'의 '{term.Key} {op} {term.Value}'가 원인입니다 — " +
                         $"어떤 경로로도 {term.Key}는 최소 {minSeen[index]} 아래로 내려가지 않습니다.";
                 }
             }

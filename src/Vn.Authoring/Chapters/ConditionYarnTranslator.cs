@@ -55,6 +55,8 @@ public static class ConditionYarnTranslator
             {
                 ConditionComparison.AtLeast => ">=",
                 ConditionComparison.AtMost => "<=",
+                ConditionComparison.Above => ">",
+                ConditionComparison.Below => "<",
                 _ => "=="
             };
 

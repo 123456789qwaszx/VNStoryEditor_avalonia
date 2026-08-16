@@ -48,10 +48,10 @@ public static class ChapterWorkbookWriter
             int row = NextRow(sheet);
             sheet.Cell(row, 1).SetValue(episodeId);
             sheet.Cell(row, 2).SetValue(title);
-            sheet.Cell(row, 4).SetValue("Main");
-            sheet.Cell(row, 5).SetValue(episodeId);
-            sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
-            sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
+            sheet.Cell(row, 3).SetValue("Main");
+            sheet.Cell(row, 4).SetValue(episodeId);
+            sheet.Cell(row, 5).SetValue(Math.Round(x, 2));
+            sheet.Cell(row, 6).SetValue(Math.Round(y, 2));
         });
 
     /// <summary>
@@ -86,17 +86,17 @@ public static class ChapterWorkbookWriter
             int newRow = NextRow(episodes);
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
             episodes.Cell(newRow, 2).SetValue(title);
-            episodes.Cell(newRow, 4).SetValue("Main");
-            episodes.Cell(newRow, 5).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
-            episodes.Cell(newRow, 6).SetValue(Math.Round(x, 2));
-            episodes.Cell(newRow, 7).SetValue(Math.Round(y, 2));
+            episodes.Cell(newRow, 3).SetValue("Main");
+            episodes.Cell(newRow, 4).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
+            episodes.Cell(newRow, 5).SetValue(Math.Round(x, 2));
+            episodes.Cell(newRow, 6).SetValue(Math.Round(y, 2));
 
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
             int edgeRow = NextRow(edges);
             edges.Cell(edgeRow, 1).SetValue(parentEpisodeId);
             edges.Cell(edgeRow, 2).SetValue(newEpisodeId);
-            Set(edges, edgeRow, 3, optionLabel);
-            edges.Cell(edgeRow, 5).SetValue("FALSE");
+            Set(edges, edgeRow, 4, optionLabel);
+            edges.Cell(edgeRow, 6).SetValue("FALSE");
         });
 
 
@@ -105,7 +105,6 @@ public static class ChapterWorkbookWriter
         string path,
         string episodeId,
         string? title = null,
-        string? index = null,
         string? kind = null,
         string? dialogueEntry = null,
         string? visibleConditionLabel = null,
@@ -118,23 +117,22 @@ public static class ChapterWorkbookWriter
             (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
 
             Set(sheet, row, 2, title);
-            Set(sheet, row, 3, index);
-            Set(sheet, row, 4, kind);
-            Set(sheet, row, 5, dialogueEntry);
-            Set(sheet, row, 8, visibleConditionLabel);
-            Set(sheet, row, 9, unlockConditionLabel);
-            Set(sheet, row, 10, endingKey);
-            Set(sheet, row, 11, memo);
+            Set(sheet, row, 3, kind);
+            Set(sheet, row, 4, dialogueEntry);
+            Set(sheet, row, 7, visibleConditionLabel);
+            Set(sheet, row, 8, unlockConditionLabel);
+            Set(sheet, row, 9, endingKey);
+            Set(sheet, row, 10, memo);
 
             if (allowUnreachable is { } allowed)
             {
-                // `도달불가 허용`은 선택 열(L)이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
-                if (!string.Equals(sheet.Cell(1, 12).GetString(), "도달불가 허용", StringComparison.Ordinal))
+                // `도달불가 허용`은 선택 열(K)이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
+                if (!string.Equals(sheet.Cell(1, 11).GetString(), "도달불가 허용", StringComparison.Ordinal))
                 {
-                    sheet.Cell(1, 12).SetValue("도달불가 허용");
+                    sheet.Cell(1, 11).SetValue("도달불가 허용");
                 }
 
-                sheet.Cell(row, 12).SetValue(allowed ? "TRUE" : "FALSE");
+                sheet.Cell(row, 11).SetValue(allowed ? "TRUE" : "FALSE");
             }
         });
 
@@ -169,9 +167,9 @@ public static class ChapterWorkbookWriter
 
             // 대사엔트리 = EpisodeId 규약(v3)을 따르던 행이면 함께 따라간다.
             // 사람이 다르게 적어 둔 값은 건드리지 않는다.
-            if (string.Equals(episodes.Cell(episodeRow, 5).GetString(), oldId, StringComparison.Ordinal))
+            if (string.Equals(episodes.Cell(episodeRow, 4).GetString(), oldId, StringComparison.Ordinal))
             {
-                episodes.Cell(episodeRow, 5).SetValue(newId);
+                episodes.Cell(episodeRow, 4).SetValue(newId);
             }
 
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -268,9 +266,9 @@ public static class ChapterWorkbookWriter
             int row = NextRow(sheet);
             sheet.Cell(row, 1).SetValue(fromEpisodeId);
             sheet.Cell(row, 2).SetValue(toEpisodeId);
-            Set(sheet, row, 3, optionLabel);
-            Set(sheet, row, 4, conditionLabel);
-            sheet.Cell(row, 5).SetValue("FALSE");
+            Set(sheet, row, 4, optionLabel);
+            Set(sheet, row, 5, conditionLabel);
+            sheet.Cell(row, 6).SetValue("FALSE");
         });
 
     public static ChapterWriteResult RemoveEdge(
@@ -285,13 +283,13 @@ public static class ChapterWorkbookWriter
             found.Delete();
         }, backup: true);
 
-    /// <summary>라벨까지 맞는 행 — 라벨 null·빈칸은 무라벨 진행 행과 짝이다.</summary>
+    /// <summary>라벨까지 맞는 행 — 라벨 null·빈칸은 무라벨 진행 행과 짝이다. 선택지는 D열(2026-08-16).</summary>
     private static IXLRow? FindEdgeRow(
         IXLWorksheet sheet, string fromEpisodeId, string toEpisodeId, string? optionLabel) =>
         sheet.RowsUsed().Skip(1).FirstOrDefault(row =>
             string.Equals(row.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
             string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal) &&
-            string.Equals(row.Cell(3).GetString().Trim(), optionLabel?.Trim() ?? string.Empty,
+            string.Equals(row.Cell(4).GetString().Trim(), optionLabel?.Trim() ?? string.Empty,
                 StringComparison.Ordinal));
 
     /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다.</summary>
@@ -312,21 +310,25 @@ public static class ChapterWorkbookWriter
             IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchOptionLabel)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
-            Set(sheet, row.RowNumber(), 3, optionLabel);
-            Set(sheet, row.RowNumber(), 4, conditionLabel);
+            Set(sheet, row.RowNumber(), 4, optionLabel);
+            Set(sheet, row.RowNumber(), 5, conditionLabel);
 
             if (hideWhenLocked is { } hide)
             {
-                sheet.Cell(row.RowNumber(), 5).SetValue(hide ? "TRUE" : "FALSE");
+                sheet.Cell(row.RowNumber(), 6).SetValue(hide ? "TRUE" : "FALSE");
             }
 
-            Set(sheet, row.RowNumber(), 6, lockedMessage);
-            Set(sheet, row.RowNumber(), 7, statChanges); // 스탯변화 — 문법 검사는 리더가 한다
+            Set(sheet, row.RowNumber(), 7, lockedMessage);
+            Set(sheet, row.RowNumber(), 3, statChanges); // 스탯변화(C) — 문법 검사는 리더가 한다
         });
 
     // ── 조건 ────────────────────────────────────────────────────────────────
 
-    /// <summary>`조건` 시트에 라벨↔식 한 줄. 식의 내용은 검사하지 않는다 — 검증기가 읽을 때 잡는다.</summary>
+    /// <summary>
+    /// `조건` 시트에 한 줄 — 2026-08-16 개정으로 스탯·연산자·값 세 칸이다. 툴 패널의 식
+    /// 문자열은 단일 항이면 세 칸으로 분해해 쓰고, 분해할 수 없는 것(cleared:·복합식)은
+    /// 스탯 칸에 원문 그대로 둔다(리더의 탈출구와 짝). 검사는 검증기가 읽을 때 한다.
+    /// </summary>
     public static ChapterWriteResult AddCondition(
         string path, string label, string expression, string? description = null) =>
         Mutate(path, workbook =>
@@ -341,8 +343,8 @@ public static class ChapterWorkbookWriter
 
             int row = NextRow(sheet);
             sheet.Cell(row, 1).SetValue(label);
-            sheet.Cell(row, 2).SetValue(expression);
-            Set(sheet, row, 3, description);
+            WriteConditionCells(sheet, row, expression);
+            Set(sheet, row, 5, description);
         });
 
     public static ChapterWriteResult UpdateCondition(
@@ -355,9 +357,27 @@ public static class ChapterWorkbookWriter
                     string.Equals(candidate.Cell(1).GetString(), label, StringComparison.Ordinal))
                 ?? throw new InvalidOperationException($"조건 라벨 '{label}'이 없습니다.");
 
-            row.Cell(2).SetValue(expression);
-            Set(sheet, row.RowNumber(), 3, description);
+            WriteConditionCells(sheet, row.RowNumber(), expression);
+            Set(sheet, row.RowNumber(), 5, description);
         });
+
+    /// <summary>식 문자열 → 스탯(B)·연산자(C)·값(D). 리더가 다시 조립하면 같은 식이 된다.</summary>
+    private static void WriteConditionCells(IXLWorksheet sheet, int row, string expression)
+    {
+        if (ConditionExpressionParser.TryDecomposeSingle(
+                expression, out string statKey, out string operatorText, out string valueText))
+        {
+            sheet.Cell(row, 2).SetValue(statKey);
+            sheet.Cell(row, 3).SetValue(operatorText);
+            Set(sheet, row, 4, valueText); // bool이면 빈 값 — 값 칸은 쓰지 않는다
+        }
+        else
+        {
+            sheet.Cell(row, 2).SetValue(expression); // 원문 탈출구 (cleared:·복합식)
+            Set(sheet, row, 3, string.Empty);
+            Set(sheet, row, 4, string.Empty);
+        }
+    }
 
     // ── 화자 ────────────────────────────────────────────────────────────────
 
@@ -449,24 +469,19 @@ public static class ChapterWorkbookWriter
 
         using var workbook = new XLWorkbook();
 
+        // 픽스처 시트는 만들지 않는다 (2026-08-16 소유자 — 당장 안 쓰니 임시 제거.
+        // 리더는 있으면 여전히 읽는다 — 되살릴 때 시트만 다시 만들면 된다).
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"]);
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
-            ["출발", "도착", "선택지 라벨", "조건", "잠금시 숨김", "잠금 안내문", "스탯변화"]);
-        AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "조건식", "설명"]);
-
-        // 조건 라벨을 적는 세 열은 `조건` 시트의 라벨 열을 가리키는 드롭다운이 된다.
-        // 범위 참조라 조건을 더하면 목록이 저절로 따라온다 — 라벨은 손으로 적는 순간
-        // 오타가 유령 참조가 되므로, 엑셀 단에서 막는 편이 검증기가 뒤늦게 잡는 것보다 낫다.
-        AddConditionDropdown(episodeSheet, 8);   // 표시조건
-        AddConditionDropdown(episodeSheet, 9);   // 해금조건
-        AddConditionDropdown(edgeSheet, 4);      // 간선의 조건
-        AddYesNoDropdown(edgeSheet, 5);          // 잠금시 숨김
+            ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"]);
+        IXLWorksheet conditionSheet =
+            AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
-            ["스탯키", "표시명", "초기값", "최소", "최대"]);
-        AddSheetWithHeaders(workbook, ChapterSheetNames.Fixtures,
-            ["픽스처명", "활성", "고정 선택 (에피소드ID→도착ID)"]);
+            ["스탯키", "표시명", "초기값", "최소", "최대", "타입"]);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
+
+        ApplyChapterDropdowns(episodeSheet, edgeSheet, conditionSheet, statSheet);
 
         int statRow = 2;
 
@@ -522,6 +537,42 @@ public static class ChapterWorkbookWriter
 
     /// <summary>템플릿이 드롭다운을 까는 행 수. 이 아래로 더 쓰면 사람이 직접 적는다.</summary>
     private const int DropdownRows = 200;
+
+    /// <summary>
+    /// 챕터 워크북의 드롭다운·서식 일습 — 새 챕터 생성과 구판 이행(Migrator)이 같은 것 하나를
+    /// 부른다(규약 사본 금지).
+    ///
+    /// - 에피소드 표시조건(G)·해금조건(H)과 간선 조건(E): `조건` 시트 라벨 열 참조 —
+    ///   조건을 더하면 목록이 저절로 는다.
+    /// - 조건 스탯(B): `스탯` 시트 키 열 참조. 연산자(C): &lt; &gt; == &gt;= &lt;= + true/false.
+    ///   값(D)은 연산자가 true/false면 회색(조건부 서식) — bool 조건은 값 칸을 쓰지 않는다.
+    /// - 스탯 타입(F): int/bool.
+    /// </summary>
+    internal static void ApplyChapterDropdowns(
+        IXLWorksheet episodeSheet,
+        IXLWorksheet edgeSheet,
+        IXLWorksheet conditionSheet,
+        IXLWorksheet statSheet)
+    {
+        AddConditionDropdown(episodeSheet, 7);   // 표시조건
+        AddConditionDropdown(episodeSheet, 8);   // 해금조건
+        AddConditionDropdown(edgeSheet, 5);      // 간선의 조건
+        AddYesNoDropdown(edgeSheet, 6);          // 잠금시 숨김
+
+        conditionSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()
+            .List($"='{ChapterSheetNames.Stats}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+        conditionSheet.Range(2, 3, DropdownRows, 3).CreateDataValidation()
+            .List("\"<,>,==,>=,<=,true,false\"", inCellDropdown: true);
+
+        // bool 조건(연산자 = true/false)이면 값 칸이 회색이 된다 — "여긴 안 쓴다"가 보인다.
+        conditionSheet.Range(2, 4, DropdownRows, 4)
+            .AddConditionalFormat()
+            .WhenIsTrue("=OR($C2=\"true\",$C2=\"false\")")
+            .Fill.SetBackgroundColor(XLColor.FromHtml("#D9D9D9"));
+
+        statSheet.Range(2, 6, DropdownRows, 6).CreateDataValidation()
+            .List("\"int,bool\"", inCellDropdown: true);
+    }
 
     /// <summary>
     /// 그 열을 `조건` 시트 라벨 열(A2:A200)을 가리키는 목록으로 만든다. 정적 목록이 아니라
