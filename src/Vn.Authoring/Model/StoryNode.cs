@@ -280,6 +280,16 @@ public sealed class DialogueNode : StoryNode
     public Dictionary<string, string> BranchExits { get; init; } = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// <b>선택지 문구 → 그 선택지를 고른 뒤 거쳐 갈 자유 씬</b> (v9, 2026-08-17).
+    ///
+    /// v9에서 선택지의 주인은 챕터 `간선` 시트이고 대본에는 OPTION이 없다 — 그래서 작가의
+    /// 배선이 매달릴 자리도 대본의 줄이 아니라 <b>문구</b>다. <see cref="BranchExits"/>와
+    /// 달리 대본 편집으로 청소되지 않는다: 문구의 주인은 챕터라 대본이 바뀌어도 그대로다.
+    /// 간선이 사라지면 배선은 고아로 남는다(쓰레기가 아니라 되돌릴 수 있는 상태다).
+    /// </summary>
+    public Dictionary<string, string> ChoiceExits { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// 에피소드 엑셀의 행 신원 — <b>인덱스(A열) → LineId</b> (v4, 2026-08-13 소유자 승인).
     ///
     /// 대본 파일의 유일한 writer는 사람이다. 툴은 LineId를 B열에 되쓰는 대신 여기(프로젝트,
@@ -308,6 +318,7 @@ public sealed class DialogueNode : StoryNode
             LineExtensions = LineExtensions.Select(item => item.Clone()).ToList(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
             BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal),
+            ChoiceExits = new Dictionary<string, string>(ChoiceExits, StringComparer.Ordinal),
             ExcelLineMap = new Dictionary<int, string>(ExcelLineMap)
         };
     }

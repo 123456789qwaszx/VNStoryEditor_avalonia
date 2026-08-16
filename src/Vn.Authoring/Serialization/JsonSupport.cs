@@ -273,6 +273,17 @@ internal static class JsonSupport
                     $"DialogueNode '{node.Id}'의 조건 출구가 없는 노드 '{target}'를 가리킵니다.");
             }
         }
+
+        // 선택지 출구(v9)는 열쇠가 문구라 LineId 대조를 하지 않는다 — 간선이 사라져 문구가
+        // 남으면 그것은 고아이지 깨진 파일이 아니다. 가리키는 노드만 실재해야 한다.
+        foreach (string target in node.ChoiceExits.Values)
+        {
+            if (project.FindNode(target) is null)
+            {
+                throw new InvalidDataException(
+                    $"DialogueNode '{node.Id}'의 선택지 출구가 없는 노드 '{target}'를 가리킵니다.");
+            }
+        }
     }
 
     private static void ValidatePresentationNode(

@@ -499,7 +499,7 @@ public sealed partial class ProjectEditor
     public void SetExitTarget(ExitPort port, string? targetNodeId)
     {
         ArgumentNullException.ThrowIfNull(port);
-        SetExitTarget(port.NodeId, port.Kind, port.BranchOpenLineId, targetNodeId);
+        SetExitTarget(port.NodeId, port.Kind, port.ExitKey, targetNodeId);
     }
 
     public void SetExitTarget(
@@ -542,15 +542,19 @@ public sealed partial class ProjectEditor
             return;
         }
 
+        // 선택지 출구(v9)는 문구가 열쇠다 — 대본의 줄에 매이지 않는다.
+        Dictionary<string, string> exits =
+            kind == ExitPortKind.Choice ? dialogue.ChoiceExits : dialogue.BranchExits;
+
         Mutate(() =>
         {
             if (targetNodeId is null)
             {
-                dialogue.BranchExits.Remove(branchOpenLineId);
+                exits.Remove(branchOpenLineId);
             }
             else
             {
-                dialogue.BranchExits[branchOpenLineId] = targetNodeId;
+                exits[branchOpenLineId] = targetNodeId;
             }
         });
     }
@@ -1564,6 +1568,14 @@ public sealed partial class ProjectEditor
                          .ToList())
             {
                 dialogue.BranchExits.Remove(key);
+            }
+
+            foreach (string key in dialogue.ChoiceExits
+                         .Where(pair => string.Equals(pair.Value, nodeId, StringComparison.Ordinal))
+                         .Select(pair => pair.Key)
+                         .ToList())
+            {
+                dialogue.ChoiceExits.Remove(key);
             }
         }
     }

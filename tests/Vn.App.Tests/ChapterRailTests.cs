@@ -281,6 +281,64 @@ public sealed class ChapterRailTests
         Directory.Delete(episodes, recursive: true);
     });
 
+    [Fact]
+    public void 대본에_OPTION이_없어도_간선마다_칩이_서고_자유_씬을_단다() => HeadlessUi.Run(() =>
+    {
+        // v9 (2026-08-17 소유자 보고) — "'이 문구의 Option이 대본에 없습니다' 라면서 레거시의
+        // 그런 느낌이야." 선택지의 주인이 챕터로 온 뒤 대본에 OPTION이 없는 것이 정상인데,
+        // 철도는 여전히 대본 OPTION을 기준으로 삼아 모든 간선을 유령으로 그리고 있었다.
+        (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
+
+        DialogueNode ep00 = AddExcelNode(session, fileId, "EP00"); // 대본에 OPTION 줄이 없다
+        AddExcelNode(session, fileId, "EP01");
+        AddExcelNode(session, fileId, "EP02");
+
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬A");
+        free.Layout.X = 700;
+        free.Layout.Y = 420;
+
+        graph.SupplyChapters([Chapter("ch01",
+            episodes: ["EP00", "EP01", "EP02"],
+            edges:
+            [
+                ("EP00", "EP01", "라루를 믿는다", null),
+                ("EP00", "EP02", "의심한다", null)
+            ])]);
+        graph.Rebuild();
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+
+        // 간선 둘 = 칩 둘. 유령(흐린 칩)도, 레거시 경고도 없다.
+        List<TextBlock> chips = canvas.Children.OfType<TextBlock>()
+            .Where(block => (block.Text ?? string.Empty).StartsWith("●", StringComparison.Ordinal))
+            .ToList();
+        Assert.Equal(["● 라루를 믿는다", "● 의심한다"], chips.Select(block => block.Text));
+        Assert.All(chips, chip => Assert.Equal(1, chip.Opacity));
+
+        // 문구를 열쇠로 자유 씬을 단다 — 대본의 줄이 아니라 챕터의 문구가 자리다.
+        session.Editor.SetExitTarget(ep00.Id, ExitPortKind.Choice, "라루를 믿는다", free.Id);
+
+        Assert.Equal(free.Id, ep00.ChoiceExits["라루를 믿는다"]);
+
+        graph.Rebuild();
+
+        // 철도가 그 씬 카드로 진입한다 — 같은 높이면 왼쪽(x=카드-8), 아니면 가운데(700+105).
+        Assert.Contains(canvas.Children.OfType<Line>(),
+            line => Math.Abs(line.EndPoint.X - (700 - 8)) < 0.5 ||
+                    Math.Abs(line.EndPoint.X - (700 + 105)) < 0.5);
+
+        // 대본을 고쳐도 이 배선은 살아 있다 — 문구의 주인은 챕터라 줄 청소에 쓸리지 않는다.
+        session.Editor.AddDialogueNode(fileId, name: "무관한노드");
+        Assert.Equal(free.Id, ep00.ChoiceExits["라루를 믿는다"]);
+
+        // 저장·재적재를 건너도 남는다 — 판 파일에 제 자리가 있다.
+        StoryFile saved = StoryFileJson.Read(
+            StoryFileJson.Write(session.Project.Files.Single(file => file.Id == fileId)));
+        DialogueNode reloaded = saved.Nodes.OfType<DialogueNode>()
+            .Single(node => node.ExcelEpisodeId == "EP00");
+        Assert.Equal(free.Id, reloaded.ChoiceExits["라루를 믿는다"]);
+    });
+
     private static void WriteEpisode(string path)
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook();

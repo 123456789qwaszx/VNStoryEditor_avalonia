@@ -9,7 +9,15 @@ public enum ExitPortKind
     Default,
 
     /// <summary>특정 조건 갈래를 지났을 때의 출구.</summary>
-    Branch
+    Branch,
+
+    /// <summary>
+    /// 챕터 간선(선택지) 하나를 골랐을 때의 출구 (v9, 2026-08-17). <b>열쇠는 선택지 문구</b>다 —
+    /// 대본에 OPTION이 없어도(v9에서는 없는 것이 정상) 선택지마다 자유 씬을 달 수 있다.
+    ///
+    /// 대본의 줄에 매이지 않으므로 대본을 고쳐도 사라지지 않는다(문구의 주인은 챕터다).
+    /// </summary>
+    Choice
 }
 
 /// <summary>
@@ -32,11 +40,17 @@ public sealed record ExitPort(
 {
     public bool IsConnected => TargetNodeId is not null;
 
+    /// <summary>
+    /// 이 포트를 저장할 때의 열쇠. 갈래는 여는 줄의 LineId, 선택지는 <b>문구</b>다(v9).
+    /// 기본 출구는 열쇠가 없다 — 노드에 자리가 하나뿐이다.
+    /// </summary>
+    public string? ExitKey => Kind == ExitPortKind.Choice ? ChoiceText : BranchOpenLineId;
+
     public bool SamePortAs(ExitPort other)
     {
         return Kind == other.Kind &&
             string.Equals(NodeId, other.NodeId, StringComparison.Ordinal) &&
-            string.Equals(BranchOpenLineId, other.BranchOpenLineId, StringComparison.Ordinal);
+            string.Equals(ExitKey, other.ExitKey, StringComparison.Ordinal);
     }
 }
 

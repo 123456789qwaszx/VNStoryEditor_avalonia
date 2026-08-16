@@ -536,6 +536,11 @@ public static class EpisodeSyncService
             {
                 Check(targetId, "갈래 출구");
             }
+
+            foreach ((_, string targetId) in dialogue.ChoiceExits)
+            {
+                Check(targetId, "선택지 출구");
+            }
         }
 
         return warnings;

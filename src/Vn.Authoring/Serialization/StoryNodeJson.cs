@@ -212,6 +212,20 @@ internal static class StoryNodeJson
 
         json["lines"] = lines;
 
+        // 선택지별 자유 씬 배선 (v9) — 열쇠가 대본의 줄이 아니라 <b>문구</b>다. 그래서
+        // 줄 항목 안이 아니라 노드에 따로 선다(대본이 바뀌어도 이 배선은 그대로다).
+        if (node.ChoiceExits.Count > 0)
+        {
+            var choiceExits = new JsonObject();
+
+            foreach ((string choice, string target) in node.ChoiceExits.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                choiceExits[choice] = target;
+            }
+
+            json["choiceExits"] = choiceExits;
+        }
+
         // 에피소드 엑셀의 행 신원 (v4) — 인덱스 → LineId. 대본 파일에 되쓰는 대신 여기 산다.
         if (node.ExcelLineMap.Count > 0)
         {
@@ -511,6 +525,16 @@ internal static class StoryNodeJson
             }
 
             node.LineExtensions.Add(extension);
+        }
+
+        if (json["choiceExits"] is JsonObject choiceExits)
+        {
+            foreach ((string choice, JsonNode? value) in choiceExits)
+            {
+                node.ChoiceExits[choice] = (string?)value
+                    ?? throw new InvalidDataException(
+                        $"DialogueNode '{id}'의 choiceExits['{choice}']에 대상 노드가 없습니다.");
+            }
         }
 
         if (json["excelLines"] is JsonObject excelLines)
