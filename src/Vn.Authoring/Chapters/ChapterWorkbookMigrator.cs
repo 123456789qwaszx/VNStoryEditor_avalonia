@@ -80,9 +80,15 @@ public static class ChapterWorkbookMigrator
 
         return Header(workbook, ChapterSheetNames.Episodes, 3) == "인덱스" ||
                Header(workbook, ChapterSheetNames.Edges, 3) == "선택지 라벨" ||
-               Header(workbook, ChapterSheetNames.Edges, 4) == "선택지" || // v5 — 문구가 아직 간선에 있다
+               // v5(D=문구인데 선택지 시트가 없다) — v7의 D=인덱스와 머리글이 같아 시트로 가른다
+               (Header(workbook, ChapterSheetNames.Edges, 4) == "선택지" &&
+                Find(workbook, ChapterSheetNames.Choices) is null) ||
+               Header(workbook, ChapterSheetNames.Edges, 4) == "선택지수" || // v6
+               Header(workbook, ChapterSheetNames.Choices, 2) == "도착" ||   // v6 선택지 시트
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
                 Find(workbook, ChapterSheetNames.Choices) is null) ||
+               (Find(workbook, ChapterSheetNames.Episodes) is not null &&
+                Header(workbook, ChapterSheetNames.Episodes, 11) != "선택지수") ||
                Header(workbook, ChapterSheetNames.Conditions, 2) == "조건식" ||
                (Find(workbook, ChapterSheetNames.Stats) is not null &&
                 Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
@@ -90,41 +96,69 @@ public static class ChapterWorkbookMigrator
     }
 
     /// <summary>
-    /// v6 (2026-08-16 소유자) — 선택지의 정본이 간선의 문구 칸에서 `선택지` 시트로 옮겨 간다.
-    /// 간선 D열의 문구를 선택지 칸(출발·도착·인덱스·대본)으로 옮기고, D열은 `선택지수`가 된다.
-    /// 문구 없던 간선도 칸 하나(빈 대본 = 보이지 않는 기본)를 받는다.
+    /// v7 (2026-08-16 소유자) — 선택지의 정본은 챕터 `선택지` 시트(출발·인덱스·대본·메모)이고
+    /// <b>간선 하나에 칸 하나가 1:1</b>이다: 간선 D열이 짝 칸의 인덱스를 가리킨다.
+    ///
+    /// 받는 모양 셋: ① v5 — 간선 D열에 문구가 그대로 있다(선택지 시트 없음) ② v6 — 선택지
+    /// 시트에 도착 열이 있고 간선 D열은 선택지수다 ③ 에피소드 시트에 `선택지수`(K)가 없다.
+    /// 전부 v7로 모은다. 사람이 적어 둔 대본 text는 보존한다.
     /// </summary>
     private static void MigrateEdgeLabelsToChoiceSheet(XLWorkbook workbook)
     {
-        if (Find(workbook, ChapterSheetNames.Edges) is not { } edges)
+        if (Find(workbook, ChapterSheetNames.Edges) is not { } edges ||
+            Find(workbook, ChapterSheetNames.Episodes) is not { } episodes)
         {
             return;
         }
 
-        bool labelColumn = Header(workbook, ChapterSheetNames.Edges, 4) == "선택지";
         IXLWorksheet? choices = Find(workbook, ChapterSheetNames.Choices);
 
-        if (!labelColumn && choices is not null)
+        // ── v6 선택지 시트(도착 열 있음) → v7: 도착 열을 지운다. 짝은 아래에서 간선 D에
+        //    인덱스로 새겨 넣으므로, 지우기 전에 (출발, 도착) → 인덱스들 맵을 뜬다.
+        var byPair = new Dictionary<(string, string), Queue<string>>();
+
+        if (choices is not null && Header(workbook, ChapterSheetNames.Choices, 2) == "도착")
         {
-            return; // 이미 v6다.
+            foreach (IXLRow row in choices.RowsUsed().Skip(1))
+            {
+                string from = row.Cell(1).GetString().Trim();
+                string to = row.Cell(2).GetString().Trim();
+                string index = row.Cell(3).GetString().Trim();
+
+                if (from.Length == 0 || index.Length == 0)
+                {
+                    continue;
+                }
+
+                if (!byPair.TryGetValue((from, to), out Queue<string>? queue))
+                {
+                    byPair[(from, to)] = queue = new Queue<string>();
+                }
+
+                queue.Enqueue(index);
+            }
+
+            choices.Column(2).Delete(); // 도착 폐지 — 도착은 간선이 소유한다
+            choices.Cell(1, 2).SetValue("인덱스");
         }
 
-        if (choices is null)
-        {
-            choices = workbook.AddWorksheet(ChapterSheetNames.Choices);
-            string[] headers = ["출발", "도착", "인덱스", "대본", "메모"];
+        choices ??= ChapterWorkbookWriter.CreateChoiceSheet(workbook);
 
-            for (int column = 1; column <= headers.Length; column++)
+        // ── 간선 → 칸 1:1 배선. D열이 v5 문구든 v6 선택지수든, 인덱스 참조로 바꾼다.
+        bool edgeLabelColumn = Header(workbook, ChapterSheetNames.Edges, 4) == "선택지" &&
+                               byPair.Count == 0 &&
+                               choices.RowsUsed().Skip(1).All(row => row.Cell(1).GetString().Trim().Length == 0);
+        var nextIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (IXLRow row in choices.RowsUsed().Skip(1))
+        {
+            string from = row.Cell(1).GetString().Trim();
+
+            if (from.Length > 0 && int.TryParse(row.Cell(2).GetString(), out int existing))
             {
-                IXLCell cell = choices.Cell(1, column);
-                cell.SetValue(headers[column - 1]);
-                cell.Style.Font.SetBold(true);
-                cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
+                nextIndex[from] = Math.Max(nextIndex.GetValueOrDefault(from), existing);
             }
         }
-
-        var nextIndex = new Dictionary<string, int>(StringComparer.Ordinal);
-        int slotRow = (choices.LastRowUsed()?.RowNumber() ?? 1) + 1;
 
         foreach (IXLRow row in edges.RowsUsed().Skip(1))
         {
@@ -136,39 +170,74 @@ public static class ChapterWorkbookMigrator
                 continue;
             }
 
-            string text = labelColumn ? row.Cell(4).GetString().Trim() : string.Empty;
+            string cellD = row.Cell(4).GetString().Trim();
 
-            // 이미 칸이 있는 간선(재이행)은 건너뛴다 — 사람이 적은 대본을 두 번 만들지 않는다.
-            bool hasSlot = choices.RowsUsed().Skip(1).Any(slot =>
+            // v7 재이행 방지 — 이미 인덱스를 가리키는 간선(그 칸이 실제로 있다)은 그대로.
+            bool alreadyWired = cellD.Length > 0 && choices.RowsUsed().Skip(1).Any(slot =>
                 string.Equals(slot.Cell(1).GetString().Trim(), from, StringComparison.Ordinal) &&
-                string.Equals(slot.Cell(2).GetString().Trim(), to, StringComparison.Ordinal));
+                string.Equals(slot.Cell(2).GetString().Trim(), cellD, StringComparison.Ordinal));
 
-            if (!hasSlot)
+            if (alreadyWired && !edgeLabelColumn)
             {
-                int index = (nextIndex.TryGetValue(from, out int last) ? last : 0) + 10;
-                nextIndex[from] = index;
+                continue;
+            }
 
+            string? index = null;
+
+            if (byPair.TryGetValue((from, to), out Queue<string>? queue) && queue.Count > 0)
+            {
+                index = queue.Dequeue(); // v6 칸을 물려받는다 — 사람이 적은 대본 그대로
+            }
+            else
+            {
+                // 새 칸 — v5 문구가 있으면 대본으로 옮겨 심는다.
+                string text = edgeLabelColumn ? cellD : string.Empty;
+                int assigned = nextIndex.GetValueOrDefault(from) + 10;
+                nextIndex[from] = assigned;
+
+                int slotRow = (choices.LastRowUsed()?.RowNumber() ?? 1) + 1;
                 choices.Cell(slotRow, 1).SetValue(from);
-                choices.Cell(slotRow, 2).SetValue(to);
-                choices.Cell(slotRow, 3).SetValue(index);
+                choices.Cell(slotRow, 2).SetValue(assigned);
 
                 if (text.Length > 0)
                 {
-                    choices.Cell(slotRow, 4).SetValue(text);
+                    choices.Cell(slotRow, 3).SetValue(text);
                 }
 
-                slotRow++;
+                index = assigned.ToString();
             }
 
-            if (labelColumn)
-            {
-                row.Cell(4).SetValue(1); // 문구 → 선택지수
-            }
+            row.Cell(4).SetValue(int.TryParse(index, out int numeric) ? numeric : 0);
         }
 
-        if (labelColumn)
+        edges.Cell(1, 4).SetValue("선택지");
+
+        // ── 에피소드의 선택지수(K) — 칸 수가 곧 선언값이다(최소 1).
+        if (Header(workbook, ChapterSheetNames.Episodes, 11) != "선택지수")
         {
-            edges.Cell(1, 4).SetValue("선택지수");
+            if (Header(workbook, ChapterSheetNames.Episodes, 11) == "도달불가 허용")
+            {
+                episodes.Column(11).InsertColumnsBefore(1);
+            }
+
+            IXLCell header = episodes.Cell(1, 11);
+            header.SetValue("선택지수");
+            header.Style.Font.SetBold(true);
+            header.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
+        }
+
+        foreach (IXLRow row in episodes.RowsUsed().Skip(1))
+        {
+            string episodeId = row.Cell(1).GetString().Trim();
+
+            if (episodeId.Length == 0 || row.Cell(11).GetString().Trim().Length > 0)
+            {
+                continue;
+            }
+
+            int slots = choices.RowsUsed().Skip(1).Count(slot =>
+                string.Equals(slot.Cell(1).GetString().Trim(), episodeId, StringComparison.Ordinal));
+            row.Cell(11).SetValue(Math.Max(1, slots));
         }
     }
 

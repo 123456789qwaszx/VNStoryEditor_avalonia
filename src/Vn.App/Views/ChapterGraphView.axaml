@@ -165,23 +165,28 @@
                                    TextWrapping="Wrap"
                                    Margin="0,2,0,0" />
 
-                        <!-- ＋를 눌러야 연결 폼이 나온다 (2026-08-16 — 상시 표시 폐지).
-                             목록의 줄을 클릭하면 그 줄 바로 아래에 폼이 열려 선택지를 고친다. -->
+                        <!-- 선택지(Choice) — 이 에피소드가 끝날 때 뜨는 Option 칸들 (v7).
+                             칸 하나 = 길 하나. [＋]로 칸을 늘리고, 줄을 클릭하면 그 줄 바로
+                             아래에서 도착을 골라 잇는다. 문구는 챕터 엑셀 `선택지` 시트에서. -->
                         <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
-                            <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12"
+                            <TextBlock x:Name="ChoiceHeaderText" Text="선택지" FontWeight="SemiBold" FontSize="12"
                                        VerticalAlignment="Center" />
                             <Button Grid.Column="1" x:Name="AddNextEdgeButton" Content="＋"
                                     FontSize="11" Padding="7,1"
-                                    ToolTip.Tip="이미 있는 에피소드를 다음으로 잇는 폼을 엽니다. 새 에피소드는 툴바의 [＋ 에피소드]." />
+                                    ToolTip.Tip="선택지 칸을 하나 더합니다(에피소드의 선택지수 +1). 문구는 엑셀 `선택지` 시트의 대본 칸에서 적고, 도착은 아래 줄을 눌러 잇습니다." />
                         </Grid>
+                        <TextBlock Text="칸 하나 = 길 하나. 빈 대본 칸은 보이지 않는 기본(어떤 조건도 안 될 때의 방어장치)입니다."
+                                   FontSize="10" Opacity="0.55" TextWrapping="Wrap" />
                         <StackPanel x:Name="EdgeListPanel" Spacing="3">
-                            <!-- 연결·수정 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래).
-                                 라벨은 자유 입력이 아니라 대본의 OPTION에서 고른다(오타 = 유령 간선). -->
-                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,6,Auto,Auto" IsVisible="False">
-                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11" />
-                                <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11" MinWidth="52"
-                                          ToolTip.Tip="선택지수 — 이 간선이 선택지 시트에 갖는 칸 수(기본 1). 문구는 그 칸의 대본에서 자유롭게 적고, 빈 대본 = 보이지 않는 기본입니다." />
-                                <Button Grid.Column="3" x:Name="AddEdgeButton" Content="연결" FontSize="11" Margin="4,0,0,0" />
+                            <!-- 잇기 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래). -->
+                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,Auto" IsVisible="False">
+                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
+                                          PlaceholderText="도착 에피소드"
+                                          ToolTip.Tip="이 선택지 칸이 향할 에피소드. 고르고 [잇기]를 누르면 간선이 됩니다." />
+                                <Button Grid.Column="1" x:Name="AddEdgeButton" Content="잇기" FontSize="11" Margin="4,0,0,0" />
+                                <!-- v6까지 쓰던 선택지수 콤보 — v7에서 자리를 잃었다(수는 에피소드가 지정).
+                                     화면에서 감추되 컨트롤은 남긴다(테스트·후속 정리에서 참조). -->
+                                <ComboBox x:Name="EdgeLabelBox" IsVisible="False" />
                             </Grid>
                         </StackPanel>
 

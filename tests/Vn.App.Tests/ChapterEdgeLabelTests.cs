@@ -41,7 +41,7 @@ public sealed class ChapterEdgeLabelTests
         using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
         {
             ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
-            choices.Cell(slot.SourceRow, 4).SetValue("왼쪽 길로 간다");
+            choices.Cell(slot.SourceRow, 3).SetValue("왼쪽 길로 간다"); // 대본은 C열 (v7)
             workbook.Save();
         }
 
@@ -98,9 +98,9 @@ public sealed class ChapterEdgeLabelTests
     });
 
     [Fact]
-    public void 다시_읽기가_끼어들어도_고르던_선택지수가_사라지지_않는다() => HeadlessUi.Run(() =>
+    public void 다시_읽기가_끼어들어도_적던_잠금_안내문이_사라지지_않는다() => HeadlessUi.Run(() =>
     {
-        // 저장 감시는 언제든 울린다(엑셀이 파일을 건드리기만 해도). 그 사이에 골라 둔 값이
+        // 저장 감시는 언제든 울린다(엑셀이 파일을 건드리기만 해도). 그 사이에 적어 둔 값이
         // 조용히 모델 값으로 되돌아가면, 사람 눈에는 "적용을 눌러도 안 바뀐다"로 보인다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
@@ -115,20 +115,18 @@ public sealed class ChapterEdgeLabelTests
 
         view.SelectEdgeKey("new01", "new02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "2";
+        view.FindControl<TextBox>("EdgeLockedMsgBox")!.Text = "아직 이르다";
 
-        // 고른 값에 포커스가 없는 상태에서 감시가 울린다 — 고른 값이 모델 값으로 되돌아가면 안 된다.
+        // 적어 둔 값에 포커스가 없는 상태에서 감시가 울린다 — 모델 값으로 되돌아가면 안 된다.
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         view.ApplyEdgeFromPanel();
 
-        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
-        ChapterEdge saved = reread.Edges.Single(edge =>
+        ChapterEdge saved = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(edge =>
             edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
 
-        Assert.Equal(2, saved.ChoiceCount);
-        Assert.Equal(2, reread.ChoiceOptionsFor("new01").Count()); // 칸이 함께 섰다
+        Assert.Equal("아직 이르다", saved.LockedMessage);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────

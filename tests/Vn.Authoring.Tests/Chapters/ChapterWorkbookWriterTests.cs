@@ -186,18 +186,18 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         ChapterEdge added = afterAdd.Edges.Single(edge =>
             edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03");
         Assert.True(added.IsPlainAdvance); // 대본 text를 아직 안 적었다 — 보이지 않는 기본
-        Assert.Single(afterAdd.ChoiceOptionsFor("main05.01"),
-            slot => slot.ToEpisodeId == "main05.03");
-
-        Assert.False(ChapterWorkbookWriter.AddEdge(path, "main05.01", "main05.03").Written); // 중복 거부
+        Assert.NotNull(added.ChoiceIndex);  // 짝 칸이 함께 섰다
+        Assert.Contains(afterAdd.ChoiceOptionsFor("main05.01"),
+            slot => slot.Index == added.ChoiceIndex);
 
         Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "main05.01", "main05.03").Written);
 
+        // 칸은 남는다 (칸의 주인은 에피소드의 선택지수다) — 다시 이으면 그 칸을 쓴다.
         ChapterGraphModel after = ChapterWorkbookReader.Read(path);
         Assert.DoesNotContain(after.Edges, edge =>
             edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03");
-        Assert.DoesNotContain(after.ChoiceOptions, slot =>
-            slot.EpisodeId == "main05.01" && slot.ToEpisodeId == "main05.03");
+        Assert.Contains(after.ChoiceOptionsFor("main05.01"),
+            slot => slot.Index == added.ChoiceIndex);
     }
 
     [Fact]
@@ -238,10 +238,11 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
             edge.OptionLabel == "B를 고른다");
         Assert.Contains(reread.Edges, edge =>
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_a" && edge.IsPlainAdvance);
-        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot =>
-            slot.ToEpisodeId == "ep_b" && slot.Text == "B를 고른다");
-        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot =>
-            slot.ToEpisodeId == "ep_a" && slot.IsInvisibleDefault);
+        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot => slot.Text == "B를 고른다");
+        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot => slot.IsInvisibleDefault);
+
+        // 칸이 둘 서면서 에피소드의 선택지수도 따라 올랐다.
+        Assert.Equal(2, reread.FindEpisode("main05.end")!.ChoiceCount);
     }
 
     [Fact]

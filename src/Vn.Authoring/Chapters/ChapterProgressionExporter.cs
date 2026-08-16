@@ -63,38 +63,23 @@ public static class ChapterProgressionExporter
         DialogueEntryId = episode.DialogueEntry,
         VisibleConditions = Conditions(chapter, episode.VisibleConditionLabel),
         UnlockConditions = Conditions(chapter, episode.UnlockConditionLabel),
-        // 2026-08-16 소유자 — 선택지 칸(선택지 시트) 하나가 NextOption 하나다. 문구는 칸의
-        // 대본 text이고, 조건·잠금·스탯변화는 칸의 주인 간선 것이다. 빈 text 칸은 보이지 않는
-        // 기본(자동 진행) — 라벨 빈 문자열로 나간다. 칸이 아직 없는 간선(구판)은 종전대로
-        // 간선 하나 = 옵션 하나다.
+        // v7 — 간선 하나 = NextOption 하나(간선과 선택지 칸이 1:1). 문구는 짝 칸의 대본
+        // text(`OptionLabel`이 그 파생값)이고, 빈 칸이면 빈 문자열 = 보이지 않는 기본
+        // (자동 진행). 조건·잠금·스탯변화·도착은 간선 것이다.
+        // 순서는 선택지 칸의 인덱스 순 — 화면에 뜨는 순서가 곧 이 순서다.
         NextOptions = chapter.Edges
             .Where(edge => string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
-            .SelectMany(edge =>
+            .OrderBy(edge => SlotOrder(chapter, edge))
+            .Select(edge => new NextOptionJson
             {
-                List<ChapterChoiceOption> slots = chapter.ChoiceOptions
-                    .Where(slot =>
-                        string.Equals(slot.EpisodeId, edge.FromEpisodeId, StringComparison.Ordinal) &&
-                        string.Equals(slot.ToEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal))
-                    .ToList();
-
-                IEnumerable<string> labels = slots.Count == 0
-                    ? [edge.OptionLabel ?? string.Empty]
-                    : slots
-                        .Where(slot => !slot.IsInvisibleDefault)
-                        .Select(slot => slot.Text)
-                        .DefaultIfEmpty(string.Empty); // 전부 빈 칸 = 보이지 않는 기본 하나
-
-                return labels.Select(label => new NextOptionJson
-                {
-                    TargetEpisodeId = edge.ToEpisodeId,
-                    ChoiceLabel = label,
-                    Conditions = Conditions(chapter, edge.ConditionLabel),
-                    HideWhenLocked = edge.HideWhenLocked,
-                    LockedReasonText = edge.LockedMessage ?? string.Empty,
-                    StatChanges = edge.StatChanges
-                        .Select(delta => new StatChangeJson { Key = delta.Key, Amount = delta.Amount })
-                        .ToList()
-                });
+                TargetEpisodeId = edge.ToEpisodeId,
+                ChoiceLabel = edge.OptionLabel ?? string.Empty,
+                Conditions = Conditions(chapter, edge.ConditionLabel),
+                HideWhenLocked = edge.HideWhenLocked,
+                LockedReasonText = edge.LockedMessage ?? string.Empty,
+                StatChanges = edge.StatChanges
+                    .Select(delta => new StatChangeJson { Key = delta.Key, Amount = delta.Amount })
+                    .ToList()
             })
             .ToList(),
         IsChapterEndingCandidate = episode.IsEnding,
@@ -102,6 +87,24 @@ public static class ChapterProgressionExporter
         DesignerNote = episode.Memo ?? string.Empty,
         Position = new PositionJson { X = episode.X, Y = episode.Y }
     };
+
+    /// <summary>그 간선이 짝한 선택지 칸의 자리 — 화면에 뜨는 순서(인덱스 순)의 근거.</summary>
+    private static int SlotOrder(ChapterGraphModel chapter, ChapterEdge edge)
+    {
+        int position = 0;
+
+        foreach (ChapterChoiceOption slot in chapter.ChoiceOptionsFor(edge.FromEpisodeId))
+        {
+            if (string.Equals(slot.Index, edge.ChoiceIndex, StringComparison.Ordinal))
+            {
+                return position;
+            }
+
+            position++;
+        }
+
+        return int.MaxValue; // 짝 없는 간선은 뒤로 — 검증이 따로 짚는다
+    }
 
     /// <summary>
     /// 챕터 조건 → 런타임 `EpisodeCondition`. 스탯 항은 <c>Stat + GreaterOrEqual/LessOrEqual/Equal</c>,

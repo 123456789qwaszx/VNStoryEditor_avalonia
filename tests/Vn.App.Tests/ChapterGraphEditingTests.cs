@@ -85,55 +85,57 @@ public sealed class ChapterGraphEditingTests
 
         view.SelectEpisode("main05.01");
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
-        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "1";
         view.AddEdgeFromPanel();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
 
         ChapterEdge edge = reread.Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
-        Assert.Equal(1, edge.ChoiceCount);
-        // 칸이 함께 섰다 — 빈 대본(보이지 않는 기본). 문구는 선택지 시트에서 적는다.
-        Assert.Contains(reread.ChoiceOptionsFor("main05.01"), slot =>
-            slot.ToEpisodeId == "main05.end" && slot.IsInvisibleDefault);
+        // 칸 하나와 1:1로 짝했다 — 문구는 엑셀 `선택지` 시트의 대본 칸에서 적는다.
+        Assert.NotNull(edge.ChoiceIndex);
+        Assert.Contains(reread.ChoiceOptionsFor("main05.01"), slot => slot.Index == edge.ChoiceIndex);
     });
 
     [Fact]
-    public void 간선_줄을_클릭하면_폼에_실려_선택지수를_고친다() => HeadlessUi.Run(() =>
+    public void 선택지_줄을_클릭하면_그_아래에서_도착을_잇는다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-16 소유자 — 줄 클릭이 간선 선택으로 건너뛰지 않는다. 그 줄 바로 아래에
-        // 폼이 열려 도착·선택지수가 실리고, 수를 올리면 선택지 시트에 칸이 함께 선다.
+        // v7 — 목록의 줄 = 선택지 칸. [＋]가 칸을 늘리고(에피소드 선택지수 +1), 줄을 누르면
+        // 그 줄 아래 폼에서 도착을 골라 잇는다(칸 하나 = 길 하나).
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
         view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
-        view.SelectEpisode("main05.02");
+        view.SelectEpisode("main05.01");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        ChapterGraphModel model = ChapterWorkbookReader.Read(project.ChapterPath);
-        ChapterEdge edge = model.Edges.Single(candidate =>
-            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
-
-        view.LoadEdgeIntoForm(edge, 0);
+        // 칸 하나 추가 — 아직 간선은 없다.
+        view.FindControl<Button>("AddNextEdgeButton")!.RaiseEvent(
+            new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 폼이 열려 클릭한 간선의 값이 실려 있고, 도착은 신원이라 잠긴다.
+        ChapterGraphModel added = ChapterWorkbookReader.Read(project.ChapterPath);
+        Assert.Equal(2, added.FindEpisode("main05.01")!.ChoiceCount);
+
+        string freeIndex = added.ChoiceOptionsFor("main05.01")
+            .Single(slot => !added.Edges.Any(edge =>
+                edge.FromEpisodeId == "main05.01" && edge.ChoiceIndex == slot.Index))
+            .Index;
+
+        // 그 줄을 눌러 폼을 열고 도착을 고른다.
+        view.OpenSlotForm(freeIndex, rowIndex: 1, currentTarget: null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
         Assert.True(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
-        Assert.Equal("branch05.02A", view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem);
-        Assert.Equal("1", view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem);
-        Assert.False(view.FindControl<ComboBox>("EdgeTargetCombo")!.IsEnabled);
-        Assert.Equal("수정", view.FindControl<Button>("AddEdgeButton")!.Content);
+        Assert.Equal("잇기", view.FindControl<Button>("AddEdgeButton")!.Content);
 
-        // 선택지수를 올리면 칸이 함께 선다.
-        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "2";
+        view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
         view.SubmitEdgeForm();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
-        ChapterEdge updated = reread.Edges.Single(candidate =>
-            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
-        Assert.Equal(2, updated.ChoiceCount);
-        Assert.Equal(2, reread.ChoiceOptions.Count(slot =>
-            slot.EpisodeId == "main05.02" && slot.ToEpisodeId == "branch05.02A"));
+        ChapterEdge wired = reread.Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
+        Assert.Equal(freeIndex, wired.ChoiceIndex);
     });
 
     [Fact]
@@ -296,7 +298,9 @@ public sealed class ChapterGraphEditingTests
 
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
         Assert.False(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("1", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem); // 선택지수
+        // 짝 칸이 읽기 전용으로 보인다 (v7 — 문구는 엑셀 `선택지` 시트에서 고친다).
+        Assert.Contains("라루의 제안을 듣는다",
+            (string)view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem!);
         Assert.Equal("신뢰높음", view.FindControl<ComboBox>("EdgeConditionCombo")!.SelectedItem);
 
         // 잠기면 숨김으로 바꾸고 안내문을 고쳐 적용 → 엑셀 셀로 간다.
@@ -319,15 +323,14 @@ public sealed class ChapterGraphEditingTests
         // 주인 간선 있는 포트 = 채운 원(클릭 = 간선 선택), 주인 없는 칸 = 빈 원(클릭 = 에피소드 선택).
         using var project = new TempProject(SamplePath);
 
-        // 주인 없는 칸 하나를 더한다 — main05.02→main05.end 간선은 없다.
+        // 아직 안 이은 칸 하나를 더한다 (v7 — 칸은 에피소드의 것, 간선은 인덱스로 짝한다).
         using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
         {
             ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
             int row = choices.LastRowUsed()!.RowNumber() + 1;
             choices.Cell(row, 1).SetValue("main05.02");
-            choices.Cell(row, 2).SetValue("main05.end");
-            choices.Cell(row, 3).SetValue(30);
-            choices.Cell(row, 4).SetValue("셋째 길");
+            choices.Cell(row, 2).SetValue(30);
+            choices.Cell(row, 3).SetValue("셋째 길");
             workbook.Save();
         }
 

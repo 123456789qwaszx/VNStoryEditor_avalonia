@@ -84,68 +84,89 @@ public static class ChapterValidator
     }
 
     /// <summary>
-    /// 선택지 칸의 구조 검증 (2026-08-16 소유자 — 선택지 시트가 정본).
+    /// 선택지 칸의 구조 검증 (v7 — 간선 하나에 칸 하나, 인덱스가 짝의 신원).
     ///
-    /// - 칸의 주인 간선(출발→도착)이 없으면 경고 — 주인 없는 칸은 화면에 못 나간다.
-    /// - 간선의 선택지수와 실제 칸 수가 다르면 경고 — 툴의 다시 읽기가 모자란 칸을 만들어 준다.
-    /// - 빈 대본(보이지 않는 기본)은 에피소드당 하나뿐이다 — 둘째부터는 문구를 적으라고 말한다.
-    /// - 기본 칸의 간선에 조건이 있으면 경고 — 기본은 "어떤 조건도 안 될 때의 방어장치"라
-    ///   조건 없는 간선과 짝이어야 한다.
+    /// - 간선의 `선택지`가 비었거나 없는 인덱스를 가리키면 경고 — 짝 없는 간선.
+    /// - 에피소드의 선택지수와 칸 수가 다르면 경고 — 툴의 [다시 읽기]가 모자란 칸을 만든다.
+    /// - 간선 없는 칸은 경고 — 에피소드가 선언한 수만큼 간선이 서야 한다(잇는 순간 길이 된다).
+    /// - 빈 대본(보이지 않는 기본)은 에피소드당 하나뿐이고, 그 짝 간선은 조건이 없어야 한다.
     /// </summary>
     private static void VerifyChoiceSlots(ChapterGraphModel chapter, List<ChapterDiagnostic> diagnostics)
     {
-        foreach (ChapterChoiceOption slot in chapter.ChoiceOptions)
-        {
-            if (!chapter.Edges.Any(edge =>
-                    string.Equals(edge.FromEpisodeId, slot.EpisodeId, StringComparison.Ordinal) &&
-                    string.Equals(edge.ToEpisodeId, slot.ToEpisodeId, StringComparison.Ordinal)))
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Choices, slot.SourceRow, null,
-                    $"선택지 칸({slot.EpisodeId}→{slot.ToEpisodeId})의 주인 간선이 없습니다 — " +
-                    "간선을 만들거나 이 칸을 지워 주세요."));
-            }
-        }
-
         foreach (ChapterEdge edge in chapter.Edges)
         {
-            int slots = chapter.ChoiceOptions.Count(slot =>
-                string.Equals(slot.EpisodeId, edge.FromEpisodeId, StringComparison.Ordinal) &&
-                string.Equals(slot.ToEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal));
+            if (edge.ChoiceIndex is null)
+            {
+                if (chapter.ChoiceOptions.Count > 0)
+                {
+                    diagnostics.Add(new ChapterDiagnostic(
+                        ChapterDiagnosticSeverity.Warning,
+                        ChapterDiagnosticCode.OptionEdgeMismatch,
+                        chapter.SourcePath, ChapterSheetNames.Edges, edge.SourceRow, "D",
+                        $"간선 {edge.FromEpisodeId}→{edge.ToEpisodeId}의 선택지 칸(인덱스)이 비어 " +
+                        "있습니다 — 간선 하나에 선택지 칸 하나가 짝입니다."));
+                }
 
-            if (chapter.ChoiceOptions.Count > 0 && slots != edge.ChoiceCount)
+                continue;
+            }
+
+            if (!chapter.ChoiceOptionsFor(edge.FromEpisodeId).Any(slot =>
+                    string.Equals(slot.Index, edge.ChoiceIndex, StringComparison.Ordinal)))
             {
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.OptionEdgeMismatch,
                     chapter.SourcePath, ChapterSheetNames.Edges, edge.SourceRow, "D",
-                    $"간선 {edge.FromEpisodeId}→{edge.ToEpisodeId}의 선택지수는 {edge.ChoiceCount}인데 " +
-                    $"선택지 칸이 {slots}개입니다 — 툴의 [다시 읽기]가 모자란 칸을 만들어 줍니다."));
+                    $"간선 {edge.FromEpisodeId}→{edge.ToEpisodeId}가 가리키는 선택지 {edge.ChoiceIndex}가 " +
+                    $"선택지 시트에 없습니다 — '{edge.FromEpisodeId}'의 칸 인덱스를 확인해 주세요."));
             }
         }
 
-        foreach (IGrouping<string, ChapterChoiceOption> blanks in chapter.ChoiceOptions
-                     .Where(slot => slot.IsInvisibleDefault)
-                     .GroupBy(slot => slot.EpisodeId, StringComparer.Ordinal))
+        foreach (ChapterEpisode episode in chapter.Episodes)
         {
+            List<ChapterChoiceOption> slots = chapter.ChoiceOptionsFor(episode.EpisodeId).ToList();
+
+            if (slots.Count != episode.ChoiceCount && (slots.Count > 0 || episode.ChoiceCount > 1))
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.OptionEdgeMismatch,
+                    chapter.SourcePath, ChapterSheetNames.Episodes, episode.SourceRow, "K",
+                    $"'{episode.EpisodeId}'의 선택지수는 {episode.ChoiceCount}인데 선택지 칸이 " +
+                    $"{slots.Count}개입니다 — 모자라면 툴의 [다시 읽기]가 만들어 주고, 넘치면 " +
+                    "선택지수를 올리거나 칸을 지워 주세요."));
+            }
+
+            foreach (ChapterChoiceOption unwired in slots.Where(slot =>
+                         !chapter.Edges.Any(edge =>
+                             string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
+                             string.Equals(edge.ChoiceIndex, slot.Index, StringComparison.Ordinal))))
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.OptionEdgeMismatch,
+                    chapter.SourcePath, ChapterSheetNames.Choices, unwired.SourceRow, null,
+                    $"'{episode.EpisodeId}'의 선택지 {unwired.Index}에 간선이 없습니다 — " +
+                    "간선 시트에서 이 인덱스로 도착을 이어 주세요."));
+            }
+
+            List<ChapterChoiceOption> blanks = slots.Where(slot => slot.IsInvisibleDefault).ToList();
+
             foreach (ChapterChoiceOption extra in blanks.Skip(1))
             {
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Choices, extra.SourceRow, "D",
-                    $"'{blanks.Key}'의 빈 선택지 칸이 여럿입니다 — 빈 칸(보이지 않는 기본)은 " +
+                    chapter.SourcePath, ChapterSheetNames.Choices, extra.SourceRow, "C",
+                    $"'{episode.EpisodeId}'의 빈 선택지 칸이 여럿입니다 — 빈 칸(보이지 않는 기본)은 " +
                     "에피소드당 하나뿐입니다. 대본 text를 적으면 보이는 선택지가 됩니다."));
             }
 
-            ChapterChoiceOption first = blanks.First();
-            ChapterEdge? owner = chapter.Edges.FirstOrDefault(edge =>
-                string.Equals(edge.FromEpisodeId, first.EpisodeId, StringComparison.Ordinal) &&
-                string.Equals(edge.ToEpisodeId, first.ToEpisodeId, StringComparison.Ordinal));
-
-            if (owner is { ConditionLabel.Length: > 0 })
+            if (blanks.Count > 0 &&
+                chapter.Edges.FirstOrDefault(edge =>
+                    string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
+                    string.Equals(edge.ChoiceIndex, blanks[0].Index, StringComparison.Ordinal))
+                    is { ConditionLabel.Length: > 0 } owner)
             {
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Warning,

@@ -160,9 +160,10 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     }
 
     [Fact]
-    public void 주인_간선이_없는_선택지_칸은_경고한다()
+    public void 간선이_없는_선택지_칸은_경고한다()
     {
-        // 칸은 간선(출발→도착)이 소유한다 — 주인이 없으면 화면에 나갈 수 없는 유령 칸이다.
+        // v7 — 칸은 에피소드의 것이고, 간선은 그 칸을 인덱스로 가리킨다. 안 이은 칸은
+        // "여기서 끝나는 길"이 아니라 아직 안 그린 길이므로 짚어 준다.
         string path = Path.Combine(_directory, "orphan.xlsx");
         File.Copy(SamplePath, path);
 
@@ -171,9 +172,8 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
             int row = choices.LastRowUsed()!.RowNumber() + 1;
             choices.Cell(row, 1).SetValue("main05.01");
-            choices.Cell(row, 2).SetValue("main05.end"); // 그런 간선은 없다
-            choices.Cell(row, 3).SetValue(20);
-            choices.Cell(row, 4).SetValue("없는 길로 가는 문구");
+            choices.Cell(row, 2).SetValue(999);            // 어떤 간선도 안 가리키는 인덱스
+            choices.Cell(row, 3).SetValue("아직 안 이은 문구");
             workbook.Save();
         }
 
@@ -182,7 +182,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
 
         Assert.Contains(validation.Diagnostics, item =>
             item.Severity == ChapterDiagnosticSeverity.Warning &&
-            item.Message.Contains("주인 간선이 없습니다"));
+            item.Message.Contains("간선이 없습니다"));
     }
 
     // ── G6 — 픽스처 경로 ────────────────────────────────────────────────────

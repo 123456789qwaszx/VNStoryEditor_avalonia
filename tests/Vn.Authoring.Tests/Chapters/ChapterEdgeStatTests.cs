@@ -102,26 +102,43 @@ public sealed class ChapterEdgeStatTests : IDisposable
     }
 
     [Fact]
-    public void 간선_신원은_출발_도착이고_선택지수가_칸을_늘린다()
+    public void 간선은_선택지_칸과_1대1이고_칸_수는_에피소드가_정한다()
     {
-        // 2026-08-16 소유자 — 라벨 신원 폐지. 간선은 (출발, 도착) 하나뿐이고,
-        // 같은 도착으로 문구를 여럿 두려면 선택지수를 올려 칸을 늘린다.
-        string path = BuildChapter(); // ep1→ep2 간선(선택지수 1)이 이미 있다
+        // v7 (2026-08-16 소유자) — 에피소드가 선택지수를 지정하고 그 수만큼 칸이 선다.
+        // 간선은 칸 하나와 1:1로 짝하며(인덱스), 잇는 순간 길이 된다.
+        string path = BuildChapter(); // ep1→ep2 간선 + 칸 하나(인덱스 10)가 이미 있다
 
-        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2").Written); // (출발,도착) 중복 거부
+        ChapterGraphModel first = ChapterWorkbookReader.Read(path);
+        ChapterEdge wired = Assert.Single(first.Edges);
+        ChapterChoiceOption slot = Assert.Single(first.ChoiceOptionsFor("ep1"));
+        Assert.Equal(slot.Index, wired.ChoiceIndex);
+        Assert.Equal(1, first.FindEpisode("ep1")!.ChoiceCount);
 
-        Assert.True(ChapterWorkbookWriter.UpdateEdge(path, "ep1", "ep2", choiceCount: 3).Written);
+        // 칸을 더하면 에피소드의 선택지수가 따라 오른다 — 간선은 아직 없다(잇는 순간 생긴다).
+        Assert.True(ChapterWorkbookWriter.AddChoiceSlotToEpisode(path, "ep1").Written);
+
+        ChapterGraphModel added = ChapterWorkbookReader.Read(path);
+        Assert.Equal(2, added.FindEpisode("ep1")!.ChoiceCount);
+        Assert.Equal(2, added.ChoiceOptionsFor("ep1").Count());
+        Assert.Single(added.Edges);
+
+        // 그 빈 칸에 도착을 이으면 같은 도착이라도 다른 길이 된다(인덱스가 다르다).
+        string freeIndex = added.ChoiceOptionsFor("ep1")
+            .Single(candidate => candidate.Index != wired.ChoiceIndex).Index;
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", choiceIndex: freeIndex).Written);
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        ChapterEdge edge = Assert.Single(model.Edges);
-        Assert.Equal(3, edge.ChoiceCount);
-        Assert.Equal(3, model.ChoiceOptionsFor("ep1").Count(slot => slot.ToEpisodeId == "ep2"));
+        Assert.Equal(2, model.Edges.Count);
+        Assert.False(model.HasErrors);
 
-        // 삭제하면 칸도 함께 걷힌다 — 주인 없는 칸을 남기지 않는다.
-        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "ep1", "ep2").Written);
+        // 같은 칸을 두 번 잇지는 못한다.
+        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", choiceIndex: freeIndex).Written);
+
+        // 칸을 지우면 그 칸에 이어진 간선도 함께 걷힌다.
+        Assert.True(ChapterWorkbookWriter.RemoveChoiceSlot(path, "ep1", freeIndex).Written);
         ChapterGraphModel after = ChapterWorkbookReader.Read(path);
-        Assert.Empty(after.Edges);
-        Assert.Empty(after.ChoiceOptions);
+        Assert.Single(after.Edges);
+        Assert.Single(after.ChoiceOptionsFor("ep1"));
     }
 
     [Fact]

@@ -40,16 +40,18 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
         Assert.Equal("스탯변화", edges.Cell(1, 3).GetString());
-        Assert.Equal("선택지수", edges.Cell(1, 4).GetString()); // v6 — 문구는 선택지 시트로
-        Assert.Contains("1", edges.Cell(2, 4).GetDataValidation().Value);
+        Assert.Equal("선택지", edges.Cell(1, 4).GetString()); // v7 — 짝 칸의 인덱스
+        Assert.Contains(ChapterSheetNames.Choices, edges.Cell(2, 4).GetDataValidation().Value);
 
-        // 선택지 시트 (v6) — 칸의 출발·도착은 에피소드 드롭다운.
+        // 선택지 시트 (v7) — 출발(근원)·인덱스·대본·메모. 도착은 간선이 소유한다.
         IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
-        Assert.Equal("대본", choices.Cell(1, 4).GetString());
+        Assert.Equal("인덱스", choices.Cell(1, 2).GetString());
+        Assert.Equal("대본", choices.Cell(1, 3).GetString());
         Assert.Contains(ChapterSheetNames.Episodes, choices.Cell(2, 1).GetDataValidation().Value);
 
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
-        Assert.Equal("종류", episodes.Cell(1, 3).GetString()); // 인덱스가 없다
+        Assert.Equal("종류", episodes.Cell(1, 3).GetString());   // 인덱스가 없다
+        Assert.Equal("선택지수", episodes.Cell(1, 11).GetString()); // v7 — 칸 수는 에피소드가 정한다
 
         // 조건 시트 — 스탯은 스탯 시트를 가리키는 드롭다운, 연산자는 목록.
         IXLWorksheet conditions = workbook.Worksheet(ChapterSheetNames.Conditions);
@@ -87,7 +89,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         var edges = new List<string?[]>
         {
-            new string?[] { "출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문" },
+            new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
             new string?[] { "ep1", "ep2", null, null, null, "FALSE", null }
         };
 
@@ -196,11 +198,11 @@ public sealed class ChapterSchemaV5Tests : IDisposable
     public void 간선의_스탯변화는_C열에서_읽힌다()
     {
         ChapterGraphModel model = ChapterWorkbookReader.Read(WriteChapter(
-            edgeRows: [["ep1", "ep2", "trust +2", "2", null, "FALSE", null]]));
+            edgeRows: [["ep1", "ep2", "trust +2", "10", null, "FALSE", null]]));
 
         Assert.False(model.HasErrors);
         ChapterEdge edge = Assert.Single(model.Edges);
-        Assert.Equal(2, edge.ChoiceCount);
+        Assert.Equal("10", edge.ChoiceIndex); // D열은 짝 칸의 인덱스 (v7)
         StatDelta delta = Assert.Single(edge.StatChanges);
         Assert.Equal("trust", delta.Key);
         Assert.Equal(2, delta.Amount);
@@ -259,6 +261,93 @@ public sealed class ChapterSchemaV5Tests : IDisposable
                 new string?[] { "anger", "분노", "0", "0", "10" }
             }),
             ("픽스처", new[] { new string?[] { "픽스처명", "활성", "고정 선택 (에피소드ID→도착ID)" } }));
+    }
+
+    // ── v7: 에피소드가 칸 수를 정하고 간선이 칸과 1:1 ─────────────────────────
+
+    [Fact]
+    public void 선택지_시트는_출발_인덱스_대본이고_간선이_인덱스로_짝한다()
+    {
+        string path = XlsxTestWorkbook.Write(_directory, "v7.xlsx",
+            ("에피소드", new[]
+            {
+                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모", "선택지수" },
+                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, null, null, "2" },
+                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, null, null, "1" }
+            }),
+            ("간선", new[]
+            {
+                new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
+                new string?[] { "ep1", "ep2", null, "10", null, "FALSE", null },
+                new string?[] { "ep1", "ep2", null, "20", null, "FALSE", null } // 같은 도착, 다른 칸
+            }),
+            ("조건", new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
+            ("스탯", new[]
+            {
+                new string?[] { "스탯키", "표시명", "초기값", "최소", "최대", "타입" },
+                new string?[] { "trust", "신뢰", "0", "0", "10", null },
+                new string?[] { "anger", "분노", "0", "0", "10", null }
+            }),
+            ("선택지", new[]
+            {
+                new string?[] { "출발", "인덱스", "대본", "메모" },
+                new string?[] { "ep1", "10", "왼쪽으로", null },
+                new string?[] { "ep1", "20", null, "빈 대본 = 보이지 않는 기본" }
+            }));
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+
+        Assert.False(model.HasErrors);
+        Assert.Equal(2, model.FindEpisode("ep1")!.ChoiceCount);
+
+        // 문구는 짝 칸의 대본에서 파생된다 — 같은 도착이라도 칸이 다르면 다른 길이다.
+        ChapterEdge visible = model.Edges.Single(edge => edge.ChoiceIndex == "10");
+        Assert.Equal("왼쪽으로", visible.OptionLabel);
+        ChapterEdge invisible = model.Edges.Single(edge => edge.ChoiceIndex == "20");
+        Assert.True(invisible.IsPlainAdvance); // 빈 대본 = 보이지 않는 기본
+
+        // 순서는 인덱스 순 — 화면에 뜨는 순서가 곧 내보내기 순서다.
+        string json = ChapterProgressionExporter.Export(model, episodesFolder: null).Json!;
+        Assert.True(
+            json.IndexOf("왼쪽으로", StringComparison.Ordinal) <
+            json.IndexOf("\"ChoiceLabel\": \"\"", StringComparison.Ordinal),
+            "인덱스 10(왼쪽으로)이 인덱스 20(빈 기본)보다 먼저 나가야 한다");
+    }
+
+    [Fact]
+    public void 짝_없는_간선과_안_이은_칸을_짚는다()
+    {
+        string path = XlsxTestWorkbook.Write(_directory, "v7_gaps.xlsx",
+            ("에피소드", new[]
+            {
+                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모", "선택지수" },
+                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, null, null, "2" },
+                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, null, null, "1" }
+            }),
+            ("간선", new[]
+            {
+                new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
+                new string?[] { "ep1", "ep2", null, "99", null, "FALSE", null } // 없는 칸을 가리킨다
+            }),
+            ("조건", new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
+            ("스탯", new[]
+            {
+                new string?[] { "스탯키", "표시명", "초기값", "최소", "최대", "타입" },
+                new string?[] { "trust", "신뢰", "0", "0", "10", null },
+                new string?[] { "anger", "분노", "0", "0", "10", null }
+            }),
+            ("선택지", new[]
+            {
+                new string?[] { "출발", "인덱스", "대본", "메모" },
+                new string?[] { "ep1", "10", "왼쪽으로", null }  // 간선이 없다 (선택지수는 2)
+            }));
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+        ChapterValidationResult validation = ChapterValidator.Validate(model, episodesFolder: null);
+
+        Assert.Contains(validation.Diagnostics, item => item.Message.Contains("선택지 시트에 없습니다"));
+        Assert.Contains(validation.Diagnostics, item => item.Message.Contains("간선이 없습니다"));
+        Assert.Contains(validation.Diagnostics, item => item.Message.Contains("선택지수는 2인데"));
     }
 
     [Fact]

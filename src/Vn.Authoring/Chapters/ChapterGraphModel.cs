@@ -26,6 +26,13 @@ public sealed record ChapterEpisode(
     int SourceRow,
     bool AllowUnreachable = false)
 {
+    /// <summary>
+    /// `선택지수` 열 (K, v7 — 2026-08-16 소유자) — 이 에피소드 끝의 Choice가 갖는 Option
+    /// 칸 수. 기본 1. 동기화가 이 수만큼 `선택지` 시트에 칸을 만들어 주고, 간선은 칸과
+    /// 1:1로 짝하며 잇는 순간 생긴다.
+    /// </summary>
+    public int ChoiceCount { get; init; } = 1;
+
     public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
 
     /// <summary>표시·해금 중 하나라도 조건이 걸려 있으면 잠금 후보다.</summary>
@@ -35,11 +42,10 @@ public sealed record ChapterEpisode(
 }
 
 /// <summary>
-/// `간선` 시트 한 행 = 다음 에피소드로 가는 길 하나. <b>신원은 (출발, 도착)이다</b>
-/// (2026-08-16 — 선택지가 문구에서 개수로 바뀌며 라벨 신원 폐지).
-///
-/// 조건·잠금·스탯변화·도착은 전부 간선 소유이고, 화면에 보이는 선택지 문구는 `선택지`
-/// 시트의 칸(<see cref="ChapterChoiceOption"/>)이 갖는다 — 간선의 `선택지수`만큼 칸이 선다.
+/// `간선` 시트 한 행 = 다음 에피소드로 가는 길 하나. <b>간선 하나에 선택지 칸 하나가
+/// 1:1로 짝한다</b> (2026-08-16 v7) — `선택지` 열(D)이 짝 칸의 <b>인덱스</b>를 가리키고,
+/// <b>신원은 (출발, 선택지 인덱스)</b>다. 같은 도착으로 문구 여럿도 가능하다(인덱스가 다르니
+/// 다른 간선). 조건·잠금·스탯변화·도착은 전부 간선 소유.
 /// </summary>
 public sealed record ChapterEdge(
     string FromEpisodeId,
@@ -51,15 +57,15 @@ public sealed record ChapterEdge(
     int SourceRow)
 {
     /// <summary>
-    /// `선택지수` 열 (2026-08-16) — 이 간선이 선택지 시트에 갖는 칸 수. 기본 1.
-    /// 툴 동기화가 모자란 칸을 만들어 준다("공간이 생기도록").
+    /// `선택지` 열 (D, v7) — 짝 칸의 인덱스. 비면 아직 칸과 짝하지 않은 구판·수기 행이다
+    /// (검증이 짚는다).
     /// </summary>
-    public int ChoiceCount { get; init; } = 1;
+    public string? ChoiceIndex { get; init; }
 
-    // OptionLabel은 이제 파생값이다 — 리더가 선택지 시트에서 이 간선의 첫 <b>보이는</b> text를
-    // 채워 준다(신원이 아니다). 그래프·내보내기가 문구 하나를 쓸 때의 대표값.
+    // OptionLabel은 파생값이다 — 리더가 짝 칸(출발, 인덱스)의 대본 text를 채워 준다
+    // (신원이 아니다). 그래프·내보내기가 문구를 쓸 때의 값.
 
-    /// <summary>보이는 선택지 text가 하나도 없으면 참 — 보이지 않는 기본(자동 진행)이다.</summary>
+    /// <summary>짝 칸의 text가 비면 참 — 보이지 않는 기본(자동 진행)이다.</summary>
     public bool IsPlainAdvance => string.IsNullOrWhiteSpace(OptionLabel);
 
     /// <summary>
@@ -109,19 +115,19 @@ public sealed record ChapterStat(
     ChapterStatType Type = ChapterStatType.Int);
 
 /// <summary>
-/// `선택지` 시트 한 행 = 옵션 칸 하나 (2026-08-16 소유자) — <b>선택지의 정본이 대본에서
-/// 챕터로 왔다.</b> 같은 출발 에피소드의 행 묶음이 그 에피소드 끝의 Choice다.
+/// `선택지` 시트 한 행 = 옵션 칸 하나 (2026-08-16 소유자, v7) — <b>선택지의 정본이 대본에서
+/// 챕터로 왔다.</b> 근원(출발) 에피소드가 Choice 하나를 갖고, 그 아래 Option 칸들이 선다.
+/// 칸 수는 에피소드의 `선택지수`가 정한다(기본 1칸).
 ///
-/// 칸은 간선(출발→도착)이 소유한다: 간선의 `선택지수`만큼 칸이 생기고, 조건·잠금·스탯변화는
-/// 전부 간선의 것이다. 이 행이 갖는 것은 <b>에피소드 안의 인덱스(순서)와 자유롭게 고치는
-/// 대본 text뿐</b>이다 — text는 신원이 아니라서 언제든 바꿔도 배선이 안 깨진다.
+/// <b>인덱스가 칸의 신원이다</b> — 간선의 `선택지` 열이 이 인덱스를 가리켜 1:1로 짝한다.
+/// 도착·조건·잠금·스탯변화는 전부 간선의 것이고, 이 행이 갖는 것은 <b>인덱스(순서)와
+/// 자유롭게 고치는 대본 text뿐</b>이다 — text는 신원이 아니라서 언제 바꿔도 배선이 안 깨진다.
 ///
 /// <b>text가 빈 칸 = 보이지 않는 기본.</b> 어떤 선택지도 고를 수 없을 때 빠지는 방어장치로,
 /// 에피소드당 하나만 허용되고 조건 없는 간선과 짝이다. text를 적는 순간 보이는 선택지가 된다.
 /// </summary>
 public sealed record ChapterChoiceOption(
     string EpisodeId,
-    string ToEpisodeId,
     string Index,
     string Text,
     string? Memo,
