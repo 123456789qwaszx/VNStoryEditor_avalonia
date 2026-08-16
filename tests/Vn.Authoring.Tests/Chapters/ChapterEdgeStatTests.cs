@@ -102,43 +102,72 @@ public sealed class ChapterEdgeStatTests : IDisposable
     }
 
     [Fact]
-    public void 간선은_선택지_칸과_1대1이고_칸_수는_에피소드가_정한다()
+    public void 길_하나가_선택지_하나이고_문구는_챕터의_사전에서_온다()
     {
-        // v7 (2026-08-16 소유자) — 에피소드가 선택지수를 지정하고 그 수만큼 칸이 선다.
-        // 간선은 칸 하나와 1:1로 짝하며(인덱스), 잇는 순간 길이 된다.
-        string path = BuildChapter(); // ep1→ep2 간선 + 칸 하나(인덱스 10)가 이미 있다
+        // v9 (2026-08-17 소유자) — "선택지는 인덱스를 가져오는 게 아니라 그냥 깡으로 대사만."
+        // 간선 D열에 문구가 그대로 들어가고, 신원은 (출발, 도착, 문구)다.
+        string path = BuildChapter(); // ep1→ep2, 문구 없음(보이지 않는 기본)
 
         ChapterGraphModel first = ChapterWorkbookReader.Read(path);
-        ChapterEdge wired = Assert.Single(first.Edges);
-        ChapterChoiceOption slot = Assert.Single(first.ChoiceOptionsFor("ep1"));
-        Assert.Equal(slot.Index, wired.ChoiceIndex);
-        Assert.Equal(1, first.FindEpisode("ep1")!.ChoiceCount);
+        Assert.True(Assert.Single(first.Edges).IsPlainAdvance);
+        Assert.Empty(first.ChoiceOptions); // 빈 문구는 사전에 오를 낱말이 아니다
 
-        // 칸을 더하면 에피소드의 선택지수가 따라 오른다 — 간선은 아직 없다(잇는 순간 생긴다).
-        Assert.True(ChapterWorkbookWriter.AddChoiceSlotToEpisode(path, "ep1").Written);
-
-        ChapterGraphModel added = ChapterWorkbookReader.Read(path);
-        Assert.Equal(2, added.FindEpisode("ep1")!.ChoiceCount);
-        Assert.Equal(2, added.ChoiceOptionsFor("ep1").Count());
-        Assert.Single(added.Edges);
-
-        // 그 빈 칸에 도착을 이으면 같은 도착이라도 다른 길이 된다(인덱스가 다르다).
-        string freeIndex = added.ChoiceOptionsFor("ep1")
-            .Single(candidate => candidate.Index != wired.ChoiceIndex).Index;
-        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", choiceIndex: freeIndex).Written);
+        // 같은 도착으로 가는 길을 문구만 달리해 둘 더 낸다 — 흔한 패턴이고 허용된다.
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "믿는다").Written);
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "무시한다").Written);
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        Assert.Equal(2, model.Edges.Count);
+        Assert.Equal(3, model.Edges.Count);
         Assert.False(model.HasErrors);
 
-        // 같은 칸을 두 번 잇지는 못한다.
-        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", choiceIndex: freeIndex).Written);
+        // 쓴 문구는 사전에도 올라 다음번 드롭다운 재료가 된다.
+        Assert.Equal(["믿는다", "무시한다"], model.ChoiceOptions.Select(option => option.Text));
 
-        // 칸을 지우면 그 칸에 이어진 간선도 함께 걷힌다.
-        Assert.True(ChapterWorkbookWriter.RemoveChoiceSlot(path, "ep1", freeIndex).Written);
+        // 셋(출발·도착·문구)이 다 같은 길을 두 번 낼 수는 없다.
+        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "믿는다").Written);
+
+        // 문구는 어느 에피소드에서든 다시 쓴다 — 사전은 챕터 전체의 것이다.
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep2", "ep1", optionLabel: "믿는다").Written);
+        Assert.Equal(2, ChapterWorkbookReader.Read(path).ChoiceOptions.Count);
+
+        // 길을 지워도 문구는 사전에 남는다(어휘집이지 배선이 아니다).
+        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "ep1", "ep2", "무시한다").Written);
         ChapterGraphModel after = ChapterWorkbookReader.Read(path);
-        Assert.Single(after.Edges);
-        Assert.Single(after.ChoiceOptionsFor("ep1"));
+        Assert.Equal(3, after.Edges.Count);
+        Assert.Contains(after.ChoiceOptions, option => option.Text == "무시한다");
+    }
+
+    [Fact]
+    public void 선택지_수정은_문구와_도착을_한_저장으로_옮긴다()
+    {
+        string path = BuildChapter();
+        ChapterWorkbookWriter.AddEpisode(path, "ep3", title: "", 2, 0);
+        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "믿는다");
+
+        Assert.True(ChapterWorkbookWriter
+            .SetEdgeRoute(path, "ep1", "ep2", "믿는다", "ep3", "의심한다").Written);
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+        ChapterEdge moved = Assert.Single(model.Edges, edge => !edge.IsPlainAdvance);
+        Assert.Equal("ep3", moved.ToEpisodeId);
+        Assert.Equal("의심한다", moved.OptionLabel);
+    }
+
+    [Fact]
+    public void 같은_에피소드에서_같은_문구가_갈리면_경고한다()
+    {
+        // 플레이어에게는 같은 버튼 둘이라 어느 쪽인지 고를 수 없다.
+        string path = BuildChapter();
+        ChapterWorkbookWriter.AddEpisode(path, "ep3", title: "", 2, 0);
+        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "간다");
+        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep3", optionLabel: "간다");
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+
+        Assert.False(model.HasErrors); // 막지는 않는다 — 사람이 판단할 일이다
+        Assert.Contains(model.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("여러 갈래"));
     }
 
     [Fact]

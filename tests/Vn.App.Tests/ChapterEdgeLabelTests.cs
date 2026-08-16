@@ -32,16 +32,15 @@ public sealed class ChapterEdgeLabelTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         ChapterGraphModel created = ChapterWorkbookReader.Read(project.ChapterPath);
-        Assert.Contains(created.Edges,
+        ChapterEdge fresh = Assert.Single(created.Edges,
             edge => edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
-        ChapterChoiceOption slot = Assert.Single(created.ChoiceOptionsFor("new01"));
-        Assert.True(slot.IsInvisibleDefault); // 아직 빈 칸 — 보이지 않는 기본
+        Assert.True(fresh.IsPlainAdvance); // 아직 문구가 없다 — 보이지 않는 기본
 
-        // 기획자가 엑셀에서 하듯 대본 text를 적는다 — 그 순간 보이는 선택지다.
+        // 기획자가 엑셀에서 하듯 간선의 `선택지` 칸에 문구를 적는다 (v9 — 문구가 곧 값이다).
         using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
         {
-            ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
-            choices.Cell(slot.SourceRow, 3).SetValue("왼쪽 길로 간다"); // 대본은 C열 (v7)
+            ClosedXML.Excel.IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
+            edges.Cell(fresh.SourceRow, 4).SetValue("왼쪽 길로 간다");
             workbook.Save();
         }
 

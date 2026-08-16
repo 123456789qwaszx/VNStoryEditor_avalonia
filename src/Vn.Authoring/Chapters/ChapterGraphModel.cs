@@ -24,21 +24,20 @@ public sealed record ChapterEpisode(
     int SourceRow,
     bool AllowUnreachable = false)
 {
-    /// <summary>
-    /// `선택지수` 열 (K, v7 — 2026-08-16 소유자) — 이 에피소드 끝의 Choice가 갖는 Option
-    /// 칸 수. 기본 1. 동기화가 이 수만큼 `선택지` 시트에 칸을 만들어 주고, 간선은 칸과
-    /// 1:1로 짝하며 잇는 순간 생긴다.
-    /// </summary>
-    public int ChoiceCount { get; init; } = 1;
+    // v9 (2026-08-17 소유자) — `선택지수` 열 폐지. 칸이라는 개념이 사라졌으니 셀 것도
+    // 없다: 이 에피소드에서 나가는 간선 하나가 곧 선택지 하나다.
 
     public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
 }
 
 /// <summary>
-/// `간선` 시트 한 행 = 다음 에피소드로 가는 길 하나. <b>간선 하나에 선택지 칸 하나가
-/// 1:1로 짝한다</b> (2026-08-16 v7) — `선택지` 열(D)이 짝 칸의 <b>인덱스</b>를 가리키고,
-/// <b>신원은 (출발, 선택지 인덱스)</b>다. 같은 도착으로 문구 여럿도 가능하다(인덱스가 다르니
-/// 다른 간선). 관문·잠금·스탯변화·도착은 전부 간선 소유.
+/// `간선` 시트 한 행 = 다음 에피소드로 가는 길 하나. <b>길 하나가 곧 선택지 하나</b>이고,
+/// `선택지` 열(D)은 그 길에 붙는 <b>문구 그 자체</b>다 (v9, 2026-08-17 소유자: "인덱스를
+/// 가져오는 게 아니라 그냥 깡으로 대사만"). 문구는 `선택지` 시트의 전역 사전에서 고르지만
+/// 셀에 들어가는 값은 문구이고, 사전은 <b>고르기 편하라고 있는 어휘집</b>이다.
+///
+/// <b>신원은 (출발, 도착, 문구)</b> — 같은 곳으로 가되 스탯변화·관문이 다른 선택지 둘을
+/// 여럿 둘 수 있다(흔한 패턴). 관문·잠금·스탯변화·도착은 전부 간선 소유.
 /// </summary>
 /// <param name="ConditionLabel">
 /// <b>해금조건</b> — 이 선택지를 고를 수 있으려면 (v8에서 열 이름이 `조건`→`해금조건`).
@@ -65,16 +64,10 @@ public sealed record ChapterEdge(
         !string.IsNullOrWhiteSpace(VisibleConditionLabel) ||
         !string.IsNullOrWhiteSpace(ConditionLabel);
 
-    /// <summary>
-    /// `선택지` 열 (D, v7) — 짝 칸의 인덱스. 비면 아직 칸과 짝하지 않은 구판·수기 행이다
-    /// (검증이 짚는다).
-    /// </summary>
-    public string? ChoiceIndex { get; init; }
+    // OptionLabel = `선택지` 열(D)의 값 그대로다 (v9). 파생도 참조도 아니다 —
+    // 문구를 고쳐도 배선이 안 깨지는 대신, 같은 문구를 어느 에피소드에서든 쓸 수 있다.
 
-    // OptionLabel은 파생값이다 — 리더가 짝 칸(출발, 인덱스)의 대본 text를 채워 준다
-    // (신원이 아니다). 그래프·내보내기가 문구를 쓸 때의 값.
-
-    /// <summary>짝 칸의 text가 비면 참 — 보이지 않는 기본(자동 진행)이다.</summary>
+    /// <summary>문구가 비면 참 — 보이지 않는 기본(버튼 없이 자동 진행)이다.</summary>
     public bool IsPlainAdvance => string.IsNullOrWhiteSpace(OptionLabel);
 
     /// <summary>
@@ -124,27 +117,20 @@ public sealed record ChapterStat(
     ChapterStatType Type = ChapterStatType.Int);
 
 /// <summary>
-/// `선택지` 시트 한 행 = 옵션 칸 하나 (2026-08-16 소유자, v7) — <b>선택지의 정본이 대본에서
-/// 챕터로 왔다.</b> 근원(출발) 에피소드가 Choice 하나를 갖고, 그 아래 Option 칸들이 선다.
-/// 칸 수는 에피소드의 `선택지수`가 정한다(기본 1칸).
+/// `선택지` 시트 한 행 = <b>선택지 문구 하나</b> (v9, 2026-08-17 소유자). 이 시트는 어느
+/// 에피소드의 소유물이 아니라 <b>챕터 전체가 함께 쓰는 문구 사전</b>이다 — `조건` 시트가
+/// 라벨↔식의 사전인 것과 같은 자리다. 여기서 한 번 적어 두면 <b>어떤 에피소드의 어떤
+/// 간선에서든 가져다 쓴다.</b>
 ///
-/// <b>인덱스가 칸의 신원이다</b> — 간선의 `선택지` 열이 이 인덱스를 가리켜 1:1로 짝한다.
-/// 도착·조건·잠금·스탯변화는 전부 간선의 것이고, 이 행이 갖는 것은 <b>인덱스(순서)와
-/// 자유롭게 고치는 대본 text뿐</b>이다 — text는 신원이 아니라서 언제 바꿔도 배선이 안 깨진다.
-///
-/// <b>text가 빈 칸 = 보이지 않는 기본.</b> 어떤 선택지도 고를 수 없을 때 빠지는 방어장치로,
-/// 에피소드당 하나만 허용되고 조건 없는 간선과 짝이다. text를 적는 순간 보이는 선택지가 된다.
+/// 행이 갖는 것은 <b>인덱스(사전 안의 순서)와 대본 text뿐</b>이다. 도착·조건·잠금·
+/// 스탯변화는 전부 간선의 것이고, 간선은 이 인덱스가 아니라 <b>문구 자체</b>를 적는다 —
+/// 그래서 이 사전에서 행을 지워도 이미 쓰인 문구는 살아 있다(사전은 어휘집이지 배선이 아니다).
 /// </summary>
 public sealed record ChapterChoiceOption(
-    string EpisodeId,
     string Index,
     string Text,
     string? Memo,
-    int SourceRow)
-{
-    /// <summary>text가 비면 보이지 않는 기본이다 — 버튼이 없고, 조건 없는 간선의 자동 진행.</summary>
-    public bool IsInvisibleDefault => string.IsNullOrWhiteSpace(Text);
-}
+    int SourceRow);
 
 /// <summary>
 /// `화자` 시트 한 행 (2026-08-16 소유자 지시). 기획자가 챕터에서 화자를 등록하면
@@ -233,13 +219,19 @@ public sealed class ChapterGraphModel
     /// </summary>
     public bool HasSpeakerSheet { get; }
 
-    /// <summary>`선택지` 시트 — 간선이 짝할 선택지의 정본 (2026-08-16, 대본 CHOICE/OPTION 폐지).</summary>
+    /// <summary>`선택지` 시트 — 챕터가 함께 쓰는 문구 사전 (v9). 인덱스 순으로 선다.</summary>
     public IReadOnlyList<ChapterChoiceOption> ChoiceOptions { get; }
 
-    /// <summary>그 에피소드 끝의 선택지 묶음 — 시트 순서 그대로다(가지 순서 = 읽는 순서).</summary>
-    public IEnumerable<ChapterChoiceOption> ChoiceOptionsFor(string episodeId) =>
-        ChoiceOptions.Where(option =>
-            string.Equals(option.EpisodeId, episodeId, StringComparison.Ordinal));
+    /// <summary>
+    /// 고를 수 있는 문구들 — 사전에 적힌 것 + 간선이 이미 쓰고 있는 것의 합집합(중복 제거).
+    /// 사전에 없는 문구를 손으로 적은 워크북에서도 툴의 드롭다운이 그 값을 잃지 않는다.
+    /// </summary>
+    public IReadOnlyList<string> ChoiceLabels =>
+        field ??= ChoiceOptions.Select(option => option.Text)
+            .Concat(Edges.Select(edge => edge.OptionLabel ?? string.Empty))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
     public IReadOnlyList<ChapterDiagnostic> Diagnostics { get; }
 

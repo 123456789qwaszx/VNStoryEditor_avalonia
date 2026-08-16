@@ -33,7 +33,7 @@ public static class ChapterValidator
         var conditionsByLabel = chapter.Conditions
             .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
 
-        VerifyChoiceSlots(chapter, diagnostics);
+        VerifyPlainAdvances(chapter, diagnostics);
 
         foreach (ChapterEpisode episode in chapter.Episodes)
         {
@@ -87,89 +87,39 @@ public static class ChapterValidator
     }
 
     /// <summary>
-    /// 선택지 칸의 구조 검증 (v7 — 간선 하나에 칸 하나, 인덱스가 짝의 신원).
+    /// 보이지 않는 기본의 구조 검증 (v9 — 칸이 사라졌으니 셀 것도 없다). 남은 규칙은 하나:
+    /// <b>문구 없는 간선(자동 진행)은 에피소드당 하나뿐이고, 그 길에는 관문이 없어야 한다.</b>
+    /// 어떤 선택지도 고를 수 없을 때 빠지는 방어장치라, 그것마저 조건이 걸리면 갇힌다.
     ///
-    /// - 간선의 `선택지`가 비었거나 없는 인덱스를 가리키면 경고 — 짝 없는 간선.
-    /// - 에피소드의 선택지수와 칸 수가 다르면 경고 — 툴의 [다시 읽기]가 모자란 칸을 만든다.
-    /// - 간선 없는 칸은 경고 — 에피소드가 선언한 수만큼 간선이 서야 한다(잇는 순간 길이 된다).
-    /// - 빈 대본(보이지 않는 기본)은 에피소드당 하나뿐이고, 그 짝 간선은 조건이 없어야 한다.
+    /// 선택지 사전(`선택지` 시트)은 검증하지 않는다 — 배선이 아니라 어휘집이라, 안 쓰는
+    /// 낱말이 남아 있는 것은 잘못이 아니다.
     /// </summary>
-    private static void VerifyChoiceSlots(ChapterGraphModel chapter, List<ChapterDiagnostic> diagnostics)
+    private static void VerifyPlainAdvances(ChapterGraphModel chapter, List<ChapterDiagnostic> diagnostics)
     {
-        foreach (ChapterEdge edge in chapter.Edges)
+        foreach (IGrouping<string, ChapterEdge> group in chapter.Edges
+                     .Where(edge => edge.IsPlainAdvance)
+                     .GroupBy(edge => edge.FromEpisodeId, StringComparer.Ordinal))
         {
-            if (edge.ChoiceIndex is null)
-            {
-                if (chapter.ChoiceOptions.Count > 0)
-                {
-                    diagnostics.Add(new ChapterDiagnostic(
-                        ChapterDiagnosticSeverity.Warning,
-                        ChapterDiagnosticCode.OptionEdgeMismatch,
-                        chapter.SourcePath, ChapterSheetNames.Edges, edge.SourceRow, "D",
-                        $"간선 {edge.FromEpisodeId}→{edge.ToEpisodeId}의 선택지 칸(인덱스)이 비어 " +
-                        "있습니다 — 간선 하나에 선택지 칸 하나가 짝입니다."));
-                }
-
-                continue;
-            }
-
-            if (!chapter.ChoiceOptionsFor(edge.FromEpisodeId).Any(slot =>
-                    string.Equals(slot.Index, edge.ChoiceIndex, StringComparison.Ordinal)))
+            foreach (ChapterEdge extra in group.Skip(1))
             {
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Edges, edge.SourceRow, "D",
-                    $"간선 {edge.FromEpisodeId}→{edge.ToEpisodeId}가 가리키는 선택지 {edge.ChoiceIndex}가 " +
-                    $"선택지 시트에 없습니다 — '{edge.FromEpisodeId}'의 칸 인덱스를 확인해 주세요."));
+                    chapter.SourcePath, ChapterSheetNames.Edges, extra.SourceRow, "D",
+                    $"'{group.Key}'에 문구 없는 간선이 여럿입니다 — 보이지 않는 기본은 " +
+                    "에피소드당 하나뿐입니다. 선택지 문구를 적으면 보이는 선택지가 됩니다."));
             }
-        }
 
-        foreach (ChapterEpisode episode in chapter.Episodes)
-        {
-            List<ChapterChoiceOption> slots = chapter.ChoiceOptionsFor(episode.EpisodeId).ToList();
+            ChapterEdge fallback = group.First();
 
-            // 선택지수는 칸 수의 <b>하한</b>이다 (2026-08-16 개정) — 손으로 더 만든 칸은
-            // 그대로 받는다. 모자랄 때만 말한다(동기화의 [다시 읽기]가 채워 준다).
-            if (slots.Count > 0 && slots.Count < episode.ChoiceCount)
+            if (fallback.HasGate)
             {
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Episodes, episode.SourceRow, "I",
-                    $"'{episode.EpisodeId}'의 선택지수는 {episode.ChoiceCount}인데 선택지 칸이 " +
-                    $"{slots.Count}개뿐입니다 — 툴의 [다시 읽기]가 모자란 칸을 만들어 줍니다."));
-            }
-
-            // 안 이은 칸은 오류도 경고도 아니다 (2026-08-16 소유자) — "선택지는 간선의 숫자보다
-            // 많아도 된다. 간선이랑 연결이 안 되어 있으면 그냥 안 쓰고 종료시키면 되니까."
-            // 그 길을 고르면 챕터 런이 거기서 끝난다(전이 규칙 ③).
-
-            List<ChapterChoiceOption> blanks = slots.Where(slot => slot.IsInvisibleDefault).ToList();
-
-            foreach (ChapterChoiceOption extra in blanks.Skip(1))
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Choices, extra.SourceRow, "C",
-                    $"'{episode.EpisodeId}'의 빈 선택지 칸이 여럿입니다 — 빈 칸(보이지 않는 기본)은 " +
-                    "에피소드당 하나뿐입니다. 대본 text를 적으면 보이는 선택지가 됩니다."));
-            }
-
-            if (blanks.Count > 0 &&
-                chapter.Edges.FirstOrDefault(edge =>
-                    string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
-                    string.Equals(edge.ChoiceIndex, blanks[0].Index, StringComparison.Ordinal))
-                    is { ConditionLabel.Length: > 0 } owner)
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Edges, owner.SourceRow, "E",
-                    $"보이지 않는 기본 칸의 간선({owner.FromEpisodeId}→{owner.ToEpisodeId})에 " +
-                    $"조건 '{owner.ConditionLabel}'이 걸려 있습니다 — 기본은 어떤 조건도 안 될 때 " +
-                    "빠지는 방어장치라 조건이 없어야 합니다."));
+                    chapter.SourcePath, ChapterSheetNames.Edges, fallback.SourceRow, "E",
+                    $"보이지 않는 기본({fallback.FromEpisodeId}→{fallback.ToEpisodeId})에 관문이 " +
+                    "걸려 있습니다 — 어떤 선택지도 안 될 때 빠지는 자리라 조건이 없어야 합니다."));
             }
         }
     }

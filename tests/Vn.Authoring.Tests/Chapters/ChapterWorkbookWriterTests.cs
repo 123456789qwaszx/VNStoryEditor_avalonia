@@ -176,28 +176,26 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     [Fact]
     public void 간선_추가와_삭제가_왕복한다()
     {
-        // 2026-08-16 — 간선 신원 = (출발, 도착). 추가하면 선택지 칸(빈 대본 = 보이지 않는
-        // 기본)이 함께 서고, 삭제하면 칸도 함께 걷힌다.
+        // v9 — 간선 신원 = (출발, 도착, 문구). 문구를 주면 사전에도 올라가고, 길을 지워도
+        // 사전의 낱말은 남는다(어휘집이지 배선이 아니다).
         string path = Copy();
 
-        Assert.True(ChapterWorkbookWriter.AddEdge(path, "main05.01", "main05.03").Written);
+        Assert.True(ChapterWorkbookWriter
+            .AddEdge(path, "main05.01", "main05.03", optionLabel: "샛길로 간다").Written);
 
         ChapterGraphModel afterAdd = ChapterWorkbookReader.Read(path);
         ChapterEdge added = afterAdd.Edges.Single(edge =>
             edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03");
-        Assert.True(added.IsPlainAdvance); // 대본 text를 아직 안 적었다 — 보이지 않는 기본
-        Assert.NotNull(added.ChoiceIndex);  // 짝 칸이 함께 섰다
-        Assert.Contains(afterAdd.ChoiceOptionsFor("main05.01"),
-            slot => slot.Index == added.ChoiceIndex);
+        Assert.Equal("샛길로 간다", added.OptionLabel);
+        Assert.Contains(afterAdd.ChoiceOptions, option => option.Text == "샛길로 간다");
 
-        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "main05.01", "main05.03").Written);
+        Assert.True(ChapterWorkbookWriter
+            .RemoveEdge(path, "main05.01", "main05.03", "샛길로 간다").Written);
 
-        // 칸은 남는다 (칸의 주인은 에피소드의 선택지수다) — 다시 이으면 그 칸을 쓴다.
         ChapterGraphModel after = ChapterWorkbookReader.Read(path);
         Assert.DoesNotContain(after.Edges, edge =>
             edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03");
-        Assert.Contains(after.ChoiceOptionsFor("main05.01"),
-            slot => slot.Index == added.ChoiceIndex);
+        Assert.Contains(after.ChoiceOptions, option => option.Text == "샛길로 간다");
     }
 
     [Fact]
@@ -231,18 +229,15 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.Equal((1100d, 0d), (reread.FindEpisode("ep_a")!.X, reread.FindEpisode("ep_a")!.Y));
         Assert.Equal((1100d, 110d), (reread.FindEpisode("ep_b")!.X, reread.FindEpisode("ep_b")!.Y));
 
-        // 간선이 함께 이어졌고 선택지 칸이 섰다 — 문구를 준 쪽은 보이는 선택지,
-        // 안 준 쪽은 빈 대본(보이지 않는 기본)이다.
+        // 간선이 함께 이어졌다 — 문구를 준 쪽은 보이는 선택지, 안 준 쪽은 보이지 않는 기본.
         Assert.Contains(reread.Edges, edge =>
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_b" &&
             edge.OptionLabel == "B를 고른다");
         Assert.Contains(reread.Edges, edge =>
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_a" && edge.IsPlainAdvance);
-        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot => slot.Text == "B를 고른다");
-        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot => slot.IsInvisibleDefault);
 
-        // 칸이 둘 서면서 에피소드의 선택지수도 따라 올랐다.
-        Assert.Equal(2, reread.FindEpisode("main05.end")!.ChoiceCount);
+        // 준 문구는 사전에 올랐다 — 다음번 드롭다운 재료다.
+        Assert.Contains(reread.ChoiceOptions, option => option.Text == "B를 고른다");
     }
 
     [Fact]

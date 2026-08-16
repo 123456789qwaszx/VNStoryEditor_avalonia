@@ -52,28 +52,7 @@ public static class ChapterWorkbookWriter
             sheet.Cell(row, 4).SetValue(episodeId);
             sheet.Cell(row, 5).SetValue(Math.Round(x, 2));
             sheet.Cell(row, 6).SetValue(Math.Round(y, 2));
-            SetChoiceCount(sheet, row, 1); // 선택지수 기본 1 (v7)
         });
-
-    /// <summary>선택지수(I열, v8에서 자리 이동). 머리글이 없으면(구판) 처음 쓸 때 만든다.</summary>
-    private static void SetChoiceCount(IXLWorksheet episodes, int row, int count)
-    {
-        if (!string.Equals(episodes.Cell(1, 9).GetString().Trim(), "선택지수", StringComparison.Ordinal))
-        {
-            // `도달불가 허용`이 그 자리에 있던 구판이면 한 칸 밀어 자리를 낸다.
-            if (string.Equals(episodes.Cell(1, 9).GetString().Trim(), "도달불가 허용", StringComparison.Ordinal))
-            {
-                episodes.Column(9).InsertColumnsBefore(1);
-            }
-
-            IXLCell header = episodes.Cell(1, 9);
-            header.SetValue("선택지수");
-            header.Style.Font.SetBold(true);
-            header.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
-        }
-
-        episodes.Cell(row, 9).SetValue(count);
-    }
 
     /// <summary>
     /// 다음 에피소드 추가 — 분기 저작의 핵심 동작. 행 추가와 간선 연결이 <b>한 번의 저장</b>이다
@@ -111,11 +90,10 @@ public static class ChapterWorkbookWriter
             episodes.Cell(newRow, 4).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
             episodes.Cell(newRow, 5).SetValue(Math.Round(x, 2));
             episodes.Cell(newRow, 6).SetValue(Math.Round(y, 2));
-            SetChoiceCount(episodes, newRow, 1);
 
-            // 부모의 선택지 칸 하나와 짝하는 간선 (v7 — 간선 하나에 칸 하나). 빈 칸이 있으면
-            // 그 칸을, 없으면 새 칸을 만들며 부모의 선택지수도 따라 올린다.
-            WireEdgeToSlot(workbook, parentEpisodeId, newEpisodeId, conditionLabel: null, optionLabel);
+            // 부모에서 나가는 길 하나 = 선택지 하나 (v9). 문구를 받았으면 그대로 적고,
+            // 사전에 없는 낱말이면 사전에도 올려 둔다 — 다음부터 드롭다운에서 고른다.
+            AppendEdge(workbook, parentEpisodeId, newEpisodeId, conditionLabel: null, optionLabel);
         });
 
 
@@ -287,196 +265,121 @@ public static class ChapterWorkbookWriter
         }, backup: true);
 
     // ── 간선 ────────────────────────────────────────────────────────────────
-    // v7 (2026-08-16 소유자) — 간선 하나에 선택지 칸 하나가 1:1이다. D열이 짝 칸의
-    // 인덱스를 가리키고, 신원은 (출발, 인덱스)다. 칸 수는 에피소드의 선택지수가 정한다.
+    // v9 (2026-08-17 소유자) — 길 하나가 곧 선택지 하나이고, D열에는 인덱스가 아니라
+    // <b>문구 그 자체</b>가 들어간다. 신원은 (출발, 도착, 문구). `선택지` 시트는 어느
+    // 에피소드의 소유물도 아닌 전역 사전이라, 여기서 참조하는 것은 드롭다운 목록뿐이다.
 
-    /// <summary>
-    /// 간선 추가 — 출발 에피소드의 <b>빈(미배선) 선택지 칸</b> 하나와 짝한다. 빈 칸이 없으면
-    /// 새 칸을 만들며 에피소드의 선택지수도 따라 올린다(간선 하나 = 칸 하나 불변식 유지).
-    /// </summary>
+    /// <summary>간선 추가 — 그 길에 붙일 문구를 함께 받는다(비면 보이지 않는 기본).</summary>
     public static ChapterWriteResult AddEdge(
         string path,
         string fromEpisodeId,
         string toEpisodeId,
         string? conditionLabel = null,
-        string? choiceIndex = null) =>
+        string? optionLabel = null) =>
+        Mutate(path, workbook =>
+            AppendEdge(workbook, fromEpisodeId, toEpisodeId, conditionLabel, optionLabel));
+
+    /// <summary>
+    /// 선택지 한 줄의 배선을 고친다 — 문구와 도착을 한 저장으로 (툴 편집 폼의 [수정]).
+    /// 찾을 때는 고치기 <b>전</b>의 신원(출발, 도착, 문구)을 쓴다.
+    /// </summary>
+    public static ChapterWriteResult SetEdgeRoute(
+        string path,
+        string fromEpisodeId,
+        string currentToEpisodeId,
+        string? currentOptionLabel,
+        string newToEpisodeId,
+        string? newOptionLabel) =>
         Mutate(path, workbook =>
         {
-            if (choiceIndex is null)
-            {
-                WireEdgeToSlot(workbook, fromEpisodeId, toEpisodeId, conditionLabel, slotText: null);
-                return;
-            }
-
-            // 칸을 지정한 배선 (툴의 선택지 목록에서 그 줄을 이을 때).
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            if (edges.RowsUsed().Skip(1).Any(row =>
-                    string.Equals(row.Cell(1).GetString().Trim(), fromEpisodeId, StringComparison.Ordinal) &&
-                    string.Equals(row.Cell(4).GetString().Trim(), choiceIndex, StringComparison.Ordinal)))
-            {
-                throw new InvalidOperationException(
-                    $"'{fromEpisodeId}'의 선택지 {choiceIndex}는 이미 이어져 있습니다.");
-            }
+            IXLRow row = FindEdgeRow(edges, fromEpisodeId, currentToEpisodeId, currentOptionLabel)
+                ?? throw new InvalidOperationException(
+                    $"간선 {fromEpisodeId}→{currentToEpisodeId}이 없습니다.");
 
-            int row = NextRow(edges);
-            edges.Cell(row, 1).SetValue(fromEpisodeId);
-            edges.Cell(row, 2).SetValue(toEpisodeId);
-            edges.Cell(row, 4).SetValue(int.TryParse(choiceIndex, out int numeric) ? numeric : 0);
-            Set(edges, row, 6, conditionLabel); // 해금조건 (v8 — E는 표시조건)
-            edges.Cell(row, 7).SetValue("FALSE");
+            row.Cell(2).SetValue(newToEpisodeId);
+            row.Cell(4).SetValue(newOptionLabel ?? string.Empty);
+            EnsureChoiceLabel(workbook, newOptionLabel);
         });
 
-    /// <summary>그 선택지 칸이 향하는 도착을 바꾼다 — 칸(인덱스)은 그대로, 길만 옮긴다.</summary>
-    public static ChapterWriteResult SetEdgeTarget(
-        string path, string fromEpisodeId, string choiceIndex, string toEpisodeId) =>
+    /// <summary>선택지 사전에 문구 한 줄 (툴의 [＋ 선택지]) — 어느 에피소드의 것도 아니다.</summary>
+    public static ChapterWriteResult AddChoiceLabel(string path, string text) =>
         Mutate(path, workbook =>
         {
-            IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                throw new InvalidOperationException("선택지 문구가 비어 있습니다.");
+            }
 
-            IXLRow row = edges.RowsUsed().Skip(1).FirstOrDefault(candidate =>
-                    string.Equals(candidate.Cell(1).GetString().Trim(), fromEpisodeId, StringComparison.Ordinal) &&
-                    string.Equals(candidate.Cell(4).GetString().Trim(), choiceIndex, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException(
-                    $"'{fromEpisodeId}'의 선택지 {choiceIndex}에 이어진 간선이 없습니다.");
-
-            row.Cell(2).SetValue(toEpisodeId);
+            if (!EnsureChoiceLabel(workbook, text))
+            {
+                throw new InvalidOperationException($"'{text}'는 이미 선택지 시트에 있습니다.");
+            }
         });
 
     /// <summary>
-    /// 선택지 칸 하나 더하기 (툴의 [＋]) — 에피소드의 선택지수를 올리고 그만큼 칸을 만든다.
-    /// 간선은 아직 없다: 도착을 고르는 순간 길이 된다.
+    /// 선택지 사전에서 문구 한 줄 지우기. <b>간선은 건드리지 않는다</b> — 사전은 어휘집이지
+    /// 배선이 아니라서, 이미 그 문구를 쓰고 있는 길은 그대로 산다(드롭다운에서만 사라진다).
     /// </summary>
-    public static ChapterWriteResult AddChoiceSlotToEpisode(string path, string episodeId) =>
+    public static ChapterWriteResult RemoveChoiceLabel(string path, string text) =>
         Mutate(path, workbook =>
         {
-            IXLWorksheet episodes = RequireSheet(workbook, ChapterSheetNames.Episodes);
             IXLWorksheet choices = RequireChoiceSheet(workbook);
 
-            int slots = choices.RowsUsed().Skip(1).Count(row =>
-                string.Equals(row.Cell(1).GetString().Trim(), episodeId, StringComparison.Ordinal));
+            IXLRow row = choices.RowsUsed().Skip(1).FirstOrDefault(candidate =>
+                    string.Equals(candidate.Cell(2).GetString().Trim(), text, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException($"선택지 시트에 '{text}'가 없습니다.");
 
-            AddChoiceSlot(workbook, episodeId);
-
-            if (FindRow(episodes, episodeId) is { } episodeRow)
-            {
-                SetChoiceCount(episodes, episodeRow, slots + 1);
-            }
-        });
-
-    /// <summary>선택지 칸 지우기 — 그 칸에 이어진 간선도 함께 걷고 선택지수를 내린다.</summary>
-    public static ChapterWriteResult RemoveChoiceSlot(string path, string episodeId, string choiceIndex) =>
-        Mutate(path, workbook =>
-        {
-            IXLWorksheet episodes = RequireSheet(workbook, ChapterSheetNames.Episodes);
-            IXLWorksheet choices = RequireChoiceSheet(workbook);
-            IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
-
-            IXLRow slot = choices.RowsUsed().Skip(1).FirstOrDefault(row =>
-                    string.Equals(row.Cell(1).GetString().Trim(), episodeId, StringComparison.Ordinal) &&
-                    string.Equals(row.Cell(2).GetString().Trim(), choiceIndex, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"'{episodeId}'의 선택지 {choiceIndex}가 없습니다.");
-
-            slot.Delete();
-
-            foreach (IXLRow edge in edges.RowsUsed().Skip(1)
-                         .Where(row =>
-                             string.Equals(row.Cell(1).GetString().Trim(), episodeId, StringComparison.Ordinal) &&
-                             string.Equals(row.Cell(4).GetString().Trim(), choiceIndex, StringComparison.Ordinal))
-                         .ToList())
-            {
-                edge.Delete();
-            }
-
-            int remaining = choices.RowsUsed().Skip(1).Count(row =>
-                string.Equals(row.Cell(1).GetString().Trim(), episodeId, StringComparison.Ordinal));
-
-            if (FindRow(episodes, episodeId) is { } episodeRow)
-            {
-                SetChoiceCount(episodes, episodeRow, Math.Max(1, remaining));
-            }
+            row.Delete();
         }, backup: true);
 
-    /// <summary>
-    /// 간선 행 + 짝 칸 확보를 한 저장으로 (AddEdge·AddNextEpisode 공용).
-    /// 미배선 칸(간선이 안 가리키는 인덱스)이 있으면 첫 칸을 쓰고, 없으면 새 칸을 만든다.
-    /// </summary>
-    private static void WireEdgeToSlot(
-        XLWorkbook workbook, string fromEpisodeId, string toEpisodeId, string? conditionLabel, string? slotText)
+    /// <summary>간선 행 한 줄 붙이기 (AddEdge·AddNextEpisode 공용).</summary>
+    private static void AppendEdge(
+        XLWorkbook workbook, string fromEpisodeId, string toEpisodeId, string? conditionLabel, string? optionLabel)
     {
         IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
-        IXLWorksheet choices = RequireChoiceSheet(workbook);
 
-        // 이 에피소드의 칸 인덱스들과, 간선이 이미 가리키는 인덱스들.
-        List<string> slotIndexes = choices.RowsUsed().Skip(1)
-            .Where(row => string.Equals(row.Cell(1).GetString().Trim(), fromEpisodeId, StringComparison.Ordinal))
-            .Select(row => row.Cell(2).GetString().Trim())
-            .Where(index => index.Length > 0)
-            .ToList();
-        HashSet<string> wired = edges.RowsUsed().Skip(1)
-            .Where(row => string.Equals(row.Cell(1).GetString().Trim(), fromEpisodeId, StringComparison.Ordinal))
-            .Select(row => row.Cell(4).GetString().Trim())
-            .Where(index => index.Length > 0)
-            .ToHashSet(StringComparer.Ordinal);
-
-        string? index = slotIndexes.FirstOrDefault(candidate => !wired.Contains(candidate));
-
-        if (index is null)
+        if (FindEdgeRow(edges, fromEpisodeId, toEpisodeId, optionLabel) is not null)
         {
-            // 빈 칸이 없다 — 새 칸을 만들고 에피소드의 선택지수를 따라 올린다.
-            index = AddChoiceSlot(workbook, fromEpisodeId, slotText);
-            IXLWorksheet episodes = RequireSheet(workbook, ChapterSheetNames.Episodes);
-
-            if (FindRow(episodes, fromEpisodeId) is { } episodeRow)
-            {
-                SetChoiceCount(episodes, episodeRow, slotIndexes.Count + 1);
-            }
-        }
-        else if (slotText is { Length: > 0 })
-        {
-            // 기존 빈 칸을 쓰는데 문구를 받았다 — 그 칸의 대본이 아직 비었으면 채워 준다.
-            IXLRow? slotRow = choices.RowsUsed().Skip(1).FirstOrDefault(row =>
-                string.Equals(row.Cell(1).GetString().Trim(), fromEpisodeId, StringComparison.Ordinal) &&
-                string.Equals(row.Cell(2).GetString().Trim(), index, StringComparison.Ordinal));
-
-            if (slotRow is not null && slotRow.Cell(3).GetString().Trim().Length == 0)
-            {
-                slotRow.Cell(3).SetValue(slotText);
-            }
+            throw new InvalidOperationException(
+                $"간선 {fromEpisodeId}→{toEpisodeId}이 같은 선택지 문구로 이미 있습니다.");
         }
 
         int row = NextRow(edges);
         edges.Cell(row, 1).SetValue(fromEpisodeId);
         edges.Cell(row, 2).SetValue(toEpisodeId);
-        edges.Cell(row, 4).SetValue(index);
-        Set(edges, row, 6, conditionLabel); // 해금조건 (v8)
+        Set(edges, row, 4, optionLabel);     // 선택지 = 문구 그대로 (v9)
+        Set(edges, row, 6, conditionLabel);  // 해금조건 (v8 — E는 표시조건)
         edges.Cell(row, 7).SetValue("FALSE");
+
+        EnsureChoiceLabel(workbook, optionLabel);
     }
 
-    /// <summary>간선 삭제 — 칸은 남는다(칸의 주인은 에피소드의 선택지수다). 다시 이으면 그 칸을 쓴다.</summary>
+    /// <summary>간선 삭제 — 사전의 문구는 남는다(다른 길에서 또 쓴다).</summary>
     public static ChapterWriteResult RemoveEdge(
-        string path, string fromEpisodeId, string toEpisodeId, string? choiceIndex = null) =>
+        string path, string fromEpisodeId, string toEpisodeId, string? optionLabel = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            IXLRow found = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, choiceIndex)
+            IXLRow found = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, optionLabel)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
             found.Delete();
         }, backup: true);
 
     /// <summary>
-    /// 간선 행 찾기 — (출발, 도착)으로 좁히고, <paramref name="choiceIndex"/>가 있으면
-    /// 짝 인덱스까지 맞춘다(같은 도착으로 문구 여럿일 때의 정확한 신원).
+    /// 간선 행 찾기 — (출발, 도착)으로 좁히고, <paramref name="optionLabel"/>이 주어지면
+    /// 문구까지 맞춘다(같은 도착으로 문구 여럿일 때의 정확한 신원 — v9).
     /// </summary>
     private static IXLRow? FindEdgeRow(
-        IXLWorksheet sheet, string fromEpisodeId, string toEpisodeId, string? choiceIndex = null) =>
+        IXLWorksheet sheet, string fromEpisodeId, string toEpisodeId, string? optionLabel = null) =>
         sheet.RowsUsed().Skip(1).FirstOrDefault(row =>
             string.Equals(row.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
             string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal) &&
-            (choiceIndex is null ||
-             string.Equals(row.Cell(4).GetString().Trim(), choiceIndex.Trim(), StringComparison.Ordinal)));
+            (optionLabel is null ||
+             string.Equals(row.Cell(4).GetString().Trim(), optionLabel.Trim(), StringComparison.Ordinal)));
 
     /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다 (관문 둘 포함 — v8).</summary>
     public static ChapterWriteResult UpdateEdge(
@@ -487,13 +390,13 @@ public static class ChapterWorkbookWriter
         bool? hideWhenLocked = null,
         string? lockedMessage = null,
         string? statChanges = null,
-        string? matchChoiceIndex = null,
+        string? matchOptionLabel = null,
         string? visibleConditionLabel = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchChoiceIndex)
+            IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchOptionLabel)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
             Set(sheet, row.RowNumber(), 5, visibleConditionLabel); // 표시조건
@@ -508,65 +411,27 @@ public static class ChapterWorkbookWriter
             Set(sheet, row.RowNumber(), 3, statChanges); // 스탯변화(C) — 문법 검사는 리더가 한다
         });
 
-    /// <summary>
-    /// 엑셀에서 에피소드의 선택지수를 올린 뒤의 따라잡기 — 각 에피소드의 칸이 선언된 수만큼
-    /// 서도록 모자란 칸을 만든다("공간이 생기도록"). <b>모자란 칸이 없으면 파일에 손대지
-    /// 않는다</b> — 동기화마다 불려도 감시가 맴돌지 않는다. 넘치는 칸은 지우지 않는다(원고 보호).
-    /// </summary>
-    public static (bool Changed, ChapterWriteResult Result) TopUpChoiceSlots(
-        string path, ChapterGraphModel model)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-
-        List<ChapterEpisode> lacking = model.Episodes
-            .Where(episode => model.ChoiceOptionsFor(episode.EpisodeId).Count() < episode.ChoiceCount)
-            .ToList();
-
-        if (lacking.Count == 0)
-        {
-            return (false, ChapterWriteResult.Ok);
-        }
-
-        ChapterWriteResult result = Mutate(path, workbook =>
-        {
-            foreach (ChapterEpisode episode in lacking)
-            {
-                int existing = model.ChoiceOptionsFor(episode.EpisodeId).Count();
-
-                for (int added = existing; added < episode.ChoiceCount; added++)
-                {
-                    AddChoiceSlot(workbook, episode.EpisodeId, text: null);
-                }
-            }
-        });
-
-        return (result.Written, result);
-    }
-
     private static IXLWorksheet RequireChoiceSheet(XLWorkbook workbook) =>
         workbook.Worksheets.FirstOrDefault(candidate =>
             candidate.Name == ChapterSheetNames.Choices)
         ?? CreateChoiceSheet(workbook);
 
     /// <summary>
-    /// `선택지` 시트를 시각적으로 읽히게 만든다 (2026-08-16 소유자 — "시각적으로 괜찮게"):
-    /// 구조 열(출발·인덱스)은 옅은 회색, 쓰는 칸(대본)은 넓은 흰 칸, 머리글 고정.
+    /// `선택지` 시트 = 챕터가 함께 쓰는 문구 사전 (v9). 인덱스는 사전 안의 순서일 뿐이라
+    /// 옅은 회색이고, 사람이 쓰는 칸(대본)은 넓은 흰 칸이다. 머리글 고정.
     /// </summary>
     internal static IXLWorksheet CreateChoiceSheet(XLWorkbook workbook)
     {
         IXLWorksheet sheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Choices,
-            ["출발", "인덱스", "대본", "메모"]);
+            ["인덱스", "대본", "메모"]);
 
-        sheet.Column(1).Width = 16;   // 출발 (근원 에피소드)
-        sheet.Column(2).Width = 8;    // 인덱스 — 간선과 짝하는 신원
-        sheet.Column(3).Width = 52;   // 대본 — 사람이 쓰는 칸
-        sheet.Column(4).Width = 24;   // 메모
+        sheet.Column(1).Width = 8;    // 인덱스 — 사전 안의 순서
+        sheet.Column(2).Width = 52;   // 대본 — 사람이 쓰는 칸
+        sheet.Column(3).Width = 24;   // 메모
 
-        // 구조 열은 옅게 — "여긴 배선, 저긴 원고"가 한눈에 갈린다.
+        // 구조 열은 옅게 — "여긴 번호, 저긴 원고"가 한눈에 갈린다.
         sheet.Column(1).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
-        sheet.Column(2).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
         sheet.Cell(1, 1).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
-        sheet.Cell(1, 2).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
 
         sheet.SheetView.FreezeRows(1);
 
@@ -574,27 +439,35 @@ public static class ChapterWorkbookWriter
     }
 
     /// <summary>
-    /// 선택지 칸 한 줄 — 인덱스는 그 에피소드(출발) 안에서 10·20·30으로 이어 받는다.
-    /// text를 안 주면 빈 칸(보이지 않는 기본)으로 선다.
+    /// 문구가 사전에 없으면 한 줄 올린다 — 인덱스는 10·20·30으로 이어 받는다.
+    /// 간선이 문구를 직접 쓰므로 이 등재는 <b>다음번 드롭다운을 위한 것</b>이지 배선이 아니다.
     /// </summary>
-    /// <returns>새 칸의 인덱스 문자열 — 간선의 `선택지` 열이 이것을 가리킨다.</returns>
-    private static string AddChoiceSlot(XLWorkbook workbook, string from, string? text = null)
+    /// <returns>새로 올렸으면 참, 이미 있었으면 거짓.</returns>
+    private static bool EnsureChoiceLabel(XLWorkbook workbook, string? text)
     {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false; // 빈 문구 = 보이지 않는 기본. 사전에 올릴 낱말이 없다.
+        }
+
         IXLWorksheet choices = RequireChoiceSheet(workbook);
 
+        if (choices.RowsUsed().Skip(1).Any(row =>
+                string.Equals(row.Cell(2).GetString().Trim(), text.Trim(), StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
         int maxIndex = choices.RowsUsed().Skip(1)
-            .Where(row => string.Equals(row.Cell(1).GetString().Trim(), from, StringComparison.Ordinal))
-            .Select(row => int.TryParse(row.Cell(2).GetString(), out int index) ? index : 0)
+            .Select(row => int.TryParse(row.Cell(1).GetString(), out int index) ? index : 0)
             .DefaultIfEmpty(0)
             .Max();
 
-        int slotRow = NextRow(choices);
-        int nextIndex = maxIndex + 10;
-        choices.Cell(slotRow, 1).SetValue(from);
-        choices.Cell(slotRow, 2).SetValue(nextIndex);
-        Set(choices, slotRow, 3, text);
+        int newRow = NextRow(choices);
+        choices.Cell(newRow, 1).SetValue(maxIndex + 10);
+        choices.Cell(newRow, 2).SetValue(text.Trim());
 
-        return nextIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return true;
     }
 
     // ── 조건 ────────────────────────────────────────────────────────────────
@@ -747,15 +620,14 @@ public static class ChapterWorkbookWriter
         // 픽스처 시트는 만들지 않는다 (2026-08-16 소유자 — 당장 안 쓰니 임시 제거.
         // 리더는 있으면 여전히 읽는다 — 되살릴 때 시트만 다시 만들면 된다).
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모", "선택지수"]);
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
             ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
             ["스탯키", "표시명", "초기값", "최소", "최대", "타입"]);
-        // 선택지의 정본 (v7) — 근원 에피소드의 Choice 아래 Option 칸들. 인덱스가 신원이고
-        // 간선이 1:1로 짝한다. 대본 text는 자유 수정(빈 text = 보이지 않는 기본).
+        // 선택지 사전 (v9) — 챕터가 함께 쓰는 문구 목록. 간선이 여기서 골라 문구를 적는다.
         IXLWorksheet choiceSheet = CreateChoiceSheet(workbook);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
 
@@ -840,13 +712,12 @@ public static class ChapterWorkbookWriter
 
         if (choiceSheet is not null)
         {
-            // 선택지 칸의 출발(근원 에피소드)은 에피소드 목록에서 고른다(오타 = 주인 없는 칸).
-            // 간선의 선택지 열은 짝 칸의 인덱스 — 선택지 시트 인덱스 열을 조언 목록으로 단다.
-            choiceSheet.Range(2, 1, DropdownRows, 1).CreateDataValidation()
-                .List($"='{ChapterSheetNames.Episodes}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+            // v9 — 간선의 선택지(D)는 문구 그 자체다. 사전의 대본 열(B)을 통째로 목록에
+            // 달아, 어느 에피소드에서든 챕터의 모든 문구를 고른다. 사전에 없는 문구를 손으로
+            // 적는 것도 막지 않는다(어휘집이지 자물쇠가 아니다).
             IXLDataValidation edgeChoicePick = edgeSheet.Range(2, 4, DropdownRows, 4).CreateDataValidation();
             edgeChoicePick.List($"='{ChapterSheetNames.Choices}'!$B$2:$B${DropdownRows}", inCellDropdown: true);
-            edgeChoicePick.ShowErrorMessage = false; // 다른 에피소드의 인덱스도 목록에 뜬다 — 짝 검사는 검증기가
+            edgeChoicePick.ShowErrorMessage = false;
         }
 
         conditionSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()

@@ -97,16 +97,15 @@ public sealed class ChapterGraphEditingTests
 
         ChapterEdge edge = reread.Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
-        // 칸 하나와 1:1로 짝했다 — 문구는 엑셀 `선택지` 시트의 대본 칸에서 적는다.
-        Assert.NotNull(edge.ChoiceIndex);
-        Assert.Contains(reread.ChoiceOptionsFor("main05.01"), slot => slot.Index == edge.ChoiceIndex);
+        // 문구 없이 이으면 보이지 않는 기본이다 — 문구는 그 줄을 눌러 고른다.
+        Assert.True(edge.IsPlainAdvance);
     });
 
     [Fact]
-    public void 선택지_줄을_클릭하면_그_아래에서_도착을_잇는다() => HeadlessUi.Run(() =>
+    public void 선택지는_챕터의_모든_문구_중에서_고른다() => HeadlessUi.Run(() =>
     {
-        // v7 — 목록의 줄 = 선택지 칸. [＋]가 칸을 늘리고(에피소드 선택지수 +1), 줄을 누르면
-        // 그 줄 아래 폼에서 도착을 골라 잇는다(칸 하나 = 길 하나).
+        // v9 (2026-08-17 소유자) — "자기 것만 고르는 게 아니라 모든 선택지 중에서 자유자재로."
+        // 견본의 사전에는 main05.02가 쓰는 문구 둘이 있고, main05.01에서도 그것을 고른다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
         view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
@@ -114,34 +113,60 @@ public sealed class ChapterGraphEditingTests
         view.SelectEpisode("main05.01");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 칸 하나 추가 — 아직 간선은 없다.
+        // [＋] — 빈 폼이 열린다. 아직 아무것도 안 쓴다.
         view.FindControl<Button>("AddNextEdgeButton")!.RaiseEvent(
             new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        view.RefreshFromDisk();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        ChapterGraphModel added = ChapterWorkbookReader.Read(project.ChapterPath);
-        Assert.Equal(2, added.FindEpisode("main05.01")!.ChoiceCount);
-
-        string freeIndex = added.ChoiceOptionsFor("main05.01")
-            .Single(slot => !added.Edges.Any(edge =>
-                edge.FromEpisodeId == "main05.01" && edge.ChoiceIndex == slot.Index))
-            .Index;
-
-        // 그 줄을 눌러 폼을 열고 도착을 고른다.
-        view.OpenSlotForm(freeIndex, rowIndex: 1, currentTarget: null);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.True(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
         Assert.Equal("잇기", view.FindControl<Button>("AddEdgeButton")!.Content);
 
+        // 문구 드롭다운은 다른 에피소드가 쓰는 문구까지 전부 담는다.
+        var labels = view.FindControl<ComboBox>("EdgeLabelBox")!;
+        Assert.Contains("라루의 제안을 듣는다", (IEnumerable<string>)labels.ItemsSource!);
+
+        labels.SelectedItem = "라루의 제안을 듣는다";
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
         view.SubmitEdgeForm();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
         ChapterEdge wired = reread.Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
-        Assert.Equal(freeIndex, wired.ChoiceIndex);
+        Assert.Equal("라루의 제안을 듣는다", wired.OptionLabel);
+
+        // 같은 문구를 두 에피소드가 쓰고 있어도 사전에는 한 줄뿐이다.
+        Assert.Single(reread.ChoiceOptions, option => option.Text == "라루의 제안을 듣는다");
+    });
+
+    [Fact]
+    public void 선택지_줄을_클릭하면_그_아래에서_문구와_도착을_고친다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEdge target = model.Edges.Single(edge =>
+            edge.FromEpisodeId == "main05.02" && edge.ToEpisodeId == "branch05.02A");
+
+        view.OpenEdgeForm(target, rowIndex: 0);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
+        Assert.Equal("수정", view.FindControl<Button>("AddEdgeButton")!.Content);
+        Assert.Equal("라루의 제안을 듣는다", view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem);
+
+        // 문구를 바꿔 저장 — 도착은 그대로다.
+        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "혼자 문을 연다";
+        view.SubmitEdgeForm();
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEdge moved = reread.Edges.Single(edge => edge.ToEpisodeId == "branch05.02A");
+        Assert.Equal("혼자 문을 연다", moved.OptionLabel);
+        Assert.Equal("신뢰높음", moved.ConditionLabel); // 관문은 길에 붙어 따라온다
     });
 
     [Fact]
@@ -373,20 +398,13 @@ public sealed class ChapterGraphEditingTests
     [Fact]
     public void 선택지_포트가_카드_오른쪽에_뚫린다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-16 개정 — 포트의 원천은 챕터 `선택지` 시트의 보이는 칸이다.
-        // 주인 간선 있는 포트 = 채운 원(클릭 = 간선 선택), 주인 없는 칸 = 빈 원(클릭 = 에피소드 선택).
+        // v9 — 포트의 원천은 <b>문구가 붙은 나가는 간선</b>이다. 포트 하나 = 길 하나이고,
+        // 누르면 그 간선이 선택된다. 문구 없는 길(보이지 않는 기본)은 포트가 아니라 직행선.
         using var project = new TempProject(SamplePath);
 
-        // 아직 안 이은 칸 하나를 더한다 (v7 — 칸은 에피소드의 것, 간선은 인덱스로 짝한다).
-        using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
-        {
-            ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
-            int row = choices.LastRowUsed()!.RowNumber() + 1;
-            choices.Cell(row, 1).SetValue("main05.02");
-            choices.Cell(row, 2).SetValue(30);
-            choices.Cell(row, 3).SetValue("셋째 길");
-            workbook.Save();
-        }
+        // 셋째 길을 하나 더 낸다 — 문구는 간선의 `선택지` 칸에 그대로 적힌다.
+        ChapterWorkbookWriter.AddEdge(
+            project.ChapterPath, "main05.02", "main05.end", optionLabel: "셋째 길");
 
         (ChapterGraphView view, _) = Show(project);
 
@@ -400,7 +418,7 @@ public sealed class ChapterGraphEditingTests
                 Avalonia.Input.PointerUpdateKind.LeftButtonPressed),
             Avalonia.Input.KeyModifiers.None));
 
-        // 포트 문구 셋 + 포트 원 셋 (main05.02의 보이는 칸 수).
+        // 포트 문구 셋 + 포트 원 셋 (main05.02에서 나가는, 문구 붙은 길의 수).
         List<TextBlock> labels = canvas.Children.OfType<TextBlock>()
             .Where(block => (block.Text ?? "").StartsWith("라루의 제안을 듣는다") ||
                             block.Text == "혼자 문을 연다" || block.Text == "셋째 길")
@@ -408,14 +426,12 @@ public sealed class ChapterGraphEditingTests
         Assert.Equal(3, labels.Count);
         Assert.Equal(3, canvas.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Count(port => port.Width == 9));
 
-        // 주인 간선 있는 포트 클릭 = 그 간선 선택.
+        // 포트 클릭 = 그 길 선택. 포트는 늘 간선이 있다(v9 — 포트가 곧 길이다).
         Press(labels.Single(block => block.Text!.StartsWith("라루의 제안을 듣는다")));
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
 
-        // 주인 없는 칸 클릭 = 에피소드 선택 (검증 보고가 유령 칸을 따로 잡는다).
         Press(labels.Single(block => block.Text == "셋째 길"));
-        Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("main05.02", view.FindControl<TextBox>("IdBox")!.Text);
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────

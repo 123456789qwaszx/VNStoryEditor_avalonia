@@ -65,13 +65,12 @@ public static class ChapterProgressionExporter
         // 1:1을 위해 남기되 비어 나간다(⚠ 런타임 수입기가 NextOption 쪽을 읽어야 한다).
         VisibleConditions = [],
         UnlockConditions = [],
-        // v7 — 간선 하나 = NextOption 하나(간선과 선택지 칸이 1:1). 문구는 짝 칸의 대본
-        // text(`OptionLabel`이 그 파생값)이고, 빈 칸이면 빈 문자열 = 보이지 않는 기본
-        // (자동 진행). 조건·잠금·스탯변화·도착은 간선 것이다.
-        // 순서는 선택지 칸의 인덱스 순 — 화면에 뜨는 순서가 곧 이 순서다.
+        // v9 — 간선 하나 = NextOption 하나. 문구는 간선의 `선택지` 열 값 그대로이고, 비면
+        // 빈 문자열 = 보이지 않는 기본(자동 진행). 조건·잠금·스탯변화·도착도 전부 간선 것이다.
+        // 순서는 `간선` 시트의 행 순서 — 적은 순서가 곧 화면에 뜨는 순서다.
         NextOptions = chapter.Edges
             .Where(edge => string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
-            .OrderBy(edge => SlotOrder(chapter, edge))
+            .OrderBy(edge => edge.SourceRow)
             .Select(edge => new NextOptionJson
             {
                 TargetEpisodeId = edge.ToEpisodeId,
@@ -90,24 +89,6 @@ public static class ChapterProgressionExporter
         DesignerNote = episode.Memo ?? string.Empty,
         Position = new PositionJson { X = episode.X, Y = episode.Y }
     };
-
-    /// <summary>그 간선이 짝한 선택지 칸의 자리 — 화면에 뜨는 순서(인덱스 순)의 근거.</summary>
-    private static int SlotOrder(ChapterGraphModel chapter, ChapterEdge edge)
-    {
-        int position = 0;
-
-        foreach (ChapterChoiceOption slot in chapter.ChoiceOptionsFor(edge.FromEpisodeId))
-        {
-            if (string.Equals(slot.Index, edge.ChoiceIndex, StringComparison.Ordinal))
-            {
-                return position;
-            }
-
-            position++;
-        }
-
-        return int.MaxValue; // 짝 없는 간선은 뒤로 — 검증이 따로 짚는다
-    }
 
     /// <summary>
     /// 챕터 조건 → 런타임 `EpisodeCondition`. 스탯 항은 <c>Stat + GreaterOrEqual/LessOrEqual/Equal</c>,

@@ -32,7 +32,7 @@ public static class ChapterWorkbookReader
     // v8 (2026-08-16 소유자) — 표시·해금조건이 에피소드에서 간선으로 옮겨 왔다:
     // "보일지 말지는 이제 간선이 정한다".
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모", "선택지수"];
+        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"];
 
     private static readonly string[] EdgeHeaders =
         ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"];
@@ -43,7 +43,7 @@ public static class ChapterWorkbookReader
 
     private static readonly string[] SpeakerHeaders = ["이름", "캐릭터키", "메모"];
 
-    private static readonly string[] ChoiceHeaders = ["출발", "인덱스", "대본", "메모"];
+    private static readonly string[] ChoiceHeaders = ["인덱스", "대본", "메모"];
 
     /// <exception cref="XlsxReadException">파일을 열 수 없을 때. 데이터 오류가 아니라 접근 실패다.</exception>
     public static ChapterGraphModel Read(string path, GameDefinition? definition = null)
@@ -87,11 +87,11 @@ public static class ChapterWorkbookReader
         HashSet<string> episodeIds =
             episodes.Select(episode => episode.EpisodeId).ToHashSet(StringComparer.Ordinal);
 
-        // 선택지가 간선보다 먼저다 — 간선의 대표 문구(OptionLabel)가 선택지 칸에서 파생된다.
+        // 선택지 사전 (v9) — 간선이 참조하지는 않지만(문구를 직접 적는다) 툴의 드롭다운 재료다.
         IReadOnlyList<ChapterChoiceOption> choiceOptions =
-            ReadChoiceOptions(workbook, path, episodeIds, diagnostics);
+            ReadChoiceOptions(workbook, path, diagnostics);
         IReadOnlyList<ChapterEdge> edges =
-            ReadEdges(workbook, path, episodeIds, conditionLabels, statKeys, choiceOptions, diagnostics);
+            ReadEdges(workbook, path, episodeIds, conditionLabels, statKeys, diagnostics);
         IReadOnlyList<ChapterFixture> fixtures = ReadFixtures(workbook, path, stats, episodeIds, diagnostics);
         IReadOnlyList<ChapterSpeaker> speakers =
             ReadSpeakers(workbook, path, diagnostics, out bool hasSpeakerSheet);
@@ -157,7 +157,7 @@ public static class ChapterWorkbookReader
             return Array.Empty<ChapterEpisode>();
         }
 
-        VerifyHeaders(sheet, EpisodeHeaders, path, diagnostics, optionalTrailing: 1); // 선택지수(K)는 v7 추가
+        VerifyHeaders(sheet, EpisodeHeaders, path, diagnostics);
 
         var episodes = new List<ChapterEpisode>();
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -202,25 +202,6 @@ public static class ChapterWorkbookReader
             double x = Number(sheet, row, 5, path, episodeId, diagnostics);
             double y = Number(sheet, row, 6, path, episodeId, diagnostics);
 
-            // 선택지수 (I열, v8에서 자리 이동 — 선택) — 이 에피소드의 Option 칸 수. 비면 1이다.
-            string choiceCountText =
-                string.Equals(Text(sheet, HeaderRow, 9), "선택지수", StringComparison.Ordinal)
-                    ? Text(sheet, row, 9)
-                    : string.Empty;
-            int choiceCount = 1;
-
-            if (choiceCountText.Length > 0 &&
-                (!int.TryParse(choiceCountText, NumberStyles.Integer, CultureInfo.InvariantCulture,
-                     out choiceCount) || choiceCount < 1))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.StatValueNotInteger,
-                    path, sheet.Name, row, 9,
-                    $"선택지수 '{choiceCountText}'을 1 이상의 정수로 읽지 못해 1로 봅니다."));
-                choiceCount = 1;
-            }
-
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
             int allowColumn = 0;
 
@@ -246,10 +227,7 @@ public static class ChapterWorkbookReader
                 Optional(sheet, row, 7),
                 Optional(sheet, row, 8),
                 row,
-                allowUnreachable)
-            {
-                ChoiceCount = choiceCount
-            });
+                allowUnreachable));
         }
 
         return episodes;
@@ -263,7 +241,6 @@ public static class ChapterWorkbookReader
         IReadOnlyCollection<string> episodeIds,
         IReadOnlyCollection<string> conditionLabels,
         IReadOnlyCollection<string> statKeys,
-        IReadOnlyList<ChapterChoiceOption> choiceOptions,
         List<ChapterDiagnostic> diagnostics)
     {
         IXLWorksheet? sheet = RequireSheet(workbook, ChapterSheetNames.Edges, path, diagnostics);
@@ -317,47 +294,51 @@ public static class ChapterWorkbookReader
                     problem.Message));
             }
 
-            // 선택지 (D열, v7) — 짝 칸의 인덱스. 간선 하나에 칸 하나가 1:1이다.
-            string? choiceIndex = Optional(sheet, row, 4);
-
-            // 문구는 짝 칸(출발, 인덱스)의 대본 text에서 파생된다. 칸이 없거나 빈 text면
-            // null = 보이지 않는 기본(자동 진행).
-            string? derivedLabel = choiceIndex is null
-                ? null
-                : choiceOptions
-                    .FirstOrDefault(option =>
-                        string.Equals(option.EpisodeId, from, StringComparison.Ordinal) &&
-                        string.Equals(option.Index, choiceIndex, StringComparison.Ordinal) &&
-                        !option.IsInvisibleDefault)
-                    ?.Text;
+            // 선택지 (D열, v9) — 문구 그 자체다. 비면 보이지 않는 기본(자동 진행).
+            // `선택지` 시트는 고르기 편하라고 있는 사전일 뿐이라 대조하지 않는다.
+            string? optionLabel = Optional(sheet, row, 4);
 
             edges.Add(new ChapterEdge(
                 from,
                 to,
-                derivedLabel,
+                optionLabel,
                 conditionLabel,
                 Boolean(sheet, row, 7, path, diagnostics),
                 Optional(sheet, row, 8),
                 row)
             {
                 StatChanges = deltas.Deltas,
-                ChoiceIndex = choiceIndex,
                 VisibleConditionLabel = visibleLabel
             });
         }
 
-        // 간선 신원 = (출발, 선택지 인덱스) — 같은 칸을 두 간선이 가리키면 어디로 가는지 모호하다.
-        foreach (IGrouping<(string, string), ChapterEdge> duplicated in edges
-                     .Where(edge => edge.ChoiceIndex is not null)
-                     .GroupBy(edge => (edge.FromEpisodeId, edge.ChoiceIndex!))
+        // 간선 신원 = (출발, 도착, 문구) — v9. 같은 곳으로 가되 문구가 다른 길은 얼마든지
+        // 둘 수 있지만(스탯변화·관문이 다른 흔한 패턴), 셋이 다 같으면 어느 행이 참인지 모호하다.
+        foreach (IGrouping<(string, string, string), ChapterEdge> duplicated in edges
+                     .GroupBy(edge => (edge.FromEpisodeId, edge.ToEpisodeId, edge.OptionLabel ?? string.Empty))
                      .Where(group => group.Count() > 1))
         {
             diagnostics.Add(Cell(
                 ChapterDiagnosticSeverity.Error,
                 ChapterDiagnosticCode.OptionEdgeMismatch,
                 path, sheet.Name, duplicated.Last().SourceRow, 4,
-                $"'{duplicated.Key.Item1}'의 선택지 {duplicated.Key.Item2}를 간선 여러 행이 " +
-                "가리킵니다 — 간선 하나에 선택지 칸 하나입니다."));
+                $"{duplicated.Key.Item1}→{duplicated.Key.Item2} 간선이 같은 선택지 문구로 " +
+                "여러 행 있습니다 — 문구를 다르게 하거나 한 행을 지워 주세요."));
+        }
+
+        // 같은 에피소드에서 같은 문구가 서로 다른 곳으로 간다 — 플레이어에게는 같은 버튼
+        // 둘이라 어느 쪽인지 고를 수 없다. 문구는 자유롭게 재사용하되 한 화면 안에서는 겹치면 안 된다.
+        foreach (IGrouping<(string, string), ChapterEdge> collided in edges
+                     .Where(edge => !edge.IsPlainAdvance)
+                     .GroupBy(edge => (edge.FromEpisodeId, edge.OptionLabel!))
+                     .Where(group => group.Count() > 1))
+        {
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Warning,
+                ChapterDiagnosticCode.OptionEdgeMismatch,
+                path, sheet.Name, collided.Last().SourceRow, 4,
+                $"'{collided.Key.Item1}'에서 '{collided.Key.Item2}' 선택지가 여러 갈래로 " +
+                "갑니다 — 플레이어에게는 같은 버튼 둘로 보입니다."));
         }
 
         return edges;
@@ -831,15 +812,14 @@ public static class ChapterWorkbookReader
     // ── 선택지 ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// `선택지` 시트 (2026-08-16 — 선택지의 정본이 대본에서 챕터로). 행 = 옵션 칸 하나이고
-    /// 간선(출발→도착)이 칸을 소유한다. 대본 text는 자유 수정이며 빈 text = 보이지 않는 기본.
+    /// `선택지` 시트 (v9, 2026-08-17) — <b>챕터가 함께 쓰는 문구 사전</b>이다. 행 = 문구 하나이고
+    /// 출발 에피소드가 없다: 어느 간선에서든 가져다 쓴다. 간선은 인덱스가 아니라 문구를 적으므로
+    /// 이 시트는 배선이 아니라 어휘집이다 — 그래서 규칙이 느슨하다(빈 행 건너뜀, 중복은 알림).
     /// 이 기능 전에 만든 워크북에는 시트가 없다 — 진단 없이 빈 목록(Migrator가 만들어 준다).
-    /// 반환은 에피소드별 인덱스 순 — 가지 순서 = 읽는 순서.
     /// </summary>
     private static IReadOnlyList<ChapterChoiceOption> ReadChoiceOptions(
         XLWorkbook workbook,
         string path,
-        IReadOnlyCollection<string> episodeIds,
         List<ChapterDiagnostic> diagnostics)
     {
         IXLWorksheet? sheet = FindSheet(workbook, ChapterSheetNames.Choices);
@@ -852,58 +832,35 @@ public static class ChapterWorkbookReader
         VerifyHeaders(sheet, ChoiceHeaders, path, diagnostics);
 
         var options = new List<ChapterChoiceOption>();
-        var seen = new HashSet<(string, string)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (int row in DataRows(sheet))
         {
-            string from = Text(sheet, row, 1);
-            string index = Text(sheet, row, 2);
+            string index = Text(sheet, row, 1);
+            string text = Text(sheet, row, 2);
 
-            if (from.Length == 0 && index.Length == 0)
+            if (text.Length == 0)
             {
-                continue;
+                continue; // 문구가 없으면 사전에 오를 낱말이 없다 — 빈 행은 그냥 넘긴다
             }
 
-            if (from.Length == 0 || index.Length == 0)
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    path, sheet.Name, row, from.Length == 0 ? 1 : 2,
-                    "선택지 칸은 출발(근원 에피소드)과 인덱스가 둘 다 있어야 합니다 — " +
-                    "인덱스가 간선과 짝하는 신원입니다. 이 행은 읽지 않았습니다."));
-                continue;
-            }
-
-            if (!episodeIds.Contains(from))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.EdgeEndpointUnknown,
-                    path, sheet.Name, row, 1,
-                    $"선택지 칸의 출발 '{from}'이 에피소드 시트에 없습니다."));
-            }
-
-            if (!seen.Add((from, index)))
+            if (!seen.Add(text))
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.OptionEdgeMismatch,
                     path, sheet.Name, row, 2,
-                    $"'{from}'의 인덱스 {index} 칸이 두 번 있습니다 — 인덱스는 칸의 신원이라 " +
-                    "겹치면 간선이 어느 칸과 짝인지 모호합니다. 첫 행만 씁니다."));
+                    $"'{text}' 문구가 사전에 두 번 있습니다 — 드롭다운에 같은 항목이 겹쳐 보입니다."));
                 continue;
             }
 
-            options.Add(new ChapterChoiceOption(
-                from, index, Text(sheet, row, 3), Optional(sheet, row, 4), row));
+            options.Add(new ChapterChoiceOption(index, text, Optional(sheet, row, 3), row));
         }
 
-        // 에피소드 안의 순서는 인덱스가 정한다 (10·20·30 방식 — 대본 엑셀과 같은 문법).
+        // 사전의 순서는 인덱스가 정한다 (10·20·30 방식 — 대본 엑셀과 같은 문법).
         // 숫자가 아니면 시트 순서 그대로 뒤에 선다.
         return options
-            .OrderBy(option => option.EpisodeId, StringComparer.Ordinal)
-            .ThenBy(option =>
+            .OrderBy(option =>
                 int.TryParse(option.Index, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
                     ? index
                     : int.MaxValue)

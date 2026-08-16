@@ -57,8 +57,9 @@ public static class ChapterWorkbookMigrator
 
             MigrateEpisodes(workbook);
             MigrateEdges(workbook);
-            MigrateEdgeLabelsToChoiceSheet(workbook); // v6·v7 — 선택지 문구 → 선택지 시트
-            MigrateGatesToEdges(workbook);            // v8 — 표시·해금조건 → 간선
+            MigrateEdgeLabelsToChoiceSheet(workbook);   // v6·v7 — 선택지 문구 → 선택지 시트
+            MigrateGatesToEdges(workbook);              // v8 — 표시·해금조건 → 간선
+            MigrateChoiceSheetToDictionary(workbook);   // v9 — 칸 → 전역 문구 사전
             MigrateConditions(workbook);
             MigrateStats(workbook);
             RemoveEmptyFixtures(workbook);
@@ -81,15 +82,14 @@ public static class ChapterWorkbookMigrator
 
         return Header(workbook, ChapterSheetNames.Episodes, 3) == "인덱스" ||
                Header(workbook, ChapterSheetNames.Edges, 3) == "선택지 라벨" ||
-               // v5(D=문구인데 선택지 시트가 없다) — v7의 D=인덱스와 머리글이 같아 시트로 가른다
-               (Header(workbook, ChapterSheetNames.Edges, 4) == "선택지" &&
-                Find(workbook, ChapterSheetNames.Choices) is null) ||
-               Header(workbook, ChapterSheetNames.Edges, 4) == "선택지수" || // v6
-               Header(workbook, ChapterSheetNames.Choices, 2) == "도착" ||   // v6 선택지 시트
+               Header(workbook, ChapterSheetNames.Edges, 4) == "선택지수" ||  // v6
+               Header(workbook, ChapterSheetNames.Choices, 2) == "도착" ||    // v6 선택지 시트
+               Header(workbook, ChapterSheetNames.Choices, 1) == "출발" ||    // v7·v8 칸 → v9 사전
+               // v9 — 에피소드가 칸 수를 선언하던 열. v8 이행 전이면 K, 뒤면 I에 있다.
+               Header(workbook, ChapterSheetNames.Episodes, 9) == "선택지수" ||
+               Header(workbook, ChapterSheetNames.Episodes, 11) == "선택지수" ||
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
                 Find(workbook, ChapterSheetNames.Choices) is null) ||
-               (Find(workbook, ChapterSheetNames.Episodes) is not null &&
-                Header(workbook, ChapterSheetNames.Episodes, 9) != "선택지수") ||
                Header(workbook, ChapterSheetNames.Episodes, 7) == "표시조건" ||  // v8 이전
                Header(workbook, ChapterSheetNames.Edges, 5) == "조건" ||        // v8 이전
                Header(workbook, ChapterSheetNames.Conditions, 2) == "조건식" ||
@@ -108,19 +108,23 @@ public static class ChapterWorkbookMigrator
     /// </summary>
     private static void MigrateEdgeLabelsToChoiceSheet(XLWorkbook workbook)
     {
+        // v9 이후로는 칸 자체가 없다 — 이 단계는 <b>칸을 가진 시트(출발 열)를 v7로 모으는</b>
+        // 중간 다리로만 남는다. 시트가 아예 없는 v5(간선 D = 문구)는 여기서 손대지 않고
+        // <see cref="MigrateChoiceSheetToDictionary"/>가 문구를 바로 사전으로 거둔다 —
+        // 칸으로 만들었다 되돌리는 왕복이 없어야 문구가 온전하다.
         if (Find(workbook, ChapterSheetNames.Edges) is not { } edges ||
-            Find(workbook, ChapterSheetNames.Episodes) is not { } episodes)
+            Find(workbook, ChapterSheetNames.Episodes) is not { } episodes ||
+            Find(workbook, ChapterSheetNames.Choices) is not { } choices ||
+            Header(workbook, ChapterSheetNames.Choices, 1) != "출발")
         {
             return;
         }
-
-        IXLWorksheet? choices = Find(workbook, ChapterSheetNames.Choices);
 
         // ── v6 선택지 시트(도착 열 있음) → v7: 도착 열을 지운다. 짝은 아래에서 간선 D에
         //    인덱스로 새겨 넣으므로, 지우기 전에 (출발, 도착) → 인덱스들 맵을 뜬다.
         var byPair = new Dictionary<(string, string), Queue<string>>();
 
-        if (choices is not null && Header(workbook, ChapterSheetNames.Choices, 2) == "도착")
+        if (Header(workbook, ChapterSheetNames.Choices, 2) == "도착")
         {
             foreach (IXLRow row in choices.RowsUsed().Skip(1))
             {
@@ -145,12 +149,8 @@ public static class ChapterWorkbookMigrator
             choices.Cell(1, 2).SetValue("인덱스");
         }
 
-        choices ??= ChapterWorkbookWriter.CreateChoiceSheet(workbook);
-
-        // ── 간선 → 칸 1:1 배선. D열이 v5 문구든 v6 선택지수든, 인덱스 참조로 바꾼다.
-        bool edgeLabelColumn = Header(workbook, ChapterSheetNames.Edges, 4) == "선택지" &&
-                               byPair.Count == 0 &&
-                               choices.RowsUsed().Skip(1).All(row => row.Cell(1).GetString().Trim().Length == 0);
+        // ── 간선 → 칸 1:1 배선. D열이 v6 선택지수면 인덱스 참조로 바꾼다.
+        const bool edgeLabelColumn = false; // v5 문구는 이 단계로 오지 않는다(위 빗장)
         var nextIndex = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (IXLRow row in choices.RowsUsed().Skip(1))
@@ -362,6 +362,130 @@ public static class ChapterWorkbookMigrator
         // 에피소드에서 두 열을 지운다 — 관문의 주인이 하나여야 한다.
         episodes.Column(7).Delete();
         episodes.Column(7).Delete();
+    }
+
+    /// <summary>
+    /// v9 (2026-08-17 소유자) — "선택지는 인덱스를 가져오는 게 아니라 그냥 깡으로 대사만
+    /// 가져오면 된다. 선택지 시트에서 출발노드는 제거." 칸(에피소드 소유)이 사라지고
+    /// <b>챕터 전체가 함께 쓰는 문구 사전</b>이 남는다.
+    ///
+    /// ① 간선 D열: 짝 칸의 인덱스 → 그 칸의 대본 <b>문구 그 자체</b> (칸이 없거나 빈 대본이면
+    /// 빈 칸 = 보이지 않는 기본) ② 선택지 시트: 출발 열 삭제, 문구를 중복 없이 모아 10·20·30
+    /// 으로 다시 번호 매김(빈 대본 행은 사전에 오를 낱말이 없으니 걷어낸다) ③ 에피소드의
+    /// `선택지수` 열 삭제 — 이제 나가는 간선 수가 곧 선택지 수다.
+    /// </summary>
+    private static void MigrateChoiceSheetToDictionary(XLWorkbook workbook)
+    {
+        IXLWorksheet? choices = Find(workbook, ChapterSheetNames.Choices);
+        IXLWorksheet? edges = Find(workbook, ChapterSheetNames.Edges);
+
+        if (choices is null)
+        {
+            // 시트가 아예 없는 워크북(v5 이하) — 간선 D열이 이미 문구다. 사전만 세우고
+            // 거기 쓰인 낱말을 거둔다.
+            choices = ChapterWorkbookWriter.CreateChoiceSheet(workbook);
+
+            if (edges is not null && Header(workbook, ChapterSheetNames.Edges, 4) == "선택지")
+            {
+                var harvested = new List<string>();
+
+                foreach (IXLRow row in edges.RowsUsed().Skip(1))
+                {
+                    string text = row.Cell(4).GetString().Trim();
+
+                    if (text.Length > 0 && !harvested.Contains(text, StringComparer.Ordinal))
+                    {
+                        harvested.Add(text);
+                    }
+                }
+
+                for (int slot = 0; slot < harvested.Count; slot++)
+                {
+                    choices.Cell(slot + 2, 1).SetValue((slot + 1) * 10);
+                    choices.Cell(slot + 2, 2).SetValue(harvested[slot]);
+                }
+            }
+        }
+        else if (Header(workbook, ChapterSheetNames.Choices, 1) == "출발")
+        {
+            // ① 간선이 가리키던 (출발, 인덱스)를 문구로 바꿔 심는다.
+            var bySlot = new Dictionary<(string, string), string>();
+
+            foreach (IXLRow row in choices.RowsUsed().Skip(1))
+            {
+                string from = row.Cell(1).GetString().Trim();
+                string index = row.Cell(2).GetString().Trim();
+
+                if (from.Length > 0 && index.Length > 0)
+                {
+                    bySlot[(from, index)] = row.Cell(3).GetString().Trim();
+                }
+            }
+
+            if (edges is not null)
+            {
+                foreach (IXLRow row in edges.RowsUsed().Skip(1))
+                {
+                    string from = row.Cell(1).GetString().Trim();
+                    string index = row.Cell(4).GetString().Trim();
+
+                    row.Cell(4).SetValue(
+                        index.Length > 0 && bySlot.TryGetValue((from, index), out string? text)
+                            ? text
+                            : string.Empty);
+                }
+            }
+
+            // ② 사전 다시 짓기 — 출발을 지우면 인덱스|대본|메모가 남는다.
+            choices.Column(1).Delete();
+            choices.Cell(1, 1).SetValue("인덱스");
+            choices.Cell(1, 2).SetValue("대본");
+            choices.Cell(1, 3).SetValue("메모");
+
+            var vocabulary = new List<(string Text, string Memo)>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (IXLRow row in choices.RowsUsed().Skip(1))
+            {
+                string text = row.Cell(2).GetString().Trim();
+
+                if (text.Length > 0 && seen.Add(text))
+                {
+                    vocabulary.Add((text, row.Cell(3).GetString().Trim()));
+                }
+            }
+
+            // 지우면서 훑으면 행 번호가 밀린다 — 모아 두었다가 한 번에 비우고 다시 쓴다.
+            if ((choices.LastRowUsed()?.RowNumber() ?? 1) > 1)
+            {
+                choices.Rows(2, choices.LastRowUsed()!.RowNumber()).Clear(XLClearOptions.Contents);
+            }
+
+            for (int slot = 0; slot < vocabulary.Count; slot++)
+            {
+                choices.Cell(slot + 2, 1).SetValue((slot + 1) * 10);
+                choices.Cell(slot + 2, 2).SetValue(vocabulary[slot].Text);
+
+                if (vocabulary[slot].Memo.Length > 0)
+                {
+                    choices.Cell(slot + 2, 3).SetValue(vocabulary[slot].Memo);
+                }
+            }
+        }
+
+        // ③ 에피소드의 선택지수 — 자리는 v8 이행 전후로 갈리니 머리글로 찾아 지운다.
+        if (Find(workbook, ChapterSheetNames.Episodes) is { } episodes)
+        {
+            for (int column = 7; column <= 12; column++)
+            {
+                if (string.Equals(episodes.Cell(1, column).GetString().Trim(), "선택지수",
+                        StringComparison.Ordinal))
+                {
+                    episodes.Column(column).Delete();
+                    break;
+                }
+            }
+        }
     }
 
     private static void MigrateConditions(XLWorkbook workbook)

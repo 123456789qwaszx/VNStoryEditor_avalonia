@@ -190,17 +190,17 @@
                                    TextWrapping="Wrap"
                                    Margin="0,2,0,0" />
 
-                        <!-- 선택지(Choice) — 이 에피소드가 끝날 때 뜨는 Option 칸들 (v7).
-                             칸 하나 = 길 하나. [＋]로 칸을 늘리고, 줄을 클릭하면 그 줄 바로
-                             아래에서 도착을 골라 잇는다. 문구는 챕터 엑셀 `선택지` 시트에서. -->
+                        <!-- 선택지 — 이 에피소드에서 나가는 길들 (v9). 길 하나 = 선택지 하나.
+                             [＋]로 길을 하나 열고, 줄을 클릭하면 그 줄 바로 아래에서 문구와
+                             도착을 고친다. 문구는 챕터 엑셀 `선택지` 시트의 사전에서 고른다. -->
                         <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
                             <TextBlock x:Name="ChoiceHeaderText" Text="선택지" FontWeight="SemiBold" FontSize="12"
                                        VerticalAlignment="Center" />
                             <Button Grid.Column="1" x:Name="AddNextEdgeButton" Content="＋"
                                     FontSize="11" Padding="7,1"
-                                    ToolTip.Tip="선택지 칸을 하나 더합니다(에피소드의 선택지수 +1). 문구는 엑셀 `선택지` 시트의 대본 칸에서 적고, 도착은 아래 줄을 눌러 잇습니다." />
+                                    ToolTip.Tip="선택지를 하나 엽니다 — 문구와 도착을 골라 잇습니다. 문구는 챕터 엑셀 `선택지` 시트에서 만듭니다." />
                         </Grid>
-                        <TextBlock Text="칸 하나 = 길 하나. 빈 대본 칸은 보이지 않는 기본(어떤 조건도 안 될 때의 방어장치)입니다."
+                        <TextBlock Text="길 하나 = 선택지 하나. 문구는 챕터의 사전에서 고르고, 어느 에피소드에서든 같은 문구를 씁니다. 문구가 없는 길은 보이지 않는 기본입니다."
                                    FontSize="10" Opacity="0.55" TextWrapping="Wrap" />
                         <StackPanel x:Name="EdgeListPanel" Spacing="3">
                             <!-- 잇기 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래).
