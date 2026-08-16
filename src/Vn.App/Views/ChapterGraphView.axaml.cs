@@ -145,6 +145,7 @@ public partial class ChapterGraphView : UserControl
         // 관문은 v8에서 간선으로 옮겨 갔다 — 에피소드 콤보는 감춰져 있고 저장도 안 한다.
         AddNextEdgeButton.Click += (_, _) => UiGuard.Run(_session, "선택지 칸 추가", AddChoiceSlotFromPanel);
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
+        EdgeLabelBox.SelectionChanged += (_, _) => MoveFormToPickedSlot();
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
@@ -156,6 +157,10 @@ public partial class ChapterGraphView : UserControl
         });
         CopyDiagnosticsButton.Click += async (_, _) =>
             await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
+
+        // 처음 보이는 탭은 [편집]이다 (2026-08-16 소유자) — 손이 가는 곳은 지금 고른
+        // 하나이지 챕터 전체 표가 아니다. 그 뒤로는 사람이 고른 탭이 그대로 유지된다.
+        RightTabs.SelectedItem = EditTab;
 
         // 빈 판 클릭 = 선택 해제. 카드·간선·라벨 핸들러가 각자 누름을 소비하므로(e.Handled)
         // 여기까지 흘러오는 왼쪽 누름은 진짜 빈 공간뿐이다.
@@ -1515,8 +1520,10 @@ public partial class ChapterGraphView : UserControl
                 EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
 
             // 선택지수 후보 (2026-08-16 — 문구는 선택지 시트의 대본 칸이 갖는다).
-            SetItems(EdgeLabelBox, ["1", "2", "3"],
-                EdgeLabelBox.SelectedItem as string ?? "1");
+            // 선택지 칸 목록 — 폼이 열려 있을 때 "이 에피소드에 무엇이 있는지"를 보여 준다.
+            SetItems(EdgeLabelBox,
+                model.ChoiceOptionsFor(episode.EpisodeId).Select(SlotChoiceItem).ToList(),
+                _edgeFormSlotIndex is { } slotIndex ? SlotChoiceText(slotIndex) : null);
 
             RefreshEdgeList(model, episode);
         }
@@ -1542,7 +1549,9 @@ public partial class ChapterGraphView : UserControl
         VisibleCombo.IsEnabled = editable;
         UnlockCombo.IsEnabled = editable;
         AddNextEdgeButton.IsVisible = editable;
-        DeleteEpisodeButton.IsVisible = editable;
+        // 삭제는 툴바 오른쪽 끝의 빨간 단추다 (2026-08-16) — 편집이 열려 있고 지울 대상이
+        // 골라져 있을 때만 보인다. 늘 떠 있으면 파괴적 동작이 배경이 된다.
+        DeleteEpisodeButton.IsVisible = editable && _selectedEpisodeId is not null;
         AddEpisodeButton.IsEnabled = editable;
 
         // 간선 패널(그래프에서 간선 클릭)도 같은 스위치를 탄다.
@@ -1702,7 +1711,11 @@ public partial class ChapterGraphView : UserControl
             $"'{episodeId}'에 선택지 칸을 더했습니다 — 문구는 엑셀 `선택지` 시트의 대본 칸에서 적습니다.");
     }
 
-    /// <summary>줄 클릭 — 그 칸의 도착을 고르는 폼이 줄 바로 아래에 열린다.</summary>
+    /// <summary>
+    /// 줄 클릭 — 그 칸의 도착을 고르는 폼이 줄 바로 아래에 열린다. 선택지 칸 드롭다운도
+    /// 함께 채운다: 고치지 않더라도 <b>이 에피소드에 무엇이 있는지 보이는 것이 값</b>이다
+    /// (2026-08-16 소유자). 다른 칸을 고르면 폼이 그 칸으로 옮겨 간다.
+    /// </summary>
     internal void OpenSlotForm(string choiceIndex, int rowIndex, string? currentTarget)
     {
         _edgeFormSlotIndex = choiceIndex;
@@ -1714,11 +1727,52 @@ public partial class ChapterGraphView : UserControl
         try
         {
             EdgeTargetCombo.SelectedItem = currentTarget;
+            EdgeLabelBox.SelectedItem = SlotChoiceText(choiceIndex);
         }
         finally
         {
             _fillingPanel = false;
         }
+    }
+
+    /// <summary>선택지 칸 드롭다운의 한 줄 — `10 · 라루를 믿는다` / `20 · (빈 대본 = 기본)`.</summary>
+    private static string SlotChoiceItem(ChapterChoiceOption slot) =>
+        $"{slot.Index} · {(slot.IsInvisibleDefault ? "(빈 대본 = 보이지 않는 기본)" : slot.Text)}";
+
+    /// <summary>그 인덱스 칸의 드롭다운 표기. 칸이 없으면 인덱스만.</summary>
+    private string? SlotChoiceText(string choiceIndex) =>
+        _selectedEpisodeId is { } episodeId &&
+        SelectedModel?.ChoiceOptionsFor(episodeId)
+            .FirstOrDefault(slot => string.Equals(slot.Index, choiceIndex, StringComparison.Ordinal))
+            is { } slot
+            ? SlotChoiceItem(slot)
+            : choiceIndex;
+
+    /// <summary>칸 드롭다운에서 다른 칸을 고르면 폼이 그 줄로 옮겨 간다.</summary>
+    private void MoveFormToPickedSlot()
+    {
+        if (_fillingPanel || !ToolEditable ||
+            EdgeLabelBox.SelectedItem is not string picked ||
+            _selectedEpisodeId is not { } episodeId ||
+            SelectedModel is not { } model)
+        {
+            return;
+        }
+
+        List<ChapterChoiceOption> slots = model.ChoiceOptionsFor(episodeId).ToList();
+        int index = slots.FindIndex(slot => SlotChoiceItem(slot) == picked);
+
+        if (index < 0 || string.Equals(slots[index].Index, _edgeFormSlotIndex, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string? target = model.Edges.FirstOrDefault(edge =>
+            string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal) &&
+            string.Equals(edge.ChoiceIndex, slots[index].Index, StringComparison.Ordinal))?.ToEpisodeId;
+
+        UiGuard.Run(_session, "선택지 칸 전환",
+            () => OpenSlotForm(slots[index].Index, index, target));
     }
 
     /// <summary>폼의 [잇기]/[바꾸기] — 그 칸이 향할 도착을 정한다(칸 인덱스는 그대로).</summary>

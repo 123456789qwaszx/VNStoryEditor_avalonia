@@ -159,10 +159,10 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     }
 
     [Fact]
-    public void 간선이_없는_선택지_칸은_경고한다()
+    public void 간선이_없는_선택지_칸은_오류도_경고도_아니다()
     {
-        // v7 — 칸은 에피소드의 것이고, 간선은 그 칸을 인덱스로 가리킨다. 안 이은 칸은
-        // "여기서 끝나는 길"이 아니라 아직 안 그린 길이므로 짚어 준다.
+        // 2026-08-16 소유자 — "선택지는 간선의 숫자보다 많아도 된다. 간선이랑 연결이 안
+        // 되어 있으면 그냥 안 쓰고 종료시키면 되니까." 그 길을 고르면 챕터가 거기서 끝난다.
         string path = Path.Combine(_directory, "orphan.xlsx");
         File.Copy(SamplePath, path);
 
@@ -179,9 +179,10 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(path);
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
 
-        Assert.Contains(validation.Diagnostics, item =>
-            item.Severity == ChapterDiagnosticSeverity.Warning &&
-            item.Message.Contains("간선이 없습니다"));
+        // 안 이은 칸으로는 아무 말도 나오지 않는다(견본의 다른 진단은 그대로 둔다).
+        Assert.DoesNotContain(validation.Diagnostics, item => item.Message.Contains("간선이 없습니다"));
+        Assert.DoesNotContain(validation.Diagnostics, item =>
+            item.Sheet == ChapterSheetNames.Choices && item.Message.Contains("999"));
     }
 
     // ── G6 — 픽스처 경로 ────────────────────────────────────────────────────

@@ -47,14 +47,23 @@
                 </StackPanel>
 
                 <!-- 기본 동작 = 엑셀에서만 편집, 툴은 보여준다 (2026-08-16 소유자).
-                     체크를 풀면 툴 편집이 열리고, 편집은 여전히 엑셀 셀에 즉시 저장된다(G-2 v2). -->
-                <CheckBox Grid.Column="8"
-                          x:Name="ExcelOnlyCheck"
-                          Content="엑셀에서만 편집"
-                          FontSize="11"
-                          IsChecked="True"
-                          VerticalAlignment="Center"
-                          ToolTip.Tip="켜져 있으면 툴은 읽기 전용입니다 — 모든 데이터는 엑셀에서 만집니다. 풀면 개명·조건·간선을 툴에서도 고칠 수 있고, 고친 값은 엑셀 셀에 바로 저장됩니다." />
+                     체크를 풀면 툴 편집이 열리고, 편집은 여전히 엑셀 셀에 즉시 저장된다(G-2 v2).
+                     그 오른쪽 끝이 파괴적 동작의 자리다 — 빨갛게, 편집이 열렸을 때만 보인다. -->
+                <StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="10">
+                    <CheckBox x:Name="ExcelOnlyCheck"
+                              Content="엑셀에서만 편집"
+                              FontSize="11"
+                              IsChecked="True"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="켜져 있으면 툴은 읽기 전용입니다 — 모든 데이터는 엑셀에서 만집니다. 풀면 개명·간선·선택지를 툴에서도 고칠 수 있고, 고친 값은 엑셀 셀에 바로 저장됩니다." />
+                    <Button x:Name="DeleteEpisodeButton"
+                            Content="에피소드 삭제"
+                            FontSize="11"
+                            Foreground="White"
+                            Background="#C0392B"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="선택한 에피소드의 행과 그 간선·선택지 칸을 함께 지웁니다. 대본 엑셀 파일은 지우지 않습니다." />
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -176,23 +185,47 @@
                         <TextBlock Text="칸 하나 = 길 하나. 빈 대본 칸은 보이지 않는 기본(어떤 조건도 안 될 때의 방어장치)입니다."
                                    FontSize="10" Opacity="0.55" TextWrapping="Wrap" />
                         <StackPanel x:Name="EdgeListPanel" Spacing="3">
-                            <!-- 잇기 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래). -->
-                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,Auto" IsVisible="False">
-                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
-                                          PlaceholderText="도착 에피소드"
-                                          ToolTip.Tip="이 선택지 칸이 향할 에피소드. 고르고 [잇기]를 누르면 간선이 됩니다." />
-                                <Button Grid.Column="1" x:Name="AddEdgeButton" Content="잇기" FontSize="11" Margin="4,0,0,0" />
-                                <!-- v6까지 쓰던 선택지수 콤보 — v7에서 자리를 잃었다(수는 에피소드가 지정).
-                                     화면에서 감추되 컨트롤은 남긴다(테스트·후속 정리에서 참조). -->
-                                <ComboBox x:Name="EdgeLabelBox" IsVisible="False" />
-                            </Grid>
+                            <!-- 잇기 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래).
+                                 선택지 칸 드롭다운은 <b>안 고쳐도 보이는 것이 값</b>이다
+                                 (2026-08-16 소유자: "꼭 수정하지 않더라도 뭐가 있는지 보이는 게 좋겠어"). -->
+                            <StackPanel x:Name="EdgeFormPanel" Spacing="3" IsVisible="False">
+                                <TextBlock Text="선택지 칸" FontSize="10" Opacity="0.6" />
+                                <ComboBox x:Name="EdgeLabelBox" FontSize="11" HorizontalAlignment="Stretch"
+                                          ToolTip.Tip="이 에피소드의 선택지 칸들입니다(인덱스 · 대본). 다른 칸을 고르면 이 길이 그 칸과 짝이 됩니다 — 문구 자체는 엑셀 `선택지` 시트에서 고칩니다." />
+                                <TextBlock Text="도착" FontSize="10" Opacity="0.6" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
+                                              HorizontalAlignment="Stretch"
+                                              PlaceholderText="도착 에피소드"
+                                              ToolTip.Tip="이 선택지 칸이 향할 에피소드. 고르고 [잇기]를 누르면 간선이 됩니다. 비워 두면 안 이어진 칸 — 그 길을 고르면 챕터가 거기서 끝납니다." />
+                                    <Button Grid.Column="1" x:Name="AddEdgeButton" Content="잇기" FontSize="11" Margin="4,0,0,0" />
+                                </Grid>
+                            </StackPanel>
                         </StackPanel>
 
-                        <Button x:Name="DeleteEpisodeButton"
-                                Content="에피소드 삭제"
-                                HorizontalAlignment="Stretch"
-                                Margin="0,10,0,0"
-                                ToolTip.Tip="행과 그 간선·픽스처 참조를 함께 지웁니다. 에피소드 엑셀 파일은 지우지 않습니다." />
+                        <!-- 대사 미리보기 — 선택지 아래에 접어 둔다 (2026-08-16 소유자:
+                             "에피소드 노드의 정보량이 부족하다"). 원천은 방금 읽은 대본
+                             워크북이고, 고치는 곳은 엑셀이다. 별도 탭이던 것을 여기로 합쳤다. -->
+                        <Expander x:Name="DialogueExpander"
+                                  Header="대사"
+                                  FontSize="12"
+                                  Margin="0,12,0,0"
+                                  HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="4">
+                                <TextBlock x:Name="DialoguePreviewHeader"
+                                           FontSize="10"
+                                           Opacity="0.6"
+                                           TextWrapping="Wrap" />
+                                <ScrollViewer MaxHeight="420"
+                                              VerticalScrollBarVisibility="Auto"
+                                              AllowAutoHide="False">
+                                    <SelectableTextBlock x:Name="DialoguePreviewText"
+                                                         FontSize="11"
+                                                         TextWrapping="Wrap"
+                                                         LineHeight="17" />
+                                </ScrollViewer>
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
 
                     <!-- 길(간선) 편집 — 그래프에서 선을 클릭하면 여기가 열린다. 선택지형 VN의
@@ -235,25 +268,6 @@
                     </ScrollViewer>
                 </TabItem>
 
-                <!-- 대사 미리보기 — 시나리오 그래프까지 안 가도 여기서 읽는다.
-                     원천은 방금 읽은 에피소드 워크북이고, 고치는 곳은 엑셀이다. -->
-                <TabItem x:Name="DialogueTab" Header="대사" FontSize="12">
-                    <Grid RowDefinitions="Auto,*" Margin="10">
-                        <TextBlock x:Name="DialoguePreviewHeader"
-                                   FontSize="10"
-                                   Opacity="0.6"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,6" />
-                        <ScrollViewer Grid.Row="1"
-                                      VerticalScrollBarVisibility="Auto"
-                                      AllowAutoHide="False">
-                            <SelectableTextBlock x:Name="DialoguePreviewText"
-                                                 FontSize="11"
-                                                 TextWrapping="Wrap"
-                                                 LineHeight="17" />
-                        </ScrollViewer>
-                    </Grid>
-                </TabItem>
             </TabControl>
         </Grid>
 

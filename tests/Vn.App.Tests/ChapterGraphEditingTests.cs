@@ -64,7 +64,7 @@ public sealed class ChapterGraphEditingTests
         Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
         Assert.False(view.FindControl<ComboBox>("VisibleCombo")!.IsEnabled);
         Assert.False(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
-        Assert.False(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
+        Assert.False(view.FindControl<StackPanel>("EdgeFormPanel")!.IsVisible);
         Assert.False(view.FindControl<Button>("DeleteEpisodeButton")!.IsVisible);
 
         // 체크를 풀면 열린다.
@@ -125,7 +125,7 @@ public sealed class ChapterGraphEditingTests
         view.OpenSlotForm(freeIndex, rowIndex: 1, currentTarget: null);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.True(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
+        Assert.True(view.FindControl<StackPanel>("EdgeFormPanel")!.IsVisible);
         Assert.Equal("잇기", view.FindControl<Button>("AddEdgeButton")!.Content);
 
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
@@ -255,33 +255,53 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 선택이_탭을_끌고_다니지_않는다() => HeadlessUi.Run(() =>
+    public void 처음_보이는_탭은_편집이고_선택이_탭을_끌고_다니지_않는다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-16 소유자 — 대사 탭을 보며 노드를 갈아타는 흐름이 실사용의 대부분이라,
-        // 무언가를 골라도 지금 보던 탭이 유지된다(편집 탭 강제 전환 폐지).
+        // 2026-08-16 소유자 — 처음 열었을 때 손이 가는 곳은 지금 고른 하나(편집)이지
+        // 챕터 전체 표가 아니다. 그리고 무언가를 골라도 보던 탭이 유지된다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
         var tabs = view.FindControl<TabControl>("RightTabs")!;
         var conditionTab = view.FindControl<TabItem>("ConditionTab")!;
-        var dialogueTab = view.FindControl<TabItem>("DialogueTab")!;
+        var editTab = view.FindControl<TabItem>("EditTab")!;
 
-        // 아무것도 안 고른 처음에는 조건 탭이 앞에서 먼저 보인다.
-        Assert.Equal(0, tabs.IndexFromContainer(conditionTab));
-        Assert.Same(conditionTab, tabs.SelectedItem);
+        Assert.Same(editTab, tabs.SelectedItem);
 
         // 노드를 골라도 탭은 그대로다.
         view.SelectEpisode("main05.02");
-        Assert.Same(conditionTab, tabs.SelectedItem);
+        Assert.Same(editTab, tabs.SelectedItem);
 
-        // 대사 탭을 보며 다른 노드로 갈아타도 그대로다.
-        tabs.SelectedItem = dialogueTab;
+        // 챕터 탭을 보며 다른 노드로 갈아타도 그대로다.
+        tabs.SelectedItem = conditionTab;
         view.SelectEpisode("main05.01");
-        Assert.Same(dialogueTab, tabs.SelectedItem);
+        Assert.Same(conditionTab, tabs.SelectedItem);
 
         // 간선을 골라도 마찬가지다.
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
-        Assert.Same(dialogueTab, tabs.SelectedItem);
+        Assert.Same(conditionTab, tabs.SelectedItem);
+    });
+
+    [Fact]
+    public void 대사는_선택지_아래에_접혀_있다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-16 소유자 — 별도 탭이던 대사를 편집 탭의 선택지 아래로 합쳤다
+        // ("에피소드 노드의 정보량이 부족하다"). 접었다 펼 수 있다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        Assert.Null(view.FindControl<TabItem>("DialogueTab")); // 탭은 사라졌다
+
+        var dialogue = view.FindControl<Expander>("DialogueExpander")!;
+        Assert.False(dialogue.IsExpanded); // 접힌 채로 시작한다
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 펼치면 그 에피소드의 대사 안내가 서 있다.
+        dialogue.IsExpanded = true;
+        Assert.NotNull(view.FindControl<SelectableTextBlock>("DialoguePreviewText"));
+        Assert.False(string.IsNullOrEmpty(view.FindControl<TextBlock>("DialoguePreviewHeader")!.Text));
     });
 
     [Fact]

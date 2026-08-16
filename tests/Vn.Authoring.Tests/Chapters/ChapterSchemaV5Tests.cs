@@ -345,9 +345,14 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
         ChapterValidationResult validation = ChapterValidator.Validate(model, episodesFolder: null);
 
+        // 없는 칸을 가리키는 간선은 오류다 — 그 길은 화면에 나갈 수 없다.
         Assert.Contains(validation.Diagnostics, item => item.Message.Contains("선택지 시트에 없습니다"));
-        Assert.Contains(validation.Diagnostics, item => item.Message.Contains("간선이 없습니다"));
+
+        // 칸이 선언된 수보다 모자라면 알린다(동기화가 채워 준다).
         Assert.Contains(validation.Diagnostics, item => item.Message.Contains("선택지수는 2인데"));
+
+        // 반면 "간선 없는 칸"은 정상이다 (2026-08-16) — 안 쓰면 거기서 끝나는 길이다.
+        Assert.DoesNotContain(validation.Diagnostics, item => item.Message.Contains("간선이 없습니다"));
     }
 
     [Fact]

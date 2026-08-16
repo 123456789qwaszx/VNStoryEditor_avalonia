@@ -129,29 +129,21 @@ public static class ChapterValidator
         {
             List<ChapterChoiceOption> slots = chapter.ChoiceOptionsFor(episode.EpisodeId).ToList();
 
-            if (slots.Count != episode.ChoiceCount && (slots.Count > 0 || episode.ChoiceCount > 1))
+            // 선택지수는 칸 수의 <b>하한</b>이다 (2026-08-16 개정) — 손으로 더 만든 칸은
+            // 그대로 받는다. 모자랄 때만 말한다(동기화의 [다시 읽기]가 채워 준다).
+            if (slots.Count > 0 && slots.Count < episode.ChoiceCount)
             {
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Episodes, episode.SourceRow, "K",
+                    chapter.SourcePath, ChapterSheetNames.Episodes, episode.SourceRow, "I",
                     $"'{episode.EpisodeId}'의 선택지수는 {episode.ChoiceCount}인데 선택지 칸이 " +
-                    $"{slots.Count}개입니다 — 모자라면 툴의 [다시 읽기]가 만들어 주고, 넘치면 " +
-                    "선택지수를 올리거나 칸을 지워 주세요."));
+                    $"{slots.Count}개뿐입니다 — 툴의 [다시 읽기]가 모자란 칸을 만들어 줍니다."));
             }
 
-            foreach (ChapterChoiceOption unwired in slots.Where(slot =>
-                         !chapter.Edges.Any(edge =>
-                             string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
-                             string.Equals(edge.ChoiceIndex, slot.Index, StringComparison.Ordinal))))
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Choices, unwired.SourceRow, null,
-                    $"'{episode.EpisodeId}'의 선택지 {unwired.Index}에 간선이 없습니다 — " +
-                    "간선 시트에서 이 인덱스로 도착을 이어 주세요."));
-            }
+            // 안 이은 칸은 오류도 경고도 아니다 (2026-08-16 소유자) — "선택지는 간선의 숫자보다
+            // 많아도 된다. 간선이랑 연결이 안 되어 있으면 그냥 안 쓰고 종료시키면 되니까."
+            // 그 길을 고르면 챕터 런이 거기서 끝난다(전이 규칙 ③).
 
             List<ChapterChoiceOption> blanks = slots.Where(slot => slot.IsInvisibleDefault).ToList();
 

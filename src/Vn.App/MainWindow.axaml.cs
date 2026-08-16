@@ -394,15 +394,21 @@ public partial class MainWindow : Window
                         return;
                     }
 
+                    // 한 번 클릭 = 선택만. 엑셀은 더블클릭으로 연다 (2026-08-16 소유자) —
+                    // 챕터를 훑어보는 것과 편집하러 여는 것은 다른 동작이고, 클릭마다
+                    // 엑셀이 뜨면 판을 옮겨 다닐 수가 없다. 노드(에피소드)와 같은 규칙이다.
                     UiGuard.Run(_session, "챕터 선택", () =>
                     {
                         _session.SelectFile(_session.EnsureChapterBoard(chapterId));
                         ChapterGraph.SelectChapter(chapterId);
-
-                        // 클릭 = 챕터 엑셀 열기 (2026-08-16 소유자) — 기본 동작이 "엑셀에서
-                        // 만진다"이므로 챕터를 고르는 순간이 곧 편집 창구를 여는 순간이다.
-                        ChapterGraph.OpenChapterWorkbook(chapterId);
                     });
+                };
+
+                row.DoubleTapped += (_, args) =>
+                {
+                    args.Handled = true;
+                    UiGuard.Run(_session, "챕터 엑셀 열기",
+                        () => ChapterGraph.OpenChapterWorkbook(chapterId));
                 };
 
                 FileListPanel.Children.Add(row);
