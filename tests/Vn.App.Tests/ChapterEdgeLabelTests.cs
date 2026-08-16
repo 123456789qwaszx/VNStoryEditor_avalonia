@@ -170,7 +170,8 @@ public sealed class ChapterEdgeLabelTests
         public string ChapterPath =>
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx");
 
-        public string EpisodesFolder => Path.Combine(_directory, "episodes");
+        /// <summary>그 챕터의 대본 폴더 — episodes/{ChapterId}/ (2026-08-16 챕터별 격리).</summary>
+        public string EpisodesFolder => Path.Combine(_directory, "episodes", "ch01");
 
         public void Dispose()
         {

@@ -19,7 +19,10 @@ public sealed record ChapterValidationResult(
 /// </summary>
 public static class ChapterValidator
 {
-    /// <param name="episodesFolder">에피소드 워크북 폴더. null이거나 없으면 워크북 검증은 건너뛴다.</param>
+    /// <param name="episodesFolder">
+    /// <b>그 챕터의</b> 대본 폴더 <c>episodes/{ChapterId}/</c> (2026-08-16 — 챕터별 격리).
+    /// null이거나 없으면 워크북 검증은 건너뛴다.
+    /// </param>
     public static ChapterValidationResult Validate(ChapterGraphModel chapter, string? episodesFolder)
     {
         ArgumentNullException.ThrowIfNull(chapter);

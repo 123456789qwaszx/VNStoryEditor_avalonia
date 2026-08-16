@@ -108,7 +108,7 @@ public static class EpisodeSyncService
         // 매핑도 없다 — B열 값이 이행 seed로 쓰인다. 여기서 노드를 만들지는 않는다:
         // 깨진·빈 워크북이 노드를 남기면 안 되기 때문이다.
         IReadOnlyDictionary<int, string>? identity =
-            FindNode(editor, NodeNameFor(episodeId, chapter))?.ExcelLineMap;
+            FindNode(editor, fileId, NodeNameFor(episodeId, chapter))?.ExcelLineMap;
 
         EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(model, conditions, identity);
 
@@ -261,8 +261,14 @@ public static class EpisodeSyncService
             ? entry
             : episodeId;
 
-    private static DialogueNode? FindNode(ProjectEditor editor, string name) =>
-        editor.Project.EnumerateNodes()
+    /// <summary>
+    /// 그 <b>챕터의 판 안에서만</b> 노드를 찾는다 (2026-08-16 소유자 보고).
+    ///
+    /// 프로젝트 전체를 이름으로 훑으면, 다른 챕터에 같은 이름의 에피소드가 있을 때 그쪽
+    /// 노드에 이 챕터의 대사가 쏟아진다. 챕터=판 1:1이므로 판이 곧 범위다.
+    /// </summary>
+    private static DialogueNode? FindNode(ProjectEditor editor, string fileId, string name) =>
+        editor.Project.FindFile(fileId)?.Nodes
             .OfType<DialogueNode>()
             .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));
 
@@ -275,7 +281,7 @@ public static class EpisodeSyncService
     {
         string name = NodeNameFor(episodeId, chapter);
 
-        if (FindNode(editor, name) is { } existing)
+        if (FindNode(editor, fileId, name) is { } existing)
         {
             return existing;
         }

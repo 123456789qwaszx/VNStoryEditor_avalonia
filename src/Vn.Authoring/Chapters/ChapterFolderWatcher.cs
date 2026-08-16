@@ -46,7 +46,10 @@ public sealed class ChapterFolderWatcher : IDisposable
         _watcher = new FileSystemWatcher(folder, "*.xls*")
         {
             // 엑셀은 임시 파일로 쓰고 이름을 바꾼다 — 이름·크기·쓴 시각을 모두 봐야 저장을 놓치지 않는다.
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+
+            // 대본은 챕터별 하위 폴더에 산다 (2026-08-16) — 하위까지 들어야 저장을 잡는다.
+            IncludeSubdirectories = true
         };
 
         _watcher.Changed += OnTouched;

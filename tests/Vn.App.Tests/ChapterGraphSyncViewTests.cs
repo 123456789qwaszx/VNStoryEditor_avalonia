@@ -291,7 +291,9 @@ public sealed class ChapterGraphSyncViewTests
 
         public string ManifestPath { get; }
 
-        public string EpisodesFolder => Path.Combine(_directory, EpisodeLibrary.FolderName);
+        /// <summary>그 챕터의 대본 폴더 — episodes/{ChapterId}/ (2026-08-16 챕터별 격리).</summary>
+        public string EpisodesFolder =>
+            Path.Combine(_directory, EpisodeLibrary.FolderName, "ch05");
 
         public string ExportFolder => Path.Combine(_directory, ChapterGraphView.ExportFolderName);
 

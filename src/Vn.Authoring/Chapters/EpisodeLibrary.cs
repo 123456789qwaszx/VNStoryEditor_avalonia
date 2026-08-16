@@ -20,6 +20,11 @@ public static class EpisodeLibrary
     /// <summary>드롭다운·검증을 걸어 두는 행 수. 한 에피소드가 이걸 넘으면 나누는 게 맞다.</summary>
     private const int TemplateRows = 500;
 
+    /// <summary>
+    /// 대본 폴더의 뿌리 <c>episodes/</c>. <b>여기에 파일을 바로 두지 않는다</b> —
+    /// 워크북은 챕터별 하위 폴더에 산다(<see cref="FolderFor(string?, string)"/>).
+    /// 이 경로는 감시(하위 폴더 포함)와 구판 파일 입양에만 쓴다.
+    /// </summary>
     public static string? FolderFor(string? projectManifestPath)
     {
         if (string.IsNullOrWhiteSpace(projectManifestPath))
@@ -29,6 +34,22 @@ public static class EpisodeLibrary
 
         string? root = Path.GetDirectoryName(Path.GetFullPath(projectManifestPath));
         return root is null ? null : Path.Combine(root, FolderName);
+    }
+
+    /// <summary>
+    /// 그 <b>챕터의</b> 대본 폴더 — <c>episodes/{ChapterId}/</c> (2026-08-16 소유자 보고).
+    ///
+    /// EpisodeId는 챕터 안에서만 유일하다. 뿌리에 평평하게 두면 다른 챕터의 같은 이름이
+    /// 한 파일을 공유해, 이 챕터의 노드를 눌렀는데 저 챕터의 원고가 열린다(실사례).
+    /// 챕터 워크북이 <c>chapters/{ChapterId}.xlsx</c>인 것과 같은 결로 나눈다.
+    /// </summary>
+    public static string? FolderFor(string? projectManifestPath, string chapterId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(chapterId);
+
+        return FolderFor(projectManifestPath) is { } root
+            ? Path.Combine(root, chapterId)
+            : null;
     }
 
     public static string PathFor(string folder, string episodeId) =>
@@ -74,6 +95,77 @@ public static class EpisodeLibrary
     /// <summary>이름 비교의 단일 규칙 — 조합형으로 모으고 앞뒤 공백을 턴다.</summary>
     private static string Normalize(string value) =>
         value.Trim().Normalize(NormalizationForm.FormC);
+
+    /// <summary><see cref="AdoptFlatWorkbook"/> 한 번의 결과. 실패는 예외가 아니라 사유다.</summary>
+    /// <param name="Adopted">뿌리에 있던 구판 파일을 이 챕터 폴더로 옮겼으면 참.</param>
+    public sealed record FlatAdoption(bool Adopted, string? Problem)
+    {
+        public static FlatAdoption None { get; } = new(false, null);
+    }
+
+    /// <summary>
+    /// 구판(평평한 <c>episodes/{Id}.xlsx</c>) 원고를 그 챕터 폴더로 입양한다 (2026-08-16).
+    ///
+    /// <b>주인이 하나일 때만 옮긴다.</b> 여러 챕터가 같은 EpisodeId를 쓰면 그 파일이 어느
+    /// 챕터의 원고인지 알 수 없다 — 임의로 한쪽에 주면 다른 쪽 원고가 사라진 것처럼 보인다.
+    /// 그런 경우엔 손대지 않고 사람에게 말한다(규칙 14).
+    /// </summary>
+    /// <param name="claimants">그 EpisodeId를 쓰는 챕터 수 — 호출자가 챕터 목록에서 센다.</param>
+    public static FlatAdoption AdoptFlatWorkbook(
+        string root, string chapterId, string episodeId, int claimants)
+    {
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        {
+            return FlatAdoption.None;
+        }
+
+        string chapterFolder = Path.Combine(root, chapterId);
+
+        // 이 챕터에 이미 원고가 있으면 입양할 것이 없다.
+        if (FindExisting(chapterFolder, episodeId) is not null)
+        {
+            return FlatAdoption.None;
+        }
+
+        // 뿌리에 평평하게 놓인 옛 파일 — 하위 폴더는 보지 않는다.
+        string? flat = Directory.EnumerateFiles(root, "*.xls*", SearchOption.TopDirectoryOnly)
+            .Where(candidate =>
+            {
+                string name = Path.GetFileName(candidate);
+
+                return !name.StartsWith("~$", StringComparison.Ordinal) &&
+                       string.Equals(Normalize(Path.GetFileNameWithoutExtension(name)),
+                           Normalize(episodeId), StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+
+        if (flat is null)
+        {
+            return FlatAdoption.None;
+        }
+
+        if (claimants > 1)
+        {
+            return new FlatAdoption(false,
+                $"'{Path.GetFileName(flat)}'를 어느 챕터의 원고로 볼지 알 수 없습니다 — " +
+                $"'{episodeId}'를 쓰는 챕터가 {claimants}개입니다. " +
+                $"episodes/{chapterId}/ 로 직접 옮기거나 이름을 나눠 주세요.");
+        }
+
+        try
+        {
+            Directory.CreateDirectory(chapterFolder);
+            File.Move(flat, Path.Combine(chapterFolder, Path.GetFileName(flat)));
+            return new FlatAdoption(true, null);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return new FlatAdoption(false,
+                $"'{Path.GetFileName(flat)}'를 episodes/{chapterId}/ 로 옮기지 못했습니다" +
+                $"(엑셀·시트가 열고 있을 수 있습니다): {exception.Message}");
+        }
+    }
 
     /// <summary>
     /// 에피소드 개명을 대본 파일이 따라간다. 파일을 옛 이름에 버려두면 원고가 고아가 되고,

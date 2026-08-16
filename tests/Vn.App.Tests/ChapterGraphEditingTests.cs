@@ -180,11 +180,9 @@ public sealed class ChapterGraphEditingTests
         view.FindControl<TextBox>("IdBox")!.Text = "ep_renamed";
         view.RenameSelectedEpisode();
 
-        string episodes = Path.Combine(Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes");
-
-        // 대본 파일이 새 이름으로 옮겨졌고, 옛 이름은 남지 않았다.
-        Assert.NotNull(EpisodeLibrary.FindExisting(episodes, "ep_renamed"));
-        Assert.Null(EpisodeLibrary.FindExisting(episodes, "new01"));
+        // 대본 파일이 새 이름으로 옮겨졌고, 옛 이름은 남지 않았다 (그 챕터 폴더 안에서).
+        Assert.NotNull(EpisodeLibrary.FindExisting(project.EpisodesFolder, "ep_renamed"));
+        Assert.Null(EpisodeLibrary.FindExisting(project.EpisodesFolder, "new01"));
 
         // 대사 노드도 새 이름이다 — 새로 만들지 않고 이름만 바꿔 연출·신원이 보존된다.
         // 엑셀 표식(ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 시나리오 그래프가
@@ -211,8 +209,7 @@ public sealed class ChapterGraphEditingTests
         string fileId = session.EnsureChapterBoard("ch05");
         session.Editor.AddDialogueNode(fileId, name: "new01");
 
-        string episodes = Path.Combine(Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes");
-        string workbook = EpisodeLibrary.FindExisting(episodes, "new01")!;
+        string workbook = EpisodeLibrary.FindExisting(project.EpisodesFolder, "new01")!;
 
         view.SelectEpisode("new01");
         view.FindControl<TextBox>("IdBox")!.Text = "ep_locked";
@@ -227,8 +224,8 @@ public sealed class ChapterGraphEditingTests
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
         Assert.NotNull(reread.FindEpisode("new01"));
         Assert.Null(reread.FindEpisode("ep_locked"));
-        Assert.NotNull(EpisodeLibrary.FindExisting(episodes, "new01"));
-        Assert.Null(EpisodeLibrary.FindExisting(episodes, "ep_locked"));
+        Assert.NotNull(EpisodeLibrary.FindExisting(project.EpisodesFolder, "new01"));
+        Assert.Null(EpisodeLibrary.FindExisting(project.EpisodesFolder, "ep_locked"));
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "new01");
     });
@@ -402,7 +399,8 @@ public sealed class ChapterGraphEditingTests
         public string ChapterPath =>
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch05.xlsx");
 
-        public string EpisodesFolder => Path.Combine(_directory, "episodes");
+        /// <summary>그 챕터의 대본 폴더 — episodes/{ChapterId}/ (2026-08-16 챕터별 격리).</summary>
+        public string EpisodesFolder => Path.Combine(_directory, "episodes", "ch05");
 
         public void Dispose()
         {

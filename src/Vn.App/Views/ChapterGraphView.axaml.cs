@@ -261,10 +261,19 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        string? folder = EpisodeLibrary.FolderFor(_session.ProjectPath);
         ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
 
-        if (folder is null || !Directory.Exists(folder) || entry?.Model is null)
+        if (entry?.Model is null ||
+            EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId) is not { } folder)
+        {
+            return;
+        }
+
+        // 구판 평면 원고(episodes/{Id}.xlsx)를 이 챕터 폴더로 입양한다 (2026-08-16).
+        // 주인이 여럿이면 옮기지 않고 사유를 말한다 — 남의 챕터 원고를 가져오지 않는다.
+        AdoptFlatWorkbooks(entry);
+
+        if (!Directory.Exists(folder))
         {
             return;
         }
@@ -341,6 +350,54 @@ public partial class ChapterGraphView : UserControl
             _session.SetStatus(rejected == 0
                 ? $"에피소드 {applied}개를 반영했습니다."
                 : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+        }
+    }
+
+    /// <summary>
+    /// 구판 평면 대본(<c>episodes/{Id}.xlsx</c>)을 그 챕터 폴더로 옮긴다 (2026-08-16).
+    /// EpisodeId를 여러 챕터가 쓰고 있으면 어느 원고인지 알 수 없으므로 손대지 않고 말한다.
+    /// </summary>
+    private void AdoptFlatWorkbooks(ChapterEntry entry)
+    {
+        if (entry.Model is not { } model ||
+            EpisodeLibrary.FolderFor(_session?.ProjectPath) is not { } root ||
+            !Directory.Exists(root))
+        {
+            return;
+        }
+
+        var problems = new List<string>();
+        int adopted = 0;
+
+        foreach (ChapterEpisode episode in model.Episodes)
+        {
+            // 그 이름을 쓰는 챕터 수 — 하나여야 주인이 분명하다.
+            int claimants = _entries.Count(candidate =>
+                candidate.Model?.FindEpisode(episode.EpisodeId) is not null);
+
+            EpisodeLibrary.FlatAdoption adoption = EpisodeLibrary.AdoptFlatWorkbook(
+                root, entry.ChapterId, episode.EpisodeId, claimants);
+
+            if (adoption.Adopted)
+            {
+                adopted++;
+            }
+            else if (adoption.Problem is { } problem)
+            {
+                problems.Add(problem);
+            }
+        }
+
+        if (problems.Count > 0)
+        {
+            _session?.SetStatus(problems[0] +
+                (problems.Count > 1 ? $" (외 {problems.Count - 1}건)" : string.Empty));
+        }
+        else if (adopted > 0)
+        {
+            _session?.SetStatus(
+                $"대본 {adopted}개를 episodes/{entry.ChapterId}/ 로 옮겼습니다 — " +
+                "챕터마다 같은 이름을 따로 쓸 수 있습니다.");
         }
     }
 
@@ -447,11 +504,12 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     internal void OpenEpisode(string episodeId)
     {
-        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
+        // 대본은 그 챕터의 폴더에 산다 (2026-08-16) — 다른 챕터의 같은 이름과 섞이지 않는다.
+        string? folder = SelectedEpisodesFolder;
 
         if (folder is null)
         {
-            _session?.SetStatus("프로젝트를 먼저 저장해야 에피소드 폴더 자리가 정해집니다.");
+            _session?.SetStatus("프로젝트를 먼저 저장하고 챕터를 골라야 대본 폴더 자리가 정해집니다.");
             return;
         }
 
@@ -472,7 +530,7 @@ public partial class ChapterGraphView : UserControl
                 SelectedModel?.Speakers.Select(speaker => speaker.Name).ToList()))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
-            StartWatchingEpisodes(folder);
+            StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
         }
 
         // 이미 있는 파일이면 그 파일을 연다 — 이름이 정규화만 다른 경우에도 같은 파일이다.
@@ -559,7 +617,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         _validation = ChapterValidator.Validate(
-            entry.Model, EpisodeLibrary.FolderFor(_session?.ProjectPath));
+            entry.Model, EpisodeLibrary.FolderFor(_session?.ProjectPath, entry.ChapterId));
     }
 
     private void OpenFolder()
@@ -601,7 +659,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         ChapterExportResult result = ChapterProgressionExporter.Export(
-            entry.Model, EpisodeLibrary.FolderFor(_session.ProjectPath));
+            entry.Model, EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId));
 
         // 거부 사유도 화면에 세운다 — 상태줄 한 줄로는 무엇이 왜인지 알 수 없다.
         _validation = result.Validation;
@@ -1279,6 +1337,15 @@ public partial class ChapterGraphView : UserControl
     private ChapterGraphModel? SelectedModel =>
         _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId)?.Model;
 
+    /// <summary>
+    /// 선택된 챕터의 대본 폴더 <c>episodes/{ChapterId}/</c> (2026-08-16 — 챕터별 격리).
+    /// EpisodeId는 챕터 안에서만 유일하므로, 파일을 찾는 모든 길이 이 범위를 지난다.
+    /// </summary>
+    private string? SelectedEpisodesFolder =>
+        _selectedChapterId is { } chapterId
+            ? EpisodeLibrary.FolderFor(_session?.ProjectPath, chapterId)
+            : null;
+
     private void WireCardInteraction(Border card, ChapterEpisode episode)
     {
         card.PointerPressed += (_, e) =>
@@ -1519,7 +1586,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         string preview = string.Empty;
-        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
+        string? folder = SelectedEpisodesFolder;
 
         if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
         {
@@ -2076,7 +2143,7 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        string? episodesFolder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
+        string? episodesFolder = SelectedEpisodesFolder;
 
         // 새 이름의 대본 파일이 이미 있으면 시작도 하지 않는다 — 챕터만 개명된 채
         // 원고가 옛 이름에 남는 어중간한 상태를 만들지 않는다.
@@ -2217,11 +2284,11 @@ public partial class ChapterGraphView : UserControl
             // 대본 워크북도 지금 만든다 (v4) — "노드를 클릭해야 생긴다"는 느슨함을 없앤다.
             // 생성은 없던 파일을 만드는 것이라 단일 writer 원칙과 충돌하지 않고,
             // 이후 툴은 이 파일을 다시는 쓰지 않는다.
-            if (EpisodeLibrary.FolderFor(_session?.ProjectPath) is { } episodesFolder &&
+            if (SelectedEpisodesFolder is { } episodesFolder &&
                 EpisodeLibrary.EnsureWorkbook(episodesFolder, episodeId,
                     model.Speakers.Select(speaker => speaker.Name).ToList()))
             {
-                StartWatchingEpisodes(episodesFolder);
+                StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
             }
         }
 
