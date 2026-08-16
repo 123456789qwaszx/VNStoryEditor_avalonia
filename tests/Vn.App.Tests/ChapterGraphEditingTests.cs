@@ -64,8 +64,12 @@ public sealed class ChapterGraphEditingTests
         Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
         Assert.False(view.FindControl<ComboBox>("VisibleCombo")!.IsEnabled);
         Assert.False(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
-        Assert.False(view.FindControl<StackPanel>("EdgeFormPanel")!.IsVisible);
-        Assert.False(view.FindControl<Button>("DeleteEpisodeButton")!.IsVisible);
+        Assert.False(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
+        // 삭제 단추는 늘 같은 자리에 있고 상태만 바뀐다 (2026-08-16 소유자 보고) —
+        // 체크를 푸는 순간 튀어나오면 그 자리를 누르던 손이 삭제를 누른다.
+        var delete = view.FindControl<Button>("DeleteEpisodeButton")!;
+        Assert.True(delete.IsVisible);
+        Assert.False(delete.IsEnabled);
 
         // 체크를 풀면 열린다.
         view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
@@ -73,6 +77,8 @@ public sealed class ChapterGraphEditingTests
 
         Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
         Assert.True(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
+        Assert.True(delete.IsVisible);
+        Assert.True(delete.IsEnabled);
     });
 
     [Fact]
@@ -125,7 +131,7 @@ public sealed class ChapterGraphEditingTests
         view.OpenSlotForm(freeIndex, rowIndex: 1, currentTarget: null);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.True(view.FindControl<StackPanel>("EdgeFormPanel")!.IsVisible);
+        Assert.True(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
         Assert.Equal("잇기", view.FindControl<Button>("AddEdgeButton")!.Content);
 
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
@@ -302,6 +308,37 @@ public sealed class ChapterGraphEditingTests
         dialogue.IsExpanded = true;
         Assert.NotNull(view.FindControl<SelectableTextBlock>("DialoguePreviewText"));
         Assert.False(string.IsNullOrEmpty(view.FindControl<TextBlock>("DialoguePreviewHeader")!.Text));
+    });
+
+    [Fact]
+    public void 대사는_줄마다_카드로_서고_화자가_따로_보인다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-16 소유자 — 한 덩어리 글이던 미리보기를 줄 단위로 갈랐다:
+        // 화자는 작고 진하게 위에, 대사는 그 아래.
+        using var project = new TempProject(SamplePath);
+        WriteOptionsWorkbook(project.EpisodesFolder, "main05.02", "라루의 제안을 듣는다");
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var panel = view.FindControl<StackPanel>("DialoguePreviewPanel")!;
+        Assert.NotEmpty(panel.Children);
+
+        // 화자 줄(작고 진한 TextBlock)과 대사 줄(SelectableTextBlock)이 갈려 있다.
+        List<TextBlock> speakers = panel.Children.OfType<Border>()
+            .Select(card => card.Child)
+            .OfType<StackPanel>()
+            .SelectMany(stack => stack.Children.OfType<TextBlock>())
+            .Where(block => block.FontWeight == Avalonia.Media.FontWeight.SemiBold)
+            .ToList();
+
+        Assert.Contains(speakers, block => block.Text == "윌로");
+
+        // 복사용 통짜 텍스트는 남아 있되 화면에는 안 선다.
+        var raw = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
+        Assert.False(raw.IsVisible);
+        Assert.Contains("윌로: 첫 줄", raw.Text!);
     });
 
     [Fact]

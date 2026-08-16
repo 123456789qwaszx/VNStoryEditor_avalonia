@@ -1549,9 +1549,14 @@ public partial class ChapterGraphView : UserControl
         VisibleCombo.IsEnabled = editable;
         UnlockCombo.IsEnabled = editable;
         AddNextEdgeButton.IsVisible = editable;
-        // 삭제는 툴바 오른쪽 끝의 빨간 단추다 (2026-08-16) — 편집이 열려 있고 지울 대상이
-        // 골라져 있을 때만 보인다. 늘 떠 있으면 파괴적 동작이 배경이 된다.
-        DeleteEpisodeButton.IsVisible = editable && _selectedEpisodeId is not null;
+        // 삭제는 <b>늘 같은 자리에</b> 있고 상태만 바뀐다 (2026-08-16 소유자 보고) —
+        // 체크를 푸는 순간 단추가 튀어나오면 그 자리를 누르던 손이 삭제를 누른다.
+        // 평소엔 회색·비활성, 편집이 열리면 빨갛게 살아난다.
+        DeleteEpisodeButton.IsEnabled = editable;
+        DeleteEpisodeButton.Background = editable
+            ? new SolidColorBrush(Color.Parse("#C0392B"))
+            : new SolidColorBrush(Color.Parse("#E0E0E0"));
+        DeleteEpisodeButton.Foreground = editable ? Brushes.White : new SolidColorBrush(Color.Parse("#9A9A9A"));
         AddEpisodeButton.IsEnabled = editable;
 
         // 간선 패널(그래프에서 간선 클릭)도 같은 스위치를 탄다.
@@ -1587,6 +1592,8 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private void FillDialoguePreview(string? episodeId)
     {
+        DialoguePreviewPanel.Children.Clear();
+
         if (episodeId is null)
         {
             DialoguePreviewHeader.Text = "에피소드를 선택하면 그 대사가 여기 보입니다.";
@@ -1594,29 +1601,143 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        string preview = string.Empty;
+        var rows = new List<EpisodeRow>();
+        string? failure = null;
         string? folder = SelectedEpisodesFolder;
 
         if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
         {
             try
             {
-                EpisodeWorkbookModel workbook = EpisodeWorkbookReader.Read(path);
-                preview = string.Join("\n", workbook.Rows
-                    .Where(row => !row.IsBlank)
-                    .Select(PreviewLine)
-                    .Where(line => line.Length > 0));
+                rows.AddRange(EpisodeWorkbookReader.Read(path).Rows.Where(row => !row.IsBlank));
             }
             catch (XlsxReadException exception)
             {
-                preview = $"대본을 읽지 못했습니다: {exception.Message}";
+                failure = $"대본을 읽지 못했습니다: {exception.Message}";
             }
         }
 
-        DialoguePreviewHeader.Text = preview.Length > 0
+        DialoguePreviewHeader.Text = failure ?? (rows.Count > 0
             ? $"{episodeId} — 읽기 전용 · 고치는 곳은 엑셀입니다 (노드 더블클릭)."
-            : $"{episodeId} — 아직 적힌 대사가 없습니다. 노드를 더블클릭해 엑셀에서 쓰세요.";
-        DialoguePreviewText.Text = preview;
+            : $"{episodeId} — 아직 적힌 대사가 없습니다. 노드를 더블클릭해 엑셀에서 쓰세요.");
+
+        // 복사용 통짜 텍스트는 그대로 유지한다(화면에는 안 세운다).
+        DialoguePreviewText.Text = failure ?? string.Join("\n",
+            rows.Select(PreviewLine).Where(line => line.Length > 0));
+
+        foreach (EpisodeRow row in rows)
+        {
+            if (BuildDialogueRow(row) is { } card)
+            {
+                DialoguePreviewPanel.Children.Add(card);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 대사 한 줄의 카드 (2026-08-16 소유자 — 가독성). 한 덩어리 글이던 것을 눈이 따라갈 수
+    /// 있게 갈랐다: <b>화자는 작고 진하게 위에</b>, 대사는 그 아래. 구조 행(선택·조건·구간)은
+    /// 대사와 다른 옷을 입어 흐름의 마디가 보인다.
+    /// </summary>
+    private static Control? BuildDialogueRow(EpisodeRow row)
+    {
+        var stack = new StackPanel { Spacing = 1 };
+
+        static SelectableTextBlock Body(string text, double size = 11.5, double opacity = 1) => new()
+        {
+            Text = text,
+            FontSize = size,
+            Opacity = opacity,
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 17
+        };
+
+        switch (row.Kind)
+        {
+            case EpisodeRowKind.Choice:
+                // 선택 블록의 머리 — 얇은 구분선 하나로 충분하다.
+                return new Border
+                {
+                    Margin = new Thickness(0, 8, 0, 4),
+                    Padding = new Thickness(8, 3),
+                    CornerRadius = new CornerRadius(3),
+                    Background = new SolidColorBrush(Color.Parse("#14C06A14")),
+                    Child = new TextBlock
+                    {
+                        Text = "선택지",
+                        FontSize = 10,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = new SolidColorBrush(Color.Parse("#C06A14"))
+                    }
+                };
+
+            case EpisodeRowKind.Option:
+                SelectableTextBlock option = Body(
+                    $"▶ {row.Text}" + (row.In is { } into ? $"  → {into}" : string.Empty));
+                option.Foreground = new SolidColorBrush(Color.Parse("#C06A14"));
+                stack.Children.Add(option);
+                break;
+
+            case EpisodeRowKind.If:
+                stack.Children.Add(Body(
+                    $"IF {row.ConditionLabel}" + (row.In is { } target ? $"  → {target}" : string.Empty),
+                    size: 10.5, opacity: 0.7));
+                break;
+
+            default:
+                if (row.Speaker.Length > 0)
+                {
+                    stack.Children.Add(new TextBlock
+                    {
+                        Text = row.Speaker,
+                        FontSize = 10,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = new SolidColorBrush(Color.Parse("#3D7BD9"))
+                    });
+                }
+
+                if (row.Text.Length == 0 && row.Speaker.Length == 0)
+                {
+                    return null;
+                }
+
+                stack.Children.Add(Body(row.Text));
+                break;
+        }
+
+        // 구간의 문패·나가는 자리는 오른쪽 끝에 흐리게 — 본문을 밀지 않는다.
+        var marks = new List<string>();
+
+        if (row.Tag == EpisodeRowTag.Input)
+        {
+            marks.Add($"[{row.Index}]");
+        }
+
+        if (row.OutTarget is { Length: > 0 } exit)
+        {
+            marks.Add($"⏎ {exit}");
+        }
+
+        if (marks.Count > 0)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = string.Join(" · ", marks),
+                FontSize = 9.5,
+                Opacity = 0.5,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right
+            });
+        }
+
+        return new Border
+        {
+            Padding = new Thickness(8, 5),
+            CornerRadius = new CornerRadius(3),
+            Background = row.Kind == EpisodeRowKind.Option
+                ? new SolidColorBrush(Color.Parse("#0AC06A14"))
+                : Brushes.Transparent,
+            Child = stack
+        };
     }
 
     /// <summary>워크북 한 행을 미리보기 한 줄로 — 시트의 모양을 그대로 옮기되 읽는 눈 기준으로.</summary>
@@ -1866,7 +1987,8 @@ public partial class ChapterGraphView : UserControl
                 string.Equals(candidate.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
                 string.Equals(candidate.ChoiceIndex, _edgeFormSlotIndex, StringComparison.Ordinal));
 
-            AddEdgeButton.Content = alreadyWired ? "바꾸기" : "잇기";
+            // 라벨은 둘뿐이다 — 이미 이어진 칸은 [수정], 빈 칸은 [잇기].
+            AddEdgeButton.Content = alreadyWired ? "수정" : "잇기";
             EdgeTargetCombo.IsEnabled = true;
             EdgeListPanel.Children.Insert(
                 Math.Min(_edgeFormIndex, EdgeListPanel.Children.Count), EdgeFormPanel);
@@ -2282,6 +2404,8 @@ public partial class ChapterGraphView : UserControl
     {
         if (_selectedEpisodeId is not { } episodeId || SelectedChapterPath is not { } path)
         {
+            // 조용한 무동작 금지 — 단추가 늘 떠 있으므로(2026-08-16) 대상이 없다는 것을 말한다.
+            _session?.SetStatus("지울 에피소드를 판에서 먼저 골라 주세요.");
             return;
         }
 

@@ -56,11 +56,12 @@
                               IsChecked="True"
                               VerticalAlignment="Center"
                               ToolTip.Tip="켜져 있으면 툴은 읽기 전용입니다 — 모든 데이터는 엑셀에서 만집니다. 풀면 개명·간선·선택지를 툴에서도 고칠 수 있고, 고친 값은 엑셀 셀에 바로 저장됩니다." />
+                    <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 체크를 풀 때
+                         갑자기 튀어나오면 그 자리를 누르던 손이 삭제를 누른다(실사례).
+                         평소엔 회색·비활성, 편집을 열 때만 빨갛게 살아난다. -->
                     <Button x:Name="DeleteEpisodeButton"
                             Content="에피소드 삭제"
                             FontSize="11"
-                            Foreground="White"
-                            Background="#C0392B"
                             VerticalAlignment="Center"
                             ToolTip.Tip="선택한 에피소드의 행과 그 간선·선택지 칸을 함께 지웁니다. 대본 엑셀 파일은 지우지 않습니다." />
                 </StackPanel>
@@ -188,19 +189,19 @@
                             <!-- 잇기 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래).
                                  선택지 칸 드롭다운은 <b>안 고쳐도 보이는 것이 값</b>이다
                                  (2026-08-16 소유자: "꼭 수정하지 않더라도 뭐가 있는지 보이는 게 좋겠어"). -->
-                            <StackPanel x:Name="EdgeFormPanel" Spacing="3" IsVisible="False">
-                                <TextBlock Text="선택지 칸" FontSize="10" Opacity="0.6" />
-                                <ComboBox x:Name="EdgeLabelBox" FontSize="11" HorizontalAlignment="Stretch"
-                                          ToolTip.Tip="이 에피소드의 선택지 칸들입니다(인덱스 · 대본). 다른 칸을 고르면 이 길이 그 칸과 짝이 됩니다 — 문구 자체는 엑셀 `선택지` 시트에서 고칩니다." />
-                                <TextBlock Text="도착" FontSize="10" Opacity="0.6" />
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
-                                              HorizontalAlignment="Stretch"
-                                              PlaceholderText="도착 에피소드"
-                                              ToolTip.Tip="이 선택지 칸이 향할 에피소드. 고르고 [잇기]를 누르면 간선이 됩니다. 비워 두면 안 이어진 칸 — 그 길을 고르면 챕터가 거기서 끝납니다." />
-                                    <Button Grid.Column="1" x:Name="AddEdgeButton" Content="잇기" FontSize="11" Margin="4,0,0,0" />
-                                </Grid>
-                            </StackPanel>
+                            <!-- 한 줄 폼 (2026-08-16 소유자) — 목표(도착) · 선택지 칸 · 수정을
+                                 한 줄에 둔다. 두 줄로 접히면 목록의 흐름이 끊긴다. -->
+                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,4,*,Auto" IsVisible="False">
+                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="도착"
+                                          ToolTip.Tip="이 선택지 칸이 향할 에피소드. 비워 두면 안 이어진 칸 — 그 길을 고르면 챕터가 거기서 끝납니다." />
+                                <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11"
+                                          HorizontalAlignment="Stretch"
+                                          PlaceholderText="선택지"
+                                          ToolTip.Tip="이 에피소드의 선택지 칸들입니다(인덱스 · 대본). 다른 칸을 고르면 그 칸으로 옮겨 갑니다 — 문구 자체는 엑셀 `선택지` 시트에서 고칩니다." />
+                                <Button Grid.Column="3" x:Name="AddEdgeButton" Content="수정" FontSize="11" Margin="4,0,0,0" />
+                            </Grid>
                         </StackPanel>
 
                         <!-- 대사 미리보기 — 선택지 아래에 접어 둔다 (2026-08-16 소유자:
@@ -211,19 +212,29 @@
                                   FontSize="12"
                                   Margin="0,12,0,0"
                                   HorizontalAlignment="Stretch">
-                            <StackPanel Spacing="4">
+                            <StackPanel Spacing="6">
                                 <TextBlock x:Name="DialoguePreviewHeader"
                                            FontSize="10"
                                            Opacity="0.6"
                                            TextWrapping="Wrap" />
-                                <ScrollViewer MaxHeight="420"
-                                              VerticalScrollBarVisibility="Auto"
-                                              AllowAutoHide="False">
-                                    <SelectableTextBlock x:Name="DialoguePreviewText"
-                                                         FontSize="11"
-                                                         TextWrapping="Wrap"
-                                                         LineHeight="17" />
-                                </ScrollViewer>
+                                <!-- 줄마다 카드 한 장: 화자는 작고 진하게, 대사는 그 아래 —
+                                     한 덩어리 글이던 것을 눈이 따라갈 수 있게 갈랐다
+                                     (2026-08-16 소유자). 코드가 채운다. -->
+                                <Border BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="2">
+                                    <ScrollViewer MaxHeight="420"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  AllowAutoHide="False">
+                                        <StackPanel x:Name="DialoguePreviewPanel" Spacing="1" />
+                                    </ScrollViewer>
+                                </Border>
+                                <!-- 통짜 텍스트는 복사용으로 남긴다(화면에는 안 세운다). -->
+                                <SelectableTextBlock x:Name="DialoguePreviewText"
+                                                     FontSize="11"
+                                                     TextWrapping="Wrap"
+                                                     IsVisible="False" />
                             </StackPanel>
                         </Expander>
                     </StackPanel>
