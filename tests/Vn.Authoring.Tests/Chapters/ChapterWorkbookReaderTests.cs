@@ -358,7 +358,7 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
             ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null, null]
         ]),
         ("간선", [
-            ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"],
+            ["출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문"],
             ["ep1", "ep2", null, null, null, "FALSE", null]
         ]),
         ("조건", [

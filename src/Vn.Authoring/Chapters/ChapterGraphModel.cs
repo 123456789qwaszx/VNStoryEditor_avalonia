@@ -35,8 +35,11 @@ public sealed record ChapterEpisode(
 }
 
 /// <summary>
-/// `간선` 시트 한 행 = 옵션 하나. 도착 에피소드의 원천은 <b>여기</b>이고
-/// 에피소드 워크북의 `OPTION` 행은 라벨만 소유한다 (필드별 단일 소유권).
+/// `간선` 시트 한 행 = 다음 에피소드로 가는 길 하나. <b>신원은 (출발, 도착)이다</b>
+/// (2026-08-16 — 선택지가 문구에서 개수로 바뀌며 라벨 신원 폐지).
+///
+/// 조건·잠금·스탯변화·도착은 전부 간선 소유이고, 화면에 보이는 선택지 문구는 `선택지`
+/// 시트의 칸(<see cref="ChapterChoiceOption"/>)이 갖는다 — 간선의 `선택지수`만큼 칸이 선다.
 /// </summary>
 public sealed record ChapterEdge(
     string FromEpisodeId,
@@ -47,7 +50,16 @@ public sealed record ChapterEdge(
     string? LockedMessage,
     int SourceRow)
 {
-    /// <summary>선택지 라벨이 비면 분기 없는 일반 진행이다 (§3.1).</summary>
+    /// <summary>
+    /// `선택지수` 열 (2026-08-16) — 이 간선이 선택지 시트에 갖는 칸 수. 기본 1.
+    /// 툴 동기화가 모자란 칸을 만들어 준다("공간이 생기도록").
+    /// </summary>
+    public int ChoiceCount { get; init; } = 1;
+
+    // OptionLabel은 이제 파생값이다 — 리더가 선택지 시트에서 이 간선의 첫 <b>보이는</b> text를
+    // 채워 준다(신원이 아니다). 그래프·내보내기가 문구 하나를 쓸 때의 대표값.
+
+    /// <summary>보이는 선택지 text가 하나도 없으면 참 — 보이지 않는 기본(자동 진행)이다.</summary>
     public bool IsPlainAdvance => string.IsNullOrWhiteSpace(OptionLabel);
 
     /// <summary>
@@ -97,6 +109,29 @@ public sealed record ChapterStat(
     ChapterStatType Type = ChapterStatType.Int);
 
 /// <summary>
+/// `선택지` 시트 한 행 = 옵션 칸 하나 (2026-08-16 소유자) — <b>선택지의 정본이 대본에서
+/// 챕터로 왔다.</b> 같은 출발 에피소드의 행 묶음이 그 에피소드 끝의 Choice다.
+///
+/// 칸은 간선(출발→도착)이 소유한다: 간선의 `선택지수`만큼 칸이 생기고, 조건·잠금·스탯변화는
+/// 전부 간선의 것이다. 이 행이 갖는 것은 <b>에피소드 안의 인덱스(순서)와 자유롭게 고치는
+/// 대본 text뿐</b>이다 — text는 신원이 아니라서 언제든 바꿔도 배선이 안 깨진다.
+///
+/// <b>text가 빈 칸 = 보이지 않는 기본.</b> 어떤 선택지도 고를 수 없을 때 빠지는 방어장치로,
+/// 에피소드당 하나만 허용되고 조건 없는 간선과 짝이다. text를 적는 순간 보이는 선택지가 된다.
+/// </summary>
+public sealed record ChapterChoiceOption(
+    string EpisodeId,
+    string ToEpisodeId,
+    string Index,
+    string Text,
+    string? Memo,
+    int SourceRow)
+{
+    /// <summary>text가 비면 보이지 않는 기본이다 — 버튼이 없고, 조건 없는 간선의 자동 진행.</summary>
+    public bool IsInvisibleDefault => string.IsNullOrWhiteSpace(Text);
+}
+
+/// <summary>
 /// `화자` 시트 한 행 (2026-08-16 소유자 지시). 기획자가 챕터에서 화자를 등록하면
 /// 에피소드 워크북의 화자 열(H)이 이 목록의 드롭다운을 받는다.
 ///
@@ -143,7 +178,8 @@ public sealed class ChapterGraphModel
         IReadOnlyList<ChapterFixture> fixtures,
         IReadOnlyList<ChapterDiagnostic> diagnostics,
         IReadOnlyList<ChapterSpeaker>? speakers = null,
-        bool hasSpeakerSheet = false)
+        bool hasSpeakerSheet = false,
+        IReadOnlyList<ChapterChoiceOption>? choiceOptions = null)
     {
         ChapterId = chapterId;
         SourcePath = sourcePath;
@@ -155,6 +191,7 @@ public sealed class ChapterGraphModel
         Diagnostics = diagnostics;
         Speakers = speakers ?? [];
         HasSpeakerSheet = hasSpeakerSheet;
+        ChoiceOptions = choiceOptions ?? [];
     }
 
     /// <summary>파일 이름에서 온다 — `chapters/{ChapterId}.xlsx` (§3.1).</summary>
@@ -180,6 +217,14 @@ public sealed class ChapterGraphModel
     /// 앱이 챕터를 선택할 때 이 값을 보고 한 번 만들어 준다(마이그레이션).
     /// </summary>
     public bool HasSpeakerSheet { get; }
+
+    /// <summary>`선택지` 시트 — 간선이 짝할 선택지의 정본 (2026-08-16, 대본 CHOICE/OPTION 폐지).</summary>
+    public IReadOnlyList<ChapterChoiceOption> ChoiceOptions { get; }
+
+    /// <summary>그 에피소드 끝의 선택지 묶음 — 시트 순서 그대로다(가지 순서 = 읽는 순서).</summary>
+    public IEnumerable<ChapterChoiceOption> ChoiceOptionsFor(string episodeId) =>
+        ChoiceOptions.Where(option =>
+            string.Equals(option.EpisodeId, episodeId, StringComparison.Ordinal));
 
     public IReadOnlyList<ChapterDiagnostic> Diagnostics { get; }
 
@@ -219,7 +264,8 @@ public static class ChapterSheetNames
     public const string Stats = "스탯";
     public const string Fixtures = "픽스처";
     public const string Speakers = "화자";
+    public const string Choices = "선택지";
 
     public static IReadOnlyList<string> All { get; } =
-        [Episodes, Edges, Conditions, Stats, Fixtures, Speakers];
+        [Episodes, Edges, Conditions, Stats, Fixtures, Speakers, Choices];
 }

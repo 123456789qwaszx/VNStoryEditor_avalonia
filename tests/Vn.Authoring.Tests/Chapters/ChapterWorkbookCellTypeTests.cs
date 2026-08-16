@@ -56,7 +56,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             episodes.Cell(3, 6).SetValue(170);
 
             IXLWorksheet edges = workbook.AddWorksheet("간선");
-            Header(edges, "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문");
+            Header(edges, "출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문");
             edges.Cell(2, 1).SetValue("ep1");
             edges.Cell(2, 2).SetValue("ep2");
             edges.Cell(2, 6).SetValue(true);       // 불리언 — 문자열 "TRUE"가 아니다
@@ -125,7 +125,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
                 ["ep2", "Main", "Main", "Story_ep2", "200", "0", null, null, null, "Main"]
             ]),
             ("간선", [
-                ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"],
+                ["출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문"],
                 ["ep1", "ep2", null, null, null, "FALSE", null]
             ]),
             ("조건", [
@@ -167,7 +167,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             episodes.Cell(2, 2).FormulaA1 = "=\"제\" & \"목\"";
 
             Header(workbook.AddWorksheet("간선"),
-                "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문");
+                "출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문");
             Header(workbook.AddWorksheet("조건"), "라벨", "스탯", "연산자", "값", "설명");
 
             IXLWorksheet stats = workbook.AddWorksheet("스탯");

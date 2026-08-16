@@ -95,8 +95,12 @@ public static class ChapterWorkbookWriter
             int edgeRow = NextRow(edges);
             edges.Cell(edgeRow, 1).SetValue(parentEpisodeId);
             edges.Cell(edgeRow, 2).SetValue(newEpisodeId);
-            Set(edges, edgeRow, 4, optionLabel);
+            edges.Cell(edgeRow, 4).SetValue(1); // 선택지수 기본 1
             edges.Cell(edgeRow, 6).SetValue("FALSE");
+
+            // 디폴트 선택지 칸 — 대본 text가 빈 채로 서고(보이지 않는 기본), 적는 순간
+            // 보이는 선택지가 된다 (2026-08-16 소유자).
+            AddChoiceSlot(workbook, parentEpisodeId, newEpisodeId, optionLabel);
         });
 
 
@@ -185,6 +189,22 @@ public static class ChapterWorkbookWriter
                 }
             }
 
+            // 선택지 칸의 출발·도착도 따라간다 — 안 따라가면 칸이 주인 없는 유령이 된다.
+            if (workbook.Worksheets.FirstOrDefault(candidate =>
+                    candidate.Name == ChapterSheetNames.Choices) is { } choiceSheet)
+            {
+                foreach (IXLRow row in choiceSheet.RowsUsed().Skip(1))
+                {
+                    foreach (int column in new[] { 1, 2 })
+                    {
+                        if (string.Equals(row.Cell(column).GetString(), oldId, StringComparison.Ordinal))
+                        {
+                            row.Cell(column).SetValue(newId);
+                        }
+                    }
+                }
+            }
+
             if (workbook.Worksheets.FirstOrDefault(sheet =>
                     sheet.Name == ChapterSheetNames.Fixtures) is { } fixtures)
             {
@@ -220,6 +240,20 @@ public static class ChapterWorkbookWriter
                 edgeRow.Delete();
             }
 
+            // 이 에피소드를 지나는 선택지 칸도 함께 — 주인(간선)이 사라졌다.
+            if (workbook.Worksheets.FirstOrDefault(candidate =>
+                    candidate.Name == ChapterSheetNames.Choices) is { } choiceSheet)
+            {
+                foreach (IXLRow slot in choiceSheet.RowsUsed().Skip(1)
+                             .Where(candidate =>
+                                 string.Equals(candidate.Cell(1).GetString(), episodeId, StringComparison.Ordinal) ||
+                                 string.Equals(candidate.Cell(2).GetString(), episodeId, StringComparison.Ordinal))
+                             .ToList())
+                {
+                    slot.Delete();
+                }
+            }
+
             if (workbook.Worksheets.FirstOrDefault(sheet =>
                     sheet.Name == ChapterSheetNames.Fixtures) is not { } fixtures)
             {
@@ -243,74 +277,93 @@ public static class ChapterWorkbookWriter
         }, backup: true);
 
     // ── 간선 ────────────────────────────────────────────────────────────────
-    // 간선의 신원은 (출발, 도착, 선택지 라벨) 셋이다 (2026-08-15 소유자 — "여러 선택지가
-    // 같은 에피소드로 이어지는 경우가 많다"). 같은 출발·도착이라도 라벨이 다르면 다른 길이다.
+    // 간선의 신원은 (출발, 도착)이다 (2026-08-16 소유자 — 선택지가 문구에서 개수로 바뀌며
+    // 라벨 신원 폐지). 보이는 문구는 선택지 시트의 칸이 갖고, 간선은 칸 수(선택지수)만 안다.
 
     public static ChapterWriteResult AddEdge(
         string path,
         string fromEpisodeId,
         string toEpisodeId,
-        string? optionLabel = null,
-        string? conditionLabel = null) =>
+        string? conditionLabel = null,
+        int choiceCount = 1) =>
         Mutate(path, workbook =>
         {
+            if (choiceCount < 1)
+            {
+                throw new InvalidOperationException("선택지수는 1 이상이어야 합니다.");
+            }
+
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            if (FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, optionLabel) is not null)
+            if (FindEdgeRow(sheet, fromEpisodeId, toEpisodeId) is not null)
             {
                 throw new InvalidOperationException(
-                    $"간선 {fromEpisodeId}→{toEpisodeId}" +
-                    $"{(string.IsNullOrWhiteSpace(optionLabel) ? "(진행)" : $" '{optionLabel}'")}이 이미 있습니다.");
+                    $"간선 {fromEpisodeId}→{toEpisodeId}이 이미 있습니다. 선택지를 늘리려면 선택지수를 올리세요.");
             }
 
             int row = NextRow(sheet);
             sheet.Cell(row, 1).SetValue(fromEpisodeId);
             sheet.Cell(row, 2).SetValue(toEpisodeId);
-            Set(sheet, row, 4, optionLabel);
+            sheet.Cell(row, 4).SetValue(choiceCount);
             Set(sheet, row, 5, conditionLabel);
             sheet.Cell(row, 6).SetValue("FALSE");
+
+            EnsureChoiceSlots(workbook, fromEpisodeId, toEpisodeId, choiceCount);
         });
 
     public static ChapterWriteResult RemoveEdge(
-        string path, string fromEpisodeId, string toEpisodeId, string? optionLabel = null) =>
+        string path, string fromEpisodeId, string toEpisodeId) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            IXLRow found = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, optionLabel)
+            IXLRow found = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
             found.Delete();
+
+            // 칸의 주인이 사라졌다 — 그 간선의 선택지 칸도 함께 걷는다.
+            if (workbook.Worksheets.FirstOrDefault(candidate =>
+                    candidate.Name == ChapterSheetNames.Choices) is { } choices)
+            {
+                foreach (IXLRow slot in choices.RowsUsed().Skip(1)
+                             .Where(candidate =>
+                                 string.Equals(candidate.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
+                                 string.Equals(candidate.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal))
+                             .ToList())
+                {
+                    slot.Delete();
+                }
+            }
         }, backup: true);
 
-    /// <summary>라벨까지 맞는 행 — 라벨 null·빈칸은 무라벨 진행 행과 짝이다. 선택지는 D열(2026-08-16).</summary>
+    /// <summary>간선 신원 = (출발, 도착) 하나 (2026-08-16).</summary>
     private static IXLRow? FindEdgeRow(
-        IXLWorksheet sheet, string fromEpisodeId, string toEpisodeId, string? optionLabel) =>
+        IXLWorksheet sheet, string fromEpisodeId, string toEpisodeId) =>
         sheet.RowsUsed().Skip(1).FirstOrDefault(row =>
             string.Equals(row.Cell(1).GetString(), fromEpisodeId, StringComparison.Ordinal) &&
-            string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal) &&
-            string.Equals(row.Cell(4).GetString().Trim(), optionLabel?.Trim() ?? string.Empty,
-                StringComparison.Ordinal));
+            string.Equals(row.Cell(2).GetString(), toEpisodeId, StringComparison.Ordinal));
 
-    /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다.</summary>
+    /// <summary>
+    /// 간선 한 줄의 속성 편집. null이 아닌 것만 쓴다. <paramref name="choiceCount"/>를 올리면
+    /// 선택지 시트에 모자란 칸이 함께 선다("공간이 생기도록" — 한 번의 저장으로).
+    /// </summary>
     public static ChapterWriteResult UpdateEdge(
         string path,
         string fromEpisodeId,
         string toEpisodeId,
-        string? optionLabel = null,
         string? conditionLabel = null,
         bool? hideWhenLocked = null,
         string? lockedMessage = null,
         string? statChanges = null,
-        string? matchOptionLabel = null) =>
+        int? choiceCount = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
 
-            IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchOptionLabel)
+            IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId)
                 ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
 
-            Set(sheet, row.RowNumber(), 4, optionLabel);
             Set(sheet, row.RowNumber(), 5, conditionLabel);
 
             if (hideWhenLocked is { } hide)
@@ -320,7 +373,95 @@ public static class ChapterWorkbookWriter
 
             Set(sheet, row.RowNumber(), 7, lockedMessage);
             Set(sheet, row.RowNumber(), 3, statChanges); // 스탯변화(C) — 문법 검사는 리더가 한다
+
+            if (choiceCount is { } count)
+            {
+                if (count < 1)
+                {
+                    throw new InvalidOperationException("선택지수는 1 이상이어야 합니다.");
+                }
+
+                sheet.Cell(row.RowNumber(), 4).SetValue(count);
+                EnsureChoiceSlots(workbook, fromEpisodeId, toEpisodeId, count);
+            }
         });
+
+    /// <summary>
+    /// 엑셀에서 선택지수를 올린 뒤의 따라잡기 — 모든 간선의 칸이 선언된 수만큼 서도록
+    /// 모자란 칸을 만든다("공간이 생기도록"). <b>모자란 칸이 없으면 파일에 손대지 않는다</b> —
+    /// 동기화마다 불려도 감시가 맴돌지 않는다.
+    /// </summary>
+    public static (bool Changed, ChapterWriteResult Result) TopUpChoiceSlots(
+        string path, ChapterGraphModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        List<ChapterEdge> lacking = model.Edges
+            .Where(edge => model.ChoiceOptions.Count(slot =>
+                string.Equals(slot.EpisodeId, edge.FromEpisodeId, StringComparison.Ordinal) &&
+                string.Equals(slot.ToEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal)) < edge.ChoiceCount)
+            .ToList();
+
+        if (lacking.Count == 0)
+        {
+            return (false, ChapterWriteResult.Ok);
+        }
+
+        ChapterWriteResult result = Mutate(path, workbook =>
+        {
+            foreach (ChapterEdge edge in lacking)
+            {
+                EnsureChoiceSlots(workbook, edge.FromEpisodeId, edge.ToEpisodeId, edge.ChoiceCount);
+            }
+        });
+
+        return (result.Written, result);
+    }
+
+    /// <summary>
+    /// 그 간선의 선택지 칸이 <paramref name="count"/>개가 되도록 모자란 만큼 만든다.
+    /// 있는 칸(사람이 적은 text 포함)은 건드리지 않는다.
+    /// </summary>
+    private static void EnsureChoiceSlots(XLWorkbook workbook, string from, string to, int count)
+    {
+        IXLWorksheet choices = workbook.Worksheets.FirstOrDefault(candidate =>
+                candidate.Name == ChapterSheetNames.Choices)
+            ?? AddSheetWithHeaders(workbook, ChapterSheetNames.Choices,
+                ["출발", "도착", "인덱스", "대본", "메모"]);
+
+        int existing = choices.RowsUsed().Skip(1).Count(row =>
+            string.Equals(row.Cell(1).GetString(), from, StringComparison.Ordinal) &&
+            string.Equals(row.Cell(2).GetString(), to, StringComparison.Ordinal));
+
+        for (int added = existing; added < count; added++)
+        {
+            AddChoiceSlot(workbook, from, to);
+        }
+    }
+
+    /// <summary>
+    /// 선택지 칸 한 줄 — 인덱스는 그 에피소드(출발) 안에서 10·20·30으로 이어 받는다.
+    /// text를 안 주면 빈 칸(보이지 않는 기본)으로 선다.
+    /// </summary>
+    private static void AddChoiceSlot(XLWorkbook workbook, string from, string to, string? text = null)
+    {
+        IXLWorksheet choices = workbook.Worksheets.FirstOrDefault(candidate =>
+                candidate.Name == ChapterSheetNames.Choices)
+            ?? AddSheetWithHeaders(workbook, ChapterSheetNames.Choices,
+                ["출발", "도착", "인덱스", "대본", "메모"]);
+
+        int maxIndex = choices.RowsUsed().Skip(1)
+            .Where(row => string.Equals(row.Cell(1).GetString(), from, StringComparison.Ordinal))
+            .Select(row => int.TryParse(row.Cell(3).GetString(), out int index) ? index : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        int slotRow = NextRow(choices);
+        choices.Cell(slotRow, 1).SetValue(from);
+        choices.Cell(slotRow, 2).SetValue(to);
+        choices.Cell(slotRow, 3).SetValue(maxIndex + 10);
+        Set(choices, slotRow, 4, text);
+    }
 
     // ── 조건 ────────────────────────────────────────────────────────────────
 
@@ -474,14 +615,18 @@ public static class ChapterWorkbookWriter
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
             ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
-            ["출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문"]);
+            ["출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문"]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
             ["스탯키", "표시명", "초기값", "최소", "최대", "타입"]);
+        // 선택지의 정본 (2026-08-16) — 행 = 옵션 칸. 간선(출발→도착)이 선택지수만큼 칸을
+        // 소유하고, 대본 text는 자유 수정(빈 text = 보이지 않는 기본).
+        IXLWorksheet choiceSheet =
+            AddSheetWithHeaders(workbook, ChapterSheetNames.Choices, ["출발", "도착", "인덱스", "대본", "메모"]);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
 
-        ApplyChapterDropdowns(episodeSheet, edgeSheet, conditionSheet, statSheet);
+        ApplyChapterDropdowns(episodeSheet, edgeSheet, conditionSheet, statSheet, choiceSheet);
 
         int statRow = 2;
 
@@ -552,12 +697,25 @@ public static class ChapterWorkbookWriter
         IXLWorksheet episodeSheet,
         IXLWorksheet edgeSheet,
         IXLWorksheet conditionSheet,
-        IXLWorksheet statSheet)
+        IXLWorksheet statSheet,
+        IXLWorksheet? choiceSheet = null)
     {
         AddConditionDropdown(episodeSheet, 7);   // 표시조건
         AddConditionDropdown(episodeSheet, 8);   // 해금조건
         AddConditionDropdown(edgeSheet, 5);      // 간선의 조건
         AddYesNoDropdown(edgeSheet, 6);          // 잠금시 숨김
+
+        if (choiceSheet is not null)
+        {
+            // 선택지 칸의 출발·도착은 에피소드 목록에서 고른다(오타 = 주인 없는 칸).
+            // 간선의 선택지수는 1~3 — 그만큼 칸이 선다.
+            choiceSheet.Range(2, 1, DropdownRows, 1).CreateDataValidation()
+                .List($"='{ChapterSheetNames.Episodes}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+            choiceSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()
+                .List($"='{ChapterSheetNames.Episodes}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+            edgeSheet.Range(2, 4, DropdownRows, 4).CreateDataValidation()
+                .List("\"1,2,3\"", inCellDropdown: true);
+        }
 
         conditionSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()
             .List($"='{ChapterSheetNames.Stats}'!$A$2:$A${DropdownRows}", inCellDropdown: true);

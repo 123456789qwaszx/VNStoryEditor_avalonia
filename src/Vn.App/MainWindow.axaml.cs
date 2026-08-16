@@ -398,6 +398,10 @@ public partial class MainWindow : Window
                     {
                         _session.SelectFile(_session.EnsureChapterBoard(chapterId));
                         ChapterGraph.SelectChapter(chapterId);
+
+                        // 클릭 = 챕터 엑셀 열기 (2026-08-16 소유자) — 기본 동작이 "엑셀에서
+                        // 만진다"이므로 챕터를 고르는 순간이 곧 편집 창구를 여는 순간이다.
+                        ChapterGraph.OpenChapterWorkbook(chapterId);
                     });
                 };
 

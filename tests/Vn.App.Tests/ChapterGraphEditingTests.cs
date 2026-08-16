@@ -18,13 +18,14 @@ public sealed class ChapterGraphEditingTests
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
     [Fact]
-    public void 값_편집이_복원되어_적용이_엑셀_셀로_왕복한다() => HeadlessUi.Run(() =>
+    public void 조건_콤보를_고르면_바로_엑셀_셀에_저장된다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-15 소유자 복원 — v3의 "최소만 남기고 삭제"가 테스트 편의였는데 실사용에서
-        // 편집 창구를 가렸다. 제목·표시/해금·엔딩키·메모가 패널로 돌아왔고, 쓰기는 여전히
-        // 그 셀 하나다(G-2 v2 외과수술). 남은 값(대사엔트리 등)은 계속 읽기 전용.
+        // 2026-08-16 소유자 — [적용] 단추 폐지. 표시·해금 콤보를 고르는 순간 그 셀이 써진다.
+        // 제목·엔딩키·메모 칸은 뺐다(그 값들은 엑셀에서). 기본은 읽기 전용이라 체크를 먼저 푼다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
+
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEpisode("branch05.02A");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -35,14 +36,13 @@ public sealed class ChapterGraphEditingTests
         // 선택하면 현재 값이 채워진다 — 해금조건 콤보에 이 노드의 신뢰높음이 골라져 있다.
         Assert.Equal("신뢰높음", view.FindControl<ComboBox>("UnlockCombo")!.SelectedItem);
 
-        view.FindControl<TextBox>("TitleBox")!.Text = "라루의 새 제안";
+        // 콤보를 고르는 것만으로 저장된다 — 단추가 없다.
         view.FindControl<ComboBox>("VisibleCombo")!.SelectedItem = "지쳐있음";
-        view.ApplyEpisodeFromPanel();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
         ChapterEpisode episode = reread.FindEpisode("branch05.02A")!;
 
-        Assert.Equal("라루의 새 제안", episode.Title);
         Assert.Equal("지쳐있음", episode.VisibleConditionLabel);
         Assert.Equal("신뢰높음", episode.UnlockConditionLabel); // 안 바꾼 값은 그대로
 
@@ -51,30 +51,89 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 패널에서_간선을_더하고_조건을_더한다() => HeadlessUi.Run(() =>
+    public void 엑셀에서만_편집이_기본이라_툴_편집_창구가_닫혀_있다() => HeadlessUi.Run(() =>
     {
+        // 2026-08-16 소유자 — 기본 동작: 모든 데이터는 엑셀에서 만지고 툴은 보여준다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        // 라벨은 대본의 OPTION에서 고른다 (2026-08-15) — 대본에 그 선택지를 먼저 깔아 둔다.
-        WriteOptionsWorkbook(project.EpisodesFolder, "main05.01", "지름길");
+        Assert.True(view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked);
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+        Assert.False(view.FindControl<ComboBox>("VisibleCombo")!.IsEnabled);
+        Assert.False(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
+        Assert.False(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
+        Assert.False(view.FindControl<Button>("DeleteEpisodeButton")!.IsVisible);
+
+        // 체크를 풀면 열린다.
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+        Assert.True(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
+    });
+
+    [Fact]
+    public void 패널에서_간선을_더한다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEpisode("main05.01");
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
-        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "지름길";
+        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "1";
         view.AddEdgeFromPanel();
-
-        view.FindControl<TextBox>("ConditionLabelBox")!.Text = "새조건";
-        view.FindControl<TextBox>("ConditionExprBox")!.Text = "anger <= 1";
-        view.SaveConditionFromPanel();
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
 
         ChapterEdge edge = reread.Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
-        Assert.Equal("지름길", edge.OptionLabel);
+        Assert.Equal(1, edge.ChoiceCount);
+        // 칸이 함께 섰다 — 빈 대본(보이지 않는 기본). 문구는 선택지 시트에서 적는다.
+        Assert.Contains(reread.ChoiceOptionsFor("main05.01"), slot =>
+            slot.ToEpisodeId == "main05.end" && slot.IsInvisibleDefault);
+    });
 
-        Assert.Equal("anger <= 1", reread.FindCondition("새조건")!.Expression);
+    [Fact]
+    public void 간선_줄을_클릭하면_폼에_실려_선택지수를_고친다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-16 소유자 — 줄 클릭이 간선 선택으로 건너뛰지 않는다. 그 줄 바로 아래에
+        // 폼이 열려 도착·선택지수가 실리고, 수를 올리면 선택지 시트에 칸이 함께 선다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEdge edge = model.Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
+
+        view.LoadEdgeIntoForm(edge, 0);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 폼이 열려 클릭한 간선의 값이 실려 있고, 도착은 신원이라 잠긴다.
+        Assert.True(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
+        Assert.Equal("branch05.02A", view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem);
+        Assert.Equal("1", view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem);
+        Assert.False(view.FindControl<ComboBox>("EdgeTargetCombo")!.IsEnabled);
+        Assert.Equal("수정", view.FindControl<Button>("AddEdgeButton")!.Content);
+
+        // 선택지수를 올리면 칸이 함께 선다.
+        view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem = "2";
+        view.SubmitEdgeForm();
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEdge updated = reread.Edges.Single(candidate =>
+            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
+        Assert.Equal(2, updated.ChoiceCount);
+        Assert.Equal(2, reread.ChoiceOptions.Count(slot =>
+            slot.EpisodeId == "main05.02" && slot.ToEpisodeId == "branch05.02A"));
     });
 
     [Fact]
@@ -198,79 +257,33 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 조건_탭이_앞이고_무언가를_고르면_편집_탭으로_옮긴다() => HeadlessUi.Run(() =>
+    public void 선택이_탭을_끌고_다니지_않는다() => HeadlessUi.Run(() =>
     {
+        // 2026-08-16 소유자 — 대사 탭을 보며 노드를 갈아타는 흐름이 실사용의 대부분이라,
+        // 무언가를 골라도 지금 보던 탭이 유지된다(편집 탭 강제 전환 폐지).
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
         var tabs = view.FindControl<TabControl>("RightTabs")!;
         var conditionTab = view.FindControl<TabItem>("ConditionTab")!;
-        var editTab = view.FindControl<TabItem>("EditTab")!;
+        var dialogueTab = view.FindControl<TabItem>("DialogueTab")!;
 
         // 아무것도 안 고른 처음에는 조건 탭이 앞에서 먼저 보인다.
         Assert.Equal(0, tabs.IndexFromContainer(conditionTab));
         Assert.Same(conditionTab, tabs.SelectedItem);
 
-        // 노드를 고르면 편집 탭으로 옮긴다 — 안 그러면 눌러도 오른쪽이 그대로다.
+        // 노드를 골라도 탭은 그대로다.
         view.SelectEpisode("main05.02");
-        Assert.Same(editTab, tabs.SelectedItem);
-
-        // 조건 탭으로 돌아가 조건을 보다가 빈 판을 눌러도 끌려 나오지 않는다.
-        tabs.SelectedItem = conditionTab;
-        view.SelectEpisode(null);
         Assert.Same(conditionTab, tabs.SelectedItem);
 
-        // 간선을 고르면 다시 편집 탭.
+        // 대사 탭을 보며 다른 노드로 갈아타도 그대로다.
+        tabs.SelectedItem = dialogueTab;
+        view.SelectEpisode("main05.01");
+        Assert.Same(dialogueTab, tabs.SelectedItem);
+
+        // 간선을 골라도 마찬가지다.
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
-        Assert.Same(editTab, tabs.SelectedItem);
-    });
-
-    [Fact]
-    public void 간선_라벨은_대본_OPTION의_드롭다운이고_선택지가_있으면_진행이_없다() => HeadlessUi.Run(() =>
-    {
-        // 2026-08-15 소유자 2차 개정 — 선택지가 제시되면 둘 다 안 고를 수 없으므로
-        // 진행(무라벨)이 낄 자리가 없다. 후보는 대본의 OPTION들뿐이다.
-        using var project = new TempProject(SamplePath);
-        WriteOptionsWorkbook(project.EpisodesFolder, "main05.02", "라루의 제안을 듣는다", "혼자 문을 연다");
-        (ChapterGraphView view, _) = Show(project);
-
-        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        var combo = view.FindControl<ComboBox>("EdgeLabelEditBox")!;
-        Assert.Equal("라루의 제안을 듣는다", combo.SelectedItem);
-
-        var items = ((System.Collections.Generic.IEnumerable<string>)combo.ItemsSource!).ToList();
-        Assert.Contains("혼자 문을 연다", items);
-        Assert.DoesNotContain("(선택지 없음)", items); // 선택지가 있으면 진행은 못 고른다
-
-        // 다른 옵션으로 바꾼다 — 신원(라벨)이 따라가고 셀에 써진다.
-        combo.SelectedItem = "혼자 문을 연다";
-        view.ApplyEdgeFromPanel();
-
-        ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
-            candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
-
-        Assert.Equal("혼자 문을 연다", edge.OptionLabel);
-    });
-
-    [Fact]
-    public void 라벨_없던_간선에_대본의_선택지를_붙일_수_있다() => HeadlessUi.Run(() =>
-    {
-        // 일반 진행(라벨 없음) 간선을 선택지로 바꾸는 흐름 — 저작 중 가장 흔한 편집이다.
-        using var project = new TempProject(SamplePath);
-        WriteOptionsWorkbook(project.EpisodesFolder, "main05.01", "복도로 간다");
-        (ChapterGraphView view, _) = Show(project);
-
-        view.SelectEdgeKey("main05.01", "main05.02");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "복도로 간다";
-        view.ApplyEdgeFromPanel();
-
-        ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
-            candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.02");
-
-        Assert.Equal("복도로 간다", edge.OptionLabel);
+        Assert.Same(dialogueTab, tabs.SelectedItem);
     });
 
     [Fact]
@@ -283,7 +296,7 @@ public sealed class ChapterGraphEditingTests
 
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
         Assert.False(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("라루의 제안을 듣는다", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
+        Assert.Equal("1", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem); // 선택지수
         Assert.Equal("신뢰높음", view.FindControl<ComboBox>("EdgeConditionCombo")!.SelectedItem);
 
         // 잠기면 숨김으로 바꾸고 안내문을 고쳐 적용 → 엑셀 셀로 간다.
@@ -302,12 +315,22 @@ public sealed class ChapterGraphEditingTests
     [Fact]
     public void 선택지_포트가_카드_오른쪽에_뚫린다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-15 소유자 개정 2 — 아래 줄기가 아니라 시나리오 그래프의 조건 포트처럼
-        // 카드 오른변에 포트. 이어진 포트 = 채운 원(클릭 = 간선 선택), 안 이어진 포트 =
-        // 빈 원(클릭 = [연결]에 그 라벨을 미리 골라 준다).
+        // 2026-08-16 개정 — 포트의 원천은 챕터 `선택지` 시트의 보이는 칸이다.
+        // 주인 간선 있는 포트 = 채운 원(클릭 = 간선 선택), 주인 없는 칸 = 빈 원(클릭 = 에피소드 선택).
         using var project = new TempProject(SamplePath);
-        WriteOptionsWorkbook(project.EpisodesFolder,
-            "main05.02", "라루의 제안을 듣는다", "혼자 문을 연다", "셋째 길");
+
+        // 주인 없는 칸 하나를 더한다 — main05.02→main05.end 간선은 없다.
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
+        {
+            ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
+            int row = choices.LastRowUsed()!.RowNumber() + 1;
+            choices.Cell(row, 1).SetValue("main05.02");
+            choices.Cell(row, 2).SetValue("main05.end");
+            choices.Cell(row, 3).SetValue(30);
+            choices.Cell(row, 4).SetValue("셋째 길");
+            workbook.Save();
+        }
+
         (ChapterGraphView view, _) = Show(project);
 
         var canvas = view.FindControl<Canvas>("GraphCanvas")!;
@@ -320,7 +343,7 @@ public sealed class ChapterGraphEditingTests
                 Avalonia.Input.PointerUpdateKind.LeftButtonPressed),
             Avalonia.Input.KeyModifiers.None));
 
-        // 포트 문구 셋 + 포트 원 셋 (main05.02의 옵션 수).
+        // 포트 문구 셋 + 포트 원 셋 (main05.02의 보이는 칸 수).
         List<TextBlock> labels = canvas.Children.OfType<TextBlock>()
             .Where(block => (block.Text ?? "").StartsWith("라루의 제안을 듣는다") ||
                             block.Text == "혼자 문을 연다" || block.Text == "셋째 길")
@@ -328,16 +351,14 @@ public sealed class ChapterGraphEditingTests
         Assert.Equal(3, labels.Count);
         Assert.Equal(3, canvas.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Count(port => port.Width == 9));
 
-        // 이어진 포트 클릭 = 그 간선 선택.
+        // 주인 간선 있는 포트 클릭 = 그 간선 선택.
         Press(labels.Single(block => block.Text!.StartsWith("라루의 제안을 듣는다")));
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
-        Assert.Equal("라루의 제안을 듣는다",
-            view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
 
-        // 안 이어진 포트 클릭 = 에피소드 선택 + [연결] 라벨 미리 골라 줌.
+        // 주인 없는 칸 클릭 = 에피소드 선택 (검증 보고가 유령 칸을 따로 잡는다).
         Press(labels.Single(block => block.Text == "셋째 길"));
         Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
-        Assert.Equal("셋째 길", view.FindControl<ComboBox>("EdgeLabelBox")!.SelectedItem);
+        Assert.Equal("main05.02", view.FindControl<TextBox>("IdBox")!.Text);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────

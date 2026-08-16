@@ -121,11 +121,10 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     }
 
     [Fact]
-    public void 간선의_선택지가_에피소드_OPTION에_없으면_유령_간선으로_잡는다()
+    public void 대본에_CHOICE_OPTION이_남아_있으면_폐지_경고를_한다()
     {
-        // G7 구조 검증(포트 규칙 개정) — 짝은 개수·순서가 아니라 <b>라벨</b>이다.
-        // 견본 간선 2개("라루의 제안을 듣는다"·"혼자 문을 연다")와 어느 것도 안 맞는 옵션 하나
-        // → 간선 둘 다 도착지가 영원히 안 쓰이는 유령이 된다.
+        // 2026-08-16 소유자 — 선택지의 정본이 챕터 `선택지` 시트로 왔다. 대본의 선택지는
+        // 옮기라고 말하되 막지는 않는다(원고를 볼모로 잡지 않는다).
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
         string episodes = Path.Combine(_directory, "episodes");
         Directory.CreateDirectory(episodes);
@@ -140,81 +139,50 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
 
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
 
-        List<ChapterDiagnostic> ghosts = validation.Diagnostics
-            .Where(item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch)
-            .ToList();
-
-        Assert.Equal(2, ghosts.Count);
-        Assert.All(ghosts, item => Assert.Equal(ChapterDiagnosticSeverity.Error, item.Severity));
-        Assert.Contains(ghosts, item => item.Message.Contains("라루의 제안을 듣는다"));
-        Assert.Contains(ghosts, item => item.Message.Contains("혼자 문을 연다"));
+        ChapterDiagnostic deprecated = Assert.Single(validation.Diagnostics, item =>
+            item.Message.Contains("선택지는 이제"));
+        Assert.Equal(ChapterDiagnosticSeverity.Warning, deprecated.Severity);
+        Assert.Contains("`선택지` 시트", deprecated.Message);
     }
 
     [Fact]
-    public void 간선_없는_옵션은_에피소드_종료라_오류가_아니다()
+    public void 보이지_않는_기본_칸은_보이는_선택지와_공존한다()
     {
-        // 소유자 실사례 — 옵션 하나는 IN으로 에피소드 안에서 흐르고, 하나는 문서 끝
-        // (= 에피소드 종료, Gate B 포트 규칙). 챕터에는 무조건 진행 간선뿐이었는데
-        // 옛 개수 일치 규칙이 여기에 오류를 냈다.
+        // 방어장치 (2026-08-16) — 어떤 선택지 조건도 만족 못 할 때 빠지는 빈 칸(보이지 않는
+        // 기본)은 에피소드당 하나 허용이고, 조건 없는 간선과 짝이면 조용하다. 이행된 견본
+        // (보이는 칸 둘 + 빈 칸들)이 오류 0으로 읽히는 것이 그 계약이다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
-        string episodes = Path.Combine(_directory, "episodes");
-        Directory.CreateDirectory(episodes);
 
-        // main05.01은 견본에서 선택지 간선이 없는 에피소드다(무조건 진행만).
-        WriteRows(Path.Combine(episodes, "main05.01.xlsx"),
-        [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_1001", null, null, null, null, null, "윌로", "첫 줄", null, null],
-            ["20", "ln_1002", "CHOICE", null, null, null, null, null, null, null, null],
-            ["30", "ln_1003", "OPTION", null, null, "100", null, null, "안에서 흐른다", null, null],
-            ["40", "ln_1004", "OPTION", null, null, null, null, null, "여기서 끝난다", null, null],
-            ["100", "ln_1005", null, "INPUT", null, null, null, "윌로", "안쪽 구간", null, null],
-            ["110", "ln_1006", null, "OUT", null, null, "END", "윌로", "구간 끝", null, null]
-        ]);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
 
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
-
-        // 안 이은 옵션은 오류가 아니다 — 종료다.
         Assert.DoesNotContain(validation.Diagnostics, item =>
-            item.Code == ChapterDiagnosticCode.OptionEdgeMismatch &&
             item.Severity == ChapterDiagnosticSeverity.Error);
-
-        // 다만 선택지가 생긴 에피소드에 무라벨(진행) 간선이 남아 있으면 경고한다
-        // (2026-08-15 2차 개정 — 선택지가 제시되면 진행을 탈 수 없다. 낙하는 없다).
-        Assert.Contains(validation.Diagnostics, item =>
-            item.Code == ChapterDiagnosticCode.OptionEdgeMismatch &&
-            item.Severity == ChapterDiagnosticSeverity.Warning &&
-            item.Message.Contains("진행을 탈 수 없습니다"));
     }
 
     [Fact]
-    public void IN으로_해소되는_옵션에_간선까지_있으면_죽은_간선_경고를_한다()
+    public void 주인_간선이_없는_선택지_칸은_경고한다()
     {
-        // 라벨은 맞는데 옵션이 IN으로 안에서 흐른다 — 안이 이기므로 간선 도착지는 죽는다.
-        // 반대쪽 옵션("혼자 문을 연다")은 간선과 라벨이 맞고 IN이 없으니 조용해야 한다.
-        ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
-        string episodes = Path.Combine(_directory, "episodes");
-        Directory.CreateDirectory(episodes);
+        // 칸은 간선(출발→도착)이 소유한다 — 주인이 없으면 화면에 나갈 수 없는 유령 칸이다.
+        string path = Path.Combine(_directory, "orphan.xlsx");
+        File.Copy(SamplePath, path);
 
-        WriteRows(Path.Combine(episodes, "main05.02.xlsx"),
-        [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_2001", null, null, null, null, null, "윌로", "첫 줄", null, null],
-            ["20", "ln_2002", "CHOICE", null, null, null, null, null, null, null, null],
-            ["30", "ln_2003", "OPTION", null, null, "100", null, null, "라루의 제안을 듣는다", null, null],
-            ["40", "ln_2004", "OPTION", null, null, null, null, null, "혼자 문을 연다", null, null],
-            ["100", "ln_2005", null, "INPUT", null, null, null, "라루", "안쪽 구간", null, null],
-            ["110", "ln_2006", null, "OUT", null, null, "END", "라루", "구간 끝", null, null]
-        ]);
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
+        {
+            ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
+            int row = choices.LastRowUsed()!.RowNumber() + 1;
+            choices.Cell(row, 1).SetValue("main05.01");
+            choices.Cell(row, 2).SetValue("main05.end"); // 그런 간선은 없다
+            choices.Cell(row, 3).SetValue(20);
+            choices.Cell(row, 4).SetValue("없는 길로 가는 문구");
+            workbook.Save();
+        }
 
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(path);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
 
-        ChapterDiagnostic dead = Assert.Single(validation.Diagnostics,
-            item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch);
-
-        Assert.Equal(ChapterDiagnosticSeverity.Warning, dead.Severity);
-        Assert.Contains("라루의 제안을 듣는다", dead.Message);
-        Assert.Contains("안이 이기므로", dead.Message);
+        Assert.Contains(validation.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("주인 간선이 없습니다"));
     }
 
     // ── G6 — 픽스처 경로 ────────────────────────────────────────────────────

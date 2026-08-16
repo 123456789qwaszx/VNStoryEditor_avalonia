@@ -93,18 +93,17 @@ public sealed class ChapterGraphClickTests
         using var project = new TempProject(SamplePath);
         (Window window, Canvas canvas, ChapterGraphView view) = Show(project);
 
-        // 라벨은 간선 한가운데 — 사람이 간선을 누르려고 겨누는 자리다. 원래는 라벨이
-        // 히트 선을 덮고 아무것도 하지 않아 "클릭이 안 먹히는" 자리였다.
-        Border label = canvas.Children.OfType<Border>().Single(border =>
-            border.Tag is null &&
-            (border.Child as TextBlock)?.Text?.Contains("라루의 제안") == true);
+        // 문구는 이제 카드 오른변의 포트 문구다(선택지 시트의 보이는 칸, 2026-08-16) —
+        // 사람이 간선을 누르려고 겨누는 자리이고, 누르면 그 간선이 선택된다.
+        TextBlock label = canvas.Children.OfType<TextBlock>().Single(block =>
+            block.Text?.Contains("라루의 제안") == true);
 
         Avalonia.Point center = label.TranslatePoint(
             new Avalonia.Point(label.Bounds.Width / 2, label.Bounds.Height / 2), window)!.Value;
         Click(window, center);
 
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
-        Assert.Equal("라루의 제안을 듣는다", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
+        Assert.Equal("1", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem); // 선택지수
     });
 
     [Fact]

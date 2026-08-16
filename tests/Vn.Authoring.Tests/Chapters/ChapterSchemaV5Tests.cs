@@ -40,7 +40,13 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
         Assert.Equal("스탯변화", edges.Cell(1, 3).GetString());
-        Assert.Equal("선택지", edges.Cell(1, 4).GetString());
+        Assert.Equal("선택지수", edges.Cell(1, 4).GetString()); // v6 — 문구는 선택지 시트로
+        Assert.Contains("1", edges.Cell(2, 4).GetDataValidation().Value);
+
+        // 선택지 시트 (v6) — 칸의 출발·도착은 에피소드 드롭다운.
+        IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
+        Assert.Equal("대본", choices.Cell(1, 4).GetString());
+        Assert.Contains(ChapterSheetNames.Episodes, choices.Cell(2, 1).GetDataValidation().Value);
 
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
         Assert.Equal("종류", episodes.Cell(1, 3).GetString()); // 인덱스가 없다
@@ -81,7 +87,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         var edges = new List<string?[]>
         {
-            new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" },
+            new string?[] { "출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문" },
             new string?[] { "ep1", "ep2", null, null, null, "FALSE", null }
         };
 
@@ -190,11 +196,11 @@ public sealed class ChapterSchemaV5Tests : IDisposable
     public void 간선의_스탯변화는_C열에서_읽힌다()
     {
         ChapterGraphModel model = ChapterWorkbookReader.Read(WriteChapter(
-            edgeRows: [["ep1", "ep2", "trust +2", "간다", null, "FALSE", null]]));
+            edgeRows: [["ep1", "ep2", "trust +2", "2", null, "FALSE", null]]));
 
         Assert.False(model.HasErrors);
         ChapterEdge edge = Assert.Single(model.Edges);
-        Assert.Equal("간다", edge.OptionLabel);
+        Assert.Equal(2, edge.ChoiceCount);
         StatDelta delta = Assert.Single(edge.StatChanges);
         Assert.Equal("trust", delta.Key);
         Assert.Equal(2, delta.Amount);

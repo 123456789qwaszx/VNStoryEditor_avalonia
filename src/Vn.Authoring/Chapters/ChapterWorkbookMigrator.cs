@@ -57,6 +57,7 @@ public static class ChapterWorkbookMigrator
 
             MigrateEpisodes(workbook);
             MigrateEdges(workbook);
+            MigrateEdgeLabelsToChoiceSheet(workbook); // v6 — 선택지 문구 → 선택지 시트
             MigrateConditions(workbook);
             MigrateStats(workbook);
             RemoveEmptyFixtures(workbook);
@@ -79,10 +80,96 @@ public static class ChapterWorkbookMigrator
 
         return Header(workbook, ChapterSheetNames.Episodes, 3) == "인덱스" ||
                Header(workbook, ChapterSheetNames.Edges, 3) == "선택지 라벨" ||
+               Header(workbook, ChapterSheetNames.Edges, 4) == "선택지" || // v5 — 문구가 아직 간선에 있다
+               (Find(workbook, ChapterSheetNames.Edges) is not null &&
+                Find(workbook, ChapterSheetNames.Choices) is null) ||
                Header(workbook, ChapterSheetNames.Conditions, 2) == "조건식" ||
                (Find(workbook, ChapterSheetNames.Stats) is not null &&
                 Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
                (fixtures is not null && fixtures.RowsUsed().Count() <= 1);
+    }
+
+    /// <summary>
+    /// v6 (2026-08-16 소유자) — 선택지의 정본이 간선의 문구 칸에서 `선택지` 시트로 옮겨 간다.
+    /// 간선 D열의 문구를 선택지 칸(출발·도착·인덱스·대본)으로 옮기고, D열은 `선택지수`가 된다.
+    /// 문구 없던 간선도 칸 하나(빈 대본 = 보이지 않는 기본)를 받는다.
+    /// </summary>
+    private static void MigrateEdgeLabelsToChoiceSheet(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Edges) is not { } edges)
+        {
+            return;
+        }
+
+        bool labelColumn = Header(workbook, ChapterSheetNames.Edges, 4) == "선택지";
+        IXLWorksheet? choices = Find(workbook, ChapterSheetNames.Choices);
+
+        if (!labelColumn && choices is not null)
+        {
+            return; // 이미 v6다.
+        }
+
+        if (choices is null)
+        {
+            choices = workbook.AddWorksheet(ChapterSheetNames.Choices);
+            string[] headers = ["출발", "도착", "인덱스", "대본", "메모"];
+
+            for (int column = 1; column <= headers.Length; column++)
+            {
+                IXLCell cell = choices.Cell(1, column);
+                cell.SetValue(headers[column - 1]);
+                cell.Style.Font.SetBold(true);
+                cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
+            }
+        }
+
+        var nextIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+        int slotRow = (choices.LastRowUsed()?.RowNumber() ?? 1) + 1;
+
+        foreach (IXLRow row in edges.RowsUsed().Skip(1))
+        {
+            string from = row.Cell(1).GetString().Trim();
+            string to = row.Cell(2).GetString().Trim();
+
+            if (from.Length == 0 || to.Length == 0)
+            {
+                continue;
+            }
+
+            string text = labelColumn ? row.Cell(4).GetString().Trim() : string.Empty;
+
+            // 이미 칸이 있는 간선(재이행)은 건너뛴다 — 사람이 적은 대본을 두 번 만들지 않는다.
+            bool hasSlot = choices.RowsUsed().Skip(1).Any(slot =>
+                string.Equals(slot.Cell(1).GetString().Trim(), from, StringComparison.Ordinal) &&
+                string.Equals(slot.Cell(2).GetString().Trim(), to, StringComparison.Ordinal));
+
+            if (!hasSlot)
+            {
+                int index = (nextIndex.TryGetValue(from, out int last) ? last : 0) + 10;
+                nextIndex[from] = index;
+
+                choices.Cell(slotRow, 1).SetValue(from);
+                choices.Cell(slotRow, 2).SetValue(to);
+                choices.Cell(slotRow, 3).SetValue(index);
+
+                if (text.Length > 0)
+                {
+                    choices.Cell(slotRow, 4).SetValue(text);
+                }
+
+                slotRow++;
+            }
+
+            if (labelColumn)
+            {
+                row.Cell(4).SetValue(1); // 문구 → 선택지수
+            }
+        }
+
+        if (labelColumn)
+        {
+            edges.Cell(1, 4).SetValue("선택지수");
+        }
     }
 
     private static void MigrateEpisodes(XLWorkbook workbook)
@@ -212,18 +299,19 @@ public static class ChapterWorkbookMigrator
         IXLWorksheet? edges = Find(workbook, ChapterSheetNames.Edges);
         IXLWorksheet? conditions = Find(workbook, ChapterSheetNames.Conditions);
         IXLWorksheet? stats = Find(workbook, ChapterSheetNames.Stats);
+        IXLWorksheet? choices = Find(workbook, ChapterSheetNames.Choices);
 
         if (episodes is null || edges is null || conditions is null || stats is null)
         {
             return; // 시트가 빠진 깨진 워크북 — 드롭다운보다 리더 진단이 먼저다.
         }
 
-        foreach (IXLWorksheet sheet in new[] { episodes, edges, conditions, stats })
+        foreach (IXLWorksheet? sheet in new[] { episodes, edges, conditions, stats, choices })
         {
-            sheet.DataValidations.Delete(_ => true);
+            sheet?.DataValidations.Delete(_ => true);
         }
 
-        ChapterWorkbookWriter.ApplyChapterDropdowns(episodes, edges, conditions, stats);
+        ChapterWorkbookWriter.ApplyChapterDropdowns(episodes, edges, conditions, stats, choices);
     }
 
     private static IXLWorksheet? Find(XLWorkbook workbook, string name) =>

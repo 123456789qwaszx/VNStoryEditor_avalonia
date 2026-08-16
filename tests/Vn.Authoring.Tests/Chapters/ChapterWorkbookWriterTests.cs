@@ -176,29 +176,28 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     [Fact]
     public void 간선_추가와_삭제가_왕복한다()
     {
+        // 2026-08-16 — 간선 신원 = (출발, 도착). 추가하면 선택지 칸(빈 대본 = 보이지 않는
+        // 기본)이 함께 서고, 삭제하면 칸도 함께 걷힌다.
         string path = Copy();
 
-        Assert.True(ChapterWorkbookWriter.AddEdge(
-            path, "main05.01", "main05.03", optionLabel: "지름길").Written);
+        Assert.True(ChapterWorkbookWriter.AddEdge(path, "main05.01", "main05.03").Written);
 
         ChapterGraphModel afterAdd = ChapterWorkbookReader.Read(path);
         ChapterEdge added = afterAdd.Edges.Single(edge =>
             edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03");
-        Assert.Equal("지름길", added.OptionLabel);
+        Assert.True(added.IsPlainAdvance); // 대본 text를 아직 안 적었다 — 보이지 않는 기본
+        Assert.Single(afterAdd.ChoiceOptionsFor("main05.01"),
+            slot => slot.ToEpisodeId == "main05.03");
 
-        // 신원 = (출발, 도착, 라벨) (2026-08-15) — 같은 도착이라도 라벨이 다르면 다른 길이다.
-        Assert.True(ChapterWorkbookWriter.AddEdge(path, "main05.01", "main05.03").Written);  // 무라벨 진행
-        Assert.False(ChapterWorkbookWriter.AddEdge(
-            path, "main05.01", "main05.03", optionLabel: "지름길").Written); // 정확 중복만 거부
+        Assert.False(ChapterWorkbookWriter.AddEdge(path, "main05.01", "main05.03").Written); // 중복 거부
 
-        // 라벨로 짚어 삭제 — 무라벨 진행은 남는다.
-        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "main05.01", "main05.03", "지름길").Written);
+        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "main05.01", "main05.03").Written);
 
-        List<ChapterEdge> remaining = ChapterWorkbookReader.Read(path).Edges
-            .Where(edge => edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03")
-            .ToList();
-        ChapterEdge plain = Assert.Single(remaining);
-        Assert.True(plain.IsPlainAdvance);
+        ChapterGraphModel after = ChapterWorkbookReader.Read(path);
+        Assert.DoesNotContain(after.Edges, edge =>
+            edge.FromEpisodeId == "main05.01" && edge.ToEpisodeId == "main05.03");
+        Assert.DoesNotContain(after.ChoiceOptions, slot =>
+            slot.EpisodeId == "main05.01" && slot.ToEpisodeId == "main05.03");
     }
 
     [Fact]
@@ -232,12 +231,17 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.Equal((1100d, 0d), (reread.FindEpisode("ep_a")!.X, reread.FindEpisode("ep_a")!.Y));
         Assert.Equal((1100d, 110d), (reread.FindEpisode("ep_b")!.X, reread.FindEpisode("ep_b")!.Y));
 
-        // 간선이 함께 이어졌고 라벨이 실렸다.
+        // 간선이 함께 이어졌고 선택지 칸이 섰다 — 문구를 준 쪽은 보이는 선택지,
+        // 안 준 쪽은 빈 대본(보이지 않는 기본)이다.
         Assert.Contains(reread.Edges, edge =>
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_b" &&
             edge.OptionLabel == "B를 고른다");
         Assert.Contains(reread.Edges, edge =>
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_a" && edge.IsPlainAdvance);
+        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot =>
+            slot.ToEpisodeId == "ep_b" && slot.Text == "B를 고른다");
+        Assert.Contains(reread.ChoiceOptionsFor("main05.end"), slot =>
+            slot.ToEpisodeId == "ep_a" && slot.IsInvisibleDefault);
     }
 
     [Fact]
@@ -261,27 +265,23 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     {
         string path = Copy();
 
-        // 수정 대상은 라벨까지 맞는 행이다 (2026-08-15 — 견본의 이 간선은 '혼자 문을 연다').
+        // 신원은 (출발, 도착)이다 (2026-08-16). 문구는 선택지 시트가 갖고 여기서는 못 고친다.
         Assert.True(ChapterWorkbookWriter.UpdateEdge(
             path, "main05.02", "main05.03",
-            optionLabel: "몰래 문을 연다",
             conditionLabel: "분노누적",
             hideWhenLocked: true,
-            lockedMessage: "아직은 화가 부족하다",
-            matchOptionLabel: "혼자 문을 연다").Written);
+            lockedMessage: "아직은 화가 부족하다").Written);
 
         ChapterEdge edge = ChapterWorkbookReader.Read(path).Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "main05.03");
 
-        Assert.Equal("몰래 문을 연다", edge.OptionLabel);
         Assert.Equal("분노누적", edge.ConditionLabel);
         Assert.True(edge.HideWhenLocked);
         Assert.Equal("아직은 화가 부족하다", edge.LockedMessage);
 
-        // 빈 문자열 = 지우기. 조건을 떼면 일반 통행이 된다. (라벨이 바뀌었으니 새 라벨로 짚는다.)
+        // 빈 문자열 = 지우기. 조건을 떼면 일반 통행이 된다.
         Assert.True(ChapterWorkbookWriter.UpdateEdge(
-            path, "main05.02", "main05.03", conditionLabel: "",
-            matchOptionLabel: "몰래 문을 연다").Written);
+            path, "main05.02", "main05.03", conditionLabel: "").Written);
         Assert.Null(ChapterWorkbookReader.Read(path).Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "main05.03").ConditionLabel);
     }

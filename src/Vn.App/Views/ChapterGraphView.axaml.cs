@@ -132,14 +132,29 @@ public partial class ChapterGraphView : UserControl
         };
 
         // 편집 (G-2 v2) — 전부 엑셀 셀에 써지고, 저장 감시가 다시 읽어 화면이 따라온다.
-        RenameButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
-        AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "기존 에피소드 연결", AddEdgeFromPanel);
+        // 2026-08-16 소유자 — [개명]·[적용] 단추 폐지: Id는 Enter로 개명하고, 조건 콤보는
+        // 고르는 순간 저장된다. 기본은 읽기 전용(엑셀에서만 편집)이라 체크를 풀어야 열린다.
+        IdBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter)
+            {
+                e.Handled = true;
+                UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
+            }
+        };
+        VisibleCombo.SelectionChanged += (_, _) => AutoSaveGates();
+        UnlockCombo.SelectionChanged += (_, _) => AutoSaveGates();
+        AddNextEdgeButton.Click += (_, _) => UiGuard.Run(_session, "연결 폼 열기", OpenEdgeFormForAdd);
+        AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
-        SaveConditionButton.Click += (_, _) => UiGuard.Run(_session, "조건 저장", SaveConditionFromPanel);
-        ApplyEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 저장", ApplyEpisodeFromPanel);
         EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
+        ExcelOnlyCheck.IsCheckedChanged += (_, _) => UiGuard.Run(_session, "편집 모드 전환", () =>
+        {
+            ApplyEditability();
+            RefreshPropertyPanel(preserveTyping: true);
+        });
         CopyDiagnosticsButton.Click += async (_, _) =>
             await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
 
@@ -263,6 +278,23 @@ public partial class ChapterGraphView : UserControl
         // 목록이 안 바뀐 워크북에는 손대지 않으므로 매 동기화마다 불러도 안전하다.
         PushSpeakersToEpisodes(folder, entry);
 
+        // 선택지수만큼 칸이 서도록 따라잡는다 ("공간이 생기도록", 2026-08-16 소유자).
+        // 모자란 칸이 없으면 파일에 손대지 않는다.
+        if (entry.Model is { } chapterModel && entry.Path is { } chapterPath)
+        {
+            (bool slotsAdded, ChapterWriteResult slotResult) =
+                ChapterWorkbookWriter.TopUpChoiceSlots(chapterPath, chapterModel);
+
+            if (slotsAdded)
+            {
+                _session.SetStatus("선택지 시트에 모자란 칸을 만들었습니다 — 대본 text를 적으면 보이는 선택지가 됩니다.");
+            }
+            else if (slotResult.Failure is { } slotFailure)
+            {
+                _session.SetStatus(slotFailure);
+            }
+        }
+
         foreach (ChapterEpisode episode in entry.Model.Episodes)
         {
             if (EpisodeLibrary.FindExisting(folder, episode.EpisodeId) is not { } path)
@@ -372,6 +404,42 @@ public partial class ChapterGraphView : UserControl
         {
             _session?.SetStatus($"화자 드롭다운을 에피소드 워크북 {changed}개에 반영했습니다.");
         }
+    }
+
+    /// <summary>
+    /// 왼쪽 목록의 챕터 클릭 → 챕터 엑셀 열기 (2026-08-16 소유자 — 기본 동작이 "엑셀에서
+    /// 만진다"이므로 클릭이 곧 편집 창구를 연다). 스프레드시트 앱이 없으면 폴더에서 보여 준다.
+    /// </summary>
+    internal void OpenChapterWorkbook(string chapterId)
+    {
+        string? folder = ChapterLibrary.FolderFor(_session?.ProjectPath);
+
+        if (folder is null)
+        {
+            return;
+        }
+
+        string target = IoPath.Combine(folder, chapterId + ".xlsx");
+
+        // .xlsm으로 개명된 챕터(구글 시트)도 그 파일이 원본이다.
+        if (!File.Exists(target) && File.Exists(IoPath.Combine(folder, chapterId + ".xlsm")))
+        {
+            target = IoPath.Combine(folder, chapterId + ".xlsm");
+        }
+
+        if (!File.Exists(target))
+        {
+            return; // 목록에 있는데 파일이 없다 — 읽기 실패 챕터. 검증 보고가 사유를 든다.
+        }
+
+        if (!SpreadsheetAssociation.IsSpreadsheetHandler(WorkbookHandlerProbe()))
+        {
+            RevealInFolder(target);
+            _session?.SetStatus(".xlsx에 연결된 스프레드시트 앱이 없어 폴더에서 파일을 보여 줍니다.");
+            return;
+        }
+
+        OpenWorkbookFile(target);
     }
 
     /// <summary>
@@ -624,12 +692,15 @@ public partial class ChapterGraphView : UserControl
         RefreshFixtureCombo(model);
         (IReadOnlySet<string> path, IReadOnlySet<(string, string)> pathEdges) = WalkSelectedFixture(model);
 
-        // 에피소드별 선택지(대본 OPTION) — 포트 그리기와 간선 그리기가 같은 목록 하나를 본다.
+        // 에피소드별 보이는 선택지 칸 (2026-08-16 — 원천이 대본 OPTION에서 챕터 `선택지`
+        // 시트로 왔다). 포트 그리기와 간선 그리기가 같은 목록 하나를 본다.
         _optionsByEpisode.Clear();
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
-            _optionsByEpisode[episode.EpisodeId] = ReadEpisodeOptions(episode.EpisodeId);
+            _optionsByEpisode[episode.EpisodeId] = model.ChoiceOptionsFor(episode.EpisodeId)
+                .Where(slot => !slot.IsInvisibleDefault)
+                .ToList();
         }
 
         // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
@@ -711,8 +782,8 @@ public partial class ChapterGraphView : UserControl
     /// <summary>포트 줄 높이 — 카드가 선택지 수만큼 아래로 자란다.</summary>
     private const double PortRowHeight = 18;
 
-    /// <summary>에피소드 → 대본 OPTION 목록. Draw가 채우고 카드·간선이 함께 본다.</summary>
-    private readonly Dictionary<string, List<string>> _optionsByEpisode = new(StringComparer.Ordinal);
+    /// <summary>에피소드 → 보이는 선택지 칸 목록(챕터 `선택지` 시트). Draw가 채우고 카드·간선이 함께 본다.</summary>
+    private readonly Dictionary<string, List<ChapterChoiceOption>> _optionsByEpisode = new(StringComparer.Ordinal);
 
     /// <summary>선택지 포트의 세로 자리 — 카드 그리기와 간선 그리기가 같은 산식을 쓴다.</summary>
     private static double PortY(double cardY, int index) =>
@@ -732,11 +803,11 @@ public partial class ChapterGraphView : UserControl
                 .Where(edge => string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
                 .ToList();
 
-            List<string> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
+            List<ChapterChoiceOption> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
 
             if (options.Count == 0 || !_placed.TryGetValue(episode.EpisodeId, out (double X, double Y) position))
             {
-                // 선택지 없음 — 진행(그리고 유령 라벨 간선)은 중앙 직행선 그대로.
+                // 보이는 선택지 없음 — 진행(보이지 않는 기본)은 중앙 직행선 그대로.
                 foreach (ChapterEdge edge in edges)
                 {
                     DrawDirectEdge(edge, pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
@@ -747,9 +818,9 @@ public partial class ChapterGraphView : UserControl
 
             for (int index = 0; index < options.Count; index++)
             {
+                // 칸의 주인 간선 — 도착이 신원이다. 주인 없는 칸은 검증 보고가 잡는다.
                 ChapterEdge? match = edges.FirstOrDefault(edge =>
-                    !edge.IsPlainAdvance &&
-                    string.Equals(edge.OptionLabel, options[index], StringComparison.Ordinal));
+                    string.Equals(edge.ToEpisodeId, options[index].ToEpisodeId, StringComparison.Ordinal));
 
                 if (match is not null)
                 {
@@ -759,10 +830,10 @@ public partial class ChapterGraphView : UserControl
                 }
             }
 
-            // 유령 간선·잔존 진행(검증이 경고하는 것들)은 직행선으로 — 실재는 숨기지 않는다.
+            // 보이는 칸이 하나도 없는 간선(보이지 않는 기본 포함)은 직행선 — 실재는 숨기지 않는다.
             foreach (ChapterEdge stray in edges.Where(edge =>
-                         edge.IsPlainAdvance ||
-                         !options.Contains(edge.OptionLabel ?? string.Empty)))
+                         !options.Any(slot =>
+                             string.Equals(slot.ToEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal))))
             {
                 DrawDirectEdge(stray, pathEdges.Contains((stray.FromEpisodeId, stray.ToEpisodeId)));
             }
@@ -873,31 +944,6 @@ public partial class ChapterGraphView : UserControl
         (string, string, string) key = (edge.FromEpisodeId, edge.ToEpisodeId, EdgeLabelKey(edge));
         _lineByEdge[key] = segments;
         _lineBase[key] = (stroke, thickness);
-    }
-
-    /// <summary>라벨 콤보와 같은 원천 — 그 에피소드 대본의 OPTION 문구들.</summary>
-    private List<string> ReadEpisodeOptions(string episodeId)
-    {
-        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
-
-        if (folder is null || EpisodeLibrary.FindExisting(folder, episodeId) is not { } path)
-        {
-            return [];
-        }
-
-        try
-        {
-            return EpisodeWorkbookReader.Read(path).Rows
-                .Where(row => row.Kind == EpisodeRowKind.Option)
-                .Select(row => row.Text)
-                .Where(text => text.Length > 0)
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-        }
-        catch (XlsxReadException)
-        {
-            return [];
-        }
     }
 
     private void DrawDirectEdge(ChapterEdge edge, bool onPath)
@@ -1072,7 +1118,7 @@ public partial class ChapterGraphView : UserControl
         // 선택지 포트 (2026-08-15 소유자) — 시나리오 그래프의 조건 갈래 포트처럼 카드
         // 오른변에 뚫린다. 카드는 선택지 수만큼 아래로 자라고(많아야 3개), 문구·원은
         // 간선 그리기와 같은 PortY 산식으로 캔버스에 앉는다 — 줄과 선이 어긋날 수 없다.
-        List<string> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
+        List<ChapterChoiceOption> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
 
         var card = new Border
         {
@@ -1137,17 +1183,17 @@ public partial class ChapterGraphView : UserControl
     /// (= 이 길은 종료. 클릭 = 에피소드 선택 + [연결] 라벨 미리 골라 줌).
     /// </summary>
     private void DrawOptionPorts(
-        ChapterGraphModel model, ChapterEpisode episode, IReadOnlyList<string> options, double x, double y)
+        ChapterGraphModel model, ChapterEpisode episode, IReadOnlyList<ChapterChoiceOption> options, double x, double y)
     {
         for (int index = 0; index < options.Count; index++)
         {
-            string option = options[index];
+            string option = options[index].Text;
             double portY = PortY(y, index);
 
+            // 칸의 주인 간선 — 도착이 신원이다 (2026-08-16). 주인이 없으면 빈 원(검증이 잡는다).
             ChapterEdge? wired = model.Edges.FirstOrDefault(edge =>
                 string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
-                !edge.IsPlainAdvance &&
-                string.Equals(edge.OptionLabel, option, StringComparison.Ordinal));
+                string.Equals(edge.ToEpisodeId, options[index].ToEpisodeId, StringComparison.Ordinal));
 
             var label = new TextBlock
             {
@@ -1177,13 +1223,12 @@ public partial class ChapterGraphView : UserControl
             Canvas.SetTop(port, portY - 4.5);
 
             string tip = wired is null
-                ? "간선 없는 선택지 — 이 길을 고르면 챕터 진행이 여기서 끝납니다. 누르면 [연결]에 이 라벨을 미리 골라 둡니다."
+                ? "주인 간선이 없는 선택지 칸입니다 — 검증 보고를 확인하세요."
                 : "클릭하면 이 간선의 조건·해금·스탯변화를 편집합니다.";
             ToolTip.SetTip(label, tip);
             ToolTip.SetTip(port, tip);
 
             string episodeId = episode.EpisodeId;
-            string capturedOption = option;
             ChapterEdge? capturedEdge = wired;
 
             void OnPressed(object? _, Avalonia.Input.PointerPressedEventArgs e)
@@ -1198,7 +1243,6 @@ public partial class ChapterGraphView : UserControl
                     else
                     {
                         SelectEpisode(episodeId);
-                        EdgeLabelBox.SelectedItem = capturedOption; // [연결] 준비 완료 — 도착만 고르면 된다
                     }
                 });
             }
@@ -1274,11 +1318,14 @@ public partial class ChapterGraphView : UserControl
     private readonly Dictionary<(string, string, string), (IBrush? Stroke, double Thickness)> _lineBase = new();
 
 
+    // 2026-08-16 소유자 — 선택이 탭을 끌고 다니지 않는다. 대사 탭을 보며 노드를 갈아타는
+    // 흐름이 실사용의 대부분이라, 편집 탭 강제 전환("클릭이 안 먹힌다" 방지책)을 폐지했다.
+    // 편집이 필요하면 사람이 편집 탭을 누른다.
     internal void SelectEpisode(string? episodeId)
     {
         _selectedEpisodeId = episodeId;
         _selectedEdgeKey = null;
-        ShowEditTabForSelection(episodeId is not null);
+        HideEdgeForm(); // 다른 노드로 넘어가면 열려 있던 연결 폼은 닫는다
         ApplySelectionVisuals();
         RefreshPropertyPanel();
     }
@@ -1287,22 +1334,9 @@ public partial class ChapterGraphView : UserControl
     {
         _selectedEdgeKey = (fromEpisodeId, toEpisodeId, optionLabel.Trim());
         _selectedEpisodeId = null;
-        ShowEditTabForSelection(true);
+        HideEdgeForm();
         ApplySelectionVisuals();
         RefreshPropertyPanel();
-    }
-
-    /// <summary>
-    /// 무언가를 고르면 편집 탭으로 옮긴다 — 판에서 노드를 눌렀는데 오른쪽이 그대로면
-    /// "클릭이 안 먹힌다"가 된다. 선택을 푸는 쪽(빈 판 클릭)은 탭을 건드리지 않는다:
-    /// 조건을 보다가 판을 정리하려고 빈 곳을 누른 사람을 조건 탭 밖으로 끌어내지 않는다.
-    /// </summary>
-    private void ShowEditTabForSelection(bool selected)
-    {
-        if (selected)
-        {
-            RightTabs.SelectedItem = EditTab;
-        }
     }
 
     /// <summary>모든 카드·간선을 기본 모습으로 되돌리고 선택된 것만 파랗게 강조한다.</summary>
@@ -1368,6 +1402,7 @@ public partial class ChapterGraphView : UserControl
         PropertyPanel.IsVisible = episode is not null;
         EdgePanel.IsVisible = edge is not null;
         NoSelectionText.IsVisible = episode is null && edge is null;
+        ApplyEditability();
 
         (string? Episode, (string From, string To, string Label)? Edge) selection =
             (episode?.EpisodeId,
@@ -1390,39 +1425,90 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        if (fill)
-        {
-            IdBox.Text = episode.EpisodeId;
+        // 콤보를 프로그램이 채우는 동안 자동 저장이 울리면 안 된다 — 고르지도 않은 값이
+        // 셀로 나간다. 사람 손이 만든 SelectionChanged만 저장을 부른다.
+        _fillingPanel = true;
 
-            // 값 편집 칸 (2026-08-15 복원) — 선택이 바뀔 때만 채운다(_panelFilledFor 규칙 그대로).
-            TitleBox.Text = episode.Title;
-            EndingKeyBox.Text = episode.EndingKey ?? string.Empty;
-            MemoBox.Text = episode.Memo ?? string.Empty;
+        try
+        {
+            if (fill)
+            {
+                IdBox.Text = episode.EpisodeId;
+            }
+
+            var gateLabels = new List<string> { "(없음)" };
+            gateLabels.AddRange(model.Conditions.Select(condition => condition.Label));
+            SetItems(VisibleCombo, gateLabels,
+                fill ? episode.VisibleConditionLabel ?? "(없음)" : VisibleCombo.SelectedItem as string);
+            SetItems(UnlockCombo, gateLabels,
+                fill ? episode.UnlockConditionLabel ?? "(없음)" : UnlockCombo.SelectedItem as string);
+
+            // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
+            // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
+            EpisodeFactsText.Text = EpisodeFacts(episode);
+
+            SetItems(EdgeTargetCombo,
+                model.Episodes
+                    .Where(candidate => candidate.EpisodeId != episode.EpisodeId)
+                    .Select(candidate => candidate.EpisodeId)
+                    .ToList(),
+                EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
+
+            // 선택지수 후보 (2026-08-16 — 문구는 선택지 시트의 대본 칸이 갖는다).
+            SetItems(EdgeLabelBox, ["1", "2", "3"],
+                EdgeLabelBox.SelectedItem as string ?? "1");
+
+            RefreshEdgeList(model, episode);
+        }
+        finally
+        {
+            _fillingPanel = false;
+        }
+    }
+
+    // ── 편집 모드 (2026-08-16 소유자) ───────────────────────────────────────
+    // 기본 = 엑셀에서만 편집(툴 읽기 전용). 우측 위 체크를 풀어야 툴 편집이 열린다.
+
+    /// <summary>콤보·목록을 프로그램이 채우는 중 — 자동 저장 억제.</summary>
+    private bool _fillingPanel;
+
+    private bool ToolEditable => ExcelOnlyCheck.IsChecked != true;
+
+    private void ApplyEditability()
+    {
+        bool editable = ToolEditable;
+
+        IdBox.IsEnabled = editable;
+        VisibleCombo.IsEnabled = editable;
+        UnlockCombo.IsEnabled = editable;
+        AddNextEdgeButton.IsVisible = editable;
+        DeleteEpisodeButton.IsVisible = editable;
+        AddEpisodeButton.IsEnabled = editable;
+
+        // 간선 패널(그래프에서 간선 클릭)도 같은 스위치를 탄다.
+        EdgeLabelEditBox.IsEnabled = editable;
+        EdgeConditionCombo.IsEnabled = editable;
+        EdgeHideCheck.IsEnabled = editable;
+        EdgeLockedMsgBox.IsEnabled = editable;
+        EdgeStatsBox.IsEnabled = editable;
+        EdgeApplyButton.IsVisible = editable;
+        EdgeDeleteButton.IsVisible = editable;
+
+        if (!editable)
+        {
+            HideEdgeForm();
+        }
+    }
+
+    /// <summary>표시·해금 콤보의 자동 저장 — 고르는 순간 그 셀 하나가 써진다.</summary>
+    private void AutoSaveGates()
+    {
+        if (_fillingPanel || !ToolEditable)
+        {
+            return;
         }
 
-        var gateLabels = new List<string> { "(없음)" };
-        gateLabels.AddRange(model.Conditions.Select(condition => condition.Label));
-        SetItems(VisibleCombo, gateLabels,
-            fill ? episode.VisibleConditionLabel ?? "(없음)" : VisibleCombo.SelectedItem as string);
-        SetItems(UnlockCombo, gateLabels,
-            fill ? episode.UnlockConditionLabel ?? "(없음)" : UnlockCombo.SelectedItem as string);
-
-        // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
-        // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
-        EpisodeFactsText.Text = EpisodeFacts(episode);
-
-        SetItems(EdgeTargetCombo,
-            model.Episodes
-                .Where(candidate => candidate.EpisodeId != episode.EpisodeId)
-                .Select(candidate => candidate.EpisodeId)
-                .ToList(),
-            EdgeTargetCombo.SelectedItem as string); // 도착 고르기는 언제나 사람 소유
-
-        // 라벨 후보 = 이 에피소드 대본의 OPTION들 (자유 입력 폐지 — 오타는 유령 간선).
-        SetItems(EdgeLabelBox, EdgeLabelChoices(episode.EpisodeId),
-            EdgeLabelBox.SelectedItem as string);
-
-        RefreshEdgeList(model, episode);
+        UiGuard.Run(_session, "조건 저장", ApplyEpisodeFromPanel);
     }
 
     /// <summary>
@@ -1525,20 +1611,115 @@ public partial class ChapterGraphView : UserControl
         combo.SelectedItem = selected is not null && items.Contains(selected) ? selected : null;
     }
 
+    // ── 다음 에피소드 목록 + 연결·수정 폼 (2026-08-16 소유자) ────────────────
+    // 폼은 상시 표시가 아니다: [＋]를 눌러야 목록 끝에 열리고(연결), 목록의 줄을 클릭하면
+    // 그 줄 바로 아래에 열려 선택지를 고친다(수정). 간선 선택으로 건너뛰던 옛 동작은 폐지.
+
+    /// <summary>수정 모드의 대상 (도착, 라벨 키). null이면 연결(추가) 모드.</summary>
+    private (string To, string Label)? _edgeFormEdit;
+
+    /// <summary>목록 안에서 폼이 설 자리. -1 = 닫힘, int.MaxValue = 목록 끝.</summary>
+    private int _edgeFormIndex = -1;
+
+    private void HideEdgeForm()
+    {
+        _edgeFormIndex = -1;
+        _edgeFormEdit = null;
+        EdgeFormPanel.IsVisible = false;
+    }
+
+    /// <summary>폼의 선택지수 칸에서 고른 값 (1~3). 못 읽으면 1.</summary>
+    private int PickedChoiceCount() =>
+        int.TryParse(EdgeLabelBox.SelectedItem as string, out int count) && count >= 1 ? count : 1;
+
+    /// <summary>[＋] — 빈 폼을 목록 끝에 연다. 도착·선택지수를 고르고 [연결]한다.</summary>
+    private void OpenEdgeFormForAdd()
+    {
+        _edgeFormEdit = null;
+        _edgeFormIndex = int.MaxValue;
+        EdgeTargetCombo.SelectedItem = null;
+        EdgeLabelBox.SelectedItem = "1";
+        RefreshPropertyPanel(preserveTyping: true);
+    }
+
+    /// <summary>줄 클릭 — 그 간선의 도착·선택지수가 폼에 실려 그 줄 바로 아래에 열린다.</summary>
+    internal void LoadEdgeIntoForm(ChapterEdge edge, int rowIndex)
+    {
+        _edgeFormEdit = (edge.ToEpisodeId, EdgeLabelKey(edge));
+        _edgeFormIndex = rowIndex + 1;
+        RefreshPropertyPanel(preserveTyping: true);
+
+        _fillingPanel = true;
+
+        try
+        {
+            EdgeTargetCombo.SelectedItem = edge.ToEpisodeId;
+            EdgeLabelBox.SelectedItem = edge.ChoiceCount.ToString();
+        }
+        finally
+        {
+            _fillingPanel = false;
+        }
+    }
+
+    /// <summary>
+    /// 폼의 단추 — 추가 모드면 [연결], 수정 모드면 [수정](선택지수 조정 — 늘리면 선택지
+    /// 시트에 칸이 함께 선다. 문구는 그 칸의 대본 text이고 엑셀에서 자유 수정이다).
+    /// </summary>
+    internal void SubmitEdgeForm()
+    {
+        if (_edgeFormEdit is not { } target)
+        {
+            AddEdgeFromPanel();
+
+            if (_edgeFormIndex >= 0)
+            {
+                HideEdgeForm();
+                RefreshPropertyPanel(preserveTyping: true);
+            }
+
+            return;
+        }
+
+        if (_selectedEpisodeId is not { } from || SelectedChapterPath is not { } path)
+        {
+            _session?.SetStatus("에피소드를 다시 골라 주세요. 선택이 풀렸습니다.");
+            return;
+        }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
+            path, from, target.To,
+            choiceCount: PickedChoiceCount());
+
+        if (result.Written)
+        {
+            HideEdgeForm();
+        }
+
+        Report(result,
+            $"간선 {from}→{target.To}의 선택지수를 저장했습니다 — 문구는 선택지 시트의 대본 칸에서 적습니다.");
+    }
+
     private void RefreshEdgeList(ChapterGraphModel model, ChapterEpisode episode)
     {
+        // 폼(EdgeFormPanel)은 axaml이 만든 단일 인스턴스다 — Clear는 트리에서 떼어낼 뿐이라
+        // 아래에서 원하는 자리에 다시 꽂는다.
         EdgeListPanel.Children.Clear();
+
+        bool editable = ToolEditable;
+        int rowIndex = 0;
 
         foreach (ChapterEdge edge in model.Edges.Where(candidate =>
                      string.Equals(candidate.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal)))
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
 
-            string label = edge.IsPlainAdvance ? "(일반 진행)" : edge.OptionLabel!;
+            string label = edge.IsPlainAdvance ? "(기본 — 보이지 않음)" : edge.OptionLabel!;
+            string count = edge.ChoiceCount > 1 ? $" ×{edge.ChoiceCount}" : string.Empty;
             string condition = edge.ConditionLabel is null ? string.Empty : $"  [{edge.ConditionLabel}]";
             var text = new TextBlock
             {
-                Text = $"→ {edge.ToEpisodeId}  {label}{condition}",
+                Text = $"→ {edge.ToEpisodeId}  {label}{count}{condition}",
                 FontSize = 11,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1546,23 +1727,53 @@ public partial class ChapterGraphView : UserControl
                 Background = Brushes.Transparent,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
             };
-            ToolTip.SetTip(text, "클릭하면 이 간선의 조건·해금을 편집합니다.");
 
-            string from = edge.FromEpisodeId;
-            string to = edge.ToEpisodeId;
-            string labelKey = EdgeLabelKey(edge);
-            text.PointerPressed += (_, _) =>
-                UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(from, to, labelKey));
+            ChapterEdge captured = edge;
+            int capturedIndex = rowIndex;
+
+            if (editable)
+            {
+                ToolTip.SetTip(text, "클릭하면 바로 아래에 폼이 열려 선택지를 고칩니다. 조건·잠금은 그래프의 간선을 클릭.");
+                text.PointerPressed += (_, _) =>
+                    UiGuard.Run(_session, "간선 폼 열기", () => LoadEdgeIntoForm(captured, capturedIndex));
+            }
+            else
+            {
+                ToolTip.SetTip(text, "간선 편집은 챕터 엑셀의 간선 시트에서 — 툴 편집은 우측 위 체크를 풀면 열립니다.");
+            }
+
             row.Children.Add(text);
 
-            var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
-            Grid.SetColumn(remove, 1);
-            remove.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", () =>
-                Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, from, to, labelKey),
-                    $"간선 {from}→{to}을 지웠습니다."));
-            row.Children.Add(remove);
+            if (editable)
+            {
+                string from = edge.FromEpisodeId;
+                string to = edge.ToEpisodeId;
+                var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
+                Grid.SetColumn(remove, 1);
+                remove.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", () =>
+                    Report(ChapterWorkbookWriter.RemoveEdge(SelectedChapterPath!, from, to),
+                        $"간선 {from}→{to}을 지웠습니다(선택지 칸도 함께)."));
+                row.Children.Add(remove);
+            }
 
             EdgeListPanel.Children.Add(row);
+            rowIndex++;
+        }
+
+        // 폼을 제자리에 꽂는다 — 수정 모드면 클릭한 줄 바로 아래, 추가 모드면 목록 끝.
+        bool formOpen = editable && _edgeFormIndex >= 0;
+        EdgeFormPanel.IsVisible = formOpen;
+
+        if (formOpen)
+        {
+            AddEdgeButton.Content = _edgeFormEdit is null ? "연결" : "수정";
+            EdgeTargetCombo.IsEnabled = _edgeFormEdit is null; // 수정은 선택지만 — 도착은 신원이다
+            EdgeListPanel.Children.Insert(
+                Math.Min(_edgeFormIndex, EdgeListPanel.Children.Count), EdgeFormPanel);
+        }
+        else
+        {
+            EdgeListPanel.Children.Add(EdgeFormPanel); // 트리 밖에 두지 않는다 — 자리만 숨김
         }
     }
 
@@ -1590,14 +1801,9 @@ public partial class ChapterGraphView : UserControl
             EdgeStatsBox.Text = StatChangesText(edge);
         }
 
-        // 라벨은 출발 에피소드 대본의 OPTION에서 고른다. 현재 값(짝 잃은 라벨·잔존 진행
-        // 간선)은 목록에 세워 보이게 한다(ensure) — 검증 보고가 어긋남을 따로 잡는다.
-        string currentLabel = string.IsNullOrWhiteSpace(edge.OptionLabel)
-            ? PlainAdvanceLabel
-            : edge.OptionLabel!;
-        SetItems(EdgeLabelEditBox,
-            EdgeLabelChoices(edge.FromEpisodeId, ensure: currentLabel),
-            fill ? currentLabel : EdgeLabelEditBox.SelectedItem as string);
+        // 선택지수 (2026-08-16) — 문구는 선택지 시트의 대본 칸에서 자유 수정이다.
+        SetItems(EdgeLabelEditBox, ["1", "2", "3"],
+            fill ? edge.ChoiceCount.ToString() : EdgeLabelEditBox.SelectedItem as string);
 
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
@@ -1663,24 +1869,17 @@ public partial class ChapterGraphView : UserControl
             ? string.Empty
             : EdgeConditionCombo.SelectedItem as string;
 
-        string pickedLabel = EdgeLabelEditBox.SelectedItem as string == PlainAdvanceLabel
-            ? string.Empty
-            : (EdgeLabelEditBox.SelectedItem as string ?? string.Empty);
+        int pickedCount = int.TryParse(EdgeLabelEditBox.SelectedItem as string, out int parsed) && parsed >= 1
+            ? parsed
+            : edge.ChoiceCount;
 
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
             path, key.From, key.To,
-            optionLabel: Changed(pickedLabel, edge.OptionLabel ?? string.Empty),
             conditionLabel: Changed(condition, edge.ConditionLabel ?? string.Empty),
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
             lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
             statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)),
-            matchOptionLabel: key.Label);
-
-        if (result.Written)
-        {
-            // 라벨을 고쳤으면 선택의 신원도 따라간다 — 안 따라가면 다시 읽는 순간 선택이 풀린다.
-            _selectedEdgeKey = (key.From, key.To, pickedLabel);
-        }
+            choiceCount: pickedCount == edge.ChoiceCount ? null : pickedCount);
 
         Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
     }
@@ -1702,29 +1901,31 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        string? Changed(string? boxValue, string? current)
-        {
-            string value = boxValue?.Trim() ?? string.Empty;
-            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
-        }
-
+        // 제목·엔딩키·메모 칸은 폐지됐다 (2026-08-16 소유자) — 그 값들은 엑셀에서.
+        // 남은 것은 표시·해금 콤보 둘이고, 고르는 순간 여기로 와서 바뀐 셀만 쓴다.
         string? Gate(ComboBox combo, string? current)
         {
             string? picked = combo.SelectedItem as string == "(없음)"
                 ? string.Empty
                 : combo.SelectedItem as string;
-            return Changed(picked, current ?? string.Empty);
+            string value = picked?.Trim() ?? string.Empty;
+            return string.Equals(value, current ?? string.Empty, StringComparison.Ordinal) ? null : value;
+        }
+
+        string? visible = Gate(VisibleCombo, episode.VisibleConditionLabel);
+        string? unlock = Gate(UnlockCombo, episode.UnlockConditionLabel);
+
+        if (visible is null && unlock is null)
+        {
+            return; // 바뀐 것이 없다 — 파일을 건드리지 않는다.
         }
 
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
             path, episodeId,
-            title: Changed(TitleBox.Text, episode.Title),
-            visibleConditionLabel: Gate(VisibleCombo, episode.VisibleConditionLabel),
-            unlockConditionLabel: Gate(UnlockCombo, episode.UnlockConditionLabel),
-            endingKey: Changed(EndingKeyBox.Text, episode.EndingKey),
-            memo: Changed(MemoBox.Text, episode.Memo));
+            visibleConditionLabel: visible,
+            unlockConditionLabel: unlock);
 
-        Report(result, $"에피소드 {episodeId}를 저장했습니다.");
+        Report(result, $"에피소드 {episodeId}의 조건을 저장했습니다.");
     }
 
     internal void DeleteSelectedEdge()
@@ -1735,7 +1936,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         ChapterWriteResult result = ChapterWorkbookWriter.RemoveEdge(
-            deletePath, deleteKey.From, deleteKey.To, deleteKey.Label);
+            deletePath, deleteKey.From, deleteKey.To);
 
         if (result.Written)
         {
@@ -1798,27 +1999,26 @@ public partial class ChapterGraphView : UserControl
         RefreshChapterSheets(model);
         ConditionListPanel.Children.Clear();
 
+        // 읽기 전용 표다 (2026-08-16 소유자) — 편집은 챕터 엑셀의 `조건` 시트에서.
         foreach (ChapterCondition condition in model?.Conditions ?? Enumerable.Empty<ChapterCondition>())
         {
-            var line = new TextBlock
+            ConditionListPanel.Children.Add(new SelectableTextBlock
             {
                 Text = $"{condition.Label} = {condition.Expression}",
                 FontSize = 10,
                 Opacity = 0.75,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                // 배경 없는 TextBlock은 글자 획 위만 클릭된다 — 행 전체가 눌리게 깔아 둔다.
-                Background = Brushes.Transparent,
-                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
-            };
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
 
-            // 클릭하면 편집 칸으로 올라온다 — 라벨이 같으면 [조건 추가/수정]이 수정이 된다.
-            line.PointerPressed += (_, _) =>
+        if (ConditionListPanel.Children.Count == 0)
+        {
+            ConditionListPanel.Children.Add(new TextBlock
             {
-                ConditionLabelBox.Text = condition.Label;
-                ConditionExprBox.Text = condition.Expression;
-            };
-
-            ConditionListPanel.Children.Add(line);
+                Text = "조건이 없습니다 — 챕터 엑셀의 `조건` 시트에서 추가합니다.",
+                FontSize = 10,
+                Opacity = 0.5
+            });
         }
     }
 
@@ -1908,53 +2108,9 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        string? picked = EdgeLabelBox.SelectedItem as string;
-        string? label = picked is null or PlainAdvanceLabel ? null : picked;
-
-        Report(ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label),
-            $"간선 {from}→{to}을 더했습니다.");
-        EdgeLabelBox.SelectedItem = null;
-    }
-
-    /// <summary>무라벨 진행의 콤보 표기 — 선택지 없는 에피소드의 유일한 다음. 셀에는 빈칸으로 간다.</summary>
-    private const string PlainAdvanceLabel = "(선택지 없음)";
-
-    /// <summary>
-    /// 라벨 후보 (2026-08-15 소유자, 2차 개정) — <b>선택지가 있으면 그 OPTION들뿐이고,
-    /// 없으면 (선택지 없음)뿐이다.</b> 낙하 규칙은 없다: 선택지가 제시되면 둘 다 안 고를
-    /// 수 없으므로 진행 간선이 낄 자리가 없다. 안 이은 옵션은 진짜 종료다.
-    /// <paramref name="ensure"/>는 현재 값(짝 잃은 라벨·잔존 진행 간선)이 보이게 하는
-    /// 안전핀 — 어긋남 자체는 검증 보고가 잡는다.
-    /// </summary>
-    private List<string> EdgeLabelChoices(string episodeId, string? ensure = null)
-    {
-        var options = new List<string>();
-        string? folder = EpisodeLibrary.FolderFor(_session?.ProjectPath);
-
-        if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
-        {
-            try
-            {
-                options.AddRange(EpisodeWorkbookReader.Read(path).Rows
-                    .Where(row => row.Kind == EpisodeRowKind.Option)
-                    .Select(row => row.Text)
-                    .Where(text => text.Length > 0)
-                    .Distinct(StringComparer.Ordinal));
-            }
-            catch (XlsxReadException)
-            {
-                // 대본을 못 읽으면 선택지 없음으로 다룬다 — 검증 보고가 원인을 따로 세운다.
-            }
-        }
-
-        List<string> items = options.Count == 0 ? [PlainAdvanceLabel] : options;
-
-        if (!string.IsNullOrWhiteSpace(ensure) && !items.Contains(ensure))
-        {
-            items.Add(ensure);
-        }
-
-        return items;
+        Report(ChapterWorkbookWriter.AddEdge(path, from, to, choiceCount: PickedChoiceCount()),
+            $"간선 {from}→{to}을 더했습니다 — 선택지 문구는 선택지 시트의 대본 칸에서 적습니다.");
+        EdgeLabelBox.SelectedItem = "1";
     }
 
     internal void DeleteSelectedEpisode()
@@ -2026,26 +2182,6 @@ public partial class ChapterGraphView : UserControl
         }
 
         Report(result, $"'{episodeId}' 행을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요.");
-    }
-
-    internal void SaveConditionFromPanel()
-    {
-        string label = ConditionLabelBox.Text?.Trim() ?? string.Empty;
-        string expression = ConditionExprBox.Text?.Trim() ?? string.Empty;
-
-        if (label.Length == 0 || expression.Length == 0 || SelectedChapterPath is not { } path)
-        {
-            _session?.SetStatus("조건은 라벨과 식이 모두 있어야 합니다.");
-            return;
-        }
-
-        bool exists = SelectedModel?.FindCondition(label) is not null;
-
-        ChapterWriteResult result = exists
-            ? ChapterWorkbookWriter.UpdateCondition(path, label, expression)
-            : ChapterWorkbookWriter.AddCondition(path, label, expression);
-
-        Report(result, exists ? $"조건 '{label}'을 고쳤습니다." : $"조건 '{label}'을 더했습니다.");
     }
 
     /// <summary>쓰기 결과를 상태줄로. 성공이면 감시가 다시 읽어 화면이 따라온다.</summary>

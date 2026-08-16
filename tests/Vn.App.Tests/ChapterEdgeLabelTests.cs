@@ -9,18 +9,19 @@ using Vn.Authoring.Serialization;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// "간선의 이름이 수정이 안 돼" — 소유자 보고의 재현. 견본이 아니라 <b>사람이 툴에서 만든
-/// 새 챕터</b>에서, 에피소드를 잇고 그 간선에 이름을 붙이는 실제 순서 그대로 간다.
+/// 사람이 툴에서 만든 <b>새 챕터</b>에서 간선과 선택지 칸이 실제 순서 그대로 도는지 —
+/// 2026-08-16 개정: 문구의 정본은 챕터 `선택지` 시트의 대본 text이고(자유 수정),
+/// 툴의 간선 편집은 선택지수만 만진다.
 /// </summary>
 public sealed class ChapterEdgeLabelTests
 {
     [Fact]
-    public void 새_챕터에서_만든_간선에_이름을_붙일_수_있다() => HeadlessUi.Run(() =>
+    public void 선택지_칸에_대본_text를_적으면_보이는_선택지가_된다() => HeadlessUi.Run(() =>
     {
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
 
-        // 사람이 하는 그대로: 노드 하나 → 그 자식 하나 (간선은 라벨 없이 생긴다).
+        // 사람이 하는 그대로: 노드 하나 → 그 자식 하나 (간선 + 빈 선택지 칸이 함께 생긴다).
         view.AddEpisodeFromToolbar();
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -30,21 +31,25 @@ public sealed class ChapterEdgeLabelTests
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.Contains(ChapterWorkbookReader.Read(project.ChapterPath).Edges,
+        ChapterGraphModel created = ChapterWorkbookReader.Read(project.ChapterPath);
+        Assert.Contains(created.Edges,
             edge => edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
+        ChapterChoiceOption slot = Assert.Single(created.ChoiceOptionsFor("new01"));
+        Assert.True(slot.IsInvisibleDefault); // 아직 빈 칸 — 보이지 않는 기본
 
-        // 라벨은 대본의 OPTION에서 고른다 (2026-08-15) — 대본에 선택지를 깔고 드롭다운으로.
-        ChapterGraphEditingTests.WriteOptionsWorkbook(project.EpisodesFolder, "new01", "왼쪽 길로 간다");
-
-        view.SelectEdgeKey("new01", "new02");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "왼쪽 길로 간다";
-        view.ApplyEdgeFromPanel();
+        // 기획자가 엑셀에서 하듯 대본 text를 적는다 — 그 순간 보이는 선택지다.
+        using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
+        {
+            ClosedXML.Excel.IXLWorksheet choices = workbook.Worksheet(ChapterSheetNames.Choices);
+            choices.Cell(slot.SourceRow, 4).SetValue("왼쪽 길로 간다");
+            workbook.Save();
+        }
 
         ChapterEdge saved = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(edge =>
             edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
 
         Assert.Equal("왼쪽 길로 간다", saved.OptionLabel);
+        Assert.False(saved.IsPlainAdvance);
     });
 
     [Fact]
@@ -93,9 +98,9 @@ public sealed class ChapterEdgeLabelTests
     });
 
     [Fact]
-    public void 다시_읽기가_끼어들어도_적던_이름이_사라지지_않는다() => HeadlessUi.Run(() =>
+    public void 다시_읽기가_끼어들어도_고르던_선택지수가_사라지지_않는다() => HeadlessUi.Run(() =>
     {
-        // 저장 감시는 언제든 울린다(엑셀이 파일을 건드리기만 해도). 그 사이에 적어 둔 이름이
+        // 저장 감시는 언제든 울린다(엑셀이 파일을 건드리기만 해도). 그 사이에 골라 둔 값이
         // 조용히 모델 값으로 되돌아가면, 사람 눈에는 "적용을 눌러도 안 바뀐다"로 보인다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
@@ -108,11 +113,9 @@ public sealed class ChapterEdgeLabelTests
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        ChapterGraphEditingTests.WriteOptionsWorkbook(project.EpisodesFolder, "new01", "오른쪽 길로 간다");
-
         view.SelectEdgeKey("new01", "new02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "오른쪽 길로 간다";
+        view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem = "2";
 
         // 고른 값에 포커스가 없는 상태에서 감시가 울린다 — 고른 값이 모델 값으로 되돌아가면 안 된다.
         view.RefreshFromDisk();
@@ -120,10 +123,12 @@ public sealed class ChapterEdgeLabelTests
 
         view.ApplyEdgeFromPanel();
 
-        ChapterEdge saved = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(edge =>
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+        ChapterEdge saved = reread.Edges.Single(edge =>
             edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
 
-        Assert.Equal("오른쪽 길로 간다", saved.OptionLabel);
+        Assert.Equal(2, saved.ChoiceCount);
+        Assert.Equal(2, reread.ChoiceOptionsFor("new01").Count()); // 칸이 함께 섰다
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────

@@ -46,15 +46,15 @@
                                VerticalAlignment="Center" />
                 </StackPanel>
 
-                <!-- G-2 v2 — 엑셀이 원본이고 툴 편집은 해당 셀에 즉시 저장된다. -->
-                <Border Grid.Column="8"
-                        Padding="7,3"
-                        CornerRadius="3"
-                        Background="#22808080">
-                    <TextBlock Text="엑셀이 원본 · 편집은 엑셀 셀에 저장됩니다"
-                               FontSize="10"
-                               Opacity="0.75" />
-                </Border>
+                <!-- 기본 동작 = 엑셀에서만 편집, 툴은 보여준다 (2026-08-16 소유자).
+                     체크를 풀면 툴 편집이 열리고, 편집은 여전히 엑셀 셀에 즉시 저장된다(G-2 v2). -->
+                <CheckBox Grid.Column="8"
+                          x:Name="ExcelOnlyCheck"
+                          Content="엑셀에서만 편집"
+                          FontSize="11"
+                          IsChecked="True"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="켜져 있으면 툴은 읽기 전용입니다 — 모든 데이터는 엑셀에서 만집니다. 풀면 개명·조건·간선을 툴에서도 고칠 수 있고, 고친 값은 엑셀 셀에 바로 저장됩니다." />
             </Grid>
         </Border>
 
@@ -95,22 +95,17 @@
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="ConditionSection" Margin="10" Spacing="4">
-                            <!-- 조건 시트 편집 — 라벨이 이미 있으면 수정, 없으면 추가.
-                                 식의 내용은 검증기가 잡는다. -->
+                            <!-- 조건은 읽기 전용 표다 (2026-08-16 소유자 — 툴 편집 UI 제거).
+                                 편집은 챕터 엑셀의 `조건` 시트에서 — 스탯·연산자 드롭다운으로 조립한다. -->
                             <TextBlock Text="조건 (라벨 ↔ 식)"
                                        FontWeight="SemiBold"
                                        FontSize="12" />
-                            <TextBlock Text="식은 여기서 한 번만 정의하고, 에피소드·간선에서는 라벨로만 부릅니다. 식을 고치면 그 라벨을 쓰는 곳이 전부 따라 바뀝니다."
+                            <TextBlock Text="편집은 챕터 엑셀의 `조건` 시트에서 합니다 — 스탯과 연산자는 드롭다운, 값은 정수(bool은 true/false)입니다. 에피소드·간선은 여기 라벨만 부릅니다."
                                        FontSize="10"
                                        Opacity="0.55"
                                        TextWrapping="Wrap"
                                        Margin="0,0,0,4" />
                             <StackPanel x:Name="ConditionListPanel" Spacing="2" />
-                            <TextBox x:Name="ConditionLabelBox" FontSize="11" PlaceholderText="라벨 — 예: 신뢰높음" />
-                            <TextBox x:Name="ConditionExprBox" FontSize="11"
-                                     PlaceholderText="식 — 예: trust >= 3 · flag == true (AND는 ;)"
-                                     ToolTip.Tip="쓸 수 있는 연산자는 &gt;= · &lt;= · == · &gt; · &lt; 이고 값은 정수(bool 스탯은 true/false)입니다. 에피소드 클리어는 cleared:EpisodeId 입니다. 시트에는 스탯·연산자·값 세 칸으로 저장됩니다." />
-                            <Button x:Name="SaveConditionButton" Content="조건 추가/수정" HorizontalAlignment="Stretch" FontSize="11" />
 
                             <TextBlock Text="스탯"
                                        FontWeight="SemiBold"
@@ -151,58 +146,44 @@
                     <StackPanel x:Name="PropertyPanel" Spacing="6" IsVisible="False">
                         <TextBlock Text="에피소드" FontWeight="SemiBold" FontSize="12" />
 
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId" />
-                            <Button Grid.Column="1" x:Name="RenameButton" Content="개명" FontSize="11"
-                                    Margin="4,0,0,0"
-                                    ToolTip.Tip="간선·픽스처 참조가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
-                        </Grid>
-
-                        <!-- 값 편집 복원 (2026-08-15 소유자) — v3의 최소화가 테스트 편의였는데
-                             실사용에서 편집 창구를 가렸다. 쓰기는 여전히 그 셀 하나다(G-2 v2). -->
-                        <TextBox x:Name="TitleBox" FontSize="11"
-                                 PlaceholderText="제목 — 카드에 표시 (비면 Id가 보임)"
-                                 Margin="0,4,0,0" />
+                        <!-- 개명 = Id를 고치고 Enter (2026-08-16 — 단추 대신 자동 반영).
+                             제목·엔딩키·메모 칸은 소유자 지시로 뺐다 — 그 값들은 엑셀에서. -->
+                        <TextBox x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId"
+                                 ToolTip.Tip="이름을 고치고 Enter를 누르면 개명됩니다 — 간선·픽스처·대본 파일·대사 노드가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
 
                         <TextBlock Text="표시조건 — 목록에 보이려면" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
-                        <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch" />
+                        <ComboBox x:Name="VisibleCombo" FontSize="11" HorizontalAlignment="Stretch"
+                                  ToolTip.Tip="고르면 바로 엑셀 셀에 저장됩니다." />
                         <TextBlock Text="해금조건 — 고를 수 있으려면" FontSize="10" Opacity="0.6" />
-                        <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch" />
+                        <ComboBox x:Name="UnlockCombo" FontSize="11" HorizontalAlignment="Stretch"
+                                  ToolTip.Tip="고르면 바로 엑셀 셀에 저장됩니다." />
 
-                        <Grid ColumnDefinitions="*,6,*" Margin="0,4,0,0">
-                            <TextBox Grid.Column="0" x:Name="EndingKeyBox" FontSize="11"
-                                     PlaceholderText="엔딩키"
-                                     ToolTip.Tip="적으면 이 에피소드가 엔딩 후보가 됩니다." />
-                            <TextBox Grid.Column="2" x:Name="MemoBox" FontSize="11"
-                                     PlaceholderText="메모" />
-                        </Grid>
-
-                        <Button x:Name="ApplyEpisodeButton" Content="적용"
-                                HorizontalAlignment="Stretch" FontSize="11" Margin="0,4,0,0"
-                                ToolTip.Tip="바뀐 값만 챕터 엑셀의 해당 셀에 씁니다." />
-
-                        <!-- 남은 읽기 전용 값(인덱스·종류·대사엔트리 등) — 고치는 곳은 엑셀. -->
+                        <!-- 읽기 전용 값(대사엔트리·종류 등) — 고치는 곳은 엑셀. -->
                         <TextBlock x:Name="EpisodeFactsText"
                                    FontSize="10"
                                    Opacity="0.6"
                                    TextWrapping="Wrap"
                                    Margin="0,2,0,0" />
 
-                        <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12" Margin="0,10,0,0" />
-                        <!-- 목록의 줄을 클릭하면 그 간선이 선택되어 조건·해금을 편집한다.
-                             새 분기는 툴바 [＋ 에피소드](선택된 노드의 자식으로)가 만든다. -->
-                        <StackPanel x:Name="EdgeListPanel" Spacing="3" />
-
-                        <!-- 이미 있는 에피소드로 잇기 (합류·순환). 라벨은 자유 입력이 아니라
-                             대본의 OPTION에서 고른다 (2026-08-15 소유자) — 오타 = 유령 간선. -->
-                        <Grid ColumnDefinitions="*,6,*,Auto">
-                            <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11" />
-                            <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11"
-                                      PlaceholderText="선택지"
-                                      ToolTip.Tip="대본에 선택지가 있으면 그 OPTION 중에서 고릅니다(안 이은 옵션 = 종료). 선택지가 없으면 (선택지 없음) 하나 — 무조건 진행입니다." />
-                            <Button Grid.Column="3" x:Name="AddEdgeButton" Content="연결" FontSize="11" Margin="4,0,0,0"
-                                    ToolTip.Tip="이미 있는 에피소드를 다음으로 잇습니다." />
+                        <!-- ＋를 눌러야 연결 폼이 나온다 (2026-08-16 — 상시 표시 폐지).
+                             목록의 줄을 클릭하면 그 줄 바로 아래에 폼이 열려 선택지를 고친다. -->
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                            <TextBlock Text="다음 에피소드" FontWeight="SemiBold" FontSize="12"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1" x:Name="AddNextEdgeButton" Content="＋"
+                                    FontSize="11" Padding="7,1"
+                                    ToolTip.Tip="이미 있는 에피소드를 다음으로 잇는 폼을 엽니다. 새 에피소드는 툴바의 [＋ 에피소드]." />
                         </Grid>
+                        <StackPanel x:Name="EdgeListPanel" Spacing="3">
+                            <!-- 연결·수정 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래).
+                                 라벨은 자유 입력이 아니라 대본의 OPTION에서 고른다(오타 = 유령 간선). -->
+                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,6,Auto,Auto" IsVisible="False">
+                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11" />
+                                <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11" MinWidth="52"
+                                          ToolTip.Tip="선택지수 — 이 간선이 선택지 시트에 갖는 칸 수(기본 1). 문구는 그 칸의 대본에서 자유롭게 적고, 빈 대본 = 보이지 않는 기본입니다." />
+                                <Button Grid.Column="3" x:Name="AddEdgeButton" Content="연결" FontSize="11" Margin="4,0,0,0" />
+                            </Grid>
+                        </StackPanel>
 
                         <Button x:Name="DeleteEpisodeButton"
                                 Content="에피소드 삭제"
@@ -219,9 +200,9 @@
                              고쳐야겠다"가 되는 흐름이 실제 저작의 대부분이다. -->
                         <StackPanel x:Name="EdgeFromToPanel" Orientation="Horizontal" Spacing="4" />
 
-                        <TextBlock Text="선택지 — 출발 에피소드 대본의 OPTION" FontSize="10" Opacity="0.6" />
+                        <TextBlock Text="선택지수 — 이 간선의 선택지 칸 수" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeLabelEditBox" FontSize="11" HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="플레이어가 보는 버튼 글자 — 출발 에피소드 대본의 OPTION에서 고릅니다. 선택지가 없는 에피소드만 (선택지 없음) = 무조건 진행." />
+                                  ToolTip.Tip="늘리면 선택지 시트에 칸이 함께 섭니다. 문구는 그 칸의 대본 text에서 자유 수정 — 빈 대본은 보이지 않는 기본(조건 없는 간선과 짝, 에피소드당 하나)입니다." />
 
                         <TextBlock Text="조건 — 이 분기를 고를 수 있으려면" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeConditionCombo" FontSize="11" HorizontalAlignment="Stretch" />

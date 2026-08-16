@@ -192,8 +192,10 @@ public static class EpisodeLibrary
         }
 
         // 유형·태그는 규격의 낱말만 받는다 — 오타가 검증기까지 가기 전에 엑셀이 막는다.
+        // CHOICE/OPTION은 새 템플릿에서 뺐다 (2026-08-16 소유자 — 선택지는 챕터의 `선택지`
+        // 시트에서 만든다). 옛 파일의 CHOICE/OPTION은 여전히 읽히되 검증이 옮기라고 말한다.
         sheet.Range(2, 3, TemplateRows, 3).CreateDataValidation()
-            .List("\"IF,CHOICE,OPTION\"", true);
+            .List("\"IF\"", true);
         sheet.Range(2, 4, TemplateRows, 4).CreateDataValidation()
             .List("\"INPUT,OUT\"", true);
 

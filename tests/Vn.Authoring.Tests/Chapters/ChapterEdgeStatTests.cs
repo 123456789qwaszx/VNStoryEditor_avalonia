@@ -102,36 +102,26 @@ public sealed class ChapterEdgeStatTests : IDisposable
     }
 
     [Fact]
-    public void 여러_선택지가_같은_에피소드로_이어질_수_있다()
+    public void 간선_신원은_출발_도착이고_선택지수가_칸을_늘린다()
     {
-        // 2026-08-15 소유자 — 간선 신원 = (출발, 도착, 라벨). 같은 도착이라도 라벨이
-        // 다르면 다른 길이고, 수정·삭제는 라벨까지 맞는 행 하나만 건드린다.
-        string path = BuildChapter(); // ep1→ep2 무라벨 진행이 이미 있다
+        // 2026-08-16 소유자 — 라벨 신원 폐지. 간선은 (출발, 도착) 하나뿐이고,
+        // 같은 도착으로 문구를 여럿 두려면 선택지수를 올려 칸을 늘린다.
+        string path = BuildChapter(); // ep1→ep2 간선(선택지수 1)이 이미 있다
 
-        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "선택A").Written);
-        Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "선택B").Written);
+        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2").Written); // (출발,도착) 중복 거부
 
-        // 정확히 같은 (출발·도착·라벨)만 중복이다.
-        Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "선택A").Written);
-
-        // 라벨로 짚어 수정 — 다른 행은 그대로.
-        Assert.True(ChapterWorkbookWriter.UpdateEdge(
-            path, "ep1", "ep2", statChanges: "trust +2", matchOptionLabel: "선택B").Written);
+        Assert.True(ChapterWorkbookWriter.UpdateEdge(path, "ep1", "ep2", choiceCount: 3).Written);
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        Assert.Equal(3, model.Edges.Count); // 진행 + 선택A + 선택B
+        ChapterEdge edge = Assert.Single(model.Edges);
+        Assert.Equal(3, edge.ChoiceCount);
+        Assert.Equal(3, model.ChoiceOptionsFor("ep1").Count(slot => slot.ToEpisodeId == "ep2"));
 
-        ChapterEdge b = model.Edges.Single(edge => edge.OptionLabel == "선택B");
-        Assert.Equal(2, Assert.Single(b.StatChanges).Amount);
-        Assert.Empty(model.Edges.Single(edge => edge.OptionLabel == "선택A").StatChanges);
-
-        // 라벨로 짚어 삭제 — 그 행만 사라진다.
-        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "ep1", "ep2", "선택A").Written);
+        // 삭제하면 칸도 함께 걷힌다 — 주인 없는 칸을 남기지 않는다.
+        Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "ep1", "ep2").Written);
         ChapterGraphModel after = ChapterWorkbookReader.Read(path);
-        Assert.Equal(2, after.Edges.Count);
-        Assert.DoesNotContain(after.Edges, edge => edge.OptionLabel == "선택A");
-        Assert.Contains(after.Edges, edge => edge.OptionLabel == "선택B");
-        Assert.Contains(after.Edges, edge => edge.IsPlainAdvance);
+        Assert.Empty(after.Edges);
+        Assert.Empty(after.ChoiceOptions);
     }
 
     [Fact]

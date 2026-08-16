@@ -37,7 +37,7 @@ public sealed class ChapterSpeakerTests : IDisposable
             }),
             (ChapterSheetNames.Edges, new[]
             {
-                new string?[] { "출발", "도착", "스탯변화", "선택지", "조건", "잠금시 숨김", "잠금 안내문" }
+                new string?[] { "출발", "도착", "스탯변화", "선택지수", "조건", "잠금시 숨김", "잠금 안내문" }
             }),
             (ChapterSheetNames.Conditions, new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
             (ChapterSheetNames.Stats, new[]

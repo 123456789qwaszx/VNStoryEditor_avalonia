@@ -32,8 +32,12 @@ public sealed class ChapterGraphViewRenderTests
         (Canvas canvas, _) = Render(project);
 
         Assert.Equal(6, NodeCards(canvas).Count);
-        // 표식 있는 선만 센다 — 간선마다 보이지 않는 히트 선이 하나씩 겹쳐 있다(클릭용).
-        Assert.Equal(5, canvas.Children.OfType<Line>().Count(line => line.Tag is string));
+        // 간선 하나가 선분 여럿(포트 꺾임)일 수 있다 — 표식(Tag)의 종류로 센다.
+        Assert.Equal(5, canvas.Children.OfType<Line>()
+            .Where(line => line.Tag is string)
+            .Select(line => (string)line.Tag!)
+            .Distinct(StringComparer.Ordinal)
+            .Count());
     });
 
     [Fact]
@@ -68,6 +72,7 @@ public sealed class ChapterGraphViewRenderTests
         string[] drawn = canvas.Children.OfType<Line>()
             .Where(line => line.Tag is string)   // 히트 선(무표식)은 제외
             .Select(line => (string)line.Tag!)
+            .Distinct(StringComparer.Ordinal)    // 포트 꺾임 = 같은 간선의 선분 여럿
             .OrderBy(tag => tag, StringComparer.Ordinal)
             .ToArray();
 
@@ -142,7 +147,9 @@ public sealed class ChapterGraphViewRenderTests
         Assert.All(NodeCards(canvas), card =>
         {
             Assert.Equal(CardWidth, card.Bounds.Width);
-            Assert.Equal(CardHeight, card.Bounds.Height);
+            // 카드는 보이는 선택지 칸 수만큼 아래로 자란다 (포트 줄 18px).
+            Assert.True(card.Bounds.Height >= CardHeight,
+                $"카드 높이 {card.Bounds.Height} < 기본 {CardHeight}");
         });
     });
 
