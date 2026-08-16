@@ -1545,6 +1545,7 @@ public partial class ChapterGraphView : UserControl
 
         // 간선 패널(그래프에서 간선 클릭)도 같은 스위치를 탄다.
         EdgeLabelEditBox.IsEnabled = editable;
+        EdgeVisibleCombo.IsEnabled = editable;
         EdgeConditionCombo.IsEnabled = editable;
         EdgeHideCheck.IsEnabled = editable;
         EdgeLockedMsgBox.IsEnabled = editable;
@@ -1645,11 +1646,6 @@ public partial class ChapterGraphView : UserControl
         // 제목·표시/해금·엔딩키·메모는 위의 편집 칸이 맡는다(2026-08-15 복원) —
         // 여기는 편집 칸이 없는 나머지 값만.
         var facts = new List<string> { $"대사엔트리: {episode.DialogueEntry}" };
-
-        if (!string.IsNullOrWhiteSpace(episode.Index))
-        {
-            facts.Add($"인덱스: {episode.Index}");
-        }
 
         if (!string.IsNullOrWhiteSpace(episode.Kind))
         {
@@ -1948,9 +1944,12 @@ public partial class ChapterGraphView : UserControl
             EdgeStatsBox.Text = StatChangesText(edge);
         }
 
-        // 이 길의 문구 (v9) — 읽기 전용 표시다. 바꾸는 일은 선택지 목록의 폼에서 한다.
-        string labelText = edge.IsPlainAdvance ? "(기본 · 보이지 않음)" : edge.OptionLabel!;
-        SetItems(EdgeLabelEditBox, [labelText], labelText);
+        // 이 길의 문구 (v9) — 챕터의 모든 문구 중에서 고른다. 목록·저장이 선택지 목록의
+        // 폼과 같은 규칙 하나를 쓴다(사본 금지): 안 고른 것과 "문구 없음"은 같은 뜻이다.
+        SetItems(EdgeLabelEditBox, ChoiceLabelItems(model),
+            fill
+                ? edge.IsPlainAdvance ? PlainAdvanceItem : edge.OptionLabel
+                : EdgeLabelEditBox.SelectedItem as string);
 
         var labels = new List<string> { "(없음)" };
         labels.AddRange(model.Conditions.Select(condition => condition.Label));
@@ -2018,6 +2017,11 @@ public partial class ChapterGraphView : UserControl
         string? Gate(ComboBox combo) =>
             combo.SelectedItem as string == "(없음)" ? string.Empty : combo.SelectedItem as string;
 
+        // 문구도 이 저장에 실린다 (v9) — 신원의 일부라, 찾을 때는 고치기 전 값을 쓴다.
+        string pickedLabel = EdgeLabelEditBox.SelectedItem as string is { } picked && picked != PlainAdvanceItem
+            ? picked
+            : string.Empty;
+
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
             path, key.From, key.To,
             visibleConditionLabel: Changed(Gate(EdgeVisibleCombo), edge.VisibleConditionLabel ?? string.Empty),
@@ -2025,7 +2029,14 @@ public partial class ChapterGraphView : UserControl
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
             lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
             statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)),
-            matchOptionLabel: EdgeLabelKey(edge));
+            matchOptionLabel: EdgeLabelKey(edge),
+            optionLabel: Changed(pickedLabel, EdgeLabelKey(edge)));
+
+        // 문구를 바꿨으면 신원도 바뀌었다 — 선택이 풀리지 않게 열쇠를 따라 옮긴다.
+        if (result.Written)
+        {
+            _selectedEdgeKey = (key.From, key.To, pickedLabel);
+        }
 
         Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
     }
@@ -2037,7 +2048,7 @@ public partial class ChapterGraphView : UserControl
     /// <summary>
     /// 에피소드 값 저장 — 지금 이 패널에서 툴이 쓰는 값은 없다. 제목·엔딩키·메모는 칸을
     /// 뺐고(2026-08-16), 표시·해금조건은 v8에서 길(간선)로 옮겨 갔다. 개명은 Enter가,
-    /// 선택지 칸은 목록이 맡는다. 라이터 경로는 살아 있으므로 필요하면 여기로 되돌아온다.
+    /// 선택지는 목록이 맡는다. 라이터 경로는 살아 있으므로 필요하면 여기로 되돌아온다.
     /// </summary>
     internal void ApplyEpisodeFromPanel()
     {

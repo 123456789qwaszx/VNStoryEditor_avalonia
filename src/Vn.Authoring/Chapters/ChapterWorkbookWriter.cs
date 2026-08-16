@@ -181,18 +181,7 @@ public static class ChapterWorkbookWriter
                 }
             }
 
-            // 선택지 칸의 출발(근원)도 따라간다 — 안 따라가면 칸이 주인 없는 유령이 된다.
-            if (workbook.Worksheets.FirstOrDefault(candidate =>
-                    candidate.Name == ChapterSheetNames.Choices) is { } choiceSheet)
-            {
-                foreach (IXLRow row in choiceSheet.RowsUsed().Skip(1))
-                {
-                    if (string.Equals(row.Cell(1).GetString(), oldId, StringComparison.Ordinal))
-                    {
-                        row.Cell(1).SetValue(newId);
-                    }
-                }
-            }
+            // `선택지` 시트는 손대지 않는다 (v9) — 문구 사전은 에피소드를 모른다.
 
             if (workbook.Worksheets.FirstOrDefault(sheet =>
                     sheet.Name == ChapterSheetNames.Fixtures) is { } fixtures)
@@ -229,18 +218,8 @@ public static class ChapterWorkbookWriter
                 edgeRow.Delete();
             }
 
-            // 이 에피소드의 선택지 칸도 함께 — 근원(출발)이 사라졌다.
-            if (workbook.Worksheets.FirstOrDefault(candidate =>
-                    candidate.Name == ChapterSheetNames.Choices) is { } choiceSheet)
-            {
-                foreach (IXLRow slot in choiceSheet.RowsUsed().Skip(1)
-                             .Where(candidate =>
-                                 string.Equals(candidate.Cell(1).GetString(), episodeId, StringComparison.Ordinal))
-                             .ToList())
-                {
-                    slot.Delete();
-                }
-            }
+            // `선택지` 사전은 건드리지 않는다 (v9) — 챕터 전체의 어휘라, 에피소드 하나가
+            // 사라졌다고 낱말을 지우면 다른 에피소드의 드롭다운에서도 사라진다.
 
             if (workbook.Worksheets.FirstOrDefault(sheet =>
                     sheet.Name == ChapterSheetNames.Fixtures) is not { } fixtures)
@@ -381,7 +360,11 @@ public static class ChapterWorkbookWriter
             (optionLabel is null ||
              string.Equals(row.Cell(4).GetString().Trim(), optionLabel.Trim(), StringComparison.Ordinal)));
 
-    /// <summary>간선 한 줄의 속성 편집. null이 아닌 것만 쓴다 (관문 둘 포함 — v8).</summary>
+    /// <summary>
+    /// 간선 한 줄의 속성 편집. null이 아닌 것만 쓴다 (관문 둘 포함 — v8).
+    /// <paramref name="optionLabel"/>을 주면 문구도 함께 바뀐다 — 문구는 신원의 일부이므로
+    /// (v9) 찾을 때는 <paramref name="matchOptionLabel"/>(고치기 전 값)을 쓴다.
+    /// </summary>
     public static ChapterWriteResult UpdateEdge(
         string path,
         string fromEpisodeId,
@@ -391,7 +374,8 @@ public static class ChapterWorkbookWriter
         string? lockedMessage = null,
         string? statChanges = null,
         string? matchOptionLabel = null,
-        string? visibleConditionLabel = null) =>
+        string? visibleConditionLabel = null,
+        string? optionLabel = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -409,6 +393,12 @@ public static class ChapterWorkbookWriter
 
             Set(sheet, row.RowNumber(), 8, lockedMessage);
             Set(sheet, row.RowNumber(), 3, statChanges); // 스탯변화(C) — 문법 검사는 리더가 한다
+
+            if (optionLabel is not null)
+            {
+                Set(sheet, row.RowNumber(), 4, optionLabel); // 선택지(D) = 문구 그 자체
+                EnsureChoiceLabel(workbook, optionLabel);
+            }
         });
 
     private static IXLWorksheet RequireChoiceSheet(XLWorkbook workbook) =>

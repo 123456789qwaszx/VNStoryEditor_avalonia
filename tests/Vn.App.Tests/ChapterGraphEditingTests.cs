@@ -51,6 +51,60 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 간선_패널의_선택지도_챕터의_모든_문구에서_고른다() => HeadlessUi.Run(() =>
+    {
+        // v9 (2026-08-17 소유자) — "간선에서도 선택지 드롭다운이 되도록." 그래프에서 길을
+        // 눌러 연 패널에서도 문구를 고르고, [적용] 한 번에 관문과 함께 저장된다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+
+        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var labels = view.FindControl<ComboBox>("EdgeLabelEditBox")!;
+        Assert.True(labels.IsEnabled); // 읽기 전용이 아니다 — 여기서 고친다
+        Assert.Equal("라루의 제안을 듣는다", labels.SelectedItem);
+        // 목록은 챕터 전체 사전이다 — 다른 에피소드가 쓰는 문구까지 담긴다.
+        Assert.Contains("혼자 문을 연다", (IEnumerable<string>)labels.ItemsSource!);
+
+        labels.SelectedItem = "혼자 문을 연다";
+        view.FindControl<ComboBox>("EdgeVisibleCombo")!.SelectedItem = "지쳐있음";
+        view.ApplyEdgeFromPanel();
+
+        ChapterEdge reread = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(edge =>
+            edge.FromEpisodeId == "main05.02" && edge.ToEpisodeId == "branch05.02A");
+
+        Assert.Equal("혼자 문을 연다", reread.OptionLabel); // 문구가 한 저장에 함께 실렸다
+        Assert.Equal("지쳐있음", reread.VisibleConditionLabel);
+        Assert.Equal("신뢰높음", reread.ConditionLabel);
+
+        // 문구는 신원의 일부다 — 바꿔도 선택이 풀리지 않고 그 길이 계속 열려 있다.
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
+        Assert.Equal("혼자 문을 연다", view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem);
+    });
+
+    [Fact]
+    public void 에피소드를_지워도_챕터의_선택지_문구는_남는다() => HeadlessUi.Run(() =>
+    {
+        // v9 — 사전은 챕터 전체의 어휘다. 에피소드 하나가 사라졌다고 낱말을 지우면
+        // 다른 에피소드의 드롭다운에서도 사라진다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+
+        view.SelectEpisode("branch05.02A");
+        view.DeleteSelectedEpisode();
+
+        ChapterGraphModel reread = ChapterWorkbookReader.Read(project.ChapterPath);
+
+        Assert.Null(reread.FindEpisode("branch05.02A"));
+        Assert.DoesNotContain(reread.Edges, edge => edge.ToEpisodeId == "branch05.02A");
+        Assert.Contains(reread.ChoiceOptions, option => option.Text == "라루의 제안을 듣는다");
+    });
+
+    [Fact]
     public void 엑셀에서만_편집이_기본이라_툴_편집_창구가_닫혀_있다() => HeadlessUi.Run(() =>
     {
         // 2026-08-16 소유자 — 기본 동작: 모든 데이터는 엑셀에서 만지고 툴은 보여준다.
