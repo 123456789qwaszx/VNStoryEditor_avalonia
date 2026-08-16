@@ -191,15 +191,23 @@
                                  (2026-08-16 소유자: "꼭 수정하지 않더라도 뭐가 있는지 보이는 게 좋겠어"). -->
                             <!-- 한 줄 폼 (2026-08-16 소유자) — 목표(도착) · 선택지 칸 · 수정을
                                  한 줄에 둔다. 두 줄로 접히면 목록의 흐름이 끊긴다. -->
-                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,4,*,Auto" IsVisible="False">
-                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
+                            <!-- 툴팁 없음 (2026-08-16 소유자) — 목록 위에 뜨는 설명 상자가
+                                 화면을 가렸다. 자리표시 글(도착·선택지)로 충분하다. -->
+                            <!-- 읽는 순서가 곧 뜻이다 (2026-08-16 소유자):
+                                 [이 선택지를 고르면] → [여기로 간다]. 화살표가 그 관계다. -->
+                            <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,Auto,*,Auto" IsVisible="False">
+                                <ComboBox Grid.Column="0" x:Name="EdgeLabelBox" FontSize="11"
                                           HorizontalAlignment="Stretch"
-                                          PlaceholderText="도착"
-                                          ToolTip.Tip="이 선택지 칸이 향할 에피소드. 비워 두면 안 이어진 칸 — 그 길을 고르면 챕터가 거기서 끝납니다." />
-                                <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11"
+                                          PlaceholderText="선택지" />
+                                <TextBlock Grid.Column="1"
+                                           Text="→"
+                                           FontSize="12"
+                                           Opacity="0.55"
+                                           Margin="6,0"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="2" x:Name="EdgeTargetCombo" FontSize="11"
                                           HorizontalAlignment="Stretch"
-                                          PlaceholderText="선택지"
-                                          ToolTip.Tip="이 에피소드의 선택지 칸들입니다(인덱스 · 대본). 다른 칸을 고르면 그 칸으로 옮겨 갑니다 — 문구 자체는 엑셀 `선택지` 시트에서 고칩니다." />
+                                          PlaceholderText="도착" />
                                 <Button Grid.Column="3" x:Name="AddEdgeButton" Content="수정" FontSize="11" Margin="4,0,0,0" />
                             </Grid>
                         </StackPanel>
@@ -207,36 +215,45 @@
                         <!-- 대사 미리보기 — 선택지 아래에 접어 둔다 (2026-08-16 소유자:
                              "에피소드 노드의 정보량이 부족하다"). 원천은 방금 읽은 대본
                              워크북이고, 고치는 곳은 엑셀이다. 별도 탭이던 것을 여기로 합쳤다. -->
-                        <Expander x:Name="DialogueExpander"
-                                  Header="대사"
-                                  FontSize="12"
-                                  Margin="0,12,0,0"
-                                  HorizontalAlignment="Stretch">
+                        <!-- 대사 — 상자를 겹치지 않는다 (2026-08-16 소유자 재지시).
+                             Expander·테두리·안쪽 스크롤을 걷어냈다: 탭 속의 탭처럼 보이고
+                             읽는 폭만 좁혔다. 지금은 **얇은 구분선 + 접기 토글 + 흐르는 글**
+                             뿐이고, 스크롤은 편집 탭 하나만 쓴다. 대사를 고치며 읽는 화면이라
+                             가독성이 가장 위다. -->
+                        <Border BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                                BorderThickness="0,1,0,0"
+                                Margin="0,14,0,0"
+                                Padding="0,10,0,0">
                             <StackPanel Spacing="6">
-                                <TextBlock x:Name="DialoguePreviewHeader"
-                                           FontSize="10"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                                <!-- 줄마다 카드 한 장: 화자는 작고 진하게, 대사는 그 아래 —
-                                     한 덩어리 글이던 것을 눈이 따라갈 수 있게 갈랐다
-                                     (2026-08-16 소유자). 코드가 채운다. -->
-                                <Border BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="4"
-                                        Padding="2">
-                                    <ScrollViewer MaxHeight="420"
-                                                  VerticalScrollBarVisibility="Auto"
-                                                  AllowAutoHide="False">
-                                        <StackPanel x:Name="DialoguePreviewPanel" Spacing="1" />
-                                    </ScrollViewer>
-                                </Border>
-                                <!-- 통짜 텍스트는 복사용으로 남긴다(화면에는 안 세운다). -->
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <ToggleButton x:Name="DialogueToggle"
+                                                  Content="대사"
+                                                  FontSize="12"
+                                                  FontWeight="SemiBold"
+                                                  Padding="0"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"
+                                                  Cursor="Hand"
+                                                  ToolTip.Tip="접었다 펼 수 있습니다. 고치는 곳은 엑셀입니다(노드 더블클릭)." />
+                                    <TextBlock Grid.Column="1"
+                                               x:Name="DialoguePreviewHeader"
+                                               FontSize="10"
+                                               Opacity="0.55"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+
+                                <!-- 한 덩어리로 흐르는 글. 화자는 줄 앞에 그대로 붙는다
+                                     (`윌로: 복도는 조용했다`) — 줄마다 카드로 가르면
+                                     읽기가 오히려 나빠진다(2026-08-16 실사용 판정). -->
                                 <SelectableTextBlock x:Name="DialoguePreviewText"
-                                                     FontSize="11"
+                                                     FontSize="12"
+                                                     LineHeight="20"
                                                      TextWrapping="Wrap"
                                                      IsVisible="False" />
                             </StackPanel>
-                        </Expander>
+                        </Border>
                     </StackPanel>
 
                     <!-- 길(간선) 편집 — 그래프에서 선을 클릭하면 여기가 열린다. 선택지형 VN의

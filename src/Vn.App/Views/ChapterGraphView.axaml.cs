@@ -158,6 +158,10 @@ public partial class ChapterGraphView : UserControl
         CopyDiagnosticsButton.Click += async (_, _) =>
             await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
 
+        // 대사 접기 — 토글이 곧 제목이다(상자 없이). 접힌 채로 시작한다.
+        DialogueToggle.IsCheckedChanged += (_, _) =>
+            DialoguePreviewText.IsVisible = DialogueToggle.IsChecked == true;
+
         // 처음 보이는 탭은 [편집]이다 (2026-08-16 소유자) — 손이 가는 곳은 지금 고른
         // 하나이지 챕터 전체 표가 아니다. 그 뒤로는 사람이 고른 탭이 그대로 유지된다.
         RightTabs.SelectedItem = EditTab;
@@ -1592,8 +1596,6 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private void FillDialoguePreview(string? episodeId)
     {
-        DialoguePreviewPanel.Children.Clear();
-
         if (episodeId is null)
         {
             DialoguePreviewHeader.Text = "에피소드를 선택하면 그 대사가 여기 보입니다.";
@@ -1601,143 +1603,28 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        var rows = new List<EpisodeRow>();
-        string? failure = null;
+        string preview = string.Empty;
         string? folder = SelectedEpisodesFolder;
 
         if (folder is not null && EpisodeLibrary.FindExisting(folder, episodeId) is { } path)
         {
             try
             {
-                rows.AddRange(EpisodeWorkbookReader.Read(path).Rows.Where(row => !row.IsBlank));
+                preview = string.Join("\n", EpisodeWorkbookReader.Read(path).Rows
+                    .Where(row => !row.IsBlank)
+                    .Select(PreviewLine)
+                    .Where(line => line.Length > 0));
             }
             catch (XlsxReadException exception)
             {
-                failure = $"대본을 읽지 못했습니다: {exception.Message}";
+                preview = $"대본을 읽지 못했습니다: {exception.Message}";
             }
         }
 
-        DialoguePreviewHeader.Text = failure ?? (rows.Count > 0
-            ? $"{episodeId} — 읽기 전용 · 고치는 곳은 엑셀입니다 (노드 더블클릭)."
-            : $"{episodeId} — 아직 적힌 대사가 없습니다. 노드를 더블클릭해 엑셀에서 쓰세요.");
-
-        // 복사용 통짜 텍스트는 그대로 유지한다(화면에는 안 세운다).
-        DialoguePreviewText.Text = failure ?? string.Join("\n",
-            rows.Select(PreviewLine).Where(line => line.Length > 0));
-
-        foreach (EpisodeRow row in rows)
-        {
-            if (BuildDialogueRow(row) is { } card)
-            {
-                DialoguePreviewPanel.Children.Add(card);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 대사 한 줄의 카드 (2026-08-16 소유자 — 가독성). 한 덩어리 글이던 것을 눈이 따라갈 수
-    /// 있게 갈랐다: <b>화자는 작고 진하게 위에</b>, 대사는 그 아래. 구조 행(선택·조건·구간)은
-    /// 대사와 다른 옷을 입어 흐름의 마디가 보인다.
-    /// </summary>
-    private static Control? BuildDialogueRow(EpisodeRow row)
-    {
-        var stack = new StackPanel { Spacing = 1 };
-
-        static SelectableTextBlock Body(string text, double size = 11.5, double opacity = 1) => new()
-        {
-            Text = text,
-            FontSize = size,
-            Opacity = opacity,
-            TextWrapping = TextWrapping.Wrap,
-            LineHeight = 17
-        };
-
-        switch (row.Kind)
-        {
-            case EpisodeRowKind.Choice:
-                // 선택 블록의 머리 — 얇은 구분선 하나로 충분하다.
-                return new Border
-                {
-                    Margin = new Thickness(0, 8, 0, 4),
-                    Padding = new Thickness(8, 3),
-                    CornerRadius = new CornerRadius(3),
-                    Background = new SolidColorBrush(Color.Parse("#14C06A14")),
-                    Child = new TextBlock
-                    {
-                        Text = "선택지",
-                        FontSize = 10,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = new SolidColorBrush(Color.Parse("#C06A14"))
-                    }
-                };
-
-            case EpisodeRowKind.Option:
-                SelectableTextBlock option = Body(
-                    $"▶ {row.Text}" + (row.In is { } into ? $"  → {into}" : string.Empty));
-                option.Foreground = new SolidColorBrush(Color.Parse("#C06A14"));
-                stack.Children.Add(option);
-                break;
-
-            case EpisodeRowKind.If:
-                stack.Children.Add(Body(
-                    $"IF {row.ConditionLabel}" + (row.In is { } target ? $"  → {target}" : string.Empty),
-                    size: 10.5, opacity: 0.7));
-                break;
-
-            default:
-                if (row.Speaker.Length > 0)
-                {
-                    stack.Children.Add(new TextBlock
-                    {
-                        Text = row.Speaker,
-                        FontSize = 10,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = new SolidColorBrush(Color.Parse("#3D7BD9"))
-                    });
-                }
-
-                if (row.Text.Length == 0 && row.Speaker.Length == 0)
-                {
-                    return null;
-                }
-
-                stack.Children.Add(Body(row.Text));
-                break;
-        }
-
-        // 구간의 문패·나가는 자리는 오른쪽 끝에 흐리게 — 본문을 밀지 않는다.
-        var marks = new List<string>();
-
-        if (row.Tag == EpisodeRowTag.Input)
-        {
-            marks.Add($"[{row.Index}]");
-        }
-
-        if (row.OutTarget is { Length: > 0 } exit)
-        {
-            marks.Add($"⏎ {exit}");
-        }
-
-        if (marks.Count > 0)
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = string.Join(" · ", marks),
-                FontSize = 9.5,
-                Opacity = 0.5,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right
-            });
-        }
-
-        return new Border
-        {
-            Padding = new Thickness(8, 5),
-            CornerRadius = new CornerRadius(3),
-            Background = row.Kind == EpisodeRowKind.Option
-                ? new SolidColorBrush(Color.Parse("#0AC06A14"))
-                : Brushes.Transparent,
-            Child = stack
-        };
+        DialoguePreviewHeader.Text = preview.Length > 0
+            ? "읽기 전용 · 고치는 곳은 엑셀 (노드 더블클릭)"
+            : "아직 적힌 대사가 없습니다 — 노드를 더블클릭해 엑셀에서 쓰세요";
+        DialoguePreviewText.Text = preview;
     }
 
     /// <summary>워크북 한 행을 미리보기 한 줄로 — 시트의 모양을 그대로 옮기되 읽는 눈 기준으로.</summary>
@@ -2040,23 +1927,25 @@ public partial class ChapterGraphView : UserControl
         };
         Grid.SetColumn(text, 1);
 
+        // 툴팁 없음 (2026-08-16 소유자) — 목록 위에 뜨는 설명 상자가 화면을 가렸다.
         if (editable)
         {
-            ToolTip.SetTip(text, edge is null
-                ? "클릭하면 바로 아래에서 도착을 골라 이 선택지를 잇습니다. 문구는 엑셀 `선택지` 시트에서."
-                : "클릭하면 도착을 바꿉니다. 조건·잠금·스탯변화는 그래프에서 그 간선을 클릭하세요.");
-
             string capturedIndex = slot.Index;
             string? capturedTarget = edge?.ToEpisodeId;
             int capturedRow = rowIndex;
+            // 같은 줄을 다시 누르면 접힌다 (2026-08-16 소유자) — 여는 손과 닫는 손이 같다.
             text.PointerPressed += (_, _) =>
                 UiGuard.Run(_session, "선택지 잇기 폼", () =>
-                    OpenSlotForm(capturedIndex, capturedRow, capturedTarget));
-        }
-        else
-        {
-            ToolTip.SetTip(text, "선택지 문구는 엑셀 `선택지` 시트, 도착은 `간선` 시트에서 — " +
-                "툴 편집은 우측 위 체크를 풀면 열립니다.");
+                {
+                    if (string.Equals(_edgeFormSlotIndex, capturedIndex, StringComparison.Ordinal))
+                    {
+                        HideEdgeForm();
+                        RefreshPropertyPanel(preserveTyping: true);
+                        return;
+                    }
+
+                    OpenSlotForm(capturedIndex, capturedRow, capturedTarget);
+                });
         }
 
         row.Children.Add(text);

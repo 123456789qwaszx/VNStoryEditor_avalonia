@@ -1,4 +1,5 @@
 ﻿using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -296,25 +297,28 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        Assert.Null(view.FindControl<TabItem>("DialogueTab")); // 탭은 사라졌다
+        Assert.Null(view.FindControl<TabItem>("DialogueTab"));       // 탭은 사라졌다
+        Assert.Null(view.FindControl<Expander>("DialogueExpander")); // 탭 속 상자도 사라졌다
 
-        var dialogue = view.FindControl<Expander>("DialogueExpander")!;
-        Assert.False(dialogue.IsExpanded); // 접힌 채로 시작한다
+        var toggle = view.FindControl<ToggleButton>("DialogueToggle")!;
+        Assert.False(toggle.IsChecked); // 접힌 채로 시작한다
 
         view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // 펼치면 그 에피소드의 대사 안내가 서 있다.
-        dialogue.IsExpanded = true;
-        Assert.NotNull(view.FindControl<SelectableTextBlock>("DialoguePreviewText"));
+        toggle.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(view.FindControl<SelectableTextBlock>("DialoguePreviewText")!.IsVisible);
         Assert.False(string.IsNullOrEmpty(view.FindControl<TextBlock>("DialoguePreviewHeader")!.Text));
     });
 
     [Fact]
-    public void 대사는_줄마다_카드로_서고_화자가_따로_보인다() => HeadlessUi.Run(() =>
+    public void 대사는_한_덩어리로_흐르고_상자를_겹치지_않는다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-16 소유자 — 한 덩어리 글이던 미리보기를 줄 단위로 갈랐다:
-        // 화자는 작고 진하게 위에, 대사는 그 아래.
+        // 2026-08-16 소유자 재지시 — 줄마다 카드로 가르니 읽기가 더 나빠졌다(철회).
+        // 대사는 한 덩어리 글이고 화자는 줄 앞에 붙는다. 겹친 상자(탭 속 Expander·
+        // 테두리·안쪽 스크롤)도 걷어냈다 — 접기는 제목 토글 하나가 맡는다.
         using var project = new TempProject(SamplePath);
         WriteOptionsWorkbook(project.EpisodesFolder, "main05.02", "라루의 제안을 듣는다");
         (ChapterGraphView view, _) = Show(project);
@@ -322,23 +326,20 @@ public sealed class ChapterGraphEditingTests
         view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        var panel = view.FindControl<StackPanel>("DialoguePreviewPanel")!;
-        Assert.NotEmpty(panel.Children);
+        // 줄 카드 패널은 사라졌다.
+        Assert.Null(view.FindControl<StackPanel>("DialoguePreviewPanel"));
 
-        // 화자 줄(작고 진한 TextBlock)과 대사 줄(SelectableTextBlock)이 갈려 있다.
-        List<TextBlock> speakers = panel.Children.OfType<Border>()
-            .Select(card => card.Child)
-            .OfType<StackPanel>()
-            .SelectMany(stack => stack.Children.OfType<TextBlock>())
-            .Where(block => block.FontWeight == Avalonia.Media.FontWeight.SemiBold)
-            .ToList();
+        var text = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
+        Assert.Contains("윌로: 첫 줄", text.Text!);
 
-        Assert.Contains(speakers, block => block.Text == "윌로");
+        // 접기 토글 하나가 제목이자 스위치다 — 접힌 채로 시작한다.
+        var toggle = view.FindControl<ToggleButton>("DialogueToggle")!;
+        Assert.False(toggle.IsChecked);
+        Assert.False(text.IsVisible);
 
-        // 복사용 통짜 텍스트는 남아 있되 화면에는 안 선다.
-        var raw = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
-        Assert.False(raw.IsVisible);
-        Assert.Contains("윌로: 첫 줄", raw.Text!);
+        toggle.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(text.IsVisible);
     });
 
     [Fact]
