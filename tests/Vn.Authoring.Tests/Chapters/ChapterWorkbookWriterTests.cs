@@ -290,6 +290,32 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     // ── 안전망·개명 ─────────────────────────────────────────────────────────
 
     [Fact]
+    public void 엑셀이_열고_있으면_원인을_이름으로_부른다()
+    {
+        // 실사례 (2026-08-16) — 챕터를 더블클릭해 엑셀로 연 뒤 툴에서 고치려 하면 모든
+        // 쓰기가 거부되는데, 사유가 "파일이 잠겨 있거나 규칙 위반" + 영어 예외라 사람이
+        // 원인을 알 수 없었다("추가가 안 되는 버그"로 보였다).
+        string path = Copy();
+
+        // 엑셀이 여는 모양 — 읽기 공유만 허용하는 핸들.
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.True(ChapterWorkbookWriter.IsLockedByAnotherApp(path));
+
+            ChapterWriteResult result = ChapterWorkbookWriter.AddEpisode(path, "새에피소드", "", 0, 0);
+
+            Assert.False(result.Written);
+            Assert.Contains("엑셀이", result.Failure);
+            Assert.Contains(Path.GetFileName(path), result.Failure);
+            Assert.Contains("닫고 다시", result.Failure);
+        }
+
+        // 닫히면 곧바로 쓸 수 있다 — 잠금은 상태이지 고장이 아니다.
+        Assert.False(ChapterWorkbookWriter.IsLockedByAnotherApp(path));
+        Assert.True(ChapterWorkbookWriter.AddEpisode(path, "새에피소드", "", 0, 0).Written);
+    }
+
+    [Fact]
     public void 파괴적_쓰기는_직전_상태를_bak으로_남긴다()
     {
         // 툴 편집에는 Ctrl+Z가 없다 — 지우는 종류의 쓰기는 .bak을 굴려 되돌릴 길을 남긴다.

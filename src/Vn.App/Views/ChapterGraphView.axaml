@@ -97,7 +97,24 @@
                  두 탭으로 나눈 이유: 조건은 챕터 전체에 걸린 표(선택과 무관)이고,
                  편집은 지금 고른 하나에 걸린다. 섞여 있으면 조건을 보려고 매번 스크롤해야 했다.
                  조건이 앞 탭이다 — 흐름을 잇기 전에 조건부터 정의하는 순서라서. -->
-            <TabControl Grid.Column="2" x:Name="RightTabs" Padding="0">
+            <Grid Grid.Column="2" RowDefinitions="Auto,*">
+                <!-- 엑셀이 챕터 파일을 열고 있으면 툴의 모든 쓰기가 거부된다 (2026-08-16
+                     실사례: 챕터 더블클릭으로 엑셀을 연 뒤 툴에서 고치려다 전부 막혔다).
+                     누르기 전에 화면이 먼저 말한다 — 상태줄 한 줄은 묻힌다. -->
+                <Border x:Name="LockBanner"
+                        Grid.Row="0"
+                        IsVisible="False"
+                        Background="#FDECEA"
+                        BorderBrush="#E6B0AA"
+                        BorderThickness="0,0,0,1"
+                        Padding="10,6">
+                    <TextBlock x:Name="LockBannerText"
+                               FontSize="11"
+                               Foreground="#922B21"
+                               TextWrapping="Wrap" />
+                </Border>
+
+            <TabControl Grid.Row="1" x:Name="RightTabs" Padding="0">
                 <!-- [챕터] — 판 전체에 걸린 표들. 조건은 여기서 편집하고(원천은 조건 시트),
                      스탯·픽스처는 어디에서도 값이 안 보이던 것들이라 읽기 전용으로 세운다.
                      에피소드·간선은 그래프가 이미 그리므로 여기 반복하지 않는다. -->
@@ -330,6 +347,7 @@
                 </TabItem>
 
             </TabControl>
+            </Grid>
         </Grid>
 
         <Border Grid.Row="2"

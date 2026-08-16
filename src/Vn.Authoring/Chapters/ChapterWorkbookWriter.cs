@@ -930,10 +930,44 @@ public static class ChapterWorkbookWriter
 
             return ChapterWriteResult.Ok;
         }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // 압도적으로 흔한 원인 하나를 이름으로 부른다 (2026-08-16 실사례) — 챕터를
+            // 더블클릭해 엑셀로 열어 둔 채 툴에서 고치면 모든 쓰기가 여기로 떨어졌는데,
+            // "파일이 잠겨 있거나 규칙 위반" + 영어 예외라 사람이 원인을 알 수 없었다.
+            return ChapterWriteResult.Locked(
+                $"엑셀이 '{Path.GetFileName(path)}'를 열고 있어 툴이 쓰지 못했습니다 — " +
+                "엑셀에서 그 파일을 닫고 다시 시도해 주세요.");
+        }
         catch (Exception exception)
         {
-            return ChapterWriteResult.Locked(
-                $"워크북에 쓰지 못했습니다(파일이 잠겨 있거나 규칙 위반): {exception.Message}");
+            return ChapterWriteResult.Locked($"워크북에 쓰지 못했습니다: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 다른 앱(대개 엑셀)이 이 워크북을 열고 있는가 — <b>쓰지 않고</b> 알아본다.
+    /// 열려 있으면 툴의 모든 편집이 거부되므로, 누르기 전에 화면이 먼저 말해 줄 수 있다.
+    /// </summary>
+    public static bool IsLockedByAnotherApp(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var probe = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
         }
     }
 

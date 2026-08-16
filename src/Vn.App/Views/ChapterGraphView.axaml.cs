@@ -612,6 +612,7 @@ public partial class ChapterGraphView : UserControl
 
         Validate();
         Draw();
+        RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
         EntriesReloaded?.Invoke(_entries);
     }
 
@@ -1550,8 +1551,25 @@ public partial class ChapterGraphView : UserControl
 
     private bool ToolEditable => ExcelOnlyCheck.IsChecked != true;
 
+    /// <summary>
+    /// 엑셀이 이 챕터를 열고 있으면 배너로 말한다 (2026-08-16 실사례) — 그 상태에서는
+    /// 툴의 모든 쓰기가 거부되므로, 누르고 나서가 아니라 <b>누르기 전에</b> 보여야 한다.
+    /// </summary>
+    private void RefreshLockBanner()
+    {
+        bool locked = ChapterWorkbookWriter.IsLockedByAnotherApp(SelectedChapterPath);
+
+        LockBanner.IsVisible = locked;
+        LockBannerText.Text = locked
+            ? $"⚠ 엑셀이 '{_selectedChapterId}.xlsx'를 열고 있습니다 — 툴에서 고친 값은 저장되지 " +
+              "않습니다. 엑셀에서 그 파일을 닫으면 바로 편집됩니다."
+            : string.Empty;
+    }
+
     private void ApplyEditability()
     {
+        RefreshLockBanner();
+
         bool editable = ToolEditable;
 
         IdBox.IsEnabled = editable;
@@ -2368,8 +2386,13 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>쓰기 결과를 상태줄로. 성공이면 감시가 다시 읽어 화면이 따라온다.</summary>
-    private void Report(ChapterWriteResult result, string success) =>
+    private void Report(ChapterWriteResult result, string success)
+    {
         _session?.SetStatus(result.Written ? success : result.Failure!);
+
+        // 거부됐다면 대개 엑셀이 잡고 있어서다 — 그 사실을 배너로도 세운다(상태줄은 묻힌다).
+        RefreshLockBanner();
+    }
 
     /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>
     internal static string EdgeTag(ChapterEdge edge) =>
