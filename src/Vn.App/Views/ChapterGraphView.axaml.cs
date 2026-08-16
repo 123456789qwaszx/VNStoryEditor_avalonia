@@ -158,9 +158,14 @@ public partial class ChapterGraphView : UserControl
         CopyDiagnosticsButton.Click += async (_, _) =>
             await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
 
-        // 대사 접기 — 토글이 곧 제목이다(상자 없이). 접힌 채로 시작한다.
+        // 대사 접기 — 토글이 곧 제목이다(상자 없이). 접힌 채로 시작하고,
+        // 삼각형이 "여기 더 있다"를 말한다(▸ 접힘 · ▾ 펼침).
         DialogueToggle.IsCheckedChanged += (_, _) =>
-            DialoguePreviewText.IsVisible = DialogueToggle.IsChecked == true;
+        {
+            bool open = DialogueToggle.IsChecked == true;
+            DialoguePreviewText.IsVisible = open;
+            DialogueToggle.Content = open ? "▾  대사" : "▸  대사";
+        };
 
         // 처음 보이는 탭은 [편집]이다 (2026-08-16 소유자) — 손이 가는 곳은 지금 고른
         // 하나이지 챕터 전체 표가 아니다. 그 뒤로는 사람이 고른 탭이 그대로 유지된다.
