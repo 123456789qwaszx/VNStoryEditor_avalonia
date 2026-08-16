@@ -152,8 +152,13 @@ public static class EpisodeLibrary
     /// 워크북이 없으면 §3.2 규격의 빈 워크북을 만든다. 있으면 아무것도 하지 않는다 —
     /// <b>기존 파일은 절대 덮어쓰지 않는다.</b>
     /// </summary>
+    /// <param name="speakers">
+    /// 챕터 `화자` 시트의 등록 이름들 (2026-08-16). 있으면 화자 열(H)에 드롭다운을 깐다 —
+    /// 목록은 숨김 시트가 담고, 검증은 조언일 뿐이라 목록 밖 이름도 그대로 적을 수 있다
+    /// (편의 기능이 없다고 원고를 못 쓰게 하지 않는다).
+    /// </param>
     /// <returns>새로 만들었으면 true.</returns>
-    public static bool EnsureWorkbook(string folder, string episodeId)
+    public static bool EnsureWorkbook(string folder, string episodeId, IReadOnlyList<string>? speakers = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
@@ -209,8 +214,148 @@ public static class EpisodeLibrary
 
         sheet.Column(9).Width = 50;   // 내용
 
+        if (speakers is { Count: > 0 })
+        {
+            ApplySpeakerList(workbook, sheet, speakers);
+        }
+
         workbook.SaveAs(path);
         return true;
     }
 
+    // ── 화자 드롭다운 (2026-08-16 소유자 지시) ──────────────────────────────
+    //
+    // 챕터 `화자` 시트에 등록한 이름이 대본의 화자 열(H)에 드롭다운으로 선다.
+    // 목록은 워크북 안의 숨김 시트가 담는다 — 외부 파일 참조는 엑셀·구글 시트에서
+    // 깨지기 때문이다. 챕터의 목록이 바뀌면 <see cref="PushSpeakerList"/>가 숨김
+    // 시트만 갈아 끼운다. 이것이 v4("만든 뒤 손대지 않는다")의 유일한 예외이며,
+    // 예외의 폭은 정확히 숨김 시트와 검증 정의까지다 — <b>대본 행은 절대 쓰지 않는다.</b>
+
+    /// <summary>화자 목록을 담는 숨김 시트. 이 이름이 곧 신원이다 — 갱신이 이 시트만 만진다.</summary>
+    public const string SpeakerListSheetName = "화자목록";
+
+    private const int SpeakerColumn = 8;      // H열 — §3.2의 화자
+    private const int SpeakerListRows = 200;  // 드롭다운이 가리키는 범위. 화자가 이보다 많으면 나눌 일이다.
+
+    /// <summary>
+    /// 숨김 목록 시트를 채우고(없으면 만들고) 화자 열에 조언 드롭다운을 건다.
+    /// 검증은 경고를 띄우지 않는다 — 목록 밖 이름(미등록 화자)은 동기화 보고가 다룬다.
+    /// </summary>
+    private static void ApplySpeakerList(
+        XLWorkbook workbook, IXLWorksheet scriptSheet, IReadOnlyList<string> speakers)
+    {
+        IXLWorksheet list = workbook.Worksheets.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, SpeakerListSheetName, StringComparison.Ordinal))
+            ?? workbook.AddWorksheet(SpeakerListSheetName);
+
+        list.Visibility = XLWorksheetVisibility.Hidden;
+        list.Column(1).Clear(XLClearOptions.Contents);
+
+        for (int index = 0; index < speakers.Count && index < SpeakerListRows; index++)
+        {
+            list.Cell(index + 1, 1).SetValue(speakers[index]);
+        }
+
+        // 화자 열에 이미 검증이 있으면 그대로 둔다(범위 참조라 목록 시트만 갈면 따라온다).
+        IXLRange range = scriptSheet.Range(2, SpeakerColumn, TemplateRows, SpeakerColumn);
+
+        if (!scriptSheet.DataValidations.Any(validation =>
+                validation.Ranges.Any(existing =>
+                    existing.RangeAddress.FirstAddress.ColumnNumber == SpeakerColumn)))
+        {
+            IXLDataValidation validation = range.CreateDataValidation();
+            validation.List($"='{SpeakerListSheetName}'!$A$1:$A${SpeakerListRows}", inCellDropdown: true);
+            validation.ShowErrorMessage = false; // 조언일 뿐 — 목록 밖 이름도 원고다.
+        }
+    }
+
+    /// <summary><see cref="PushSpeakerList"/> 한 번의 결과. 실패는 예외가 아니라 사유다.</summary>
+    public sealed record SpeakerListPush(bool Changed, string? Failure)
+    {
+        public static SpeakerListPush Unchanged { get; } = new(false, null);
+    }
+
+    /// <summary>
+    /// 챕터의 화자 목록을 기존 워크북의 숨김 시트에 반영한다. <b>목록이 이미 같으면 파일에
+    /// 손대지 않는다</b>(수정 시각 불변) — 챕터를 열 때마다 불려도 실제 쓰기는 목록이 바뀐
+    /// 그 순간뿐이다. 쓰기 전 원본을 <c>.bak</c>으로 남긴다(원고 파일이므로).
+    /// 워크북이 아직 없으면 할 일이 없다 — 생성 때 목록을 받는다.
+    /// </summary>
+    public static SpeakerListPush PushSpeakerList(
+        string folder, string episodeId, IReadOnlyList<string> speakers)
+    {
+        ArgumentNullException.ThrowIfNull(speakers);
+
+        if (FindExisting(folder, episodeId) is not { } path)
+        {
+            return SpeakerListPush.Unchanged;
+        }
+
+        try
+        {
+            using var memory = new MemoryStream();
+
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                stream.CopyTo(memory);
+            }
+
+            memory.Position = 0;
+            using var workbook = new XLWorkbook(memory);
+
+            if (SpeakerListMatches(workbook, speakers))
+            {
+                return SpeakerListPush.Unchanged;
+            }
+
+            IXLWorksheet scriptSheet = FindScriptSheet(workbook);
+
+            // 원고 파일을 다시 쓰는 유일한 순간 — 직전 상태를 남긴다.
+            File.WriteAllBytes(path + ".bak", memory.ToArray());
+
+            ApplySpeakerList(workbook, scriptSheet, speakers);
+            workbook.SaveAs(path);
+
+            return new SpeakerListPush(true, null);
+        }
+        catch (Exception exception)
+        {
+            return new SpeakerListPush(false,
+                $"'{Path.GetFileName(path)}'에 화자 목록을 넣지 못했습니다" +
+                $"(엑셀·시트가 열고 있을 수 있습니다): {exception.Message}");
+        }
+    }
+
+    /// <summary>숨김 시트의 목록이 지금 목록과 같은가 — 순서까지 같아야 같다(드롭다운 순서).</summary>
+    private static bool SpeakerListMatches(XLWorkbook workbook, IReadOnlyList<string> speakers)
+    {
+        IXLWorksheet? list = workbook.Worksheets.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, SpeakerListSheetName, StringComparison.Ordinal));
+
+        if (list is null)
+        {
+            return speakers.Count == 0; // 시트도 없고 화자도 없다 — 넣을 것이 없다.
+        }
+
+        var current = new List<string>();
+        int last = list.Column(1).LastCellUsed()?.Address.RowNumber ?? 0;
+
+        for (int row = 1; row <= last; row++)
+        {
+            string value = list.Cell(row, 1).GetString().Trim();
+
+            if (value.Length > 0)
+            {
+                current.Add(value);
+            }
+        }
+
+        return current.SequenceEqual(speakers.Take(SpeakerListRows), StringComparer.Ordinal);
+    }
+
+    /// <summary>대본 시트 = 화자 머리글(H1)이 있는 시트. 없으면 첫 시트 — 검증만 못 걸 뿐이다.</summary>
+    private static IXLWorksheet FindScriptSheet(XLWorkbook workbook) =>
+        workbook.Worksheets.FirstOrDefault(sheet =>
+            string.Equals(sheet.Cell(1, SpeakerColumn).GetString().Trim(), "화자", StringComparison.Ordinal))
+        ?? workbook.Worksheets.First();
 }

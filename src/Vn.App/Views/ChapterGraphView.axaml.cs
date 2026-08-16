@@ -259,6 +259,10 @@ public partial class ChapterGraphView : UserControl
         // 왼쪽 챕터 목록 클릭과 같은 규칙 하나를 쓴다.
         string fileId = _session.EnsureChapterBoard(entry.ChapterId);
 
+        // 챕터 `화자` 시트 → 에피소드 워크북 드롭다운 (2026-08-16). 멱등이다 —
+        // 목록이 안 바뀐 워크북에는 손대지 않으므로 매 동기화마다 불러도 안전하다.
+        PushSpeakersToEpisodes(folder, entry);
+
         foreach (ChapterEpisode episode in entry.Model.Episodes)
         {
             if (EpisodeLibrary.FindExisting(folder, episode.EpisodeId) is not { } path)
@@ -310,6 +314,67 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
+    /// 챕터의 화자 등록을 에피소드 워크북들에 반영한다 (2026-08-16 소유자 지시).
+    ///
+    /// 두 가지를 한다: ① 구판 챕터 워크북에 `화자` 시트가 없으면 한 번 만들어 준다
+    /// (기획자가 등록할 자리부터 있어야 한다) ② 등록된 이름을 각 에피소드 워크북의 숨김
+    /// 목록 시트에 밀어 넣는다 — 대본의 화자 칸(H)이 그 목록의 드롭다운을 받는다.
+    /// 목록이 같은 워크북은 건드리지 않고, 잠긴 워크북은 건너뛰며 사유를 보고한다.
+    /// </summary>
+    private void PushSpeakersToEpisodes(string folder, ChapterEntry entry)
+    {
+        if (entry.Model is not { } model)
+        {
+            return;
+        }
+
+        if (!model.HasSpeakerSheet)
+        {
+            (bool created, ChapterWriteResult ensure) = ChapterWorkbookWriter.EnsureSpeakerSheet(entry.Path);
+
+            if (created)
+            {
+                _session?.SetStatus(
+                    $"'{entry.ChapterId}'에 화자 시트를 만들었습니다 — 엑셀에서 이름을 등록하면 " +
+                    "대본의 화자 칸이 드롭다운이 됩니다.");
+            }
+            else if (ensure.Failure is { } blocked)
+            {
+                _session?.SetStatus(blocked);
+            }
+        }
+
+        List<string> names = model.Speakers.Select(speaker => speaker.Name).ToList();
+        var failures = new List<string>();
+        int changed = 0;
+
+        foreach (ChapterEpisode episode in model.Episodes)
+        {
+            EpisodeLibrary.SpeakerListPush push =
+                EpisodeLibrary.PushSpeakerList(folder, episode.EpisodeId, names);
+
+            if (push.Changed)
+            {
+                changed++;
+            }
+            else if (push.Failure is { } failure)
+            {
+                failures.Add(failure);
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            _session?.SetStatus(failures[0] +
+                (failures.Count > 1 ? $" (외 {failures.Count - 1}건)" : string.Empty));
+        }
+        else if (changed > 0)
+        {
+            _session?.SetStatus($"화자 드롭다운을 에피소드 워크북 {changed}개에 반영했습니다.");
+        }
+    }
+
+    /// <summary>
     /// 노드 클릭 → 에피소드 엑셀 열기 (G5). 워크북이 없으면 §3.2 규격대로 만들어서 연다 —
     /// 기획자가 머리글 11개를 손으로 칠 이유가 없다.
     /// </summary>
@@ -336,7 +401,8 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        if (EpisodeLibrary.EnsureWorkbook(folder, episodeId))
+        if (EpisodeLibrary.EnsureWorkbook(folder, episodeId,
+                SelectedModel?.Speakers.Select(speaker => speaker.Name).ToList()))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
             StartWatchingEpisodes(folder);
@@ -1927,7 +1993,8 @@ public partial class ChapterGraphView : UserControl
             // 생성은 없던 파일을 만드는 것이라 단일 writer 원칙과 충돌하지 않고,
             // 이후 툴은 이 파일을 다시는 쓰지 않는다.
             if (EpisodeLibrary.FolderFor(_session?.ProjectPath) is { } episodesFolder &&
-                EpisodeLibrary.EnsureWorkbook(episodesFolder, episodeId))
+                EpisodeLibrary.EnsureWorkbook(episodesFolder, episodeId,
+                    model.Speakers.Select(speaker => speaker.Name).ToList()))
             {
                 StartWatchingEpisodes(episodesFolder);
             }

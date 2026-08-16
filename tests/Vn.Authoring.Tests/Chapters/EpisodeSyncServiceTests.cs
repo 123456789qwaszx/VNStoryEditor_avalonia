@@ -3,6 +3,7 @@ using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Tests.Chapters;
 
@@ -157,6 +158,39 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Assert.Contains(report.Diagnostics, item =>
             item.Severity == ChapterDiagnosticSeverity.Warning &&
             item.Message.Contains("합쳐져 지문이 됩니다"));
+    }
+
+    [Fact]
+    public void 챕터_화자_시트에_등록된_공백_이름은_화자로_통과한다()
+    {
+        // 2026-08-16 — 화자 등록의 창구가 챕터 `화자` 시트로 늘었다. 등록된 이름이면
+        // 공백이 있어도 게임 정의에 등록된 것과 똑같이: 경고가 없고, 화자로 파싱된다.
+        (ProjectEditor editor, string fileId, ChapterGraphModel bare) = BuildWorld();
+
+        var chapter = new ChapterGraphModel(
+            bare.ChapterId, bare.SourcePath, bare.Episodes, bare.Edges, bare.Conditions,
+            bare.Stats, bare.Fixtures, bare.Diagnostics,
+            [new ChapterSpeaker("늙은 상인", null, null, 2)], hasSpeakerSheet: true);
+
+        string workbook = Path.Combine(_directory, "ep_chapter_speaker.xlsx");
+        WriteRows(workbook,
+        [
+            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
+            ["10", null, null, null, null, null, null, "늙은 상인", "어서 오게.", null, null]
+        ]);
+
+        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+
+        Assert.DoesNotContain(report.Diagnostics, item =>
+            item.Message.Contains("합쳐져 지문이 됩니다"));
+
+        DialogueNode node = (DialogueNode)editor.Project.FindNode(report.DialogueNodeId!)!;
+        ScriptDocument script = editor.Project.FindScript(node.ScriptId!)!;
+        ScriptLine line = script.ActiveLines.Single();
+
+        Assert.Equal("늙은 상인",
+            script.Locales.Single(locale => locale.Locale == script.PrimaryLocale)
+                .Find(line.Id).Speaker);
     }
 
     [Fact]

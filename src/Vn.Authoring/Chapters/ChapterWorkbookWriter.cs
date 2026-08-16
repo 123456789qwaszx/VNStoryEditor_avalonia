@@ -359,6 +359,73 @@ public static class ChapterWorkbookWriter
             Set(sheet, row.RowNumber(), 3, description);
         });
 
+    // ── 화자 ────────────────────────────────────────────────────────────────
+
+    private static readonly string[] SpeakerHeaders = ["이름", "캐릭터키", "메모"];
+
+    /// <summary>
+    /// `화자` 시트가 없으면 만든다(2026-08-16 이전 워크북의 마이그레이션). 있으면 파일에
+    /// 손대지 않고 false를 돌려준다 — 챕터 선택마다 불려도 쓰기는 한 번뿐이라 폴더 감시가
+    /// 맴돌지 않는다.
+    /// </summary>
+    /// <returns>실제로 만들었으면 (true, Ok). 이미 있으면 파일에 손대지 않고 (false, Ok). 실패면 사유.</returns>
+    public static (bool Created, ChapterWriteResult Result) EnsureSpeakerSheet(string path)
+    {
+        // 있음/없음은 읽기로만 확인한다 — 이미 있는 워크북을 다시 저장하는 낭비(와 그로 인한
+        // 폴더 감시 재읽기)를 만들지 않는다. 호출자(리더)가 HasSpeakerSheet를 주는 경우에도
+        // 파일이 그 사이 바뀌었을 수 있으므로 여기서 한 번 더 본다.
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var probe = new XLWorkbook(stream);
+
+            if (probe.Worksheets.Any(sheet =>
+                    string.Equals(sheet.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal)))
+            {
+                return (false, ChapterWriteResult.Ok);
+            }
+        }
+        catch (Exception exception)
+        {
+            return (false, ChapterWriteResult.Locked(
+                $"워크북을 읽지 못했습니다(파일이 잠겨 있을 수 있습니다): {exception.Message}"));
+        }
+
+        ChapterWriteResult result = Mutate(path, workbook =>
+        {
+            if (workbook.Worksheets.Any(sheet =>
+                    string.Equals(sheet.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal)))
+            {
+                return; // 확인과 쓰기 사이에 누가 만들었다 — 그대로 둔다.
+            }
+
+            AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
+        });
+
+        return (result.Written, result);
+    }
+
+    /// <summary>`화자` 시트에 이름 한 줄. 시트가 없으면(구판) 만들면서 더한다.</summary>
+    public static ChapterWriteResult AddSpeaker(
+        string path, string name, string? characterId = null, string? memo = null) =>
+        Mutate(path, workbook =>
+        {
+            IXLWorksheet sheet = workbook.Worksheets.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal))
+                ?? AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
+
+            if (sheet.RowsUsed().Skip(1).Any(row =>
+                    string.Equals(row.Cell(1).GetString().Trim(), name.Trim(), StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException($"화자 '{name}'이 이미 있습니다.");
+            }
+
+            int row = NextRow(sheet);
+            sheet.Cell(row, 1).SetValue(name.Trim());
+            Set(sheet, row, 2, characterId);
+            Set(sheet, row, 3, memo);
+        });
+
     // ── 새 챕터 ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -399,6 +466,7 @@ public static class ChapterWorkbookWriter
             ["스탯키", "표시명", "초기값", "최소", "최대"]);
         AddSheetWithHeaders(workbook, ChapterSheetNames.Fixtures,
             ["픽스처명", "활성", "고정 선택 (에피소드ID→도착ID)"]);
+        AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
 
         int statRow = 2;
 

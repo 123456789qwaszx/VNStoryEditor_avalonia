@@ -78,6 +78,12 @@ public static class EpisodeSyncService
 
         string episodeId = Path.GetFileNameWithoutExtension(workbookPath);
 
+        // 챕터 `화자` 시트의 등록을 정의의 speakers에 합쳐서 본다 (2026-08-16) — 화자 판정
+        // (공백 있는 이름을 화자로 볼지)과 미등록 경고가 같은 등록부 하나를 봐야 한다.
+        // 여기서만 합치고 파일(game.definition.json)에는 쓰지 않는다 — 초상화 매핑의
+        // 정본은 그대로 정의 파일이다.
+        definition = AugmentWithChapterSpeakers(definition, chapter);
+
         // 챕터가 없으면 라벨 검사는 빈 목록으로 돈다 — 조건라벨이 전부 미정의 오류가 되므로
         // 조용히 통과하는 일은 없다.
         string[] labels = chapter?.Conditions.Select(condition => condition.Label).ToArray()
@@ -121,8 +127,8 @@ public static class EpisodeSyncService
                     ChapterDiagnosticCode.ColumnHeaderUnexpected,
                     workbookPath, model.SheetName, row.SourceRow, "H",
                     $"화자 '{row.Speaker}'에 공백이 있는데 등록된 화자가 아니라서, 대사와 " +
-                    "합쳐져 지문이 됩니다. 화자 칸에는 이름만 적거나 game.definition.json의 " +
-                    "speakers에 그 이름을 등록해 주세요."));
+                    "합쳐져 지문이 됩니다. 화자 칸에는 이름만 적거나 챕터의 `화자` 시트 또는 " +
+                    "game.definition.json의 speakers에 그 이름을 등록해 주세요."));
             }
         }
 
@@ -552,6 +558,47 @@ public static class EpisodeSyncService
         }
 
         return pruned;
+    }
+
+    /// <summary>
+    /// 챕터 화자를 정의의 speakers에 합친 <b>메모리 사본</b>. 정의에 이미 있는 이름은
+    /// 그대로 두고(초상화 매핑 우선), 챕터에만 있는 이름을 뒤에 더한다. 합칠 것이 없으면
+    /// 원본을 그대로 돌려준다.
+    /// </summary>
+    private static GameDefinition AugmentWithChapterSpeakers(
+        GameDefinition definition, ChapterGraphModel? chapter)
+    {
+        if (chapter is null || chapter.Speakers.Count == 0)
+        {
+            return definition;
+        }
+
+        List<SpeakerSpec> additions = chapter.Speakers
+            .Where(speaker => !definition.Speakers.Any(existing =>
+                string.Equals(existing.Name, speaker.Name, StringComparison.Ordinal)))
+            .Select(speaker => new SpeakerSpec
+            {
+                Name = speaker.Name,
+                CharacterId = speaker.CharacterId ?? string.Empty
+            })
+            .ToList();
+
+        if (additions.Count == 0)
+        {
+            return definition;
+        }
+
+        return new GameDefinition
+        {
+            Variables = definition.Variables,
+            Events = definition.Events,
+            Conditions = definition.Conditions,
+            PresentationCommandCategories = definition.PresentationCommandCategories,
+            PresentationCommands = definition.PresentationCommands,
+            Speakers = definition.Speakers.Concat(additions).ToList(),
+            Preview = definition.Preview,
+            RuntimeTuningPath = definition.RuntimeTuningPath
+        };
     }
 
     // ── LineId 되쓰기 ───────────────────────────────────────────────────────

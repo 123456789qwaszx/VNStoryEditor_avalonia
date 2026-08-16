@@ -36,6 +36,8 @@ public static class ChapterWorkbookReader
 
     private static readonly string[] StatHeaders = ["스탯키", "표시명", "초기값", "최소", "최대"];
 
+    private static readonly string[] SpeakerHeaders = ["이름", "캐릭터키", "메모"];
+
     /// <exception cref="XlsxReadException">파일을 열 수 없을 때. 데이터 오류가 아니라 접근 실패다.</exception>
     public static ChapterGraphModel Read(string path, GameDefinition? definition = null)
     {
@@ -81,6 +83,8 @@ public static class ChapterWorkbookReader
         IReadOnlyList<ChapterEdge> edges =
             ReadEdges(workbook, path, episodeIds, conditionLabels, statKeys, diagnostics);
         IReadOnlyList<ChapterFixture> fixtures = ReadFixtures(workbook, path, stats, episodeIds, diagnostics);
+        IReadOnlyList<ChapterSpeaker> speakers =
+            ReadSpeakers(workbook, path, diagnostics, out bool hasSpeakerSheet);
 
         VerifyClearedTargets(conditions, episodeIds, path, diagnostics);
 
@@ -92,7 +96,9 @@ public static class ChapterWorkbookReader
             conditions,
             stats,
             fixtures,
-            diagnostics);
+            diagnostics,
+            speakers,
+            hasSpeakerSheet);
     }
 
     /// <summary>
@@ -573,6 +579,61 @@ public static class ChapterWorkbookReader
 
             yield return new ChapterFixtureChoice(sides[0].Trim(), sides[1].Trim());
         }
+    }
+
+    // ── 화자 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// `화자` 시트(2026-08-16 추가). 이 기능 전에 만든 워크북에는 없다 — 진단 없이 빈
+    /// 목록으로 받는다(앱이 챕터 선택 때 시트를 만들어 준다). 픽스처처럼 없어도 챕터는
+    /// 성립하고, 있으면 에피소드 워크북 화자 열의 드롭다운 재료가 된다.
+    /// </summary>
+    private static IReadOnlyList<ChapterSpeaker> ReadSpeakers(
+        XLWorkbook workbook,
+        string path,
+        List<ChapterDiagnostic> diagnostics,
+        out bool hasSheet)
+    {
+        IXLWorksheet? sheet = FindSheet(workbook, ChapterSheetNames.Speakers);
+        hasSheet = sheet is not null;
+
+        if (sheet is null)
+        {
+            return Array.Empty<ChapterSpeaker>();
+        }
+
+        VerifyHeaders(sheet, SpeakerHeaders, path, diagnostics);
+
+        var speakers = new List<ChapterSpeaker>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (int row in DataRows(sheet))
+        {
+            string name = Text(sheet, row, 1);
+
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            if (!seen.Add(name))
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                    path, sheet.Name, row, 1,
+                    $"화자 '{name}'이 두 번 등록되어 있습니다. 첫 행만 씁니다."));
+                continue;
+            }
+
+            speakers.Add(new ChapterSpeaker(
+                name,
+                Optional(sheet, row, 2),
+                Optional(sheet, row, 3),
+                row));
+        }
+
+        return speakers;
     }
 
     // ── 공통 ────────────────────────────────────────────────────────────────
