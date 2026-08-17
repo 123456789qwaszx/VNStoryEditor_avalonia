@@ -308,7 +308,12 @@ public class ChoiceTests
             $"-> 안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15 #line:{world.Label1}",
             bundle.StoryText,
             StringComparison.Ordinal);
-        Assert.Contains("    <<set $__ch_0 = 0>>\n    <<set $fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
+        // 합성 추적 변수(`$__ch_N`)에는 챕터 접두가 붙지 않는다 — 노드 안에서 쓰고 버리는
+        // 값이라 챕터를 넘지 않는다. 작가의 아이템·능력만 접두를 받는다 (2026-08-17).
+        Assert.Contains(
+            "    <<set $__ch_0 = 0>>\n    <<set $__t1_sf_test_fatigue += 10>>",
+            bundle.StoryText,
+            StringComparison.Ordinal);
         Assert.Contains("    <<set $__ch_0 = 1>>", bundle.StoryText, StringComparison.Ordinal);
         Assert.Contains("    <<set $__ch_1 = 0>>", bundle.StoryText, StringComparison.Ordinal);
 

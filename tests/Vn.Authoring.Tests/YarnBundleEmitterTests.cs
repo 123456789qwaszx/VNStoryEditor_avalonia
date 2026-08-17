@@ -72,14 +72,14 @@ public class YarnBundleEmitterTests
         YarnBundle bundle = Emit(fixture);
 
         // D2 — 저장소 공유이므로 Pres에 복제하면 이중 실행된다.
-        Assert.Contains("<<set $favor = 0>>", bundle.StoryText, StringComparison.Ordinal);
-        Assert.Contains("<<set $fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.Contains("<<set $__t1_sf_test_favor = 0>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.Contains("<<set $__t1_sf_test_fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
         Assert.DoesNotContain("<<set", bundle.PresText!, StringComparison.Ordinal);
         Assert.DoesNotContain("<<set", bundle.SetText!, StringComparison.Ordinal);
 
         // D3 — 분기 내 라인 수가 같아야 하므로 구조를 그대로 복제한다.
-        Assert.Contains("<<if $favor >= 5>>", bundle.StoryText, StringComparison.Ordinal);
-        Assert.Contains("<<if $favor >= 5>>", bundle.PresText!, StringComparison.Ordinal);
+        Assert.Contains("<<if $__t1_sf_test_favor >= 5>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.Contains("<<if $__t1_sf_test_favor >= 5>>", bundle.PresText!, StringComparison.Ordinal);
         Assert.Contains("<<endif>>", bundle.PresText!, StringComparison.Ordinal);
     }
 
@@ -133,13 +133,13 @@ public class YarnBundleEmitterTests
         // Story 노드마다 내면 여러 번들을 한 프로그램으로 컴파일할 때 중복 선언으로 깨진다.
         Assert.DoesNotContain("<<declare", bundle.StoryText, StringComparison.Ordinal);
         Assert.Equal(
-            new[] { ("favor", "0"), ("fatigue", "0") },
+            new[] { ("__t1_sf_test_favor", "0"), ("__t1_sf_test_fatigue", "0") },
             bundle.Declarations.Select(declaration => (declaration.Variable, declaration.InitialValue)));
 
         string declarations = YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!;
         Assert.StartsWith("title: _declarations\n---\n", declarations, StringComparison.Ordinal);
-        Assert.Contains("<<declare $favor = 0>>", declarations, StringComparison.Ordinal);
-        Assert.Contains("<<declare $fatigue = 0>>", declarations, StringComparison.Ordinal);
+        Assert.Contains("<<declare $__t1_sf_test_favor = 0>>", declarations, StringComparison.Ordinal);
+        Assert.Contains("<<declare $__t1_sf_test_fatigue = 0>>", declarations, StringComparison.Ordinal);
     }
 
     [Fact]

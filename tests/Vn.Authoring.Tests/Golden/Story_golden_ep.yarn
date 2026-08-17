@@ -1,13 +1,13 @@
 title: Story_golden_ep
 ---
-<<set $favor = 0>>
+<<set $__t1_sf_test_favor = 0>>
 <<beat Set_golden_ep>>
 <<pres_start Pres_golden_ep>>
 
-<<set $fatigue += 10>>
+<<set $__t1_sf_test_fatigue += 10>>
 라루: 첫 줄 그대로 #line:ln_004
 
-<<if $favor >= 5>>
+<<if $__t1_sf_test_favor >= 5>>
     윌로: 갈래 안 대사 #line:ln_005
     <<pres_end>>
     <<jump Story_A로_간다>>

@@ -174,8 +174,11 @@ public class YarnBundleVerificationTests
             string declarationsPath = Assert.Single(written, path =>
                 Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
             string declarations = File.ReadAllText(declarationsPath, Encoding.UTF8);
-            Assert.Single(Regex.Matches(declarations, Regex.Escape("<<declare $favor")));
-            Assert.Contains("<<declare $trust = 0>>", declarations, StringComparison.Ordinal);
+            // 작가의 아이템·능력은 챕터 접두를 받는다 (2026-08-17) — 이 픽스처의 favor·trust는
+            // 둘 다 작가 설정노드의 것이다. 같은 판의 두 번들이 같은 이름을 쓰면 선언은
+            // 여전히 한 번뿐이다(접두가 같으니 합집합도 그대로 돈다).
+            Assert.Single(Regex.Matches(declarations, Regex.Escape("<<declare $__t1_sf_test_favor")));
+            Assert.Contains("<<declare $__t1_sf_test_trust = 0>>", declarations, StringComparison.Ordinal);
 
             AnalysisReport report = Analyze(directory);
             IReadOnlyList<VnDiagnostic> errors = report.Diagnostics

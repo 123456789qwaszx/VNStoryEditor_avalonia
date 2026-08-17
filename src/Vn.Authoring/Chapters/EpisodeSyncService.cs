@@ -317,9 +317,19 @@ public static class EpisodeSyncService
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(file);
 
+        // 판 이름이 챕터 Id와 어긋난 프로젝트(구판·수기 개명)에서도 배관은 배관이다 —
+        // 이름 규약만으로도 알아본다. 이 판정이 이미터의 네임스페이스에도 쓰이므로
+        // (스탯에는 접두를 붙이면 안 된다) 놓치면 게임이 깨진다.
         return node is SetNode &&
-               string.Equals(node.Name, ConditionSupplyNodeName(file.Name), StringComparison.Ordinal);
+               (string.Equals(node.Name, ConditionSupplyNodeName(file.Name), StringComparison.Ordinal) ||
+                IsConditionSupplyNodeName(node.Name));
     }
+
+    /// <summary>이름만으로 A계층 공급 노드인지 — <c>챕터 … 조건</c>.</summary>
+    public static bool IsConditionSupplyNodeName(string? name) =>
+        name is not null &&
+        name.StartsWith("챕터 ", StringComparison.Ordinal) &&
+        name.EndsWith(" 조건", StringComparison.Ordinal);
 
     /// <summary>프로젝트 전체에서 A계층 공급 노드의 Id들. 작가 화면이 이 집합을 걸러 낸다.</summary>
     public static HashSet<string> ConditionSupplyNodeIds(StoryProject project)

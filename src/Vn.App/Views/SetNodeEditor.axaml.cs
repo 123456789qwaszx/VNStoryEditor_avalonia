@@ -108,19 +108,11 @@ public partial class SetNodeEditor : UserControl
                 AssignmentHost.Children.Add(BuildAssignmentRow(node, index));
             }
 
-            List<string> writerVariables = WriterVariableNames();
-            int chapterOwned = _session.Definition.Variables.Count - writerVariables.Count;
-
             // 아이템은 개수로 세고(약초 3개), 능력은 있다/없다뿐이다(자물쇠따기).
-            // 이 챕터 안에서만 도는 것이고, 챕터 스탯과는 다른 계층이다.
-            string common = "아이템은 개수로 늘고 줄고, 능력은 있다/없다뿐입니다. " +
-                            "이 챕터 안에서 씁니다.";
-
-            VariableHintText.Text = chapterOwned > 0
-                // 뺀 사실을 말한다 — 조용히 사라지면 "왜 trust가 없지?"가 된다.
-                ? common + $" 챕터 스탯 {chapterOwned}개는 기획자(A계층) 것이라 여기 목록에 " +
-                  "없습니다 — 스탯이 변하는 자리는 챕터 그래프의 간선뿐입니다."
-                : common;
+            // 기획자 스탯은 아예 말하지 않는다 — 작가에게 노출되어서는 안 되는 자료다.
+            VariableHintText.Text =
+                "아이템은 개수로 늘고 줄고, 능력은 있다/없다뿐입니다. " +
+                "이 챕터 안에서만 살아서 다른 챕터와 섞이지 않습니다.";
 
             RebuildSpeakers();
         }
@@ -131,14 +123,22 @@ public partial class SetNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 작가가 쓸 수 있는 아이템·능력 이름 후보 — 정의 파일의 variables에서 <b>A계층 스탯을
-    /// 뺀 것</b> (2026-08-17 소유자: "둘은 서로 완전히 다른 계층이야"). 두 계층이 한 목록에
-    /// 살기 때문에 가르는 일은 화면이 한다. 후보에 없는 이름은 직접 적으면 된다.
+    /// 아이템·능력 이름 후보 — <b>이 챕터에 이미 있는 이름들뿐</b> (2026-08-17 소유자:
+    /// "애초에 game.definition.json에서 오는 기획자용 스탯은 시나리오 작가에게 노출되어서는
+    /// 안돼").
+    ///
+    /// 정의 파일에서 후보를 꺼내오던 길은 끊었다 — 거르는 것으로는 부족하다. 아이템·능력은
+    /// <b>챕터 단위로만 산다</b>(짧은 스토리 단위를 상정한 설계라, 챕터를 넘어 널브러지면
+    /// 곤란하다). 그래서 어휘의 범위도 이 챕터다. 새 이름은 그냥 적으면 된다.
     /// </summary>
-    private List<string> WriterVariableNames() => _session!.Definition.Variables
-        .Select(item => item.Name)
-        .Where(name => !_session.ChapterStatKeys.Contains(name))
-        .ToList();
+    private List<string> WriterVariableNames() =>
+        _session?.Project.FindNode(_nodeId) is SetNode node
+            ? node.Assignments
+                .Select(item => item.Variable)
+                .Where(name => name.Length > 0)
+                .Distinct(StringComparer.Ordinal)
+                .ToList()
+            : [];
 
     // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
 

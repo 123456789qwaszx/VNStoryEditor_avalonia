@@ -4,7 +4,7 @@ title: Pres_golden_ep
 <<camera closeup>>
 라루: 첫 줄 그대로
 
-<<if $favor >= 5>>
+<<if $__t1_sf_test_favor >= 5>>
     <<character_acting smile>>
     윌로: 갈래 안 대사
 

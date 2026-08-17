@@ -1,5 +1,5 @@
 title: _declarations
 ---
-<<declare $fatigue = 0>>
-<<declare $favor = 0>>
+<<declare $__t1_sf_test_fatigue = 0>>
+<<declare $__t1_sf_test_favor = 0>>
 ===

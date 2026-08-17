@@ -141,6 +141,12 @@ public static class YarnBundleEmitter
             : BundleNameOf(dialogue.SourceNodeName, dialogue.SourceNodeId);
 
         bool hasLane = presentation is not null;
+
+        // 챕터 네임스페이스 (2026-08-17) — 작가의 아이템·능력은 챕터 단위로만 살아야 하는데
+        // Yarn의 변수 저장소는 하나다. 접두가 그 틈을 막는다. A계층 스탯은 그대로 둔다.
+        string tier1Prefix = Tier1Namespace.PrefixFor(project, dialogue.SourceNodeId);
+        HashSet<string> statNames = Tier1Namespace.StatNames(project, dialogue.SourceNodeId);
+
         var problems = new List<YarnBundleProblem>();
         var story = new StringBuilder();
         var pres = hasLane ? new StringBuilder() : null;
@@ -195,7 +201,10 @@ public static class YarnBundleEmitter
                     }
 
                     story.Append(segment.Source.LineId is null ? string.Empty : indent);
-                    YarnSyntax.AppendSet(story, segment);
+                    YarnSyntax.AppendSet(story, segment with
+                    {
+                        Variable = Tier1Namespace.Apply(segment.Variable ?? string.Empty, tier1Prefix, statNames)
+                    });
                     story.Append('\n');
                     break;
 
@@ -223,11 +232,18 @@ public static class YarnBundleEmitter
                     // 조건 구조는 Pres에 그대로 복제한다 (D3). 읽기 전용이고,
                     // 서브 레인은 메인이 지나간 뒤에만 평가하므로 같은 분기를 탄다.
                     CloseStoryHeader();
-                    AppendCondition(story, segment, indent);
+
+                    RenderedSegment scoped = segment with
+                    {
+                        Expression = Tier1Namespace.ApplyToExpression(
+                            segment.Expression, tier1Prefix, statNames)
+                    };
+
+                    AppendCondition(story, scoped, indent);
 
                     if (pres is not null)
                     {
-                        AppendCondition(pres, segment, indent);
+                        AppendCondition(pres, scoped, indent);
                     }
 
                     break;
@@ -293,7 +309,7 @@ public static class YarnBundleEmitter
             story.ToString(),
             setup?.ToString(),
             pres?.ToString(),
-            CollectDeclarations(dialogue, definition, hasLane),
+            CollectDeclarations(dialogue, definition, hasLane, tier1Prefix, statNames),
             problems);
     }
 
@@ -474,7 +490,9 @@ public static class YarnBundleEmitter
     private static IReadOnlyList<YarnDeclaration> CollectDeclarations(
         DialogueResult dialogue,
         GameDefinition? definition,
-        bool hasLane)
+        bool hasLane,
+        string tier1Prefix,
+        IReadOnlySet<string> statNames)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var declarations = new List<YarnDeclaration>();
@@ -483,9 +501,18 @@ public static class YarnBundleEmitter
         {
             string trimmed = variable.TrimStart('$').Trim();
 
-            if (trimmed.Length > 0 && seen.Add(trimmed))
+            if (trimmed.Length == 0)
             {
-                declarations.Add(new YarnDeclaration(trimmed, InitialValueOf(trimmed, definition)));
+                return;
+            }
+
+            // 초기값 타입은 <b>접두 붙이기 전</b> 이름으로 찾는다 — 정의 파일은 작가가
+            // 보는 이름을 안다. 선언에 나가는 것은 접두 붙은 이름이다.
+            string declared = Tier1Namespace.Apply(trimmed, tier1Prefix, statNames);
+
+            if (seen.Add(declared))
+            {
+                declarations.Add(new YarnDeclaration(declared, InitialValueOf(trimmed, definition)));
             }
         }
 

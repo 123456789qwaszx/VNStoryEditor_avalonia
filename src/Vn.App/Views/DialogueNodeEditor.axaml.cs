@@ -1943,12 +1943,13 @@ public partial class DialogueNodeEditor : UserControl
             }
         };
 
-        // Bool 플래그는 수치 슬라이더가 아니라 On/Off 토글이다 (X7).
+        // 능력(보유)은 수치 슬라이더가 아니라 On/Off 토글이다 (X7).
         // 저장 값은 Yarn 문법 그대로 true/false 문자열 — 출력 불변.
-        bool isBool = registration?.IsBool == true ||
-            _session!.Definition.Variables.Any(spec =>
-                string.Equals(spec.Name, operation.Variable, StringComparison.Ordinal) &&
-                string.Equals(spec.Type, "bool", StringComparison.OrdinalIgnoreCase));
+        //
+        // 종류는 <b>이 챕터의 등록</b>만 본다 (2026-08-17 소유자) — 정의 파일을 뒤지던
+        // 폴백은 뺐다. 기획자 스탯은 작가에게 노출되어서는 안 되는 자료라, 종류를 알아내는
+        // 길로도 쓰지 않는다.
+        bool isBool = registration?.IsBool == true;
 
         if (isBool)
         {
