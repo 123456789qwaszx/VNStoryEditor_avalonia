@@ -369,7 +369,7 @@ public class AuthoringSessionTests
 
             session.Editor.SetWriterSpeakers([
                 new WriterSpeaker { Name = "작가화자", CharacterId = string.Empty },
-                new WriterSpeaker { Name = string.Empty }  // 이름 없는 행은 버려진다
+                new WriterSpeaker { Name = string.Empty }  // 아직 안 쓴 자리
             ]);
             session.Save(path);
 
@@ -377,9 +377,10 @@ public class AuthoringSessionTests
             Assert.DoesNotContain(session.Definition.Speakers, speaker =>
                 string.Equals(speaker.Name, "작가화자", StringComparison.Ordinal));
 
-            // 프로젝트에 남고, 다시 열어도 그대로다.
-            WriterSpeaker saved = Assert.Single(session.Project.WriterSpeakers);
-            Assert.Equal("작가화자", saved.Name);
+            // 이름 없는 줄도 <b>메모리에는</b> 남는다 (2026-08-17 소유자 보고 — 여기서
+            // 걸러 내면 [화자 추가]로 만든 줄이 첫 저장에 휩쓸려 사라진다).
+            Assert.Equal(2, session.Project.WriterSpeakers.Count);
+            Assert.Equal("작가화자", session.Project.WriterSpeakers[0].Name);
 
             var reopened = new AuthoringSession();
             reopened.Open(path);

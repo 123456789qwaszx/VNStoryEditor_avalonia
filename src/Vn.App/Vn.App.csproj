@@ -36,4 +36,19 @@
     <EmbeddedResource Include="Assets\DefaultTuning\**\*.json"
                       LogicalName="DefaultTuning/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+
+  <!--
+    배포는 exe 하나로 (2026-08-17 — 비개발자에게 넘기기 위해).
+
+    <b>디버그 심볼은 배포물에 넣지 않는다.</b> SkiaSharp·HarfBuzz의 네이티브 .pdb가
+    합쳐서 100MB인데, 그건 exe(78MB)보다 크면서 쓰는 사람에게는 아무 소용이 없다.
+    `DebugType=none`은 우리 어셈블리만 다스리므로 패키지가 딸려 보낸 것은 여기서 턴다.
+  -->
+  <Target Name="StripPublishedSymbols" AfterTargets="Publish">
+    <ItemGroup>
+      <PublishedSymbol Include="$(PublishDir)**\*.pdb" />
+    </ItemGroup>
+
+    <Delete Files="@(PublishedSymbol)" />
+  </Target>
 </Project>

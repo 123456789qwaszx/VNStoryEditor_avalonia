@@ -1773,17 +1773,10 @@ internal sealed class StageSceneView : UserControl
         MiniStageSlot slot = _request.State.Slots[slotKey];
         PreviewAssetLibrary library = _session!.AssetLibrary;
 
-        string[] characters = library.PortraitEntries
-            .Select(entry => entry.Key.CharacterId)
-            .Union(
-                _session.Definition.Speakers
-                    .Select(speaker => speaker.CharacterId)
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Cast<string>(),
-                StringComparer.Ordinal)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(id => id, StringComparer.Ordinal)
-            .ToArray();
+        string[] characters = CastingCandidates(
+            library.PortraitEntries.Select(entry => entry.Key.CharacterId),
+            _session.Definition.Speakers.Select(speaker => speaker.CharacterId),
+            _session.ChapterSpeakerCharacterIds.Values);
 
         panel.Children.Add(new TextBlock
         {
@@ -1829,6 +1822,26 @@ internal sealed class StageSceneView : UserControl
 
         return panel;
     }
+
+    /// <summary>
+    /// 캐스팅에 고를 수 있는 캐릭터들 — 출처가 <b>셋</b>이다:
+    /// 초상화 폴더 · 정의 파일 speakers · <b>챕터 `화자` 시트의 캐릭터키</b>.
+    ///
+    /// 셋째가 빠져 있었다 (2026-08-17 소유자 보고: "기획자가 지정한 캐릭터도 안 보이고").
+    /// 기획자가 챕터 시트에만 적어 둔 캐릭터는 목록에 아예 나오지 않았다 — 초상화가 아직
+    /// 없어도 <b>이름은 정해진 것</b>이니 고를 수 있어야 한다(표정 단추와 같은 구멍이었다).
+    /// </summary>
+    internal static string[] CastingCandidates(
+        IEnumerable<string> portraits,
+        IEnumerable<string?> defined,
+        IEnumerable<string> chapterSheet) =>
+        portraits
+            .Concat(defined.Where(id => !string.IsNullOrWhiteSpace(id)).Cast<string>())
+            .Concat(chapterSheet)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
 
     /// <summary>런타임 screenPoint 프리셋을 화면 배열 그대로 놓은 3×3.</summary>
     private static readonly string[][] ScreenPointRows =

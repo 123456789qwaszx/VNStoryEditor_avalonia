@@ -1427,8 +1427,12 @@ public sealed partial class ProjectEditor
     {
         ArgumentNullException.ThrowIfNull(speakers);
 
+        // 이름이 빈 줄도 그대로 둔다 (2026-08-17 소유자 보고 — "화자 추가를 눌렀는데
+        // 아무 일도 안 일어나"). 여기서 걸러 내면 <b>방금 만든 빈 줄</b>이 첫 저장에
+        // 휩쓸려 사라진다: 화면에 줄이 서고, 아무 칸이나 건드리는 순간 그 줄이 없어졌다.
+        // 빈 줄은 "아직 안 쓴 자리"이지 잘못이 아니다 — 파일로 나갈 때만 턴다
+        // (<see cref="Serialization.ProjectManifestJson"/>).
         List<WriterSpeaker> next = speakers
-            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
             .Select(speaker => speaker.Clone())
             .ToList();
 

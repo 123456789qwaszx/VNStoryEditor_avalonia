@@ -100,11 +100,17 @@ public static class ProjectManifestJson
         }
 
         // 작가가 더한 화자 (2026-08-17) — 정의 파일이 아니라 여기 산다(정의 파일은 기획자 전용).
-        if (project.WriterSpeakers.Count > 0)
+        // <b>이름이 빈 줄은 파일에 안 쓴다</b> — 편집 중인 빈 자리는 메모리에서는 살아 있어야
+        // 하지만(안 그러면 만들자마자 사라진다) 저장물에 남길 이유는 없다.
+        List<WriterSpeaker> named = project.WriterSpeakers
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
+            .ToList();
+
+        if (named.Count > 0)
         {
             var writerSpeakers = new JsonArray();
 
-            foreach (WriterSpeaker speaker in project.WriterSpeakers)
+            foreach (WriterSpeaker speaker in named)
             {
                 var entry = new JsonObject { ["name"] = speaker.Name };
 
