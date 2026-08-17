@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-17 · 테스트 **1094 통과, 실패 0**
-(Ked.Presentation.Core 220 · Vn.Core 60 · Vn.Authoring 636 · Vn.App 178)
+기준: 2026-08-17 · 테스트 **1095 통과, 실패 0**
+(Ked.Presentation.Core 220 · Vn.Core 60 · Vn.Authoring 636 · Vn.App 179)
 
 > **⚠ 규격이 이틀 사이 v5 → v6 → v7 → v8 → v9로 굴렀다. 이 박스가 최신 계약이다.**
 >

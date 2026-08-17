@@ -854,6 +854,20 @@ public partial class SetNodeEditor : UserControl
         };
         ToolTip.SetTip(sliderMax, "슬라이더 최댓값");
 
+        /// <summary>아이템의 초기값은 숫자다 — 숫자로 못 읽으면 0에서 시작한다.</summary>
+        static string NumberOrZero(string? text)
+        {
+            string trimmed = (text ?? string.Empty).Trim();
+
+            return double.TryParse(
+                trimmed,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out _)
+                ? trimmed
+                : "0";
+        }
+
         static double? ParseRange(string? text) =>
             double.TryParse(
                 text,
@@ -877,9 +891,13 @@ public partial class SetNodeEditor : UserControl
             next[index] = new VariableAssignment
             {
                 Variable = variable.Text ?? string.Empty,
+                // 값 공간이 종류마다 다르다 — 능력은 true/false, 아이템은 숫자다.
+                // 종류를 바꾸면 안 쓰는 쪽 칸의 값이 그대로 넘어와 아이템 초기값이
+                // `false`로 적히던 버그가 있었다 (2026-08-17 소유자 보고). 새 종류가
+                // 읽을 수 없는 값은 그 종류의 기본값으로 떨군다.
                 Value = nextIsBool
                     ? (boolValue.IsChecked == true ? "true" : "false")
-                    : value.Text ?? string.Empty,
+                    : NumberOrZero(value.Text),
                 Type = nextType,
                 SliderMin = ParseRange(sliderMin.Text),
                 SliderMax = ParseRange(sliderMax.Text)
