@@ -1450,7 +1450,12 @@ public sealed partial class ProjectEditor
             return;
         }
 
-        Mutate(() =>
+        // <b>구조 변경이 아니다</b> (2026-08-17 소유자 보고 — "한 글자만 적어도 선택된 게
+        // 풀려버려서 글자를 쓸 수가 없네"). 화자 목록은 드롭다운의 재료일 뿐 노드도 간선도
+        // 아닌데 `Structure`로 알리고 있었고, 그러면 셸이 그래프와 <b>편집기까지</b> 다시
+        // 만든다 — 글자 하나마다 쓰던 칸이 교체돼 타이핑이 끊겼다.
+        // `Content`는 판도 편집기도 건드리지 않는다(대사 미리보기만 새로 읽는다).
+        Mutate(ProjectChangeKind.Content, () =>
         {
             Project.WriterSpeakers.Clear();
             Project.WriterSpeakers.AddRange(next);

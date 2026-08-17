@@ -534,6 +534,9 @@ public partial class SetNodeEditor : UserControl
         panel.Children.Add(statusText);
 
         var pickButton = new Button { Content = "이미지 선택해 추가…", FontSize = 10, Padding = new Thickness(7, 2) };
+
+        // 지금 고른 이름이 이미 있는가 — 단추 글자와 실제 쓰기가 같은 판단 하나를 쓴다.
+        bool _overwriting = false;
         panel.Children.Add(pickButton);
 
         // variant를 바꾸면 다음 빈 번호도 그 variant 기준으로 따라온다.
@@ -558,18 +561,24 @@ public partial class SetNodeEditor : UserControl
                 characterId, variantBox.Text, emotionBox.Text);
             string target = Vn.Authoring.Assets.PortraitSpriteImporter.TargetPathFor(root, key);
 
-            if (File.Exists(target))
+            // 이미 있어도 막지 않는다 (2026-08-17 소유자 요청) — 그림을 고쳐 다시 넣는 것은
+            // 저작 중 흔한 일이다. 대신 단추 글자가 "바꾼다"고 분명히 말하고, 직전 그림은
+            // `.bak`으로 남는다.
+            _overwriting = File.Exists(target);
+
+            if (_overwriting)
             {
-                statusText.Text = $"'{key}'는 이미 있습니다 — 그대로 쓰면 됩니다.";
-                pickButton.Content = "이미 있는 표정입니다";
-                pickButton.IsEnabled = false;
+                statusText.Text = $"'{key}'가 이미 있습니다. 이미지를 고르면 그 자리를 바꿉니다 " +
+                    "— 직전 그림은 같은 폴더에 .bak으로 남습니다.";
+                pickButton.Content = "이미지 선택해 덮어쓰기…";
             }
             else
             {
                 statusText.Text = $"'{key.ToRelativePath()}'가 아직 없습니다. 이미지를 고르면 이 이름으로 복제됩니다.";
                 pickButton.Content = "이미지 선택해 추가…";
-                pickButton.IsEnabled = true;
             }
+
+            pickButton.IsEnabled = true;
         }
 
         pickButton.Click += async (_, _) => await UiGuard.RunAsync(_session, "표정 스프라이트 추가", async () =>
@@ -610,11 +619,13 @@ public partial class SetNodeEditor : UserControl
 
             Vn.Authoring.Assets.PortraitSpriteImporter.Imported imported =
                 Vn.Authoring.Assets.PortraitSpriteImporter.Import(
-                    root, sourcePath, characterId, variantBox.Text, emotionBox.Text);
+                    root, sourcePath, characterId, variantBox.Text, emotionBox.Text, _overwriting);
 
             _session.RefreshAssets();
-            _session.SetStatus(
-                $"'{Path.GetFileName(sourcePath)}'를 '{imported.Key.ToRelativePath()}'로 복제해 등록했습니다.");
+            _session.SetStatus(imported.Replaced
+                ? $"'{imported.Key.ToRelativePath()}'를 '{Path.GetFileName(sourcePath)}'로 바꿨습니다 " +
+                  "(직전 그림은 .bak)."
+                : $"'{Path.GetFileName(sourcePath)}'를 '{imported.Key.ToRelativePath()}'로 복제해 등록했습니다.");
             flyout.Hide();
         });
 

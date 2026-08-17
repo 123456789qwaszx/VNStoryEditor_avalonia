@@ -50,8 +50,54 @@ public class PortraitSpriteImporterTests
             InvalidOperationException rejection = Assert.Throws<InvalidOperationException>(() =>
                 PortraitSpriteImporter.Import(root, source, "willow", "a", "1"));
 
-            Assert.Contains("덮어쓰지 않습니다", rejection.Message, StringComparison.Ordinal);
+            Assert.Contains("이미 있습니다", rejection.Message, StringComparison.Ordinal);
             Assert.Equal([9, 9, 9], File.ReadAllBytes(existing)); // 기존 파일이 그대로다
+        }
+        finally
+        {
+            CleanFixture(root, source);
+        }
+    }
+
+    [Fact]
+    public void 덮어쓰기를_적으면_바꾸고_직전_그림은_bak으로_남는다()
+    {
+        // 2026-08-17 소유자 요청 — "이미 있다고 그대로 쓰라고 하는 대신 덮어쓸 수 있도록".
+        // 그림을 고쳐 다시 넣는 것은 저작 중 흔한 일이고, 막아 두면 탐색기로 파일을 지우고
+        // 돌아와야 했다. 대신 조용히 덮지는 않는다 — 부르는 쪽이 명시하고, 직전은 남는다.
+        (string root, string source) = MakeFixture();
+
+        try
+        {
+            string existing = Path.Combine(root, "willow", "a", "01.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(existing)!);
+            File.WriteAllBytes(existing, [9, 9, 9]);
+
+            PortraitSpriteImporter.Imported imported =
+                PortraitSpriteImporter.Import(root, source, "willow", "a", "1", overwrite: true);
+
+            Assert.True(imported.Replaced);
+            Assert.Equal([1, 2, 3, 4], File.ReadAllBytes(existing));      // 새 그림이 그 자리에
+            Assert.Equal([9, 9, 9], File.ReadAllBytes(existing + ".bak")); // 직전 그림은 남는다
+        }
+        finally
+        {
+            CleanFixture(root, source);
+        }
+    }
+
+    [Fact]
+    public void 없던_자리에_넣으면_덮어쓴_것이_아니다()
+    {
+        (string root, string source) = MakeFixture();
+
+        try
+        {
+            PortraitSpriteImporter.Imported imported =
+                PortraitSpriteImporter.Import(root, source, "willow", "a", "1", overwrite: true);
+
+            Assert.False(imported.Replaced);
+            Assert.False(File.Exists(imported.TargetPath + ".bak"));
         }
         finally
         {
