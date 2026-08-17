@@ -228,6 +228,50 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <summary>에피소드 하나(와 그 간선)를 뺀 사본. 검증 통과용 절단본을 만들 때 쓴다.</summary>
+    [Fact]
+    public void 수입기가_믿어야_하는_JSON_규약을_고정한다()
+    {
+        // 런타임 계약서 §G (2026-08-17) — 수입기가 없는 동안 조용히 어긋날 자리 셋을 못 박는다.
+        // 여기가 깨지면 계약서 G1~G5도 함께 고쳐야 한다.
+        string path = Path.Combine(_directory, "gd.xlsx");
+        Directory.CreateDirectory(_directory);
+        ChapterWorkbookWriter.EnsureChapterWorkbook(
+            _directory, "gd", [("trust", "신뢰"), ("anger", "분노")]);
+
+        ChapterWorkbookWriter.AddEpisode(path, "ep1", "첫 화", 0, 0);
+        ChapterWorkbookWriter.AddEpisode(path, "ep2", "둘째", 200, 0);
+        ChapterWorkbookWriter.AddCondition(path, "신뢰0이상", "trust >= 0");
+        ChapterWorkbookWriter.AddCondition(path, "신뢰초과", "trust > 1");
+        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "믿는다");
+        ChapterWorkbookWriter.UpdateEdge(path, "ep1", "ep2",
+            visibleConditionLabel: "신뢰0이상", conditionLabel: "신뢰초과",
+            statChanges: "trust +2", matchOptionLabel: "믿는다");
+        // 관문 없는 길 하나 — 이게 없으면 ep2가 도달 불가라 내보내기가 거부된다(Gate C 3번).
+        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "무시한다");
+
+        ChapterExportResult result = ChapterProgressionExporter.Export(
+            ChapterWorkbookReader.Read(path), episodesFolder: null);
+        Assert.False(result.Refused, string.Join(" / ", result.Validation.All.Select(item => item.Message)));
+
+        using JsonDocument document = JsonDocument.Parse(result.Json!);
+        JsonElement option = document.RootElement.GetProperty("Nodes")[0]
+            .GetProperty("NextOptions")[0];
+
+        // G5 — 관문은 노드가 아니라 길이 갖는다. 노드 쪽 둘은 언제나 비어 나간다.
+        JsonElement node = document.RootElement.GetProperty("Nodes")[0];
+        Assert.Empty(node.GetProperty("VisibleConditions").EnumerateArray());
+        Assert.Empty(node.GetProperty("UnlockConditions").EnumerateArray());
+        Assert.Equal(1, option.GetProperty("VisibleConditions").GetArrayLength());
+
+        // G2 — 값이 0이면 IntValue 키 자체가 없다. 수입기가 0으로 안 읽으면 조건이 어긋난다.
+        JsonElement zero = option.GetProperty("VisibleConditions")[0];
+        Assert.Equal("GreaterOrEqual", zero.GetProperty("Op").GetString());
+        Assert.False(zero.TryGetProperty("IntValue", out _));
+
+        // G3 — `>`가 열리며 생긴 새 Op. 런타임 enum에 아직 없다.
+        Assert.Equal("GreaterThan", option.GetProperty("Conditions")[0].GetProperty("Op").GetString());
+    }
+
     private static ChapterGraphModel Trim(ChapterGraphModel chapter, string remove) => new(
         chapter.ChapterId,
         chapter.SourcePath,

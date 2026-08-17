@@ -102,3 +102,113 @@ VnTool이 내보내는 .yarn 텍스트가 지켜야 하는 런타임 규약. 202
 3. **YarnVariableBridge 미배선**: Yarn 변수 ↔ 에피소드 선택 상태(Stats/Flags) 브리지가 코드에 있으나 아무도 생성하지 않음 — 현재 Yarn에서 벌어진 일이 에피소드 언락에 반영되지 않는다. 인지하고 있는지.
 4. **플래그 저장소 Empty 스텁**: 세이브에 변수가 안 들어가는 현 구조 유지 여부 (C5의 리플레이-결정성 요구가 여기서 나온다).
 5. **CanvasScaler 기준 해상도**: 프리뷰(Phase 2)용 — 좌표가 전부 RigSpaceRoot 픽셀 기준이라 기준 해상도가 데이터로 필요.
+6. **스탯 경계를 progression JSON에 실을지** (G7): 초기값·최소·최대가 지금 어느 런타임 입력에도 없다. 툴의 도달성 증명은 clamp하며 걷는데 런타임은 경계를 모른다 — 증명과 실제 플레이가 갈린다. 권고는 최상위 `Stats[]` 추가.
+7. **선택지별 자유 씬 점프의 모양** (G8): `Option`에 `ViaNodeId` 한 칸을 두고 런타임이 그 Yarn 노드를 거쳐 `TargetEpisodeId`로 잇는 안. 6번과 함께 정하면 저작 쪽을 한 번에 고친다.
+8. **`Option.VisibleConditions` 수용** (G5): v8부터 저작이 내보내고 있으나 런타임 `EpisodeNextOption`에 자리가 없다 — Gate D의 가장 큰 한 칸.
+
+---
+
+## G. 챕터 진행 JSON — 수입기 계약 (v9, 2026-08-17)
+
+A~F는 `.yarn` 텍스트의 계약이다. 이 절은 **다른 표면**을 다룬다: 챕터 레이어가 내는
+`exported/{챕터}.progression.json`을 런타임 `ChapterEpisodeProgressionSO`로 수입하는 규약.
+**Gate D가 여기에 걸려 있다** — 수입기가 아직 없고, 아래 필드 중 일부는 저작 쪽이 이미 내고
+있는데 런타임 타입에 자리가 없다. 이 절은 툴이 **오늘 실제로 내보내는 것**을 코드에서 그대로
+옮긴 것이다(`ChapterProgressionExporter`).
+
+### G1. 모양
+
+**키는 PascalCase다** (camelCase 정책 없음 — 아래는 실제 출력을 옮긴 것이다).
+
+```
+{ ChapterId, DisplayName, StartEpisodeId, Nodes[], EndingRules[] }
+
+Node   : { EpisodeId, Title, IndexText, Kind("Main"|"Attachment"), DialogueEntryId,
+           VisibleConditions[], UnlockConditions[], NextOptions[], Attachments[],
+           IsChapterEndingCandidate, EndingKey, DesignerNote, Position{X,Y} }
+
+Option : { TargetEpisodeId, ChoiceLabel, VisibleConditions[], Conditions[],
+           HideWhenLocked, LockedReasonText, StatChanges[{Key, Amount}] }
+
+조건   : { Kind("Stat"|"EpisodeCleared"), Key, Op, IntValue }
+```
+
+**enum은 이름 문자열로 나간다** — 순서를 재배열해도 안 깨진다. 수입기는 이름으로 맵핑한다.
+`IndexText`는 언제나 빈 문자열이다(v5에서 에피소드 `인덱스` 열 폐지).
+
+### G2. ⚠ `IntValue`는 0이면 키 자체가 없다
+
+`JsonIgnoreCondition.WhenWritingDefault` — `trust >= 0`은 이렇게 나간다:
+
+```json
+{ "Kind": "Stat", "Key": "trust", "Op": "GreaterOrEqual" }
+```
+
+**수입기는 없는 키를 0으로 읽어야 한다.** G4의 `flag == false`도 같은 모양이라, 기본값을
+0으로 안 잡으면 **bool 조건이 통째로 어긋난다**(가장 흔한 조건인데도).
+
+### G3. 새 `op` 둘 — `GreaterThan` · `LessThan`
+
+2026-08-16 소유자 개방으로 조건 시트에 `<`·`>`가 열렸다. 기존 넷(`GreaterOrEqual`,
+`LessOrEqual`, `Equal`, `Exists`)에 **`GreaterThan`·`LessThan`이 더해진다.** 수입기의
+enum과 평가기 둘 다 열어야 한다. `NotEqual`은 파서가 아직 닫아 두어 나오지 않는다.
+
+### G4. bool 스탯은 0/1 + `Equal`이다
+
+스탯 시트의 `타입`이 `bool`이면 값 공간이 0·1이고 조건은 `flag == true/false`뿐이다.
+내보내기는 이것을 **`Stat` + `Equal` + `IntValue` 0 또는 1**로 낸다 — 런타임에 bool이라는
+별도 종류가 필요 없다(G2 때문에 `== false`는 `IntValue` 키가 없는 모양으로 나간다).
+
+### G5. ⚠ 관문이 노드에서 길로 내려왔다 (v8)
+
+`Node.VisibleConditions` · `Node.UnlockConditions`는 **언제나 빈 배열로 나간다.** 스키마
+1:1을 위해 필드만 남겨 둔 것이고, 실제 값은 **`Option.VisibleConditions` / `Option.Conditions`**에
+있다. `Option.VisibleConditions`는 런타임 `EpisodeNextOption`에 **아직 없는 필드**다 — 이것이
+Gate D의 가장 큰 한 칸이다.
+
+- `Option.VisibleConditions` 미달 → 그 선택지를 **목록에 만들지 않는다**
+- `Option.Conditions` 미달 → **잠긴 채 보인다**(`LockedReasonText` 표시).
+  단 `HideWhenLocked`가 참이면 숨긴다
+
+### G6. 전이 규칙 (v9)
+
+에피소드 재생이 끝나면:
+
+1. 플레이어가 고른 선택지의 Option을 탄다 → `StatChanges`를 **원자적으로 1회 커밋**한 뒤
+   `TargetEpisodeId`로 이동
+2. 고를 수 있는 선택지가 하나도 없으면 **`ChoiceLabel`이 빈 문자열인 Option**(보이지 않는
+   기본, 에피소드당 하나·조건 없음)을 탄다
+3. 그것도 없으면 **챕터 런이 여기서 끝난다**
+
+**조건 판정은 커밋 <b>전</b> 값으로 한다** — 플레이어가 선택지를 보는 시점의 값이다.
+`NextOptions`의 배열 순서가 곧 **화면에 뜨는 순서**다(`간선` 시트의 행 순서).
+
+### G7. ⚠ 스탯의 초기값·최소·최대가 이 파일에 없다
+
+`스탯` 시트의 `초기값`·`최소`·`최대`는 **어느 런타임 입력에도 실려 있지 않다** —
+progression JSON에도, `game.definition.json`에도 없다(둘 다 확인). 그런데 툴의 도달성
+증명은 `Math.Clamp(값, 최소, 최대)`로 걷는다(`ChapterReachabilityProver`).
+**런타임이 clamp하지 않거나 다른 경계로 clamp하면 증명과 실제 플레이가 갈린다.**
+
+→ 소유자 결정 필요(F6). 권고: progression JSON 최상위에 `Stats[{Key, DisplayName,
+Initial, Minimum, Maximum, Type}]`를 더한다. 저작 쪽 한 줄이면 되고, 경계가 살 다른
+자리가 없다.
+
+### G8. ⚠ 선택지별 자유 씬 점프가 아직 안 실린다
+
+v9에서 작가는 **선택지 문구를 열쇠로** 자유 씬을 매단다
+(`DialogueNode.ChoiceExits`, 판 파일의 `choiceExits`). 그런데 발행 경로
+(`DialoguePublisher`)의 점프는 대본의 **줄**에 매여 있어, 문구를 열쇠로 한 점프를 실을
+자리가 없다 — **저작은 되는데 내보내기에는 안 나간다.** 시나리오 그래프의 칩 상세가 그
+사실을 적어 두고 있다.
+
+→ 필요한 것: Option 하나가 "다음 에피소드로 곧장" 대신 "이 Yarn 노드를 거쳐서" 갈 수 있어야
+한다. 저작 쪽 후보는 `Option`에 `ViaNodeId` 한 칸. 런타임은 그 노드를
+재생한 뒤 `TargetEpisodeId`로 잇는다. **G7과 함께 결정되어야 저작 쪽을 한 번에 고친다.**
+
+### G9. 부착(Attachment) 에피소드의 표시 제어가 비었다
+
+`Kind: "Attachment"`인 에피소드는 들어오는 간선이 없다 — v8에서 관문이 간선으로 내려가면서
+**부착의 표시 조건이 갈 곳을 잃었다**(이행에서 사라진다). `Node.Attachments`도 v1 비범위로
+빈 배열이다. 부착을 실제로 쓰기 전에 규격이 필요하다 — 그때는 노드 쪽 `VisibleConditions`를
+부착에 한해 되살리는 것이 자연스럽다(길이 없으니 노드가 유일한 주인이다).
