@@ -93,6 +93,19 @@ public sealed class ChapterStatSpanViewTests : IDisposable
         Assert.Equal("신뢰 0", StatLine(canvas, "ep1"));
     });
 
+    [Fact]
+    public void 증감이_하나도_없는_챕터는_거르지_않고_초기값을_보여_준다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-17 소유자 보고 — 증감을 아직 안 적은 판에서 카드가 비어 있으면 기능이
+        // 없는 것처럼 읽힌다. 거를 것이 없을 때는 거르지 않는다.
+        ChapterWorkbookWriter.UpdateEdge(ChapterPath, "ep1", "싼길", statChanges: string.Empty);
+        ChapterWorkbookWriter.UpdateEdge(ChapterPath, "ep1", "비싼길", statChanges: string.Empty);
+
+        Canvas canvas = Render();
+
+        Assert.Equal("신뢰 0 · 분노 0", StatLine(canvas, "합류"));
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <summary>그 카드에 붙은 스탯 줄 — 없으면 빈 글자.</summary>
@@ -101,13 +114,10 @@ public sealed class ChapterStatSpanViewTests : IDisposable
         Border card = canvas.Children.OfType<Border>()
             .Single(border => border.Tag as string == episodeId);
 
-        // 카드 본문 = [머리(제목·배지)] [Id] [스탯]. 스탯 줄만 파란 글씨다.
         return ((StackPanel)card.Child!).Children
             .OfType<TextBlock>()
-            .Select(block => block.Text ?? string.Empty)
-            .FirstOrDefault(text => text.Contains("신뢰", StringComparison.Ordinal)
-                || text.Contains("분노", StringComparison.Ordinal))
-            ?? string.Empty;
+            .FirstOrDefault(block => block.Tag as string == ChapterGraphView.StatLineTag)
+            ?.Text ?? string.Empty;
     }
 
     private Canvas Render()

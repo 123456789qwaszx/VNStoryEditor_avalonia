@@ -254,9 +254,10 @@ public static class ChapterWorkbookWriter
         string fromEpisodeId,
         string toEpisodeId,
         string? conditionLabel = null,
-        string? optionLabel = null) =>
+        string? optionLabel = null,
+        string? statChanges = null) =>
         Mutate(path, workbook =>
-            AppendEdge(workbook, fromEpisodeId, toEpisodeId, conditionLabel, optionLabel));
+            AppendEdge(workbook, fromEpisodeId, toEpisodeId, conditionLabel, optionLabel, statChanges));
 
     /// <summary>
     /// 선택지 한 줄의 배선을 고친다 — 문구와 도착을 한 저장으로 (툴 편집 폼의 [수정]).
@@ -268,7 +269,8 @@ public static class ChapterWorkbookWriter
         string currentToEpisodeId,
         string? currentOptionLabel,
         string newToEpisodeId,
-        string? newOptionLabel) =>
+        string? newOptionLabel,
+        string? statChanges = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -279,6 +281,7 @@ public static class ChapterWorkbookWriter
 
             row.Cell(2).SetValue(newToEpisodeId);
             row.Cell(4).SetValue(newOptionLabel ?? string.Empty);
+            Set(edges, row.RowNumber(), 3, statChanges); // 배선과 증감을 한 저장으로
             EnsureChoiceLabel(workbook, newOptionLabel);
         });
 
@@ -315,7 +318,8 @@ public static class ChapterWorkbookWriter
 
     /// <summary>간선 행 한 줄 붙이기 (AddEdge·AddNextEpisode 공용).</summary>
     private static void AppendEdge(
-        XLWorkbook workbook, string fromEpisodeId, string toEpisodeId, string? conditionLabel, string? optionLabel)
+        XLWorkbook workbook, string fromEpisodeId, string toEpisodeId,
+        string? conditionLabel, string? optionLabel, string? statChanges = null)
     {
         IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
 
@@ -328,6 +332,7 @@ public static class ChapterWorkbookWriter
         int row = NextRow(edges);
         edges.Cell(row, 1).SetValue(fromEpisodeId);
         edges.Cell(row, 2).SetValue(toEpisodeId);
+        Set(edges, row, 3, statChanges);     // 스탯변화 — 길을 여는 그 저장에 같이 실린다
         Set(edges, row, 4, optionLabel);     // 선택지 = 문구 그대로 (v9)
         Set(edges, row, 6, conditionLabel);  // 해금조건 (v8 — E는 표시조건)
         edges.Cell(row, 7).SetValue("FALSE");

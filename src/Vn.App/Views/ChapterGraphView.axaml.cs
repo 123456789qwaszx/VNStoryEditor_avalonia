@@ -40,6 +40,10 @@ public partial class ChapterGraphView : UserControl
     /// <summary>선택된 챕터의 구조 검증 + 도달성 증명 결과 (G7). 워크북을 읽을 때 갱신된다.</summary>
     private ChapterValidationResult? _validation;
 
+    /// <summary>`스탯변화` 줄 편집기 둘 — 간선 패널의 것과 에피소드 노드 폼 안의 것.</summary>
+    private readonly StatChangeEditor _edgeStats = new();
+    private readonly StatChangeEditor _formStats = new();
+
     private AuthoringSession? _session;
     private ChapterFolderWatcher? _watcher;
     private ChapterFolderWatcher? _episodeWatcher;
@@ -142,6 +146,10 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
             }
         };
+        // 스탯변화 줄 편집기를 두 자리에 꽂는다 — 간선 패널과 에피소드 노드의 선택지 폼.
+        EdgeStatsHost.Children.Add(_edgeStats);
+        EdgeFormStatsHost.Children.Add(_formStats);
+
         // 관문은 v8에서 간선으로 옮겨 갔다 — 에피소드 콤보는 감춰져 있고 저장도 안 한다.
         AddNextEdgeButton.Click += (_, _) => UiGuard.Run(_session, "선택지 추가", AddChoiceSlotFromPanel);
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
@@ -1208,7 +1216,8 @@ public partial class ChapterGraphView : UserControl
                 FontSize = 9,
                 Opacity = 0.75,
                 Foreground = new SolidColorBrush(Color.Parse("#3E7B9B")),
-                TextTrimming = TextTrimming.CharacterEllipsis
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Tag = StatLineTag // 검증이 이 줄을 글자 짐작 없이 집는다
             });
         }
 
@@ -1351,6 +1360,11 @@ public partial class ChapterGraphView : UserControl
 
         // 챕터 어디에서도 움직이지 않는 스탯은 뺀다 — 모든 카드에 `분노 0`이 붙으면
         // 정작 움직이는 스탯이 그 줄에 묻힌다.
+        //
+        // 다만 <b>아무 스탯도 안 움직이는 챕터</b>에서는 거르지 않고 전부 보여 준다
+        // (2026-08-17 소유자: "도착 스탯이 보여야 하는데 아직 안보이네"). 증감을 아직
+        // 하나도 안 적은 판이 그렇고, 그때 빈 카드는 기능이 없는 것처럼 읽힌다 —
+        // 초기값이라도 서 있어야 "여기에 그 값이 뜬다"가 보인다.
         var moved = model.Edges
             .SelectMany(edge => edge.StatChanges)
             .Select(change => change.Key)
@@ -1358,7 +1372,7 @@ public partial class ChapterGraphView : UserControl
 
         List<ChapterStatSpan> spans = validation.Reachability
             .SpansFor(episode.EpisodeId)
-            .Where(span => moved.Contains(span.Key))
+            .Where(span => moved.Count == 0 || moved.Contains(span.Key))
             .ToList();
 
         if (spans.Count == 0)
@@ -1387,6 +1401,9 @@ public partial class ChapterGraphView : UserControl
         // 탐색이 상한에서 잘렸으면 이 폭은 "적어도 이만큼"이다 — 확정처럼 보이면 안 된다.
         return validation.Reachability.ExplorationComplete ? body : "≈ " + body;
     }
+
+    /// <summary>카드의 도착 스탯 줄에 붙는 표식 — 검증이 그 줄을 집는 손잡이다.</summary>
+    internal const string StatLineTag = "episode-stats";
 
     /// <summary>카드 툴팁의 스탯 절 — 좁은 카드 줄이 잘려도 여기서는 다 읽힌다.</summary>
     private string StatSpanDetail(ChapterEpisode episode)
@@ -1667,7 +1684,8 @@ public partial class ChapterGraphView : UserControl
         EdgeConditionCombo.IsEnabled = editable;
         EdgeHideCheck.IsEnabled = editable;
         EdgeLockedMsgBox.IsEnabled = editable;
-        EdgeStatsBox.IsEnabled = editable;
+        _edgeStats.Editable = editable;
+        _formStats.Editable = editable;
         EdgeApplyButton.IsVisible = editable;
         EdgeDeleteButton.IsVisible = editable;
 
@@ -1799,6 +1817,7 @@ public partial class ChapterGraphView : UserControl
     {
         _edgeFormIndex = -1;
         _edgeFormEdge = null;
+        EdgeFormHost.IsVisible = false;
         EdgeFormPanel.IsVisible = false;
     }
 
@@ -1841,6 +1860,10 @@ public partial class ChapterGraphView : UserControl
             EdgeLabelBox.SelectedItem = edge is null
                 ? null
                 : edge.IsPlainAdvance ? PlainAdvanceItem : edge.OptionLabel;
+
+            // 스탯변화도 여기서 만진다 (2026-08-17) — 새 길이면 빈 목록에서 시작한다.
+            _formStats.Editable = ToolEditable;
+            _formStats.Load(SelectedModel?.Stats ?? [], edge?.StatChanges ?? []);
         }
         finally
         {
@@ -1878,9 +1901,13 @@ public partial class ChapterGraphView : UserControl
             ? picked
             : string.Empty;
 
+        // 배선과 증감이 한 저장으로 나간다 — 두 번 쓰면 그 사이에 엑셀이 파일을 잡을 수 있고,
+        // 반쪽만 적힌 길이 남는다.
+        string stats = _formStats.ToSheetText();
+
         ChapterWriteResult result = _edgeFormEdge is { } current
-            ? ChapterWorkbookWriter.SetEdgeRoute(path, from, current.To, current.Label, to, label)
-            : ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label);
+            ? ChapterWorkbookWriter.SetEdgeRoute(path, from, current.To, current.Label, to, label, stats)
+            : ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label, statChanges: stats);
 
         if (result.Written)
         {
@@ -1923,6 +1950,7 @@ public partial class ChapterGraphView : UserControl
 
         // 폼을 제자리에 꽂는다 — 누른 줄 바로 아래(새 선택지면 목록 끝).
         bool formOpen = editable && _edgeFormIndex >= 0;
+        EdgeFormHost.IsVisible = formOpen;
         EdgeFormPanel.IsVisible = formOpen;
 
         if (formOpen)
@@ -1945,11 +1973,11 @@ public partial class ChapterGraphView : UserControl
             }
 
             EdgeListPanel.Children.Insert(
-                Math.Min(_edgeFormIndex, EdgeListPanel.Children.Count), EdgeFormPanel);
+                Math.Min(_edgeFormIndex, EdgeListPanel.Children.Count), EdgeFormHost);
         }
         else
         {
-            EdgeListPanel.Children.Add(EdgeFormPanel); // 트리 밖에 두지 않는다 — 자리만 숨김
+            EdgeListPanel.Children.Add(EdgeFormHost); // 트리 밖에 두지 않는다 — 자리만 숨김
         }
     }
 
@@ -2059,7 +2087,8 @@ public partial class ChapterGraphView : UserControl
         {
             EdgeHideCheck.IsChecked = edge.HideWhenLocked;
             EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
-            EdgeStatsBox.Text = StatChangesText(edge);
+            _edgeStats.Editable = ToolEditable;
+            _edgeStats.Load(model.Stats, edge.StatChanges);
         }
 
         // 이 길의 문구 (v9) — 챕터의 모든 문구 중에서 고른다. 목록·저장이 선택지 목록의
@@ -2146,7 +2175,7 @@ public partial class ChapterGraphView : UserControl
             conditionLabel: Changed(Gate(EdgeConditionCombo), edge.ConditionLabel ?? string.Empty),
             hideWhenLocked: EdgeHideCheck.IsChecked == edge.HideWhenLocked ? null : EdgeHideCheck.IsChecked,
             lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
-            statChanges: Changed(EdgeStatsBox.Text, StatChangesText(edge)),
+            statChanges: Changed(_edgeStats.ToSheetText(), StatChangesText(edge)),
             matchOptionLabel: EdgeLabelKey(edge),
             optionLabel: Changed(pickedLabel, EdgeLabelKey(edge)));
 
