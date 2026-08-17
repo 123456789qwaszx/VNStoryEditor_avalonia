@@ -5,13 +5,35 @@ namespace Vn.Authoring.Chapters;
 /// 상태공간을 끝까지 훑었는가. 상한에 걸려 중단했으면 false이고, 그때 "도달 불가"는
 /// 단정이 아니라 경고로 낮춰 보고돼 있다 — 증명하지 못한 것을 오류라고 말하지 않는다.
 /// </param>
+/// <summary>
+/// 그 에피소드에 <b>도착했을 때</b> 스탯 하나가 가질 수 있는 폭 (2026-08-17 소유자:
+/// "간선을 따라 왔을 때 스탯의 변화량이 노드에 표시되도록. 여러 루트가 있을 때는 스탯의
+/// 최소최대량을 표기").
+///
+/// 값은 <b>도착 직후</b>다 — 그 노드로 들어오는 간선의 증감까지 커밋한 뒤. 루트가 하나면
+/// 최소·최대가 같고, 갈래가 여럿이면 벌어진다. 증명이 이미 (에피소드, 스탯 벡터)로 걷고
+/// 있으므로 걷는 김에 적어 두는 것이고 따로 계산하지 않는다.
+/// </summary>
+public sealed record ChapterStatSpan(string Key, string DisplayName, int Minimum, int Maximum)
+{
+    /// <summary>어느 루트로 와도 같은 값인가.</summary>
+    public bool IsFixed => Minimum == Maximum;
+}
+
 public sealed record ChapterReachabilityResult(
     IReadOnlySet<string> ReachableEpisodeIds,
     IReadOnlyList<ChapterDiagnostic> Diagnostics,
-    bool ExplorationComplete)
+    bool ExplorationComplete,
+    IReadOnlyDictionary<string, IReadOnlyList<ChapterStatSpan>>? StatSpans = null)
 {
     public bool HasErrors =>
         Diagnostics.Any(item => item.Severity == ChapterDiagnosticSeverity.Error);
+
+    /// <summary>그 에피소드 도착 시점의 스탯 폭. 못 가는 에피소드는 비어 있다.</summary>
+    public IReadOnlyList<ChapterStatSpan> SpansFor(string episodeId) =>
+        StatSpans is not null && StatSpans.TryGetValue(episodeId, out IReadOnlyList<ChapterStatSpan>? spans)
+            ? spans
+            : [];
 }
 
 /// <summary>
@@ -59,11 +81,14 @@ public static class ChapterReachabilityProver
         int[] maxSeen = chapter.Stats.Select(stat => stat.Initial).ToArray();
         int[] minSeen = chapter.Stats.Select(stat => stat.Initial).ToArray();
 
+        // 에피소드별 도착 시점 폭 (2026-08-17) — 걷는 김에 적는다.
+        var spans = new Dictionary<string, (int[] Min, int[] Max)>(StringComparer.Ordinal);
+
         // cleared:가 도달 가능 집합을 참조하므로, 집합이 자라지 않을 때까지 탐색을 반복한다.
         while (true)
         {
             (HashSet<string> found, bool finished) =
-                Explore(chapter, start, reachable, maxSeen, minSeen);
+                Explore(chapter, start, reachable, maxSeen, minSeen, spans);
 
             complete &= finished;
             AddReachableAttachments(chapter, found, maxSeen, minSeen);
@@ -78,7 +103,7 @@ public static class ChapterReachabilityProver
 
         ReportUnreachable(chapter, reachable, maxSeen, minSeen, complete, diagnostics);
 
-        return new ChapterReachabilityResult(reachable, diagnostics, complete);
+        return new ChapterReachabilityResult(reachable, diagnostics, complete, BuildSpans(chapter, spans));
     }
 
     // ── 탐색 ────────────────────────────────────────────────────────────────
@@ -88,7 +113,8 @@ public static class ChapterReachabilityProver
         ChapterEpisode start,
         IReadOnlySet<string> clearedAssumption,
         int[] maxSeen,
-        int[] minSeen)
+        int[] minSeen,
+        Dictionary<string, (int[] Min, int[] Max)> spans)
     {
         var reachable = new HashSet<string>(StringComparer.Ordinal) { start.EpisodeId };
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -98,6 +124,7 @@ public static class ChapterReachabilityProver
         queue.Enqueue((start.EpisodeId, initial));
         visited.Add(StateKey(start.EpisodeId, initial));
         Observe(initial, maxSeen, minSeen);
+        ObserveAt(start.EpisodeId, initial, spans);
 
         while (queue.Count > 0)
         {
@@ -129,6 +156,7 @@ public static class ChapterReachabilityProver
                 // 간선을 타는 순간 증감이 1회 커밋된다 — 근사 없는 정확 전이.
                 int[] next = ApplyDeltas(chapter, stats, edge.StatChanges);
                 Observe(next, maxSeen, minSeen);
+                ObserveAt(target.EpisodeId, next, spans); // 도착 시점 값 = 증감 커밋 뒤
 
                 reachable.Add(target.EpisodeId);
                 string key = StateKey(target.EpisodeId, next);
@@ -439,6 +467,44 @@ public static class ChapterReachabilityProver
             maxSeen[index] = Math.Max(maxSeen[index], stats[index]);
             minSeen[index] = Math.Min(minSeen[index], stats[index]);
         }
+    }
+
+    /// <summary>그 에피소드에 이 값으로 도착했다 — 에피소드별 폭을 넓힌다.</summary>
+    private static void ObserveAt(
+        string episodeId, int[] stats, Dictionary<string, (int[] Min, int[] Max)> spans)
+    {
+        if (!spans.TryGetValue(episodeId, out (int[] Min, int[] Max) span))
+        {
+            spans[episodeId] = ((int[])stats.Clone(), (int[])stats.Clone());
+            return;
+        }
+
+        for (int index = 0; index < stats.Length; index++)
+        {
+            span.Min[index] = Math.Min(span.Min[index], stats[index]);
+            span.Max[index] = Math.Max(span.Max[index], stats[index]);
+        }
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<ChapterStatSpan>> BuildSpans(
+        ChapterGraphModel chapter, Dictionary<string, (int[] Min, int[] Max)> spans)
+    {
+        var built = new Dictionary<string, IReadOnlyList<ChapterStatSpan>>(StringComparer.Ordinal);
+
+        foreach ((string episodeId, (int[] min, int[] max)) in spans)
+        {
+            var list = new List<ChapterStatSpan>(chapter.Stats.Count);
+
+            for (int index = 0; index < chapter.Stats.Count && index < min.Length; index++)
+            {
+                ChapterStat stat = chapter.Stats[index];
+                list.Add(new ChapterStatSpan(stat.Key, stat.DisplayName, min[index], max[index]));
+            }
+
+            built[episodeId] = list;
+        }
+
+        return built;
     }
 
     private static int IndexOfStat(ChapterGraphModel chapter, string key)

@@ -1197,6 +1197,21 @@ public partial class ChapterGraphView : UserControl
             });
         }
 
+        // 여기 도착했을 때의 스탯 (2026-08-17 소유자: "간선을 따라 왔을 때 스탯의 변화량이
+        // 노드에 표시되도록. 여러 루트가 있을 때는 스탯의 최소최대량을 표기"). 도달성 증명이
+        // 이미 (에피소드, 스탯 벡터)로 걸으므로 그 결과를 읽기만 한다 — 따로 세지 않는다.
+        if (StatSpanText(episode) is { Length: > 0 } spans)
+        {
+            body.Children.Add(new TextBlock
+            {
+                Text = spans,
+                FontSize = 9,
+                Opacity = 0.75,
+                Foreground = new SolidColorBrush(Color.Parse("#3E7B9B")),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+        }
+
         // 선택지 포트 (2026-08-15 소유자) — 시나리오 그래프의 조건 갈래 포트처럼 카드
         // 오른변에 뚫린다. 카드는 선택지 수만큼 아래로 자라고(많아야 3개), 문구·원은
         // 간선 그리기와 같은 PortY 산식으로 캔버스에 앉는다 — 줄과 선이 어긋날 수 없다.
@@ -1221,7 +1236,7 @@ public partial class ChapterGraphView : UserControl
             Tag = episode.EpisodeId
         };
 
-        ToolTip.SetTip(card, Tooltip(model, episode));
+        ToolTip.SetTip(card, Tooltip(model, episode) + StatSpanDetail(episode));
 
         if (GatedIncoming(model, episode).Count > 0)
         {
@@ -1317,6 +1332,78 @@ public partial class ChapterGraphView : UserControl
             GraphCanvas.Children.Add(label);
             GraphCanvas.Children.Add(port);
         }
+    }
+
+    /// <summary>
+    /// 카드에 세울 스탯 줄 — `신뢰 1~3 · 분노 0` (2026-08-17). 값은 <b>도착 직후</b>다
+    /// (그 노드로 들어오는 간선의 증감까지 커밋한 뒤). 루트가 하나면 값 하나, 갈래가
+    /// 여럿이면 최소~최대로 벌어진다.
+    ///
+    /// 닿을 수 없는 에피소드에는 아무것도 안 쓴다 — 도착이 없으니 도착 시점 값도 없다.
+    /// bool 스탯은 숫자 대신 참/거짓으로 읽는다(0·1이 무슨 뜻인지 카드에서 알 수 없다).
+    /// </summary>
+    private string StatSpanText(ChapterEpisode episode)
+    {
+        if (_validation is not { } validation || SelectedModel is not { } model)
+        {
+            return string.Empty;
+        }
+
+        // 챕터 어디에서도 움직이지 않는 스탯은 뺀다 — 모든 카드에 `분노 0`이 붙으면
+        // 정작 움직이는 스탯이 그 줄에 묻힌다.
+        var moved = model.Edges
+            .SelectMany(edge => edge.StatChanges)
+            .Select(change => change.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        List<ChapterStatSpan> spans = validation.Reachability
+            .SpansFor(episode.EpisodeId)
+            .Where(span => moved.Contains(span.Key))
+            .ToList();
+
+        if (spans.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        string Value(ChapterStatSpan span)
+        {
+            bool isBool = model.Stats.FirstOrDefault(stat =>
+                string.Equals(stat.Key, span.Key, StringComparison.Ordinal))?.Type == ChapterStatType.Bool;
+
+            if (!isBool)
+            {
+                return span.IsFixed
+                    ? span.Minimum.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : $"{span.Minimum}~{span.Maximum}";
+            }
+
+            return span.IsFixed ? (span.Minimum == 1 ? "참" : "거짓") : "참·거짓";
+        }
+
+        string body = string.Join(" · ", spans.Select(span =>
+            $"{(span.DisplayName.Length > 0 ? span.DisplayName : span.Key)} {Value(span)}"));
+
+        // 탐색이 상한에서 잘렸으면 이 폭은 "적어도 이만큼"이다 — 확정처럼 보이면 안 된다.
+        return validation.Reachability.ExplorationComplete ? body : "≈ " + body;
+    }
+
+    /// <summary>카드 툴팁의 스탯 절 — 좁은 카드 줄이 잘려도 여기서는 다 읽힌다.</summary>
+    private string StatSpanDetail(ChapterEpisode episode)
+    {
+        string line = StatSpanText(episode);
+
+        if (line.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        bool partial = line.StartsWith("≈ ", StringComparison.Ordinal);
+
+        return "\n여기 도착했을 때의 스탯 —\n  "
+            + string.Join("\n  ", (partial ? line[2..] : line).Split(" · "))
+            + "\n  (범위는 들어오는 루트가 여럿일 때 벌어집니다)"
+            + (partial ? "\n  ≈ 탐색이 상한에서 멈춰 실제 폭은 더 넓을 수 있습니다." : string.Empty);
     }
 
     /// <summary>

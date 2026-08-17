@@ -184,6 +184,107 @@ public sealed class ChapterReachabilityTests
         Assert.True(result.ExplorationComplete);
     }
 
+    // ── 에피소드별 스탯 폭 (2026-08-17 소유자) ──────────────────────────────
+    //
+    // "간선을 따라 왔을 때 스탯의 변화량이 노드에 표시되도록. 여러 루트가 있을 때는
+    // 최소최대량을 표기." 값은 <b>도착 직후</b>다 — 그 노드로 들어오는 간선의 증감까지
+    // 커밋한 뒤. 이미 걷고 있는 완전 탐색에서 같이 재므로 따로 세지 않는다.
+
+    [Fact]
+    public void 루트가_하나면_도착_스탯은_값_하나로_고정된다()
+    {
+        ChapterGraphModel chapter = Chapter(
+            episodes: [Episode("ep1", row: 2), Episode("ep2", row: 3)],
+            edges: [("ep1", "ep2", null, 2)],
+            conditions: []);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        ChapterStatSpan span = Assert.Single(result.SpansFor("ep2"));
+        Assert.Equal("신뢰", span.DisplayName);
+        Assert.True(span.IsFixed);
+        Assert.Equal(2, span.Minimum);
+        Assert.Equal(2, span.Maximum);
+    }
+
+    [Fact]
+    public void 들어오는_루트가_여럿이면_최소_최대로_벌어진다()
+    {
+        // 합류점 ep4에는 +1 길과 +3 길이 들어온다 → 1~3.
+        ChapterGraphModel chapter = Chapter(
+            episodes:
+            [
+                Episode("ep1", row: 2),
+                Episode("싼길", row: 3),
+                Episode("비싼길", row: 4),
+                Episode("합류", row: 5)
+            ],
+            edges:
+            [
+                ("ep1", "싼길", null, 1),
+                ("ep1", "비싼길", null, 3),
+                ("싼길", "합류", null, 0),
+                ("비싼길", "합류", null, 0)
+            ],
+            conditions: []);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        ChapterStatSpan span = Assert.Single(result.SpansFor("합류"));
+        Assert.False(span.IsFixed);
+        Assert.Equal(1, span.Minimum);
+        Assert.Equal(3, span.Maximum);
+
+        // 갈래 각각은 여전히 고정이다 — 벌어지는 건 합류점뿐이다.
+        Assert.True(Assert.Single(result.SpansFor("싼길")).IsFixed);
+        Assert.Equal(3, Assert.Single(result.SpansFor("비싼길")).Minimum);
+    }
+
+    [Fact]
+    public void 시작_에피소드는_스탯_초기값을_그대로_갖는다()
+    {
+        ChapterGraphModel chapter = Chapter(
+            episodes: [Episode("ep1", row: 2), Episode("ep2", row: 3)],
+            edges: [("ep1", "ep2", null, 1)],
+            conditions: []);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        ChapterStatSpan span = Assert.Single(result.SpansFor("ep1"));
+        Assert.Equal(0, span.Minimum);
+        Assert.Equal(0, span.Maximum);
+    }
+
+    [Fact]
+    public void 닿을_수_없는_에피소드에는_도착_스탯이_없다()
+    {
+        ChapterGraphModel chapter = Chapter(
+            episodes: [Episode("ep1", row: 2), Episode("고아", row: 3)],
+            edges: [],
+            conditions: []);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        Assert.Empty(result.SpansFor("고아"));
+    }
+
+    [Fact]
+    public void 오가며_쌓이는_길은_폭이_경계까지_벌어진다()
+    {
+        // ep1↔ep2를 오가면 trust가 계속 쌓인다 — 폭은 스탯 최대(경계)에서 멈춘다.
+        ChapterGraphModel chapter = Chapter(
+            episodes: [Episode("ep1", row: 2), Episode("ep2", row: 3)],
+            edges: [("ep1", "ep2", null, 1), ("ep2", "ep1", null, 1)],
+            conditions: [],
+            statMaximum: 4);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        ChapterStatSpan span = Assert.Single(result.SpansFor("ep2"));
+        Assert.Equal(1, span.Minimum);
+        Assert.Equal(4, span.Maximum);
+    }
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <summary>v8 — 관문은 에피소드가 아니라 들어오는 길이 갖는다(간선 조건으로 준다).</summary>
