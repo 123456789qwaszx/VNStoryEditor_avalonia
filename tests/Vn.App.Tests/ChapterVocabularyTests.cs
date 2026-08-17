@@ -1,5 +1,6 @@
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Model;
 
 namespace Vn.App.Tests;
 
@@ -35,6 +36,22 @@ public sealed class ChapterVocabularyTests : IDisposable
 
         Assert.Equal(["anger", "trust"], session.ChapterStatKeys.OrderBy(key => key, StringComparer.Ordinal));
         Assert.Contains("라루", session.ChapterSpeakerNames);
+    }
+
+    [Fact]
+    public void 챕터_판을_열면_설정_노드가_함께_선다()
+    {
+        // 2026-08-17 소유자 — 설정노드는 만들고 지우는 것이 아니라 챕터에 딸린 자리다.
+        var session = new AuthoringSession();
+        string fileId = session.EnsureChapterBoard("ch01");
+
+        SetNode settings = Assert.Single(
+            session.Project.FindFile(fileId)!.Nodes.OfType<SetNode>());
+        Assert.Equal("ch01 설정", settings.Name);
+
+        // 같은 챕터를 다시 열어도 하나뿐이다.
+        session.EnsureChapterBoard("ch01");
+        Assert.Single(session.Project.FindFile(fileId)!.Nodes.OfType<SetNode>());
     }
 
     [Fact]

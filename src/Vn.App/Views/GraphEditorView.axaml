@@ -7,8 +7,9 @@
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" Spacing="6">
+                <!-- [+ 설정 노드]는 폐지됐다 (2026-08-17 소유자) — 설정노드는 챕터마다
+                     하나가 자동으로 서는 컨트롤러라, 만들고 지우는 것이 아니다. -->
                 <Button x:Name="AddDialogueButton" Content="+ 대사 노드" />
-                <Button x:Name="AddSetButton" Content="+ 설정 노드" />
                 <Button x:Name="AddPresentationButton" Content="+ 연출 노드" />
                 <Button x:Name="AddSupplyButton" Content="+ 연출 공급" />
                 <Border Width="1" Margin="4,2" Background="{DynamicResource ThemeBorderLowBrush}" />

@@ -152,7 +152,6 @@ public partial class GraphEditorView : UserControl
         GraphCanvas.Height = CanvasHeight;
 
         AddDialogueButton.Click += (_, _) => AddNode(GraphNodeKind.Dialogue);
-        AddSetButton.Click += (_, _) => AddNode(GraphNodeKind.Set);
         AddPresentationButton.Click += (_, _) => AddNode(GraphNodeKind.Presentation);
         AddSupplyButton.Click += (_, _) => AddNode(GraphNodeKind.CommandSupply);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
@@ -239,7 +238,6 @@ public partial class GraphEditorView : UserControl
         DrawChapterFrames();
 
         AddDialogueButton.IsEnabled = _session.ActiveFileId is not null;
-        AddSetButton.IsEnabled = _session.ActiveFileId is not null;
         AddPresentationButton.IsEnabled = _session.ActiveFileId is not null;
 
         DrawEdges();
@@ -2621,10 +2619,22 @@ public partial class GraphEditorView : UserControl
 
     private void DeleteSelectedNode()
     {
-        if (_session?.SelectedNodeId is { } nodeId)
+        if (_session?.SelectedNodeId is not { } nodeId)
         {
-            _session.Editor.RemoveNode(nodeId);
+            return;
         }
+
+        // 설정 노드는 챕터에 딸린 자리다 (2026-08-17) — 지우면 그 챕터의 조건·변수가
+        // 통째로 사라지고, 어차피 다음에 판을 열 때 빈 채로 다시 선다.
+        if (_session.Project.FindNode(nodeId) is SetNode)
+        {
+            _session.SetStatus(
+                "설정 노드는 챕터마다 하나씩 있는 자리라 지우지 않습니다 — " +
+                "안의 조건·변수는 노드를 열어 하나씩 지울 수 있습니다.");
+            return;
+        }
+
+        _session.Editor.RemoveNode(nodeId);
     }
 
     private NodeCard? FindCard(string nodeId)

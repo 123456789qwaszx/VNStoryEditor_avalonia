@@ -157,6 +157,34 @@ public sealed class ChapterLayerSeparationTests
     }
 
     [Fact]
+    public void 챕터마다_설정_노드_하나가_상시로_선다()
+    {
+        // 2026-08-17 소유자 — "조건 노드라기보다는 챕터별로 자동으로 저장되는 컨트롤러에
+        // 가까운 것 같아. 챕터 하나에 저런 설정을 담아두는 노드가 상시로 뜨는거지."
+        var project = new StoryProject();
+        var file = new StoryFile("sf_ch01", "ch01");
+        project.Files.Add(file);
+        var editor = new ProjectEditor(project);
+
+        SetNode first = editor.EnsureChapterSettingsNode(file.Id);
+        Assert.Equal("ch01 설정", first.Name);
+
+        // 멱등이다 — 두 번 불러도 하나뿐이다.
+        Assert.Same(first, editor.EnsureChapterSettingsNode(file.Id));
+        Assert.Single(file.Nodes.OfType<SetNode>());
+
+        // A계층 공급 노드는 세지 않는다 — 그건 기획자 자료를 나르는 배관이라, 그것만
+        // 있는 판에도 작가의 설정 노드가 따로 선다.
+        var other = new StoryFile("sf_ch02", "ch02");
+        project.Files.Add(other);
+        editor.AddSetNode(other.Id, name: EpisodeSyncService.ConditionSupplyNodeName("ch02"));
+
+        SetNode writerNode = editor.EnsureChapterSettingsNode(other.Id);
+        Assert.Equal("ch02 설정", writerNode.Name);
+        Assert.Equal(2, other.Nodes.OfType<SetNode>().Count());
+    }
+
+    [Fact]
     public void 계층을_가르는_규칙은_이름_규약_하나다()
     {
         Board board = BuildBoard();

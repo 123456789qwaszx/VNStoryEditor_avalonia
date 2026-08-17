@@ -147,12 +147,13 @@ public partial class SetNodeEditor : UserControl
         {
             SpeakerHost.Children.Clear();
 
-            IReadOnlyList<SpeakerSpec> planner = _session?.Definition.Speakers ?? [];
+            List<SpeakerSpec> planner = PlannerSpeakers();
             IReadOnlyList<WriterSpeaker> mine = _session?.Project.WriterSpeakers ?? [];
 
             if (planner.Count > 0)
             {
-                SpeakerHost.Children.Add(SpeakerSectionLabel("기획자가 정한 화자 — 여기서 고치지 않습니다"));
+                SpeakerHost.Children.Add(SpeakerSectionLabel(
+                    "기획자가 정한 화자 — 챕터 `화자` 시트와 game.definition.json. 여기서 고치지 않습니다"));
 
                 foreach (SpeakerSpec speaker in planner)
                 {
@@ -185,6 +186,43 @@ public partial class SetNodeEditor : UserControl
         {
             _rebuildingSpeakers = false;
         }
+    }
+
+    /// <summary>
+    /// 기획자가 정한 화자 — <b>챕터 `화자` 시트 + 정의 파일 speakers</b> (2026-08-17 소유자
+    /// 보고: "챕터엑셀에 화자목록이 있는데 반영이 안되네"). 등록의 주된 자리는 시트이므로
+    /// 시트가 먼저 서고, 같은 이름은 한 번만 센다. 캐릭터키는 정의 파일 쪽이 알고 있으면
+    /// 그걸 쓴다 — 초상화 매핑의 주인은 여전히 정의 파일이다.
+    /// </summary>
+    private List<SpeakerSpec> PlannerSpeakers()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var speakers = new List<SpeakerSpec>();
+        IReadOnlyList<SpeakerSpec> defined = _session?.Definition.Speakers ?? [];
+
+        foreach (string name in _session?.ChapterSpeakerNames ?? [])
+        {
+            if (name.Length > 0 && seen.Add(name))
+            {
+                speakers.Add(new SpeakerSpec
+                {
+                    Name = name,
+                    CharacterId = defined
+                        .FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal))
+                        ?.CharacterId ?? string.Empty
+                });
+            }
+        }
+
+        foreach (SpeakerSpec speaker in defined)
+        {
+            if (speaker.Name.Length > 0 && seen.Add(speaker.Name))
+            {
+                speakers.Add(speaker);
+            }
+        }
+
+        return speakers;
     }
 
     private static TextBlock SpeakerSectionLabel(string text) => new()

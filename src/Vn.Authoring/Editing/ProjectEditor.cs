@@ -1337,6 +1337,30 @@ public sealed partial class ProjectEditor
     }
 
     /// <summary>
+    /// 그 판(챕터)의 <b>설정 노드</b>를 보장한다 (2026-08-17 소유자: "조건 노드라기보다는
+    /// 챕터별로 자동으로 저장되는 컨트롤러에 가까운 것 같아. 챕터 하나에 저런 설정을 담아두는
+    /// 노드가 상시로 뜨는거지").
+    ///
+    /// 공급 범위가 판 전체가 된 뒤로 설정노드는 <b>여러 개일 이유가 없다</b> — 어차피 다 같은
+    /// 곳에 미치므로 나눠 놓으면 "어디에 적었더라"만 생긴다. 그래서 챕터당 하나가 자동으로
+    /// 서고, 작가는 그 안을 채울 뿐 노드를 만들거나 지우지 않는다.
+    /// </summary>
+    /// <returns>그 판의 설정 노드. 이미 있으면 그대로 돌려준다(파일을 건드리지 않는다).</returns>
+    public SetNode EnsureChapterSettingsNode(string fileId)
+    {
+        StoryFile file = RequireFile(fileId);
+
+        // 챕터 조건 공급 노드(A계층 배관)는 세지 않는다 — 그건 기획자 자료를 나르는 자리다.
+        SetNode? existing = file.Nodes.OfType<SetNode>()
+            .FirstOrDefault(node => !Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file));
+
+        return existing ?? AddSetNode(fileId, name: ChapterSettingsNodeName(file.Name));
+    }
+
+    /// <summary>챕터 설정 노드의 이름 규약. 판 이름 = 챕터 Id다.</summary>
+    public static string ChapterSettingsNodeName(string chapterId) => $"{chapterId} 설정";
+
+    /// <summary>
     /// 작가가 더한 화자 목록을 통째로 정한다 (2026-08-17) — <b>`game.definition.json`에는
     /// 쓰지 않는다</b>. 정의 파일은 기획자 전용이고, 이건 프로젝트(작가 소유)에 산다.
     /// 이름이 빈 항목은 버린다 — 드롭다운에 빈 줄이 서면 고를 수도 없다.

@@ -737,6 +737,10 @@ internal sealed class AuthoringSession
             string.Equals(file.Name, chapterId, StringComparison.Ordinal));
 
         board ??= Editor.AddStoryFile(chapterId);
+
+        // 챕터마다 설정 노드 하나가 상시로 선다 (2026-08-17 소유자) — 작가가 만들고 지우는
+        // 것이 아니라 챕터에 딸린 자리다.
+        Editor.EnsureChapterSettingsNode(board.Id);
         return board.Id;
     }
 
