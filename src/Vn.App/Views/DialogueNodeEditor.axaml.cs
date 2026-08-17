@@ -1951,6 +1951,19 @@ public partial class DialogueNodeEditor : UserControl
         // 길로도 쓰지 않는다.
         bool isBool = registration?.IsBool == true;
 
+        // 능력에는 부호가 없다 (2026-08-17 소유자: "지금 능력은 On, Off인데도 부호가 있는데,
+        // 부호를 없애던지 혹은 =로 고정") — On/Off에 `+=`가 설 자리가 없다. 콤보를 감추고
+        // 값을 `=`로 못 박는다: 고를 것이 하나뿐이면 고르게 하지 않는다.
+        if (isBool)
+        {
+            operatorBox.IsVisible = false;
+
+            if (operation.Operator != SetOperatorKind.Assign)
+            {
+                Commit(target => target.Operator = SetOperatorKind.Assign);
+            }
+        }
+
         if (isBool)
         {
             var toggle = new CheckBox

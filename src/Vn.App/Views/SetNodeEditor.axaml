@@ -16,7 +16,9 @@
                         <TextBlock Grid.Column="0" Text="조건" FontWeight="SemiBold" />
                         <Button Grid.Column="1" x:Name="AddConditionButton" Content="조건 추가" FontSize="11" />
                     </Grid>
-                    <TextBlock Text="여기서 만든 조건이 대사 노드의 조건 드롭다운에 나타납니다. 식은 게임이 해석합니다."
+                    <!-- 2026-08-17 소유자 — 식을 손으로 쓰지 않는다. 아이템·능력을 고르고
+                         부호를 고르고 수치를 적는다(대사 노드의 Set과 같은 감각). -->
+                    <TextBlock Text="아래 아이템·능력을 먼저 만들면 여기서 고를 수 있습니다. 여기서 만든 조건이 대사 노드의 조건 드롭다운에 나타납니다."
                                FontSize="11"
                                Opacity="0.65"
                                TextWrapping="Wrap" />

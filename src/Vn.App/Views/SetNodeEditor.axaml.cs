@@ -605,42 +605,161 @@ public partial class SetNodeEditor : UserControl
         flyout.ShowAt(anchor);
     }
 
+    /// <summary>비교 연산자 — 아이템(개수)에만 쓴다. 능력은 있다/없다뿐이라 부호가 없다.</summary>
+    private static readonly string[] ConditionOperators = [">=", "<=", "==", ">", "<"];
+
+    /// <summary>
+    /// 조건 한 줄 — <b>대사노드의 Set과 같은 감각</b>으로 만든다 (2026-08-17 소유자):
+    /// 만든 아이템·능력을 고르고, 부호를 고르고, 수치를 적는다. 식을 손으로 쓰던 칸은
+    /// 없앴다 — 작가가 Yarn 문법을 알아야 할 이유가 없다.
+    ///
+    /// <b>능력에는 부호가 없다</b>(소유자 지시) — On/Off뿐이라 <c>&gt;=</c> 같은 것이 설 자리가
+    /// 없었다. 값은 토글이고 식은 <c>== true/false</c>로 고정된다.
+    ///
+    /// 손으로 적어 둔 복합식(<c>and</c>·여러 항)은 <b>분해하지 않고 그대로 보여 준다</b> —
+    /// 읽기 전용 칸으로 남겨 두는 편이 조용히 뭉개는 것보다 낫다.
+    /// </summary>
     private Control BuildConditionRow(ConditionDefinition condition)
     {
         var name = new TextBox { Text = condition.Name, PlaceholderText = "작가가 읽을 이름", FontSize = 12 };
 
-        var expression = new TextBox
-        {
-            Text = condition.Expression,
-            PlaceholderText = "게임이 평가할 식",
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono,Consolas")
-        };
-
-        void Commit()
-        {
-            if (!_building)
-            {
-                _session!.Editor.UpdateCondition(
-                    condition.Id,
-                    name.Text ?? string.Empty,
-                    expression.Text ?? string.Empty);
-            }
-        }
-
-        name.LostFocus += (_, _) => Commit();
-        expression.LostFocus += (_, _) => Commit();
-
         var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
         remove.Click += (_, _) => _session!.Editor.RemoveCondition(condition.Id);
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        List<VariableAssignment> items = _session?.Project.FindNode(_nodeId) is SetNode owner
+            ? owner.Assignments.Where(item => item.Variable.Length > 0).ToList()
+            : [];
+
+        // 식 → 세 칸. 못 나누면(복합식·수기 편집) 원문을 그대로 지킨다.
+        bool decomposed = Vn.Authoring.Chapters.ConditionExpressionParser.TryDecomposeSingle(
+            (condition.Expression ?? string.Empty).Replace("$", string.Empty, StringComparison.Ordinal),
+            out string pickedName, out string pickedOperator, out string pickedValue);
+
+        if (!decomposed && (condition.Expression ?? string.Empty).Trim().Length > 0)
+        {
+            var raw = new TextBox
+            {
+                Text = condition.Expression,
+                IsReadOnly = true,
+                Margin = new Thickness(6, 0, 0, 0),
+                FontSize = 11,
+                FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono,Consolas"),
+                [ToolTip.TipProperty] = "여러 항을 묶은 식이라 칸으로 나누지 않았습니다. " +
+                                        "고치려면 지우고 다시 만드세요."
+            };
+
+            var rawRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+            Grid.SetColumn(name, 0);
+            Grid.SetColumn(raw, 1);
+            Grid.SetColumn(remove, 2);
+            rawRow.Children.Add(name);
+            rawRow.Children.Add(raw);
+            rawRow.Children.Add(remove);
+
+            name.LostFocus += (_, _) =>
+            {
+                if (!_building)
+                {
+                    _session!.Editor.UpdateCondition(
+                        condition.Id, name.Text ?? string.Empty, condition.Expression ?? string.Empty);
+                }
+            };
+
+            return rawRow;
+        }
+
+        var target = new ComboBox
+        {
+            ItemsSource = items.Select(item => item.Variable).ToList(),
+            SelectedItem = items.Any(item => item.Variable == pickedName) ? pickedName : null,
+            PlaceholderText = items.Count == 0 ? "아이템·능력을 먼저 더하세요" : "아이템·능력",
+            FontSize = 11,
+            Margin = new Thickness(6, 0, 0, 0),
+            MinWidth = 110
+        };
+
+        // 부호는 아이템일 때만. 능력은 == 고정이라 보여 줄 것이 없다.
+        var comparison = new ComboBox
+        {
+            ItemsSource = ConditionOperators,
+            SelectedItem = ConditionOperators.Contains(pickedOperator) ? pickedOperator : ">=",
+            FontSize = 11,
+            Margin = new Thickness(6, 0, 0, 0),
+            MinWidth = 60
+        };
+
+        var value = new TextBox
+        {
+            Text = pickedValue,
+            PlaceholderText = "수치",
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12,
+            MinWidth = 60
+        };
+
+        // 능력의 값은 On/Off다 — 식은 `== true` / `== false`가 된다.
+        var toggle = new CheckBox
+        {
+            IsChecked = string.Equals(pickedOperator, "true", StringComparison.Ordinal),
+            Content = string.Equals(pickedOperator, "true", StringComparison.Ordinal) ? "On" : "Off",
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        bool IsAbility() => items.FirstOrDefault(item =>
+            string.Equals(item.Variable, target.SelectedItem as string, StringComparison.Ordinal))?.IsBool == true;
+
+        void ApplyKind()
+        {
+            bool ability = IsAbility();
+            comparison.IsVisible = !ability;
+            value.IsVisible = !ability;
+            toggle.IsVisible = ability;
+        }
+
+        void Commit()
+        {
+            if (_building || target.SelectedItem is not string picked || picked.Length == 0)
+            {
+                return;
+            }
+
+            string expression = IsAbility()
+                ? $"${picked} == {(toggle.IsChecked == true ? "true" : "false")}"
+                : $"${picked} {comparison.SelectedItem as string ?? ">="} {(value.Text ?? string.Empty).Trim()}";
+
+            _session!.Editor.UpdateCondition(condition.Id, name.Text ?? string.Empty, expression);
+        }
+
+        ApplyKind();
+
+        name.LostFocus += (_, _) => Commit();
+        target.SelectionChanged += (_, _) =>
+        {
+            ApplyKind();
+            Commit();
+        };
+        comparison.SelectionChanged += (_, _) => Commit();
+        value.LostFocus += (_, _) => Commit();
+        toggle.IsCheckedChanged += (_, _) =>
+        {
+            toggle.Content = toggle.IsChecked == true ? "On" : "Off";
+            Commit();
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto") };
         Grid.SetColumn(name, 0);
-        Grid.SetColumn(expression, 1);
-        Grid.SetColumn(remove, 2);
+        Grid.SetColumn(target, 1);
+        Grid.SetColumn(comparison, 2);
+        Grid.SetColumn(value, 3);
+        Grid.SetColumn(toggle, 3);
+        Grid.SetColumn(remove, 4);
         row.Children.Add(name);
-        row.Children.Add(expression);
+        row.Children.Add(target);
+        row.Children.Add(comparison);
+        row.Children.Add(value);
+        row.Children.Add(toggle);
         row.Children.Add(remove);
 
         return row;
