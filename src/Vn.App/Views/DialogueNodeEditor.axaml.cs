@@ -1528,7 +1528,7 @@ public partial class DialogueNodeEditor : UserControl
         return tag;
     }
 
-    /// <summary>set 태그 하나. 누르면 기존 변수·연산자·값 편집 행이 Flyout으로 열린다.</summary>
+    /// <summary>set 태그 하나. 누르면 아이템·능력·연산자·값 편집 행이 Flyout으로 열린다.</summary>
     private Control BuildSetTag(
         DialogueNode node,
         string lineId,
@@ -1655,7 +1655,7 @@ public partial class DialogueNodeEditor : UserControl
                 setRow.Children.Add(addSet);
                 setRow.Children.Add(new TextBlock
                 {
-                    Text = "설정노드를 연결하고 변수를 등록하면 드롭다운으로 고릅니다.",
+                    Text = "챕터 설정 노드에 아이템·능력을 더하면 드롭다운으로 고릅니다.",
                     FontSize = 10,
                     Opacity = 0.55,
                     VerticalAlignment = VerticalAlignment.Center
@@ -1847,7 +1847,7 @@ public partial class DialogueNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 이 대사 노드가 쓸 수 있는 변수 — 연결된 설정노드(Settings link)의 등록 목록이다.
+    /// 이 대사 노드가 쓸 수 있는 아이템·능력 — 이 챕터(판) 설정 노드의 등록 목록이다.
     /// 조건 드롭다운과 같은 해석기(<see cref="ConnectedSetNodeResolver"/>)를 지난다.
     /// </summary>
     private IReadOnlyList<VariableAssignment> RegisteredVariables(DialogueNode node)
@@ -1868,8 +1868,8 @@ public partial class DialogueNodeEditor : UserControl
     }
 
     /// <summary>
-    /// set 편집 (X6) — 타이핑 대신 등록 변수 드롭다운 + 슬라이더.
-    /// 슬라이더 범위는 설정노드의 변수별 등록(기본 -5~+5)이고 편의일 뿐이라
+    /// set 편집 (X6) — 타이핑 대신 등록 아이템·능력 드롭다운 + 슬라이더.
+    /// 슬라이더 범위는 설정노드의 항목별 등록(기본 -5~+5)이고 편의일 뿐이라
     /// 옆의 직접 입력으로 범위 밖 값도 넣을 수 있다. 저장되는 것은 값 문자열
     /// 그대로이므로 <c>&lt;&lt;set&gt;&gt;</c> 출력은 바이트 단위로 불변이다.
     /// 고밀도 개편 후에는 태그 Flyout 안에서 열린다.
@@ -1881,7 +1881,7 @@ public partial class DialogueNodeEditor : UserControl
         int operationIndex,
         SetOperation operation)
     {
-        // 드롭다운에는 등록 변수만 나온다 (X6 수용). 이미 적혀 있는 미등록 변수는
+        // 드롭다운에는 등록된 아이템·능력만 나온다 (X6 수용). 이미 적혀 있는 미등록 이름은
         // 그 행에서만 '(미등록)'으로 보인다 — 조용히 지우지 않는다.
         var choices = registered.Select(item => (item.Variable, Label: item.Variable)).ToList();
         VariableAssignment? registration = registered.FirstOrDefault(item =>
@@ -1915,7 +1915,7 @@ public partial class DialogueNodeEditor : UserControl
                 string.Equals(choice.Variable, operation.Variable, StringComparison.Ordinal)),
             FontSize = 11,
             MinWidth = 110,
-            PlaceholderText = choices.Count == 0 ? "등록 변수 없음" : "변수"
+            PlaceholderText = choices.Count == 0 ? "등록된 아이템·능력 없음" : "아이템·능력"
         };
 
         variableBox.SelectionChanged += (_, _) =>

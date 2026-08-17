@@ -25,8 +25,10 @@
 
                 <StackPanel Spacing="6">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="변수 값" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" x:Name="AddAssignmentButton" Content="변수 추가" FontSize="11" />
+                        <!-- 2026-08-17 소유자 — 작가가 쓰는 건 "변수"가 아니라 아이템·능력이다.
+                             아이템은 개수로 늘고 줄고, 능력은 있다/없다뿐이다. -->
+                        <TextBlock Grid.Column="0" Text="아이템 · 능력" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" x:Name="AddAssignmentButton" Content="＋ 추가" FontSize="11" />
                     </Grid>
                     <TextBlock x:Name="VariableHintText"
                                FontSize="11"

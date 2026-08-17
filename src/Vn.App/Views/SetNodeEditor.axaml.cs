@@ -10,11 +10,17 @@ using Vn.Authoring.Model;
 namespace Vn.App.Views;
 
 /// <summary>
-/// 설정 노드를 편집한다. 조건을 만드는 유일한 자리다.
+/// <b>챕터의 설정 노드</b> — 그 챕터에서 작가가 쓰는 것들이 여기 모인다 (2026-08-17):
+/// <b>조건</b>, <b>아이템·능력</b>, <b>화자</b>. 챕터마다 하나가 자동으로 서고 작가는
+/// 그 안을 채울 뿐이다(만들거나 지우지 않는다).
 ///
-/// 변수 이름 후보는 <see cref="GameDefinition"/>이 공급한다. 이 화면은 게임의 변수를
-/// 하나도 알지 못하고, 정의 파일이 없으면 후보 없이 작가가 직접 적는다.
-/// 그래야 같은 도구를 다음 게임에 그대로 가져다 쓸 수 있다.
+/// <b>아이템·능력</b>은 예전에 "변수"라 부르던 것이다 (소유자: "시나리오 작가가 쓰는 건
+/// 변수라기보다는 아이템, 혹은 능력이라고 하는 게 맞겠다"). 아이템은 개수로 늘고 줄고,
+/// 능력은 있다/없다뿐이다 — 저장되는 자료형은 그대로 <c>float</c>/<c>bool</c>이라
+/// 옛 프로젝트도 읽힌다.
+///
+/// <b>기획자 것은 여기서 고치지 않는다</b>: 챕터 스탯은 이름 후보에서 빠지고(스탯이
+/// 변하는 자리는 챕터 간선뿐), 기획자가 정한 화자는 회색 고정으로 선다.
 /// </summary>
 public partial class SetNodeEditor : UserControl
 {
@@ -105,14 +111,16 @@ public partial class SetNodeEditor : UserControl
             List<string> writerVariables = WriterVariableNames();
             int chapterOwned = _session.Definition.Variables.Count - writerVariables.Count;
 
-            VariableHintText.Text = writerVariables.Count == 0
-                ? $"{GameDefinition.FileName}이 없으면 변수 이름을 직접 적습니다."
-                : chapterOwned > 0
-                    // 뺀 사실을 말한다 — 조용히 사라지면 "왜 trust가 없지?"가 된다.
-                    ? $"{GameDefinition.FileName}이 제안하는 변수 {writerVariables.Count}개를 쓸 수 있습니다. " +
-                      $"챕터 스탯 {chapterOwned}개는 기획자(A계층) 것이라 여기서 바꾸지 않습니다 — " +
-                      "스탯이 변하는 자리는 챕터 그래프의 간선뿐입니다."
-                    : $"{GameDefinition.FileName}이 제안하는 변수 {writerVariables.Count}개를 쓸 수 있습니다.";
+            // 아이템은 개수로 세고(약초 3개), 능력은 있다/없다뿐이다(자물쇠따기).
+            // 이 챕터 안에서만 도는 것이고, 챕터 스탯과는 다른 계층이다.
+            string common = "아이템은 개수로 늘고 줄고, 능력은 있다/없다뿐입니다. " +
+                            "이 챕터 안에서 씁니다.";
+
+            VariableHintText.Text = chapterOwned > 0
+                // 뺀 사실을 말한다 — 조용히 사라지면 "왜 trust가 없지?"가 된다.
+                ? common + $" 챕터 스탯 {chapterOwned}개는 기획자(A계층) 것이라 여기 목록에 " +
+                  "없습니다 — 스탯이 변하는 자리는 챕터 그래프의 간선뿐입니다."
+                : common;
 
             RebuildSpeakers();
         }
@@ -123,9 +131,9 @@ public partial class SetNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 작가가 쓸 수 있는 변수 이름 — 정의 파일의 variables에서 <b>A계층 스탯을 뺀 것</b>
-    /// (2026-08-17 소유자: "둘은 서로 완전히 다른 계층이야"). 두 계층이 한 목록에 살기
-    /// 때문에 가르는 일은 화면이 한다.
+    /// 작가가 쓸 수 있는 아이템·능력 이름 후보 — 정의 파일의 variables에서 <b>A계층 스탯을
+    /// 뺀 것</b> (2026-08-17 소유자: "둘은 서로 완전히 다른 계층이야"). 두 계층이 한 목록에
+    /// 살기 때문에 가르는 일은 화면이 한다. 후보에 없는 이름은 직접 적으면 된다.
     /// </summary>
     private List<string> WriterVariableNames() => _session!.Definition.Variables
         .Select(item => item.Name)
@@ -638,11 +646,18 @@ public partial class SetNodeEditor : UserControl
         return row;
     }
 
-    /// <summary>타입 드롭다운 항목 — X2가 만든 배열에 X7이 bool 한 줄을 더했다.</summary>
+    /// <summary>
+    /// 종류 드롭다운 (2026-08-17 소유자: "시나리오 작가가 쓰는 건 변수라기보다는 아이템,
+    /// 혹은 능력이라고 하는 게 맞겠다").
+    ///
+    /// 저장되는 값은 예전 그대로 <c>float</c>/<c>bool</c>이다 — 바뀐 것은 <b>이름이 뜻을
+    /// 말하게 된 것</b>뿐이라 옛 프로젝트도 그대로 읽힌다. 숫자/플래그라는 자료형 이름은
+    /// 작가에게 아무것도 설명하지 못했다: 무엇을 담는 칸인지가 이제 종류에 적혀 있다.
+    /// </summary>
     private static readonly (string Type, string Label)[] VariableTypes =
     [
-        (VariableAssignment.FloatType, "float (숫자)"),
-        (VariableAssignment.BoolType, "bool (플래그)")
+        (VariableAssignment.FloatType, "아이템 (개수)"),
+        (VariableAssignment.BoolType, "능력 (보유)")
     ];
 
     private Control BuildAssignmentRow(SetNode node, int index)
@@ -665,7 +680,7 @@ public partial class SetNodeEditor : UserControl
         var variable = new AutoCompleteBox
         {
             Text = assignment.Variable,
-            PlaceholderText = "변수",
+            PlaceholderText = "아이템·능력 이름",
             FontSize = 12,
             Margin = new Thickness(6, 0, 0, 0),
             // A계층 스탯은 후보에서 뺀다 (2026-08-17 소유자) — 정의 파일의 variables는 두
