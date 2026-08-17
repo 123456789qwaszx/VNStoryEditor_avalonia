@@ -49,10 +49,7 @@ public static class GraphProjectionBuilder
                 kindByNodeId[node.Id] = KindOf(node);
                 portsByNodeId[node.Id] = BuildPorts(node, project, definition);
 
-                if (node is SetNode && string.Equals(
-                        node.Name,
-                        Chapters.EpisodeSyncService.ConditionSupplyNodeName(file.Name),
-                        StringComparison.Ordinal))
+                if (Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file))
                 {
                     hiddenSupplyNodeIds.Add(node.Id);
                 }

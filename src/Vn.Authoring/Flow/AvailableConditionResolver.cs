@@ -6,7 +6,18 @@ namespace Vn.Authoring.Flow;
 public enum AvailableConditionSourceKind
 {
     GameGlobal,
-    SetNode
+    SetNode,
+
+    /// <summary>
+    /// <b>A계층(기획자) 조건</b> — 챕터 `조건` 시트가 주인이고, 동기화가 공급 설정노드로
+    /// 날라 온 것이다 (2026-08-17 소유자: "둘은 서로 완전히 다른 계층이야").
+    ///
+    /// <b>작가가 고르는 목록에는 나오지 않는다</b> — 스탯 식은 작가에게 노출되면 안 되는
+    /// 자료이고, 여기서 고른다 해도 값의 주인은 챕터라 고칠 수 없다. 다만 <b>이미 쓰인
+    /// 것은 읽힌다</b>: 엑셀노드의 조건라벨이 이 조건을 가리키면 그 이름이 그대로 보인다
+    /// (숨긴다고 "알 수 없는 조건"이 되면 그게 더 나쁘다).
+    /// </summary>
+    ChapterLayer
 }
 
 /// <summary>
@@ -35,6 +46,13 @@ public sealed class AvailableConditionCatalog
     }
 
     public IReadOnlyList<AvailableCondition> Conditions { get; }
+
+    /// <summary>
+    /// 작가가 <b>고를 수 있는</b> 조건만 (2026-08-17) — A계층은 빠진다. 목록을 세우는 화면은
+    /// 이쪽을, 이미 쓰인 조건의 이름을 읽는 화면은 <see cref="Find"/>를 쓴다.
+    /// </summary>
+    public IEnumerable<AvailableCondition> Selectable =>
+        Conditions.Where(condition => condition.SourceKind != AvailableConditionSourceKind.ChapterLayer);
 
     public AvailableCondition? Find(string? conditionId)
     {
@@ -84,8 +102,16 @@ public static class AvailableConditionResolver
                 SourceNodeId: null));
         }
 
+        // A계층 공급 노드가 나른 조건은 종류를 달리 매긴다 — 작가의 목록에서 빠지고,
+        // 이미 쓰인 것을 읽을 때만 이름이 나온다.
+        HashSet<string> chapterSupplyIds = Chapters.EpisodeSyncService.ConditionSupplyNodeIds(project);
+
         foreach (ConnectedSetNode connected in ConnectedSetNodeResolver.Resolve(project, dialogueNodeId))
         {
+            AvailableConditionSourceKind kind = chapterSupplyIds.Contains(connected.Node.Id)
+                ? AvailableConditionSourceKind.ChapterLayer
+                : AvailableConditionSourceKind.SetNode;
+
             foreach (ConditionDefinition condition in connected.Node.Conditions)
             {
                 if (string.IsNullOrWhiteSpace(condition.Id) || !seen.Add(condition.Id))
@@ -97,7 +123,7 @@ public static class AvailableConditionResolver
                     condition.Id,
                     condition.Name,
                     condition.Expression,
-                    AvailableConditionSourceKind.SetNode,
+                    kind,
                     connected.Node.Id));
             }
         }
@@ -134,6 +160,8 @@ public static class AvailableConditionResolver
                 SourceNodeId: null);
         }
 
+        HashSet<string> chapterSupplyIds = Chapters.EpisodeSyncService.ConditionSupplyNodeIds(project);
+
         foreach (SetNode setNode in project.EnumerateNodes().OfType<SetNode>())
         {
             ConditionDefinition? local = setNode.Conditions.FirstOrDefault(
@@ -145,7 +173,9 @@ public static class AvailableConditionResolver
                     local.Id,
                     local.Name,
                     local.Expression,
-                    AvailableConditionSourceKind.SetNode,
+                    chapterSupplyIds.Contains(setNode.Id)
+                        ? AvailableConditionSourceKind.ChapterLayer
+                        : AvailableConditionSourceKind.SetNode,
                     setNode.Id);
             }
         }
@@ -157,5 +187,19 @@ public static class AvailableConditionResolver
     {
         string name = known?.DisplayName ?? conditionId;
         return $"사용할 수 없음 · {name}";
+    }
+
+    /// <summary>
+    /// 화면에 세울 이름. <b>A계층 조건은 출처를 앞에 단다</b> (2026-08-17) — 작가가 고칠 수
+    /// 없는 것이 왜 여기 보이는지가 이름 하나로 설명돼야 한다. 계층이 다르다는 사실은
+    /// 숨기는 게 아니라 <b>보이게</b> 갈라야 한다는 소유자 지시.
+    /// </summary>
+    public static string LayeredLabel(AvailableCondition condition)
+    {
+        ArgumentNullException.ThrowIfNull(condition);
+
+        return condition.SourceKind == AvailableConditionSourceKind.ChapterLayer
+            ? $"[기획] {condition.DisplayName}"
+            : condition.DisplayName;
     }
 }

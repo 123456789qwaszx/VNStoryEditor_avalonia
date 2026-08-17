@@ -131,9 +131,17 @@ public partial class SetNodeEditor : UserControl
                 AssignmentHost.Children.Add(BuildAssignmentRow(node, index));
             }
 
-            VariableHintText.Text = _session.Definition.Variables.Count == 0
+            List<string> writerVariables = WriterVariableNames();
+            int chapterOwned = _session.Definition.Variables.Count - writerVariables.Count;
+
+            VariableHintText.Text = writerVariables.Count == 0
                 ? $"{GameDefinition.FileName}이 없으면 변수 이름을 직접 적습니다."
-                : $"{GameDefinition.FileName}이 제안하는 변수 {_session.Definition.Variables.Count}개를 쓸 수 있습니다.";
+                : chapterOwned > 0
+                    // 뺀 사실을 말한다 — 조용히 사라지면 "왜 trust가 없지?"가 된다.
+                    ? $"{GameDefinition.FileName}이 제안하는 변수 {writerVariables.Count}개를 쓸 수 있습니다. " +
+                      $"챕터 스탯 {chapterOwned}개는 기획자(A계층) 것이라 여기서 바꾸지 않습니다 — " +
+                      "스탯이 변하는 자리는 챕터 그래프의 간선뿐입니다."
+                    : $"{GameDefinition.FileName}이 제안하는 변수 {writerVariables.Count}개를 쓸 수 있습니다.";
 
             RebuildSpeakers();
         }
@@ -142,6 +150,16 @@ public partial class SetNodeEditor : UserControl
             _building = false;
         }
     }
+
+    /// <summary>
+    /// 작가가 쓸 수 있는 변수 이름 — 정의 파일의 variables에서 <b>A계층 스탯을 뺀 것</b>
+    /// (2026-08-17 소유자: "둘은 서로 완전히 다른 계층이야"). 두 계층이 한 목록에 살기
+    /// 때문에 가르는 일은 화면이 한다.
+    /// </summary>
+    private List<string> WriterVariableNames() => _session!.Definition.Variables
+        .Select(item => item.Name)
+        .Where(name => !_session.ChapterStatKeys.Contains(name))
+        .ToList();
 
     // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
 
@@ -575,7 +593,10 @@ public partial class SetNodeEditor : UserControl
             PlaceholderText = "변수",
             FontSize = 12,
             Margin = new Thickness(6, 0, 0, 0),
-            ItemsSource = _session!.Definition.Variables.Select(item => item.Name).ToList(),
+            // A계층 스탯은 후보에서 뺀다 (2026-08-17 소유자) — 정의 파일의 variables는 두
+            // 계층을 한 목록에 담고 있어서, 그대로 쓰면 작가가 trust에 set을 걸 수 있다.
+            // 스탯이 변하는 자리는 간선뿐이므로 화면이 그 규칙을 지킨다.
+            ItemsSource = WriterVariableNames(),
             FilterMode = AutoCompleteFilterMode.Contains,
             MinimumPrefixLength = 0
         };

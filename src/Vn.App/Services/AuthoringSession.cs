@@ -1,5 +1,6 @@
 using Avalonia.Media.Imaging;
 using Vn.Authoring.Assets;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
@@ -39,6 +40,46 @@ internal sealed class AuthoringSession
     public string? ProjectPath { get; private set; }
 
     public GameDefinition Definition { get; private set; } = GameDefinition.Empty;
+
+    /// <summary>
+    /// <b>A계층(기획자) 스탯 키</b> — 챕터 `스탯` 시트가 등록한 것들 (2026-08-17 소유자:
+    /// "둘은 서로 완전히 다른 계층이야").
+    ///
+    /// 정의 파일의 `variables`는 두 계층의 변수를 <b>한 목록에</b> 담고 있어서, 작가의 변수
+    /// 후보를 그대로 쓰면 <c>trust</c>에 <c>&lt;&lt;set&gt;&gt;</c>을 걸 수 있게 된다 —
+    /// <b>스탯이 변하는 자리는 간선뿐</b>이라는 규칙이 화면에서 깨진다. 그래서 작가 화면은
+    /// 이 집합을 빼고 후보를 세운다.
+    ///
+    /// 원천은 챕터 그래프가 읽은 목록 하나다(두 곳이 따로 xlsx를 읽지 않는다).
+    /// </summary>
+    public IReadOnlySet<string> ChapterStatKeys { get; private set; } =
+        new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// <b>A계층 등록 화자</b> — 챕터 `화자` 시트. 작가의 자유 씬 화자 후보에 정의 파일
+    /// speakers와 <b>함께</b> 서되 출처가 갈려 보인다(2026-08-17 소유자 결정).
+    /// </summary>
+    public IReadOnlyList<string> ChapterSpeakerNames { get; private set; } = [];
+
+    /// <summary>챕터 목록을 다시 읽을 때마다 A계층 어휘를 따라잡는다.</summary>
+    public void SupplyChapterVocabulary(IReadOnlyList<ChapterEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        ChapterStatKeys = entries
+            .Where(entry => entry.Model is not null)
+            .SelectMany(entry => entry.Model!.Stats.Select(stat => stat.Key))
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.Ordinal);
+
+        ChapterSpeakerNames = entries
+            .Where(entry => entry.Model is not null)
+            .SelectMany(entry => entry.Model!.Speakers.Select(speaker => speaker.Name))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+    }
 
     /// <summary>
     /// 새 노드가 추가될 현재 작업 파일.

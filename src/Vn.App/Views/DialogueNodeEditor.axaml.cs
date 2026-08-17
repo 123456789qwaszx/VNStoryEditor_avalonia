@@ -1227,22 +1227,16 @@ public partial class DialogueNodeEditor : UserControl
                 PlaceholderText = "화자",
                 FontSize = 11,
                 MinHeight = 26,
-                ItemsSource = _session!.Definition.Speakers
-                    .Select(item => item.Name)
-                    .Where(item => item.Length > 0)
-                    .ToList(),
+                ItemsSource = SpeakerNames(),
                 FilterMode = AutoCompleteFilterMode.Contains,
                 MinimumPrefixLength = 0,
                 IsEnabled = !_excelOwned // 화자도 본문과 함께 엑셀 소유다
             };
             speaker.TextChanged += (_, _) => Commit();
 
-            // 후보는 포커스 때마다 정의에서 다시 읽는다 (W56) — 방금 등록한 화자가
-            // 카드 재생성 없이도 자동완성에 바로 나온다.
-            speaker.GotFocus += (_, _) => speaker.ItemsSource = _session!.Definition.Speakers
-                .Select(item => item.Name)
-                .Where(item => item.Length > 0)
-                .ToList();
+            // 후보는 포커스 때마다 다시 읽는다 (W56) — 방금 등록한 화자가 카드 재생성
+            // 없이도 자동완성에 바로 나온다.
+            speaker.GotFocus += (_, _) => speaker.ItemsSource = SpeakerNames();
 
             // ▾ = 등록 화자 전체 목록 (W40) — 자동완성은 타이핑해야 열리니 클릭 한 번 길을 따로 둔다.
             AutoCompleteBox speakerBox = speaker;
@@ -1288,46 +1282,103 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private void ShowSpeakerFlyout(Button anchor, AutoCompleteBox speaker)
     {
-        List<string> names = _session!.Definition.Speakers
-            .Select(item => item.Name)
-            .Where(item => item.Length > 0)
-            .ToList();
+        List<(string Name, bool FromChapter)> candidates = SpeakerCandidates();
 
-        if (names.Count == 0)
+        if (candidates.Count == 0)
         {
-            _session.SetStatus("game.definition에 등록된 화자가 없습니다. 화자 칸에 직접 입력하세요.");
+            _session!.SetStatus(
+                "등록된 화자가 없습니다 — 챕터 엑셀의 `화자` 시트나 game.definition에 적으면 " +
+                "여기 목록에 옵니다. 그때까지는 화자 칸에 직접 입력하세요.");
             return;
         }
 
         var panel = new StackPanel();
         var flyout = new Flyout
         {
-            Content = new ScrollViewer { MaxHeight = 240, Content = panel },
+            Content = new ScrollViewer { MaxHeight = 260, Content = panel },
             Placement = PlacementMode.Bottom
         };
 
-        foreach (string name in names)
+        // 출처를 갈라 세운다 (2026-08-17 소유자) — 같은 이름 목록이라도 어느 계층이
+        // 등록한 것인지가 보여야 한다. 챕터 등록이 위다(저작에서 먼저 정하는 쪽).
+        void Section(string title, IEnumerable<string> names)
         {
-            var item = new Button
+            List<string> list = names.ToList();
+
+            if (list.Count == 0)
             {
-                Content = name,
-                FontSize = 11,
-                Padding = new Thickness(10, 4),
-                MinWidth = 120,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Background = Brushes.Transparent
-            };
-            item.Click += (_, _) =>
+                return;
+            }
+
+            panel.Children.Add(new TextBlock
             {
-                speaker.Text = name;
-                flyout.Hide();
-            };
-            panel.Children.Add(item);
+                Text = title,
+                FontSize = 10,
+                Opacity = 0.55,
+                Margin = new Thickness(10, 6, 10, 2)
+            });
+
+            foreach (string name in list)
+            {
+                var item = new Button
+                {
+                    Content = name,
+                    FontSize = 11,
+                    Padding = new Thickness(10, 4),
+                    MinWidth = 140,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Background = Brushes.Transparent
+                };
+                item.Click += (_, _) =>
+                {
+                    speaker.Text = name;
+                    flyout.Hide();
+                };
+                panel.Children.Add(item);
+            }
         }
+
+        Section("기획 등록 · 챕터 `화자` 시트",
+            candidates.Where(item => item.FromChapter).Select(item => item.Name));
+        Section("초상화 매핑 · game.definition.json",
+            candidates.Where(item => !item.FromChapter).Select(item => item.Name));
 
         flyout.ShowAt(anchor);
     }
+
+    /// <summary>
+    /// 화자 후보 — <b>챕터 `화자` 시트(A계층 등록)와 정의 파일 speakers(초상화 매핑)를
+    /// 합치되 출처를 남긴다</b> (2026-08-17 소유자 결정). 두 곳에 다 있는 이름은 챕터 쪽
+    /// 하나로 센다 — 목록에 같은 이름이 두 번 서면 고르는 사람이 헷갈린다.
+    /// </summary>
+    private List<(string Name, bool FromChapter)> SpeakerCandidates()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var candidates = new List<(string, bool)>();
+
+        foreach (string name in _session!.ChapterSpeakerNames)
+        {
+            if (name.Length > 0 && seen.Add(name))
+            {
+                candidates.Add((name, true));
+            }
+        }
+
+        foreach (string name in _session.Definition.Speakers.Select(item => item.Name))
+        {
+            if (name.Length > 0 && seen.Add(name))
+            {
+                candidates.Add((name, false));
+            }
+        }
+
+        return candidates;
+    }
+
+    /// <summary>자동완성용 평평한 이름 목록 — 타이핑에는 출처 구분이 방해된다.</summary>
+    private List<string> SpeakerNames() =>
+        SpeakerCandidates().Select(item => item.Name).ToList();
 
     // ── 태그 레일 ───────────────────────────────────────────────────────────
 
@@ -1410,7 +1461,7 @@ public partial class DialogueNodeEditor : UserControl
             _session.Project, _session.Definition, conditionId);
 
         return condition is not null
-            ? condition.DisplayName
+            ? AvailableConditionResolver.LayeredLabel(condition)
             : known is not null
                 ? AvailableConditionResolver.UnavailableLabel(known, conditionId)
                 : "알 수 없는 조건";

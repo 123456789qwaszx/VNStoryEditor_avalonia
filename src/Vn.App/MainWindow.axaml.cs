@@ -57,6 +57,9 @@ public partial class MainWindow : Window
         ChapterGraph.EntriesReloaded += entries =>
         {
             _chapters = entries;
+            // A계층 어휘(스탯 키·등록 화자)도 같은 읽기 하나에서 온다 — 작가 화면이
+            // 계층을 가르는 근거다 (2026-08-17).
+            _session.SupplyChapterVocabulary(entries);
             RebuildFileList();
             // 시나리오 그래프의 철도 배선(T1)도 같은 목록 하나를 본다 — 두 곳이 따로 읽지 않는다.
             Graph.SupplyChapters(entries);

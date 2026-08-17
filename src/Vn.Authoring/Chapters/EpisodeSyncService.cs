@@ -308,6 +308,41 @@ public static class EpisodeSyncService
     public static string ConditionSupplyNodeName(string chapterId) => $"챕터 {chapterId} 조건";
 
     /// <summary>
+    /// 이 노드가 <b>A계층(기획자) 조건을 나르는 배관</b>인가. 챕터 = 판 1:1이므로 판 이름이
+    /// 곧 챕터 Id다. <b>계층을 가르는 규칙은 이 하나뿐이다</b>(사본 금지) — 그래프 프로젝션의
+    /// 카드 숨김도, 작가 조건 목록의 배제도 같은 것을 부른다.
+    /// </summary>
+    public static bool IsConditionSupplyNode(StoryNode node, StoryFile file)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(file);
+
+        return node is SetNode &&
+               string.Equals(node.Name, ConditionSupplyNodeName(file.Name), StringComparison.Ordinal);
+    }
+
+    /// <summary>프로젝트 전체에서 A계층 공급 노드의 Id들. 작가 화면이 이 집합을 걸러 낸다.</summary>
+    public static HashSet<string> ConditionSupplyNodeIds(StoryProject project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (StoryFile file in project.Files)
+        {
+            foreach (StoryNode node in file.Nodes)
+            {
+                if (IsConditionSupplyNode(node, file))
+                {
+                    ids.Add(node.Id);
+                }
+            }
+        }
+
+        return ids;
+    }
+
+    /// <summary>
     /// 챕터 `조건` 시트의 라벨↔식을 설정노드로 만들어 대사노드에 잇는다 (G3 —
     /// "조건 행 → <c>ConditionDefinition{Name=라벨, Expression=식}</c> 생성·dedupe(식 기준)").
     ///

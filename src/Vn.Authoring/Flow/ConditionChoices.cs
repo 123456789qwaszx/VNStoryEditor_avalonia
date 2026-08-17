@@ -103,7 +103,7 @@ public static class ConditionChoices
             // 바깥이다. 조건을 고르면 새 갈래가 열리고, 선택지 시작을 고르면 블록이 열린다.
             choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritOutsideLabel));
 
-            foreach (AvailableCondition condition in catalog.Conditions)
+            foreach (AvailableCondition condition in catalog.Selectable)
             {
                 choices.Add(new ConditionChoice(
                     ConditionChoiceKind.BeginIf,
@@ -131,7 +131,7 @@ public static class ConditionChoices
             // 조건 안이다. 유지 / 다른 조건으로 전환 / 선택지 시작(W54) / 종료.
             choices.Add(new ConditionChoice(ConditionChoiceKind.Inherit, null, InheritInsideLabel));
 
-            foreach (AvailableCondition condition in catalog.Conditions)
+            foreach (AvailableCondition condition in catalog.Selectable)
             {
                 // 지금 적용 중인 조건을 "새 전환 대상"으로 다시 보여 줄 이유가 없다.
                 if (string.Equals(condition.Id, preceding.ConditionId, StringComparison.Ordinal))

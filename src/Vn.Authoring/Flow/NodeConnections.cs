@@ -147,7 +147,7 @@ public static class NodeConnections
 
         if (condition is not null)
         {
-            name = condition.DisplayName;
+            name = AvailableConditionResolver.LayeredLabel(condition);
         }
         else
         {
