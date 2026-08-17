@@ -61,6 +61,15 @@ internal sealed class AuthoringSession
     /// </summary>
     public IReadOnlyList<string> ChapterSpeakerNames { get; private set; } = [];
 
+    /// <summary>
+    /// 챕터 `화자` 시트의 <b>캐릭터키</b>(이름 → characterId). 그 칸을 채우면 초상화·표정이
+    /// 붙는다 — 2026-08-17 소유자 보고 전에는 이 값을 여기서 버려서, 시트에 적어도 툴은
+    /// 정의 파일만 보고 "characterId가 없다"고 했다. 빈 칸은 담지 않는다(아무 말도 안 한
+    /// 칸이라, 정의 파일 쪽 값이 있으면 그게 이긴다).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ChapterSpeakerCharacterIds { get; private set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
     /// <summary>챕터 목록을 다시 읽을 때마다 A계층 어휘를 따라잡는다.</summary>
     public void SupplyChapterVocabulary(IReadOnlyList<ChapterEntry> entries)
     {
@@ -72,13 +81,24 @@ internal sealed class AuthoringSession
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .ToHashSet(StringComparer.Ordinal);
 
-        ChapterSpeakerNames = entries
+        List<ChapterSpeaker> speakers = entries
             .Where(entry => entry.Model is not null)
-            .SelectMany(entry => entry.Model!.Speakers.Select(speaker => speaker.Name))
-            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .SelectMany(entry => entry.Model!.Speakers)
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
+            .ToList();
+
+        ChapterSpeakerNames = speakers
+            .Select(speaker => speaker.Name)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
+
+        // 같은 이름이 여러 챕터에 있으면 캐릭터키를 <b>적어 둔</b> 쪽이 이긴다.
+        ChapterSpeakerCharacterIds = speakers
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.CharacterId))
+            .GroupBy(speaker => speaker.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().CharacterId!.Trim(),
+                StringComparer.Ordinal);
     }
 
     /// <summary>

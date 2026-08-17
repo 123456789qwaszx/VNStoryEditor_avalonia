@@ -212,12 +212,20 @@ public partial class SetNodeEditor : UserControl
         {
             if (name.Length > 0 && seen.Add(name))
             {
+                // 캐릭터키는 <b>시트에 적힌 것이 먼저</b>다 (2026-08-17 소유자 보고) —
+                // 그 칸이 존재하는 이유가 이것인데, 정의 파일이 늘 이기면 칸은 장식이
+                // 된다. 시트가 비어 있으면(아무 말도 안 한 칸) 정의 파일 쪽을 쓴다.
+                string? fromSheet =
+                    _session?.ChapterSpeakerCharacterIds.GetValueOrDefault(name);
+
                 speakers.Add(new SpeakerSpec
                 {
                     Name = name,
-                    CharacterId = defined
-                        .FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal))
-                        ?.CharacterId ?? string.Empty
+                    CharacterId = string.IsNullOrWhiteSpace(fromSheet)
+                        ? defined
+                            .FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal))
+                            ?.CharacterId ?? string.Empty
+                        : fromSheet
                 });
             }
         }
@@ -263,12 +271,21 @@ public partial class SetNodeEditor : UserControl
             IsEnabled = false
         };
 
+        // 캐릭터키가 없으면 표정을 붙일 대상이 없다. 예전에는 단추가 살아 있어서 누르면
+        // "characterId가 없다"만 뜨고 아무 일도 안 났다 (2026-08-17 소유자 보고) — 이제
+        // 잠그고, <b>어느 칸을 채우면 되는지</b>를 말한다. 작가 화자 줄과 같은 규칙이다.
+        bool hasKey = !string.IsNullOrWhiteSpace(speaker.CharacterId);
+
         var expressions = new Button
         {
             Content = "표정",
             FontSize = 11,
             Margin = new Thickness(6, 0, 0, 0),
-            [ToolTip.TipProperty] = "표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
+            IsEnabled = hasKey,
+            [ToolTip.TipProperty] = hasKey
+                ? "표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
+                : $"'{speaker.Name}'에 캐릭터키가 없어 표정을 붙일 대상이 없습니다. " +
+                  "챕터 엑셀 `화자` 시트의 `캐릭터키` 칸을 채우면 여기서 바로 열립니다."
         };
         expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
             ShowExpressionsFlyout(expressions, speaker.CharacterId));
