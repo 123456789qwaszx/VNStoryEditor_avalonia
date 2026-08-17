@@ -154,8 +154,28 @@ public partial class ChapterGraphView : UserControl
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
-        EdgeApplyButton.Click += (_, _) => UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
+
+        // 간선 패널은 고르는 순간 저장된다 (2026-08-17 소유자: "굳이 적용을 누르지 않아도
+        // 바로 반영되도록"). 에피소드 패널의 개명이 Enter로 확정되는 것과 같은 감각이다 —
+        // [적용]이라는 문턱이 하나 더 있으면 "고쳤는데 왜 그대로지"가 생긴다.
+        //
+        // 글자 칸만 초점을 잃을 때 낸다. 자판 하나마다 워크북을 열면 엑셀 파일을 쉼 없이
+        // 두드리고, 그 사이에 들어온 파일 사건이 칸을 다시 채워 쓰던 글을 끊는다.
+        EdgeLabelEditBox.SelectionChanged += (_, _) => AutoSaveEdge();
+        EdgeVisibleCombo.SelectionChanged += (_, _) => AutoSaveEdge();
+        EdgeConditionCombo.SelectionChanged += (_, _) => AutoSaveEdge();
+        EdgeHideCheck.IsCheckedChanged += (_, _) => AutoSaveEdge();
+        EdgeLockedMsgBox.LostFocus += (_, _) => AutoSaveEdge();
+        EdgeLockedMsgBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter)
+            {
+                e.Handled = true;
+                AutoSaveEdge();
+            }
+        };
+        _edgeStats.Changed += (_, _) => AutoSaveEdge();
         ExcelOnlyCheck.IsCheckedChanged += (_, _) => UiGuard.Run(_session, "편집 모드 전환", () =>
         {
             ApplyEditability();
@@ -1646,7 +1666,18 @@ public partial class ChapterGraphView : UserControl
 
         if (model is not null && edge is not null)
         {
-            RefreshEdgePanel(model, edge, fill);
+            // 자동 저장(2026-08-17)이 붙은 뒤로는 이 칸들을 채우는 것도 저장을 부를 수
+            // 있다 — 화면을 그리는 일이 파일을 쓰면 안 된다.
+            _fillingPanel = true;
+
+            try
+            {
+                RefreshEdgePanel(model, edge, fill);
+            }
+            finally
+            {
+                _fillingPanel = false;
+            }
         }
 
         if (model is null || episode is null)
@@ -1699,15 +1730,100 @@ public partial class ChapterGraphView : UserControl
     /// 엑셀이 이 챕터를 열고 있으면 배너로 말한다 (2026-08-16 실사례) — 그 상태에서는
     /// 툴의 모든 쓰기가 거부되므로, 누르고 나서가 아니라 <b>누르기 전에</b> 보여야 한다.
     /// </summary>
+    /// <summary>
+    /// 엑셀이 잡고 있는지 묻는 손. 진짜 잠긴 파일은 <b>쓸 수도 없어서</b>, "잠기기 직전에
+    /// 낸다"를 실제 잠금으로는 검증할 수 없다 — 검증이 이 손을 갈아끼운다.
+    /// </summary>
+    internal Func<string?, bool> LockProbe { get; set; } = ChapterWorkbookWriter.IsLockedByAnotherApp;
+
     private void RefreshLockBanner()
     {
-        bool locked = ChapterWorkbookWriter.IsLockedByAnotherApp(SelectedChapterPath);
+        bool locked = LockProbe(SelectedChapterPath);
 
         LockBanner.IsVisible = locked;
         LockBannerText.Text = locked
-            ? $"⚠ 엑셀이 '{_selectedChapterId}.xlsx'를 열고 있습니다 — 툴에서 고친 값은 저장되지 " +
-              "않습니다. 엑셀에서 그 파일을 닫으면 바로 편집됩니다."
+            ? $"⚠ 엑셀이 '{_selectedChapterId}.xlsx'를 열고 있습니다 — 그동안 툴 편집은 잠깁니다. " +
+              "엑셀에서 그 파일을 닫으면 저절로 풀립니다."
             : string.Empty;
+
+        ApplyLockGate(locked);
+    }
+
+    /// <summary>툴이 잠금 때문에 편집을 닫았는가 — 풀리면 스위치를 그대로 돌려준다.</summary>
+    private bool _lockForcedExcelOnly;
+
+    /// <summary>잠금 반영이 자기 자신을 다시 부르지 않게 하는 빗장.</summary>
+    private bool _applyingLockGate;
+
+    /// <summary>
+    /// 엑셀이 이 챕터를 잡고 있는 동안에는 <b>체크를 풀 수 없다</b> (2026-08-17 소유자:
+    /// "엑셀이 열려있으면 그냥 체크 안되게 해버려"). 전에는 풀 수는 있는데 누르는 족족
+    /// 거부됐다 — 열 수 없는 문을 흔들게 두는 셈이었다.
+    ///
+    /// 편집 중에 엑셀이 열리면 <b>아직 단추를 안 누른 값을 먼저 내고</b> 잠근다(소유자:
+    /// "하는 중에 엑셀이 열리면 현재까지된걸 저장한 뒤에 잠그고"). 엑셀이 먼저 파일을
+    /// 잡았으면 그 쓰기는 거부되지만, 값은 패널에 그대로 남는다 — 엑셀을 닫고 [적용]하면
+    /// 된다. 낡은 값을 나중에 몰래 밀어 넣지는 않는다: 그 사이 엑셀에서 고쳤을 수 있고,
+    /// 그러면 사람이 방금 한 편집을 툴이 덮는다.
+    ///
+    /// 잠금이 풀리면 <b>툴이 가져간 스위치를 돌려준다</b> — 스스로 켠 것만 되돌린다.
+    /// 사람이 직접 켜 둔 [엑셀에서만 편집]은 건드리지 않는다.
+    /// </summary>
+    private void ApplyLockGate(bool locked)
+    {
+        if (_applyingLockGate)
+        {
+            return;
+        }
+
+        _applyingLockGate = true;
+
+        try
+        {
+            if (locked)
+            {
+                if (ToolEditable)
+                {
+                    FlushPendingEdits();
+                    _lockForcedExcelOnly = true;
+                    ExcelOnlyCheck.IsChecked = true;
+                }
+
+                ExcelOnlyCheck.IsEnabled = false;
+                return;
+            }
+
+            ExcelOnlyCheck.IsEnabled = true;
+
+            if (_lockForcedExcelOnly)
+            {
+                _lockForcedExcelOnly = false;
+                ExcelOnlyCheck.IsChecked = false;
+                _session?.SetStatus("엑셀이 닫혔습니다 — 툴 편집을 다시 열었습니다.");
+            }
+        }
+        finally
+        {
+            _applyingLockGate = false;
+        }
+    }
+
+    /// <summary>
+    /// 열려 있는 폼의 값을 낸다 — 잠기기 직전의 마지막 저장. 개명(IdBox)은 일부러 빼둔다:
+    /// Enter가 곧 확정인 칸이라, 치다 만 이름을 여기서 확정하면 사람이 안 시킨 개명이 된다.
+    /// </summary>
+    private void FlushPendingEdits()
+    {
+        if (_edgeFormIndex >= 0 && _edgeFormEdge is not null && EdgeTargetCombo.SelectedItem is string)
+        {
+            SubmitEdgeForm();
+            return;
+        }
+
+        if (EdgePanel.IsVisible && _selectedEdgeKey is not null)
+        {
+            ApplyEdgeFromPanel();
+        }
     }
 
     private void ApplyEditability()
@@ -1738,7 +1854,6 @@ public partial class ChapterGraphView : UserControl
         EdgeLockedMsgBox.IsEnabled = editable;
         _edgeStats.Editable = editable;
         _formStats.Editable = editable;
-        EdgeApplyButton.IsVisible = editable;
         EdgeDeleteButton.IsVisible = editable;
 
         if (!editable)
@@ -1756,6 +1871,21 @@ public partial class ChapterGraphView : UserControl
         }
 
         UiGuard.Run(_session, "조건 저장", ApplyEpisodeFromPanel);
+    }
+
+    /// <summary>
+    /// 간선 패널의 자동 저장 (2026-08-17) — 고치는 순간 그 셀이 써진다. 패널을 채우는
+    /// 중(<see cref="_fillingPanel"/>)이나 읽기 전용일 때는 울리지 않는다: 화면을 채우는
+    /// 일이 저장을 부르면 아무것도 안 고쳤는데 파일이 계속 써진다.
+    /// </summary>
+    private void AutoSaveEdge()
+    {
+        if (_fillingPanel || !ToolEditable || _selectedEdgeKey is null)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "간선 저장", ApplyEdgeFromPanel);
     }
 
     /// <summary>
@@ -2238,6 +2368,15 @@ public partial class ChapterGraphView : UserControl
         }
 
         Report(result, $"간선 {key.From}→{key.To}을 저장했습니다.");
+
+        // 쓴 뒤에는 판을 다시 읽는다. 자동 저장(2026-08-17)이 붙으면서 한 번 고칠 때마다
+        // 신원(문구)이 바뀔 수 있는데, 손에 든 모델이 낡은 채로 남으면 <b>다음</b> 저장이
+        // 그 간선을 못 찾는다 — 문구를 바꾸고 곧바로 조건을 고르면 조건이 안 써졌다
+        // (테스트가 잡았다). 감시자가 어차피 곧 다시 읽지만, 그 사이를 비워 두면 안 된다.
+        if (result.Written)
+        {
+            Reload();
+        }
     }
 
     /// <summary>간선 스탯변화를 시트 문법 그대로 — 패널 칸과 셀이 같은 글을 쓴다.</summary>

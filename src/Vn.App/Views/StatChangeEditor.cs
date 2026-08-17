@@ -42,6 +42,12 @@ internal sealed class StatChangeEditor : StackPanel
 
     public StatChangeEditor() => Spacing = 3;
 
+    /// <summary>
+    /// 사람이 값을 고쳤다. <see cref="Load"/>·다시 그리기로는 울리지 않는다 — 화면을
+    /// 채우는 일이 저장을 부르면 아무것도 안 고쳤는데 파일이 써진다.
+    /// </summary>
+    public event EventHandler? Changed;
+
     /// <summary>읽기 전용(엑셀에서만 편집)이면 드롭다운·단추가 잠긴다.</summary>
     public bool Editable { get; set; } = true;
 
@@ -144,6 +150,7 @@ internal sealed class StatChangeEditor : StackPanel
 
                 _rows.Add(new Row { Key = pick.Key, Seed = 1 });
                 Render();
+                Changed?.Invoke(this, EventArgs.Empty);
             };
 
             Children.Add(add);
@@ -202,6 +209,7 @@ internal sealed class StatChangeEditor : StackPanel
             }
 
             Render();
+            Changed?.Invoke(this, EventArgs.Empty);
         };
         Grid.SetColumn(statCombo, 0);
         grid.Children.Add(statCombo);
@@ -216,6 +224,13 @@ internal sealed class StatChangeEditor : StackPanel
             ItemsSource = isBool ? new[] { "켬", "끔" } : ["＋", "－"],
             SelectedIndex = row.Seed >= 0 ? 0 : 1
         };
+        signCombo.SelectionChanged += (_, _) =>
+        {
+            if (!_rendering)
+            {
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        };
         Grid.SetColumn(signCombo, 1);
         grid.Children.Add(signCombo);
 
@@ -227,6 +242,22 @@ internal sealed class StatChangeEditor : StackPanel
             IsEnabled = Editable,
             IsVisible = !isBool,
             Text = Math.Abs(row.Seed).ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+        // 초점을 잃을 때만 낸다 — 자판 하나마다 워크북을 열면 쓰던 숫자가 끊긴다.
+        amountBox.LostFocus += (_, _) =>
+        {
+            if (!_rendering)
+            {
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        };
+        amountBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter)
+            {
+                e.Handled = true;
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
         };
         Grid.SetColumn(amountBox, 2);
         grid.Children.Add(amountBox);
@@ -248,6 +279,7 @@ internal sealed class StatChangeEditor : StackPanel
             Harvest();
             _rows.Remove(row);
             Render();
+            Changed?.Invoke(this, EventArgs.Empty);
         };
         Grid.SetColumn(remove, 3);
         grid.Children.Add(remove);

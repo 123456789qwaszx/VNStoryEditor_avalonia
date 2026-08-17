@@ -53,7 +53,7 @@
                               FontSize="11"
                               IsChecked="True"
                               VerticalAlignment="Center"
-                              ToolTip.Tip="켜져 있으면 툴은 읽기 전용입니다 — 모든 데이터는 엑셀에서 만집니다. 풀면 개명·간선·선택지를 툴에서도 고칠 수 있고, 고친 값은 엑셀 셀에 바로 저장됩니다." />
+                              ToolTip.Tip="켜져 있으면 툴은 읽기 전용입니다 — 모든 데이터는 엑셀에서 만집니다. 풀면 개명·간선·선택지를 툴에서도 고칠 수 있고, 고친 값은 엑셀 셀에 바로 저장됩니다.&#x0A;엑셀이 그 챕터 파일을 열고 있으면 이 체크는 잠깁니다 — 그때는 툴이 아무것도 쓸 수 없습니다." />
                     <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 체크를 풀 때
                          갑자기 튀어나오면 그 자리를 누르던 손이 삭제를 누른다(실사례).
                          평소엔 회색·비활성, 편집을 열 때만 빨갛게 살아난다. -->
@@ -343,7 +343,11 @@
                         <TextBlock Text="스탯변화 — 이 길을 고르면" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
                         <StackPanel x:Name="EdgeStatsHost" Spacing="3" />
 
-                        <Button x:Name="EdgeApplyButton" Content="적용" HorizontalAlignment="Stretch" />
+                        <!-- [적용]은 없앴다 (2026-08-17 소유자: "굳이 적용을 누르지 않아도
+                             바로 반영되도록"). 고르는 순간 그 셀이 써진다 — 글자 칸만
+                             초점을 잃거나 Enter일 때 낸다. -->
+                        <TextBlock Text="고치면 그 자리에서 엑셀에 저장됩니다."
+                                   FontSize="10" Opacity="0.5" Margin="0,2,0,0" />
                         <Button x:Name="EdgeDeleteButton" Content="이 길 끊기" HorizontalAlignment="Stretch"
                                 ToolTip.Tip="간선 행을 지웁니다. 문구는 챕터 사전에 남습니다 — 다른 길에서 다시 씁니다." />
                     </StackPanel>
