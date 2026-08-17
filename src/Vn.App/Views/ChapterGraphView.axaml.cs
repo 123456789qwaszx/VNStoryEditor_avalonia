@@ -173,6 +173,15 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
             }
         };
+        // 판 다루기 — Ctrl+휠 확대·축소, 가운데 단추 끌어 이동. 휠은 <b>터널</b>로 받는다:
+        // 스크롤뷰가 먼저 먹어 버리면 Ctrl+휠이 그냥 스크롤이 된다.
+        GraphScroll.AddHandler(
+            PointerWheelChangedEvent, OnGraphWheel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        GraphScroll.PointerPressed += OnGraphPanPressed;
+        GraphScroll.PointerMoved += OnGraphPanMoved;
+        GraphScroll.PointerReleased += OnGraphPanReleased;
+        ZoomResetButton.Click += (_, _) => ApplyZoom(1, null);
+
         // 스탯변화 줄 편집기를 두 자리에 꽂는다 — 간선 패널과 에피소드 노드의 선택지 폼.
         EdgeStatsHost.Children.Add(_edgeStats);
         EdgeFormStatsHost.Children.Add(_formStats);
@@ -735,6 +744,93 @@ public partial class ChapterGraphView : UserControl
     /// 오류가 있으면 파일을 만들지 않고 사유를 보고 패널에 세운다. 쓰레기가 런타임으로
     /// 넘어가는 것보다 내보내기가 실패하는 편이 낫다.
     /// </summary>
+    // ── 판 다루기: Ctrl+휠 확대·축소, 가운데 단추 끌어 이동 (2026-08-17 소유자) ──
+    //
+    // 시나리오 그래프(GraphEditorView)와 같은 손놀림·같은 산식이다. 판이 둘인데 다루는
+    // 법이 다르면 손이 매번 헷갈린다.
+
+    private const double MinZoom = 0.3;
+    private const double MaxZoom = 2.5;
+
+    private double _zoom = 1;
+    private bool _panning;
+    private Point _panStart;
+    private Vector _panStartOffset;
+
+    /// <summary>Ctrl+휠 — 그냥 휠은 기존 스크롤 그대로 둔다.</summary>
+    private void OnGraphWheel(object? sender, Avalonia.Input.PointerWheelEventArgs args)
+    {
+        if (!args.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
+        {
+            return;
+        }
+
+        ApplyZoom(_zoom * (args.Delta.Y > 0 ? 1.15 : 1 / 1.15), args.GetPosition(GraphScroll));
+        args.Handled = true;
+    }
+
+    /// <summary>배율 적용 — 커서 아래의 내용이 그 자리에 남게 오프셋을 맞춘다.</summary>
+    private void ApplyZoom(double zoom, Point? anchor)
+    {
+        Point pivot = anchor ?? new Point(
+            GraphScroll.Viewport.Width / 2, GraphScroll.Viewport.Height / 2);
+
+        // 지금 pivot 아래에 있는 캔버스 좌표.
+        var content = new Point(
+            (GraphScroll.Offset.X + pivot.X) / _zoom,
+            (GraphScroll.Offset.Y + pivot.Y) / _zoom);
+
+        _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        ZoomHost.LayoutTransform = new ScaleTransform(_zoom, _zoom);
+        ZoomText.Text = $"{Math.Round(_zoom * 100)}%";
+        ZoomResetButton.IsVisible = Math.Abs(_zoom - 1) > 0.001;
+        ZoomHost.UpdateLayout(); // 새 크기를 알아야 오프셋 상한이 맞는다
+
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, (content.X * _zoom) - pivot.X),
+            Math.Max(0, (content.Y * _zoom) - pivot.Y));
+    }
+
+    private void OnGraphPanPressed(object? sender, Avalonia.Input.PointerPressedEventArgs args)
+    {
+        if (!args.GetCurrentPoint(GraphScroll).Properties.IsMiddleButtonPressed)
+        {
+            return;
+        }
+
+        _panning = true;
+        _panStart = args.GetPosition(GraphScroll);
+        _panStartOffset = GraphScroll.Offset;
+        args.Pointer.Capture(GraphScroll);
+        args.Handled = true;
+    }
+
+    private void OnGraphPanMoved(object? sender, Avalonia.Input.PointerEventArgs args)
+    {
+        if (!_panning)
+        {
+            return;
+        }
+
+        Point now = args.GetPosition(GraphScroll);
+        GraphScroll.Offset = new Vector(
+            Math.Max(0, _panStartOffset.X - (now.X - _panStart.X)),
+            Math.Max(0, _panStartOffset.Y - (now.Y - _panStart.Y)));
+        args.Handled = true;
+    }
+
+    private void OnGraphPanReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs args)
+    {
+        if (!_panning)
+        {
+            return;
+        }
+
+        _panning = false;
+        args.Pointer.Capture(null);
+        args.Handled = true;
+    }
+
     /// <summary>진행 JSON이 못 나간 챕터들 — 검증에 걸린 것과 파일을 못 쓴 것.</summary>
     private readonly List<string> _exportRefused = [];
     private readonly List<string> _exportFailed = [];

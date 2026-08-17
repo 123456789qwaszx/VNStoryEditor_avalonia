@@ -70,11 +70,29 @@
              조건 식·대사 미리보기가 300에서는 줄바꿈으로 부서졌다. -->
         <Grid Grid.Row="1" ColumnDefinitions="*,6,340">
             <Grid Grid.Column="0">
+                <!-- Ctrl+휠 확대·축소 / 가운데 단추 끌어 이동 (2026-08-17 소유자).
+                     시나리오 그래프와 같은 손놀림이다 — 판이 둘인데 다루는 법이 다르면
+                     손이 매번 헷갈린다. 배율은 ZoomHost의 LayoutTransform이 진다:
+                     캔버스 좌표(배치·간선 산식)는 배율을 몰라도 된다. -->
                 <ScrollViewer x:Name="GraphScroll"
                               HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Auto">
-                    <Canvas x:Name="GraphCanvas" Background="Transparent" />
+                    <LayoutTransformControl x:Name="ZoomHost">
+                        <Canvas x:Name="GraphCanvas" Background="Transparent" />
+                    </LayoutTransformControl>
                 </ScrollViewer>
+
+                <!-- 배율 표시 — 100%가 아닐 때만. 누르면 100%로 돌아온다. -->
+                <Button x:Name="ZoomResetButton"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,18,18"
+                        Padding="8,3"
+                        FontSize="11"
+                        IsVisible="False"
+                        ToolTip.Tip="배율을 100%로 되돌립니다. Ctrl+휠로 확대·축소, 가운데 단추를 끌어 이동합니다.">
+                    <TextBlock x:Name="ZoomText" />
+                </Button>
 
                 <TextBlock x:Name="EmptyText"
                            HorizontalAlignment="Center"
