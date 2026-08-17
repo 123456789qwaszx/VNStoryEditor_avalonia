@@ -2079,26 +2079,38 @@ public partial class ChapterGraphView : UserControl
         var lines = new List<string>();
         int depth = 0;
 
+        static string Indent(int level) => new(' ', Math.Max(0, level) * 2);
+
         foreach (EpisodeRow row in rows.Where(row => !row.IsBlank))
         {
-            if (row.Kind == EpisodeRowKind.End)
+            switch (row.Kind)
             {
-                depth = Math.Max(0, depth - 1);
-                continue;   // 닫는 줄은 안 세운다 — 들여쓰기가 이미 그 말을 한다
-            }
+                case EpisodeRowKind.End:
+                    // 닫는 줄은 안 세운다 — 들여쓰기가 이미 그 말을 한다.
+                    depth = Math.Max(0, depth - 1);
+                    break;
 
-            string body = row.Kind == EpisodeRowKind.If
-                ? $"IF {row.ConditionLabel}"
-                : row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text;
+                case EpisodeRowKind.If:
+                    lines.Add(Indent(depth) + $"IF {row.ConditionLabel}");
+                    depth++;
+                    break;
 
-            if (body.Length > 0)
-            {
-                lines.Add(new string(' ', depth * 2) + body);
-            }
+                // 2026-08-17 소유자 보고 — ELSEIF가 안 보였다. 화자·내용이 비어 있어
+                // 아래 대사 가지에서 빈 줄로 걸러졌다. 표지는 같은 체인의 <b>바깥</b>
+                // 깊이에 서고 깊이는 변하지 않는다(평평화의 <<elseif>>와 같은 자리).
+                case EpisodeRowKind.ElseIf:
+                    lines.Add(Indent(depth - 1) + $"ELSEIF {row.ConditionLabel}");
+                    break;
 
-            if (row.Kind == EpisodeRowKind.If)
-            {
-                depth++;
+                default:
+                    string body = row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text;
+
+                    if (body.Length > 0)
+                    {
+                        lines.Add(Indent(depth) + body);
+                    }
+
+                    break;
             }
         }
 

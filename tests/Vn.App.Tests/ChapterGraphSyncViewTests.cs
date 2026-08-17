@@ -92,10 +92,22 @@ public sealed class ChapterGraphSyncViewTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         var preview = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
-        // v10 — 조건 블록은 들여쓰기로 보인다(ENDIF 줄은 안 세운다).
-        Assert.Contains("IF 신뢰높음", preview.Text);
-        Assert.Contains("  윌로: 너를 믿어.", preview.Text);
-        Assert.Contains("윌로: 문이 열렸다.", preview.Text);
+
+        // v10 — 조건 블록은 들여쓰기로 보인다(ENDIF 줄은 안 세운다). 견본은 중첩과
+        // ELSEIF를 한 판에 담으므로 세 겹이 전부 이 한 줄 검사에 걸린다.
+        Assert.Equal(
+            """
+            윌로: 복도는 조용했다.
+            라루: 여기서 기다릴까?
+            IF 신뢰높음
+              윌로: 너를 믿어.
+              IF 지쳐있음
+                라루: 다리가 무거워.
+            ELSEIF 분노누적
+              라루: 아직도 화가 나.
+            윌로: 문이 열렸다.
+            """.ReplaceLineEndings("\n"),
+            preview.Text!.ReplaceLineEndings("\n"));
 
         // 아직 대본 없는 에피소드는 빈 화면 대신 그 사실을 말한다.
         view.SelectEpisode("main05.01");
