@@ -389,7 +389,10 @@ public partial class ChapterGraphView : UserControl
         foreach (ChapterEpisode episode in entry.Model.Episodes)
         {
             created |= EpisodeLibrary.EnsureWorkbook(
-                folder, episode.EpisodeId, entry.Model.Speakers.Select(speaker => speaker.Name).ToList());
+                folder,
+                episode.EpisodeId,
+                entry.Model.Speakers.Select(speaker => speaker.Name).ToList(),
+                entry.Model.Conditions.Select(condition => condition.Label).ToList());
         }
 
         if (created)
@@ -402,6 +405,22 @@ public partial class ChapterGraphView : UserControl
             if (EpisodeLibrary.FindExisting(folder, episode.EpisodeId) is not { } path)
             {
                 continue;
+            }
+
+            // 구판 9열 대본을 v10 블록 규격으로 (2026-08-17). 필요 없는 파일에는 손대지
+            // 않으므로 매 동기화마다 불려도 쓰기는 구판을 처음 만난 그 한 번뿐이다.
+            EpisodeWorkbookMigrator.MigrationResult migration =
+                EpisodeWorkbookMigrator.Migrate(path);
+
+            if (migration.Migrated)
+            {
+                _session.SetStatus(
+                    $"'{IoPath.GetFileName(path)}'를 새 대본 규격(IF~END 블록)으로 이행했습니다" +
+                    "(이전 상태는 .bak). 엑셀이 열려 있었다면 닫았다 다시 열어 주세요.");
+            }
+            else if (migration.Failure is { } failure)
+            {
+                _session.SetStatus(failure);
             }
 
             _syncReports.Add(EpisodeSyncService.Sync(
@@ -500,7 +519,7 @@ public partial class ChapterGraphView : UserControl
     ///
     /// 두 가지를 한다: ① 구판 챕터 워크북에 `화자` 시트가 없으면 한 번 만들어 준다
     /// (기획자가 등록할 자리부터 있어야 한다) ② 등록된 이름을 각 에피소드 워크북의 숨김
-    /// 목록 시트에 밀어 넣는다 — 대본의 화자 칸(H)이 그 목록의 드롭다운을 받는다.
+    /// 목록 시트에 밀어 넣는다 — 대본의 화자 칸(E)·조건라벨 칸(D)이 그 목록의 드롭다운을 받는다.
     /// 목록이 같은 워크북은 건드리지 않고, 잠긴 워크북은 건너뛰며 사유를 보고한다.
     /// </summary>
     private void PushSpeakersToEpisodes(string folder, ChapterEntry entry)
@@ -527,13 +546,14 @@ public partial class ChapterGraphView : UserControl
         }
 
         List<string> names = model.Speakers.Select(speaker => speaker.Name).ToList();
+        List<string> labels = model.Conditions.Select(condition => condition.Label).ToList();
         var failures = new List<string>();
         int changed = 0;
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
-            EpisodeLibrary.SpeakerListPush push =
-                EpisodeLibrary.PushSpeakerList(folder, episode.EpisodeId, names);
+            EpisodeLibrary.VocabularyPush push =
+                EpisodeLibrary.PushVocabulary(folder, episode.EpisodeId, names, labels);
 
             if (push.Changed)
             {
@@ -552,7 +572,7 @@ public partial class ChapterGraphView : UserControl
         }
         else if (changed > 0)
         {
-            _session?.SetStatus($"화자 드롭다운을 에피소드 워크북 {changed}개에 반영했습니다.");
+            _session?.SetStatus($"화자·조건 드롭다운을 에피소드 워크북 {changed}개에 반영했습니다.");
         }
     }
 
@@ -620,8 +640,11 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        if (EpisodeLibrary.EnsureWorkbook(folder, episodeId,
-                SelectedModel?.Speakers.Select(speaker => speaker.Name).ToList()))
+        if (EpisodeLibrary.EnsureWorkbook(
+                folder,
+                episodeId,
+                SelectedModel?.Speakers.Select(speaker => speaker.Name).ToList(),
+                SelectedModel?.Conditions.Select(condition => condition.Label).ToList()))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
             StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
@@ -2033,10 +2056,7 @@ public partial class ChapterGraphView : UserControl
         {
             try
             {
-                preview = string.Join("\n", EpisodeWorkbookReader.Read(path).Rows
-                    .Where(row => !row.IsBlank)
-                    .Select(PreviewLine)
-                    .Where(line => line.Length > 0));
+                preview = PreviewText(EpisodeWorkbookReader.Read(path).Rows);
             }
             catch (XlsxReadException exception)
             {
@@ -2050,33 +2070,39 @@ public partial class ChapterGraphView : UserControl
         DialoguePreviewText.Text = preview;
     }
 
-    /// <summary>워크북 한 행을 미리보기 한 줄로 — 시트의 모양을 그대로 옮기되 읽는 눈 기준으로.</summary>
-    private static string PreviewLine(EpisodeRow row)
+    /// <summary>
+    /// 대본을 읽는 눈 기준으로 편다 (v10) — 조건 블록은 들여쓰기로 보인다. 시트에서는
+    /// IF와 END가 각자 한 행이지만, 읽을 때 중요한 것은 <b>어디까지가 조건 안인가</b>다.
+    /// </summary>
+    private static string PreviewText(IReadOnlyList<EpisodeRow> rows)
     {
-        string body = row.Kind switch
-        {
-            EpisodeRowKind.If => $"IF {row.ConditionLabel}" + (row.In is { } target ? $" → {target}" : string.Empty),
-            EpisodeRowKind.Choice => "── 선택 ──",
-            EpisodeRowKind.Option => $"▶ {row.Text}" + (row.In is { } into ? $" → {into}" : string.Empty),
-            _ => row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text
-        };
+        var lines = new List<string>();
+        int depth = 0;
 
-        if (body.Length == 0)
+        foreach (EpisodeRow row in rows.Where(row => !row.IsBlank))
         {
-            return string.Empty;
+            if (row.Kind == EpisodeRowKind.End)
+            {
+                depth = Math.Max(0, depth - 1);
+                continue;   // 닫는 줄은 안 세운다 — 들여쓰기가 이미 그 말을 한다
+            }
+
+            string body = row.Kind == EpisodeRowKind.If
+                ? $"IF {row.ConditionLabel}"
+                : row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text;
+
+            if (body.Length > 0)
+            {
+                lines.Add(new string(' ', depth * 2) + body);
+            }
+
+            if (row.Kind == EpisodeRowKind.If)
+            {
+                depth++;
+            }
         }
 
-        if (row.Tag == EpisodeRowTag.Input)
-        {
-            body = $"[{row.Index}] {body}"; // IN이 가리키는 구간의 문패
-        }
-
-        if (row.OutTarget is { Length: > 0 } exit)
-        {
-            body += $"  ⏎ {exit}";
-        }
-
-        return body;
+        return string.Join("\n", lines);
     }
 
     /// <summary>
@@ -2768,8 +2794,11 @@ public partial class ChapterGraphView : UserControl
             // 생성은 없던 파일을 만드는 것이라 단일 writer 원칙과 충돌하지 않고,
             // 이후 툴은 이 파일을 다시는 쓰지 않는다.
             if (SelectedEpisodesFolder is { } episodesFolder &&
-                EpisodeLibrary.EnsureWorkbook(episodesFolder, episodeId,
-                    model.Speakers.Select(speaker => speaker.Name).ToList()))
+                EpisodeLibrary.EnsureWorkbook(
+                    episodesFolder,
+                    episodeId,
+                    model.Speakers.Select(speaker => speaker.Name).ToList(),
+                    model.Conditions.Select(condition => condition.Label).ToList()))
             {
                 StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
             }

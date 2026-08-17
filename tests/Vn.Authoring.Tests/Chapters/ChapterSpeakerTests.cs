@@ -168,10 +168,10 @@ public sealed class ChapterSpeakerTests : IDisposable
         Assert.Equal("라루", list.Cell(1, 1).GetString());
         Assert.Equal("윌로", list.Cell(2, 1).GetString());
 
-        // H열(화자)에 목록 검증이 걸려 있고, 조언일 뿐이라 오류 경고는 띄우지 않는다.
+        // E열(화자, v10)에 목록 검증이 걸려 있고, 조언일 뿐이라 오류 경고는 띄우지 않는다.
         IXLWorksheet script = workbook.Worksheet("대본");
         IXLDataValidation validation = script.DataValidations.Single(candidate =>
-            candidate.Ranges.Any(range => range.RangeAddress.FirstAddress.ColumnNumber == 8));
+            candidate.Ranges.Any(range => range.RangeAddress.FirstAddress.ColumnNumber == 5));
 
         Assert.Equal(XLAllowedValues.List, validation.AllowedValues);
         Assert.Contains(EpisodeLibrary.SpeakerListSheetName, validation.Value);
@@ -196,8 +196,8 @@ public sealed class ChapterSpeakerTests : IDisposable
         string path = EpisodeLibrary.PathFor(_directory, "ep02");
         DateTime before = File.GetLastWriteTimeUtc(path);
 
-        EpisodeLibrary.SpeakerListPush push =
-            EpisodeLibrary.PushSpeakerList(_directory, "ep02", ["라루"]);
+        EpisodeLibrary.VocabularyPush push =
+            EpisodeLibrary.PushVocabulary(_directory, "ep02", ["라루"], []);
 
         Assert.False(push.Changed);
         Assert.Null(push.Failure);
@@ -215,13 +215,13 @@ public sealed class ChapterSpeakerTests : IDisposable
         using (var workbook = new XLWorkbook(path))
         {
             IXLWorksheet script = workbook.Worksheet("대본");
-            script.Cell(2, 8).SetValue("라루");
-            script.Cell(2, 9).SetValue("첫 줄이다.");
+            script.Cell(2, 5).SetValue("라루");
+            script.Cell(2, 6).SetValue("첫 줄이다.");
             workbook.Save();
         }
 
-        EpisodeLibrary.SpeakerListPush push =
-            EpisodeLibrary.PushSpeakerList(_directory, "ep03", ["라루", "윌로"]);
+        EpisodeLibrary.VocabularyPush push =
+            EpisodeLibrary.PushVocabulary(_directory, "ep03", ["라루", "윌로"], []);
 
         Assert.True(push.Changed);
         Assert.True(File.Exists(path + ".bak")); // 원고를 다시 쓰는 유일한 순간 — 직전을 남긴다
@@ -231,8 +231,8 @@ public sealed class ChapterSpeakerTests : IDisposable
         Assert.Equal("윌로", list.Cell(2, 1).GetString());
 
         IXLWorksheet after = updated.Worksheet("대본");
-        Assert.Equal("라루", after.Cell(2, 8).GetString());
-        Assert.Equal("첫 줄이다.", after.Cell(2, 9).GetString());
+        Assert.Equal("라루", after.Cell(2, 5).GetString());
+        Assert.Equal("첫 줄이다.", after.Cell(2, 6).GetString());
     }
 
     [Fact]
@@ -240,8 +240,8 @@ public sealed class ChapterSpeakerTests : IDisposable
     {
         EpisodeLibrary.EnsureWorkbook(_directory, "ep04"); // 화자 기능 전의 워크북
 
-        EpisodeLibrary.SpeakerListPush push =
-            EpisodeLibrary.PushSpeakerList(_directory, "ep04", ["라루"]);
+        EpisodeLibrary.VocabularyPush push =
+            EpisodeLibrary.PushVocabulary(_directory, "ep04", ["라루"], []);
 
         Assert.True(push.Changed);
 
@@ -249,7 +249,7 @@ public sealed class ChapterSpeakerTests : IDisposable
         Assert.Equal("라루",
             workbook.Worksheet(EpisodeLibrary.SpeakerListSheetName).Cell(1, 1).GetString());
         Assert.Contains(workbook.Worksheet("대본").DataValidations, validation =>
-            validation.Ranges.Any(range => range.RangeAddress.FirstAddress.ColumnNumber == 8));
+            validation.Ranges.Any(range => range.RangeAddress.FirstAddress.ColumnNumber == 5));
     }
 
     [Fact]
@@ -261,8 +261,8 @@ public sealed class ChapterSpeakerTests : IDisposable
         // 공유 없는 핸들 — 엑셀의 배타 잠금을 흉내 낸다.
         using var hold = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
-        EpisodeLibrary.SpeakerListPush push =
-            EpisodeLibrary.PushSpeakerList(_directory, "ep05", ["라루", "윌로"]);
+        EpisodeLibrary.VocabularyPush push =
+            EpisodeLibrary.PushVocabulary(_directory, "ep05", ["라루", "윌로"], []);
 
         Assert.False(push.Changed);
         Assert.Contains("넣지 못했습니다", push.Failure);
@@ -271,8 +271,8 @@ public sealed class ChapterSpeakerTests : IDisposable
     [Fact]
     public void 워크북이_아직_없으면_갱신은_아무것도_하지_않는다()
     {
-        EpisodeLibrary.SpeakerListPush push =
-            EpisodeLibrary.PushSpeakerList(_directory, "ep_none", ["라루"]);
+        EpisodeLibrary.VocabularyPush push =
+            EpisodeLibrary.PushVocabulary(_directory, "ep_none", ["라루"], []);
 
         Assert.False(push.Changed);
         Assert.Null(push.Failure);

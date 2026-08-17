@@ -120,28 +120,36 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     }
 
     [Fact]
-    public void 대본에_CHOICE_OPTION이_남아_있으면_폐지_경고를_한다()
+    public void 대본에_CHOICE_OPTION이_남아_있으면_어디로_가야_하는지_말한다()
     {
-        // 2026-08-16 소유자 — 선택지의 정본이 챕터 `선택지` 시트로 왔다. 대본의 선택지는
-        // 옮기라고 말하되 막지는 않는다(원고를 볼모로 잡지 않는다).
+        // 선택지의 정본은 v9부터 챕터 `선택지`·`간선` 시트다. v10에서 대본 규격에서 아예
+        // 빠졌으므로, 이제 리더가 <b>그 행을 짚어</b> 옮길 곳까지 말한다(경고 → 오류).
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
         string episodes = Path.Combine(_directory, "episodes");
         Directory.CreateDirectory(episodes);
 
         WriteRows(Path.Combine(episodes, "main05.02.xlsx"),
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_0001", null, null, null, null, null, "윌로", "한 줄", null, null],
-            ["70", "ln_0006", "CHOICE", null, null, null, null, null, null, null, null],
-            ["71", "ln_0007", "OPTION", null, null, null, null, null, "하나뿐인 선택", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", "ln_0001", null, null, "윌로", "한 줄"],
+            ["70", "ln_0006", "CHOICE", null, null, null],
+            ["71", "ln_0007", "OPTION", null, null, "하나뿐인 선택"]
         ]);
 
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
 
-        ChapterDiagnostic deprecated = Assert.Single(validation.Diagnostics, item =>
-            item.Message.Contains("선택지는 이제"));
-        Assert.Equal(ChapterDiagnosticSeverity.Warning, deprecated.Severity);
-        Assert.Contains("`선택지` 시트", deprecated.Message);
+        List<ChapterDiagnostic> deprecated = validation.Diagnostics
+            .Where(item => item.Message.Contains("대본에서 폐지됐습니다"))
+            .ToList();
+
+        Assert.Equal(2, deprecated.Count);   // CHOICE 한 줄, OPTION 한 줄 — 각자 자기 행에서
+        Assert.All(deprecated, item =>
+        {
+            Assert.Equal(ChapterDiagnosticSeverity.Error, item.Severity);
+            Assert.Equal("C", item.Column);
+            Assert.Contains("`선택지` 시트", item.Message);
+            Assert.Contains("`간선` 시트", item.Message);
+        });
     }
 
     [Fact]

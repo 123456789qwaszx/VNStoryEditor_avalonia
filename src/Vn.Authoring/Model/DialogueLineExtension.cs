@@ -182,20 +182,48 @@ public sealed class DialogueLineExtension
     public string LineId { get; }
 
     /// <summary>
-    /// 이 줄에서 조건 흐름이 바뀐다면 그 내용. null이면 앞 줄의 상태를 그대로 물려받는다.
+    /// 이 줄 <b>앞에서</b> 일어나는 조건·선택 전환들 — 목록 순서가 곧 일어나는 순서다.
+    /// 비어 있으면 앞 줄의 상태를 그대로 물려받는다.
+    ///
+    /// <b>왜 목록인가</b> (2026-08-17 소유자 결정으로 슬롯 하나에서 늘렸다). Yarn에는 전환만
+    /// 있는 줄이 없다 — <c>&lt;&lt;endif&gt;&gt;</c>는 대사가 아니다. 그래서 블록이 겹쳐
+    /// 닫히거나(중첩) 한 블록이 닫히자마자 다음이 열리면, 그 전환들이 전부 <b>다음 대사 줄</b>
+    /// 앞에 몰린다. 슬롯이 하나면 그 상황을 표현할 수 없어 중첩도 인접도 못 썼다.
+    ///
+    /// 여전히 "지금 어떤 갈래 안인지"를 줄마다 반복 저장하지는 않는다 — <b>바뀌는 지점만</b>
+    /// 적고 나머지는 앞에서부터 계산한다(<see cref="Flow.ConditionFlowResolver"/>).
     /// </summary>
-    public LineConditionTransition? Transition { get; set; }
+    public List<LineConditionTransition> Transitions { get; init; } = new();
+
+    /// <summary>
+    /// 첫 전환 — 슬롯이 하나뿐이던 시절의 이름이다. 한 줄에 전환이 하나인 흔한 경우에
+    /// 부르는 쪽이 목록을 풀 이유가 없어 남겨 둔다. <b>넣으면 목록이 그 하나가 된다.</b>
+    /// 상태를 재생하는 쪽(흐름 계산·합성)은 반드시 <see cref="Transitions"/>를 봐야 한다.
+    /// </summary>
+    public LineConditionTransition? Transition
+    {
+        get => Transitions.Count > 0 ? Transitions[0] : null;
+        set
+        {
+            Transitions.Clear();
+
+            if (value is not null)
+            {
+                Transitions.Add(value);
+            }
+        }
+    }
 
     /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 목록 순서가 곧 실행 순서다.</summary>
     public List<SetOperation> SetOperations { get; init; } = new();
 
     /// <summary>이 확장이 아무것도 담고 있지 않은지. 빈 확장은 저장하지 않는다.</summary>
-    public bool IsEmpty => Transition is null && SetOperations.Count == 0;
+    public bool IsEmpty => Transitions.Count == 0 && SetOperations.Count == 0;
 
     public DialogueLineExtension Clone() =>
         new(LineId)
         {
-            Transition = Transition?.Clone(),
+            Transitions = Transitions.Select(transition => transition.Clone()).ToList(),
             SetOperations = SetOperations.Select(operation => operation.Clone()).ToList()
         };
 }

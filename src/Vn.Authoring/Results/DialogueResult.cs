@@ -20,10 +20,24 @@ public sealed record DialogueResultLine(
     string Text,
     DialogueResultTransition? Transition = null,
     string? BranchExitTargetNodeId = null,
-    IReadOnlyList<DialogueResultSetOperation>? SetOperations = null)
+    IReadOnlyList<DialogueResultSetOperation>? SetOperations = null,
+    IReadOnlyList<DialogueResultTransition>? ExtraTransitions = null)
 {
     public IReadOnlyList<DialogueResultSetOperation> Sets =>
         SetOperations ?? Array.Empty<DialogueResultSetOperation>();
+
+    /// <summary>
+    /// 이 줄 앞에서 일어나는 전환들 — <b>순서가 곧 일어나는 순서</b>다 (2026-08-17).
+    ///
+    /// Yarn에는 전환만 있는 줄이 없어서(<c>&lt;&lt;endif&gt;&gt;</c>는 대사가 아니다) 블록이
+    /// 겹쳐 닫히거나 닫히자마자 다음이 열리면 그 전환들이 전부 다음 대사 줄 앞에 몰린다.
+    /// <see cref="Transition"/>은 그 첫 칸이고, 나머지가 <see cref="ExtraTransitions"/>다 —
+    /// 옛 결과 파일이 그대로 열리도록 첫 칸의 이름과 자리를 그대로 뒀다.
+    /// </summary>
+    public IReadOnlyList<DialogueResultTransition> Transitions =>
+        Transition is null
+            ? Array.Empty<DialogueResultTransition>()
+            : [Transition, .. ExtraTransitions ?? Array.Empty<DialogueResultTransition>()];
 }
 
 /// <summary>발행 시점에 얼린 변수 변경 하나. Yarn <c>&lt;&lt;set&gt;&gt;</c>이 된다.</summary>

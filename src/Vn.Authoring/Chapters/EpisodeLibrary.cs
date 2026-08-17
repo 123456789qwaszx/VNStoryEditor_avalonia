@@ -245,12 +245,20 @@ public static class EpisodeLibrary
     /// <b>기존 파일은 절대 덮어쓰지 않는다.</b>
     /// </summary>
     /// <param name="speakers">
-    /// 챕터 `화자` 시트의 등록 이름들 (2026-08-16). 있으면 화자 열(H)에 드롭다운을 깐다 —
+    /// 챕터 `화자` 시트의 등록 이름들 (2026-08-16). 있으면 화자 열(E)에 드롭다운을 깐다 —
     /// 목록은 숨김 시트가 담고, 검증은 조언일 뿐이라 목록 밖 이름도 그대로 적을 수 있다
     /// (편의 기능이 없다고 원고를 못 쓰게 하지 않는다).
     /// </param>
+    /// <param name="conditionLabels">
+    /// 챕터 `조건` 시트의 라벨들 (2026-08-17 소유자). 조건라벨 열(D)에 같은 방식으로 깐다 —
+    /// 이쪽은 <b>오타가 곧 오류</b>라(리더가 미등록 라벨을 잡는다) 드롭다운의 값이 더 크다.
+    /// </param>
     /// <returns>새로 만들었으면 true.</returns>
-    public static bool EnsureWorkbook(string folder, string episodeId, IReadOnlyList<string>? speakers = null)
+    public static bool EnsureWorkbook(
+        string folder,
+        string episodeId,
+        IReadOnlyList<string>? speakers = null,
+        IReadOnlyList<string>? conditionLabels = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
@@ -271,9 +279,8 @@ public static class EpisodeLibrary
         // 어차피 머리글로 시트를 찾으므로 이름은 아무래도 좋다 — 그러면 안 낡는 이름이 낫다.
         IXLWorksheet sheet = workbook.AddWorksheet("대본");
 
-        // 9열 (2026-08-14 소유자 개정) — 스탯변화·메모 폐지. 대사 중 A계층 조작은 설계 미스.
-        string[] headers =
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
+        // 6열 (v10, 2026-08-17) — 태그·IN·OUT 폐지. 조건은 IF~END 블록이 감싼다.
+        string[] headers = ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
@@ -283,13 +290,10 @@ public static class EpisodeLibrary
             cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
         }
 
-        // 유형·태그는 규격의 낱말만 받는다 — 오타가 검증기까지 가기 전에 엑셀이 막는다.
-        // CHOICE/OPTION은 새 템플릿에서 뺐다 (2026-08-16 소유자 — 선택지는 챕터의 `선택지`
-        // 시트에서 만든다). 옛 파일의 CHOICE/OPTION은 여전히 읽히되 검증이 옮기라고 말한다.
+        // 유형은 규격의 낱말만 받는다 — 오타가 검증기까지 가기 전에 엑셀이 막는다.
+        // `대사`가 목록에 있어야 셀을 지우는 대신 고를 수 있다 (2026-08-17 소유자).
         sheet.Range(2, 3, TemplateRows, 3).CreateDataValidation()
-            .List("\"IF\"", true);
-        sheet.Range(2, 4, TemplateRows, 4).CreateDataValidation()
-            .List("\"INPUT,OUT\"", true);
+            .List(KindList, true);
 
         // 시트 보호는 걸지 않는다 (v4). 보호의 유일한 이유였던 B열(LineId)을 툴이 더는
         // 쓰지 않는다 — 행 신원은 프로젝트의 ExcelLineMap이 갖는다. 보호가 없으면 구글
@@ -306,83 +310,151 @@ public static class EpisodeLibrary
             sheet.Cell(row, 1).SetValue((row - 1) * 10);
         }
 
-        sheet.Column(9).Width = 50;   // 내용
+        sheet.Column(6).Width = 50;   // 내용
 
-        if (speakers is { Count: > 0 })
-        {
-            ApplySpeakerList(workbook, sheet, speakers);
-        }
+        ApplyVocabulary(workbook, sheet, speakers, conditionLabels);
 
         workbook.SaveAs(path);
         return true;
     }
 
-    // ── 화자 드롭다운 (2026-08-16 소유자 지시) ──────────────────────────────
+    // ── 어휘 드롭다운 (2026-08-16 화자 · 2026-08-17 조건라벨) ──────────────
     //
-    // 챕터 `화자` 시트에 등록한 이름이 대본의 화자 열(H)에 드롭다운으로 선다.
-    // 목록은 워크북 안의 숨김 시트가 담는다 — 외부 파일 참조는 엑셀·구글 시트에서
-    // 깨지기 때문이다. 챕터의 목록이 바뀌면 <see cref="PushSpeakerList"/>가 숨김
-    // 시트만 갈아 끼운다. 이것이 v4("만든 뒤 손대지 않는다")의 유일한 예외이며,
-    // 예외의 폭은 정확히 숨김 시트와 검증 정의까지다 — <b>대본 행은 절대 쓰지 않는다.</b>
+    // 챕터 시트에 등록한 낱말이 대본의 그 열에 드롭다운으로 선다: `화자` 시트 → 화자 열(E),
+    // `조건` 시트의 라벨 → 조건라벨 열(D). 목록은 워크북 안의 숨김 시트가 담는다 — 외부
+    // 파일 참조는 엑셀·구글 시트에서 깨지기 때문이다. 챕터의 목록이 바뀌면
+    // <see cref="PushVocabulary"/>가 숨김 시트만 갈아 끼운다. 이것이 v4("만든 뒤 손대지
+    // 않는다")의 유일한 예외이며, 예외의 폭은 정확히 숨김 시트와 검증 정의까지다 —
+    // <b>대본 행은 절대 쓰지 않는다.</b>
 
     /// <summary>화자 목록을 담는 숨김 시트. 이 이름이 곧 신원이다 — 갱신이 이 시트만 만진다.</summary>
     public const string SpeakerListSheetName = "화자목록";
 
-    private const int SpeakerColumn = 8;      // H열 — §3.2의 화자
-    private const int SpeakerListRows = 200;  // 드롭다운이 가리키는 범위. 화자가 이보다 많으면 나눌 일이다.
+    /// <summary>조건 라벨 목록을 담는 숨김 시트 (2026-08-17).</summary>
+    public const string ConditionListSheetName = "조건목록";
+
+    private const int KindColumn = 3;         // C열 — §3.2의 유형
+    private const int ConditionColumn = 4;    // D열 — §3.2의 조건라벨 (v10)
+    private const int SpeakerColumn = 5;      // E열 — §3.2의 화자 (v10에서 H→E)
+    private const int ListRows = 200;         // 드롭다운이 가리키는 범위. 이보다 많으면 나눌 일이다.
 
     /// <summary>
-    /// 숨김 목록 시트를 채우고(없으면 만들고) 화자 열에 조언 드롭다운을 건다.
-    /// 검증은 경고를 띄우지 않는다 — 목록 밖 이름(미등록 화자)은 동기화 보고가 다룬다.
+    /// `유형` 드롭다운의 정본 낱말. <b>규격이 늘면 옛 파일에도 와야 한다</b> — 2026-08-17
+    /// 소유자 보고("유형이 여전히 IF와 END밖에 없어")의 정체가 이것이었다. 화자·조건라벨은
+    /// 숨김 시트를 갈아 끼우면 따라오는데, 이 목록은 낱말이 파일에 그대로 굳어서 만들 때
+    /// 한 번 박히고 끝이었다. 이제 동기화마다 대조해 다르면 다시 건다.
     /// </summary>
-    private static void ApplySpeakerList(
-        XLWorkbook workbook, IXLWorksheet scriptSheet, IReadOnlyList<string> speakers)
+    private const string KindList = "\"대사,IF,ELSEIF,ENDIF\"";
+
+    /// <summary>어휘 한 가지 — 숨김 시트 하나와 그것이 조언하는 대본 열 하나.</summary>
+    private sealed record Vocabulary(string SheetName, int Column);
+
+    private static readonly Vocabulary Speakers = new(SpeakerListSheetName, SpeakerColumn);
+    private static readonly Vocabulary Conditions = new(ConditionListSheetName, ConditionColumn);
+
+    /// <summary>
+    /// 숨김 목록 시트를 채우고(없으면 만들고) 그 열에 조언 드롭다운을 건다.
+    /// 검증은 경고를 띄우지 않는다 — 목록 밖 값도 사람이 적을 수 있어야 한다(미등록 화자는
+    /// 동기화 보고가, 미등록 조건라벨은 리더가 각자 다룬다).
+    /// </summary>
+    private static void ApplyVocabulary(
+        XLWorkbook workbook,
+        IXLWorksheet scriptSheet,
+        IReadOnlyList<string>? speakers,
+        IReadOnlyList<string>? conditionLabels)
+    {
+        ApplyKindList(scriptSheet);
+
+        if (speakers is { Count: > 0 })
+        {
+            ApplyList(workbook, scriptSheet, Speakers, speakers);
+        }
+
+        if (conditionLabels is { Count: > 0 })
+        {
+            ApplyList(workbook, scriptSheet, Conditions, conditionLabels);
+        }
+    }
+
+    /// <summary>
+    /// `유형` 드롭다운을 정본 낱말로 다시 건다 — 이미 걸린 것이 있어도 갈아 끼운다.
+    /// 화자·조건라벨과 달리 이 목록은 <b>낱말이 파일에 굳으므로</b>, 규격이 늘 때 옛 파일에
+    /// 오게 하려면 여기서 밀어 넣는 수밖에 없다. v4의 예외(숨김 시트와 검증 정의)에 든다.
+    /// </summary>
+    private static void ApplyKindList(IXLWorksheet sheet)
+    {
+        sheet.DataValidations.Delete(validation => validation.Ranges.Any(range =>
+            range.RangeAddress.FirstAddress.ColumnNumber == KindColumn));
+
+        sheet.Range(2, KindColumn, TemplateRows, KindColumn)
+            .CreateDataValidation()
+            .List(KindList, inCellDropdown: true);
+    }
+
+    private static bool KindListMatches(IXLWorksheet sheet) =>
+        sheet.DataValidations.Any(validation =>
+            validation.Ranges.Any(range =>
+                range.RangeAddress.FirstAddress.ColumnNumber == KindColumn) &&
+            string.Equals(validation.Value, KindList, StringComparison.Ordinal));
+
+    private static void ApplyList(
+        XLWorkbook workbook, IXLWorksheet scriptSheet, Vocabulary vocabulary, IReadOnlyList<string> values)
     {
         IXLWorksheet list = workbook.Worksheets.FirstOrDefault(candidate =>
-                string.Equals(candidate.Name, SpeakerListSheetName, StringComparison.Ordinal))
-            ?? workbook.AddWorksheet(SpeakerListSheetName);
+                string.Equals(candidate.Name, vocabulary.SheetName, StringComparison.Ordinal))
+            ?? workbook.AddWorksheet(vocabulary.SheetName);
 
         list.Visibility = XLWorksheetVisibility.Hidden;
         list.Column(1).Clear(XLClearOptions.Contents);
 
-        for (int index = 0; index < speakers.Count && index < SpeakerListRows; index++)
+        for (int index = 0; index < values.Count && index < ListRows; index++)
         {
-            list.Cell(index + 1, 1).SetValue(speakers[index]);
+            list.Cell(index + 1, 1).SetValue(values[index]);
         }
 
-        // 화자 열에 이미 검증이 있으면 그대로 둔다(범위 참조라 목록 시트만 갈면 따라온다).
-        IXLRange range = scriptSheet.Range(2, SpeakerColumn, TemplateRows, SpeakerColumn);
-
-        if (!scriptSheet.DataValidations.Any(validation =>
+        // 그 열에 이미 검증이 있으면 그대로 둔다(범위 참조라 목록 시트만 갈면 따라온다).
+        if (scriptSheet.DataValidations.Any(validation =>
                 validation.Ranges.Any(existing =>
-                    existing.RangeAddress.FirstAddress.ColumnNumber == SpeakerColumn)))
+                    existing.RangeAddress.FirstAddress.ColumnNumber == vocabulary.Column)))
         {
-            IXLDataValidation validation = range.CreateDataValidation();
-            validation.List($"='{SpeakerListSheetName}'!$A$1:$A${SpeakerListRows}", inCellDropdown: true);
-            validation.ShowErrorMessage = false; // 조언일 뿐 — 목록 밖 이름도 원고다.
+            return;
         }
+
+        IXLDataValidation created = scriptSheet
+            .Range(2, vocabulary.Column, TemplateRows, vocabulary.Column)
+            .CreateDataValidation();
+
+        created.List($"='{vocabulary.SheetName}'!$A$1:$A${ListRows}", inCellDropdown: true);
+        created.ShowErrorMessage = false; // 조언일 뿐 — 목록 밖 값도 사람이 적을 수 있다.
     }
 
-    /// <summary><see cref="PushSpeakerList"/> 한 번의 결과. 실패는 예외가 아니라 사유다.</summary>
-    public sealed record SpeakerListPush(bool Changed, string? Failure)
+    /// <summary><see cref="PushVocabulary"/> 한 번의 결과. 실패는 예외가 아니라 사유다.</summary>
+    public sealed record VocabularyPush(bool Changed, string? Failure)
     {
-        public static SpeakerListPush Unchanged { get; } = new(false, null);
+        public static VocabularyPush Unchanged { get; } = new(false, null);
     }
 
     /// <summary>
-    /// 챕터의 화자 목록을 기존 워크북의 숨김 시트에 반영한다. <b>목록이 이미 같으면 파일에
-    /// 손대지 않는다</b>(수정 시각 불변) — 챕터를 열 때마다 불려도 실제 쓰기는 목록이 바뀐
-    /// 그 순간뿐이다. 쓰기 전 원본을 <c>.bak</c>으로 남긴다(원고 파일이므로).
+    /// 챕터의 화자·조건라벨 목록을 기존 워크북의 숨김 시트에 반영한다. <b>둘 다 이미 같으면
+    /// 파일에 손대지 않는다</b>(수정 시각 불변) — 챕터를 열 때마다 불려도 실제 쓰기는 목록이
+    /// 바뀐 그 순간뿐이다. 쓰기 전 원본을 <c>.bak</c>으로 남긴다(원고 파일이므로).
     /// 워크북이 아직 없으면 할 일이 없다 — 생성 때 목록을 받는다.
+    ///
+    /// 둘을 <b>한 번의 쓰기</b>로 넣는다. 따로 저장하면 원고 파일을 두 번 열고 .bak도 두 번
+    /// 덮인다 — 두 번째 .bak은 첫 번째 저장 직후라 되돌릴 자리로 쓸모가 없다.
     /// </summary>
-    public static SpeakerListPush PushSpeakerList(
-        string folder, string episodeId, IReadOnlyList<string> speakers)
+    public static VocabularyPush PushVocabulary(
+        string folder,
+        string episodeId,
+        IReadOnlyList<string> speakers,
+        IReadOnlyList<string> conditionLabels)
     {
         ArgumentNullException.ThrowIfNull(speakers);
+        ArgumentNullException.ThrowIfNull(conditionLabels);
 
         if (FindExisting(folder, episodeId) is not { } path)
         {
-            return SpeakerListPush.Unchanged;
+            return VocabularyPush.Unchanged;
         }
 
         try
@@ -397,38 +469,41 @@ public static class EpisodeLibrary
             memory.Position = 0;
             using var workbook = new XLWorkbook(memory);
 
-            if (SpeakerListMatches(workbook, speakers))
-            {
-                return SpeakerListPush.Unchanged;
-            }
-
             IXLWorksheet scriptSheet = FindScriptSheet(workbook);
+
+            if (ListMatches(workbook, Speakers, speakers) &&
+                ListMatches(workbook, Conditions, conditionLabels) &&
+                KindListMatches(scriptSheet))
+            {
+                return VocabularyPush.Unchanged;
+            }
 
             // 원고 파일을 다시 쓰는 유일한 순간 — 직전 상태를 남긴다.
             File.WriteAllBytes(path + ".bak", memory.ToArray());
 
-            ApplySpeakerList(workbook, scriptSheet, speakers);
+            ApplyVocabulary(workbook, scriptSheet, speakers, conditionLabels);
             workbook.SaveAs(path);
 
-            return new SpeakerListPush(true, null);
+            return new VocabularyPush(true, null);
         }
         catch (Exception exception)
         {
-            return new SpeakerListPush(false,
-                $"'{Path.GetFileName(path)}'에 화자 목록을 넣지 못했습니다" +
+            return new VocabularyPush(false,
+                $"'{Path.GetFileName(path)}'에 화자·조건 목록을 넣지 못했습니다" +
                 $"(엑셀·시트가 열고 있을 수 있습니다): {exception.Message}");
         }
     }
 
     /// <summary>숨김 시트의 목록이 지금 목록과 같은가 — 순서까지 같아야 같다(드롭다운 순서).</summary>
-    private static bool SpeakerListMatches(XLWorkbook workbook, IReadOnlyList<string> speakers)
+    private static bool ListMatches(
+        XLWorkbook workbook, Vocabulary vocabulary, IReadOnlyList<string> values)
     {
         IXLWorksheet? list = workbook.Worksheets.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, SpeakerListSheetName, StringComparison.Ordinal));
+            string.Equals(candidate.Name, vocabulary.SheetName, StringComparison.Ordinal));
 
         if (list is null)
         {
-            return speakers.Count == 0; // 시트도 없고 화자도 없다 — 넣을 것이 없다.
+            return values.Count == 0; // 시트도 없고 넣을 것도 없다.
         }
 
         var current = new List<string>();
@@ -444,10 +519,10 @@ public static class EpisodeLibrary
             }
         }
 
-        return current.SequenceEqual(speakers.Take(SpeakerListRows), StringComparer.Ordinal);
+        return current.SequenceEqual(values.Take(ListRows), StringComparer.Ordinal);
     }
 
-    /// <summary>대본 시트 = 화자 머리글(H1)이 있는 시트. 없으면 첫 시트 — 검증만 못 걸 뿐이다.</summary>
+    /// <summary>대본 시트 = 화자 머리글(E1)이 있는 시트. 없으면 첫 시트 — 검증만 못 걸 뿐이다.</summary>
     private static IXLWorksheet FindScriptSheet(XLWorkbook workbook) =>
         workbook.Worksheets.FirstOrDefault(sheet =>
             string.Equals(sheet.Cell(1, SpeakerColumn).GetString().Trim(), "화자", StringComparison.Ordinal))

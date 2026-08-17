@@ -155,7 +155,8 @@ public static class ResultDocumentComposer
         // W54: 조건 갈래 안 선택 블록 — 들여쓰기는 (조건 열림 ? 1 : 0) + (옵션 본문 ? 1 : 0).
         // W55: 조건 종료는 열린 선택지도 함께 닫는다 — Pres 합성 조건을 잃지 않으려면
         // 암묵 ChoiceEnd를 조건 종료보다 먼저 내야 한다.
-        bool conditionOpen = false;
+        // 지금 몇 겹의 조건 안인가 (2026-08-17에 불리언에서 늘렸다).
+        int conditionDepth = 0;
         bool choiceOpen = false;
 
         foreach (DialogueResultLine line in dialogue.Lines)
@@ -168,7 +169,9 @@ public static class ResultDocumentComposer
 
             bool isOptionLabel = false;
 
-            if (line.Transition is { } transition)
+            // 한 줄 앞에 전환이 여럿 몰릴 수 있다 (2026-08-17) — Yarn에 전환만 있는 줄이
+            // 없어서 겹쳐 닫기·연달아 열기가 전부 다음 대사 줄 앞에 쌓인다. 순서대로 재생한다.
+            foreach (DialogueResultTransition transition in line.Transitions)
             {
                 bool isChoiceTransition = transition.Kind is ConditionTransitionKind.BeginChoice
                     or ConditionTransitionKind.BeginNextOption
@@ -199,7 +202,7 @@ public static class ResultDocumentComposer
                     case ConditionTransitionKind.BeginNextOption:
                         isOptionLabel = true;
                         choiceOpen = true;
-                        depth = conditionOpen ? 2 : 1; // 옵션 본문 깊이
+                        depth = conditionDepth + 1; // 옵션 본문은 감싼 조건보다 한 겹 안이다
 
                         if (transition.Kind == ConditionTransitionKind.BeginChoice)
                         {
@@ -220,7 +223,7 @@ public static class ResultDocumentComposer
                                 Kind: RenderedSegmentKind.ChoiceOption,
                                 Layer: DocumentLayer.Dialogue,
                                 Source: lineSource,
-                                IndentLevel: conditionOpen ? 1 : 0, // 라벨은 감싼 조건 깊이 (W54)
+                                IndentLevel: conditionDepth, // 라벨은 감싼 조건 깊이 (W54)
                                 Text: options.IncludeDialogueText ? line.Text : null,
                                 LocalizedText: options.IncludeLocalizedDialogue
                                     ? localization?.GetLocalizedText(line.LineId)
@@ -236,7 +239,7 @@ public static class ResultDocumentComposer
 
                     case ConditionTransitionKind.EndChoice:
                         choiceOpen = false;
-                        depth = conditionOpen ? 1 : 0; // 조건 안이었다면 그 갈래로 돌아간다 (W54)
+                        depth = conditionDepth; // 조건 안이었다면 그 갈래로 돌아간다 (W54)
 
                         if (showDialogue)
                         {
@@ -264,12 +267,31 @@ public static class ResultDocumentComposer
                         }
 
                         choiceOpen = false;
-                        conditionOpen = transition.Kind is not ConditionTransitionKind.EndIf;
-                        depth = conditionOpen ? 1 : 0;
+
+                        // 표지 자신은 <b>바깥</b> 깊이에 선다 — 감싸는 줄이 아니라 경계다.
+                        // `<<if>>`는 열기 전 깊이, `<<endif>>`는 닫은 뒤 깊이, `<<elseif>>`는
+                        // 자기 체인의 바깥(= 지금 깊이 한 겹 밖)이다.
+                        int markerIndent = transition.Kind switch
+                        {
+                            ConditionTransitionKind.BeginIf => conditionDepth,
+                            _ => Math.Max(0, conditionDepth - 1)
+                        };
+
+                        // 깊이는 이제 세어서 안다 — 불리언이던 시절에는 겹친 블록을 표현할
+                        // 수 없었다. EndIf는 한 겹 벗고, BeginIf는 한 겹 쓰고, elseif는
+                        // 제자리다(같은 체인의 다른 갈래라 깊이가 안 는다).
+                        conditionDepth = transition.Kind switch
+                        {
+                            ConditionTransitionKind.EndIf => Math.Max(0, conditionDepth - 1),
+                            ConditionTransitionKind.BeginIf => conditionDepth + 1,
+                            _ => conditionDepth
+                        };
+
+                        depth = conditionDepth;
 
                         if (options.IncludeConditions)
                         {
-                            AddTransition(segments, line, transition, lineSource);
+                            AddTransition(segments, line, transition, lineSource, markerIndent);
                         }
 
                         break;
@@ -373,6 +395,19 @@ public static class ResultDocumentComposer
                 ChoiceBlockOrdinal: choiceBlockOrdinal));
         }
 
+        // 문서 끝까지 열린 조건 블록도 같은 이유로 닫는다 (2026-08-17 소유자 보고 —
+        // "<<endif>>가 붙을 곳이 없습니다"). 닫힘은 <b>다음 줄</b>이 실어 나르는데,
+        // 조건 블록이 에피소드의 마지막이면 그 다음 줄이 없다. 안 닫으면 `<<if>>`만
+        // 남은 Yarn이 나가 컴파일이 깨진다 — 선택 블록 쪽에는 이미 있던 마무리다.
+        if (conditionDepth > 0 && options.IncludeConditions)
+        {
+            segments.Add(new RenderedSegment(
+                Id: $"node:{dialogue.SourceNodeId}:trailing-condition-end",
+                Kind: RenderedSegmentKind.ConditionEnd,
+                Layer: DocumentLayer.Conditions,
+                Source: nodeSource));
+        }
+
         if (options.IncludeExecutionJumps && dialogue.DefaultExitTargetNodeId is { } defaultTarget)
         {
             segments.Add(new RenderedSegment(
@@ -457,7 +492,8 @@ public static class ResultDocumentComposer
         List<RenderedSegment> segments,
         DialogueResultLine line,
         DialogueResultTransition transition,
-        RenderSourceReference source)
+        RenderSourceReference source,
+        int indentLevel = 0)
     {
         if (transition.Kind == ConditionTransitionKind.EndIf)
         {
@@ -465,7 +501,8 @@ public static class ResultDocumentComposer
                 Id: $"condition:{line.LineId}:end",
                 Kind: RenderedSegmentKind.ConditionEnd,
                 Layer: DocumentLayer.Conditions,
-                Source: source));
+                Source: source,
+                IndentLevel: indentLevel));
             return;
         }
 
@@ -480,6 +517,7 @@ public static class ResultDocumentComposer
                 : RenderedSegmentKind.ConditionElseIf,
             Layer: DocumentLayer.Conditions,
             Source: source,
+            IndentLevel: indentLevel,
             Text: transition.ConditionName,
             Expression: expression));
     }

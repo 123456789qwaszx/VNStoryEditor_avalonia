@@ -154,7 +154,7 @@ internal static class StoryNodeJson
 
         foreach (DialogueLineExtension extension in node.LineExtensions)
         {
-            bool hasExit = extension.Transition?.OpensBranch == true &&
+            bool hasExit = extension.Transitions.Any(transition => transition.OpensBranch) &&
                 node.BranchExits.ContainsKey(extension.LineId);
 
             // 아무것도 담지 않은 확장은 저장하지 않는다. 파일이 조용해야 diff가 읽힌다.
@@ -165,29 +165,23 @@ internal static class StoryNodeJson
 
             var lineJson = new JsonObject { ["lineId"] = extension.LineId };
 
-            if (extension.Transition is { } transition)
+            // 흔한 경우(전환 하나)는 `condition` 한 칸으로 그대로 쓴다 — 파일이 조용해야
+            // diff가 읽힌다. 둘 이상이 몰린 줄(겹쳐 닫기·연달아 열기)만 `conditions` 배열로
+            // 나간다. 읽을 때는 둘 다 받으므로 옛 판이 그대로 열린다.
+            if (extension.Transitions.Count == 1)
             {
-                var transitionJson = new JsonObject
-                {
-                    ["kind"] = DialogueResultJson.KindName(transition.Kind)
-                };
+                lineJson["condition"] = TransitionJson(extension.Transitions[0], node, extension, hasExit);
+            }
+            else if (extension.Transitions.Count > 1)
+            {
+                var array = new JsonArray();
 
-                if (transition.ConditionId is not null)
+                foreach (LineConditionTransition transition in extension.Transitions)
                 {
-                    transitionJson["condition"] = transition.ConditionId;
+                    array.Add(TransitionJson(transition, node, extension, hasExit));
                 }
 
-                if (transition.OptionId is not null)
-                {
-                    transitionJson["option"] = transition.OptionId;
-                }
-
-                if (hasExit)
-                {
-                    transitionJson["exit"] = node.BranchExits[extension.LineId];
-                }
-
-                lineJson["condition"] = transitionJson;
+                lineJson["conditions"] = array;
             }
 
             if (extension.SetOperations.Count > 0)
@@ -498,14 +492,16 @@ internal static class StoryNodeJson
 
             var extension = new DialogueLineExtension(lineId);
 
-            if (lineJson["condition"] is JsonObject transitionJson)
+            foreach (JsonObject transitionJson in Transitions(lineJson))
             {
-                extension.Transition = new LineConditionTransition(
+                var transition = new LineConditionTransition(
                     DialogueResultJson.ParseKind((string?)transitionJson["kind"]),
                     (string?)transitionJson["condition"],
                     (string?)transitionJson["option"]);
 
-                if ((string?)transitionJson["exit"] is { } exit && extension.Transition.OpensBranch)
+                extension.Transitions.Add(transition);
+
+                if ((string?)transitionJson["exit"] is { } exit && transition.OpensBranch)
                 {
                     node.BranchExits[lineId] = exit;
                 }
@@ -639,5 +635,46 @@ internal static class StoryNodeJson
         }
 
         return command;
+    }
+
+    /// <summary>전환 하나를 JSON으로. 갈래 출구는 <b>여는 전환</b>에만 붙는다.</summary>
+    private static JsonObject TransitionJson(
+        LineConditionTransition transition, DialogueNode node, DialogueLineExtension extension, bool hasExit)
+    {
+        var json = new JsonObject
+        {
+            ["kind"] = DialogueResultJson.KindName(transition.Kind)
+        };
+
+        if (transition.ConditionId is not null)
+        {
+            json["condition"] = transition.ConditionId;
+        }
+
+        if (transition.OptionId is not null)
+        {
+            json["option"] = transition.OptionId;
+        }
+
+        if (hasExit && transition.OpensBranch)
+        {
+            json["exit"] = node.BranchExits[extension.LineId];
+        }
+
+        return json;
+    }
+
+    /// <summary>
+    /// 줄의 전환 목록 — 새 <c>conditions</c> 배열이 있으면 그것, 없으면 옛 <c>condition</c>
+    /// 한 칸. 전환이 하나뿐이던 시절의 파일이 그대로 열린다.
+    /// </summary>
+    private static IEnumerable<JsonObject> Transitions(JsonObject lineJson)
+    {
+        if (lineJson["conditions"] is JsonArray array)
+        {
+            return array.OfType<JsonObject>();
+        }
+
+        return lineJson["condition"] is JsonObject single ? [single] : [];
     }
 }

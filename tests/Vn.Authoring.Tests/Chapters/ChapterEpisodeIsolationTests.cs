@@ -48,12 +48,12 @@ public sealed class ChapterEpisodeIsolationTests : IDisposable
         // 한쪽 원고를 고쳐도 다른 쪽은 그대로다 — 이것이 보고된 버그의 핵심이다.
         using (var workbook = new ClosedXML.Excel.XLWorkbook(fileA))
         {
-            workbook.Worksheet("대본").Cell(2, 9).SetValue("ch00의 대사");
+            workbook.Worksheet("대본").Cell(2, 6).SetValue("ch00의 대사");
             workbook.Save();
         }
 
         using var reread = new ClosedXML.Excel.XLWorkbook(fileB);
-        Assert.Equal(string.Empty, reread.Worksheet("대본").Cell(2, 9).GetString());
+        Assert.Equal(string.Empty, reread.Worksheet("대본").Cell(2, 6).GetString());
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class ChapterEpisodeIsolationTests : IDisposable
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
+        string[] headers = ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
 
         for (int column = 0; column < headers.Length; column++)
         {
@@ -151,8 +151,8 @@ public sealed class ChapterEpisodeIsolationTests : IDisposable
         }
 
         sheet.Cell(2, 1).SetValue(10);
-        sheet.Cell(2, 8).SetValue(speaker);
-        sheet.Cell(2, 9).SetValue(text);
+        sheet.Cell(2, 5).SetValue(speaker);
+        sheet.Cell(2, 6).SetValue(text);
 
         workbook.SaveAs(path);
     }

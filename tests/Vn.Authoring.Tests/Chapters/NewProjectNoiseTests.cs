@@ -115,9 +115,9 @@ public sealed class NewProjectNoiseTests : IDisposable
         using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
         {
             var sheet = workbook.Worksheets.First();
-            sheet.Cell(2, 8).SetValue("라루"); sheet.Cell(2, 9).SetValue("첫 줄");
-            sheet.Cell(3, 8).SetValue("윌로"); sheet.Cell(3, 9).SetValue("둘째 줄");
-            sheet.Cell(4, 8).SetValue("라루"); sheet.Cell(4, 9).SetValue("셋째 줄");
+            sheet.Cell(2, 5).SetValue("라루"); sheet.Cell(2, 6).SetValue("첫 줄");
+            sheet.Cell(3, 5).SetValue("윌로"); sheet.Cell(3, 6).SetValue("둘째 줄");
+            sheet.Cell(4, 5).SetValue("라루"); sheet.Cell(4, 6).SetValue("셋째 줄");
             workbook.Save();
         }
 
@@ -141,7 +141,7 @@ public sealed class NewProjectNoiseTests : IDisposable
         {
             var sheet = workbook.Worksheets.First();
             sheet.Cell(3, 1).Clear();                     // 인덱스를 지우고
-            sheet.Cell(3, 9).SetValue("버려질 뻔한 대사"); // 내용만 남긴다
+            sheet.Cell(3, 6).SetValue("버려질 뻔한 대사"); // 내용만 남긴다
             workbook.Save();
         }
 
@@ -173,39 +173,29 @@ public sealed class NewProjectNoiseTests : IDisposable
     }
 
     [Fact]
-    public void 템플릿의_빈_행은_CHOICE_뒤에_있어도_오류가_아니다()
+    public void 템플릿의_빈_행은_블록_뒤에_있어도_오류가_아니다()
     {
-        // 실사례 — 템플릿이 인덱스를 500행까지 깔아 두자, CHOICE 블록 뒤의 빈 자리들이
-        // "구간 밖 대사"로 세어져 멀쩡한 시트에 오류가 났다. 인덱스만 있는 행은 표의
-        // 일부가 아니다.
+        // 실사례 — 템플릿이 인덱스를 500행까지 깔아 두자, 그 빈 자리들이 대사로 세어져
+        // 멀쩡한 시트에 오류가 났다. 인덱스만 있는 행은 표의 일부가 아니다.
         string episodes = Path.Combine(_directory, "episodes");
-        EpisodeLibrary.EnsureWorkbook(episodes, "ep_choice");
-        string path = EpisodeLibrary.PathFor(episodes, "ep_choice");
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep_block");
+        string path = EpisodeLibrary.PathFor(episodes, "ep_block");
 
         using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
         {
             var sheet = workbook.Worksheets.First();
-            // 소유자 시트의 축소판: 대사 → CHOICE/OPTION → (빈 행들) → 구간.
-            sheet.Cell(2, 8).SetValue("윌로"); sheet.Cell(2, 9).SetValue("첫 줄");      // 10
-            sheet.Cell(3, 3).SetValue("CHOICE");                                        // 20
-            sheet.Cell(4, 3).SetValue("OPTION"); sheet.Cell(4, 6).SetValue(300);        // 30, IN=300
-            sheet.Cell(4, 9).SetValue("라루를 믿는다");
-            sheet.Cell(5, 3).SetValue("OPTION"); sheet.Cell(5, 9).SetValue("손을 잡는다"); // 40
-            // 6~29행: 템플릿이 깔아 둔 인덱스만 있는 빈 행들 (그대로 둔다)
-            sheet.Cell(31, 1).SetValue(300); sheet.Cell(31, 4).SetValue("INPUT");
-            sheet.Cell(31, 8).SetValue("윌로"); sheet.Cell(31, 9).SetValue("라루?");
-            sheet.Cell(32, 1).SetValue(310); sheet.Cell(32, 4).SetValue("OUT");
-            sheet.Cell(32, 7).SetValue("END");
-            sheet.Cell(32, 8).SetValue("윌로"); sheet.Cell(32, 9).SetValue("고마워요.");
+            // 대사 → 조건 블록 → (템플릿이 깔아 둔 빈 행 수백 개)
+            sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");   // 10
+            sheet.Cell(3, 3).SetValue("IF"); sheet.Cell(3, 4).SetValue("신뢰높음");  // 20
+            sheet.Cell(4, 5).SetValue("라루"); sheet.Cell(4, 6).SetValue("조건 안"); // 30
+            sheet.Cell(5, 3).SetValue("ENDIF");                                      // 40
             workbook.Save();
         }
 
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, ["신뢰높음"]);
 
-        // 빈 자리들이 대사로 세어지지 않았다 — "CHOICE 뒤 구간 밖 대사" 오류 없음.
-        Assert.DoesNotContain(model.Diagnostics, item =>
-            item.Message.Contains("CHOICE 블록 뒤"));
         Assert.Empty(model.Errors);
+        Assert.Equal(4, model.Rows.Count);
     }
 
     private static byte[] ReadTemplateBytes(string folder)

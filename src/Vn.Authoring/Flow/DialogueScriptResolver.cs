@@ -16,10 +16,17 @@ public sealed record DialogueLine(
     string Speaker,
     string Text,
     LineConditionTransition? Transition,
-    IReadOnlyList<SetOperation>? SetOperations = null)
+    IReadOnlyList<SetOperation>? SetOperations = null,
+    IReadOnlyList<LineConditionTransition>? ExtraTransitions = null)
 {
     /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 없으면 빈 목록이다.</summary>
     public IReadOnlyList<SetOperation> Sets => SetOperations ?? Array.Empty<SetOperation>();
+
+    /// <summary>이 줄 앞의 전환들 — 순서가 곧 일어나는 순서다 (2026-08-17).</summary>
+    public IReadOnlyList<LineConditionTransition> Transitions =>
+        Transition is null
+            ? Array.Empty<LineConditionTransition>()
+            : [Transition, .. ExtraTransitions ?? Array.Empty<LineConditionTransition>()];
 }
 
 /// <summary>대본에 더 이상 없는 LineId에 남아 있는 대사 논리.</summary>
@@ -135,7 +142,8 @@ public static class DialogueScriptResolver
                 text.Speaker,
                 text.Text,
                 extension?.Transition,
-                extension?.SetOperations));
+                extension?.SetOperations,
+                extension is { Transitions.Count: > 1 } ? extension.Transitions.Skip(1).ToList() : null));
         }
 
         var orphans = new List<OrphanLineExtension>();

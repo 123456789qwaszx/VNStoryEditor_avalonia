@@ -57,8 +57,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
 
         // 워크북의 LineId(CHOICE 제외)가 전부 대본에 들어왔고 신원이 그대로다.
         Assert.Equal(
-            ["ln_0001", "ln_0002", "ln_0100", "ln_0101", "ln_0102",
-             "ln_0003", "ln_0004", "ln_0005", "ln_0007", "ln_0110", "ln_0111", "ln_0008"],
+            ["ln_0001", "ln_0002", "ln_0003", "ln_0004", "ln_0005", "ln_0006"],
             editor.Project.FindScript(node.ScriptId!)!.ActiveLines.Select(line => line.Id));
     }
 
@@ -125,9 +124,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 시트에서 하듯 둘째 줄의 대사만 고친다 (B열은 아무도 안 쓴다).
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_0001", null, null, null, null, null, "라루", "첫 줄", null, null],
-            ["20", null, null, null, null, null, null, "윌로", "고친 둘째 줄", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", "ln_0001", null, null, "라루", "첫 줄"],
+            ["20", null, null, null, "윌로", "고친 둘째 줄"]
         ]);
 
         EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -149,8 +148,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "ep_space.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", null, null, null, null, null, null, "3시 13에 고쳤는데", "3시 10분으로 되있네", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", null, null, null, "3시 13에 고쳤는데", "3시 10분으로 되있네"]
         ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -175,8 +174,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "ep_chapter_speaker.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", null, null, null, null, null, null, "늙은 상인", "어서 오게.", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", null, null, null, "늙은 상인", "어서 오게."]
         ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -218,13 +217,13 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     {
         (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
 
-        // IN이 가리키는 구간이 없다 — §3.3 규칙 1 위반.
+        // IF를 열고 안 닫았다 — v10의 유일한 구조 규칙 위반.
         string workbook = Path.Combine(_directory, "broken.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_0001", null, null, null, null, null, "라루", "첫 줄", null, null],
-            ["30", null, "IF", null, "신뢰높음", "900", null, null, null, null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", "ln_0001", null, null, "라루", "첫 줄"],
+            ["30", null, "IF", "신뢰높음", null, null]
         ]);
 
         int nodesBefore = editor.Project.EnumerateNodes().Count();
@@ -236,7 +235,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Assert.Contains(report.Problems, problem => problem.Contains("검증 오류"));
         Assert.Contains(report.Diagnostics, item =>
             item.Severity == ChapterDiagnosticSeverity.Error &&
-            item.Message.Contains("INPUT 태그가 없습니다"));
+            item.Message.Contains("ENDIF로 닫히지 않았습니다"));
         Assert.True(report.RejectionCount > 0);
 
         // 깨진 표는 노드도 만들지 않는다.
@@ -267,8 +266,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 그 행을 워크북에서 지운다.
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_0001", null, null, null, null, null, "라루", "첫 줄", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", "ln_0001", null, null, "라루", "첫 줄"]
         ]);
 
         EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -294,12 +293,12 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "main05.02.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_0001", null, null, null, null, null, "윌로", "복도는 조용했다.", null, null],
-            ["30", null, "IF", null, "신뢰높음", "900", null, null, null, null, null],
-            ["40", "ln_0003", null, null, null, null, null, "라루", "왜 그런 표정이야?", null, null],
-            ["900", "ln_0100", null, "INPUT", null, null, null, "윌로", "어머니가 같은 말을 했었다.", null, null],
-            ["908", "ln_0102", null, "OUT", null, null, "40", "윌로", "아니. 처음 해.", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", "ln_0001", null, null, "윌로", "복도는 조용했다."],
+            ["30", null, "IF", "신뢰높음", null, null],
+            ["40", "ln_0100", null, null, "윌로", "어머니가 같은 말을 했었다."],
+            ["50", null, "ENDIF", null, null, null],
+            ["60", "ln_0003", null, null, "라루", "왜 그런 표정이야?"]
         ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -363,22 +362,31 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     [Fact]
     public void 선택지로_끝나는_에피소드가_발행되고_옵션_출구가_점프로_나간다()
     {
-        // 2단계 포트 규칙 (2026-08-14 소유자 승인) — 엑셀이 선택지를 선언하고, 각 옵션의
-        // 도착은 작가가 보드에서 잇는다. 안 이은 옵션 = 에피소드 종료. 이 규칙으로
-        // Gate B의 반칸("선택지로 끝나는 견본은 발행 거부")이 닫힌다.
-        (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
-        string workbook = CopySampleAs("main05.02.xlsx");
+        // 2단계 포트 규칙 (2026-08-14 소유자 승인) — 각 옵션의 도착은 작가가 보드에서
+        // 잇고, 안 이은 옵션은 그 자리에서 에피소드 종료다. 선택지로 끝나는 노드가
+        // 발행되고 이어진 옵션이 점프로 나가는지를 건다.
+        //
+        // v10에서 선택지는 <b>대본이 선언하지 않는다</b> — 주인이 챕터 `간선` 시트다.
+        // 그래서 옵션 줄은 작가 판에서 직접 세운다(자유 씬이 그러듯).
+        (ProjectEditor editor, string fileId, _) = BuildWorld();
 
-        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
-        Assert.True(report.Applied, string.Join(" / ", report.Problems));
+        DialogueNode node = editor.AddDialogueNode(fileId, name: "Story_choice_end");
+        string scriptId = editor.EnsureDialogueScript(node.Id).Id;
+        string firstLine = editor.Project.FindScript(scriptId)!.ActiveLines.First().Id;
+        editor.SetScriptLineText(scriptId, firstLine, "윌로", "어떻게 할래?");
 
-        DialogueNode node = (DialogueNode)editor.Project.FindNode(report.DialogueNodeId)!;
+        string optionA = editor.InsertScriptLine(scriptId).Id;
+        string optionB = editor.InsertScriptLine(scriptId).Id;
+        editor.SetScriptLineText(scriptId, optionA, string.Empty, "라루의 제안을 듣는다");
+        editor.SetScriptLineText(scriptId, optionB, string.Empty, "혼자 문을 연다");
 
-        // 견본은 선택지로 끝난다 — 옵션 줄이 실제로 있다.
+        editor.SetLineTransition(node.Id, optionA, LineConditionTransition.BeginChoice());
+        editor.SetLineTransition(node.Id, optionB, LineConditionTransition.BeginNextOption());
+
         List<DialogueLineExtension> options = node.LineExtensions
             .Where(extension => extension.Transition?.OpensOption == true)
             .ToList();
-        Assert.NotEmpty(options);
+        Assert.Equal(2, options.Count);
 
         // 첫 옵션만 작가의 곁가지로 잇는다. 나머지는 안 잇는다(= 그 자리에서 에피소드 종료).
         DialogueNode side = editor.AddDialogueNode(fileId, name: "곁가지_창고");
@@ -466,16 +474,16 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // §3.2의 9열 머리글 (2026-08-14 개정 — 스탯변화·메모 폐지)이 그대로 있고,
         // 리더가 이 워크북을 읽을 수 있다.
         Assert.Equal("인덱스", sheet.Cell(1, 1).GetString());
-        Assert.Equal("내용", sheet.Cell(1, 9).GetString());
-        Assert.Equal(string.Empty, sheet.Cell(1, 10).GetString());
+        Assert.Equal("내용", sheet.Cell(1, 6).GetString());
+        Assert.Equal(string.Empty, sheet.Cell(1, 7).GetString());
         Assert.Equal(10, sheet.Cell(2, 1).GetDouble());
 
         // 시트 보호는 없다 (v4) — 툴이 이 파일을 쓰지 않으므로 지킬 셀이 없고,
         // 외부 편집기(구글 시트)가 재저장할 때 깨질 것도 하나 줄었다.
         Assert.False(sheet.Protection.IsProtected);
 
-        // 유형·태그 드롭다운이 걸려 있다.
-        Assert.Equal(2, sheet.DataValidations.Count());
+        // 유형 드롭다운이 걸려 있다 (화자·조건라벨은 목록을 받았을 때만 선다).
+        Assert.Single(sheet.DataValidations);
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -507,9 +515,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string path = Path.Combine(_directory, fileName);
         WriteRows(path,
         [
-            ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-            ["10", "ln_0001", null, null, null, null, null, "라루", "첫 줄", null, null],
-            ["20", lineIdForSecondRow, null, null, null, null, null, "윌로", "둘째 줄", null, null]
+            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["10", "ln_0001", null, null, "라루", "첫 줄"],
+            ["20", lineIdForSecondRow, null, null, "윌로", "둘째 줄"]
         ]);
 
         return path;

@@ -17,24 +17,17 @@ public static class EpisodeWorkbookReader
 {
     private const int HeaderRow = 1;
 
-    // 9열 (2026-08-14 소유자 개정 — 스탯변화·메모 폐지). 대사 중 A계층(스탯) 직접 조작은
-    // 설계 미스였다: 세이브/로드 복귀·도달성 증명이 못 보는 값 변화가 대본 안에 숨는다.
-    // 옛 11열 파일도 앞 9열이 맞으면 그대로 읽힌다 — J·K열만 무시된다(값이 있으면 경고).
+    // 6열 (v10, 2026-08-17 소유자 결정 — 태그·IN·OUT 폐지, 조건은 IF~END 블록).
+    // 구판 9열 파일은 이행기가 이 모양으로 옮긴다.
     private static readonly string[] Headers =
-        ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
+        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
 
     private const int ColumnIndex = 1;
     private const int ColumnLineId = 2;
     private const int ColumnKind = 3;
-    private const int ColumnTag = 4;
-    private const int ColumnConditionLabel = 5;
-    private const int ColumnIn = 6;
-    private const int ColumnOut = 7;
-    private const int ColumnSpeaker = 8;
-    private const int ColumnText = 9;
-
-    /// <summary>옛 규격의 J열. 헤더가 이 이름일 때만 값 존재를 검사해 경고한다.</summary>
-    private const int LegacyStatColumn = 10;
+    private const int ColumnConditionLabel = 4;
+    private const int ColumnSpeaker = 5;
+    private const int ColumnText = 6;
 
     /// <param name="conditionLabels">챕터 `조건` 시트의 라벨 (G-7). 여기 없는 라벨은 오류다.</param>
     /// <exception cref="XlsxReadException">파일을 열 수 없을 때.</exception>
@@ -69,22 +62,15 @@ public static class EpisodeWorkbookReader
             return new EpisodeWorkbookModel(
                 episodeId, path, string.Empty,
                 Array.Empty<EpisodeRow>(),
-                new Dictionary<int, EpisodeSection>(),
                 diagnostics);
         }
-
-        WarnLegacyStatColumn(sheet, path, diagnostics);
 
         IReadOnlyList<EpisodeRow> rows =
             ReadRows(sheet, path, conditionLabels, diagnostics);
 
-        IReadOnlyDictionary<int, EpisodeSection> sections =
-            BuildSections(sheet, path, rows, diagnostics);
+        VerifyBlocks(sheet.Name, path, rows, diagnostics);
 
-        VerifySectionCalls(sheet.Name, path, rows, sections, diagnostics);
-        VerifyChoiceBlock(sheet.Name, path, rows, sections, diagnostics);
-
-        return new EpisodeWorkbookModel(episodeId, path, sheet.Name, rows, sections, diagnostics);
+        return new EpisodeWorkbookModel(episodeId, path, sheet.Name, rows, diagnostics);
     }
 
     private static XLWorkbook Open(string path)
@@ -107,34 +93,6 @@ public static class EpisodeWorkbookReader
                 string.Equals(Cell(sheet, HeaderRow, offset + 1), header, StringComparison.Ordinal))
                 .All(matches => matches));
 
-    /// <summary>
-    /// 옛 규격(11열) 파일의 스탯변화(J열)에 값이 있으면 한 번 크게 말한다 — 더 이상 읽지
-    /// 않으므로(소유자 결정 2026-08-14) 조용히 무시하면 수치가 말없이 사라진 것이 된다.
-    /// </summary>
-    private static void WarnLegacyStatColumn(
-        IXLWorksheet sheet, string path, List<ChapterDiagnostic> diagnostics)
-    {
-        if (!string.Equals(Cell(sheet, HeaderRow, LegacyStatColumn), "스탯변화", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        bool anyValue = sheet.RowsUsed().Any(row =>
-            row.RowNumber() > HeaderRow &&
-            row.Cell(LegacyStatColumn).GetString().Trim().Length > 0);
-
-        if (anyValue)
-        {
-            diagnostics.Add(new ChapterDiagnostic(
-                ChapterDiagnosticSeverity.Warning,
-                ChapterDiagnosticCode.StatKeyUnknown,
-                path, sheet.Name, null, "J",
-                "스탯변화(J열)는 더 이상 읽지 않습니다 — 대사 중의 A계층(스탯) 직접 조작은 " +
-                "설계에서 뺐습니다(2026-08-14 소유자 결정). 이 열의 값들은 무시됩니다. " +
-                "수치 조정 방식은 별도로 정해집니다."));
-        }
-    }
-
     // ── 행 ──────────────────────────────────────────────────────────────────
 
     private static IReadOnlyList<EpisodeRow> ReadRows(
@@ -153,7 +111,7 @@ public static class EpisodeWorkbookReader
 
             if (rawIndex.Length == 0)
             {
-                // 인덱스 없는 행은 IN/OUT이 가리킬 수 없으므로 표의 일부가 아니다.
+                // 인덱스가 줄의 신원이라 없는 행은 표의 일부가 아니다.
                 // 다만 화자나 내용이 적혀 있다면 그건 설명문이 아니라 **버려지는 대사**다 —
                 // 조용히 넘기면 "여러 줄을 썼는데 안 나온다"가 된다(실사례). 크게 말한다.
                 bool looksLikeDialogue =
@@ -180,7 +138,7 @@ public static class EpisodeWorkbookReader
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.StatValueNotInteger,
                     path, sheet.Name, row, ColumnIndex,
-                    $"인덱스 '{rawIndex}'가 정수가 아닙니다. IN/OUT이 이 값으로 서로를 가리키므로 " +
+                    $"인덱스 '{rawIndex}'가 정수가 아닙니다. 이 값이 줄의 신원이므로 " +
                     "숫자여야 합니다(10·20·30 방식 — G-5)."));
                 continue;
             }
@@ -191,48 +149,51 @@ public static class EpisodeWorkbookReader
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.EpisodeIdDuplicated,
                     path, sheet.Name, row, ColumnIndex,
-                    $"인덱스 {index}가 {firstRow}행과 중복입니다. IN/OUT이 어느 쪽을 가리키는지 " +
-                    "결정할 수 없습니다."));
+                    $"인덱스 {index}가 {firstRow}행과 중복입니다. 인덱스가 줄의 신원이라 " +
+                    "같은 번호가 둘이면 연출이 어느 줄에 붙는지 정해지지 않습니다."));
                 continue;
             }
 
             seenIndexes[index] = row;
 
+            // v10 — 오름차순은 이제 <b>권고</b>다. 읽는 순서는 시트의 행 순서이고 인덱스는
+            // 줄의 신원(연출·세이브가 매달리는 열쇠)일 뿐이다. 구판에서 오름차순이 규칙이었던
+            // 이유는 IN/OUT이 인덱스로 구간의 앞뒤를 정했기 때문인데, 블록에는 그 일이 없다.
+            // 이행기가 구간을 제자리로 옮길 때 번호를 그대로 두는 것도 이 완화 덕이다 —
+            // 번호를 다시 매기면 그 줄에 달린 연출이 통째로 끊긴다.
             if (index < previousIndex)
             {
                 diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticSeverity.Info,
                     ChapterDiagnosticCode.EpisodeIdDuplicated,
                     path, sheet.Name, row, ColumnIndex,
-                    $"인덱스 {index}가 앞 행({previousIndex})보다 작습니다. 표는 인덱스 오름차순이어야 " +
-                    "구간의 앞뒤가 정해집니다."));
+                    $"인덱스 {index}가 앞 행({previousIndex})보다 작습니다 — 읽는 순서는 " +
+                    "시트의 행 순서라 동작에는 지장이 없지만, 번호가 뒤죽박죽이면 사람이 읽기 어렵습니다."));
             }
 
             previousIndex = index;
 
             EpisodeRowKind kind = ReadKind(sheet, row, path, diagnostics);
-            EpisodeRowTag tag = ReadTag(sheet, row, path, diagnostics);
             string? lineId = Optional(sheet, row, ColumnLineId);
             string? conditionLabel = Optional(sheet, row, ColumnConditionLabel);
 
-            if (kind == EpisodeRowKind.If && lineId is not null)
+            if (kind is not EpisodeRowKind.Dialogue && lineId is not null)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.ColumnHeaderUnexpected,
                     path, sheet.Name, row, ColumnLineId,
-                    "IF 행은 라인이 아니므로 LineId를 가질 수 없습니다(소유자 확정). " +
+                    $"{Word(kind)} 행은 라인이 아니므로 LineId를 가질 수 없습니다(소유자 확정). " +
                     "연출·세이브 타깃이 아닙니다."));
             }
 
-            if (conditionLabel is not null &&
-                kind is not (EpisodeRowKind.If or EpisodeRowKind.Option))
+            if (conditionLabel is not null && kind is not (EpisodeRowKind.If or EpisodeRowKind.ElseIf))
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.ConditionLabelUndefined,
                     path, sheet.Name, row, ColumnConditionLabel,
-                    "조건라벨은 IF·OPTION 행에만 붙습니다(§3.2)."));
+                    "조건라벨은 IF·ELSEIF 행에만 붙습니다(§3.2)."));
             }
             else if (conditionLabel is not null && !conditionLabels.Contains(conditionLabel))
             {
@@ -244,25 +205,30 @@ public static class EpisodeWorkbookReader
                     "라벨↔식의 원천은 그 시트입니다(G-7)."));
             }
 
-            int? sectionCall = ReadIn(sheet, row, kind, path, diagnostics);
-            string? outTarget = ReadOut(sheet, row, tag, path, diagnostics);
+            // END는 닫기만 한다 — 조건라벨은 위에서 이미 걸렸고, 화자·내용은 여기서 막는다.
+            if (kind == EpisodeRowKind.End &&
+                (Cell(sheet, row, ColumnSpeaker).Length > 0 || Cell(sheet, row, ColumnText).Length > 0))
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                    path, sheet.Name, row, ColumnText,
+                    "ENDIF 행은 블록을 닫기만 합니다 — 화자·내용을 적으면 그 대사가 어느 쪽에 " +
+                    "속하는지 모호해집니다. 대사는 ENDIF 위나 아래의 자기 행에 적습니다."));
+            }
 
             var parsed = new EpisodeRow(
                 index,
                 lineId,
                 kind,
-                tag,
                 conditionLabel,
-                sectionCall,
-                outTarget,
                 Cell(sheet, row, ColumnSpeaker),
                 Cell(sheet, row, ColumnText),
                 row);
 
             // 인덱스만 있고 아무것도 안 쓴 행은 표의 일부가 아니다 — 템플릿이 500행까지
-            // 미리 깔아 둔 자리라서, 여기서 거르지 않으면 "CHOICE 뒤에 대사가 있다" 같은
-            // 검사들이 빈자리를 대사로 세어 엉뚱한 오류를 낸다(실사례). 인덱스는 위의
-            // 중복·오름차순 검사에 이미 참여했으므로 질서는 지켜진 뒤다.
+            // 미리 깔아 둔 자리라서, 여기서 거르지 않으면 빈자리가 대사로 세어져 엉뚱한
+            // 오류를 낸다(실사례). 인덱스는 위의 중복·오름차순 검사에 이미 참여했다.
             if (parsed.IsBlank)
             {
                 continue;
@@ -281,12 +247,34 @@ public static class EpisodeWorkbookReader
 
         return raw switch
         {
-            "" => EpisodeRowKind.Dialogue,
+            // 빈칸과 `대사`는 같은 뜻이다 (2026-08-17 소유자: "유형에서 IF와 END밖에 못
+            // 고른다"). 드롭다운에 `대사`가 있어야 셀을 지우는 대신 <b>고를</b> 수 있다.
+            "" or "대사" => EpisodeRowKind.Dialogue,
             "IF" => EpisodeRowKind.If,
-            "CHOICE" => EpisodeRowKind.Choice,
-            "OPTION" => EpisodeRowKind.Option,
+            "ELSEIF" or "ELSE IF" => EpisodeRowKind.ElseIf,
+
+            // `ENDIF`가 정본이다 (2026-08-17 소유자) — `END` 혼자면 "에피소드가 여기서
+            // 끝난다"로 읽힌다(구판 OUT 열의 END가 정확히 그 뜻이었다). 사람이 그냥 END를
+            // 치는 것도 흔하므로 같은 뜻으로 받는다 — 뜻이 하나뿐이라 주인이 갈리지 않는다.
+            "ENDIF" or "END" => EpisodeRowKind.End,
+
+            // v9에서 선택지의 주인이 챕터 `간선` 시트로 옮겨 갔다 — 대본에 남은 이 낱말은
+            // 옮기다 만 흔적이다. 어디로 가야 하는지까지 말한다.
+            "CHOICE" or "OPTION" => Moved(),
             _ => Unknown()
         };
+
+        EpisodeRowKind Moved()
+        {
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.OptionEdgeMismatch,
+                path, sheet.Name, row, ColumnKind,
+                $"'{raw}'은 대본에서 폐지됐습니다(v9). 선택지는 챕터 엑셀의 `선택지` 시트에 " +
+                "문구를 적고 `간선` 시트에서 길을 잇습니다 — 이 행은 지워 주세요."));
+
+            return EpisodeRowKind.Dialogue;
+        }
 
         EpisodeRowKind Unknown()
         {
@@ -294,310 +282,104 @@ public static class EpisodeWorkbookReader
                 ChapterDiagnosticSeverity.Error,
                 ChapterDiagnosticCode.ColumnHeaderUnexpected,
                 path, sheet.Name, row, ColumnKind,
-                $"유형 '{raw}'을 모릅니다. 빈칸(대사) · IF · CHOICE · OPTION 중 하나여야 합니다."));
+                $"유형 '{raw}'을 모릅니다. 대사(빈칸도 같음) · IF · ELSEIF · ENDIF 중 하나여야 합니다."));
 
             return EpisodeRowKind.Dialogue;
         }
     }
 
-    private static EpisodeRowTag ReadTag(
-        IXLWorksheet sheet, int row, string path, List<ChapterDiagnostic> diagnostics)
+    private static string Word(EpisodeRowKind kind) => kind switch
     {
-        string raw = Cell(sheet, row, ColumnTag);
+        EpisodeRowKind.If => "IF",
+        EpisodeRowKind.ElseIf => "ELSEIF",
+        EpisodeRowKind.End => "ENDIF",
+        _ => "대사"
+    };
 
-        return raw switch
-        {
-            "" => EpisodeRowTag.None,
-            "INPUT" => EpisodeRowTag.Input,
-            "OUT" => EpisodeRowTag.Out,
-            _ => Unknown()
-        };
-
-        EpisodeRowTag Unknown()
-        {
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheet.Name, row, ColumnTag,
-                $"태그 '{raw}'을 모릅니다. 빈칸 · INPUT · OUT 중 하나여야 합니다."));
-
-            return EpisodeRowTag.None;
-        }
-    }
-
-    private static int? ReadIn(
-        IXLWorksheet sheet, int row, EpisodeRowKind kind, string path,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        string raw = Cell(sheet, row, ColumnIn);
-
-        if (raw.Length == 0)
-        {
-            return null;
-        }
-
-        if (kind is not (EpisodeRowKind.If or EpisodeRowKind.Option))
-        {
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheet.Name, row, ColumnIn,
-                "IN은 IF·OPTION 행에만 붙습니다 (G-6c)."));
-
-            return null;
-        }
-
-        if (int.TryParse(raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int value))
-        {
-            return value;
-        }
-
-        diagnostics.Add(Cell(
-            ChapterDiagnosticSeverity.Error,
-            ChapterDiagnosticCode.StatValueNotInteger,
-            path, sheet.Name, row, ColumnIn,
-            $"IN '{raw}'이 정수가 아닙니다. 들어갈 구간의 시작 인덱스여야 합니다."));
-
-        return null;
-    }
-
-    private static string? ReadOut(
-        IXLWorksheet sheet, int row, EpisodeRowTag tag, string path,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        string raw = Cell(sheet, row, ColumnOut);
-
-        if (raw.Length == 0)
-        {
-            if (tag == EpisodeRowTag.Out)
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheet.Name, row, ColumnOut,
-                    "OUT 태그가 붙은 행은 나갈 목적지를 적어야 합니다 — 인덱스이거나 END입니다."));
-            }
-
-            return null;
-        }
-
-        if (tag != EpisodeRowTag.Out)
-        {
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheet.Name, row, ColumnOut,
-                "OUT 값은 OUT 태그가 붙은 행에만 적습니다(§3.2)."));
-
-            return null;
-        }
-
-        if (string.Equals(raw, EpisodeFlow.EndMarker, StringComparison.OrdinalIgnoreCase))
-        {
-            return EpisodeFlow.EndMarker;
-        }
-
-        if (int.TryParse(raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _))
-        {
-            return raw;
-        }
-
-        diagnostics.Add(Cell(
-            ChapterDiagnosticSeverity.Error,
-            ChapterDiagnosticCode.StatValueNotInteger,
-            path, sheet.Name, row, ColumnOut,
-            $"OUT '{raw}'을 읽지 못했습니다. 나갈 목적지 인덱스이거나 {EpisodeFlow.EndMarker}여야 합니다."));
-
-        return null;
-    }
-
-    // ── 구간 (§3.3) ─────────────────────────────────────────────────────────
+    // ── 조건 블록 (v10) ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// <c>INPUT</c>에서 시작해 <c>OUT</c>까지를 한 구간으로 묶는다 — <b>양끝 포함</b>이 정의다.
-    /// 규칙 2(짝 강제)는 여기서 잡힌다: <c>OUT</c>을 만나기 전에 다음 <c>INPUT</c>이나 표의 끝이
-    /// 오면 짝이 없는 것이다.
+    /// <c>IF</c>와 <c>END</c>가 짝을 이루는지 — <b>이것이 규칙의 전부다</b> (v10).
+    ///
+    /// 구판의 규칙 1·2·4·5·6(구간 대상 존재 · INPUT/OUT 짝 · 구간 재사용 금지 · 중첩 금지 ·
+    /// OUT 대조)은 전부 사라졌다. 블록은 자기 범위를 제자리에서 말하므로 가리킬 대상도,
+    /// 재사용할 구간도, 대조할 선언도 없다. <b>중첩은 이제 허용</b>이다 — 여는 순서의
+    /// 역순으로 닫히는 것이 짝의 정의이고, 그건 셀 수 있다.
     /// </summary>
-    private static IReadOnlyDictionary<int, EpisodeSection> BuildSections(
-        IXLWorksheet sheet,
+    private static void VerifyBlocks(
+        string sheetName,
         string path,
         IReadOnlyList<EpisodeRow> rows,
         List<ChapterDiagnostic> diagnostics)
     {
-        var sections = new Dictionary<int, EpisodeSection>();
-        var open = new List<EpisodeRow>();
-        EpisodeRow? start = null;
+        var open = new Stack<EpisodeRow>();
 
         foreach (EpisodeRow row in rows)
         {
-            if (row.Tag == EpisodeRowTag.Input)
+            switch (row.Kind)
             {
-                if (start is not null)
-                {
-                    diagnostics.Add(Cell(
-                        ChapterDiagnosticSeverity.Error,
-                        ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                        path, sheet.Name, start.SourceRow, ColumnTag,
-                        $"INPUT(인덱스 {start.Index})에 짝이 되는 OUT이 없습니다. " +
-                        $"{row.SourceRow}행에서 다음 INPUT이 시작됩니다 — 짝은 강제입니다(§3.3 규칙 2)."));
-                }
+                case EpisodeRowKind.If:
+                    if (row.ConditionLabel is null)
+                    {
+                        diagnostics.Add(Cell(
+                            ChapterDiagnosticSeverity.Error,
+                            ChapterDiagnosticCode.ConditionLabelUndefined,
+                            path, sheetName, row.SourceRow, ColumnConditionLabel,
+                            "IF 행에 조건라벨이 없습니다. 챕터 `조건` 시트의 라벨을 골라 주세요 — " +
+                            "조건 없는 IF는 무엇을 가르는지 말하지 않습니다."));
+                    }
 
-                start = row;
-                open = [row];
-                continue;
+                    // 중첩은 허용이다 (2026-08-17) — 줄 하나가 전환 여럿을 담게 아래층을
+                    // 고쳤다. 겹쳐 닫는 <<endif>>들이 같은 줄 앞에 몰려도 순서대로 재생된다.
+                    open.Push(row);
+                    break;
+
+                case EpisodeRowKind.ElseIf:
+                    if (open.Count == 0)
+                    {
+                        diagnostics.Add(Cell(
+                            ChapterDiagnosticSeverity.Error,
+                            ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                            path, sheetName, row.SourceRow, ColumnKind,
+                            "열린 IF가 없는 ELSEIF입니다. 위쪽에 짝이 되는 IF 행이 있어야 합니다."));
+                        break;
+                    }
+
+                    if (row.ConditionLabel is null)
+                    {
+                        diagnostics.Add(Cell(
+                            ChapterDiagnosticSeverity.Error,
+                            ChapterDiagnosticCode.ConditionLabelUndefined,
+                            path, sheetName, row.SourceRow, ColumnConditionLabel,
+                            "ELSEIF 행에 조건라벨이 없습니다. 챕터 `조건` 시트의 라벨을 골라 주세요."));
+                    }
+
+                    break;
+
+                case EpisodeRowKind.End:
+                    if (open.Count == 0)
+                    {
+                        diagnostics.Add(Cell(
+                            ChapterDiagnosticSeverity.Error,
+                            ChapterDiagnosticCode.ColumnHeaderUnexpected,
+                            path, sheetName, row.SourceRow, ColumnKind,
+                            "닫을 IF가 없는 ENDIF입니다. 위쪽에 짝이 되는 IF 행이 있어야 합니다."));
+                        break;
+                    }
+
+                    open.Pop();
+                    break;
             }
-
-            if (start is null)
-            {
-                continue;
-            }
-
-            open.Add(row);
-
-            if (row.Tag != EpisodeRowTag.Out)
-            {
-                continue;
-            }
-
-            sections[start.Index] = new EpisodeSection(
-                start.Index, open, row.OutTarget, CalledFromRow: null);
-
-            start = null;
-            open = [];
         }
 
-        if (start is not null)
+        foreach (EpisodeRow unclosed in open)
         {
             diagnostics.Add(Cell(
                 ChapterDiagnosticSeverity.Error,
                 ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheet.Name, start.SourceRow, ColumnTag,
-                $"INPUT(인덱스 {start.Index})에 짝이 되는 OUT이 없습니다 — 표가 그대로 끝납니다. " +
-                "짝은 강제입니다(§3.3 규칙 2)."));
-        }
-
-        return sections;
-    }
-
-    /// <summary>
-    /// 규칙 1(<c>IN</c> 대상에 <c>INPUT</c>이 있는가) · 규칙 4(구간 재사용 금지) ·
-    /// 규칙 5(중첩 금지)를 친다.
-    /// </summary>
-    private static void VerifySectionCalls(
-        string sheetName,
-        string path,
-        IReadOnlyList<EpisodeRow> rows,
-        IReadOnlyDictionary<int, EpisodeSection> sections,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        var owners = new Dictionary<int, EpisodeRow>();
-        var insideSection = sections.Values
-            .SelectMany(section => section.Rows)
-            .ToDictionary(row => row.Index, row => row);
-
-        foreach (EpisodeRow row in rows.Where(item => item.CallsSection))
-        {
-            int target = row.In!.Value;
-
-            // 규칙 5 — 구간 안에서 또 IN이 열리면 안쪽 OUT이 어느 쌍을 닫는지 정해지지 않는다.
-            if (insideSection.ContainsKey(row.Index))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheetName, row.SourceRow, ColumnIn,
-                    "구간 안에서 또 IN을 열 수 없습니다(§3.3 규칙 5 — 중첩 금지). " +
-                    "엑셀의 인덱스·태그 모델로는 중첩 구간의 경계가 모호해집니다."));
-                continue;
-            }
-
-            // 규칙 1 — 가리킨 인덱스에 INPUT이 있어야 한다.
-            if (!sections.ContainsKey(target))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheetName, row.SourceRow, ColumnIn,
-                    $"IN={target}이지만 인덱스 {target} 행에 INPUT 태그가 없습니다(§3.3 규칙 1)."));
-                continue;
-            }
-
-            // 규칙 4 — 한 구간은 한 진입점의 소유다.
-            if (owners.TryGetValue(target, out EpisodeRow? first))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheetName, row.SourceRow, ColumnIn,
-                    $"구간 {target}을 {first.SourceRow}행이 이미 가리키고 있습니다(§3.3 규칙 4 — " +
-                    "구간 재사용 금지). 둘이 쓰면 평평화가 복제를 낳고 LineId 전역 유일성이 깨집니다."));
-                continue;
-            }
-
-            owners[target] = row;
-        }
-
-        // 아무도 가리키지 않는 구간은 산출물에서 사라진다 — 조용히 빠뜨리지 않는다.
-        foreach ((int startIndex, EpisodeSection section) in sections)
-        {
-            if (!owners.ContainsKey(startIndex))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheetName, section.First.SourceRow, ColumnTag,
-                    $"구간 {startIndex}을 가리키는 IN이 없습니다. 이 구간은 평평화 산출물에 " +
-                    "나오지 않습니다."));
-            }
-        }
-    }
-
-    /// <summary>`CHOICE` 블록은 파일 맨 끝에 0개 또는 1개다 (§3.2 마지막 라인 특별취급).</summary>
-    private static void VerifyChoiceBlock(
-        string sheetName,
-        string path,
-        IReadOnlyList<EpisodeRow> rows,
-        IReadOnlyDictionary<int, EpisodeSection> sections,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        List<EpisodeRow> choices = rows.Where(row => row.Kind == EpisodeRowKind.Choice).ToList();
-
-        if (choices.Count > 1)
-        {
-            foreach (EpisodeRow extra in choices.Skip(1))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheetName, extra.SourceRow, ColumnKind,
-                    $"CHOICE 블록은 파일에 0개 또는 1개입니다(§3.2). 첫 블록은 " +
-                    $"{choices[0].SourceRow}행에 있습니다."));
-            }
-        }
-
-        if (choices.Count == 0)
-        {
-            return;
-        }
-
-        // 선택지 뒤에 구간 밖 대사가 오면 맨 끝이 아니다.
-        // 구간 소속은 태그로 판정할 수 없다 — 구간 가운데 줄에는 태그가 없다.
-        EpisodeRow choice = choices[0];
-        var inSection = sections.Values
-            .SelectMany(section => section.Rows)
-            .Select(row => row.Index)
-            .ToHashSet();
-
-        foreach (EpisodeRow after in rows.Where(row =>
-                     row.Index > choice.Index &&
-                     row.Kind == EpisodeRowKind.Dialogue &&
-                     !inSection.Contains(row.Index)))
-        {
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheetName, after.SourceRow, ColumnIndex,
-                "CHOICE 블록 뒤에 구간 밖 대사가 있습니다. 선택지는 파일 맨 끝이어야 합니다(§3.2)."));
+                path, sheetName, unclosed.SourceRow, ColumnKind,
+                $"IF(인덱스 {unclosed.Index})가 ENDIF로 닫히지 않았습니다 — 표가 그대로 끝납니다. " +
+                "블록은 반드시 닫아야 어디까지가 조건 안인지 정해집니다."));
         }
     }
 

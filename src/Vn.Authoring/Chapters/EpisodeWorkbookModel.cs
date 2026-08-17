@@ -12,52 +12,45 @@ public enum EpisodeRowKind
     Dialogue,
 
     /// <summary>
-    /// 조건 행. <b>라인이 아니다</b>(소유자 확정) — LineId가 없고 연출·세이브 타깃도 아니다.
-    /// 조건라벨과 <c>IN</c>만 갖는다.
+    /// 조건 블록의 여는 줄 (v10). <b>라인이 아니다</b>(소유자 확정) — LineId가 없고
+    /// 연출·세이브 타깃도 아니다. 조건라벨만 갖는다.
     /// </summary>
     If,
 
-    /// <summary>선택지 블록의 머리. 라인이다.</summary>
-    Choice,
+    /// <summary>같은 체인의 다른 갈래 — 시트 낱말은 <c>ELSEIF</c>. 깊이는 안 는다.</summary>
+    ElseIf,
 
-    /// <summary>선택지 옵션. 라인이며 조건라벨·<c>IN</c>을 가질 수 있다 (G-6c).</summary>
-    Option
-}
-
-/// <summary>§3.2 D열 `태그` — 구간의 경계를 만든다. 인덱스 범위가 아니라 이 태그가 경계다.</summary>
-public enum EpisodeRowTag
-{
-    None,
-
-    /// <summary>구간의 첫 줄. <c>IN</c>이 가리키는 대상이다.</summary>
-    Input,
-
-    /// <summary>구간의 마지막 줄. <c>OUT</c> 값은 나갈 목적지다.</summary>
-    Out
+    /// <summary>조건 블록의 닫는 줄 — 시트 낱말은 <c>ENDIF</c> (v10). 라인이 아니다.</summary>
+    End
 }
 
 /// <summary>
-/// 에피소드 워크북 한 행 (§3.2의 9열 — 2026-08-14 소유자 개정으로 스탯변화·메모 폐지.
-/// 대사 중의 A계층 직접 조작은 세이브/로드·도달성이 못 보는 값 변화라 설계에서 뺐다).
+/// 에피소드 워크북 한 행 (§3.2의 6열 — v10, 2026-08-17 소유자 결정).
+///
+/// <b>조건 분기는 블록이다.</b> 예전에는 `유형 · 태그 · IN · OUT` 네 열이 한 조건을 만들었다:
+/// IF의 <c>IN</c>이 딴 데 있는 구간을 가리키고, 그 구간의 첫 줄에 <c>INPUT</c>, 마지막 줄에
+/// <c>OUT</c>이 붙었다. 한 개념이 네 열·세 행에 흩어져 있어서 조건 한 줄만 봐서는 그게
+/// 어디까지 덮는지 알 수 없었고(§3.3의 규칙 1·4·5·6이 그 대가였다), <b>중첩은 아예
+/// 금지</b>였다. 게다가 <c>OUT</c>은 흐름을 바꾸는 힘이 없는 선언이라 맞으면 아무 일도
+/// 없고 틀리면 오류만 냈다.
+///
+/// 이제 <c>IF</c>행과 <c>ENDIF</c>행이 그 사이를 감싼다. 범위가 눈에 보이고, 중첩이
+/// 자연스럽고, 세 열이 사라졌다.
 /// </summary>
-/// <param name="Index">A열. 10·20·30 방식(G-5). <c>IN</c>/<c>OUT</c>이 이 값으로 서로를 가리킨다.</param>
-/// <param name="LineId">B열. 대사·선택지 행만 갖는다. 비어 있으면 아직 ID가 없는 새 행이다.</param>
-/// <param name="OutTarget">G열. 나갈 목적지 인덱스이거나 <see cref="EpisodeFlow.EndMarker"/>다.</param>
+/// <param name="Index">A열. 10·20·30 방식(G-5). 줄의 신원이다.</param>
+/// <param name="LineId">B열. 대사 행만 갖는다. 비어 있으면 아직 ID가 없는 새 행이다.</param>
 /// <param name="SourceRow">엑셀 행 번호. 진단이 자리를 짚는 근거다.</param>
 public sealed record EpisodeRow(
     int Index,
     string? LineId,
     EpisodeRowKind Kind,
-    EpisodeRowTag Tag,
     string? ConditionLabel,
-    int? In,
-    string? OutTarget,
     string Speaker,
     string Text,
     int SourceRow)
 {
     /// <summary>라인인가 — LineId를 받아 연출·세이브 타깃이 될 수 있는가.</summary>
-    public bool IsLine => Kind is not EpisodeRowKind.If;
+    public bool IsLine => Kind is EpisodeRowKind.Dialogue;
 
     /// <summary>
     /// 인덱스만 있고 아무것도 안 쓴 행 — 템플릿이 미리 깔아 둔 자리다.
@@ -65,40 +58,9 @@ public sealed record EpisodeRow(
     /// </summary>
     public bool IsBlank =>
         Kind == EpisodeRowKind.Dialogue &&
-        Tag == EpisodeRowTag.None &&
         Speaker.Length == 0 &&
         Text.Length == 0 &&
-        ConditionLabel is null &&
-        In is null &&
-        OutTarget is null;
-
-    /// <summary>이 행이 구간을 부르는가 (조건이든 선택지 옵션이든).</summary>
-    public bool CallsSection => In is not null;
-}
-
-/// <summary>
-/// <c>INPUT</c>부터 <c>OUT</c>까지의 줄 묶음 (§3.3). <b>양끝을 포함한다</b> —
-/// 이것은 구간의 정의이지 검사 대상이 아니다.
-/// </summary>
-/// <param name="StartIndex">구간의 시작 인덱스. <c>IN</c>이 이 값을 가리킨다.</param>
-/// <param name="OutTarget">구간을 빠져나가 흘러갈 곳. 인덱스이거나 <c>END</c>다.</param>
-/// <param name="CalledFromRow">이 구간을 가리킨 행의 엑셀 행 번호. 없으면 아무도 안 가리켰다.</param>
-public sealed record EpisodeSection(
-    int StartIndex,
-    IReadOnlyList<EpisodeRow> Rows,
-    string? OutTarget,
-    int? CalledFromRow)
-{
-    public EpisodeRow First => Rows[0];
-
-    public EpisodeRow Last => Rows[^1];
-}
-
-/// <summary>흐름 표기 상수.</summary>
-public static class EpisodeFlow
-{
-    /// <summary>`OUT` 값이 이것이면 에피소드가 여기서 끝난다는 선언이다.</summary>
-    public const string EndMarker = "END";
+        ConditionLabel is null;
 }
 
 /// <summary>
@@ -114,14 +76,12 @@ public sealed class EpisodeWorkbookModel
         string sourcePath,
         string sheetName,
         IReadOnlyList<EpisodeRow> rows,
-        IReadOnlyDictionary<int, EpisodeSection> sections,
         IReadOnlyList<ChapterDiagnostic> diagnostics)
     {
         EpisodeId = episodeId;
         SourcePath = sourcePath;
         SheetName = sheetName;
         Rows = rows;
-        Sections = sections;
         Diagnostics = diagnostics;
     }
 
@@ -132,11 +92,8 @@ public sealed class EpisodeWorkbookModel
 
     public string SheetName { get; }
 
-    /// <summary>인덱스 오름차순. 구간 안의 행도 여기 전부 들어 있다.</summary>
+    /// <summary>인덱스 오름차순. 블록 안의 행도 그 자리에 그대로 있다 (v10).</summary>
     public IReadOnlyList<EpisodeRow> Rows { get; }
-
-    /// <summary>시작 인덱스 → 구간.</summary>
-    public IReadOnlyDictionary<int, EpisodeSection> Sections { get; }
 
     public IReadOnlyList<ChapterDiagnostic> Diagnostics { get; }
 
@@ -145,20 +102,6 @@ public sealed class EpisodeWorkbookModel
 
     public IEnumerable<ChapterDiagnostic> Errors =>
         Diagnostics.Where(item => item.Severity == ChapterDiagnosticSeverity.Error);
-
-    /// <summary>어떤 구간에도 속하지 않는 행들 = 주 흐름. 평평화의 뼈대다.</summary>
-    public IReadOnlyList<EpisodeRow> MainFlow
-    {
-        get
-        {
-            var inSection = Sections.Values
-                .SelectMany(section => section.Rows)
-                .Select(row => row.Index)
-                .ToHashSet();
-
-            return Rows.Where(row => !inSection.Contains(row.Index)).ToList();
-        }
-    }
 
     public EpisodeRow? FindByIndex(int index) =>
         Rows.FirstOrDefault(row => row.Index == index);

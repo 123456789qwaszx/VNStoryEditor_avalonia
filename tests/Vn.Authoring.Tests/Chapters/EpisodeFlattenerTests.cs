@@ -9,8 +9,9 @@ namespace Vn.Authoring.Tests.Chapters;
 /// <summary>
 /// G2-b — 표를 X11 문법 텍스트로 편다 (§3.4).
 ///
-/// 여기서 지키는 두 약속: <b>같은 대사가 두 번 나오지 않는다</b>(구간은 복제가 아니라 이동이다)와
-/// <b><c>OUT</c>이 사실인지 대조한다</b>(선언이지 명령이 아니다).
+/// <b>v10에서 평평화는 한 번 훑기가 됐다.</b> 구간을 옮겨 넣던 시절의 약속("같은 대사가 두 번
+/// 나오지 않는다")은 이제 걷기의 성질이라 따로 지킬 것이 없다 — 각 행을 한 번 지나가면 끝이다.
+/// 여기서 고정하는 것은 <b>블록이 들여쓰기와 <c>&lt;&lt;endif&gt;&gt;</c>로 정확히 재현되는가</b>다.
 /// </summary>
 public sealed class EpisodeFlattenerTests : IDisposable
 {
@@ -58,77 +59,121 @@ public sealed class EpisodeFlattenerTests : IDisposable
 
         Assert.Empty(result.Errors);
 
-        // 견본 `규격 안내`가 그림으로 적어 둔 순서 그대로다:
-        //   10, 20 → <<if>> 900,905,908 <<endif>> → 40, 50, 60 → 옵션 71(920,928) / 옵션 72
+        // 시트의 행 순서 그대로다 — 옮겨 오는 구간이 없으므로 눈으로 대조된다.
+        // 중첩 블록은 두 겹으로 들여써지고, ELSEIF는 자기 체인의 바깥 깊이에 선다.
         Assert.Equal(
             """
-            윌로: 복도는 생각보다 조용했다. #line:ln_0001
-            라루: 여기서 잠깐 쉬어도 될까? #line:ln_0002
+            윌로: 복도는 조용했다. #line:ln_0001
+            라루: 여기서 기다릴까? #line:ln_0002
             <<if $trust >= 3>>
-                윌로: 어머니가 같은 말을 했었다. #line:ln_0100
-                라루: …그 얘기 해준 적 있었나? #line:ln_0101
-                윌로: 아니. 처음 해. #line:ln_0102
+                윌로: 너를 믿어. #line:ln_0003
+                <<if $fatigue >= 4 && $anger <= 2>>
+                    라루: 다리가 무거워. #line:ln_0004
+                <<endif>>
+            <<elseif $anger >= 5>>
+                라루: 아직도 화가 나. #line:ln_0005
             <<endif>>
-            라루: …왜 그런 표정이야? #line:ln_0003
-            윌로: 아무것도 아니야. #line:ln_0004
-            라루: 그럼, 어떻게 할래? #line:ln_0005
-            -> 라루의 제안을 듣는다 #line:ln_0007
-                라루: 고맙다는 말은 안 할래. #line:ln_0110
-                윌로: 알아. 너답네. #line:ln_0111
-            -> 혼자 문을 연다 #line:ln_0008
+            윌로: 문이 열렸다. #line:ln_0006
 
             """.ReplaceLineEndings("\n"),
             result.Text.ReplaceLineEndings("\n"));
     }
 
     [Fact]
-    public void 같은_대사가_두_번_나오지_않는다()
+    public void 모든_LineId가_정확히_한_번씩_나온다()
     {
-        // Gate B 2번. 구간은 복제가 아니라 이동이므로 각 LineId가 정확히 한 번 나온다 —
-        // 이것이 계약서 C1(LineId 전역 유일성)의 구조적 보장이다.
-        EpisodeFlattenResult result = FlattenSample();
+        // 계약서 C1(LineId 전역 유일성). v10에서는 걷기가 각 행을 한 번만 지나므로
+        // 이 성질이 구조에서 나온다 — 구간 재사용 금지 같은 규칙이 필요 없다.
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
+        EpisodeFlattenResult result = EpisodeFlattener.Flatten(model, Expressions);
 
         Assert.Equal(
             result.EmittedLineIds.Count,
             result.EmittedLineIds.Distinct(StringComparer.Ordinal).Count());
-    }
 
-    [Fact]
-    public void 구간의_줄은_원래_자리에서_사라진다()
-    {
-        EpisodeFlattenResult result = FlattenSample();
-        string[] lines = result.Text.ReplaceLineEndings("\n").Split('\n');
-
-        // 900번 구간의 첫 줄은 <<if>> 바로 다음에만 있고, 40 앞뒤 어디에도 또 있지 않다.
-        Assert.Single(lines, line => line.Contains("ln_0100", StringComparison.Ordinal));
-
-        int conditionAt = Array.FindIndex(lines, line => line.StartsWith("<<if", StringComparison.Ordinal));
-        int movedAt = Array.FindIndex(lines, line => line.Contains("ln_0100", StringComparison.Ordinal));
-
-        Assert.Equal(conditionAt + 1, movedAt);
-    }
-
-    [Fact]
-    public void CHOICE_행을_뺀_모든_LineId가_산출물에_나온다()
-    {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
-        EpisodeFlattenResult result = EpisodeFlattener.Flatten(model, Expressions);
-
-        // CHOICE 행의 LineId만 실리지 않는다 — Yarn에 "선택 시작" 줄이 없어 붙일 자리가 없다.
-        // 조용히 빠뜨리지 않고 알림으로 남긴다(규칙 14).
         Assert.Equal(
             model.Rows
-                .Where(row => row.LineId is not null && row.Kind != EpisodeRowKind.Choice)
+                .Where(row => row.LineId is not null)
                 .Select(row => row.LineId!)
                 .OrderBy(id => id, StringComparer.Ordinal),
             result.EmittedLineIds.OrderBy(id => id, StringComparer.Ordinal));
+    }
 
-        ChapterDiagnostic notice = Assert.Single(
-            result.Diagnostics, item => item.Severity == ChapterDiagnosticSeverity.Info);
+    [Fact]
+    public void 평평화_산출물을_기존_파서가_한_줄도_남기지_않고_읽는다()
+    {
+        // G3의 증명 — 새 임포터를 만들지 않았다. 엑셀에서 나온 텍스트가 X12(a) 파서를
+        // 그대로 지나며, 조건·본문·LineId가 전부 해석된다.
+        EpisodeFlattenResult flattened = FlattenSample();
 
-        Assert.Equal("B", notice.Column);
-        Assert.Contains("ln_0006", notice.Message);
-        Assert.Contains("붙일 자리가 없습니다", notice.Message);
+        ScenarioParseResult parsed = ScenarioTextParser.Parse(
+            flattened.Text,
+            GameDefinition.Parse("""
+                { "speakers": [ { "name": "라루", "characterId": "laru" },
+                                { "name": "윌로", "characterId": "willo" } ] }
+                """)!);
+
+        Assert.Empty(parsed.UnparsedLines);
+
+        Assert.Equal(
+            flattened.EmittedLineIds,
+            parsed.Lines.Where(line => line.LineId is not null).Select(line => line.LineId!));
+
+        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginIf);
+        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.EndIf);
+    }
+
+    // ── 블록 ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 조건으로_끝나는_대본도_파서가_남김없이_읽는다()
+    {
+        // 2026-08-17 소유자 보고 — "<<endif>> 뒤따르는 대사 줄이 없어 붙일 곳이 없습니다".
+        // 닫힘은 다음 줄이 실어 나르는데 블록이 마지막이면 그 줄이 없다. 그건 정상이고,
+        // 산출 쪽이 문서 끝에서 닫는다.
+        var rows = Baseline();
+        rows = [.. rows.Take(rows.Length - 1)];   // 블록 뒤의 마지막 대사를 뗀다
+
+        EpisodeFlattenResult flattened = Flatten(rows);
+
+        ScenarioParseResult parsed = ScenarioTextParser.Parse(
+            flattened.Text, GameDefinition.Parse("""{ "speakers": [] }""")!);
+
+        Assert.Empty(parsed.UnparsedLines);
+    }
+
+    [Fact]
+    public void 블록이_안_닫혀도_산출물의_괄호는_맞춘다()
+    {
+        // 리더가 이미 오류로 잡은 상태다. 그래도 반쯤 열린 Yarn을 내보내면 컴파일러의
+        // 오류가 진짜 원인을 덮는다 — 여기서 닫아 둔다.
+        var rows = Baseline();
+        rows[8] = ["80", null, null, null, "라루", "닫는 줄이었던 자리"];
+
+        EpisodeFlattenResult result = Flatten(rows);
+
+        Assert.Equal(
+            result.Text.Split("<<if").Length,
+            result.Text.Split("<<endif>>").Length);
+    }
+
+    [Fact]
+    public void 조건을_못_세우면_그_블록만_통째로_빠진다()
+    {
+        var rows = Baseline();
+        rows[3][3] = null;   // IF의 조건라벨 제거
+
+        EpisodeFlattenResult result = Flatten(rows);
+
+        // 그 블록 안의 줄만 안 나간다 — 바깥도, <b>다음 블록도</b> 멀쩡하다.
+        Assert.DoesNotContain("ln_0003", result.Text, StringComparison.Ordinal);
+        Assert.Contains("ln_0001", result.Text, StringComparison.Ordinal);
+        Assert.Contains("ln_0004", result.Text, StringComparison.Ordinal);
+        Assert.Contains("ln_0005", result.Text, StringComparison.Ordinal);
+
+        // 빠진 블록의 <<endif>>도 함께 빠진다 — 짝이 어긋난 Yarn을 내보내지 않는다.
+        Assert.Single(result.Text.Split("<<if").Skip(1));
+        Assert.Single(result.Text.Split("<<endif>>").Skip(1));
     }
 
     [Fact]
@@ -137,7 +182,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
         // YarnSyntax.AppendCondition은 빈 식을 "false"로 떨군다. 자기 문자열 연결이었다면
         // 그 처리가 없어 "<<if >>"가 나온다 — 조립기를 지났는지 이 차이로 확인된다.
         var rows = Baseline();
-        rows[3][4] = "빈식";
+        rows[3][3] = "빈식";
 
         EpisodeFlattenResult result = Flatten(rows, new Dictionary<string, ChapterCondition>(Expressions)
         {
@@ -150,104 +195,15 @@ public sealed class EpisodeFlattenerTests : IDisposable
     }
 
     [Fact]
-    public void 평평화_산출물을_기존_파서가_한_줄도_남기지_않고_읽는다()
-    {
-        // G3의 증명 — 새 임포터를 만들지 않았다. 엑셀에서 나온 텍스트가 X12(a) 파서를
-        // 그대로 지나며, 조건·옵션·본문·LineId가 전부 해석된다.
-        EpisodeFlattenResult flattened = FlattenSample();
-
-        ScenarioParseResult parsed = ScenarioTextParser.Parse(
-            flattened.Text,
-            GameDefinition.Parse("""
-                { "speakers": [ { "name": "라루", "characterId": "laru" },
-                                { "name": "윌로", "characterId": "willo" } ] }
-                """)!);
-
-        Assert.Empty(parsed.UnparsedLines);
-
-        // 평평화가 실은 LineId 전부가 파서를 지나 그대로 나온다.
-        Assert.Equal(
-            flattened.EmittedLineIds,
-            parsed.Lines.Where(line => line.LineId is not null).Select(line => line.LineId!));
-
-        // 조건 갈래와 선택 블록이 구조로 잡힌다.
-        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginIf);
-        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.EndIf);
-        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginChoice);
-        Assert.Contains(parsed.Lines, line => line.Transition?.Kind == ConditionTransitionKind.BeginNextOption);
-    }
-
-    // ── §3.3 규칙 6 — OUT 대조 ──────────────────────────────────────────────
-
-    [Fact]
-    public void 규칙6_OUT이_자연_수렴_지점이_아니면_오류다()
+    public void 라벨의_식을_못_찾으면_사유를_말한다()
     {
         var rows = Baseline();
-        rows[8][6] = "50";  // 실제로는 40으로 흐르는데 50이라고 적었다
+        rows[3][3] = "복도완료";
 
-        EpisodeFlattenResult result = Flatten(rows);
+        EpisodeFlattenResult result = Flatten(rows, new Dictionary<string, ChapterCondition>());
 
-        ChapterDiagnostic problem = Assert.Single(result.Errors);
-
-        Assert.Equal("G", problem.Column);
-        Assert.Contains("OUT=50이라고 적혀 있지만", problem.Message);
-        Assert.Contains("실제 수렴 지점은 40입니다", problem.Message);
-        Assert.Contains("점프 명령이 아니라", problem.Message);
-    }
-
-    [Fact]
-    public void 규칙6_자연_수렴이_에피소드_끝이면_END여야_한다()
-    {
-        var rows = Baseline();
-        // IF를 마지막 주 흐름 행으로 만든다 → 조건 뒤에 아무것도 없다.
-        rows[4] = ["40", null, null, null, null, null, null, null, null, null, null];
-        rows[5] = ["50", null, null, null, null, null, null, null, null, null, null];
-
-        var trimmed = new[] { rows[0], rows[1], rows[2], rows[3], rows[6], rows[7], rows[8] };
-
-        EpisodeFlattenResult result = Flatten(trimmed);
-
-        ChapterDiagnostic problem = Assert.Single(result.Errors);
-        Assert.Contains("에피소드 끝(END)", problem.Message);
-    }
-
-    [Fact]
-    public void OUT이_맞으면_오류가_없다()
-    {
-        EpisodeFlattenResult result = Flatten(Baseline());
-
-        Assert.Empty(result.Errors);
-    }
-
-    // ── D6 — 옵션별 OUT 분기 ────────────────────────────────────────────────
-
-    [Fact]
-    public void 옵션별_OUT이_서로_다른_비END_인덱스면_오류다()
-    {
-        EpisodeFlattenResult result = Flatten(TwoOptionOutlets(first: "40", second: "50"));
-
-        ChapterDiagnostic problem = Assert.Single(result.Errors);
-
-        Assert.Contains("옵션마다 OUT이 갈립니다", problem.Message);
-        Assert.Contains("v1에서는 오류", problem.Message);
-    }
-
-    [Fact]
-    public void 옵션들이_같은_곳으로_수렴하면_문제가_없다()
-    {
-        EpisodeFlattenResult result = Flatten(TwoOptionOutlets(first: "40", second: "40"));
-
-        Assert.DoesNotContain(result.Errors,
-            item => item.Message.Contains("옵션마다 OUT이 갈립니다", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void 옵션들이_모두_END면_문제가_없다()
-    {
-        EpisodeFlattenResult result = Flatten(TwoOptionOutlets(first: "END", second: "END"));
-
-        Assert.DoesNotContain(result.Errors,
-            item => item.Message.Contains("옵션마다 OUT이 갈립니다", StringComparison.Ordinal));
+        Assert.Contains(result.Errors, item =>
+            item.Message.Contains("챕터 `조건` 시트에서 찾지 못해", StringComparison.Ordinal));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -281,39 +237,24 @@ public sealed class EpisodeFlattenerTests : IDisposable
             workbook.SaveAs(path);
         }
 
-        var labels = (expressions ?? Expressions).Keys.ToArray();
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, labels);
+        // 라벨 목록은 리더의 것이다 — 식을 못 찾는 경우를 만들려면 라벨은 살아 있어야 한다.
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, Labels);
 
         return EpisodeFlattener.Flatten(model, expressions ?? Expressions);
     }
 
-    /// <summary>조건 구간 하나가 40으로 수렴하는 최소 표.</summary>
+    /// <summary>블록 둘이 나란히 있고 그 뒤에 대사가 오는 최소 표 (견본과 같은 모양).</summary>
     private static string?[][] Baseline() =>
     [
-        ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-        ["10", "ln_0001", null, null, null, null, null, "윌로", "첫 줄", null, null],
-        ["20", "ln_0002", null, null, null, null, null, "라루", "둘째 줄", null, null],
-        ["30", null, "IF", null, "신뢰높음", "900", null, null, null, null, null],
-        ["40", "ln_0003", null, null, null, null, null, "라루", "수렴 지점", null, null],
-        ["50", "ln_0004", null, null, null, null, null, "윌로", "끝 줄", null, null],
-        ["900", "ln_0100", null, "INPUT", null, null, null, "윌로", "구간 첫 줄", null, null],
-        ["905", "ln_0101", null, null, null, null, null, "라루", "구간 가운데", null, null],
-        ["908", "ln_0102", null, "OUT", null, null, "40", "윌로", "구간 끝", null, null]
-    ];
-
-    /// <summary>선택지 두 옵션이 각자 구간을 갖고, 그 구간의 OUT이 갈리는 표.</summary>
-    private static string?[][] TwoOptionOutlets(string first, string second) =>
-    [
-        ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용", "스탯변화", "메모"],
-        ["10", "ln_0001", null, null, null, null, null, "윌로", "첫 줄", null, null],
-        ["40", "ln_0002", null, null, null, null, null, "라루", "수렴 후보", null, null],
-        ["50", "ln_0003", null, null, null, null, null, "윌로", "다른 수렴 후보", null, null],
-        ["70", "ln_0006", "CHOICE", null, null, null, null, null, null, null, null],
-        ["71", "ln_0007", "OPTION", null, null, "900", null, null, "첫 선택", null, null],
-        ["72", "ln_0008", "OPTION", null, null, "920", null, null, "둘째 선택", null, null],
-        ["900", "ln_0100", null, "INPUT", null, null, null, "윌로", "첫 본문", null, null],
-        ["908", "ln_0101", null, "OUT", null, null, first, "윌로", "첫 본문 끝", null, null],
-        ["920", "ln_0110", null, "INPUT", null, null, null, "라루", "둘째 본문", null, null],
-        ["928", "ln_0111", null, "OUT", null, null, second, "라루", "둘째 본문 끝", null, null]
+        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+        ["10", "ln_0001", null, null, "윌로", "첫 줄"],
+        ["20", "ln_0002", null, null, "라루", "둘째 줄"],
+        ["30", null, "IF", "신뢰높음", null, null],
+        ["40", "ln_0003", null, null, "윌로", "첫 블록 안"],
+        ["50", null, "ENDIF", null, null, null],
+        ["60", null, "IF", "지쳐있음", null, null],
+        ["70", "ln_0004", null, null, "라루", "둘째 블록 안"],
+        ["80", null, "ENDIF", null, null, null],
+        ["90", "ln_0005", null, null, "윌로", "끝 줄"]
     ];
 }

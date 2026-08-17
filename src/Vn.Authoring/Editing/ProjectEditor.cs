@@ -401,7 +401,65 @@ public sealed partial class ProjectEditor
     ///
     /// 대본에 없는 LineId를 주면 아무것도 하지 않는다. 조건은 존재하는 줄에만 붙는다.
     /// </summary>
-    public void SetLineTransition(string nodeId, string lineId, LineConditionTransition? transition)
+    public void SetLineTransition(string nodeId, string lineId, LineConditionTransition? transition) =>
+        SetLineTransitions(nodeId, lineId, transition is null ? [] : [transition]);
+
+    /// <summary>
+    /// 이 줄 앞의 전환들을 통째로 바꾼다 (2026-08-17) — 목록 순서가 곧 일어나는 순서다.
+    /// 빈 목록이면 전환이 없는 줄이다. 대본에 없는 LineId를 주면 아무것도 하지 않는다.
+    /// </summary>
+    public void SetLineTransitions(
+        string nodeId, string lineId, IReadOnlyList<LineConditionTransition> transitions)
+    {
+        ArgumentNullException.ThrowIfNull(transitions);
+
+        DialogueNode node = RequireDialogue(nodeId);
+
+        if (Project.FindScript(node.ScriptId)?.FindLine(lineId) is not { IsRetired: false })
+        {
+            return;
+        }
+
+        DialogueLineExtension? existing = node.FindExtension(lineId);
+
+        if ((existing?.Transitions.Count ?? 0) == 0 && transitions.Count == 0)
+        {
+            return;
+        }
+
+        // 옵션 라벨 전환은 안정 Id를 가져야 한다 — 아래 루프가 그 자리에서 잇는다.
+        var resolved = new List<LineConditionTransition>(transitions.Count);
+
+        foreach (LineConditionTransition item in transitions)
+        {
+            resolved.Add(item is { OpensOption: true, OptionId: null }
+                ? new LineConditionTransition(
+                    item.Kind,
+                    optionId: existing?.Transitions.FirstOrDefault(candidate => candidate.OpensOption)?.OptionId
+                        ?? Identifier.Option())
+                : item);
+        }
+
+        Mutate(() =>
+        {
+            DialogueLineExtension extension = existing ?? new DialogueLineExtension(lineId);
+
+            if (existing is null)
+            {
+                node.LineExtensions.Add(extension);
+            }
+
+            extension.Transitions.Clear();
+            extension.Transitions.AddRange(resolved);
+
+            // 순서가 중요하다. 먼저 주인 없는 출구를 버리고, 그다음에 빈 항목을 버린다.
+            // 반대로 하면 아직 출구가 매달려 있어 빈 항목이 남는다.
+            PruneBranchExits(node);
+            PruneLineExtensions(node);
+        });
+    }
+
+    private void SetLineTransitionLegacy(string nodeId, string lineId, LineConditionTransition? transition)
     {
         DialogueNode node = RequireDialogue(nodeId);
 

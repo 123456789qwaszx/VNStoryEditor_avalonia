@@ -176,7 +176,8 @@ public sealed class ChapterRailTests
             edges:
             [
                 ("EP00", "EP01", null, null),
-                ("EP00", "EP01", "라루를 믿는다", "trust +1")
+                ("EP00", "EP01", "라루를 믿는다", "trust +1"),
+                ("EP00", "EP01", "의심한다", null)
             ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(
@@ -209,17 +210,16 @@ public sealed class ChapterRailTests
             port => port.Kind == GraphOutputPortKind.ExecutionDefault);
         Assert.DoesNotContain(projected.OutputPorts, port => port.ExecutionPort is { IsChoice: true });
 
-        // ② 간선 짝 옵션은 간선 칩, 안 이은 옵션은 종료 스텁.
+        // ② 칩의 주인은 챕터 `간선` 시트다. (구판 OPTION 스텁은 v10에서 사라졌다 —
+        //    대본이 선택지를 선언하지 않으므로 "안 이은 옵션"이라는 상태가 없다.)
         List<string> chips = canvas.Children.OfType<TextBlock>()
             .Select(block => block.Text ?? string.Empty)
             .Where(text => text.StartsWith("●", StringComparison.Ordinal))
             .ToList();
         Assert.Contains("● 라루를 믿는다", chips);
         Assert.Contains("● 의심한다", chips);
-        Assert.Contains(canvas.Children.OfType<TextBlock>(),
-            block => block.Text == "⏹ 종료");
 
-        // 순서 — 선택지(대본 OPTION 순서)가 위, 진행이 아래 (소유자 보고: 반대면 헷갈린다).
+        // 순서 — 선택지(간선 시트의 행 순서)가 위, 진행이 아래 (소유자 보고: 반대면 헷갈린다).
         // EP01(엔딩)의 진행 스텁도 있으므로 EP00 분기점(같은 X)의 칩들만 본다.
         double trunkLeft = canvas.Children.OfType<TextBlock>()
             .Where(block => block.Text == "● 라루를 믿는다")
@@ -234,10 +234,10 @@ public sealed class ChapterRailTests
         Assert.True(TopOf("● 라루를 믿는다") < TopOf("● 의심한다"));
         Assert.True(TopOf("● 의심한다") < TopOf("○ 진행"));
 
-        // ③ 배선 — 스텁 옵션에 자유 씬을 달면(칩이 부르는 그 SetExitTarget) 철도가 씬을 경유한다.
-        ExitPort option = NodeConnections.PortsOf(excel, session.Project, session.Definition)
-            .Single(port => port.ChoiceText == "의심한다");
-        session.Editor.SetExitTarget(excel.Id, ExitPortKind.Branch, option.BranchOpenLineId, free.Id);
+        // ③ 배선 — 칩에 자유 씬을 달면(칩이 부르는 그 SetExitTarget) 철도가 씬을 경유한다.
+        // v10에서 선택지 출구의 열쇠는 <b>문구</b>다 — 대본 줄이 아니라(대본은 선택지를
+        // 선언하지 않는다). 그래서 대본을 고쳐도 이 배선이 살아 있다.
+        session.Editor.SetExitTarget(excel.Id, ExitPortKind.Choice, "의심한다", free.Id);
 
         graph.Rebuild();
 
@@ -343,17 +343,16 @@ public sealed class ChapterRailTests
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
+        string[] headers = ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
             sheet.Cell(1, column).SetValue(headers[column - 1]);
         }
 
-        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 8).SetValue("윌로"); sheet.Cell(2, 9).SetValue("첫 줄");
-        sheet.Cell(3, 1).SetValue(20); sheet.Cell(3, 3).SetValue("CHOICE");
-        sheet.Cell(4, 1).SetValue(30); sheet.Cell(4, 3).SetValue("OPTION"); sheet.Cell(4, 9).SetValue("라루를 믿는다");
-        sheet.Cell(5, 1).SetValue(40); sheet.Cell(5, 3).SetValue("OPTION"); sheet.Cell(5, 9).SetValue("의심한다");
+        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");
+        // v10 — 대본은 선택지를 선언하지 않는다. 칩의 주인은 챕터 `간선` 시트다.
+        sheet.Cell(3, 1).SetValue(20); sheet.Cell(3, 5).SetValue("라루"); sheet.Cell(3, 6).SetValue("둘째 줄");
         workbook.SaveAs(path);
     }
 

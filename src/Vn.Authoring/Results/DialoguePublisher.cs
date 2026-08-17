@@ -219,6 +219,14 @@ public static class DialoguePublisher
                             operation.Variable,
                             operation.Operator,
                             operation.Value))
+                        .ToArray(),
+                // 둘째 전환부터 — 겹쳐 닫기·연달아 열기가 여기 실린다 (2026-08-17).
+                line.Transitions.Count <= 1
+                    ? null
+                    : line.Transitions
+                        .Skip(1)
+                        .Select(transition => Freeze(transition, project, definition, available))
+                        .OfType<DialogueResultTransition>()
                         .ToArray()));
         }
 

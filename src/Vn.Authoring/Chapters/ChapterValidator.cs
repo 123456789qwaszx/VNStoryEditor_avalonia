@@ -67,17 +67,8 @@ public static class ChapterValidator
             EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(model, conditionsByLabel);
             diagnostics.AddRange(flattened.Diagnostics);
 
-            // 2026-08-16 소유자 — 선택지의 정본이 챕터 `선택지` 시트로 왔다. 대본의
-            // CHOICE/OPTION은 폐지 수순이다: 아직 있으면 옮기라고 말한다(막지는 않는다).
-            if (model.Rows.Any(row => row.Kind is EpisodeRowKind.Choice or EpisodeRowKind.Option))
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    path, model.SheetName, null, null,
-                    $"'{episode.EpisodeId}' 대본에 CHOICE/OPTION이 있습니다 — 선택지는 이제 " +
-                    "챕터 엑셀의 `선택지` 시트에서 만듭니다. 대본의 선택지는 옮긴 뒤 지워 주세요."));
-            }
+            // CHOICE/OPTION은 v10에서 규격에서 빠졌다 — 이제 리더가 그 행을 읽는 자리에서
+            // "선택지 시트로 옮기라"고 직접 말한다(위의 model.Diagnostics에 실려 온다).
         }
 
         // 스탯 증감의 원천은 간선이다 (2026-08-14) — 증명기가 챕터 모델에서 직접 읽는다.

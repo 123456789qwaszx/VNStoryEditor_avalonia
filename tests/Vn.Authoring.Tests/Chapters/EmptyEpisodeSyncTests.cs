@@ -80,8 +80,8 @@ public sealed class EmptyEpisodeSyncTests : IDisposable
         {
             ClosedXML.Excel.IXLWorksheet sheet = book.Worksheet("대본");
             sheet.Cell(2, 1).SetValue(10);
-            sheet.Cell(2, 8).SetValue("윌로");
-            sheet.Cell(2, 9).SetValue("이제 한 줄 있다");
+            sheet.Cell(2, 5).SetValue("윌로");
+            sheet.Cell(2, 6).SetValue("이제 한 줄 있다");
             book.Save();
         }
 
