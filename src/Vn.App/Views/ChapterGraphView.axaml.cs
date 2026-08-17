@@ -109,7 +109,6 @@ public partial class ChapterGraphView : UserControl
             SyncEpisodes();
         });
         OpenFolderButton.Click += (_, _) => UiGuard.Run(_session, "챕터 폴더 열기", OpenFolder);
-        ExportButton.Click += (_, _) => UiGuard.Run(_session, "챕터 내보내기", () => Export());
 
         ChapterCombo.SelectionChanged += (_, _) =>
         {
@@ -634,8 +633,9 @@ public partial class ChapterGraphView : UserControl
         ChapterCombo.SelectedItem = _selectedChapterId;
         _updatingCombo = false;
 
+        AutoExport();        // 진행 JSON은 사람 손을 기다리지 않는다 (2026-08-17)
         Validate();
-        Draw();
+        Draw();              // 못 나갔으면 그 결론이 검증 보고 맨 위에 선다
         RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
         EntriesReloaded?.Invoke(_entries);
     }
@@ -687,45 +687,97 @@ public partial class ChapterGraphView : UserControl
     /// 오류가 있으면 파일을 만들지 않고 사유를 보고 패널에 세운다. 쓰레기가 런타임으로
     /// 넘어가는 것보다 내보내기가 실패하는 편이 낫다.
     /// </summary>
-    internal string? Export()
+    /// <summary>진행 JSON이 못 나간 챕터들 — 검증에 걸린 것과 파일을 못 쓴 것.</summary>
+    private readonly List<string> _exportRefused = [];
+    private readonly List<string> _exportFailed = [];
+
+    /// <summary>그 챕터의 진행 JSON이 놓일 자리.</summary>
+    internal static string ExportPathFor(string projectPath, string chapterId) => IoPath.Combine(
+        IoPath.GetDirectoryName(IoPath.GetFullPath(projectPath))!,
+        ExportFolderName,
+        chapterId + ".progression.json");
+
+    /// <summary>
+    /// 다시 읽을 때마다 <b>모든</b> 챕터의 진행 JSON을 저절로 낸다 (2026-08-17 소유자:
+    /// [내보내기] 단추가 "필요 없어 보이는데"). 작가의 Yarn은 이미
+    /// <c>LiveOutputService</c>가 저절로 쓰는데 챕터만 사람 손을 기다렸고, 그래서 누른
+    /// 순간의 낡은 파일이 남았다 — <b>고른 챕터만</b> 나가던 것도 같은 병이라 여기서는
+    /// 전부 낸다.
+    ///
+    /// G8의 규칙은 그대로다: <b>검증을 통과해야만 나간다.</b> 거부되면 그 챕터의 파일은
+    /// 손대지 않는다 — 낡은 파일이 남더라도 쓰레기로 덮는 것보다 낫다(런타임이 읽는 건
+    /// 언제나 "한 번은 옳았던" 판이다).
+    ///
+    /// 결과는 상태줄이 아니라 <b>검증 보고</b>에 세운다. 다시 읽기는 저장 직후에 오고
+    /// 그 뒤로 동기화 보고까지 따라오므로, 상태줄에 얹으면 서로를 덮는다(실제로 덮였다).
+    /// 못 나간 사유는 어차피 그 보고에 이미 서 있는 오류들이다 — 결론을 그 옆에 둔다.
+    /// </summary>
+    private void AutoExport()
     {
-        ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+        _exportRefused.Clear();
+        _exportFailed.Clear();
 
-        if (entry?.Model is null || _session?.ProjectPath is null)
+        if (_session?.ProjectPath is not { } projectPath)
         {
-            _session?.SetStatus("내보낼 챕터가 없습니다.");
-            return null;
+            return;
         }
 
-        ChapterExportResult result = ChapterProgressionExporter.Export(
-            entry.Model, EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId));
-
-        // 거부 사유도 화면에 세운다 — 상태줄 한 줄로는 무엇이 왜인지 알 수 없다.
-        _validation = result.Validation;
-        Draw();
-
-        if (result.Refused)
+        foreach (ChapterEntry entry in _entries)
         {
-            int errors = result.Validation.All
-                .Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
+            if (entry.Model is null)
+            {
+                continue;
+            }
 
-            DiagnosticsExpander.IsExpanded = true;
-            _session.SetStatus(
-                $"내보내기를 거부했습니다 — 검증 오류 {errors}건. 아래 검증 보고를 확인하세요.");
+            ChapterExportResult result = ChapterProgressionExporter.Export(
+                entry.Model, EpisodeLibrary.FolderFor(projectPath, entry.ChapterId));
 
-            return null;
+            if (result.Refused)
+            {
+                _exportRefused.Add(entry.ChapterId);
+                continue;
+            }
+
+            string path = ExportPathFor(projectPath, entry.ChapterId);
+
+            try
+            {
+                // 같은 글이면 안 쓴다 — 다시 읽을 때마다 파일을 두드리면 클라우드
+                // 동기화가 계속 깨어나고, 바뀐 것이 없는데 시각만 새로 찍힌다.
+                if (File.Exists(path) &&
+                    string.Equals(File.ReadAllText(path), result.Json, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(IoPath.GetDirectoryName(path)!);
+                File.WriteAllText(path, result.Json!, new System.Text.UTF8Encoding(false));
+            }
+            catch (IOException)
+            {
+                _exportFailed.Add(entry.ChapterId);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                _exportFailed.Add(entry.ChapterId);
+            }
         }
-
-        string folder = IoPath.Combine(
-            IoPath.GetDirectoryName(IoPath.GetFullPath(_session.ProjectPath))!, ExportFolderName);
-
-        Directory.CreateDirectory(folder);
-        string path = IoPath.Combine(folder, entry.ChapterId + ".progression.json");
-        File.WriteAllText(path, result.Json!, new System.Text.UTF8Encoding(false));
-
-        _session.SetStatus($"내보냈습니다: {path}");
-        return path;
     }
+
+    /// <summary>검증 보고 맨 위에 세울 내보내기 결론 — 못 나갔을 때만 있다.</summary>
+    private string? ExportNotice() => _exportRefused.Count == 0 && _exportFailed.Count == 0
+        ? null
+        : string.Join("\n", new[]
+        {
+            _exportRefused.Count == 0
+                ? null
+                : $"검증 오류로 진행 JSON이 나가지 않았습니다: {string.Join(", ", _exportRefused)}" +
+                  $" — 아래 오류를 고치면 저절로 나갑니다({ExportFolderName}/).",
+            _exportFailed.Count == 0
+                ? null
+                : $"진행 JSON을 쓰지 못했습니다: {string.Join(", ", _exportFailed)}" +
+                  $" — {ExportFolderName}/ 의 파일이 다른 프로그램에 잡혀 있는지 확인하세요."
+        }.Where(part => part is not null));
 
     // ── 그리기 ──────────────────────────────────────────────────────────────
 
@@ -2557,8 +2609,23 @@ public partial class ChapterGraphView : UserControl
                 : $" · 동기화 거부·경고 {rejected}건";
         }
 
+        string? exportNotice = ExportNotice();
+
+        if (exportNotice is not null)
+        {
+            // 접혀 있어도 보여야 한다 — 런타임으로 나갈 것이 안 나간 상태다.
+            header += " · 진행 JSON 미출력";
+        }
+
         DiagnosticsExpander.Header = header;
-        DiagnosticsExpander.IsExpanded = errors > 0 || rejected > 0;
+        DiagnosticsExpander.IsExpanded = errors > 0 || rejected > 0 || exportNotice is not null;
+
+        // 내보내기 결론이 맨 위다 — 아래 오류들이 그 사유이므로 결론과 근거가 붙어 선다.
+        if (exportNotice is not null)
+        {
+            DiagnosticsPanel.Children.Add(
+                DiagnosticLine(exportNotice, Brushes.IndianRed, dim: false, bold: true));
+        }
 
         // 탐색이 상한에서 멈췄으면 "도달 불가"가 단정이 아니라는 사실을 먼저 말한다.
         if (_validation is { Reachability.ExplorationComplete: false })

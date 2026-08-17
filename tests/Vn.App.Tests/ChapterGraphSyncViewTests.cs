@@ -182,43 +182,85 @@ public sealed class ChapterGraphSyncViewTests
             node => node.Name == "Story_ch05_01");
     });
 
-    // ── G8 내보내기 버튼 ────────────────────────────────────────────────────
+    // ── G8 내보내기 — 사람 손을 기다리지 않는다 (2026-08-17) ────────────────
 
     [Fact]
-    public void 검증_오류가_있으면_내보내기가_거부되고_보고가_펼쳐진다() => HeadlessUi.Run(() =>
+    public void 검증_오류가_있으면_JSON이_안_나가고_사유를_말한다() => HeadlessUi.Run(() =>
     {
         // 견본 챕터는 에피소드 워크북 없이는 branch05.02A가 도달 불가다 → 거부.
+        // 쓰레기가 런타임으로 넘어가는 것보다 파일이 안 나가는 편이 낫다(G8).
         using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, AuthoringSession session) = Show(project);
+        (ChapterGraphView view, _) = Show(project);
 
-        string? path = view.Export();
-
-        Assert.Null(path);
-        Assert.Contains("거부", session.StatusMessage);
-        Assert.True(view.FindControl<Expander>("DiagnosticsExpander")!.IsExpanded);
         Assert.False(Directory.Exists(project.ExportFolder));
+
+        // 사유는 상태줄이 아니라 검증 보고에 선다 — 상태줄은 동기화 보고가 곧 덮는다.
+        var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
+        Assert.Contains("진행 JSON 미출력", (string)expander.Header!);
+        Assert.True(expander.IsExpanded);
+
+        Assert.Contains(
+            view.FindControl<StackPanel>("DiagnosticsPanel")!.Children.OfType<TextBlock>(),
+            line => line.Text!.Contains("진행 JSON이 나가지 않았습니다", StringComparison.Ordinal)
+                && line.Text.Contains("ch05", StringComparison.Ordinal));
     });
 
     [Fact]
-    public void 검증을_통과하면_규약_폴더에_JSON이_나간다() => HeadlessUi.Run(() =>
+    public void 검증을_통과하면_규약_폴더에_JSON이_저절로_나간다() => HeadlessUi.Run(() =>
     {
         // 도달 불가를 `도달불가 허용`(D3)으로 명시 예외 처리하면 검증을 통과한다.
+        // 단추를 누르지 않는다 — 챕터를 읽는 그 순간 나간다.
         using var project = new TempProject(SamplePath);
         AllowUnreachable(project.ChapterPath, "branch05.02A");
 
-        (ChapterGraphView view, AuthoringSession session) = Show(project);
+        (ChapterGraphView view, _) = Show(project);
 
-        string? path = view.Export();
-
-        Assert.NotNull(path);
+        string path = Path.Combine(project.ExportFolder, "ch05.progression.json");
         Assert.True(File.Exists(path));
-        Assert.Equal(
-            Path.Combine(project.ExportFolder, "ch05.progression.json"), path);
-        Assert.Contains("내보냈습니다", session.StatusMessage);
 
-        string json = File.ReadAllText(path!);
+        // 잘 나갔을 때는 아무 말도 없다 — 파일이 있다는 것이 곧 증거다.
+        Assert.DoesNotContain(
+            "진행 JSON", (string)view.FindControl<Expander>("DiagnosticsExpander")!.Header!);
+
+        string json = File.ReadAllText(path);
         Assert.Contains("\"StartEpisodeId\": \"main05.01\"", json);
         Assert.DoesNotContain("기본 루트", json);   // 픽스처는 섞이지 않는다
+    });
+
+    [Fact]
+    public void 엑셀을_고치면_JSON도_따라_갱신된다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        AllowUnreachable(project.ChapterPath, "branch05.02A");
+
+        (ChapterGraphView view, _) = Show(project);
+
+        string path = Path.Combine(project.ExportFolder, "ch05.progression.json");
+        Assert.DoesNotContain("새로판길", File.ReadAllText(path));
+
+        ChapterWorkbookWriter.AddEpisode(project.ChapterPath, "새로판길", title: "", 3, 1);
+        ChapterWorkbookWriter.AddEdge(project.ChapterPath, "main05.01", "새로판길");
+        view.RefreshFromDisk();
+
+        Assert.Contains("새로판길", File.ReadAllText(path));
+    });
+
+    [Fact]
+    public void 고른_챕터만이_아니라_모든_챕터가_나간다() => HeadlessUi.Run(() =>
+    {
+        // 고른 챕터만 내보내면 나머지는 누른 순간의 낡은 판으로 굳는다 — 사람 손을
+        // 없앤 이유가 그것이다.
+        using var project = new TempProject(SamplePath);
+        AllowUnreachable(project.ChapterPath, "branch05.02A");
+
+        string second = Path.Combine(
+            Path.GetDirectoryName(project.ChapterPath)!, "ch99.xlsx");
+        File.Copy(project.ChapterPath, second);
+
+        Show(project);
+
+        Assert.True(File.Exists(Path.Combine(project.ExportFolder, "ch05.progression.json")));
+        Assert.True(File.Exists(Path.Combine(project.ExportFolder, "ch99.progression.json")));
     });
 
     /// <summary>`도달불가 허용` 열(K — 2026-08-16 인덱스 폐지 후)을 켠다 — D3의 명시 예외.</summary>
