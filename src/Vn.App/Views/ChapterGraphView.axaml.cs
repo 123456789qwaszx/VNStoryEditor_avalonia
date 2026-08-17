@@ -215,7 +215,13 @@ public partial class ChapterGraphView : UserControl
         // 사이(시트·엑셀에서) 적힌 대사는 이게 없으면 영원히 안 불려온다. 폴더가 바뀐
         // 첫 판에만 돈다: 상태줄 갱신이 세션 Changed를 울려 여기로 되돌아와도(같은 폴더)
         // 다시 돌지 않아 맴돌이가 없다.
-        if (episodesFolderChanged && _episodeWatcher is not null)
+        //
+        // <b>감시자가 못 붙었어도 돈다</b> (2026-08-17) — 대본 폴더가 아직 없으면 감시를
+        // 걸 곳이 없어 `_episodeWatcher`가 null인데, 예전에는 그때 동기화까지 건너뛰었다.
+        // 그래서 <b>첫 에피소드가 영영 대본을 못 받았다</b>: 폴더는 대본이 생겨야 나고
+        // 대본은 동기화가 만드는데, 그 동기화가 폴더를 기다린 것이다(서로를 기다리는 매듭).
+        // 이제 동기화가 첫 대본을 만들고, 그 김에 감시도 붙는다.
+        if (episodesFolderChanged)
         {
             SyncEpisodes();
         }
@@ -286,7 +292,11 @@ public partial class ChapterGraphView : UserControl
         // 주인이 여럿이면 옮기지 않고 사유를 말한다 — 남의 챕터 원고를 가져오지 않는다.
         AdoptFlatWorkbooks(entry);
 
-        if (!Directory.Exists(folder))
+        // 폴더가 없다고 여기서 멈추지 않는다 (2026-08-17) — 에피소드가 하나라도 있으면
+        // 대본을 만들어 줄 참이고, 그 첫 파일이 폴더를 만든다. 예전에는 여기서 되돌아가서
+        // <b>첫 에피소드가 영영 대본을 못 받았다</b>(폴더는 대본이 생겨야 나고, 대본은
+        // 폴더가 있어야 만들었다 — 서로를 기다리는 매듭).
+        if (!Directory.Exists(folder) && entry.Model.Episodes.Count == 0)
         {
             return;
         }
@@ -301,6 +311,27 @@ public partial class ChapterGraphView : UserControl
 
         // v9에서 선택지 칸 따라잡기는 사라졌다 — 칸이라는 개념이 없다. 문구 사전은 사람이
         // 엑셀에서 적고, 길은 간선 시트가 곧 그것이다.
+
+        // 대본이 없는 에피소드에는 여기서 만들어 준다 (2026-08-17 소유자 보고 — "챕터
+        // 그래프에서 ＋에피소드를 만들더라도 엑셀이 생성이 안돼. 그 에피소드 노드를
+        // 더블클릭 해야 엑셀이 생기는데, 그냥 처음부터 만드는게 맞을 것 같고").
+        //
+        // 툴의 [＋ 에피소드]는 이미 만들고 있었지만 <b>엑셀에서 직접 행을 더한 경우</b>가
+        // 남아 있었다 — 그게 기본 작업 방식(엑셀에서만 편집)이라 대부분이 그 길이다.
+        // 여기서 보장하면 어느 길로 들어와도 같다. 없는 파일을 만드는 것뿐이라
+        // 단일 writer 원칙과 충돌하지 않는다(있으면 손대지 않는다).
+        bool created = false;
+
+        foreach (ChapterEpisode episode in entry.Model.Episodes)
+        {
+            created |= EpisodeLibrary.EnsureWorkbook(
+                folder, episode.EpisodeId, entry.Model.Speakers.Select(speaker => speaker.Name).ToList());
+        }
+
+        if (created)
+        {
+            StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session.ProjectPath));
+        }
 
         foreach (ChapterEpisode episode in entry.Model.Episodes)
         {

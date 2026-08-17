@@ -132,20 +132,6 @@ public static class EpisodeSyncService
             }
         }
 
-        // 아직 대사를 한 줄도 쓰지 않았다면 반영할 것이 없다 — 거부가 아니라 "아직"이다.
-        // 툴이 방금 만들어 준 빈 워크북이 스스로 거부당하는 일은 없어야 한다.
-        if (!model.HasErrors && !flattened.HasErrors && flattened.Text.Trim().Length == 0)
-        {
-            return new EpisodeSyncReport(
-                episodeId, workbookPath, DialogueNodeId: null,
-                Applied: false,
-                diagnostics,
-                Array.Empty<string>(),
-                Array.Empty<EpisodePrunedLogic>(),
-                Array.Empty<string>(),
-                NotYetWritten: true);
-        }
-
         if (model.HasErrors || flattened.HasErrors)
         {
             // 구조가 깨진 표를 대사노드에 밀어 넣지 않는다. 무엇이 왜 거부됐는지는 진단에 전부 있다.
@@ -160,6 +146,26 @@ public static class EpisodeSyncService
         node.ExcelEpisodeId = episodeId;
 
         EnsureConditionSupply(editor, definition, fileId, node, model, chapter);
+
+        // 아직 대사를 한 줄도 쓰지 않았어도 <b>노드는 선다</b> (2026-08-17 소유자 보고 —
+        // "엑셀을 만들더라도 시나리오 그래프에 반영되게 하려면 최소한 한 줄의 대사는 있어야
+        // 해. 이게 진짜 엄청 헷갈려").
+        //
+        // 예전에는 여기서 노드를 만들기 <b>전에</b> 되돌아갔다. 그래서 기획자가 에피소드를
+        // 만들어도 작가의 판에는 아무것도 없었고, 작가는 무엇을 기다려야 하는지 몰랐다 —
+        // 빈 노드라도 서 있으면 "여기에 쓰면 된다"가 보인다. 본문만 건드리지 않는다
+        // (빈 글을 밀어 넣으면 지우기로 읽힌다).
+        if (flattened.Text.Trim().Length == 0)
+        {
+            return new EpisodeSyncReport(
+                episodeId, workbookPath, node.Id,
+                Applied: false,
+                diagnostics,
+                Array.Empty<string>(),
+                Array.Empty<EpisodePrunedLogic>(),
+                Array.Empty<string>(),
+                NotYetWritten: true);
+        }
 
         // G3-2 — 지워질 줄이 소유하던 논리를 세려면 지우기 전의 모습이 필요하다.
         Dictionary<string, DialogueLineExtension> extensionsBefore = node.LineExtensions
