@@ -77,7 +77,16 @@ public partial class ChapterGraphView : UserControl
     /// <summary>폴더를 다시 훑고 감시를 다시 건다. 새 챕터를 만든 직후(폴더가 방금 생겼을 수 있다) 부른다.</summary>
     internal void RefreshFromDisk() => WatchAndReload();
 
-    /// <summary>왼쪽 패널의 챕터 클릭이 이 뷰의 선택을 바꾼다.</summary>
+    /// <summary>
+    /// 챕터를 고른다 — <b>어디서 골랐든 이 길 하나를 지난다</b> (왼쪽 목록 클릭 · 위
+    /// 드롭다운 · 코드).
+    ///
+    /// 2026-08-17 소유자 보고 둘의 뿌리가 여기였다. 드롭다운은 이 길을 안 지나고
+    /// <c>Draw()</c>만 불렀다: ① 검증을 다시 안 돌려 <b>이전 챕터의 결과</b>로 그렸고 —
+    /// 그래서 도달 불가 빨간 테두리가 남고 도착 스탯이 안 보였다(Ctrl+S가 세션을 흔들어
+    /// 다시 읽히면 그제서야 맞았다) ② 판을 활성으로 바꾸지 않아 <b>왼쪽 챕터 목록의
+    /// 강조가 따라오지 않았다</b>.
+    /// </summary>
     internal void SelectChapter(string chapterId)
     {
         if (string.Equals(_selectedChapterId, chapterId, StringComparison.Ordinal))
@@ -89,13 +98,28 @@ public partial class ChapterGraphView : UserControl
         _updatingCombo = true;
         ChapterCombo.SelectedItem = chapterId;
         _updatingCombo = false;
+
+        // 고른 챕터의 선택은 이전 챕터의 것이 아니다 — 들고 있으면 없는 간선을 가리킨다.
+        _selectedEpisodeId = null;
+        _selectedEdgeKey = null;
+        HideEdgeForm();
+
         Validate();
         Draw();
 
         // 이 챕터의 대본이 자기 판의 노드로 서 있도록 따라잡는다 — 챕터를 처음 고르는
         // 순간이 곧 그 판을 처음 보는 순간이다.
         SyncEpisodes();
+
+        // 그 챕터의 판을 활성으로 — 왼쪽 목록의 강조가 이 값을 본다.
+        ChapterSelected?.Invoke(chapterId);
     }
+
+    /// <summary>
+    /// 챕터가 골라졌다. 셸(MainWindow)이 듣고 그 챕터의 판을 활성으로 바꾼다 — 판을
+    /// 만드는 일은 셸의 몫이라(<c>EnsureChapterBoard</c>) 이 뷰가 직접 하지 않는다.
+    /// </summary>
+    internal event Action<string>? ChapterSelected;
 
     public ChapterGraphView()
     {
@@ -117,8 +141,12 @@ public partial class ChapterGraphView : UserControl
                 return;
             }
 
-            _selectedChapterId = ChapterCombo.SelectedItem as string;
-            Draw();
+            // 드롭다운도 왼쪽 목록 클릭과 같은 길을 지난다 (2026-08-17) — 여기서
+            // Draw()만 부르던 것이 "빨간 테두리가 안 사라진다"의 정체였다.
+            if (ChapterCombo.SelectedItem is string picked)
+            {
+                UiGuard.Run(_session, "챕터 선택", () => SelectChapter(picked));
+            }
         };
 
         // 픽스처 전환 → 경로 하이라이트가 바뀐다 (G6).
