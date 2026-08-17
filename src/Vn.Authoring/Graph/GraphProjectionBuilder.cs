@@ -210,18 +210,16 @@ public static class GraphProjectionBuilder
 
         if (node is SetNode)
         {
-            bool connected = project.Links.Any(link =>
-                link.Kind == NodeLinkKind.Settings &&
-                link.IsEnabled &&
-                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
-
+            // 공급 범위가 판(챕터) 전체가 된 뒤로(2026-08-17) 이 포트는 이을 곳이 없다 —
+            // 같은 판에 서 있는 것만으로 이미 미치고 있다. 포트는 "이 판에 공급 중"이라는
+            // 사실 표시로만 남는다(늘 켜짐).
             ports.Add(new GraphOutputPortProjection(
                 SettingsPortKey(node.Id),
                 GraphOutputPortKind.Settings,
                 node.Id,
-                "조건 공급",
+                "이 챕터에 공급 중",
                 -1,
-                connected,
+                true,
                 null));
         }
 
@@ -368,20 +366,9 @@ public static class GraphProjectionBuilder
             }
         }
 
-        foreach (NodeLink link in project.Links.Where(link =>
-                     link.Kind == NodeLinkKind.Settings && link.IsEnabled))
-        {
-            result.Add(new RawConnection(
-                $"link:{link.Id}",
-                GraphConnectionKind.Settings,
-                link.SourceNodeId,
-                link.TargetNodeId,
-                SettingsPortKey(link.SourceNodeId),
-                "조건 공급",
-                -1,
-                link.Id,
-                null));
-        }
+        // 조건 공급선은 그리지 않는다 (2026-08-17 소유자 — "챕터 단위로 전역에 쓰이는거야").
+        // 범위가 판 전체이므로 선을 그리면 대사노드 수만큼 거미줄이 되고, 그 선이 무엇을
+        // 정하지도 않는다. 구판 프로젝트에 남은 Settings 링크 데이터는 조용히 무시된다.
 
         foreach (NodeLink link in project.Links.Where(link =>
                      link.Kind == NodeLinkKind.CommandSupply && link.IsEnabled))

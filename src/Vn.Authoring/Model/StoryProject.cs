@@ -40,8 +40,23 @@ public sealed class StoryProject
 
     public List<StoryFile> Files { get; init; } = new();
 
-    /// <summary>실행 출구가 아닌 조건 공급 관계.</summary>
+    /// <summary>
+    /// 실행 출구가 아닌 조건 공급 관계.
+    ///
+    /// ⚠ <b>범위 결정에는 더 이상 쓰이지 않는다</b> (2026-08-17) — 작가의 조건·변수는 판
+    /// (챕터) 단위 전역이라 링크 없이 미친다. 구판 프로젝트의 데이터를 지우지 않으려고
+    /// 남겨 둘 뿐이고, 그래프도 이 선을 그리지 않는다.
+    /// </summary>
     public List<NodeLink> Links { get; init; } = new();
+
+    /// <summary>
+    /// <b>작가가 직접 더한 화자</b> (2026-08-17 소유자) — `game.definition.json`이 아니라
+    /// 여기 산다. 정의 파일은 <b>기획자 전용</b>이고(스탯·전역 조건·초상화 매핑·연출 카탈로그),
+    /// 작가가 임시로 쓰는 이름까지 거기 섞이면 두 사람의 자료가 한 파일에서 엉킨다.
+    ///
+    /// 드롭다운의 재료일 뿐이라 없어도 대본은 돈다 — 화자 칸은 자유 입력이다.
+    /// </summary>
+    public List<WriterSpeaker> WriterSpeakers { get; init; } = new();
 
     /// <summary>발행된 불변 결과. 추가만 되고 내용이 바뀌지 않는다.</summary>
     public ResultRepository Results { get; init; } = new();
@@ -173,6 +188,7 @@ public sealed class StoryProject
             Scripts = Scripts.Select(script => script.Clone()).ToList(),
             Files = Files.Select(file => file.Clone()).ToList(),
             Links = Links.Select(link => link.Clone()).ToList(),
+            WriterSpeakers = WriterSpeakers.Select(speaker => speaker.Clone()).ToList(),
             Results = Results.Clone(),
             Compositions = Compositions.Select(item => item.Clone()).ToList()
         };

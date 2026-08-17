@@ -40,7 +40,10 @@
                         <TextBlock Grid.Column="0" Text="화자" FontWeight="SemiBold" />
                         <Button Grid.Column="1" x:Name="AddSpeakerButton" Content="화자 추가" FontSize="11" />
                     </Grid>
-                    <TextBlock Text="여기는 편집 창구일 뿐, 저장은 game.definition.json의 speakers입니다. 대사 노드 드롭다운과 프리뷰 초상화가 같은 원천을 읽습니다."
+                    <!-- 2026-08-17 소유자 — 두 계층을 가른다. 기획자가 정한 화자는 회색
+                         고정값으로 모든 조건노드에 서고, 작가가 더한 화자만 여기서 고친다.
+                         작가의 것은 game.definition.json이 아니라 프로젝트에 저장된다. -->
+                    <TextBlock Text="회색 줄은 기획자가 정한 화자입니다 — 여기서 고치지 않습니다(표정은 자유롭게 더할 수 있습니다). 아래 [화자 추가]로 만든 것은 작가의 것이고 프로젝트에 저장됩니다."
                                FontSize="11"
                                Opacity="0.65"
                                TextWrapping="Wrap" />

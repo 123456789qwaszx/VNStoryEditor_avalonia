@@ -17,16 +17,18 @@ public class ResultDocumentComposerTests
     [Fact]
     public void 발행_당시_연결된_SetNode의_assignment가_결과에_얼어붙는다()
     {
+        // 2026-08-17 — 공급 범위가 판(챕터) 전체다. 같은 판의 설정노드 배정은 모두 실린다.
         var sample = new Sample();
         sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
 
-        SetNode unlinked = sample.Editor.AddSetNode(sample.File.Id, name: "연결 안 됨");
-        unlinked.Assignments.Add(new VariableAssignment { Variable = "ignored", Value = "1" });
-
         SetNode second = sample.Editor.AddSetNode(sample.File.Id, name: "두 번째 설정");
         second.Assignments.Add(new VariableAssignment { Variable = "trust", Value = "2" });
-        NodeLink secondLink = sample.Editor.AddSettingsLink(second.Id, sample.Dialogue.Id);
-        secondLink.Order = 10;
+
+        // 다른 판의 것은 안 실린다 — 챕터가 다르면 다른 어휘다.
+        var otherFile = new StoryFile("sf_other", "다른 챕터");
+        sample.Project.Files.Add(otherFile);
+        SetNode foreign = sample.Editor.AddSetNode(otherFile.Id, name: "남의 설정");
+        foreign.Assignments.Add(new VariableAssignment { Variable = "ignored", Value = "1" });
 
         sample.Line("본문");
 
@@ -165,16 +167,22 @@ public class ResultDocumentComposerTests
     [Fact]
     public void 작업_중_미리보기는_사용할_수_없는_조건을_경고로_알린다()
     {
+        // 범위가 판(챕터)이 된 뒤로 "못 쓴다"는 <b>다른 챕터에 있다</b>는 뜻이다 (2026-08-17).
+        // 설정노드를 다른 판으로 옮기면 그 판의 대사는 조건을 잃는다.
         var sample = new Sample();
         string opening = sample.Line("조건 대사", LineConditionTransition.BeginIf(sample.ConditionA.Id));
-        sample.Editor.RemoveLink(sample.SettingsLink.Id);
+
+        var otherFile = new StoryFile("sf_other", "다른 챕터");
+        sample.Project.Files.Add(otherFile);
+        sample.File.Nodes.Remove(sample.SetNode);
+        otherFile.Nodes.Add(sample.SetNode);
 
         RenderedDocument document = WorkingDialoguePreview.Compose(sample.Project, sample.Dialogue.Id);
 
         RenderedSegment warning = Assert.Single(document.Segments, segment =>
             segment.Kind == RenderedSegmentKind.Warning);
         Assert.Equal(opening, warning.Source.LineId);
-        Assert.Contains("포함되지 않습니다", warning.Text ?? string.Empty, StringComparison.Ordinal);
+        Assert.Contains("다른 챕터의 조건", warning.Text ?? string.Empty, StringComparison.Ordinal);
 
         // 작가가 고른 조건은 그대로 남는다.
         Assert.Equal(

@@ -24,7 +24,7 @@ public class GraphProjectionTests
                 Assert.Equal(fileB.Id, proxy.FileId);
                 CollapsedNodeEntry row = Assert.Single(proxy.Nodes);
                 Assert.Equal(dialogueB.Id, row.NodeId);
-                Assert.Equal(2, row.IncomingCount);
+                Assert.Equal(1, row.IncomingCount); // 실행 간선 하나 — 조건 공급선은 안 그린다
             });
     }
 
@@ -49,22 +49,19 @@ public class GraphProjectionTests
     }
 
     [Fact]
-    public void Settings_link도_접힌_파일의_실제_대사_행으로_투영된다()
+    public void 조건_공급선은_그리지_않는다()
     {
-        var (project, fileA, _, setA, _, dialogueB) = BuildProject();
+        // 2026-08-17 소유자 — 작가의 조건·변수는 챕터 단위 전역이다. 범위가 판 전체이므로
+        // 선을 그리면 대사노드 수만큼 거미줄이 되고, 그 선이 무엇을 정하지도 않는다.
+        // 구판 프로젝트에 남은 Settings 링크 데이터는 조용히 무시된다.
+        var (project, fileA, _, _, _, _) = BuildProject();
 
         GraphProjection projection = GraphProjectionBuilder.Build(
             project,
             new HashSet<string>(new[] { fileA.Id }, StringComparer.Ordinal));
 
-        GraphConnectionProjection settings = projection.Connections.Single(
+        Assert.DoesNotContain(projection.Connections,
             connection => connection.Kind == GraphConnectionKind.Settings);
-
-        Assert.Equal(setA.Id, settings.SourceNodeId);
-        Assert.Equal(dialogueB.Id, settings.TargetNodeId);
-        Assert.NotNull(settings.LinkId);
-        Assert.Null(settings.ExecutionPort);
-        Assert.Equal(GraphEndpointKind.CollapsedFileNodeInput, settings.Target.Kind);
     }
 
     [Fact]
@@ -156,9 +153,9 @@ public class GraphProjectionTests
         GraphProjection all = GraphProjectionBuilder.Build(
             project,
             new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal));
-        Assert.Equal(2, all.Connections.Count);
+        Assert.Single(all.Connections); // 조건 공급선은 안 그린다 (2026-08-17 — 범위가 판 전체)
 
-        // SetNode를 숨기면 그 노드가 끝인 Settings 간선은 사라지고, 대사 사이의 실행 간선만 남는다.
+        // SetNode를 숨겨도 실행 간선은 그대로 — 조건 공급선은 애초에 없다.
         GraphProjection filtered = GraphProjectionBuilder.Build(
             project,
             new HashSet<string>(new[] { fileA.Id, fileB.Id }, StringComparer.Ordinal),

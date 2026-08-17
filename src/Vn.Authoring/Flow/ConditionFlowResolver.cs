@@ -315,7 +315,10 @@ public static class ConditionFlowResolver
                 problems.Add(new FlowProblem(
                     FlowProblemKind.UnavailableCondition,
                     line.LineId,
-                    $"조건 '{known.DisplayName}'은 이 대사 노드에 연결된 SetNode 또는 게임 전역 조건에 포함되지 않습니다."));
+                    // 2026-08-17 — 범위가 판(챕터)이 됐다. "연결된 SetNode"는 더 이상 규칙이
+                    // 아니므로 문구도 그 사실을 말한다: 다른 챕터에 있으면 여기서는 못 쓴다.
+                    $"조건 '{known.DisplayName}'은 이 챕터의 설정노드에도 게임 전역 조건에도 " +
+                    "없습니다 — 다른 챕터의 조건은 여기서 쓸 수 없습니다."));
             }
         }
 

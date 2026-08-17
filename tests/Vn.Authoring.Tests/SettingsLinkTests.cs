@@ -34,19 +34,28 @@ public class SettingsLinkTests
     }
 
     [Fact]
-    public void Dialogue는_연결된_SetNode와_게임_전역_조건만_사용한다()
+    public void 같은_판의_모든_설정노드가_챕터_전역으로_공급한다()
     {
+        // 2026-08-17 소유자 — "시나리오 작가가 만든 조건, 변수 등은 챕터 단위로 기록이 되어서
+        // 사용됐으면 해. 이거는 챕터단위로 전역에 쓰이는거야." 판 = 챕터 1:1이므로 같은 판에
+        // 서 있는 것만으로 미친다. 링크를 걸어야 보이던 옛 규칙은 폐지됐다.
         var project = new StoryProject();
         var file = new StoryFile("sf_scope", "범위");
         project.Files.Add(file);
         var editor = new ProjectEditor(project);
 
-        SetNode linked = editor.AddSetNode(file.Id, name: "연결됨");
-        ConditionDefinition linkedCondition = editor.AddCondition(linked.Id, "연결 조건", "linked == true");
-        SetNode unrelated = editor.AddSetNode(file.Id, name: "연결 안 됨");
-        ConditionDefinition unrelatedCondition = editor.AddCondition(unrelated.Id, "다른 조건", "other == true");
+        SetNode first = editor.AddSetNode(file.Id, name: "첫 설정");
+        ConditionDefinition firstCondition = editor.AddCondition(first.Id, "첫 조건", "linked == true");
+        SetNode second = editor.AddSetNode(file.Id, name: "둘째 설정");
+        ConditionDefinition secondCondition = editor.AddCondition(second.Id, "둘째 조건", "other == true");
         DialogueNode dialogue = editor.AddDialogueNode(file.Id, name: "장면");
-        editor.AddSettingsLink(linked.Id, dialogue.Id);
+        // 링크는 걸지 않는다 — 그래도 둘 다 보여야 한다.
+
+        // 다른 판의 설정노드는 미치지 않는다 — 챕터가 다르면 다른 어휘다.
+        var otherFile = new StoryFile("sf_other", "다른 챕터");
+        project.Files.Add(otherFile);
+        SetNode foreign = editor.AddSetNode(otherFile.Id, name: "남의 설정");
+        ConditionDefinition foreignCondition = editor.AddCondition(foreign.Id, "남의 조건", "foreign == true");
 
         var definition = new GameDefinition
         {
@@ -67,11 +76,11 @@ public class SettingsLinkTests
             definition);
 
         Assert.Equal(
-            new[] { "global_difficulty", linkedCondition.Id },
+            new[] { "global_difficulty", firstCondition.Id, secondCondition.Id },
             catalog.Conditions.Select(condition => condition.Id));
         Assert.DoesNotContain(
             catalog.Conditions,
-            condition => condition.Id == unrelatedCondition.Id);
+            condition => condition.Id == foreignCondition.Id);
 
         IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(
             preceding: null,
@@ -80,8 +89,9 @@ public class SettingsLinkTests
             definition);
 
         Assert.Contains(choices, choice => choice.ConditionId == "global_difficulty");
-        Assert.Contains(choices, choice => choice.ConditionId == linkedCondition.Id);
-        Assert.DoesNotContain(choices, choice => choice.ConditionId == unrelatedCondition.Id);
+        Assert.Contains(choices, choice => choice.ConditionId == firstCondition.Id);
+        Assert.Contains(choices, choice => choice.ConditionId == secondCondition.Id);
+        Assert.DoesNotContain(choices, choice => choice.ConditionId == foreignCondition.Id);
 
         ScriptDocument script = editor.AddScript("전역 조건 대본");
         editor.SetDialogueScript(dialogue.Id, script.Id);
@@ -97,8 +107,9 @@ public class SettingsLinkTests
     }
 
     [Fact]
-    public void 여러_Settings_link는_Order와_저장_순서대로_조건을_공급한다()
+    public void 공급_순서는_판_안의_노드_순서다()
     {
+        // 링크 Order가 정하던 것을 이제 판의 노드 순서가 정한다 — 두 화면이 같은 하나를 본다.
         var project = new StoryProject();
         var file = new StoryFile("sf_order", "순서");
         project.Files.Add(file);
@@ -108,51 +119,82 @@ public class SettingsLinkTests
         ConditionDefinition firstCondition = editor.AddCondition(first.Id, "첫 조건", "a");
         SetNode second = editor.AddSetNode(file.Id, name: "두 번째");
         ConditionDefinition secondCondition = editor.AddCondition(second.Id, "둘째 조건", "b");
-        DialogueNode dialogue = editor.AddDialogueNode(file.Id, name: "장면");
+        editor.AddDialogueNode(file.Id, name: "장면");
 
-        editor.AddSettingsLink(second.Id, dialogue.Id);
-        editor.AddSettingsLink(first.Id, dialogue.Id);
-
+        DialogueNode dialogue = project.EnumerateNodes().OfType<DialogueNode>().Single();
         AvailableConditionCatalog catalog = AvailableConditionResolver.Resolve(project, dialogue.Id);
 
         Assert.Equal(
-            new[] { secondCondition.Id, firstCondition.Id },
+            new[] { firstCondition.Id, secondCondition.Id },
             catalog.Conditions.Select(condition => condition.Id));
     }
 
     [Fact]
-    public void Settings_link를_삭제해도_기존_Transition은_보존되고_사용불가로_표시된다()
+    public void 설정노드를_지우면_기존_Transition은_보존되고_사용불가로_표시된다()
     {
+        // 범위가 판 전체가 된 뒤로는 <b>노드를 지워야</b> 조건이 사라진다(링크를 끊는 것이
+        // 아니라) — 그때도 대본의 전환은 살아 있고 "사용할 수 없음"으로 보인다.
         var sample = new Sample();
         string line = sample.Line(
             "조건 대사",
             LineConditionTransition.BeginIf(sample.ConditionA.Id));
 
-        sample.Editor.RemoveLink(sample.SettingsLink.Id);
+        sample.Editor.RemoveNode(sample.SetNode.Id);
 
         Assert.NotNull(sample.Dialogue.FindExtension(line)!.Transition);
         Assert.Equal(ConditionTransitionKind.BeginIf, sample.Dialogue.FindExtension(line)!.Transition!.Kind);
         Assert.Equal(sample.ConditionA.Id, sample.Dialogue.FindExtension(line)!.Transition!.ConditionId);
 
+        // 노드째 사라졌으니 프로젝트 어디에도 없다 — "삭제됐다"고 말한다.
         DialogueFlow flow = ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project);
         FlowProblem problem = Assert.Single(
             flow.Problems,
-            item => item.Kind == FlowProblemKind.UnavailableCondition);
+            item => item.Kind == FlowProblemKind.UnknownCondition);
         Assert.Equal(line, problem.LineId);
+    }
+
+    [Fact]
+    public void 다른_챕터의_조건은_사용불가로_표시된다()
+    {
+        // 범위가 판(챕터)이 된 뒤의 "있지만 못 쓴다"는 <b>다른 챕터에 있다</b>는 뜻이다 —
+        // 대본의 전환은 보존되고 이름은 읽히되 사용할 수 없음으로 선다.
+        var project = new StoryProject();
+        var here = new StoryFile("sf_here", "이 챕터");
+        var there = new StoryFile("sf_there", "저 챕터");
+        project.Files.Add(here);
+        project.Files.Add(there);
+        var editor = new ProjectEditor(project);
+
+        SetNode foreign = editor.AddSetNode(there.Id, name: "저쪽 설정");
+        ConditionDefinition foreignCondition = editor.AddCondition(foreign.Id, "저쪽 조건", "far == true");
+
+        DialogueNode dialogue = editor.AddDialogueNode(here.Id, name: "장면");
+        ScriptDocument script = editor.AddScript("대본");
+        editor.SetDialogueScript(dialogue.Id, script.Id);
+        ScriptLine scriptLine = editor.InsertScriptLine(script.Id);
+        editor.SetLineTransition(
+            dialogue.Id, scriptLine.Id, LineConditionTransition.BeginIf(foreignCondition.Id));
+
+        DialogueFlow flow = ConditionFlowResolver.Resolve(dialogue, project);
+        FlowProblem problem = Assert.Single(
+            flow.Problems,
+            item => item.Kind == FlowProblemKind.UnavailableCondition);
+        Assert.Equal(scriptLine.Id, problem.LineId);
 
         IReadOnlyList<ConditionChoice> choices = ConditionChoices.For(
             preceding: null,
-            sample.Dialogue,
-            sample.Project,
+            dialogue,
+            project,
             definition: null,
-            currentTransition: sample.Dialogue.FindExtension(line)!.Transition);
-        ConditionChoice current = ConditionChoices.Current(choices, sample.Dialogue.FindExtension(line)!.Transition);
+            currentTransition: dialogue.FindExtension(scriptLine.Id)!.Transition);
+        ConditionChoice current = ConditionChoices.Current(
+            choices, dialogue.FindExtension(scriptLine.Id)!.Transition);
 
         Assert.False(current.IsAvailable);
-        Assert.Equal(sample.ConditionA.Id, current.ConditionId);
+        Assert.Equal(foreignCondition.Id, current.ConditionId);
         Assert.Contains("사용할 수 없음", current.Label, StringComparison.Ordinal);
 
-        ExitPort branch = NodeConnections.PortsOf(sample.Dialogue, sample.Project)
+        ExitPort branch = NodeConnections.PortsOf(dialogue, project)
             .Single(port => port.Kind == ExitPortKind.Branch);
         Assert.Contains("사용할 수 없음", branch.Label, StringComparison.Ordinal);
     }

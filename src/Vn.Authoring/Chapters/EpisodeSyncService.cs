@@ -385,10 +385,11 @@ public static class EpisodeSyncService
         SetNode? supply = editor.Project.EnumerateNodes().OfType<SetNode>()
             .FirstOrDefault(candidate => string.Equals(candidate.Name, supplyName, StringComparison.Ordinal));
 
+        // 링크는 걸지 않는다 (2026-08-17) — 공급 범위가 판(챕터) 전체이므로 같은 판에
+        // 서 있는 것만으로 이 노드에 미친다.
         supply ??= editor.AddSetNode(fileId, name: supplyName);
-        editor.AddSettingsLink(supply.Id, node.Id);
 
-        // 링크까지 이은 뒤의 실제 가용 목록과 대조한다 — 정의 파일의 전역 조건이나 다른
+        // 실제 가용 목록과 대조한다 — 정의 파일의 전역 조건이나 다른
         // 설정노드가 이미 같은 식을 주고 있으면 여기서 또 만들지 않는다.
         Flow.AvailableConditionCatalog available =
             Flow.AvailableConditionResolver.Resolve(editor.Project, node.Id, definition);
@@ -451,13 +452,8 @@ public static class EpisodeSyncService
             }
         }
 
-        StoryFile? file = editor.Project.Files.FirstOrDefault(candidate =>
-            string.Equals(candidate.Id, fileId, StringComparison.Ordinal));
-
-        foreach (DialogueNode dialogue in (file?.Nodes ?? []).OfType<DialogueNode>())
-        {
-            editor.AddSettingsLink(supply.Id, dialogue.Id);
-        }
+        // 대사노드마다 링크를 잇던 고리는 폐지됐다 (2026-08-17) — 공급 범위가 판(챕터)
+        // 전체다. 노드를 새로 만들 때마다 배관을 다시 잇지 않아도 된다.
     }
 
     /// <summary>
@@ -511,6 +507,34 @@ public static class EpisodeSyncService
                             "대사 중의 스탯 직접 조작은 설계에서 뺐습니다(세이브/로드·도달성 증명이 " +
                             "못 봅니다). 로컬 변수를 쓰세요. 수치 조정 방식은 별도로 정해집니다."));
                     }
+                }
+            }
+        }
+
+        // 설정노드의 <b>배정</b>도 같은 자리다 (2026-08-17) — Set_ 노드 본문이 되어 실제로
+        // `<<set>>`이 나간다. 대사 줄만 훑던 검사가 이 길을 놓치고 있었다: 작가가 변수 칸에
+        // 손으로 `trust`를 적으면(후보에서는 뺐지만 자유 입력은 막지 않는다) 조용히 새어 나갔다.
+        foreach (SetNode setNode in (file?.Nodes ?? []).OfType<SetNode>())
+        {
+            if (file is not null && IsConditionSupplyNode(setNode, file))
+            {
+                continue; // A계층 공급 노드는 배관이다 — 여기 조건만 있고 배정은 없다
+            }
+
+            foreach (VariableAssignment assignment in setNode.Assignments)
+            {
+                string variable = assignment.Variable.TrimStart('$');
+
+                if (statKeys.Contains(variable))
+                {
+                    warnings.Add(new ChapterDiagnostic(
+                        ChapterDiagnosticSeverity.Warning,
+                        ChapterDiagnosticCode.StatKeyUnknown,
+                        chapter.SourcePath, null, null, null,
+                        $"설정노드 '{setNode.Name}'이 스탯 '{variable}'을 배정합니다 — 이 배정은 " +
+                        "Set_ 노드 본문으로 나가 실제로 스탯을 바꿉니다. 스탯이 변하는 자리는 " +
+                        "챕터 `간선` 시트의 `스탯변화` 하나뿐입니다(A계층). 작가의 변수는 " +
+                        "따로 두세요."));
                 }
             }
         }

@@ -3,11 +3,18 @@ using Vn.Authoring.Model;
 namespace Vn.Authoring.Flow;
 
 /// <summary>
-/// DialogueNode에 활성 Settings link로 연결된 SetNode를 결정적인 순서로 계산한다.
+/// DialogueNode가 쓸 수 있는 SetNode(조건·변수 공급자)를 결정적인 순서로 계산한다.
 ///
-/// 조건 드롭다운과 평면 문서 합성기가 서로 다른 링크 순서를 사용하면 같은 DialogueNode를
-/// 두 화면이 다르게 해석하게 된다. 그래서 Settings link의 대상·활성 상태·Order 해석은
-/// 이 한 곳에만 둔다.
+/// <b>범위는 챕터다</b> (2026-08-17 소유자: "시나리오 작가가 만든 조건, 변수 등은 챕터
+/// 단위로 기록이 되어서 사용됐으면 해. 이거는 챕터단위로 전역에 쓰이는거야").
+/// 판 = 챕터 1:1이므로 <b>같은 판에 있는 SetNode는 그 판의 모든 대사노드에 자동으로
+/// 미친다</b> — 개별 Settings link를 걸 필요가 없다.
+///
+/// 예전에는 링크를 하나하나 걸어야 조건이 보였다. 작가가 노드를 만들 때마다 배관을 다시
+/// 잇는 일이었고, 잊으면 "조건이 왜 안 보이지"가 됐다. 링크 데이터는 남아 있어도 이제
+/// 범위를 좁히지 않는다(무시된다).
+///
+/// 순서는 판 안의 노드 순서 — 두 화면이 같은 하나를 본다.
 /// </summary>
 public static class ConnectedSetNodeResolver
 {
@@ -22,28 +29,20 @@ public static class ConnectedSetNodeResolver
             return Array.Empty<ConnectedSetNode>();
         }
 
-        IEnumerable<(NodeLink Link, int Index)> links = project.Links
-            .Select((link, index) => (Link: link, Index: index))
-            .Where(item =>
-                item.Link.Kind == NodeLinkKind.Settings &&
-                item.Link.IsEnabled &&
-                string.Equals(item.Link.TargetNodeId, dialogueNodeId, StringComparison.Ordinal))
-            .OrderBy(item => item.Link.Order)
-            .ThenBy(item => item.Index);
+        StoryFile? file = project.Files.FirstOrDefault(candidate =>
+            candidate.Nodes.Any(node =>
+                string.Equals(node.Id, dialogueNodeId, StringComparison.Ordinal)));
 
-        var connected = new List<ConnectedSetNode>();
-
-        foreach ((NodeLink link, _) in links)
+        if (file is null)
         {
-            if (project.FindNode(link.SourceNodeId) is SetNode setNode)
-            {
-                connected.Add(new ConnectedSetNode(link, setNode));
-            }
+            return Array.Empty<ConnectedSetNode>();
         }
 
-        return connected;
+        return file.Nodes.OfType<SetNode>()
+            .Select(setNode => new ConnectedSetNode(setNode))
+            .ToList();
     }
 }
 
-/// <summary>Settings link와 그 링크가 공급하는 실제 SetNode.</summary>
-public sealed record ConnectedSetNode(NodeLink Link, SetNode Node);
+/// <summary>그 판(챕터)이 쓰는 조건·변수 공급자 하나.</summary>
+public sealed record ConnectedSetNode(SetNode Node);

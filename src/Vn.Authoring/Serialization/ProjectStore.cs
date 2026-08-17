@@ -236,6 +236,7 @@ public static class ProjectStore
         }
 
         project.Links.AddRange(manifest.Links.Select(link => link.Clone()));
+        project.WriterSpeakers.AddRange(manifest.WriterSpeakers.Select(speaker => speaker.Clone()));
         project.Compositions.AddRange(manifest.Compositions.Select(item => item.Clone()));
 
         JsonSupport.ValidateProject(project);

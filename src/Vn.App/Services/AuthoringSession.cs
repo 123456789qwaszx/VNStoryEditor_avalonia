@@ -685,24 +685,11 @@ internal sealed class AuthoringSession
     public void NotifyExternalScriptChange() =>
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Structure));
 
-    /// <summary>
-    /// 화자 목록을 <c>game.definition.json</c>에 쓴다 (X5, D-4 — 원천은 파일 하나다).
-    /// 설정노드 UI는 이걸 부를 뿐 자체 사본을 갖지 않는다. 쓰고 나면 정의를 다시 읽어
-    /// 대사노드 드롭다운·프리뷰 초상화 해석이 같은 원천의 새 값을 본다.
-    /// </summary>
-    public bool SaveSpeakers(IReadOnlyList<SpeakerSpec> speakers)
-    {
-        if (ProjectPath is null)
-        {
-            SetStatus("화자 목록은 game.definition.json에 저장됩니다. 프로젝트를 먼저 저장해 주세요.");
-            return false;
-        }
-
-        GameDefinitionStore.SaveSpeakers(ProjectPath, speakers);
-        Definition = GameDefinition.LoadBeside(ProjectPath);
-        SetStatus($"{GameDefinition.FileName}에 화자 {Definition.Speakers.Count}명을 저장했습니다.");
-        return true;
-    }
+    // 작가 화면에서 `game.definition.json`의 speakers를 갈아 끼우던 길은 폐지됐다
+    // (2026-08-17 소유자 — "이게 기획자가 쓰는 전용으로 되어야 하는데, 현재는 시나리오
+    // 작가가 한것까지 저기에 들어간다"). 작가가 더한 화자는 프로젝트에 산다
+    // (`ProjectEditor.SetWriterSpeakers`). 정의 파일에 쓰는 창구는 아래 [등록] 하나뿐이고,
+    // 그것도 기획자 화면(챕터 그래프의 검증 보고)에서만 불린다.
 
     /// <summary>
     /// 스탯 키를 <c>game.definition.json</c>의 variables에 더한다 — 검증 보고의 [등록] 단추 전용.

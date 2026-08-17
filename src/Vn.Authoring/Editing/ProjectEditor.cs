@@ -1336,6 +1336,41 @@ public sealed partial class ProjectEditor
             item => string.Equals(item.Id, conditionId, StringComparison.Ordinal)));
     }
 
+    /// <summary>
+    /// 작가가 더한 화자 목록을 통째로 정한다 (2026-08-17) — <b>`game.definition.json`에는
+    /// 쓰지 않는다</b>. 정의 파일은 기획자 전용이고, 이건 프로젝트(작가 소유)에 산다.
+    /// 이름이 빈 항목은 버린다 — 드롭다운에 빈 줄이 서면 고를 수도 없다.
+    /// </summary>
+    public void SetWriterSpeakers(IEnumerable<WriterSpeaker> speakers)
+    {
+        ArgumentNullException.ThrowIfNull(speakers);
+
+        List<WriterSpeaker> next = speakers
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
+            .Select(speaker => speaker.Clone())
+            .ToList();
+
+        bool same = Project.WriterSpeakers.Count == next.Count;
+
+        for (int index = 0; same && index < next.Count; index++)
+        {
+            same = string.Equals(Project.WriterSpeakers[index].Name, next[index].Name, StringComparison.Ordinal) &&
+                   string.Equals(Project.WriterSpeakers[index].CharacterId, next[index].CharacterId,
+                       StringComparison.Ordinal);
+        }
+
+        if (same)
+        {
+            return;
+        }
+
+        Mutate(() =>
+        {
+            Project.WriterSpeakers.Clear();
+            Project.WriterSpeakers.AddRange(next);
+        });
+    }
+
     public void SetAssignments(string setNodeId, IEnumerable<VariableAssignment> assignments)
     {
         if (Project.FindNode(setNodeId) is not SetNode setNode)

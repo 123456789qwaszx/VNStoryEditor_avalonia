@@ -355,23 +355,35 @@ public class AuthoringSessionTests
     }
 
     [Fact]
-    public void 화자_저장은_정의를_다시_읽어_대사_드롭다운_원천에_반영된다()
+    public void 작가가_더한_화자는_정의_파일이_아니라_프로젝트에_저장된다()
     {
+        // 2026-08-17 소유자 — "game.definition은 기획자 전용이 되어야 하는데 현재는 시나리오
+        // 작가가 한 것까지 들어간다. 작가가 만든 건 json으로까지 저장될 필요 없다."
         string directory = TempDirectory();
 
         try
         {
+            string path = Path.Combine(directory, "project.vnproject.json");
             var session = new AuthoringSession();
-            session.Save(Path.Combine(directory, "project.vnproject.json"));
+            session.Save(path);
 
-            bool saved = session.SaveSpeakers(new[]
-            {
-                new SpeakerSpec { Name = "새화자", CharacterId = string.Empty } // 매핑 없어도 저장된다
-            });
+            session.Editor.SetWriterSpeakers([
+                new WriterSpeaker { Name = "작가화자", CharacterId = string.Empty },
+                new WriterSpeaker { Name = string.Empty }  // 이름 없는 행은 버려진다
+            ]);
+            session.Save(path);
 
-            Assert.True(saved);
-            Assert.Contains(session.Definition.Speakers, speaker =>
-                string.Equals(speaker.Name, "새화자", StringComparison.Ordinal));
+            // 정의 파일은 손대지 않는다.
+            Assert.DoesNotContain(session.Definition.Speakers, speaker =>
+                string.Equals(speaker.Name, "작가화자", StringComparison.Ordinal));
+
+            // 프로젝트에 남고, 다시 열어도 그대로다.
+            WriterSpeaker saved = Assert.Single(session.Project.WriterSpeakers);
+            Assert.Equal("작가화자", saved.Name);
+
+            var reopened = new AuthoringSession();
+            reopened.Open(path);
+            Assert.Equal("작가화자", Assert.Single(reopened.Project.WriterSpeakers).Name);
         }
         finally
         {

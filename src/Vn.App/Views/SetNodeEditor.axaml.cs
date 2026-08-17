@@ -48,24 +48,17 @@ public partial class SetNodeEditor : UserControl
 
         AddSpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 추가", () =>
         {
-            // 편집 중 목록에 붙인다 — 저장본에서 다시 시작하면 방금 타이핑한(아직 저장 못 한)
-            // 행이 통째로 사라져 "추가가 안 된다"로 보인다.
-            EditingSpeakers().Add(new SpeakerSpec());
+            // 작가의 화자를 하나 더한다 (2026-08-17) — 정의 파일이 아니라 프로젝트에 산다.
+            // 빈 이름은 저장에서 걸러지므로 행만 즉시 보여 준다.
+            _session!.Project.WriterSpeakers.Add(new WriterSpeaker());
 
-            // 빈 항목은 파일에 저장되지 않으므로 행만 즉시 보여 준다.
             RebuildSpeakers();
         });
     }
 
-    /// <summary>
-    /// 편집 중 화자 목록 — 저장 전(이름이 비어 파일에 못 들어간) 행을 포함한다.
-    /// 화자는 노드가 아니라 게임 정의에 속하므로 <b>노드를 옮겨도 유지하고</b>,
-    /// 다른 프로젝트를 열었을 때만 버린다.
-    /// </summary>
-    private List<SpeakerSpec>? _pendingSpeakers;
-
-    /// <summary>편집 중 목록이 속한 프로젝트 경로.</summary>
-    private string? _pendingSpeakersProject;
+    // 편집 중 목록을 따로 들고 있던 장치(_pendingSpeakers)는 폐지됐다 (2026-08-17) —
+    // 작가의 화자가 프로젝트에 살면서 편집 대상이 곧 저장 대상이 됐다. 정의 파일을
+    // 갈아 끼우던 시절의 "저장 전 행" 문제가 없다.
 
     /// <summary>화자 행을 다시 만드는 중 — 사라지는 칸의 LostFocus가 낡은 위치로 커밋하지 못하게.</summary>
     private bool _rebuildingSpeakers;
@@ -75,30 +68,8 @@ public partial class SetNodeEditor : UserControl
     internal void Show(string? nodeId)
     {
         _nodeId = nodeId;
-        SyncPendingSpeakerScope();
         Rebuild();
     }
-
-    /// <summary>
-    /// 편집 중 화자 목록의 유효 범위를 맞춘다. 저장 전 프로젝트(null)가 경로를 얻는 것은
-    /// 같은 프로젝트를 저장한 것이므로 유지하고, <b>다른 파일을 열었을 때만</b> 버린다.
-    /// </summary>
-    private void SyncPendingSpeakerScope()
-    {
-        string? path = _session?.ProjectPath;
-
-        if (_pendingSpeakersProject is not null &&
-            !string.Equals(_pendingSpeakersProject, path, StringComparison.Ordinal))
-        {
-            _pendingSpeakers = null;
-        }
-
-        _pendingSpeakersProject = path;
-    }
-
-    /// <summary>화면이 보여 주는 화자 목록. 없으면 저장본에서 한 번 만든다.</summary>
-    private List<SpeakerSpec> EditingSpeakers() =>
-        _pendingSpeakers ??= _session?.Definition.Speakers.ToList() ?? [];
 
     internal string? NodeId => _nodeId;
 
@@ -163,27 +134,50 @@ public partial class SetNodeEditor : UserControl
 
     // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
 
+    /// <summary>
+    /// 화자 두 묶음 (2026-08-17 소유자) — <b>기획자 것은 회색 고정, 작가 것만 편집</b>.
+    /// 고정값이 함께 보여야 "이 이름은 이미 있다"를 알고, 표정은 어느 쪽이든 자유롭게 더한다
+    /// (표정의 주인은 에셋 폴더 규약이지 정의 파일이 아니다).
+    /// </summary>
     private void RebuildSpeakers()
     {
-        List<SpeakerSpec> speakers = EditingSpeakers();
         _rebuildingSpeakers = true;
 
         try
         {
             SpeakerHost.Children.Clear();
 
-            for (int index = 0; index < speakers.Count; index++)
+            IReadOnlyList<SpeakerSpec> planner = _session?.Definition.Speakers ?? [];
+            IReadOnlyList<WriterSpeaker> mine = _session?.Project.WriterSpeakers ?? [];
+
+            if (planner.Count > 0)
+            {
+                SpeakerHost.Children.Add(SpeakerSectionLabel("기획자가 정한 화자 — 여기서 고치지 않습니다"));
+
+                foreach (SpeakerSpec speaker in planner)
+                {
+                    SpeakerHost.Children.Add(BuildPlannerSpeakerRow(speaker));
+                }
+            }
+
+            SpeakerHost.Children.Add(SpeakerSectionLabel("작가가 더한 화자 — 프로젝트에 저장됩니다"));
+
+            for (int index = 0; index < mine.Count; index++)
             {
                 SpeakerHost.Children.Add(BuildSpeakerRow(index));
             }
 
-            if (speakers.Count == 0)
+            if (mine.Count == 0)
             {
                 SpeakerHost.Children.Add(new TextBlock
                 {
-                    Text = "화자를 등록하면 대사 노드에서 드롭다운으로 고를 수 있습니다.",
+                    Text = planner.Count > 0
+                        ? "없어도 됩니다 — 대본의 화자 칸은 자유 입력입니다."
+                        : "화자를 더하면 대사 노드에서 드롭다운으로 고를 수 있습니다. " +
+                          "안 더해도 화자 칸에 직접 적으면 됩니다.",
                     FontSize = 11,
-                    Opacity = 0.6
+                    Opacity = 0.6,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
                 });
             }
         }
@@ -193,9 +187,61 @@ public partial class SetNodeEditor : UserControl
         }
     }
 
+    private static TextBlock SpeakerSectionLabel(string text) => new()
+    {
+        Text = text,
+        FontSize = 10,
+        Opacity = 0.55,
+        Margin = new Thickness(0, 4, 0, 0),
+        TextWrapping = Avalonia.Media.TextWrapping.Wrap
+    };
+
+    /// <summary>
+    /// 기획자 화자 한 줄 — 회색 고정. 이름·캐릭터키는 잠기고 [표정]만 살아 있다.
+    /// 고치려면 챕터 `화자` 시트나 정의 파일로 간다(값의 주인이 거기다).
+    /// </summary>
+    private Control BuildPlannerSpeakerRow(SpeakerSpec speaker)
+    {
+        var name = new TextBox
+        {
+            Text = speaker.Name,
+            FontSize = 12,
+            IsEnabled = false
+        };
+
+        var characterId = new TextBox
+        {
+            Text = speaker.CharacterId,
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12,
+            IsEnabled = false
+        };
+
+        var expressions = new Button
+        {
+            Content = "표정",
+            FontSize = 11,
+            Margin = new Thickness(6, 0, 0, 0),
+            [ToolTip.TipProperty] = "표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
+        };
+        expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
+            ShowExpressionsFlyout(expressions, speaker.CharacterId));
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto"), Opacity = 0.55 };
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(characterId, 1);
+        Grid.SetColumn(expressions, 2);
+        row.Children.Add(name);
+        row.Children.Add(characterId);
+        row.Children.Add(expressions);
+
+        return row;
+    }
+
+    /// <summary>작가가 더한 화자 한 줄 — 편집·삭제 가능. 저장은 프로젝트다(정의 파일 아님).</summary>
     private Control BuildSpeakerRow(int index)
     {
-        SpeakerSpec speaker = EditingSpeakers()[index];
+        WriterSpeaker speaker = _session!.Project.WriterSpeakers[index];
 
         var name = new TextBox
         {
@@ -240,32 +286,21 @@ public partial class SetNodeEditor : UserControl
 
             UiGuard.Run(_session, "화자 저장", () =>
             {
-                List<SpeakerSpec> editing = EditingSpeakers();
+                List<WriterSpeaker> editing = _session!.Project.WriterSpeakers
+                    .Select(item => item.Clone())
+                    .ToList();
 
                 if (index >= editing.Count)
                 {
                     return;
                 }
 
-                var updated = new SpeakerSpec
-                {
-                    Name = (name.Text ?? string.Empty).Trim(),
-                    CharacterId = (characterId.Text ?? string.Empty).Trim()
-                };
+                editing[index].Name = (name.Text ?? string.Empty).Trim();
+                editing[index].CharacterId = (characterId.Text ?? string.Empty).Trim();
 
-                if (string.Equals(updated.Name, editing[index].Name, StringComparison.Ordinal) &&
-                    string.Equals(updated.CharacterId, editing[index].CharacterId, StringComparison.Ordinal))
-                {
-                    return; // 바뀐 게 없으면 파일을 건드리지 않는다
-                }
-
-                // 편집 중 목록을 먼저 갱신한다 — 저장에 실패해도(프로젝트 미저장)
-                // 타이핑이 화면과 목록에 남아 노드를 옮겼다 와도 그대로다.
-                editing[index] = updated;
-
-                // 저장에 성공해도 행을 다시 만들지 않는다. 다시 만들면 지금 쓰던 칸이
-                // 사라져 이름 → characterId 탭 이동이 끊긴다(입력이 씹히는 것처럼 보인다).
-                _session!.SaveSpeakers(editing);
+                // 행을 다시 만들지 않는다. 다시 만들면 지금 쓰던 칸이 사라져
+                // 이름 → characterId 탭 이동이 끊긴다(입력이 씹히는 것처럼 보인다).
+                _session.Editor.SetWriterSpeakers(editing);
             });
         }
 
@@ -292,7 +327,9 @@ public partial class SetNodeEditor : UserControl
 
         remove.Click += (_, _) => UiGuard.Run(_session, "화자 삭제", () =>
         {
-            List<SpeakerSpec> editing = EditingSpeakers();
+            List<WriterSpeaker> editing = _session!.Project.WriterSpeakers
+                .Select(item => item.Clone())
+                .ToList();
 
             if (index >= editing.Count)
             {
@@ -300,7 +337,7 @@ public partial class SetNodeEditor : UserControl
             }
 
             editing.RemoveAt(index);
-            _session!.SaveSpeakers(editing);
+            _session.Editor.SetWriterSpeakers(editing);
 
             // 행 개수가 바뀌었으니 여기서는 다시 그려야 한다.
             RebuildSpeakers();

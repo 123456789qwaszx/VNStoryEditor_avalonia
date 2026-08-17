@@ -89,6 +89,74 @@ public sealed class ChapterLayerSeparationTests
     }
 
     [Fact]
+    public void 설정노드가_챕터_스탯을_배정하면_경고한다()
+    {
+        // 후보에서 빼는 것만으로는 안 된다 — 변수 칸은 자유 입력이라 손으로 `trust`를
+        // 적을 수 있고, 설정노드의 배정은 Set_ 노드 본문이 되어 실제로 <<set>>이 나간다.
+        // 대사 줄만 훑던 검사가 이 길을 놓치고 있었다 (2026-08-17).
+        Board board = BuildBoard();
+        board.Editor.SetAssignments(board.Own.Id,
+        [
+            new VariableAssignment { Variable = "trust", Value = "1" },
+            new VariableAssignment { Variable = "mood", Value = "1" } // 작가 변수 — 조용해야 한다
+        ]);
+
+        var chapter = new ChapterGraphModel(
+            "ch01", "ch01.xlsx",
+            episodes: [],
+            edges: [],
+            conditions: [],
+            stats: [new ChapterStat("trust", "신뢰", 0, 0, 10, 2)],
+            fixtures: [],
+            diagnostics: []);
+
+        IReadOnlyList<ChapterDiagnostic> warnings = EpisodeSyncService.WarnFreeNodeStatWrites(
+            board.Editor, board.Project.Files.Single().Id, chapter);
+
+        ChapterDiagnostic warning = Assert.Single(warnings);
+        Assert.Equal(ChapterDiagnosticSeverity.Warning, warning.Severity);
+        Assert.Contains("작가 조건", warning.Message);   // 어느 설정노드인지
+        Assert.Contains("trust", warning.Message);
+        Assert.Contains("간선", warning.Message);        // 어디가 제자리인지
+        Assert.DoesNotContain("mood", warning.Message);
+    }
+
+    [Fact]
+    public void 동기화는_대사노드마다_링크를_잇지_않는다()
+    {
+        // 2026-08-17 — 공급 범위가 판(챕터) 전체가 되면서 배관이 사라졌다. 노드를 만들 때마다
+        // 링크를 다시 잇지 않아도 조건이 보인다.
+        Board board = BuildBoard();
+        StoryFile file = board.Project.Files.Single();
+
+        var chapter = new ChapterGraphModel(
+            "ch01", "ch01.xlsx",
+            episodes: [],
+            edges: [],
+            conditions:
+            [
+                new ChapterCondition("신뢰높음", "trust >= 3", null,
+                    [new ConditionTerm(ConditionTermKind.StatComparison, "trust", ConditionComparison.AtLeast, 3)],
+                    IsValid: true, SourceRow: 2)
+            ],
+            stats: [new ChapterStat("trust", "신뢰", 0, 0, 10, 2)],
+            fixtures: [],
+            diagnostics: []);
+
+        int linksBefore = board.Project.Links.Count;
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            board.Editor, GameDefinition.Empty, file.Id, chapter);
+
+        Assert.Equal(linksBefore, board.Project.Links.Count);
+
+        // 링크가 없어도 그 판의 대사노드는 챕터 조건을 본다(고르지는 못한다 — A계층).
+        AvailableConditionCatalog catalog = AvailableConditionResolver.Resolve(
+            board.Project, board.Dialogue.Id);
+        Assert.Contains(catalog.Conditions, item =>
+            item.SourceKind == AvailableConditionSourceKind.ChapterLayer);
+    }
+
+    [Fact]
     public void 계층을_가르는_규칙은_이름_규약_하나다()
     {
         Board board = BuildBoard();

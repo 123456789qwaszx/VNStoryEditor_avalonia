@@ -99,6 +99,26 @@ public static class ProjectManifestJson
             root["links"] = links;
         }
 
+        // 작가가 더한 화자 (2026-08-17) — 정의 파일이 아니라 여기 산다(정의 파일은 기획자 전용).
+        if (project.WriterSpeakers.Count > 0)
+        {
+            var writerSpeakers = new JsonArray();
+
+            foreach (WriterSpeaker speaker in project.WriterSpeakers)
+            {
+                var entry = new JsonObject { ["name"] = speaker.Name };
+
+                if (speaker.CharacterId.Length > 0)
+                {
+                    entry["characterId"] = speaker.CharacterId;
+                }
+
+                writerSpeakers.Add(entry);
+            }
+
+            root["writerSpeakers"] = writerSpeakers;
+        }
+
         if (compositions.Count > 0)
         {
             root["compositions"] = compositions;
@@ -241,6 +261,22 @@ public static class ProjectManifestJson
             compositions.Add(composition);
         }
 
+        var writerSpeakers = new List<WriterSpeaker>();
+
+        foreach (JsonNode? item in root["writerSpeakers"]?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject speaker)
+            {
+                throw new InvalidDataException("프로젝트 manifest의 writerSpeakers 항목이 객체가 아닙니다.");
+            }
+
+            writerSpeakers.Add(new WriterSpeaker
+            {
+                Name = (string?)speaker["name"] ?? string.Empty,
+                CharacterId = (string?)speaker["characterId"] ?? string.Empty
+            });
+        }
+
         return new ProjectManifest(
             (string?)root["title"] ?? "제목 없음",
             (string?)root["startNode"],
@@ -251,6 +287,7 @@ public static class ProjectManifestJson
             scripts,
             references,
             links,
+            writerSpeakers,
             compositions,
             (string?)root["results"]);
     }
@@ -485,6 +522,7 @@ public sealed record ProjectManifest(
     IReadOnlyList<ScriptFileReference> Scripts,
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,
+    IReadOnlyList<WriterSpeaker> WriterSpeakers,
     IReadOnlyList<RuntimeComposition> Compositions,
     string? ResultsRelativePath);
 

@@ -1282,7 +1282,7 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private void ShowSpeakerFlyout(Button anchor, AutoCompleteBox speaker)
     {
-        List<(string Name, bool FromChapter)> candidates = SpeakerCandidates();
+        List<(string Name, SpeakerSource Source)> candidates = SpeakerCandidates();
 
         if (candidates.Count == 0)
         {
@@ -1340,38 +1340,54 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         Section("기획 등록 · 챕터 `화자` 시트",
-            candidates.Where(item => item.FromChapter).Select(item => item.Name));
+            candidates.Where(item => item.Source == SpeakerSource.Chapter).Select(item => item.Name));
         Section("초상화 매핑 · game.definition.json",
-            candidates.Where(item => !item.FromChapter).Select(item => item.Name));
+            candidates.Where(item => item.Source == SpeakerSource.Definition).Select(item => item.Name));
+        Section("작가가 더한 화자",
+            candidates.Where(item => item.Source == SpeakerSource.Writer).Select(item => item.Name));
 
         flyout.ShowAt(anchor);
     }
 
+    /// <summary>화자 이름이 어디서 왔는가 — 목록에서 구역을 가르는 근거.</summary>
+    private enum SpeakerSource
+    {
+        /// <summary>기획자: 챕터 `화자` 시트.</summary>
+        Chapter,
+
+        /// <summary>기획자·연출: `game.definition.json`의 초상화 매핑.</summary>
+        Definition,
+
+        /// <summary>작가: 프로젝트의 `WriterSpeakers` (정의 파일에 넣지 않는다).</summary>
+        Writer
+    }
+
     /// <summary>
-    /// 화자 후보 — <b>챕터 `화자` 시트(A계층 등록)와 정의 파일 speakers(초상화 매핑)를
-    /// 합치되 출처를 남긴다</b> (2026-08-17 소유자 결정). 두 곳에 다 있는 이름은 챕터 쪽
-    /// 하나로 센다 — 목록에 같은 이름이 두 번 서면 고르는 사람이 헷갈린다.
+    /// 화자 후보 — 세 원천을 합치되 <b>출처를 남긴다</b> (2026-08-17 소유자). 같은 이름이
+    /// 여러 곳에 있으면 먼저 나온 하나로 센다(기획 → 정의 → 작가) — 목록에 같은 이름이
+    /// 두 번 서면 고르는 사람이 헷갈린다.
+    ///
+    /// 여기 없는 이름도 화자 칸에 직접 적으면 그만이다 — 이 목록은 편의일 뿐이다.
     /// </summary>
-    private List<(string Name, bool FromChapter)> SpeakerCandidates()
+    private List<(string Name, SpeakerSource Source)> SpeakerCandidates()
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var candidates = new List<(string, bool)>();
+        var candidates = new List<(string, SpeakerSource)>();
 
-        foreach (string name in _session!.ChapterSpeakerNames)
+        void Add(IEnumerable<string> names, SpeakerSource source)
         {
-            if (name.Length > 0 && seen.Add(name))
+            foreach (string name in names)
             {
-                candidates.Add((name, true));
+                if (name.Length > 0 && seen.Add(name))
+                {
+                    candidates.Add((name, source));
+                }
             }
         }
 
-        foreach (string name in _session.Definition.Speakers.Select(item => item.Name))
-        {
-            if (name.Length > 0 && seen.Add(name))
-            {
-                candidates.Add((name, false));
-            }
-        }
+        Add(_session!.ChapterSpeakerNames, SpeakerSource.Chapter);
+        Add(_session.Definition.Speakers.Select(item => item.Name), SpeakerSource.Definition);
+        Add(_session.Project.WriterSpeakers.Select(item => item.Name), SpeakerSource.Writer);
 
         return candidates;
     }
