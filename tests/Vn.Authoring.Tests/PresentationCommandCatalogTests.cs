@@ -9,9 +9,15 @@ public class PresentationCommandCatalogTests
     {
         PresentationCommandCatalog catalog = PresentationCommandCatalog.For(GameDefinition.Empty);
 
-        // docs/game.definition.json — 런타임 등록 테이블과 교차 검증된 201 커맨드, 22 범주.
-        Assert.Equal(201, catalog.Definitions.Count);
-        Assert.Equal(22, catalog.Categories.Count);
+        // docs/game.definition.json — 런타임 등록 테이블과 교차 검증한다.
+        //
+        // 2026-08-18 재검증: 런타임의 `AddCommandHandler` 등록 이름 **178개와 정확히
+        // 일치**하고 런타임에만 있는 것은 0개다. 카탈로그에만 남아 있던 22개
+        // (`pres_*` 6 · `overlay_*` 13 · `beat` · `beat_fx` · `seq`)는 단순화로 사라진
+        // 커맨드라 걷어냈다 — 팔레트에 남겨 두면 작가가 고르는 순간 unknown command다.
+        // (179 = 런타임 등록 이름 178 + 동적 별칭 템플릿 항목 `<N>fr` 하나.)
+        Assert.Equal(179, catalog.Definitions.Count);
+        Assert.Equal(20, catalog.Categories.Count);
         Assert.Same(catalog, PresentationCommandCatalog.For(definition: null));
     }
 
@@ -30,18 +36,27 @@ public class PresentationCommandCatalogTests
         // 기본값은 파라미터에 실려 온다. hop처럼 기본값 없는 필수 인자는 빈 사전이다.
         Assert.Empty(hop.DefaultArgumentValues());
 
-        PresentationCommandDefinition presHold = catalog.Find("control_flow.pres_hold")!;
-        Assert.True(presHold.MainLaneOnly);
-        Assert.Equal("1", presHold.DefaultArgumentValues()["lines"]);
+        // 기본값이 실려 오는 예 — `control_flow.pres_hold`가 이 자리였는데 2026-08-18에
+        // 카탈로그에서 걷혔다(런타임에 `pres_*`가 없다).
+        PresentationCommandDefinition pause = catalog.Find("common_control.pause")!;
+        Assert.Equal("0.18", pause.DefaultArgumentValues()["seconds"]);
     }
 
     [Fact]
-    public void 기본_카탈로그는_메인_레인_전용_커맨드를_구분한다()
+    public void 메인_레인_전용_표시는_박스_셋만_남았다()
     {
-        // 계약서 E2 — 이 11개는 Pres/Set 노드에 출력하면 런타임이 unknown command로 깨진다.
-        Assert.Equal(
-            11,
-            PresentationCommandCatalog.Default.Definitions.Count(item => item.MainLaneOnly));
+        // 2026-08-18 — 옛 11개 중 `pres_*` 계열이 카탈로그에서 사라져 셋만 남았다.
+        //
+        // ⚠ 이 플래그는 지금 **아무도 읽지 않는다.** 이미터의 `IsMainLaneOnly` 검사가
+        // 유일한 소비자였는데, 레인이 하나뿐이라 가릴 대상을 잃어 함께 걷혔다.
+        // 데이터로는 남겨 둔다 — 레인이 다시 생기면 검사도 같이 돌아온다.
+        string[] mainLaneOnly = PresentationCommandCatalog.Default.Definitions
+            .Where(item => item.MainLaneOnly)
+            .Select(item => item.OutputCommandName)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "box_named", "box_protagonist", "box_reset" }, mainLaneOnly);
     }
 
     [Fact]
