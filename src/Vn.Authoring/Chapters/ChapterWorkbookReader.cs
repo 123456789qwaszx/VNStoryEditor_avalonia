@@ -31,11 +31,19 @@ public static class ChapterWorkbookReader
     // 구판 파일은 ChapterWorkbookMigrator가 이 모양으로 이행한다.
     // v8 (2026-08-16 소유자) — 표시·해금조건이 에피소드에서 간선으로 옮겨 왔다:
     // "보일지 말지는 이제 간선이 정한다".
+    // v11 (2026-08-18) — `엔딩키`가 간선으로 옮겨 가며 이 시트에서 빠졌다. 뒤 열이 한 칸
+    // 당겨진다: 메모가 8 → 7, 선택 열 `도달불가 허용`도 그만큼 앞으로 온다.
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"];
+        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"];
 
+    // v11 (2026-08-18) — 뒤에 셋을 붙였다. 읽는 순서로는 `종류`가 `선택지` 옆에 오는 편이
+    // 좋지만, 끼워 넣으면 뒤 열이 전부 밀려 이행에서 셀을 잃을 위험을 산다. 자리보다
+    // 안전을 골랐다.
     private static readonly string[] EdgeHeaders =
-        ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"];
+    [
+        "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문",
+        "종류", "엔딩키", "연출"
+    ];
 
     private static readonly string[] ConditionHeaders = ["라벨", "스탯", "연산자", "값", "설명"];
 
@@ -205,7 +213,7 @@ public static class ChapterWorkbookReader
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
             int allowColumn = 0;
 
-            for (int column = 9; column <= 12; column++)
+            for (int column = 8; column <= 12; column++)
             {
                 if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
                 {
@@ -224,8 +232,9 @@ public static class ChapterWorkbookReader
                 dialogueEntry,
                 x,
                 y,
-                Optional(sheet, row, 7),
-                Optional(sheet, row, 8),
+                // 엔딩키 — v11에서 간선으로 옮겼다. 모델 칸은 내보내기가 간선에서 채운다.
+                null,
+                Optional(sheet, row, 7),    // 메모 (v11에서 8 → 7)
                 row,
                 allowUnreachable));
         }
@@ -298,6 +307,19 @@ public static class ChapterWorkbookReader
             // `선택지` 시트는 고르기 편하라고 있는 사전일 뿐이라 대조하지 않는다.
             string? optionLabel = Optional(sheet, row, 4);
 
+            // 종류 (I열, v11) — 누가 고르나. 빈칸은 문구를 보고 정한다(구판 호환):
+            // 이행기가 채우지 못한 파일도 예전과 같이 읽혀야 한다.
+            EdgeKind kind = ReadEdgeKind(
+                sheet, row, optionLabel, path, diagnostics, out bool kindDeclared);
+
+            if (kindDeclared)
+            {
+                VerifyKindMatchesLabel(kind, optionLabel, path, sheet.Name, row, diagnostics);
+            }
+
+            // 엔딩키 (J열, v11) — 있으면 이 길이 챕터를 끝낸다.
+            string? endingKey = Optional(sheet, row, 10);
+
             edges.Add(new ChapterEdge(
                 from,
                 to,
@@ -307,6 +329,9 @@ public static class ChapterWorkbookReader
                 Optional(sheet, row, 8),
                 row)
             {
+                Kind = kind,
+                EndingKey = endingKey,
+                PresentationNodeName = Optional(sheet, row, 11),
                 StatChanges = deltas.Deltas,
                 VisibleConditionLabel = visibleLabel
             });
@@ -341,7 +366,126 @@ public static class ChapterWorkbookReader
                 "갑니다 — 플레이어에게는 같은 버튼 둘로 보입니다."));
         }
 
+        VerifyEndingKeysAgree(edges, path, sheet.Name, diagnostics);
+
         return edges;
+    }
+
+    /// <summary>
+    /// `종류` 칸을 읽는다 (v11). 빈칸은 <b>문구를 보고</b> 정한다 — 이행기가 채우지 못한
+    /// 파일도 예전과 같이 읽혀야 한다. 모르는 낱말은 조용히 고치지 않고 짚는다.
+    /// </summary>
+    private static EdgeKind ReadEdgeKind(
+        IXLWorksheet sheet,
+        int row,
+        string? optionLabel,
+        string path,
+        List<ChapterDiagnostic> diagnostics,
+        out bool declared)
+    {
+        string raw = Text(sheet, row, 9).Trim();
+        declared = raw.Length > 0;
+
+        if (!declared)
+        {
+            return string.IsNullOrWhiteSpace(optionLabel) ? EdgeKind.Auto : EdgeKind.Choice;
+        }
+
+        if (string.Equals(raw, "선택지", StringComparison.Ordinal))
+        {
+            return EdgeKind.Choice;
+        }
+
+        if (string.Equals(raw, "자동", StringComparison.Ordinal))
+        {
+            return EdgeKind.Auto;
+        }
+
+        diagnostics.Add(Cell(
+            ChapterDiagnosticSeverity.Error,
+            ChapterDiagnosticCode.EdgeKindUnknown,
+            path, sheet.Name, row, 9,
+            $"'{raw}'는 모르는 종류입니다 — `선택지` 또는 `자동`이어야 합니다."));
+
+        declared = false;
+        return string.IsNullOrWhiteSpace(optionLabel) ? EdgeKind.Auto : EdgeKind.Choice;
+    }
+
+    /// <summary>
+    /// `종류`와 `선택지` 문구가 같은 말을 하는지 (v11 — `ked-progression` D5).
+    ///
+    /// 이 검사가 있기 전에는 <b>문구를 실수로 지운 것</b>이 <b>의도한 자동 진행</b>과
+    /// 구별되지 않았다. 종류를 명시로 받고 둘을 대조하면, 지운 실수가 오류로 선다.
+    /// </summary>
+    private static void VerifyKindMatchesLabel(
+        EdgeKind kind,
+        string? optionLabel,
+        string path,
+        string sheetName,
+        int row,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        bool hasLabel = !string.IsNullOrWhiteSpace(optionLabel);
+
+        if (kind == EdgeKind.Choice && !hasLabel)
+        {
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.EdgeKindMismatch,
+                path, sheetName, row, 4,
+                "종류가 `선택지`인데 문구가 비었습니다 — 문구를 적거나 종류를 `자동`으로 바꿔 주세요."));
+            return;
+        }
+
+        if (kind == EdgeKind.Auto && hasLabel)
+        {
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.EdgeKindMismatch,
+                path, sheetName, row, 9,
+                $"종류가 `자동`인데 문구('{optionLabel}')가 있습니다 — " +
+                "문구를 지우거나 종류를 `선택지`로 바꿔 주세요."));
+        }
+    }
+
+    /// <summary>
+    /// ⚠ <b>같은 도착으로 들어오는 간선들의 엔딩키는 같아야 한다</b> (v11).
+    ///
+    /// 저작에서 엔딩키는 간선의 것이지만 계약에서는 <b>도착 에피소드 하나에 하나</b>다.
+    /// 서로 다른 키가 들어오면 내보내기가 조용히 하나를 고르게 되고, 그 순간 나머지가
+    /// 사라진다 — 그리고 <b>JSON에 도착한 시점에는 이미 키가 하나라 수입기가 못 잡는다.</b>
+    ///
+    /// 그래서 이것은 <b>검증 소유 경계의 예외</b>다: 그래프 무결성은 수입 쪽이 정본이지만
+    /// 이 하나는 저작 쪽만 볼 수 있다(`ked-progression`과 합의, 2026-08-18).
+    /// </summary>
+    private static void VerifyEndingKeysAgree(
+        IReadOnlyList<ChapterEdge> edges,
+        string path,
+        string sheetName,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        foreach (IGrouping<string, ChapterEdge> arriving in edges
+                     .Where(edge => edge.IsEnding)
+                     .GroupBy(edge => edge.ToEpisodeId, StringComparer.Ordinal))
+        {
+            string[] keys = arriving
+                .Select(edge => edge.EndingKey!.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (keys.Length <= 1)
+            {
+                continue;
+            }
+
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.EndingKeyConflict,
+                path, sheetName, arriving.Last().SourceRow, 10,
+                $"'{arriving.Key}'로 들어오는 간선들이 서로 다른 엔딩키를 갖습니다" +
+                $"({string.Join(" · ", keys)}) — 엔딩은 도착 에피소드 하나에 하나입니다. " +
+                "엔딩을 나누려면 도착 에피소드를 따로 만들어 주세요."));
+        }
     }
 
     // ── 조건 ────────────────────────────────────────────────────────────────

@@ -67,6 +67,22 @@ public static class ChapterProgressionExporter
     }
 
     /// <summary>
+    /// 이 에피소드로 들어오는 <b>엔딩 간선</b>의 키 (v11). 없으면 빈 문자열이다.
+    ///
+    /// 리더가 "같은 도착의 엔딩키는 하나뿐"을 이미 강제하므로 첫 번째가 곧 유일한 값이다.
+    /// 그 검사가 없으면 여기서 조용히 하나를 고르게 되고, JSON에 도착한 뒤에는 나머지가
+    /// 사라졌다는 것을 아무도 모른다 — 그래서 그 검사는 <b>저작 쪽만 할 수 있는</b>
+    /// 것이었다(`ked-progression`과 합의, 2026-08-18).
+    /// </summary>
+    private static string EndingKeyOf(ChapterGraphModel chapter, ChapterEpisode episode) =>
+        chapter.Edges
+            .FirstOrDefault(edge =>
+                edge.IsEnding &&
+                string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
+            ?.EndingKey?.Trim()
+        ?? string.Empty;
+
+    /// <summary>
     /// 스탯 정의 한 벌 → 런타임 <c>StatDefinition</c> (2026-08-18).
     ///
     /// <b>이 칸이 비어 있던 것이 Gate D를 막고 있었다.</b> 초기값·최소·최대가 어느 런타임
@@ -124,8 +140,15 @@ public static class ChapterProgressionExporter
                     .ToList()
             })
             .ToList(),
-        IsChapterEndingCandidate = episode.IsEnding,
-        EndingKey = episode.EndingKey ?? string.Empty,
+        // v11 (2026-08-18) — 엔딩키는 저작에서 **간선**의 것이고 계약에서는 **도착
+        // 에피소드**의 것이다. 여기가 그 번역이 일어나는 자리다.
+        //
+        // 기획자는 간선 한 행에서 "이 길을 타면 이 엔딩"을 보고, 진행 패키지는 D2("엔딩은
+        // 한 곳이 정한다")를 그대로 지킨다. 이 에피소드로 들어오는 엔딩 간선들의 키가
+        // 서로 다르면 리더가 이미 오류로 막았으므로(EndingKeyConflict), 여기서는 첫 번째를
+        // 그대로 쓴다 — 조용히 고르는 것이 아니라 하나뿐임이 보장된 것이다.
+        IsChapterEndingCandidate = EndingKeyOf(chapter, episode).Length > 0,
+        EndingKey = EndingKeyOf(chapter, episode),
         DesignerNote = episode.Memo ?? string.Empty,
         Position = new PositionJson { X = episode.X, Y = episode.Y }
     };

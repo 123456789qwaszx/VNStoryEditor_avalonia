@@ -615,9 +615,17 @@ public static class ChapterWorkbookWriter
         // 픽스처 시트는 만들지 않는다 (2026-08-16 소유자 — 당장 안 쓰니 임시 제거.
         // 리더는 있으면 여전히 읽는다 — 되살릴 때 시트만 다시 만들면 된다).
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"]);
+            // v11 — `엔딩키`가 간선으로 옮겨 갔다. 엔딩이라는 한 개념이 (노드의 키) +
+            // (간선의 연출)로 갈리지 않게, 간선 한 행에 모은다.
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"]);
+            [
+                "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
+                "잠금시 숨김", "잠금 안내문",
+                // v11 (2026-08-18) — 뒤에 붙인다. 끼워 넣으면 뒤 열이 밀려 이행에서
+                // 셀을 잃을 위험을 산다.
+                "종류", "엔딩키", "연출"
+            ]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
@@ -704,6 +712,10 @@ public static class ChapterWorkbookWriter
         AddConditionDropdown(edgeSheet, 5);
         AddConditionDropdown(edgeSheet, 6);
         AddYesNoDropdown(edgeSheet, 7);          // 잠금시 숨김
+
+        // v11 — 종류(I): 누가 고르나. `선택지` 문구와 어긋나면 리더가 오류로 짚는다.
+        edgeSheet.Range(2, 9, DropdownRows, 9).CreateDataValidation()
+            .List("\"선택지,자동\"", inCellDropdown: true);
 
         if (choiceSheet is not null)
         {

@@ -85,8 +85,15 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     {
         ChapterGraphModel model = ChapterWorkbookReader.Read(SamplePath);
 
-        Assert.True(model.FindEpisode("main05.end")!.IsEnding);
-        Assert.Equal("ch05_normal", model.FindEpisode("main05.end")!.EndingKey);
+        // v11 (2026-08-18) — 엔딩키의 주인이 에피소드에서 **간선**으로 옮겨 갔다.
+        // 연출이 간선에 붙게 되면서, 키가 노드에 남으면 엔딩이라는 한 개념이
+        // (노드의 키) + (간선의 연출)로 갈린다.
+        ChapterEdge ending = Assert.Single(model.Edges, edge => edge.IsEnding);
+        Assert.Equal("main05.end", ending.ToEpisodeId);
+        Assert.Equal("ch05_normal", ending.EndingKey);
+
+        // 에피소드는 더 이상 키를 들지 않는다.
+        Assert.Null(model.FindEpisode("main05.end")!.EndingKey);
 
         // v8 — 관문은 그 에피소드로 들어오는 길이 갖는다.
         ChapterEdge gated = model.Edges.Single(edge => edge.ToEpisodeId == "branch05.02A");
@@ -356,14 +363,17 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     /// <summary>오류가 하나도 없는 최소 챕터(2026-08-16 규격). 각 테스트는 여기서 한 칸만 망가뜨린다.</summary>
     private static (string Name, string?[][] Rows)[] Baseline() =>
     [
+        // v11 (2026-08-18) — 에피소드에서 `엔딩키`가 빠지고(메모가 7열로 당겨졌다),
+        // 간선에 `종류`·`엔딩키`·`연출` 셋이 뒤에 붙었다.
         ("에피소드", [
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모"],
-            ["ep1", "첫 화", "Main", "Story_ep1", "0", "0", null, null, null, null],
-            ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null, null]
+            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"],
+            ["ep1", "첫 화", "Main", "Story_ep1", "0", "0", null, null, null],
+            ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null]
         ]),
         ("간선", [
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"],
-            ["ep1", "ep2", null, null, null, null, "FALSE", null]
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문",
+             "종류", "엔딩키", "연출"],
+            ["ep1", "ep2", null, null, null, null, "FALSE", null, "자동", null, null]
         ]),
         ("조건", [
             ["라벨", "스탯", "연산자", "값", "설명"],

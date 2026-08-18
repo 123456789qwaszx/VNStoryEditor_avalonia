@@ -43,6 +43,25 @@ public sealed record ChapterEpisode(
 /// <b>해금조건</b> — 이 선택지를 고를 수 있으려면 (v8에서 열 이름이 `조건`→`해금조건`).
 /// 미달이면 잠긴 채 보이고, <see cref="HideWhenLocked"/>가 켜져 있으면 숨는다.
 /// </param>
+/// <summary>
+/// 간선의 `종류` (v11, 2026-08-18) — <b>누가 고르나.</b>
+///
+/// 이것은 <b>도착이 어디냐</b>(에피소드 / 엔딩)와 <b>다른 축</b>이다. 넷이 전부 실재한다:
+/// 선택지→에피소드("믿는다" → 다음 화) · 자동→에피소드(말없이 페이드) ·
+/// 선택지→엔딩("이대로 떠난다" → 챕터 끝) · 자동→엔딩(마지막 화가 끝나면 자동으로).
+/// 하나의 enum으로 뭉치면 아래 둘 중 하나가 표현 불가가 된다.
+///
+/// ⚠ `에피소드` 시트의 `종류`(Main/Attachment)와는 다른 것이다.
+/// </summary>
+public enum EdgeKind
+{
+    /// <summary>플레이어가 고른다. `선택지` 문구가 있어야 한다.</summary>
+    Choice,
+
+    /// <summary>자동으로 탄다 — 버튼이 없다. `선택지` 문구가 비어 있어야 한다.</summary>
+    Auto
+}
+
 public sealed record ChapterEdge(
     string FromEpisodeId,
     string ToEpisodeId,
@@ -69,6 +88,44 @@ public sealed record ChapterEdge(
 
     /// <summary>문구가 비면 참 — 보이지 않는 기본(버튼 없이 자동 진행)이다.</summary>
     public bool IsPlainAdvance => string.IsNullOrWhiteSpace(OptionLabel);
+
+    /// <summary>
+    /// `종류` 열 (v11) — <b>누가 고르나.</b> 빈칸은 <see cref="EdgeKind.Choice"/>와 같다.
+    ///
+    /// 지금까지는 <see cref="IsPlainAdvance"/>(문구가 비었나)가 이 일을 대신했는데,
+    /// 그러면 <b>문구를 실수로 지운 것</b>과 <b>의도한 자동 진행</b>이 데이터로 구별되지
+    /// 않는다(`ked-progression` D5). 이 열이 그것을 명시로 만든다 — 둘이 어긋나면 오류다.
+    /// </summary>
+    public EdgeKind Kind { get; init; } = EdgeKind.Choice;
+
+    /// <summary>
+    /// `엔딩키` 열 (v11) — 있으면 <b>이 길이 챕터를 끝낸다.</b> 유니티가 이 키를 보고
+    /// 엔딩 처리를 하고, 뒤따르는 연출은 시각 효과일 뿐이다.
+    ///
+    /// <b>저작에서는 간선의 것이고 계약에서는 도착 에피소드의 것이다</b>(2026-08-18 합의).
+    /// 기획자는 한 행에서 "이 길을 타면 이 엔딩"을 보고, 내보내기가 그것을 도착
+    /// 에피소드의 <c>EndingKey</c>로 옮겨 싣는다 — 진행 패키지의 D2("엔딩은 한 곳이
+    /// 정한다")를 깨지 않기 위해서다. 그 번역이 정보를 잃지 않도록, <b>같은 도착으로
+    /// 들어오는 간선들의 엔딩키가 다르면 내보내기가 거부한다</b>(검증 소유 경계의 예외 —
+    /// JSON에 도착하면 키가 이미 하나라 수입기가 못 잡는다).
+    /// </summary>
+    public string? EndingKey { get; init; }
+
+    /// <summary>있으면 이 길을 타는 순간 챕터 런이 끝난다.</summary>
+    public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
+
+    /// <summary>
+    /// `연출` 열 (v11) — 이 길을 탈 때 재생할 <b>대사 없는 연출</b> 노드의 이름.
+    /// 비면 없다. 트랜지션 연출(에피소드 사이)과 엔딩 연출이 <b>같은 칸</b>을 쓴다 —
+    /// 둘은 "길을 탈 때 연출 하나를 재생한다"는 같은 기능이다.
+    ///
+    /// 여기 적히는 것은 <b>연출 그래프의 노드 이름</b>이고, 내보내기가 그것을 계약의
+    /// <c>Option.ViaNodeId</c>(Yarn 노드 이름)로 옮긴다.
+    ///
+    /// 이름을 <b>이 행에</b> 적는 이유: 간선의 신원이 (출발, 도착, 문구)라, 배선을 프로젝트
+    /// 파일에만 두면 기획자가 문구를 고치는 순간 조용히 끊어진다.
+    /// </summary>
+    public string? PresentationNodeName { get; init; }
 
     /// <summary>
     /// `스탯변화` 열 (2026-08-14) — 이 간선을 타는 순간 1회 커밋되는 증감. 스탯이 변하는

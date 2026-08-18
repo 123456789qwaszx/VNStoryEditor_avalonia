@@ -60,6 +60,7 @@ public static class ChapterWorkbookMigrator
             MigrateEdgeLabelsToChoiceSheet(workbook);   // v6·v7 — 선택지 문구 → 선택지 시트
             MigrateGatesToEdges(workbook);              // v8 — 표시·해금조건 → 간선
             MigrateChoiceSheetToDictionary(workbook);   // v9 — 칸 → 전역 문구 사전
+            MigrateEndingKeysToEdges(workbook);         // v11 — 엔딩키가 에피소드 → 간선
             MigrateConditions(workbook);
             MigrateStats(workbook);
             RemoveEmptyFixtures(workbook);
@@ -95,7 +96,11 @@ public static class ChapterWorkbookMigrator
                Header(workbook, ChapterSheetNames.Conditions, 2) == "조건식" ||
                (Find(workbook, ChapterSheetNames.Stats) is not null &&
                 Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
-               (fixtures is not null && fixtures.RowsUsed().Count() <= 1);
+               (fixtures is not null && fixtures.RowsUsed().Count() <= 1) ||
+               // v11 — 간선의 종류·엔딩키·연출. 에피소드에 엔딩키가 남아 있어도 이행 대상이다.
+               (Find(workbook, ChapterSheetNames.Edges) is not null &&
+                Header(workbook, ChapterSheetNames.Edges, 9) != "종류") ||
+               Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키";
     }
 
     /// <summary>
@@ -257,6 +262,90 @@ public static class ChapterWorkbookMigrator
 
         // 인덱스는 안 쓰인다(소유자) — 열째로 지운다. `도달불가 허용`(옛 L)이 K로 따라온다.
         sheet.Column(3).Delete();
+    }
+
+    /// <summary>
+    /// v11 (2026-08-18) — 엔딩키의 주인이 <b>에피소드에서 간선으로</b> 옮겨 간다.
+    ///
+    /// 연출이 간선에 붙게 되면서, 엔딩키가 노드에 남으면 <b>엔딩이라는 한 개념이
+    /// (노드의 키) + (간선의 연출)로 갈린다.</b> 간선에 모으면 기획자가 한 행에서 다 본다.
+    ///
+    /// 옮기는 방향: 에피소드의 엔딩키 → 그 에피소드로 <b>들어오는</b> 모든 간선.
+    /// "이 길을 타면 저 엔딩"이 되므로 들어오는 쪽이 맞다.
+    ///
+    /// ⚠ <b>들어오는 간선이 없는 엔딩 에피소드는 키를 잃는다.</b> 그런 에피소드는 이미
+    /// 도달 불가라 검증기가 따로 짚고 있어 여기서 막지 않는다(v8에서 부착 에피소드의
+    /// 관문이 갈 곳을 잃었을 때와 같은 처리다). `.bak`에 원본이 남는다.
+    /// </summary>
+    private static void MigrateEndingKeysToEdges(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Episodes) is not { } episodes ||
+            Find(workbook, ChapterSheetNames.Edges) is not { } edges)
+        {
+            return;
+        }
+
+        EnsureEdgeColumnsV11(edges);
+
+        // 에피소드 시트에 엔딩키 열이 남아 있을 때만 옮긴다 — 두 번 돌아도 안전하다.
+        if (!string.Equals(episodes.Cell(1, 7).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var keyByEpisode = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (IXLRow row in episodes.RowsUsed().Skip(1))
+        {
+            string id = row.Cell(1).GetString().Trim();
+            string key = row.Cell(7).GetString().Trim();
+
+            if (id.Length > 0 && key.Length > 0)
+            {
+                keyByEpisode[id] = key;
+            }
+        }
+
+        foreach (IXLRow row in edges.RowsUsed().Skip(1))
+        {
+            string to = row.Cell(2).GetString().Trim();
+
+            if (to.Length > 0 &&
+                keyByEpisode.TryGetValue(to, out string? key) &&
+                row.Cell(10).GetString().Trim().Length == 0)
+            {
+                row.Cell(10).SetValue(key);
+            }
+        }
+
+        episodes.Column(7).Delete();
+    }
+
+    /// <summary>
+    /// v11의 세 열(`종류`·`엔딩키`·`연출`)을 뒤에 붙인다. 이미 있으면 손대지 않는다.
+    /// `종류`는 <b>문구를 보고</b> 채운다 — 구판에서는 문구가 곧 그 뜻이었다.
+    /// </summary>
+    private static void EnsureEdgeColumnsV11(IXLWorksheet edges)
+    {
+        if (string.Equals(edges.Cell(1, 9).GetString().Trim(), "종류", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        edges.Cell(1, 9).SetValue("종류");
+        edges.Cell(1, 10).SetValue("엔딩키");
+        edges.Cell(1, 11).SetValue("연출");
+
+        foreach (IXLRow row in edges.RowsUsed().Skip(1))
+        {
+            if (row.Cell(1).GetString().Trim().Length == 0)
+            {
+                continue;
+            }
+
+            row.Cell(9).SetValue(
+                row.Cell(4).GetString().Trim().Length == 0 ? "자동" : "선택지");
+        }
     }
 
     private static void MigrateEdges(XLWorkbook workbook)
