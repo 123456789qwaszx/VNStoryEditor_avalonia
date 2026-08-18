@@ -1563,7 +1563,8 @@ public partial class ChapterGraphView : UserControl
             header.Children.Add(lockMark);
         }
 
-        if (episode.IsEnding)
+        // v11 — 엔딩은 간선의 것이다. "이 에피소드로 들어오는 엔딩 간선이 있는가"를 묻는다.
+        if (model.IsEndingEpisode(episode.EpisodeId))
         {
             header.Children.Add(new TextBlock { Text = "★", FontSize = 11, Foreground = Brushes.Goldenrod });
         }
@@ -1628,7 +1629,7 @@ public partial class ChapterGraphView : UserControl
             BorderThickness = new Thickness(hasError ? 2 : 1),
             BorderBrush = hasError
                 ? Brushes.IndianRed
-                : episode.IsEnding
+                : model.IsEndingEpisode(episode.EpisodeId)
                     ? new SolidColorBrush(Color.Parse("#C09A3E"))
                     : new SolidColorBrush(Color.Parse("#7F8A96")),
             Background = new SolidColorBrush(Color.Parse("#FAFBFCFD")),
@@ -3058,9 +3059,9 @@ public partial class ChapterGraphView : UserControl
             lines.Add(gate);
         }
 
-        if (episode.IsEnding)
+        if (model.EndingKeyOf(episode.EpisodeId) is { } endingKey)
         {
-            lines.Add($"엔딩키: {episode.EndingKey}");
+            lines.Add($"엔딩키: {endingKey} (간선이 소유 — v11)");
         }
 
         if (!string.IsNullOrWhiteSpace(episode.Memo))

@@ -305,6 +305,27 @@ public sealed class ChapterGraphModel
     /// </summary>
     public ChapterEpisode? StartEpisode => Episodes.Count > 0 ? Episodes[0] : null;
 
+    /// <summary>
+    /// 이 에피소드로 <b>들어오는 엔딩 간선</b>의 키. 엔딩이 아니면 null (v11).
+    ///
+    /// 엔딩키의 주인은 간선이지만, "이 에피소드가 엔딩인가"를 묻는 자리가 여럿이다
+    /// (판의 ★ 배지 · 카드 스타일 · 상세 · 내보내기). <b>같은 규칙을 네 곳에 쓰면 한 곳만
+    /// 고쳐지는 날이 온다</b> — 그래서 여기 한 번만 둔다.
+    ///
+    /// 같은 도착으로 들어오는 엔딩키가 여럿이면 리더가 이미 오류로 막았으므로
+    /// (<see cref="ChapterDiagnosticCode.EndingKeyConflict"/>), 첫 번째가 곧 유일한 값이다.
+    /// </summary>
+    public string? EndingKeyOf(string episodeId) =>
+        Edges
+            .FirstOrDefault(edge =>
+                edge.IsEnding &&
+                string.Equals(edge.ToEpisodeId, episodeId, StringComparison.Ordinal))
+            ?.EndingKey?.Trim();
+
+    /// <summary>그 에피소드로 들어오는 엔딩 간선이 있는가 (v11).</summary>
+    public bool IsEndingEpisode(string episodeId) =>
+        !string.IsNullOrEmpty(EndingKeyOf(episodeId));
+
     public ChapterEpisode? FindEpisode(string episodeId) =>
         Episodes.FirstOrDefault(item => string.Equals(item.EpisodeId, episodeId, StringComparison.Ordinal));
 

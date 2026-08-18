@@ -69,18 +69,16 @@ public static class ChapterProgressionExporter
     /// <summary>
     /// 이 에피소드로 들어오는 <b>엔딩 간선</b>의 키 (v11). 없으면 빈 문자열이다.
     ///
-    /// 리더가 "같은 도착의 엔딩키는 하나뿐"을 이미 강제하므로 첫 번째가 곧 유일한 값이다.
-    /// 그 검사가 없으면 여기서 조용히 하나를 고르게 되고, JSON에 도착한 뒤에는 나머지가
-    /// 사라졌다는 것을 아무도 모른다 — 그래서 그 검사는 <b>저작 쪽만 할 수 있는</b>
-    /// 것이었다(`ked-progression`과 합의, 2026-08-18).
+    /// 규칙 자체는 <see cref="ChapterGraphModel.EndingKeyOf"/> 하나뿐이다 — 판의 ★ 배지도
+    /// 같은 것을 본다. 여기서 따로 세면 한 곳만 고쳐지는 날이 온다.
+    ///
+    /// 리더가 "같은 도착의 엔딩키는 하나뿐"을 이미 강제하므로 그 값은 유일하다. 그 검사가
+    /// 없으면 조용히 하나가 골라지고, JSON에 도착한 뒤에는 나머지가 사라졌다는 것을 아무도
+    /// 모른다 — 그래서 그 검사는 <b>저작 쪽만 할 수 있는</b> 것이었다
+    /// (`ked-progression`과 합의, 2026-08-18).
     /// </summary>
     private static string EndingKeyOf(ChapterGraphModel chapter, ChapterEpisode episode) =>
-        chapter.Edges
-            .FirstOrDefault(edge =>
-                edge.IsEnding &&
-                string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
-            ?.EndingKey?.Trim()
-        ?? string.Empty;
+        chapter.EndingKeyOf(episode.EpisodeId) ?? string.Empty;
 
     /// <summary>
     /// 스탯 정의 한 벌 → 런타임 <c>StatDefinition</c> (2026-08-18).

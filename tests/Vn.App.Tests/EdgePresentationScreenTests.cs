@@ -107,6 +107,31 @@ public sealed class EdgePresentationScreenTests : IDisposable
         window.Close();
     });
 
+    [Fact]
+    public void 엔딩_간선이_닿는_에피소드에_별표가_선다() => HeadlessUi.Run(() =>
+    {
+        // v11 회귀 방지 — 엔딩키가 에피소드에서 간선으로 옮겨간 뒤에도 `★`가 계속 서야 한다.
+        // 카드는 `episode.IsEnding`을 보고 있었고, 그 값은 v11 이후 언제나 거짓이었다.
+        (ChapterGraphView view, Window window) = Show();
+
+        Assert.Equal(["끝"], StarredEpisodes(view));
+
+        window.Close();
+    });
+
+    /// <summary>판에서 `★`(엔딩)를 달고 있는 에피소드 Id들.</summary>
+    private static string[] StarredEpisodes(ChapterGraphView view) =>
+        view.FindControl<Canvas>("GraphCanvas")!.Children
+            .OfType<Border>()
+            .Where(card => card.Tag is string && card.Child is StackPanel)
+            .Where(card => ((StackPanel)card.Child!).Children
+                .OfType<StackPanel>()
+                .SelectMany(row => row.Children.OfType<TextBlock>())
+                .Any(mark => mark.Text == "★"))
+            .Select(card => (string)card.Tag!)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+
     private (ChapterGraphView View, Window Window) Show()
     {
         var session = new AuthoringSession();
