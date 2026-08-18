@@ -66,6 +66,10 @@ public static class ChapterWorkbookMigrator
             RemoveEmptyFixtures(workbook);
             ReapplyDropdowns(workbook);
 
+            // 겉모습도 규격이다 (2026-08-18) — 고정·필터·열 너비. 만들 때와 <b>같은
+            // 함수</b>를 부른다: 두 곳에 적으면 한쪽만 고쳐지는 날이 온다.
+            ChapterWorkbookWriter.ApplyChapterChrome(workbook);
+
             workbook.SaveAs(path);
             return new MigrationResult(true, null);
         }
@@ -100,8 +104,22 @@ public static class ChapterWorkbookMigrator
                // v11 — 간선의 종류·엔딩키·연출. 에피소드에 엔딩키가 남아 있어도 이행 대상이다.
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
                 Header(workbook, ChapterSheetNames.Edges, 9) != "종류") ||
-               Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키";
+               Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키" ||
+               // 겉모습이 안 입혀진 파일 (2026-08-18). 자동 필터 하나로 대표해 본다 —
+               // 셋(고정·필터·너비)이 언제나 함께 들어가므로 하나가 없으면 셋 다 없다.
+               NeedsChrome(workbook);
     }
+
+    /// <summary>
+    /// 겉모습(고정·필터·너비)이 아직 없는 파일인가.
+    ///
+    /// <b>이행을 부르는 조건이 곧 이행이 멱등이라는 약속</b>이라, 여기서 보는 것과
+    /// <see cref="ChapterWorkbookWriter.ApplyChapterChrome"/>이 거는 것이 같아야 한다 —
+    /// 다르면 열 때마다 파일을 다시 쓰고 `.bak`이 매번 갈린다.
+    /// </summary>
+    private static bool NeedsChrome(XLWorkbook workbook) =>
+        Find(workbook, ChapterSheetNames.Episodes) is { } episodes &&
+        !episodes.AutoFilter.IsEnabled;
 
     /// <summary>
     /// v7 (2026-08-16 소유자) — 선택지의 정본은 챕터 `선택지` 시트(출발·인덱스·대본·메모)이고

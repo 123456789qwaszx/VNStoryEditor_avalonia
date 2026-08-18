@@ -70,7 +70,7 @@
     },
     {
       "EpisodeId": "믿는길",
-      "Title": "함께 간다",
+      "Title": "라루를 믿는다",
       "IndexText": "",
       "Kind": "Main",
       "DialogueEntryId": "믿는길",
@@ -78,7 +78,7 @@
       "UnlockConditions": [],
       "NextOptions": [
         {
-          "TargetEpisodeId": "끝",
+          "TargetEpisodeId": "좋은끝",
           "ChoiceLabel": "",
           "VisibleConditions": [],
           "Conditions": [],
@@ -106,7 +106,7 @@
       "UnlockConditions": [],
       "NextOptions": [
         {
-          "TargetEpisodeId": "끝",
+          "TargetEpisodeId": "쓸쓸한끝",
           "ChoiceLabel": "",
           "VisibleConditions": [],
           "Conditions": [],
@@ -125,21 +125,39 @@
       }
     },
     {
-      "EpisodeId": "끝",
-      "Title": "문 앞",
+      "EpisodeId": "좋은끝",
+      "Title": "함께 문을 연다",
       "IndexText": "",
       "Kind": "Main",
-      "DialogueEntryId": "끝",
+      "DialogueEntryId": "좋은끝",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
       "Attachments": [],
-      "IsChapterEndingCandidate": false,
-      "EndingKey": "",
+      "IsChapterEndingCandidate": true,
+      "EndingKey": "ch01_true",
       "DesignerNote": "",
       "Position": {
         "X": 2,
         "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "쓸쓸한끝",
+      "Title": "혼자 문을 연다",
+      "IndexText": "",
+      "Kind": "Main",
+      "DialogueEntryId": "쓸쓸한끝",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [],
+      "Attachments": [],
+      "IsChapterEndingCandidate": true,
+      "EndingKey": "ch01_alone",
+      "DesignerNote": "",
+      "Position": {
+        "X": 2,
+        "Y": 1
       }
     }
   ],

@@ -660,6 +660,7 @@ public static class ChapterWorkbookWriter
         AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
 
         ApplyChapterDropdowns(episodeSheet, edgeSheet, conditionSheet, statSheet, choiceSheet);
+        ApplyChapterChrome(workbook);
 
         int statRow = 2;
 
@@ -792,6 +793,65 @@ public static class ChapterWorkbookWriter
         }
 
         return sheet;
+    }
+
+    // ── 시트 겉모습 ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 챕터 워크북의 <b>겉모습</b> — 머리글 고정 · 자동 필터 · 열 너비 (2026-08-18 소유자 보고).
+    ///
+    /// 소유자가 견본(ch05)과 새로 만든 챕터를 나란히 열고 말했다: 견본은 "보기 좋은데"
+    /// 새로 만든 것은 "밋밋한" 것이었다. 재 보니 새 워크북에는 <b>고정도 필터도 열 너비도
+    /// 없었다</b> — 견본은 손으로 꾸민 파일이었고, 그 손질이 코드에 들어온 적이 없다.
+    /// 기획자가 매일 여는 것은 견본이 아니라 자기가 만든 챕터다.
+    ///
+    /// <b>만들 때와 이행할 때가 같은 함수를 부른다.</b> 겉모습을 두 곳에 적으면 한쪽만
+    /// 고쳐지는 날이 오고, 그날 다시 "어떤 건 예쁘고 어떤 건 밋밋하다"가 된다.
+    ///
+    /// 열 너비는 견본의 값 그대로다 — 소유자가 좋다고 한 것이 그 파일이므로, 새로 고르는
+    /// 것보다 <b>이미 합격한 값을 옮기는</b> 편이 맞다. v11에서 는 세 열만 새로 정한다.
+    /// </summary>
+    internal static void ApplyChapterChrome(XLWorkbook workbook)
+    {
+        Chrome(workbook, ChapterSheetNames.Episodes, [14, 22, 12, 20, 7, 7, 20]);
+        Chrome(workbook, ChapterSheetNames.Edges, [14, 14, 14, 26, 26, 14, 12, 26, 10, 16, 22]);
+        Chrome(workbook, ChapterSheetNames.Conditions, [18, 26, 26, 26, 44]);
+        Chrome(workbook, ChapterSheetNames.Stats, [14, 14, 10, 8, 8, 10]);
+        Chrome(workbook, ChapterSheetNames.Choices, [8, 52, 24]);
+        Chrome(workbook, ChapterSheetNames.Speakers, [16, 16, 24]);
+        Chrome(workbook, ChapterSheetNames.Fixtures, [16, 8, 9, 9, 9, 40]);
+    }
+
+    /// <summary>
+    /// 시트 하나의 겉모습. 없는 시트는 조용히 넘긴다 — `픽스처`처럼 있을 수도 없을 수도
+    /// 있는 시트가 있고, 겉모습 때문에 이행이 실패하는 것은 값이 맞지 않는다.
+    /// </summary>
+    private static void Chrome(XLWorkbook workbook, string sheetName, int[] widths)
+    {
+        IXLWorksheet? sheet = workbook.Worksheets
+            .FirstOrDefault(candidate => candidate.Name == sheetName);
+
+        if (sheet is null)
+        {
+            return;
+        }
+
+        for (int column = 1; column <= widths.Length; column++)
+        {
+            sheet.Column(column).Width = widths[column - 1];
+        }
+
+        // 머리글 고정 — 아래로 내려가도 어느 칸인지 보인다. 열이 열한 개까지 늘어난
+        // `간선` 시트에서는 이게 없으면 무슨 칸에 적는지 알 수 없다.
+        sheet.SheetView.FreezeRows(1);
+
+        // 자동 필터 — 기획자가 "엔딩 간선만" "이 에피소드에서 나가는 것만" 추려 보는 손잡이다.
+        // 이미 걸려 있으면 그대로 둔다(사람이 걸어 둔 조건을 지우지 않는다).
+        if (!sheet.AutoFilter.IsEnabled)
+        {
+            sheet.Range(1, 1, Math.Max(sheet.LastRowUsed()?.RowNumber() ?? 1, 1), widths.Length)
+                 .SetAutoFilter();
+        }
     }
 
     // ── 공통 ────────────────────────────────────────────────────────────────
