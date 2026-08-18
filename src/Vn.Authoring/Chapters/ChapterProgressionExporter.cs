@@ -54,6 +54,13 @@ public static class ChapterProgressionExporter
             return new ChapterExportResult(null, validation);
         }
 
+        if (BoolSetNotCarried(chapter) is { } notCarried)
+        {
+            return new ChapterExportResult(
+                null,
+                validation with { Diagnostics = [.. validation.Diagnostics, notCarried] });
+        }
+
         var payload = new ChapterJson
         {
             ChapterId = chapter.ChapterId,
@@ -64,6 +71,50 @@ public static class ChapterProgressionExporter
         };
 
         return new ChapterExportResult(JsonSerializer.Serialize(payload, Options), validation);
+    }
+
+    /// <summary>
+    /// 깃발 지정(`met_willow true`)이 있는데 계약이 아직 그것을 실을 수 없으면 그 사유
+    /// (2026-08-19). 실을 수 있게 되면 이 함수와 그 호출 한 줄만 지운다.
+    ///
+    /// <b>왜 조용히 빼고 내지 않는가</b> — `StatChangeDto`에는 `Key`·`Amount`뿐이라 지정을
+    /// 표현할 칸이 없다. 빼고 내면 JSON은 멀쩡해 보이는데 <b>게임 로직이 달라진다</b>:
+    /// 깃발이 영원히 안 켜지고, 그 깃발을 보던 관문이 영원히 잠기며, 저쪽 도달성 증명이
+    /// 이쪽과 다른 답을 낸다. 그리고 그 어긋남은 JSON에 도착한 뒤에는 <b>아무도 볼 수
+    /// 없다</b> — 엔딩키 충돌을 저작 쪽에서 막기로 한 것과 정확히 같은 이유다.
+    ///
+    /// 값 하나를 잃는 것보다 파일이 안 나가는 편이 싸다. 사유가 화면에 서므로 기획자는
+    /// 무엇이 막고 있는지 안다.
+    /// </summary>
+    private static ChapterDiagnostic? BoolSetNotCarried(ChapterGraphModel chapter)
+    {
+        ChapterEdge? edge = chapter.Edges
+            .FirstOrDefault(candidate => candidate.StatChanges.Any(delta => delta.IsSet));
+
+        if (edge is null)
+        {
+            return null;
+        }
+
+        string keys = string.Join(
+            ", ",
+            chapter.Edges
+                .SelectMany(candidate => candidate.StatChanges)
+                .Where(delta => delta.IsSet)
+                .Select(delta => delta.Key)
+                .Distinct(StringComparer.Ordinal));
+
+        return new ChapterDiagnostic(
+            ChapterDiagnosticSeverity.Error,
+            ChapterDiagnosticCode.StatValueNotInteger,
+            chapter.ChapterId,
+            ChapterSheetNames.Edges,
+            edge.SourceRow,
+            "C",
+            $"깃발을 켜는 간선이 있어 아직 내보낼 수 없습니다({keys}) — 진행 계약의 " +
+            "`StatChange`가 '정하기'를 실을 칸을 아직 갖고 있지 않습니다. " +
+            "빼고 내보내면 깃발이 영원히 안 켜진 채로 게임이 돌아갑니다. " +
+            "`docs/work-orders/bool-stat-orders.md` 참조.");
     }
 
     /// <summary>

@@ -61,19 +61,40 @@ internal sealed class StatChangeEditor : StackPanel
         // 없애면 안 된다(리더가 오류로 지목하는 쪽이 옳다).
         foreach (StatDelta delta in deltas)
         {
-            _rows.Add(new Row { Key = delta.Key, Seed = delta.Amount });
+            // 지정은 값이 곧 켬(1)·끔(0)이다 — 줄의 씨앗은 부호로 그것을 담는다.
+            _rows.Add(new Row
+            {
+                Key = delta.Key,
+                Seed = delta.IsSet ? (delta.Amount != 0 ? 1 : -1) : delta.Amount
+            });
         }
 
         Render();
     }
 
-    /// <summary>시트에 그대로 들어갈 글 — <c>trust +1; anger -1</c>.</summary>
+    /// <summary>시트에 그대로 들어갈 글 — <c>trust +1; met_willow true</c>.</summary>
     public string ToSheetText()
     {
         Harvest();
 
-        return string.Join("; ", _rows
-            .Select(row => $"{row.Key} {(row.Seed >= 0 ? "+" : "-")}{Math.Abs(row.Seed)}"));
+        return string.Join("; ", _rows.Select(Text));
+    }
+
+    /// <summary>
+    /// 줄 하나를 시트 표기로. bool은 <b>켬/끔이 곧 true/false</b>다 (2026-08-19).
+    ///
+    /// 여기가 오래 어긋나 있었다: 화면은 bool 줄에 켬·끔을 내놓는데 글로는 `+1`·`-1`을
+    /// 적었고, 리더는 그것을 "bool에 증감은 안 된다"며 오류로 잡았다 — <b>툴이 제 손으로
+    /// 만든 값을 제가 거부했다.</b>
+    /// </summary>
+    private string Text(Row row)
+    {
+        bool isBool = _stats.FirstOrDefault(stat => stat.Key == row.Key)?.Type
+            == ChapterStatType.Bool;
+
+        return isBool
+            ? $"{row.Key} {(row.Seed >= 0 ? "true" : "false")}"
+            : $"{row.Key} {(row.Seed >= 0 ? "+" : "-")}{Math.Abs(row.Seed)}";
     }
 
     /// <summary>컨트롤에 있는 값을 씨앗으로 거둔다 — 다시 그리기·내보내기 직전에 부른다.</summary>

@@ -75,7 +75,10 @@ public sealed class StatChangeEditorTests
 
         SignCombo(editor, 0).SelectedIndex = 1;
 
-        Assert.Equal("key -1", editor.ToSheetText());
+        // 2026-08-19 — 이 기대값은 `key -1`이었다. 화면은 켬·끔을 보여 주면서 글로는 증감을
+        // 적었고, 리더는 그 글을 "bool에 증감은 안 된다"며 오류로 잡았다. 툴이 제 손으로
+        // 만든 값을 제가 거부하고 있었고, 이 테스트가 그 상태를 붙들고 있었다.
+        Assert.Equal("key false", editor.ToSheetText());
     });
 
     [Fact]
@@ -87,7 +90,8 @@ public sealed class StatChangeEditorTests
 
         StatCombo(editor, 0).SelectedItem = "열쇠 (key)";
 
-        Assert.Equal("key +1", editor.ToSheetText());
+        // bool로 바뀌었으므로 글도 깃발 표기가 된다 (2026-08-19).
+        Assert.Equal("key true", editor.ToSheetText());
     });
 
     [Fact]

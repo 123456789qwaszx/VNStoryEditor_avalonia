@@ -942,13 +942,48 @@ public static class ChapterWorkbookReader
 
         foreach (ChapterEdge edge in edges)
         {
-            foreach (StatDelta delta in edge.StatChanges.Where(delta => boolKeys.Contains(delta.Key)))
+            foreach (StatDelta delta in edge.StatChanges)
+            {
+                bool isBool = boolKeys.Contains(delta.Key);
+
+                // bool에 증감은 여전히 안 된다 — 이제는 <b>대신 쓸 말이 있으므로</b> 그것을
+                // 알려 준다. 툴의 스탯변화 편집기도 bool 줄에서는 켬/끔을 내놓는다.
+                if (isBool && !delta.IsSet)
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Error,
+                        ChapterDiagnosticCode.StatValueNotInteger,
+                        path, ChapterSheetNames.Edges, edge.SourceRow, 3,
+                        $"'{delta.Key}'는 bool 스탯이라 증감을 쓸 수 없습니다 — " +
+                        $"켜고 끄려면 '{delta.Key} true' 또는 '{delta.Key} false'로 적어 주세요."));
+                }
+
+                // 지정은 bool에만 연다 (2026-08-19 소유자). 정수까지 열면 기획자가 줄마다
+                // "더할 것인가 정할 것인가"를 고르게 되고, 스탯이 <b>쌓이는 값</b>이라는
+                // 성질이 흐려진다. 넓히는 것은 나중에 더하기만 하면 되지만 좁히는 것은 깨진다.
+                if (!isBool && delta.IsSet)
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Error,
+                        ChapterDiagnosticCode.StatValueNotInteger,
+                        path, ChapterSheetNames.Edges, edge.SourceRow, 3,
+                        $"'{delta.Key}'는 정수 스탯이라 true/false로 정할 수 없습니다 — " +
+                        $"'{delta.Key} +1'처럼 증감으로 적어 주세요."));
+                }
+            }
+
+            // 한 간선이 같은 깃발을 두 번 건드리면 어느 쪽이 이기는지 아무도 모른다.
+            // 증감은 여러 번이 곧 합계라 뜻이 있지만, 지정은 그렇지 않다.
+            foreach (IGrouping<string, StatDelta> repeated in edge.StatChanges
+                         .Where(delta => delta.IsSet)
+                         .GroupBy(delta => delta.Key, StringComparer.Ordinal)
+                         .Where(group => group.Count() > 1))
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.StatValueNotInteger,
                     path, ChapterSheetNames.Edges, edge.SourceRow, 3,
-                    $"'{delta.Key}'는 bool 스탯이라 증감(스탯변화)을 쓸 수 없습니다."));
+                    $"이 간선이 '{repeated.Key}'를 두 번 정합니다 — 한 번만 적어 주세요."));
             }
         }
     }

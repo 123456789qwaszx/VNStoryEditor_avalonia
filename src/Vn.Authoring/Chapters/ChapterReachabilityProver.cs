@@ -190,7 +190,17 @@ public static class ChapterReachabilityProver
         return (reachable, true);
     }
 
-    /// <summary>간선 증감 커밋. `최소~최대`는 탐색 경계라 밖은 잘라낸다.</summary>
+    /// <summary>
+    /// 간선의 스탯 변화 커밋. `최소~최대`는 탐색 경계라 밖은 잘라낸다.
+    ///
+    /// <b>지정(Set)은 지금 값을 보지 않는다</b> (2026-08-19) — 깃발을 켜는 것이 "이전에
+    /// 켜져 있었는가"에 따라 달라지면 그건 켜는 게 아니다. 증감만 있던 시절에는 이 함수가
+    /// 언제나 단조로웠지만, 이제는 아니다.
+    ///
+    /// ⚠ 이 함수는 `ked-progression`의 <b>고정된 오라클</b>이다(파일 맨 위 참조). 지정을
+    /// 더한 것은 동작 변경이므로 저쪽에 알렸다 — 다만 코퍼스 일곱 케이스에는 지정이 하나도
+    /// 없어 <b>기존 답은 한 줄도 바뀌지 않는다.</b>
+    /// </summary>
     internal static int[] ApplyDeltas(
         ChapterGraphModel chapter, int[] stats, IReadOnlyList<StatDelta> deltas)
     {
@@ -207,8 +217,10 @@ public static class ChapterReachabilityProver
             {
                 if (string.Equals(chapter.Stats[index].Key, delta.Key, StringComparison.Ordinal))
                 {
+                    int raw = delta.IsSet ? delta.Amount : next[index] + delta.Amount;
+
                     next[index] = Math.Clamp(
-                        next[index] + delta.Amount,
+                        raw,
                         chapter.Stats[index].Minimum,
                         chapter.Stats[index].Maximum);
                     break;
