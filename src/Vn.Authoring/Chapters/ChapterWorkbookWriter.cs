@@ -798,35 +798,79 @@ public static class ChapterWorkbookWriter
     // ── 시트 겉모습 ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 챕터 워크북의 <b>겉모습</b> — 머리글 고정 · 자동 필터 · 열 너비 (2026-08-18 소유자 보고).
+    /// 챕터 워크북의 <b>겉모습</b> (2026-08-18 소유자 보고 — "새로 만든 건 밋밋하다").
     ///
-    /// 소유자가 견본(ch05)과 새로 만든 챕터를 나란히 열고 말했다: 견본은 "보기 좋은데"
-    /// 새로 만든 것은 "밋밋한" 것이었다. 재 보니 새 워크북에는 <b>고정도 필터도 열 너비도
-    /// 없었다</b> — 견본은 손으로 꾸민 파일이었고, 그 손질이 코드에 들어온 적이 없다.
-    /// 기획자가 매일 여는 것은 견본이 아니라 자기가 만든 챕터다.
+    /// 소유자가 견본(ch05)과 자기가 만든 챕터를 나란히 열고 말했다. 견본을 뜯어 보니
+    /// 손으로 만든 <b>서식 언어 하나</b>가 통째로 들어 있었고, 코드에는 그중 아무것도 없었다:
+    ///
+    /// <list type="bullet">
+    /// <item>본문 글꼴 <b>맑은 고딕 10</b> (기본 Calibri 11이 아니다)</item>
+    /// <item>머리글 = <b>굵은 흰 글자 + 시트마다 다른 진한 배경</b>. 탭을 잘못 눌렀다는 것을
+    ///       색 하나로 안다 — 시트 일곱 개가 다 비슷하게 생기면 그게 안 보인다</item>
+    /// <item>데이터 칸에 <b>얇은 회색 격자</b>(#BFBFBF)</item>
+    /// <item>Id를 <b>참조</b>하는 열은 회색 — "여긴 내가 짓는 이름이 아니라 저기 있는 것을
+    ///       가리키는 칸"</item>
+    /// <item>메모는 <b>기울인 옅은 회색 9pt</b> — 데이터가 아니라 곁말이다</item>
+    /// </list>
     ///
     /// <b>만들 때와 이행할 때가 같은 함수를 부른다.</b> 겉모습을 두 곳에 적으면 한쪽만
     /// 고쳐지는 날이 오고, 그날 다시 "어떤 건 예쁘고 어떤 건 밋밋하다"가 된다.
     ///
-    /// 열 너비는 견본의 값 그대로다 — 소유자가 좋다고 한 것이 그 파일이므로, 새로 고르는
-    /// 것보다 <b>이미 합격한 값을 옮기는</b> 편이 맞다. v11에서 는 세 열만 새로 정한다.
+    /// 값은 견본에서 그대로 떠 왔다 — 소유자가 좋다고 한 것이 그 파일이므로, 새로 고르는
+    /// 것보다 <b>이미 합격한 값을 옮기는</b> 편이 맞다. 견본에 없던 것만 새로 정했다:
+    /// v11의 세 열(`종류`·`엔딩키`·`연출`)과, 견본을 만든 뒤에 생긴 두 사전 시트
+    /// (`선택지`·`화자` — 파일 안에 이미 있던 남색 #1F4E79을 쓴다).
     /// </summary>
     internal static void ApplyChapterChrome(XLWorkbook workbook)
     {
-        Chrome(workbook, ChapterSheetNames.Episodes, [14, 22, 12, 20, 7, 7, 20]);
-        Chrome(workbook, ChapterSheetNames.Edges, [14, 14, 14, 26, 26, 14, 12, 26, 10, 16, 22]);
-        Chrome(workbook, ChapterSheetNames.Conditions, [18, 26, 26, 26, 44]);
-        Chrome(workbook, ChapterSheetNames.Stats, [14, 14, 10, 8, 8, 10]);
-        Chrome(workbook, ChapterSheetNames.Choices, [8, 52, 24]);
-        Chrome(workbook, ChapterSheetNames.Speakers, [16, 16, 24]);
-        Chrome(workbook, ChapterSheetNames.Fixtures, [16, 8, 9, 9, 9, 40]);
+        // 머리글 색이 곧 시트의 신원이다: 남藍 = 그래프 구조 · 초록 = 조건 · 회색 = 읽기전용
+        // 미러 · 주황 = 테스트 데이터 · 청 = 어휘 사전.
+        Chrome(workbook, ChapterSheetNames.Episodes, "#333F50",
+            [14, 22, 12, 20, 7, 7, 20], reference: [1], note: [7]);
+
+        Chrome(workbook, ChapterSheetNames.Edges, "#333F50",
+            [14, 14, 14, 26, 26, 14, 12, 26, 10, 16, 22], reference: [1, 2], note: [8]);
+
+        Chrome(workbook, ChapterSheetNames.Conditions, "#548235",
+            [18, 26, 26, 26, 44], reference: [2], note: [5]);
+
+        // `스탯`은 game.definition.json의 읽기전용 미러다 — 옅은 회색 바탕이 "여긴 원천이
+        // 아니다"를 말한다.
+        Chrome(workbook, ChapterSheetNames.Stats, "#7F7F7F",
+            [14, 14, 10, 8, 8, 10], reference: [1], body: "#F2F2F2");
+
+        Chrome(workbook, ChapterSheetNames.Choices, "#1F4E79",
+            [8, 52, 24], reference: [1], note: [3]);
+
+        Chrome(workbook, ChapterSheetNames.Speakers, "#1F4E79",
+            [16, 16, 24], reference: [2], note: [3]);
+
+        Chrome(workbook, ChapterSheetNames.Fixtures, "#C55A11",
+            [16, 8, 9, 9, 9, 40], body: "#FCE4D6", note: [6]);
     }
 
+    /// <summary>본문 글꼴. 견본 전체가 이것이라 숫자 칸도 한글 칸도 같은 줄에 앉는다.</summary>
+    private const string BodyFont = "맑은 고딕";
+
+    /// <summary>서식을 미리 깔아 둘 행 수. 드롭다운이 닿는 곳까지가 "표"다.</summary>
+    private const int ChromeRows = DropdownRows;
+
     /// <summary>
-    /// 시트 하나의 겉모습. 없는 시트는 조용히 넘긴다 — `픽스처`처럼 있을 수도 없을 수도
-    /// 있는 시트가 있고, 겉모습 때문에 이행이 실패하는 것은 값이 맞지 않는다.
+    /// 시트 하나에 서식을 입힌다. 없는 시트는 조용히 넘긴다 — `픽스처`처럼 있을 수도 없을
+    /// 수도 있는 시트가 있고, 겉모습 때문에 이행이 실패하는 것은 값이 맞지 않는다.
     /// </summary>
-    private static void Chrome(XLWorkbook workbook, string sheetName, int[] widths)
+    /// <param name="headerFill">머리글 배경. 시트마다 다르다 — 그게 이 색의 일이다.</param>
+    /// <param name="reference">회색으로 낮출 열(1-기반) — 남의 Id를 가리키는 칸.</param>
+    /// <param name="note">기울인 옅은 회색으로 낮출 열 — 메모·설명.</param>
+    /// <param name="body">데이터 칸 배경. 없으면 흰색.</param>
+    private static void Chrome(
+        XLWorkbook workbook,
+        string sheetName,
+        string headerFill,
+        int[] widths,
+        int[]? reference = null,
+        int[]? note = null,
+        string? body = null)
     {
         IXLWorksheet? sheet = workbook.Worksheets
             .FirstOrDefault(candidate => candidate.Name == sheetName);
@@ -835,6 +879,42 @@ public static class ChapterWorkbookWriter
         {
             return;
         }
+
+        IXLRange table = sheet.Range(1, 1, ChromeRows, widths.Length);
+
+        table.Style.Font.SetFontName(BodyFont);
+        table.Style.Font.SetFontSize(10);
+        table.Style.Border.SetOutsideBorder(XLBorderStyleValues.Thin);
+        table.Style.Border.SetInsideBorder(XLBorderStyleValues.Thin);
+        table.Style.Border.SetOutsideBorderColor(XLColor.FromHtml("#BFBFBF"));
+        table.Style.Border.SetInsideBorderColor(XLColor.FromHtml("#BFBFBF"));
+
+        if (body is not null)
+        {
+            table.Style.Fill.SetBackgroundColor(XLColor.FromHtml(body));
+        }
+
+        foreach (int column in reference ?? [])
+        {
+            sheet.Range(2, column, ChromeRows, column).Style.Font
+                 .SetFontColor(XLColor.FromHtml("#808080"));
+        }
+
+        foreach (int column in note ?? [])
+        {
+            IXLStyle style = sheet.Range(2, column, ChromeRows, column).Style;
+            style.Font.SetItalic(true);
+            style.Font.SetFontSize(9);
+            style.Font.SetFontColor(XLColor.FromHtml("#7F7F7F"));
+        }
+
+        // 머리글은 맨 마지막에 — 위의 열 단위 서식이 1행까지 훑고 지나간다.
+        IXLRange header = sheet.Range(1, 1, 1, widths.Length);
+        header.Style.Font.SetBold(true);
+        header.Style.Font.SetItalic(false);
+        header.Style.Font.SetFontSize(10);
+        header.Style.Font.SetFontColor(XLColor.White);
+        header.Style.Fill.SetBackgroundColor(XLColor.FromHtml(headerFill));
 
         for (int column = 1; column <= widths.Length; column++)
         {

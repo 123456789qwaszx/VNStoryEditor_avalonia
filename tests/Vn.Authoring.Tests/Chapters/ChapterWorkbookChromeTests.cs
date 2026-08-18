@@ -115,6 +115,57 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
         Assert.True(after.Worksheet(ChapterSheetNames.Episodes).AutoFilter.IsEnabled);
     }
 
+    [Fact]
+    public void 새_챕터가_견본과_같은_서식_언어를_쓴다()
+    {
+        // 소유자가 "밋밋하다"고 한 것의 정체 — 고정·필터·너비가 아니라 <b>글꼴과 색</b>이었다.
+        // 첫 시도에서 기하만 맞추고 서식을 빠뜨려 "전혀 반영이 안 된다"는 보고를 다시 받았다.
+        ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch01", [("trust", "신뢰")]);
+
+        using var workbook = new XLWorkbook(ChapterPath);
+        IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
+
+        // 머리글 — 굵은 흰 글자 + 진한 배경.
+        IXLStyle header = episodes.Cell(1, 1).Style;
+        Assert.True(header.Font.Bold);
+        Assert.Equal(XLColor.White, header.Font.FontColor);
+        Assert.Equal(XLColor.FromHtml("#333F50"), header.Fill.BackgroundColor);
+
+        // 본문 — 맑은 고딕 10 + 얇은 회색 격자.
+        IXLStyle body = episodes.Cell(2, 2).Style;
+        Assert.Equal("맑은 고딕", body.Font.FontName);
+        Assert.Equal(10, body.Font.FontSize);
+        Assert.Equal(XLBorderStyleValues.Thin, body.Border.BottomBorder);
+
+        // 메모(G) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
+        IXLStyle note = episodes.Cell(2, 7).Style;
+        Assert.True(note.Font.Italic);
+        Assert.Equal(9, note.Font.FontSize);
+
+        // EpisodeId(A) — 회색. "여긴 남을 가리키는 칸"
+        Assert.Equal(XLColor.FromHtml("#808080"), episodes.Cell(2, 1).Style.Font.FontColor);
+    }
+
+    [Fact]
+    public void 시트마다_머리글_색이_다르다()
+    {
+        // 시트 일곱 개가 다 비슷하게 생기면 탭을 잘못 눌렀다는 것을 알 수 없다.
+        ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch01", [("trust", "신뢰")]);
+
+        using var workbook = new XLWorkbook(ChapterPath);
+
+        XLColor[] colours =
+        [
+            .. new[]
+            {
+                ChapterSheetNames.Episodes, ChapterSheetNames.Conditions,
+                ChapterSheetNames.Stats, ChapterSheetNames.Choices
+            }.Select(name => workbook.Worksheet(name).Cell(1, 1).Style.Fill.BackgroundColor)
+        ];
+
+        Assert.Equal(colours.Length, colours.Distinct().Count());
+    }
+
     /// <summary>겉모습을 벗긴다 — 코드가 겉모습을 입히기 전에 만들어진 파일의 모습이다.</summary>
     private static void StripChrome(string path)
     {

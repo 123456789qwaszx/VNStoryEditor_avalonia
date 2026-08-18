@@ -117,9 +117,19 @@ public static class ChapterWorkbookMigrator
     /// <see cref="ChapterWorkbookWriter.ApplyChapterChrome"/>이 거는 것이 같아야 한다 —
     /// 다르면 열 때마다 파일을 다시 쓰고 `.bak`이 매번 갈린다.
     /// </summary>
-    private static bool NeedsChrome(XLWorkbook workbook) =>
-        Find(workbook, ChapterSheetNames.Episodes) is { } episodes &&
-        !episodes.AutoFilter.IsEnabled;
+    private static bool NeedsChrome(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Episodes) is not { } episodes)
+        {
+            return false;
+        }
+
+        // 머리글의 <b>흰 글자</b>로 대표해 본다. 자동 필터 하나만 보면, 필터는 걸렸는데
+        // 글꼴·색은 아직인 중간 상태(서식이 두 단계로 들어온 2026-08-18의 실제 모습)를
+        // "다 됐다"로 잘못 읽는다.
+        return !episodes.AutoFilter.IsEnabled ||
+               episodes.Cell(1, 1).Style.Font.FontColor != XLColor.White;
+    }
 
     /// <summary>
     /// v7 (2026-08-16 소유자) — 선택지의 정본은 챕터 `선택지` 시트(출발·인덱스·대본·메모)이고
