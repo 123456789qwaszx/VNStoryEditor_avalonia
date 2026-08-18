@@ -1,99 +1,59 @@
 # VnTool
 
-비주얼노벨 시나리오 작가가 Unity나 IDE 없이 이야기 구조를 만들고, 대사를 쓰고, 흐름을 잇기 위한 Avalonia 데스크톱 저작 도구입니다.
+비주얼 노벨 저작 도구. C#/.NET 10 + Avalonia, 한국어 코드베이스.
 
-특정 게임의 보조 도구가 아니라 여러 게임에서 반복해서 쓰는 공통 저작 기반을 목표로 합니다. 게임마다 달라지는 변수·이벤트는 프로젝트 옆의 `game.definition.json`이 공급하고, 도구 코드에는 특정 게임의 이름이 들어가지 않습니다.
+**세 사람이 서로를 막지 않고 동시에 일하게 하는 것**이 이 도구의 목적입니다. 기획자는
+챕터 구조를, 작가는 대사를, 연출자는 무대를 각자 자기 자리에서 만들고, 도구는 그것들이
+어긋나지 않는지 지킵니다.
 
-코드를 고칠 때는 [ARCHITECTURE.md](ARCHITECTURE.md)를 먼저 봅니다. 구조가 왜 이렇게 되었는지, 각 조각이 무슨 일을 하는지, 어떤 기능을 손보려면 어느 파일을 여는지 정리한 문서입니다.
+만들어 내는 것은 유니티 런타임(별도 저장소)이 먹는 데이터입니다 —
+`exported/{챕터}.progression.json` + Yarn 번들.
 
-## 저작 흐름
+## 두 계층, 두 화면
 
-작가의 평평한 대본이 출발점이고, 대사 논리와 연출은 그 위에서 **따로 만들어 나중에 합칩니다.**
+작업 순서가 곧 탭 순서입니다. 왼쪽에서 오른쪽으로 밟으면 챕터가 완성됩니다.
 
-1. **대본을 가져옵니다.** 시나리오 작가가 쓴 `캐릭터이름: 대사` 형식의 텍스트 파일을 읽으면
-   줄마다 안정된 LineId와 ko-KR 화자·대사가 만들어집니다.
-   대본을 고쳐 다시 읽어도 확실한 줄의 LineId는 그대로입니다.
-2. 그래프에서 설정 노드를 만들고 조건을 정의합니다.
-3. 대사 노드에 대본을 물리고, 줄의 조건 드롭다운으로 `if` 갈래를 열고,
-   다른 조건을 고르면 같은 깊이의 `elseif`로 넘어갑니다.
-4. 갈래마다 다른 노드로 가는 출구를, 노드 전체에는 기본 출구를 답니다.
-5. **대사를 발행합니다.** 지금 상태가 `v1`로 얼어붙습니다.
-6. 연출 노드를 만들어 **그 `v1`을** 입력으로 고르고, 줄마다 카메라·화면 효과·연기 명령을 답니다.
-   대사는 읽기 전용이라 연출 작업 중에 발밑의 원고가 바뀌지 않습니다.
-7. **연출을 발행합니다.** 어느 대사 결과 위에서 만들었는지가 함께 기록됩니다.
-8. 두 결과를 합성으로 묶고, 다섯 가지 출력 프리셋으로 문서를 만듭니다.
-   서로 맞지 않는 결과끼리는 정식 출력을 만들 수 없습니다.
+| | **① 챕터 그래프** (기획자) | **② 연출 그래프** (연출) |
+|---|---|---|
+| 만드는 것 | 에피소드 구조 · 선택지 · 조건 · 스탯 | 커맨드 · 무대 · 초상화 |
+| 값이 사는 곳 | **엑셀 워크북** (`chapters/`·`episodes/`) | 프로젝트의 연출 노드 |
+| 도구의 역할 | 읽고 검증하고 그린다 | 편집한다 |
 
-대사를 고치면 `v2`를 발행하고, 연출을 그쪽으로 옮기면 됩니다. LineId가 유지된 줄의 연출은
-그대로 따라갑니다. `v1`은 그 뒤에도 그대로 남아 언제든 같은 문서를 다시 만듭니다.
+기획자가 사실상 시나리오 작가여서 **스토리는 챕터 그래프에서 끝납니다.** 연출 그래프에
+남는 일은 연출뿐이고, 그래서 그 판은 기능을 더 늘리지 않습니다(2026-08-18 결정).
+
+## 편집의 기본은 엑셀이다
+
+대사·구조의 **원본은 엑셀 파일**이고 도구는 그것을 읽는 쪽입니다. 기획자와 작가가 익숙한
+도구(엑셀·구글 시트)를 그대로 쓰고, 저장하면 도구가 0.25초 안에 따라옵니다.
+
+- **대사 본문·화자** → `episodes/{챕터}/{Id}.xlsx` — 도구는 **여기에 쓰지 않습니다.**
+- **에피소드 구조·간선·조건·스탯** → `chapters/{Id}.xlsx` — 도구 편집이 셀에 즉시 저장됩니다.
+- 우측 위 **"엑셀에서만 편집"** 체크(기본 켬)를 풀면 도구에서도 고칠 수 있습니다.
+- ⚠ **엑셀이 그 파일을 열고 있으면 도구의 모든 쓰기가 거부**되고 붉은 배너가 섭니다.
+
+**각 값의 주인은 한 곳뿐**이라는 것이 설계 전체를 관통하는 규칙입니다. 같은 사실이 두 곳에
+있으면 어긋나고, 어긋남은 최종 출력에서야 드러납니다.
 
 ## 저장 구조
 
 ```text
 MyStory/
-├─ project.vnproject.json      목차 · 조건 공급 연결 · 결과 조합
-├─ game.definition.json        게임별 변수·이벤트·연출 명령
-├─ results.vnresults.json      발행된 불변 결과
-├─ raw/                        작가의 원본 대본 (도구는 읽기만 합니다)
-│  └─ chapter01.txt
-├─ script/                     LineId와 locale별 화자·대사
-│  └─ sc_chapter01.vnscript.json
-└─ story/                      노드 · 조건 · 출구
-   ├─ chapter01.vnstory.json
-   └─ side-events.vnstory.json
+├─ 예제.vnproject.json         목차 · 결과 조합
+├─ game.definition.json        초상화 매핑 · 연출 커맨드 어휘 (기획자 전용)
+├─ chapters/
+│  └─ ch01.xlsx                에피소드 · 간선 · 선택지 · 조건 · 스탯 · 화자
+├─ episodes/
+│  └─ ch01/                    챕터별로 갈린다 (EpisodeId는 챕터 안에서만 유일)
+│     ├─ 시작.xlsx             인덱스 · LineId · 유형 · 조건라벨 · 화자 · 내용
+│     └─ 끝.xlsx
+├─ exported/
+│  └─ ch01.progression.json    런타임 수입물 — 검증을 통과하면 자동으로 나간다
+├─ story/                      연출 노드
+└─ assets/                     backgrounds · portraits · bgm · sfx
 ```
 
-- **화자와 대사는 `script/`에만 있습니다.** `story/`의 노드는 LineId만 가리킵니다.
-  같은 문장을 고칠 수 있는 자리는 도구 안에 하나뿐입니다.
-- **작가의 원본 파일에는 도구가 쓰지 않습니다.** 다시 읽는 것은 언제나 명시적인 동작이고,
-  확신할 수 없는 연결이 하나라도 있으면 아무것도 바꾸지 않고 멈춥니다.
-- manifest에는 제목, 시작 노드, 부속 파일의 Id·이름·상대 경로만 들어갑니다.
-- 되돌리기와 저장 여부 비교는 디스크 배치와 무관한 `ProjectSnapshotCodec`이 맡습니다.
-- JSON은 BOM 없는 UTF-8, LF, 결정적인 키·목록 순서를 씁니다.
-- **형식 버전 2 이하의 프로젝트는 열지 않습니다.** 그 형식은 대사 노드가 화자·대사를 직접
-  소유했기 때문에, 지금 구조로 자동 변환하면 어느 문장이 어느 LineId인지 도구가 임의로
-  정하게 됩니다. 덮어써서 원고를 잃는 대신 이유를 알리고 거부합니다.
-
-## 설계 원칙
-
-- **화자와 대사의 원본은 대본 하나뿐입니다.** 대사 노드는 LineId만 가리키고 본문을 복사하지 않습니다.
-- **LineIndex와 LineId는 다릅니다.** 순서는 바뀌지만 정체성은 바뀌지 않습니다.
-  연출·녹음·번역은 언제나 LineId를 씁니다.
-- **확신할 수 없는 것을 확신한 척 잇지 않습니다.** 대본 재동기화가 애매하면 멈추고 물어봅니다.
-- **발행 결과는 불변입니다.** 발행한 뒤 작업 노드를 고쳐도 그 결과는 바뀌지 않습니다.
-- **연출은 편집 중인 대사가 아니라 발행된 결과를 읽습니다.** 그래야 연출표가 어느 대사에
-  맞는 것인지 언제든 말할 수 있습니다.
-- **호환되지 않는 결과는 합성하지 않습니다.** 어긋난 Runtime Full은 겉보기에 멀쩡하기 때문입니다.
-- **조건은 줄마다 반복 저장하지 않습니다.** 흐름이 바뀌는 지점만 적고 나머지는 계산합니다.
-- **조건 갈래와 그래프 포트는 저장되지 않습니다.** 매번 계산하므로 두 화면이 어긋날 수 없습니다.
-- **조건 갈래 출구는 갈래를 여는 줄에 매답니다.** 줄을 넣거나 옮겨도 출구가 갈래 중간에 파묻히지 않습니다.
-- **고아 데이터를 말없이 지우지 않습니다.** 대본에서 줄이 빠져도 거기 붙어 있던 조건과 연출은
-  고아로 남아 눈에 보입니다.
-- **색은 데이터가 아닙니다.** 갈래에는 언제나 조건 이름이 함께 표시됩니다.
-- **게임별 정보는 코드에 넣지 않습니다.** 정의 파일이 없으면 후보 없이 직접 적을 뿐, 저작은 계속됩니다.
-
-## 지금 버전의 범위
-
-지원합니다.
-
-- 평평한 대본 가져오기와 재동기화 (유지 · 수정 · 추가 · 삭제 · 이동 · 확인 필요)
-- 설정 노드의 조건·변수 정의, LineId 기준 조건 갈래 편집
-- `if` / `elseif` / `endif` 한 단계 조건 갈래 (깊이 0 또는 1)
-- 조건 갈래 출구와 노드 기본 출구, 그래프에서 노드 추가·이동·연결·간선 삭제
-- 대사 결과와 연출 결과 발행, 버전 관리, 결과 조합
-- 다섯 가지 출력 프리셋
-  (Runtime Full · Scenario Only · Recording Script · Localization Script · Direction Sheet)
-- 되돌리기와 다시 실행, 저장과 열기
-
-아직 지원하지 않습니다.
-
-- 중첩 조건, `else` 갈래, 줄마다 임의 조건식 입력
-- 선택지, 변수 변경, 인라인 이벤트 (붙일 자리는 `DialogueLineExtension`에 마련되어 있습니다)
-- ko-KR 외의 locale 편집 화면 (데이터 모델은 이미 locale을 구분합니다)
-- 대본 충돌 해결 화면 (지금은 충돌을 알리고 동기화를 멈춥니다)
-- 연출을 다른 대사 결과 버전으로 옮기는 Rebase 보조 화면 (버전 교체 자체는 됩니다)
-- 파일로 내보내기 (출력은 화면에서 읽는 문서이며 파일을 만들지 않습니다)
-- 별도 창의 실시간 플레이어
+구판 워크북은 **열 때 자동으로 이행**됩니다(`.bak`을 남깁니다).
 
 ## 실행
 
@@ -101,22 +61,10 @@ MyStory/
 dotnet run --project .\src\Vn.App\Vn.App.csproj
 ```
 
-예제 프로젝트는 `samples/Authoring/project.vnproject.json`입니다. 손으로 쓴 파일이며 저장 형식이 사람이 읽고 고칠 수 있다는 것을 보여 줍니다.
-
 ## 검증
 
 ```powershell
-dotnet build .\VnTool.sln
 dotnet test .\VnTool.sln
-powershell -ExecutionPolicy Bypass -File .\build-and-run.ps1
-```
-
-## Yarn 분석 도구
-
-`Vn.Core`와 `Vn.Cli`는 Yarn 프로젝트를 읽고 검증하는 별도의 도구로 남아 있습니다. 저작 경로와 분리되어 있으며, 앞으로 기존 원고를 새 형식으로 가져오는 통로가 됩니다.
-
-```powershell
-dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj -- .\samples\Real\Demo.yarnproject .\samples\Real\game.schema.json
 ```
 
 ## 작가에게 전달할 Windows 휴대용 패키지
@@ -125,4 +73,31 @@ dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj -- .\samples\Real\Demo.yarnproje
 powershell -ExecutionPolicy Bypass -File .\publish-windows.ps1
 ```
 
-완료되면 `artifacts\VnTool-win-x64.zip`이 만들어집니다. .NET 런타임을 함께 포함하므로 대상 PC에 개발 환경이 필요 없습니다.
+.NET 런타임을 함께 담으므로 받는 PC에 개발 환경이 필요 없습니다.
+
+## 문서
+
+**이어받는 작업은 [`docs/handoff/current-state.md`](docs/handoff/current-state.md)에서
+시작합니다** — 맨 위 계약 박스가 최신 규격의 정본이고, 다른 문서와 충돌하면 그쪽이 이깁니다.
+
+| 문서 | 무엇이 있나 |
+|---|---|
+| [`docs/handoff/current-state.md`](docs/handoff/current-state.md) | **진입점.** 계층 규칙 · 화면 · 코드 지도 · 진행 상태 |
+| [`docs/run-log.md`](docs/run-log.md) | **결정의 정본.** 한 일 · 근거 · 되돌리는 법 |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | 코드 구조 — "이 기능은 어느 파일" |
+| [`docs/handoff/architecture-decisions.md`](docs/handoff/architecture-decisions.md) | 확정된 설계와 **그 이유** |
+| [`docs/runtime-contract.md`](docs/runtime-contract.md) | 유니티 런타임과의 계약 (Gate D) |
+| [`docs/work-orders/chapter-graph-orders.md`](docs/work-orders/chapter-graph-orders.md) | 챕터 계층 규격 원본 |
+| [`docs/chapter-layer-guide.md`](docs/chapter-layer-guide.md) | 기획자용 사용 안내 |
+| [`docs/writer-guide.md`](docs/writer-guide.md) | 작가용 사용 안내 |
+| [`docs/handoff/io-reference.md`](docs/handoff/io-reference.md) | 모든 입출력의 형식 |
+| [`docs/runtime-ui-tooling-principles.md`](docs/runtime-ui-tooling-principles.md) | 도구 설계 원칙 (`원칙 §…` 인용의 출처) |
+
+## Yarn 분석 도구
+
+`Vn.Core`와 `Vn.Cli`는 Yarn 프로젝트를 읽고 검증하는 별도 도구입니다. 저작 경로와 분리돼
+있습니다.
+
+```powershell
+dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj -- .\samples\Real\Demo.yarnproject .\samples\Real\game.schema.json
+```

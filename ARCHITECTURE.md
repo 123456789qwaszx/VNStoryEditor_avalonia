@@ -5,6 +5,20 @@
 
 제품 사용 흐름은 [README.md](README.md)에 있다.
 
+> **⚠ 이 문서의 유효 범위 (2026-08-18에 확인)**
+>
+> §1~§9의 본문은 **작가·연출 계층**(대본·노드·발행·합성·출력)을 다룬다. 그 서술은 지금도
+> 유효하다.
+>
+> 그 위에 **챕터 계층**(기획자 · 엑셀 워크북 · 에피소드 그래프)이 2026-08-11에 새로 얹혔고,
+> 오늘 코드의 절반 가까이가 거기 있다(`Vn.Authoring/Chapters/` 23개 파일). 이 문서는
+> 2026-08-04에 멈춰 있어서 그 계층을 한 번도 언급하지 않았다 — **[§10](#10-챕터-계층-기획자)**을
+> 새로 붙여 그 구멍을 메웠다.
+>
+> **규격(엑셀 시트·열·전이 규칙)의 정본은 이 문서가 아니다** —
+> [`docs/handoff/current-state.md`](docs/handoff/current-state.md)의 맨 위 계약 박스이고,
+> 충돌하면 그쪽이 이긴다. 여기는 **코드가 어디 있는지**를 답한다.
+
 ---
 
 ## 1. 무엇이 바뀌었나 — 원본을 셋으로 나눴다
@@ -126,17 +140,23 @@ PresentationResult              ← 어느 대사 결과 위에서 만들었는�
 
 ```
 Vn.Authoring ── 저작 도메인. 공식 원본. 화면도 파일 대화상자도 모른다.
-   ▲
+   ▲            (Script·Model·Results·Flow·Graph·Editing·Rendering + Chapters — §10)
    └── Vn.App    Avalonia 저작 화면
 
 Vn.Core   ── Yarn 읽기·분석 엔진. 저작 경로에 관여하지 않는다.
    ▲
    └── Vn.Cli    Yarn 검증 콘솔
 
-tests/Vn.Authoring.Tests   대본·동기화·조건 흐름·발행·합성·출력·저장 (173)
-tests/Vn.Core.Tests        Yarn 분석과 골든 픽스처 (60)
-tests/Vn.App.Tests         앱 서비스 — 세션·설정·갱신 범위·시작 로그 (41)
+Ked.Presentation.Core ── 무대 상태 계산. 런타임 저장소에서 소스째 복사해 온 한 벌이다
+                         (architecture-decisions H-4 — 이쪽에서 고치거나 솎지 않는다).
+
+tests/Vn.Authoring.Tests        대본·동기화·조건 흐름·발행·합성·출력·저장·챕터 (643)
+tests/Vn.App.Tests              앱 서비스·화면 — 세션·갱신 범위·챕터 화면·일의 양 (238)
+tests/Ked.Presentation.Core.Tests  무대 상태 계산 (220)
+tests/Vn.Core.Tests             Yarn 분석과 골든 픽스처 (60)
 ```
+
+테스트 수는 2026-08-18 기준 **1161개**다.
 
 **`Vn.App`은 `Vn.Core`를 참조하지 않는다.** 두 세계가 갈라져 있다.
 
@@ -884,3 +904,90 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 
 **발행 결과는 샘플에 손으로 쓰지 않았다.** 내용 해시를 사람이 계산할 수 없기 때문이다.
 결과와 조합의 왕복은 `VerticalSliceTests`가 임시 디렉터리에서 실제로 저장·재개봉하며 확인한다.
+
+---
+
+## 10. 챕터 계층 (기획자)
+
+2026-08-11에 얹힌 층이다. 앞의 §1~§9가 다루는 **작가·연출 계층 위**에 서고, 둘은 데이터도
+편집 경로도 공유하지 않는다.
+
+### 10.1 무엇이 다른가 — 원본이 엑셀이다
+
+작가 계층의 원본은 `script/`·`story/`의 JSON이고 도구가 소유한다. **챕터 계층의 원본은
+엑셀 워크북이고 사람이 소유한다.** 도구는 읽는 쪽이다.
+
+| | 원본 | 도구가 쓰는가 |
+|---|---|---|
+| 대사 본문·화자 | `episodes/{챕터}/{Id}.xlsx` | **아니다** (없는 파일을 만들 때만) |
+| 에피소드 구조·간선·조건·스탯·화자 | `chapters/{Id}.xlsx` | 그렇다 — 셀에 즉시 |
+
+이 뒤집힘이 이 층의 설계를 거의 다 설명한다. 파일을 엑셀이 잡고 있으면 쓰기가 **거부**되고
+(`ChapterWorkbookWriter.IsLockedByAnotherApp`), 감시자가 저장을 잡아 다시 읽는다.
+
+### 10.2 파일 지도 — `Vn.Authoring/Chapters/`
+
+**읽기·쓰기·이행**
+
+| 파일 | 하는 일 |
+|---|---|
+| `ChapterWorkbookReader.cs` | 챕터 워크북 6시트 → `ChapterGraphModel` |
+| `ChapterWorkbookWriter.cs` | 셀 쓰기 전부. 잠금 판정도 여기 |
+| `ChapterWorkbookMigrator.cs` | 구판 → 최신 규격 자동 이행 (`.bak`), 앱이 열 때 |
+| `EpisodeWorkbookReader.cs` · `EpisodeWorkbookMigrator.cs` | 대본 워크북(6열)의 같은 짝 |
+| `EpisodeLibrary.cs` | 대본 파일의 자리(`episodes/{챕터}/`) · 생성 · 개명 · 입양 |
+| `ChapterLibrary.cs` | `chapters/` 폴더를 훑어 목록을 만든다 |
+| `ChapterFolderWatcher.cs` | 저장 감지 + 디바운스 |
+
+**해석·검증·출력**
+
+| 파일 | 하는 일 |
+|---|---|
+| `ConditionExpressionParser.cs` | 시트 세 칸(스탯·연산자·값) ↔ 조건식 문자열 |
+| `EpisodeFlattener.cs` | 대본 행 → 평평한 줄 + `IF`~`ENDIF` 블록 해석 |
+| `ChapterValidator.cs` | 구조 검증 + 도달성 증명을 한 벌로 묶어 돌린다 |
+| `ChapterReachabilityProver.cs` | 스탯을 들고 상태공간을 걸어 "닿을 수 있는가"를 증명 |
+| `ChapterBranchPlanner.cs` | 배치 = 깊이 레이아웃. 흐름이 바뀌면 자리가 따라온다 |
+| `ChapterProgressionExporter.cs` | 런타임 수입용 JSON. **검증을 통과해야 나간다** |
+| `EpisodeSyncService.cs` | 대본 워크북 → 판의 대사 노드. 두 계층이 만나는 유일한 지점 |
+
+**화면**: `Vn.App/Views/ChapterGraphView.axaml{,.cs}`
+
+### 10.3 갱신 경로 — 여기가 성능의 급소다
+
+```
+엑셀 저장 ─┐
+툴이 씀 ───┼─→ QueueReload() ─→ WatchAndReload ─→ Reload()
+감시자 ────┘      (합친다)                          ├ 이행
+                                                    ├ ChapterLibrary.Load
+                                                    ├ AutoExport   ┐ 검증 결과를
+                                                    ├ Validate     ┘ 한 벌만 쓴다
+                                                    └ Draw
+```
+
+**세 가지를 깨면 노드가 늘 때 조용히 느려진다** (2026-08-18에 58초를 1.66초로 되돌린 자리):
+
+1. **`SetStatus`는 프로젝트 변경이 아니다.** 상태줄은 `StatusChanged`로 따로 운다. 예전에는
+   상태 한 줄이 `Changed`를 울려 워크북 전체 재읽기를 불렀고, 그 재읽기가 다시 상태를
+   적었다 — 스스로를 먹는 고리였다.
+2. **재읽기는 `QueueReload()`로 합친다.** 동기화 한 번이 변경을 수십 개 내는데, 마지막
+   하나 말고는 전부 버려질 그림이다.
+3. **검증은 챕터별 (내용 해시, 결과) 캐시를 지난다.** 순수 함수이고 값이 비싸다(대본
+   워크북을 전부 열고 상태공간을 훑는다). 내보내기는 `ExportValidated`로 그 결과를 받아
+   쓴다 — 예전에는 같은 증명을 두 번 돌렸다.
+
+**툴이 워크북을 쓰면 `Report()`가 명시적으로 재읽기를 예약한다.** 예전에는 상태 메시지가
+그 일을 우연히 대신했다. 쓴 자리가 곧 아는 자리다.
+
+고정은 시간(ms)이 아니라 **일의 횟수**로 건다 — `ChapterGraphWorkAmountTests`.
+
+### 10.4 §5.1에 더하는 빠른 조회
+
+| 하고 싶은 일 | 여는 곳 |
+|---|---|
+| 엑셀 시트에 열 추가·규격 변경 | `ChapterWorkbookReader` → `Writer` → `Migrator` → 견본 → 테스트 |
+| 그래프에 무엇이 그려지는가 | `Graph/GraphProjectionBuilder.cs` — 화면이 아니라 여기가 정한다 |
+| 검증 규칙 추가 | `ChapterValidator.cs` (도달성이면 `ChapterReachabilityProver.cs`) |
+| 런타임에 나가는 필드 | `ChapterProgressionExporter.cs` + [`docs/runtime-contract.md`](docs/runtime-contract.md) §G |
+| 대본 ↔ 노드 동기화 | `EpisodeSyncService.cs` |
+| 모델을 바꾸는 유일한 통로 | `Editing/ProjectEditor.cs` (§5.1과 같다) |

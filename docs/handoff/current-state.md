@@ -55,8 +55,11 @@
 | [`../run-log.md`](../run-log.md) | **결정의 정본.** 항목마다 한 일·근거·되돌리는 법. 새 작업은 여기에 한 항목을 남긴다 |
 | [`../work-orders/chapter-graph-orders.md`](../work-orders/chapter-graph-orders.md) | 규격 원본 — 엑셀 시트·열, 기능 G1–G9, 전이 규칙 |
 | [`../chapter-layer-guide.md`](../chapter-layer-guide.md) | 기획자용 사용 안내 (챕터 그래프) |
-| [`../episode-layer-master-plan.md`](../episode-layer-master-plan.md) | 게이트 A~D 진행 상태표 |
+| [`../runtime-contract.md`](../runtime-contract.md) | **런타임과의 계약.** §F 소유자 확인 항목 · §G 진행 JSON 수입기 계약(Gate D) |
 | [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) | 코드 구조 정본 — "이 기능은 어느 파일" 표가 여기 있다 |
+
+진행 상태(닫힌 것·열린 것)는 이 문서 **§7**이 진다 — 예전에는 `episode-layer-master-plan.md`가
+"최상위 기준 문서"를 자처해 이 문서와 둘이 같은 자리를 다퉜다. 2026-08-18에 그쪽을 접었다.
 
 ---
 

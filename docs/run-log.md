@@ -2793,3 +2793,74 @@ TextBox 인스턴스가 그대로 서 있는지(`Assert.Same`)와 `Structure`로
   274로 적혀 있다 — 실제 1161). 코드가 아니라 문서의 레거시이고, 분량이 커서 별도
   작업으로 남긴다 — **열린 항목**.
 
+### 문서를 32개에서 11개로 — 최신화 먼저, 그다음 삭제 (소유자 지시, `(이 커밋)`)
+
+> **소유자** — "문서들을 최소한으로만 남겨줘. 현재 실제 상황을 파악하고. 꼭 필요한 것만.
+> (…) 필요없는 동떨어진 것들을 제거하고, 현재 상황에 맞지 않는 문서를 최신화부터 해줘."
+
+#### 무엇을 재서 골랐나
+
+문서마다 **줄 수 · 마지막 수정 · 피참조 수 · 낡은 개념 출현 수**(시나리오 그래프 ·
+CHOICE/OPTION · 9열/IN/OUT)를 세어 놓고 골랐다. 감이 아니라 표를 보고 정했다.
+
+#### 걷은 것 (21개)
+
+- **낡은 진행 스냅샷·1회용**: `collab-summary.md`(08-14 기준 "테스트 1006개") ·
+  `submission-readme.md` · `acceptance-checklist.md`(폐지된 워크플로우 점검표) ·
+  `vertical-slice-trial.md`(Trial-01, 목적 종료)
+- **최상위를 자처하던 계획서 둘**: `vntool-master-plan.md` · `episode-layer-master-plan.md`.
+  뒤엣것은 첫 줄이 "**세션은 이 문서에서 시작한다**"였는데 `current-state.md`도 같은 말을
+  하고 있었다 — **문서 둘이 같은 자리를 다투는 것**이 정확히 걷어야 할 상태다.
+  진행 상태는 `current-state.md` §7이 진다. `episode-graph-brief.md`도 함께.
+- **끝난 작업 지시서 7개**: `work-orders/`의 g2-plan · composition-node ·
+  graph-boards-backlog · scenario-timeline-orders · phase2-design-brief ·
+  phase2b-core-adoption · phase2c-playback-and-authoring
+- **다른 저장소 몫 4개**: `ked-presentation-runtime/` 3개 + `YarnCommandBridge_Reference.md`
+  (639줄, 유니티 저장소 API의 08-03 사본)
+- **`archive/` 3개** — 이름이 곧 용도다
+
+#### 남긴 것 (11개)와 그 이유
+
+`README.md` · `ARCHITECTURE.md` · `run-log.md` · `runtime-contract.md` ·
+`runtime-ui-tooling-principles.md` · `chapter-layer-guide.md` · `writer-guide.md` ·
+`handoff/{current-state, architecture-decisions, io-reference}.md` ·
+`work-orders/chapter-graph-orders.md`
+
+`runtime-ui-tooling-principles.md`는 지울 뻔했다가 남겼다 — `architecture-decisions.md`가
+**"원칙 §2.3·§2.4·§2.5"로 근거를 대는 출처**여서, 걷으면 남는 문서의 논거가 끊긴다.
+
+#### 최신화 — 삭제보다 이쪽이 중요했다
+
+- **`README.md` 전면 재작성.** 두 세대 전 제품을 설명하고 있었다: 첫 저작 흐름이 "대본을
+  가져옵니다"(A-4에서 **폐지된 기능**), 챕터 그래프·엑셀 저작 계층 언급 **0회**, 그리고
+  "아직 지원하지 않습니다" 목록에 **선택지와 중첩 조건**이 들어 있었다 — 지금 둘 다 핵심
+  기능이다. 저장소를 처음 여는 사람(다음 주 그 팀 프로그래머)이 가장 먼저 읽는 문서였다.
+- **`ARCHITECTURE.md`에 §10 「챕터 계층」 신설.** 이 문서는 08-04에 멈춰 **`챕터`를 한 번도
+  언급하지 않았는데**, 그 사이 `Vn.Authoring/Chapters/` 23개 파일이 생겼다. 맨 위에 유효
+  범위 상자를 세우고(규격 정본은 `current-state.md`), §10에 파일 지도 · 갱신 경로 · **성능
+  급소 셋**을 적었다. 프로젝트·테스트 수도 고쳤다(173/60/41 → 실제 1161).
+- **`architecture-decisions.md` A-5 모순 해소.** "Speaker 원천 = `game.definition.json`"
+  하나였는데 v9에서 **저작 화자는 챕터 `화자` 시트**, 정의 파일은 초상화 매핑(기획자 전용)로
+  갈렸다. 규칙("각 값의 주인은 한 곳")은 그대로이고 값이 나뉜 것이라 그 형태로 다시 적었다.
+- **`chapter-layer-guide.md` §8 교체.** 「구간 (INPUT / OUT)」이 통째로 살아 있었다 —
+  **v10에서 폐지된 규격**이라, 기획자가 그대로 따라 쓰면 툴이 오류로 거부한다. `IF`~`ENDIF`
+  블록으로 바꿔 썼다. §7의 "연산자는 `>=` `<=` `==` 셋뿐"도 틀렸다 — `>` `<`는 2026-08-16에
+  열렸다(파서 확인). 간선 문구가 "대본의 OPTION 드롭다운"이라던 설명도 v9 전역 사전으로.
+- 탭 개명(연출 그래프)을 남은 문서 전체에 반영.
+
+#### 끊어진 자리를 남기지 않았다
+
+삭제 후 **모든 마크다운 링크를 기계로 검사**해 끊긴 것 0을 확인했고, 살아 있던 링크
+(챕터 안내서 2건 · current-state 1건 · architecture-decisions 1건 · chapter-graph-orders의
+기준 문서 줄)를 고쳤다. 코드 주석 하나(`ArgumentTokenCandidates`)가 걷은 문서를 출처로
+인용하고 있어 그 자리도 고쳤다 — **끊어진 인용은 없는 문서보다 나쁘다.**
+
+`run-log.md` 본문의 옛 문서 언급은 **그대로 뒀다.** 이 문서는 역사 기록이고, 그때 그
+문서가 있었다는 것은 사실이다.
+
+#### 되돌리는 법
+
+전부 git에 남아 있다: `git checkout HEAD~1 -- docs/<파일>`.
+가장 되찾고 싶어질 만한 것은 `YarnCommandBridge_Reference.md`(커맨드 200개 사양)다.
+
+**테스트 1161 통과, 실패 0.**

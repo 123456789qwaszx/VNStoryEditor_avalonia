@@ -1,6 +1,12 @@
 # 챕터·에피소드 그래프 뷰 지시서 v2 (G1–G9)
 
-2026-08. v1을 소유자 확정 사항으로 전면 개정. 기준 문서: `vntool-master-plan.md`, `runtime-contract.md`(특히 C1·C2·C5), `runtime-knowledge-base.md` §12·§13, `runtime-work-orders.md`(U9), `composition-node.md`. **커밋은 G 단위.**
+2026-08. v1을 소유자 확정 사항으로 전면 개정. 기준 문서: [`runtime-contract.md`](../runtime-contract.md)(특히 C1·C2·C5). **커밋은 G 단위.**
+
+> **읽는 법 (2026-08-18)** — 이 문서는 **규격 원본**이지 진행 상태표가 아니다. 지금 무엇이
+> 서 있는지는 [`handoff/current-state.md`](../handoff/current-state.md)의 맨 위 계약 박스가
+> 정본이고, 충돌하면 그쪽이 이긴다(규격이 v5→v10까지 굴렀고 이 문서는 그 여정을 함께 담고
+> 있다). 본문에 남은 `runtime-work-orders.md`·`runtime-knowledge-base.md` 인용은 **유니티
+> 저장소의 문서**를 가리킨다 — 이 저장소에 있던 사본은 낡아서 2026-08-18에 걷었다.
 
 > 2026-08-12(세션 0): 기준 문서 목록에서 `excel-authoring-orders.md`를 뺐다. 폐기된 계획이며 저장소에 존재하지 않는다(마스터 플랜 §1). 시트 계보·E-4 단일 소유권은 이미 이 문서가 흡수했다.
 
