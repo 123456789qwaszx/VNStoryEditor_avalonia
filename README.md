@@ -87,6 +87,7 @@ powershell -ExecutionPolicy Bypass -File .\publish-windows.ps1
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 코드 구조 — "이 기능은 어느 파일" |
 | [`docs/handoff/architecture-decisions.md`](docs/handoff/architecture-decisions.md) | 확정된 설계와 **그 이유** |
 | [`docs/runtime-contract.md`](docs/runtime-contract.md) | 유니티 런타임과의 계약 (Gate D) |
+| [`docs/progression-handoff.md`](docs/progression-handoff.md) | **`ked-progression` 작업자용** — 무엇이 바뀌었고 무엇을 믿어도 되는지 (표본 JSON 동봉) |
 | [`docs/work-orders/chapter-graph-orders.md`](docs/work-orders/chapter-graph-orders.md) | 챕터 계층 규격 원본 |
 | [`docs/chapter-layer-guide.md`](docs/chapter-layer-guide.md) | 기획자용 사용 안내 |
 | [`docs/writer-guide.md`](docs/writer-guide.md) | 작가용 사용 안내 |

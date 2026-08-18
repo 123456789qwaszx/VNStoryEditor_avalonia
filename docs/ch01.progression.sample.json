@@ -1,0 +1,147 @@
+{
+  "ChapterId": "ch01",
+  "DisplayName": "ch01",
+  "StartEpisodeId": "시작",
+  "Stats": [
+    {
+      "Key": "trust",
+      "DisplayName": "신뢰",
+      "Type": "Number",
+      "Initial": 0,
+      "Minimum": 0,
+      "Maximum": 10
+    },
+    {
+      "Key": "fatigue",
+      "DisplayName": "피로",
+      "Type": "Number",
+      "Initial": 0,
+      "Minimum": 0,
+      "Maximum": 10
+    }
+  ],
+  "Nodes": [
+    {
+      "EpisodeId": "시작",
+      "Title": "복도",
+      "IndexText": "",
+      "Kind": "Main",
+      "DialogueEntryId": "시작",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "믿는길",
+          "ChoiceLabel": "라루를 믿는다",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "HideWhenLocked": false,
+          "LockedReasonText": "",
+          "StatChanges": [
+            {
+              "Key": "trust",
+              "Amount": 2
+            }
+          ]
+        },
+        {
+          "TargetEpisodeId": "혼자길",
+          "ChoiceLabel": "혼자 간다",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "HideWhenLocked": false,
+          "LockedReasonText": "",
+          "StatChanges": [
+            {
+              "Key": "fatigue",
+              "Amount": 1
+            }
+          ]
+        }
+      ],
+      "Attachments": [],
+      "IsChapterEndingCandidate": false,
+      "EndingKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 0,
+        "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "믿는길",
+      "Title": "함께 간다",
+      "IndexText": "",
+      "Kind": "Main",
+      "DialogueEntryId": "믿는길",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "끝",
+          "ChoiceLabel": "",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "HideWhenLocked": false,
+          "LockedReasonText": "",
+          "StatChanges": []
+        }
+      ],
+      "Attachments": [],
+      "IsChapterEndingCandidate": false,
+      "EndingKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 1,
+        "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "혼자길",
+      "Title": "혼자 간다",
+      "IndexText": "",
+      "Kind": "Main",
+      "DialogueEntryId": "혼자길",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "끝",
+          "ChoiceLabel": "",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "HideWhenLocked": false,
+          "LockedReasonText": "",
+          "StatChanges": []
+        }
+      ],
+      "Attachments": [],
+      "IsChapterEndingCandidate": false,
+      "EndingKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 1,
+        "Y": 1
+      }
+    },
+    {
+      "EpisodeId": "끝",
+      "Title": "문 앞",
+      "IndexText": "",
+      "Kind": "Main",
+      "DialogueEntryId": "끝",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [],
+      "Attachments": [],
+      "IsChapterEndingCandidate": false,
+      "EndingKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 2,
+        "Y": 0
+      }
+    }
+  ],
+  "EndingRules": []
+}
