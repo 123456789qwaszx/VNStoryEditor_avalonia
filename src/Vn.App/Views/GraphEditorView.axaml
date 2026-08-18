@@ -88,7 +88,7 @@
                        FontSize="11"
                        Opacity="0.7"
                        TextWrapping="Wrap"
-                       Text="포트(●)를 끌어 노드에 놓으면 연결 · 빈 곳 좌클릭 드래그=범위 선택 · 중간 버튼=이동 · Ctrl+휠=확대/축소" />
+                       Text="포트(●)를 끌어 노드에 놓으면 연결 · 빈 곳 좌클릭 드래그=범위 선택 · 중간 버튼=이동 · 휠=확대/축소" />
         </Border>
     </Grid>
 </UserControl>

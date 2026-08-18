@@ -177,7 +177,7 @@ public partial class GraphEditorView : UserControl
         GraphCanvas.PointerReleased += OnCanvasPointerReleased;
         GraphCanvas.PointerPressed += OnCanvasPointerPressed;
 
-        // 그래프 내비게이션 (W40) — Ctrl+휠 줌·중간 버튼 팬은 스크롤보다 먼저 가로챈다.
+        // 그래프 내비게이션 (W40) — 휠 줌·중간 버튼 팬은 스크롤보다 먼저 가로챈다.
         GraphScroll.AddHandler(PointerWheelChangedEvent, OnGraphWheel, RoutingStrategies.Tunnel);
         GraphScroll.AddHandler(PointerPressedEvent, OnGraphPanPressed, RoutingStrategies.Tunnel);
         GraphScroll.AddHandler(PointerMovedEvent, OnGraphPanMoved, RoutingStrategies.Tunnel);
@@ -1818,13 +1818,9 @@ public partial class GraphEditorView : UserControl
 
     // ── 그래프 내비게이션 (W40): 줌·팬·미니맵 ─────────────────────────────
 
+    /// <summary>휠 — 누른 키와 무관하게 배율이다 (2026-08-18 팀장 미팅에서 Ctrl 요구가 빠졌다).</summary>
     private void OnGraphWheel(object? sender, PointerWheelEventArgs args)
     {
-        if (!args.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            return; // 그냥 휠은 기존 스크롤 그대로
-        }
-
         double factor = args.Delta.Y > 0 ? 1.15 : 1 / 1.15;
         ApplyZoom(_zoom * factor, args.GetPosition(GraphScroll));
         args.Handled = true;

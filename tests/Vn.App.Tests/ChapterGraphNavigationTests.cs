@@ -13,7 +13,10 @@ namespace Vn.App.Tests;
 
 /// <summary>
 /// 판 다루기 (2026-08-17 소유자: "챕터그래프에서도 컨트롤휠로 확대 축소 / 마우스 중간으로
-/// 이동은 할 수 있게") — 시나리오 그래프와 같은 손놀림이어야 한다.
+/// 이동은 할 수 있게") — 연출 그래프와 같은 손놀림이어야 한다.
+///
+/// 2026-08-18 팀장 미팅에서 Ctrl 요구가 빠졌다: "그냥 휠만으로 확대축소가 가능해야하고".
+/// 판 위에서 휠은 곧 배율이고, 세로로 훑는 일은 가운데 단추 끌기가 맡는다.
 /// </summary>
 public sealed class ChapterGraphNavigationTests : IDisposable
 {
@@ -58,13 +61,13 @@ public sealed class ChapterGraphNavigationTests : IDisposable
     }
 
     [Fact]
-    public void 컨트롤_휠로_확대되고_배율이_보인다() => HeadlessUi.Run(() =>
+    public void 그냥_휠로_확대되고_배율이_보인다() => HeadlessUi.Run(() =>
     {
         (ChapterGraphView view, ScrollViewer scroll) = Show();
 
         Assert.False(view.FindControl<Button>("ZoomResetButton")!.IsVisible);
 
-        Wheel(scroll, delta: 1, KeyModifiers.Control);
+        Wheel(scroll, delta: 1, KeyModifiers.None);
 
         Assert.Equal(1.15, Scale(view), 3);
         Assert.True(view.FindControl<Button>("ZoomResetButton")!.IsVisible);
@@ -72,14 +75,26 @@ public sealed class ChapterGraphNavigationTests : IDisposable
     });
 
     [Fact]
-    public void 그냥_휠은_배율을_안_건드린다() => HeadlessUi.Run(() =>
+    public void 그냥_휠을_내리면_축소된다() => HeadlessUi.Run(() =>
     {
-        // 세로 스크롤은 그대로여야 한다 — 판을 훑는 손과 배율을 바꾸는 손은 다르다.
+        // 예전에는 이 손놀림이 세로 스크롤이었다 — 이제는 반대 방향의 배율이다.
         (ChapterGraphView view, ScrollViewer scroll) = Show();
 
         Wheel(scroll, delta: -1, KeyModifiers.None);
 
-        Assert.Equal(1, Scale(view), 3);
+        Assert.Equal(1 / 1.15, Scale(view), 3);
+    });
+
+    [Fact]
+    public void 컨트롤을_눌러도_같은_배율이다() => HeadlessUi.Run(() =>
+    {
+        // Ctrl 요구는 빠졌지만 Ctrl+휠이 갑자기 다른 일을 해서는 안 된다 —
+        // 손에 익은 사람이 그대로 써도 같은 결과여야 한다.
+        (ChapterGraphView view, ScrollViewer scroll) = Show();
+
+        Wheel(scroll, delta: 1, KeyModifiers.Control);
+
+        Assert.Equal(1.15, Scale(view), 3);
     });
 
     [Fact]
@@ -89,7 +104,7 @@ public sealed class ChapterGraphNavigationTests : IDisposable
 
         for (int index = 0; index < 40; index++)
         {
-            Wheel(scroll, delta: -1, KeyModifiers.Control);
+            Wheel(scroll, delta: -1, KeyModifiers.None);
         }
 
         Assert.Equal(0.3, Scale(view), 3);

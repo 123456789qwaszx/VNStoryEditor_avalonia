@@ -9,10 +9,10 @@
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
                 <ToggleButton Grid.Column="0"
                               x:Name="CollapseToggle"
-                              IsChecked="True"
+                              IsChecked="False"
                               FontSize="10"
                               Padding="4,1"
-                              Content="▼" />
+                              Content="▶" />
                 <TextBlock Grid.Column="1"
                            Text="에셋"
                            FontWeight="SemiBold"
@@ -44,8 +44,11 @@
             </Grid>
         </Border>
 
+        <!-- 기본은 접힘 (2026-08-18 팀장 미팅) — 우측 맨 아래로 내려온 뒤로 에셋은
+             평소에 볼 필요가 없는 자료다. 머리글만 남기고 나무는 부를 때 편다. -->
         <ScrollViewer Grid.Row="1"
                       x:Name="TreeScroll"
+                      IsVisible="False"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
             <StackPanel x:Name="TreeHost" Margin="10,6,10,10" Spacing="2" />

@@ -61,7 +61,7 @@ public partial class MainWindow : Window
             // 계층을 가르는 근거다 (2026-08-17).
             _session.SupplyChapterVocabulary(entries);
             RebuildFileList();
-            // 시나리오 그래프의 철도 배선(T1)도 같은 목록 하나를 본다 — 두 곳이 따로 읽지 않는다.
+            // 연출 그래프의 철도 배선(T1)도 같은 목록 하나를 본다 — 두 곳이 따로 읽지 않는다.
             Graph.SupplyChapters(entries);
         };
         // 위 드롭다운으로 골라도 왼쪽 목록의 강조가 따라온다 (2026-08-17 소유자 보고) —
@@ -71,22 +71,21 @@ public partial class MainWindow : Window
             _session.SelectFile(_session.EnsureChapterBoard(chapterId));
             RebuildFileList();
         });
-        // 챕터 그래프 탭에서는 시나리오 계층의 chrome을 접는다(소유자 보고 — "발행·무대
+        // 챕터 그래프 탭에서는 연출 계층의 chrome을 접는다(소유자 보고 — "발행·무대
         // 프리뷰는 이 화면에서 필요 없는 정보"). 우측 열이 통째로 접혀 그래프가 그 폭을
         // 얻고, 상단의 Yarn/CSV 내보내기도 숨는다 — 챕터 툴바의 [내보내기](진행 JSON)와
         // 이름이 같아 한 화면에 "내보내기"가 둘 있으면 어느 쪽인지 헷갈린다.
-        MainTabs.SelectionChanged += (_, _) =>
+        MainTabs.SelectionChanged += (_, _) => ApplyTabChrome();
+        // 챕터 그래프가 첫 탭이 된 뒤로는(2026-08-18) 시작 화면이 곧 접힌 상태다.
+        // XAML의 기본값은 펼침이므로 여기서 한 번 맞춰 주지 않으면 첫 화면만 어긋난다 —
+        // SelectionChanged는 이미 정해진 선택에는 오지 않는다.
+        ApplyTabChrome();
+
+        // 편집 자료 접기 — 에셋 탐색기의 토글과 같은 문법이다(▶/▼).
+        ResourceCollapseToggle.IsCheckedChanged += (_, _) =>
         {
-            bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
-
-            RightColumn.IsVisible = !chapterMode;
-            RightSplitter.IsVisible = !chapterMode;
-            CenterColumns.ColumnDefinitions[3].Width = new GridLength(chapterMode ? 0 : 6);
-            CenterColumns.ColumnDefinitions[4].Width = new GridLength(chapterMode ? 0 : 460);
-
-            ExportButton.IsVisible = !chapterMode;
-            CsvExportButton.IsVisible = !chapterMode;
-            ExportFormatsButton.IsVisible = !chapterMode;
+            ResourceScroll.IsVisible = ResourceCollapseToggle.IsChecked == true;
+            ResourceCollapseToggle.Content = ResourceCollapseToggle.IsChecked == true ? "▼" : "▶";
         };
         ChapterGraph.Attach(_session);
         DialogueEditor.Attach(_session);
@@ -180,6 +179,25 @@ public partial class MainWindow : Window
         Graph.Rebuild();
         ShowSelectedNode();
         RefreshShell();
+    }
+
+    /// <summary>
+    /// 고른 탭에 chrome을 맞춘다 — 챕터 그래프에서는 연출 계층의 우측 열과 Yarn/CSV
+    /// 내보내기가 접힌다. 생성자와 탭 전환이 같은 계산 하나를 부른다: 시작 화면만
+    /// 따로 세우면 두 벌이 되고, 두 벌은 반드시 어긋난다.
+    /// </summary>
+    private void ApplyTabChrome()
+    {
+        bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
+
+        RightColumn.IsVisible = !chapterMode;
+        RightSplitter.IsVisible = !chapterMode;
+        CenterColumns.ColumnDefinitions[3].Width = new GridLength(chapterMode ? 0 : 6);
+        CenterColumns.ColumnDefinitions[4].Width = new GridLength(chapterMode ? 0 : 460);
+
+        ExportButton.IsVisible = !chapterMode;
+        CsvExportButton.IsVisible = !chapterMode;
+        ExportFormatsButton.IsVisible = !chapterMode;
     }
 
     /// <summary>

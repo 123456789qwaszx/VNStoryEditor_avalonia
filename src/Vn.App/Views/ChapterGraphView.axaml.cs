@@ -173,8 +173,8 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
             }
         };
-        // 판 다루기 — Ctrl+휠 확대·축소, 가운데 단추 끌어 이동. 휠은 <b>터널</b>로 받는다:
-        // 스크롤뷰가 먼저 먹어 버리면 Ctrl+휠이 그냥 스크롤이 된다.
+        // 판 다루기 — 휠 확대·축소, 가운데 단추 끌어 이동. 휠은 <b>터널</b>로 받는다:
+        // 스크롤뷰가 먼저 먹어 버리면 휠이 배율이 아니라 그냥 스크롤이 된다.
         GraphScroll.AddHandler(
             PointerWheelChangedEvent, OnGraphWheel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         GraphScroll.PointerPressed += OnGraphPanPressed;
@@ -767,10 +767,13 @@ public partial class ChapterGraphView : UserControl
     /// 오류가 있으면 파일을 만들지 않고 사유를 보고 패널에 세운다. 쓰레기가 런타임으로
     /// 넘어가는 것보다 내보내기가 실패하는 편이 낫다.
     /// </summary>
-    // ── 판 다루기: Ctrl+휠 확대·축소, 가운데 단추 끌어 이동 (2026-08-17 소유자) ──
+    // ── 판 다루기: 휠 확대·축소, 가운데 단추 끌어 이동 (2026-08-17 소유자) ──
     //
-    // 시나리오 그래프(GraphEditorView)와 같은 손놀림·같은 산식이다. 판이 둘인데 다루는
+    // 연출 그래프(GraphEditorView)와 같은 손놀림·같은 산식이다. 판이 둘인데 다루는
     // 법이 다르면 손이 매번 헷갈린다.
+    //
+    // 2026-08-18 팀장 미팅에서 Ctrl 요구가 빠졌다 — 판 위에서 휠은 곧 배율이다.
+    // 세로로 훑는 일은 가운데 단추 끌기가 맡는다.
 
     private const double MinZoom = 0.3;
     private const double MaxZoom = 2.5;
@@ -780,14 +783,9 @@ public partial class ChapterGraphView : UserControl
     private Point _panStart;
     private Vector _panStartOffset;
 
-    /// <summary>Ctrl+휠 — 그냥 휠은 기존 스크롤 그대로 둔다.</summary>
+    /// <summary>휠 — 누른 키와 무관하게 배율이다. 스크롤로 새지 않게 여기서 삼킨다.</summary>
     private void OnGraphWheel(object? sender, Avalonia.Input.PointerWheelEventArgs args)
     {
-        if (!args.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
-        {
-            return;
-        }
-
         ApplyZoom(_zoom * (args.Delta.Y > 0 ? 1.15 : 1 / 1.15), args.GetPosition(GraphScroll));
         args.Handled = true;
     }
@@ -1108,7 +1106,7 @@ public partial class ChapterGraphView : UserControl
 
     /// <summary>
     /// 간선 그리기의 갈림 (2026-08-15 소유자 개정 2) — <b>선택지 포트는 카드 오른쪽</b>이다.
-    /// 시나리오 그래프의 조건 갈래 포트와 같은 문법: 카드 오른변에 포트가 뚫리고 각 포트에서
+    /// 연출 그래프의 조건 갈래 포트와 같은 문법: 카드 오른변에 포트가 뚫리고 각 포트에서
     /// 자기 간선이 나간다(선택지는 많아야 3개). 아래로 줄기를 빼는 철도 흉내는 폐기.
     /// 선택지 없는 에피소드는 기존 중앙 직행선 그대로.
     /// </summary>
@@ -1440,7 +1438,7 @@ public partial class ChapterGraphView : UserControl
             });
         }
 
-        // 선택지 포트 (2026-08-15 소유자) — 시나리오 그래프의 조건 갈래 포트처럼 카드
+        // 선택지 포트 (2026-08-15 소유자) — 연출 그래프의 조건 갈래 포트처럼 카드
         // 오른변에 뚫린다. 카드는 선택지 수만큼 아래로 자라고(많아야 3개), 문구·원은
         // 간선 그리기와 같은 PortY 산식으로 캔버스에 앉는다 — 줄과 선이 어긋날 수 없다.
         List<ChapterEdge> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
@@ -2036,7 +2034,7 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
-    /// [대사] 탭 — 선택된 에피소드의 대사를 워크북에서 바로 읽어 세운다. 시나리오 그래프까지
+    /// [대사] 탭 — 선택된 에피소드의 대사를 워크북에서 바로 읽어 세운다. 연출 그래프까지
     /// 안 가도 챕터 그래프에서 방금 쓴 대사를 확인한다(소유자 요청). 읽기 전용이고 고치는
     /// 곳은 엑셀이다. 선택이 없거나 대본이 비면 그 사실을 말한다.
     /// </summary>
@@ -2709,7 +2707,7 @@ public partial class ChapterGraphView : UserControl
 
         // 대사 노드도 따라간다 — 규약(대사엔트리 = Id)을 따르던 노드만. 노드를 새로 만들지
         // 않고 이름만 바꾸므로 줄·연출·행 신원(ExcelLineMap)이 전부 보존된다. 엑셀 표식
-        // (ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 시나리오 그래프가 챕터 밖 노드로
+        // (ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 연출 그래프가 챕터 밖 노드로
         // 보고 레일을 끊는다.
         if (_session is { } session &&
             session.Project.EnumerateNodes().OfType<Vn.Authoring.Model.DialogueNode>()

@@ -45,10 +45,12 @@
         </Border>
 
         <Grid x:Name="CenterColumns" ColumnDefinitions="240,6,*,6,460">
+            <!-- 왼쪽은 챕터 목록 하나다 (2026-08-18 팀장 미팅) — 편집 자료·에셋은 우측
+                 아래로 내려갔다. 여기는 "지금 어느 챕터인가" 하나만 답하는 자리다. -->
             <Border Grid.Column="0"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="0,0,1,0">
-                <Grid RowDefinitions="Auto,Auto,2*,Auto,3*,Auto">
+                <Grid RowDefinitions="Auto,*">
                     <Border Grid.Row="0"
                             Padding="12,10"
                             BorderBrush="{DynamicResource ThemeBorderLowBrush}"
@@ -72,32 +74,13 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer Grid.Row="2"
+                    <ScrollViewer Grid.Row="1"
                                   HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="FileListPanel"
-                                    Margin="8,0,8,10"
+                                    Margin="8,8,8,10"
                                     Spacing="4" />
                     </ScrollViewer>
-
-                    <Border Grid.Row="3"
-                            Padding="12,8"
-                            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-                            BorderThickness="0,1,0,1">
-                        <TextBlock Text="편집 자료" FontWeight="SemiBold" />
-                    </Border>
-
-                    <ScrollViewer Grid.Row="4"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="ResourcePanel"
-                                    Margin="10,8,10,10"
-                                    Spacing="10" />
-                    </ScrollViewer>
-
-                    <views:AssetExplorerView Grid.Row="5"
-                                             x:Name="AssetExplorer"
-                                             MaxHeight="300" />
                 </Grid>
             </Border>
 
@@ -105,14 +88,19 @@
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
-            <!-- 에피소드 레이어는 별도 탭이다 (G-1) — 기존 대사·연출 그래프는 그대로 두고
-                 옆에 붙인다. 두 화면은 데이터도 편집 경로도 공유하지 않는다. -->
+            <!-- 탭 순서가 곧 작업 순서다 (2026-08-18 팀장 미팅) — 왼쪽에서 오른쪽으로
+                 하나씩 밟으면 챕터가 완성된다. ① 챕터 그래프에서 구조와 대사를 짜고,
+                 ② 연출 그래프에서 그 위에 연출을 얹는다.
+                 "시나리오 그래프"가 "연출 그래프"가 된 이유: 기획자가 사실상 시나리오
+                 작가여서 스토리는 챕터 그래프에서 끝난다. 이 판에 남는 일은 연출뿐이고,
+                 그래서 여기는 기능을 더 늘리지 않는다.
+                 두 화면은 데이터도 편집 경로도 공유하지 않는다 (G-1). -->
             <TabControl Grid.Column="2" x:Name="MainTabs" Padding="0">
-                <TabItem Header="시나리오 그래프">
-                    <views:GraphEditorView x:Name="Graph" />
-                </TabItem>
                 <TabItem x:Name="ChapterTabItem" Header="챕터 그래프">
                     <views:ChapterGraphView x:Name="ChapterGraph" />
+                </TabItem>
+                <TabItem Header="연출 그래프">
+                    <views:GraphEditorView x:Name="Graph" />
                 </TabItem>
             </TabControl>
 
@@ -121,14 +109,18 @@
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
-            <!-- 시나리오 그래프의 우측 — 노드 편집기 + 무대 프리뷰. 챕터 그래프 탭에서는
-                 열째로 접힌다(스플리터 포함): 그 화면의 편집·보고는 전부 챕터 그래프 뷰 안에
-                 있고, 여기 남겨 두면 다른 화면의 발행·프리뷰가 소음이 된다(소유자 보고). -->
+            <!-- 연출 그래프의 우측 — 노드 편집기 + 무대 프리뷰, 그 아래 편집 자료·에셋.
+                 챕터 그래프 탭에서는 열째로 접힌다(스플리터 포함): 그 화면의 편집·보고는
+                 전부 챕터 그래프 뷰 안에 있고, 여기 남겨 두면 다른 화면의 발행·프리뷰가
+                 소음이 된다(소유자 보고).
+                 편집 자료·에셋이 왼쪽에서 여기로 내려온 이유 (2026-08-18 팀장 미팅):
+                 둘 다 평소에 볼 필요가 없는 현황판이다. 왼쪽 맨 위에 있으면 챕터 목록과
+                 같은 무게로 읽히므로, 접힌 채로 맨 아래에 둔다. -->
             <Border Grid.Column="4"
                     x:Name="RightColumn"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1,0,0,0">
-                <Grid RowDefinitions="*,Auto">
+                <Grid RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <Panel Grid.Row="0">
                         <views:DialogueNodeEditor x:Name="DialogueEditor" />
                         <views:SetNodeEditor x:Name="SetEditor" />
@@ -143,6 +135,44 @@
 
                     <!-- 대사·연출 편집기가 공유하는 하단 무대 프리뷰. 읽기 전용 소비자다. -->
                     <views:MiniStagePreview Grid.Row="1" x:Name="StagePreview" />
+
+                    <!-- 편집 자료 — 에셋 탐색기와 같은 접기 문법이다(▶/▼ 토글). 판이
+                         둘인데 접는 법이 다르면 손이 매번 헷갈린다. 기본은 접힘. -->
+                    <Border Grid.Row="2"
+                            Padding="12,8"
+                            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                            BorderThickness="0,1,0,0">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <ToggleButton Grid.Column="0"
+                                          x:Name="ResourceCollapseToggle"
+                                          IsChecked="False"
+                                          FontSize="10"
+                                          Padding="4,1"
+                                          Content="▶" />
+                            <TextBlock Grid.Column="1"
+                                       Text="편집 자료"
+                                       FontWeight="SemiBold"
+                                       Margin="6,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="3"
+                                  x:Name="ResourceScroll"
+                                  IsVisible="False"
+                                  MaxHeight="220"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ResourcePanel"
+                                    Margin="10,8,10,10"
+                                    Spacing="10" />
+                    </ScrollViewer>
+
+                    <!-- 에셋 탐색기는 제 머리에 접기 토글을 이미 갖고 있다 — 여기서는
+                         기본을 접힘으로만 돌린다(AssetExplorerView의 CollapseToggle). -->
+                    <views:AssetExplorerView Grid.Row="4"
+                                             x:Name="AssetExplorer"
+                                             MaxHeight="300" />
                 </Grid>
             </Border>
         </Grid>

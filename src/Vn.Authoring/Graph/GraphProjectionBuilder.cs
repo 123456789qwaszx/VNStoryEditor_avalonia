@@ -34,7 +34,7 @@ public static class GraphProjectionBuilder
         var portsByNodeId = new Dictionary<string, IReadOnlyList<GraphOutputPortProjection>>(StringComparer.Ordinal);
 
         // A 계층 격리 (2026-08-15 소유자) — 챕터 조건 공급 설정노드는 동기화의 배관이지
-        // 작가의 데이터가 아니다. 식(스탯 변수)이 시나리오 그래프에 노출되면 안 되므로
+        // 작가의 데이터가 아니다. 식(스탯 변수)이 연출 그래프에 노출되면 안 되므로
         // 카드도 공급 링크도 그리지 않는다. 공급 자체는 데이터에 그대로 살아 있어서
         // 조건 드롭다운의 라벨과 <<if>> 역조회는 변함없이 동작한다.
         var hiddenSupplyNodeIds = new HashSet<string>(StringComparer.Ordinal);

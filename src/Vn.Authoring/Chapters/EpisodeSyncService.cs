@@ -148,7 +148,7 @@ public static class EpisodeSyncService
         EnsureConditionSupply(editor, definition, fileId, node, model, chapter);
 
         // 아직 대사를 한 줄도 쓰지 않았어도 <b>노드는 선다</b> (2026-08-17 소유자 보고 —
-        // "엑셀을 만들더라도 시나리오 그래프에 반영되게 하려면 최소한 한 줄의 대사는 있어야
+        // "엑셀을 만들더라도 연출 그래프에 반영되게 하려면 최소한 한 줄의 대사는 있어야
         // 해. 이게 진짜 엄청 헷갈려").
         //
         // 예전에는 여기서 노드를 만들기 <b>전에</b> 되돌아갔다. 그래서 기획자가 에피소드를
