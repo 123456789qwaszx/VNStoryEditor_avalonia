@@ -47,7 +47,10 @@ public enum ChapterDiagnosticCode
     EdgeKindUnknown,
 
     /// <summary>v11 — 같은 도착으로 들어오는 간선들의 엔딩키가 다르다.</summary>
-    EndingKeyConflict
+    EndingKeyConflict,
+
+    /// <summary>v11 — 간선에 매달린 연출 노드가 아직 비어 있다(경고).</summary>
+    EdgePresentationEmpty
 }
 
 /// <summary>

@@ -119,9 +119,10 @@ public sealed class ChapterGraphViewRenderTests
         Assert.True(expander.IsExpanded);
         Assert.Contains("오류 1", (string)expander.Header!);
 
-        // 경고 3건은 스탯 3개가 game.definition.json(기본값은 variables가 비어 있다)에 없다는
-        // 것뿐이다. `스탯` 시트가 "읽기전용 미러"라는 규격 그대로의 보고다.
-        Assert.Contains("경고 3", (string)expander.Header!);
+        // 경고 4건 — 스탯 3개가 game.definition.json(기본값은 variables가 비어 있다)에
+        // 없다는 것(`스탯` 시트가 "읽기전용 미러"라는 규격 그대로의 보고)과,
+        // v11에서 견본의 엔딩 간선에 선 연출 노드가 아직 비어 있다는 것 하나다.
+        Assert.Contains("경고 4", (string)expander.Header!);
 
         // 원인 조건까지 짚는다.
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;

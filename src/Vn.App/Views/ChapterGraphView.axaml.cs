@@ -468,7 +468,8 @@ public partial class ChapterGraphView : UserControl
             _session.Editor, _session.Definition, fileId, entry.Model);
 
         // v11 — 간선에 매달린 연출 노드를 세운다. 툴이 이름을 지었으면 워크북에 되쓴다.
-        SupplyEdgePresentations(entry, fileId);
+        IReadOnlyList<EpisodeSyncService.EdgePresentationLink> presentationLinks =
+            SupplyEdgePresentations(entry, fileId);
 
         // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
         _boardWarnings.Clear();
@@ -476,6 +477,10 @@ public partial class ChapterGraphView : UserControl
             EpisodeSyncService.WarnFreeNodeStatWrites(_session.Editor, fileId, entry.Model));
         _boardWarnings.AddRange(
             EpisodeSyncService.WarnExitsIntoExcelNodes(_session.Editor, fileId, entry.Model));
+        // v11 — 자리는 섰는데 아직 안 채운 연출. 오류가 아니라 "남은 일" 목록이다.
+        _boardWarnings.AddRange(
+            EpisodeSyncService.WarnEmptyEdgePresentations(
+                _session.Editor, fileId, entry.Model, presentationLinks));
 
         // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
         Validate();
@@ -510,11 +515,13 @@ public partial class ChapterGraphView : UserControl
     /// 노드는 이미 판에 섰고, 이름은 다음 동기화가 다시 적으려 한다. 붉은 배너가 이미
     /// 잠금을 말하고 있으므로 여기서 같은 말을 한 번 더 할 이유가 없다.
     /// </summary>
-    private void SupplyEdgePresentations(ChapterEntry entry, string fileId)
+    private IReadOnlyList<EpisodeSyncService.EdgePresentationLink> SupplyEdgePresentations(
+        ChapterEntry entry,
+        string fileId)
     {
         if (_session is null || entry.Model is null)
         {
-            return;
+            return [];
         }
 
         IReadOnlyList<EpisodeSyncService.EdgePresentationLink> links =
@@ -537,6 +544,8 @@ public partial class ChapterGraphView : UserControl
                 // 여기서 붙잡지 않는다 — 노드는 이미 섰고, 안 쓰이면 자유 노드로 남는다.
             }
         }
+
+        return links;
     }
 
     /// <summary>
@@ -1481,10 +1490,14 @@ public partial class ChapterGraphView : UserControl
         };
         GraphCanvas.Children.Add(hit);
 
+        // v11 — 엔딩 간선은 판에서 보여야 한다. 이 길을 타면 챕터가 끝나는데 라벨이
+        // 조용하면 기획자가 "여기서 끝난다"를 그래프에서 읽을 수 없다.
         string label = string.Join(" · ", new[]
         {
             edge.OptionLabel,
-            edge.ConditionLabel is null ? null : $"[{edge.ConditionLabel}]"
+            edge.ConditionLabel is null ? null : $"[{edge.ConditionLabel}]",
+            edge.IsEnding ? $"⏹ {edge.EndingKey}" : null,
+            string.IsNullOrWhiteSpace(edge.PresentationNodeName) ? null : "🎬"
         }.Where(part => !string.IsNullOrEmpty(part)));
 
         if (label.Length == 0)

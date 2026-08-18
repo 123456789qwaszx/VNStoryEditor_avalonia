@@ -501,6 +501,65 @@ public static class EpisodeSyncService
             .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));
 
     /// <summary>
+    /// 아직 <b>비어 있는</b> 연출 노드를 알린다 (v11 §7 — 검증 보고의 "남은 일" 목록).
+    ///
+    /// 자동 생성은 <b>자리만</b> 만든다. 그래서 판에 노드는 섰는데 커맨드가 하나도 없는
+    /// 상태가 정상적으로 존재하고, 그게 곧 "아직 안 채운 연출"이다. 어느 간선이 남았는지
+    /// 한 자리에서 보이지 않으면 엔딩 열 개 중 하나가 빈 채로 출시된다.
+    ///
+    /// <b>오류가 아니라 경고다</b> — 연출 없는 엔딩도 정상이고(§5 규칙 6), 만드는 도중에는
+    /// 언제나 비어 있다. 막는 것이 아니라 세어 보여 주는 자리다.
+    /// </summary>
+    public static IReadOnlyList<ChapterDiagnostic> WarnEmptyEdgePresentations(
+        ProjectEditor editor,
+        string fileId,
+        ChapterGraphModel chapter,
+        IReadOnlyList<EdgePresentationLink> links)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(chapter);
+        ArgumentNullException.ThrowIfNull(links);
+
+        // 링크를 받는 이유: 방금 툴이 이름 지은 간선은 <b>모델에 아직 이름이 없다</b>
+        // (워크북 되쓰기가 다음 읽기에 반영된다). 모델만 보면 첫 동기화에서 그 간선이
+        // 목록에서 빠졌다가 한 박자 뒤에 나타난다 — 목록이 잠깐 거짓말을 한다.
+        var nameByRow = links.ToDictionary(
+            link => (link.FromEpisodeId, link.ToEpisodeId, link.MatchOptionLabel ?? string.Empty),
+            link => link.NodeName);
+
+        var warnings = new List<ChapterDiagnostic>();
+
+        foreach (ChapterEdge edge in chapter.Edges)
+        {
+            var key = (edge.FromEpisodeId, edge.ToEpisodeId,
+                edge.IsPlainAdvance ? string.Empty : edge.OptionLabel ?? string.Empty);
+
+            if (!nameByRow.TryGetValue(key, out string? name))
+            {
+                continue;
+            }
+
+            PresentationNode? node = FindPresentation(editor, fileId, name);
+
+            if (node is null || node.SetupCommands.Count > 0 || node.Bindings.Count > 0)
+            {
+                continue;
+            }
+
+            warnings.Add(new ChapterDiagnostic(
+                ChapterDiagnosticSeverity.Warning,
+                ChapterDiagnosticCode.EdgePresentationEmpty,
+                chapter.SourcePath, null, edge.SourceRow, null,
+                $"연출 '{name}'이 아직 비어 있습니다 " +
+                $"({edge.FromEpisodeId}→{edge.ToEpisodeId}" +
+                (edge.IsEnding ? $" · 엔딩 {edge.EndingKey}" : string.Empty) +
+                ") — 연출 그래프에서 채워 주세요."));
+        }
+
+        return warnings;
+    }
+
+    /// <summary>
     /// 챕터의 조건 <b>전부</b>를 그 판의 모든 대사 노드가 쓸 수 있게 공급한다 (2단계 4번).
     /// 작가의 자유 노드가 조건 드롭다운에서 챕터 라벨(A 계층)을 바로 고르게 하는 자리다 —
     /// 설정노드를 손으로 찾아 잇는 절차가 없어야 "개발자를 안 부르고" 조건을 건다.
