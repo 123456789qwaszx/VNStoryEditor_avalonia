@@ -1,13 +1,15 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-18 · 테스트 **1161 통과, 실패 0**
-(Ked.Presentation.Core 220 · Vn.Core 60 · Vn.Authoring 643 · Vn.App 238)
+기준: 2026-08-18 · 테스트 **1149 통과, 실패 0**
+(Ked.Presentation.Core 220 · Vn.Core 60 · Vn.Authoring 631 · Vn.App 238)
 
 > **⚠ 규격이 이틀 사이 v5 → … → v9(챕터) → v10(대본)으로 굴렀다. 이 박스가 최신 계약이다.**
 >
 > **⚠ 셸 규칙 (2026-08-18 팀장 미팅)** — 탭은 **`챕터 그래프` → `연출 그래프`** 순서다(왼쪽에서 오른쪽으로 밟으면 챕터가 완성된다). 옛 **"시나리오 그래프"가 "연출 그래프"로 개명**됐고 **기능 동결**이다: 기획자가 사실상 시나리오 작가여서 스토리는 챕터 그래프에서 끝나고, 저 판에 남는 일은 연출뿐이다. **휠만으로 확대·축소**(Ctrl 요구 해제, Ctrl+휠도 같은 배율). **왼쪽은 챕터 목록 하나**이고 **편집 자료·에셋은 우측 열 맨 아래에 접힌 채로** 산다 — 우측 열은 챕터 탭에서 통째로 접히므로 그 탭에서는 둘에 닿을 수 없다(열린 항목). **우클릭은 소유자 보류.**
 >
 > **⚠ 성능 규칙 (2026-08-18)** — 노드 60개에서 첫 화면이 58초였다. 원인은 판 그리기가 아니라(그건 2.6ms) **같은 일을 여러 번** 한 것이다. 셋을 지킬 것: ① **`SetStatus`는 프로젝트 변경이 아니다** — `StatusChanged`로 따로 운다(상태 한 줄이 워크북 전체 재읽기를 부르던 고리를 끊었다) ② **재읽기는 `QueueReload()`로 합친다** — 변경 수십 개가 한 UI 차례에 한 번만 돈다 ③ **검증은 챕터별 (내용해시, 결과) 캐시** — 디스크가 그대로면 다시 증명하지 않고, 내보내기는 `ExportValidated`로 그 결과를 받아 쓴다(예전엔 같은 증명을 두 번 돌렸다). **툴이 워크북을 쓰면 `Report()`가 명시적으로 재읽기를 예약한다** — 예전엔 상태 메시지가 그 일을 우연히 대신했다. 결과: 첫 화면 58.3초 → 1.66초, 갱신 426 → 111ms. 고정은 시간이 아니라 **일의 횟수**로 건다(`ChapterGraphWorkAmountTests`).
+>
+> **⚠ 출력 규격 (2026-08-18)** — 이미터는 이제 **대본 하나**(`Story_{이름}.yarn`) + 폴더당 `declarations.yarn`만 낸다. `Pres_*`·`Set_*` 파일, `<<pres_start/end>>`, `<<beat Set_X>>`, 합성 추적 변수 `$__ch_N`, `[adv/]` 마커가 **전부 사라졌다** — 런타임이 레인·세이브·변수 저장소를 걷어냈고, **합치는 쪽이 이 도구**가 됐기 때문이다(소유자: "디버깅비용이 최소 10배 이상"). 연출 커맨드는 **노드 셋업은 대본 머리에, 줄에 붙은 것은 자기 대사 줄 바로 앞에** 인라인으로 선다. `#line:` 태그는 **계속 낸다**(런타임은 안 쓰지만 연출이 매달리는 열쇠다). **잃은 것 둘**: 줄 중간 연출(`[adv/]`), 메인 레인 전용 검사(`mainLaneOnly` 플래그가 이제 미사용). 상세는 [`../runtime-contract.md`](../runtime-contract.md) §A.
 >
 > **대본 시트 규격 (v10, 2026-08-17)** — `episodes/{챕터}/{Id}.xlsx` **6열**:
 > `인덱스 · LineId · 유형 · 조건라벨 · 화자 · 내용`. **태그·IN·OUT 폐지.**
@@ -35,7 +37,7 @@
 >
 > **⚠ v8의 알려진 손실**: 들어오는 간선이 없는 에피소드(부착)의 관문은 옮길 곳이 없어 이행에서 사라진다. 부착의 표시 제어는 별도 규격이 필요하다(열린 항목).
 > **대본 엑셀의 CHOICE/OPTION은 v10에서 규격에서 빠졌다** — 남아 있으면 리더가 그 행에서 오류로 짚는다.
-> **⚠ 런타임 계약(Gate D) 개정안은 [`../runtime-contract.md`](../runtime-contract.md) **§G**에 한데 적혀 있다** (2026-08-17) — 저작이 이미 내보내는데 런타임이 못 읽는 것 전부(새 Op 둘 · `Option.VisibleConditions` · `IntValue` 0 생략 · v9 전이 규칙)와, 소유자 결정이 필요한 셋(스탯 경계·선택지별 씬 점프·필드 수용)이 §F 6~8번에 있다. **키는 PascalCase다.**
+> **⚠ 런타임 계약이 2026-08-18에 전면 개정됐다 — [`../runtime-contract.md`](../runtime-contract.md).** 런타임이 **세이브/로드 · 변수 저장소 · 서브 레인(Pres) · SubLane/BeatLane · 선택지 리플레이를 전부 걷어냈고**(실측 0건), **진행 계층은 `ked-progression`이라는 별도 순수 C# 패키지로 빠져나갔다** — VnTool과 유니티가 **같은 구현을 공유**한다. 그래서 계약 표면이 둘이다: 1부 `.yarn` 텍스트, 2부 `progression.json` → `Ked.Progression`. **`#line:` 태그는 더 이상 요구되지 않는다**(세이브가 없어졌다 — 다만 LineId는 우리 쪽 연출의 열쇠이므로 그대로 둔다). **`Stats[]`는 2026-08-18에 내보내기 시작했다**(§G-1 닫힘) — ⚠ 타입 이름을 번역한다: 이쪽 `Int`가 저쪽 `Number`다. 이제 Gate D의 공은 저쪽(DTO·`ProgressionLoader`·전이기)에 있다. **키는 PascalCase다.**
 > **구판 파일은 앱이 열 때 `ChapterWorkbookMigrator`가 자동 이행**(.bak 남김 — 구→v5→v6→v7→v8→v9 한 번에).
 > **대본은 챕터별 폴더 `episodes/{챕터}/`에 산다** (2026-08-16) — EpisodeId는 챕터 안에서만 유일하다. 뿌리에 평평하게 있던 구판 원고는 동기화가 그 챕터 폴더로 옮긴다(같은 이름을 여러 챕터가 쓰면 옮기지 않고 경고).
 >
@@ -55,7 +57,7 @@
 | [`../run-log.md`](../run-log.md) | **결정의 정본.** 항목마다 한 일·근거·되돌리는 법. 새 작업은 여기에 한 항목을 남긴다 |
 | [`../work-orders/chapter-graph-orders.md`](../work-orders/chapter-graph-orders.md) | 규격 원본 — 엑셀 시트·열, 기능 G1–G9, 전이 규칙 |
 | [`../chapter-layer-guide.md`](../chapter-layer-guide.md) | 기획자용 사용 안내 (챕터 그래프) |
-| [`../runtime-contract.md`](../runtime-contract.md) | **런타임과의 계약.** §F 소유자 확인 항목 · §G 진행 JSON 수입기 계약(Gate D) |
+| [`../runtime-contract.md`](../runtime-contract.md) | **런타임과의 계약 (2026-08-18 전면 개정).** 1부 `.yarn` · 2부 `progression.json` → `Ked.Progression` · 3부 열린 항목 |
 | [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) | 코드 구조 정본 — "이 기능은 어느 파일" 표가 여기 있다 |
 
 진행 상태(닫힌 것·열린 것)는 이 문서 **§7**이 진다 — 예전에는 `episode-layer-master-plan.md`가
@@ -362,10 +364,12 @@ game.definition.json` / `작가가 더한 화자`.
 
 | 항목 | 상태 |
 |---|---|
-| **⚠ 런타임 계약 개정 (Gate D 짝)** | v5·v6이 계약을 세 군데 바꿨다: ① 내보내기 Op에 `GreaterThan`/`LessThan` 신규 ② bool 스탯(0/1, Equal) ③ 전이 규칙 = 고른 선택지 → 보이지 않는 기본(방어장치) → 종료. 수입기(유니티 저장소, 아직 없음)와 함께 확정해야 한다 |
+| **⚠ `Stats[]` 내보내기 ← Gate D를 막는 유일한 항목** | `ChapterJson`에 `Stats`가 없어서 `ked-progression`이 **스탯 관문 있는 실데이터로 모델을 못 만든다**(정의되지 않은 스탯으로 거부 — 저쪽이 의도적으로 막아 둔 것). `ChapterProgressionExporter.ChapterJson`에 한 줄 + 매핑 하나. 한 행 = `(Key, DisplayName, Initial, Minimum, Maximum, Type)`. 상세 [`../runtime-contract.md`](../runtime-contract.md) §G-1 |
+| **⚠ `Ked.Presentation.Core` 소스 복사본이 낡았다** | 런타임 쪽에만 있는 파일이 7개(`StageReducer.{Placement,Portrait,Shot,Show,Slot,Staging}.cs` · `PortraitSizingReduction.cs`)이고 공통 파일도 여럿 다르다. 다시 들여와야 무대 프리뷰가 런타임과 같은 그림을 그린다(H-4 — 소스째 복사 규약) |
+| **서브 레인(Pres) 출력 경로** | 런타임에서 `pres_*`가 전멸했다. 이미터가 Pres 사본을 만드는 경로가 남아 있으면 걷어야 한다 |
 | **연출 그래프의 v6 잔향** | 철도 칩·가지 순서가 아직 간선의 파생 `OptionLabel`로 돈다(동작함). 칩 순서를 선택지 시트 인덱스로 옮기는 정리는 미착수. 대본 CHOICE/OPTION 기반 유령 표시도 폐지 수순과 함께 정리 대상 |
-| **Gate D (런타임 관통)** | 유니티 저장소의 수입기 부재. 스키마 1:1은 테스트로 닫음 |
-| **G9 런타임 잔여** | ① 선택지 전이 구현(v6 규칙) ② `StatChanges` 원자 커밋 ③ Tier2→Yarn 단방향 브리지 |
+| **Gate D (런타임 관통)** | 진행 모델은 `ked-progression`에 **섰다**(테스트 52). 남은 것은 그쪽의 DTO+`ProgressionLoader`와 전이기이고, **그 앞을 막는 것이 우리 쪽 `Stats[]` 한 줄이다**(위 항목) |
+| **G9 런타임 잔여** | ① 선택지 전이 구현 ② `StatChanges` 원자 커밋 — 둘 다 `ked-progression`으로 이사했다. ~~③ Tier2→Yarn 브리지~~는 **변수 저장소가 사라져 없어졌다** |
 | **⚠ Tier 2 영속화** | `EpisodeSelectionStateData`가 어디에도 저장되지 않는다 — 소유자 판단 대기 |
 | **T3 재시도 여부** | 소유자가 "어느 부분이 어색했는지" 아직 답하지 않음. 코드는 `5841eac`에 보존 |
 | **조건 삭제 기능** | 소유자가 **보류** 결정 (기록만) |
