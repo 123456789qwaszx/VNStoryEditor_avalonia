@@ -68,6 +68,19 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
             .ToArray();
 
         Assert.Equal(["ch01_alone", "ch01_true"], endings);
+
+        // v11 §6 — 연출이 실린 실데이터가 저쪽에 없었다(`ked-progression` 요청 2번).
+        // 표본이 그것을 보여 주는 파일이 됐으므로, 그 사실도 함께 건다.
+        string[] via = document.RootElement
+            .GetProperty("Nodes")
+            .EnumerateArray()
+            .SelectMany(node => node.GetProperty("NextOptions").EnumerateArray())
+            .Select(option => option.GetProperty("ViaNodeId").GetString()!)
+            .Where(name => name.Length > 0)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["엔딩 ch01_alone", "엔딩 ch01_true"], via);
     }
 
     /// <summary>
@@ -102,8 +115,8 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
                 [
                     ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, "FALSE", null, "선택지", null, null],
                     ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, "FALSE", null, "선택지", null, null],
-                    ["믿는길", "좋은끝", null, null, null, null, "FALSE", null, "자동", "ch01_true", null],
-                    ["혼자길", "쓸쓸한끝", null, null, null, null, "FALSE", null, "자동", "ch01_alone", null]
+                    ["믿는길", "좋은끝", null, null, null, null, "FALSE", null, "자동", "ch01_true", "엔딩 ch01_true"],
+                    ["혼자길", "쓸쓸한끝", null, null, null, null, "FALSE", null, "자동", "ch01_alone", "엔딩 ch01_alone"]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Conditions,

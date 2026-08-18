@@ -37,6 +37,7 @@
           "Conditions": [],
           "HideWhenLocked": false,
           "LockedReasonText": "",
+          "ViaNodeId": "",
           "StatChanges": [
             {
               "Key": "trust",
@@ -51,6 +52,7 @@
           "Conditions": [],
           "HideWhenLocked": false,
           "LockedReasonText": "",
+          "ViaNodeId": "",
           "StatChanges": [
             {
               "Key": "fatigue",
@@ -84,6 +86,7 @@
           "Conditions": [],
           "HideWhenLocked": false,
           "LockedReasonText": "",
+          "ViaNodeId": "엔딩 ch01_true",
           "StatChanges": []
         }
       ],
@@ -112,6 +115,7 @@
           "Conditions": [],
           "HideWhenLocked": false,
           "LockedReasonText": "",
+          "ViaNodeId": "엔딩 ch01_alone",
           "StatChanges": []
         }
       ],

@@ -154,6 +154,60 @@ public sealed class EdgeKindAndEndingTests : IDisposable
         Assert.True(ending.GetProperty("IsChapterEndingCandidate").GetBoolean());
     }
 
+    [Fact]
+    public void 연출_이름이_ViaNodeId라는_이름으로_나간다()
+    {
+        // v11 §6. ⚠ 이 테스트는 <b>키 이름 글자 자체</b>를 붙든다 (`ked-progression` 요청).
+        //
+        // 저작 쪽 이름은 `PresentationNodeName`이고 계약 쪽은 `ViaNodeId`다. 틀린 이름으로
+        // 내면 저쪽 역직렬화기가 모르는 속성을 <b>기본으로 무시</b>해서 값이 빈 문자열로
+        // 남는다 — 오류 하나 없이 연출만 사라진다. 저쪽의 "연출이 비었습니다" 경고도
+        // 못 잡는다: 그건 모델을 보는 검사이고 모델에는 값이 멀쩡히 있다.
+        ChapterGraphModel model = Read(
+            ["ep1", "ep2", null, "믿는다", null, null, "FALSE", null, "선택지", null, "fade_trust"],
+            ["ep2", "끝", null, null, null, null, "FALSE", null, "자동", "ch_bad", "엔딩 ch_bad"]);
+
+        Assert.Empty(Errors(model));
+
+        ChapterExportResult result = ChapterProgressionExporter.Export(model, episodesFolder: null);
+        Assert.False(result.Refused,
+            string.Join(" / ", result.Validation.All.Select(item => item.Message)));
+
+        using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
+
+        System.Text.Json.JsonElement Option(string episodeId) =>
+            document.RootElement.GetProperty("Nodes").EnumerateArray()
+                .Single(node => node.GetProperty("EpisodeId").GetString() == episodeId)
+                .GetProperty("NextOptions").EnumerateArray().Single();
+
+        Assert.Equal("fade_trust", Option("ep1").GetProperty("ViaNodeId").GetString());
+
+        // 자동 진행 간선에도 붙는다 — 엔딩 전이가 바로 그 모양이다.
+        Assert.Equal("엔딩 ch_bad", Option("ep2").GetProperty("ViaNodeId").GetString());
+    }
+
+    [Fact]
+    public void 연출이_없는_간선은_ViaNodeId가_빈_문자열이다()
+    {
+        // 키 자체는 언제나 나간다 — 없을 때만 사라지면 "빠뜨린 것"과 "없는 것"이 같아진다.
+        ChapterGraphModel model = Read(
+            ["ep1", "ep2", null, "믿는다", null, null, "FALSE", null, "선택지", null, null],
+            ["ep2", "끝", null, null, null, null, "FALSE", null, "자동", null, null]);
+
+        ChapterExportResult result = ChapterProgressionExporter.Export(model, episodesFolder: null);
+        Assert.False(result.Refused,
+            string.Join(" / ", result.Validation.All.Select(item => item.Message)));
+
+        using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
+
+        Assert.Equal(
+            string.Empty,
+            document.RootElement.GetProperty("Nodes").EnumerateArray()
+                .Single(node => node.GetProperty("EpisodeId").GetString() == "ep1")
+                .GetProperty("NextOptions").EnumerateArray().Single()
+                .GetProperty("ViaNodeId").GetString());
+    }
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static IEnumerable<ChapterDiagnostic> Errors(ChapterGraphModel model) =>

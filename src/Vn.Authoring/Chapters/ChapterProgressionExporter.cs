@@ -133,6 +133,10 @@ public static class ChapterProgressionExporter
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 HideWhenLocked = edge.HideWhenLocked,
                 LockedReasonText = edge.LockedMessage ?? string.Empty,
+                // v11 §6 — 저작의 `연출` 칸이 계약에서는 `ViaNodeId`다. 이름이 갈리는
+                // 자리라 내보내기 테스트가 <b>글자 그대로</b> 붙들고 있다: 키를 틀리면
+                // 저쪽 역직렬화기가 모르는 속성을 조용히 버려 연출만 사라진다.
+                ViaNodeId = edge.PresentationNodeName ?? string.Empty,
                 StatChanges = edge.StatChanges
                     .Select(delta => new StatChangeJson { Key = delta.Key, Amount = delta.Amount })
                     .ToList()
@@ -251,6 +255,19 @@ public static class ChapterProgressionExporter
         public List<ConditionJson> Conditions { get; set; } = new();
         public bool HideWhenLocked { get; set; }
         public string LockedReasonText { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 이 길을 <b>지나며 거쳐 갈</b> 연출의 Yarn 노드 이름 (v11 §6). 비면 곧장 간다.
+        ///
+        /// ⚠ <b>"노드"는 Yarn 노드다</b> — 에피소드 노드가 아니다. 저작 쪽 이름은
+        /// <c>ChapterEdge.PresentationNodeName</c>이고 계약 쪽은 <c>ViaNodeId</c>다
+        /// (계약서 §H-3의 이름을 그대로 쓴다 — 이름이 둘 도는 것이 이 모호함보다 나쁘다).
+        ///
+        /// ⚠ <b>여기에 파라미터를 붙이지 않는다</b> — 지속시간·이징·색이 들어오는 순간
+        /// 경계면이 진짜로 넓어진다. 연출의 파라미터는 연출 쪽에서 산다
+        /// (`ked-progression` 요청, 2026-08-18). 이 칸은 이름 하나다.
+        /// </summary>
+        public string ViaNodeId { get; set; } = string.Empty;
 
         /// <summary>
         /// 이 간선을 타는 순간 1회 커밋할 스탯 증감 (2026-08-14 — 스탯이 변하는 유일한 자리).
