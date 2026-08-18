@@ -146,8 +146,13 @@ public class OutputPresetTests
         Assert.Contains("[Camera]", text, StringComparison.Ordinal);
         Assert.Contains("[ScreenEffect]", text, StringComparison.Ordinal);
         Assert.Contains("[CharacterActing]", text, StringComparison.Ordinal);
-        Assert.Contains($"[LINE {sample.Opening}] 첫 대사", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("라루:", text, StringComparison.Ordinal);
+        Assert.Contains($"[LINE {sample.Opening}]", text, StringComparison.Ordinal);
+        Assert.Contains("첫 대사", text, StringComparison.Ordinal);
+
+        // 2026-08-18 — 화자를 켰다. 이 양식이 **줄 단위로 연출을 훑는 유일한 자리**가
+        // 됐기 때문이다: 런타임이 단일 대본만 읽게 되면서 `Pres_*.yarn`(서브 레인 사본)이
+        // 없어졌고, 화자가 없으면 누구 대사인지 세어 가며 맞춰야 한다.
+        Assert.Contains("라루", text, StringComparison.Ordinal);
     }
 
     [Fact]

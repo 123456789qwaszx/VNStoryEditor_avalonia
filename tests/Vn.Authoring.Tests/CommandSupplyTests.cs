@@ -179,7 +179,7 @@ public class CommandSupplyTests
             bundleName: "supply_ep");
 
         // 프리셋으로 만든 커맨드도 파라미터 순서의 포지셔널 조립을 그대로 지난다.
-        Assert.Contains("<<camera closeup>>", bundle.PresText!, StringComparison.Ordinal);
+        Assert.Contains("<<camera closeup>>", bundle.StoryText, StringComparison.Ordinal);
         Assert.False(bundle.HasBlockingProblems);
     }
 

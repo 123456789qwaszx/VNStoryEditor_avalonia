@@ -201,10 +201,20 @@ public static class OutputPresetCatalog
             includeExecutionJumps: false,
             includeDiagnostics: false));
 
+    /// <summary>
+    /// 연출 양식 — <b>LineId · 화자 · 대사 · 연출</b>을 한 줄에 놓고 사람이 읽는다.
+    ///
+    /// 2026-08-18에 <b>화자를 켰다</b>. 이 양식이 자리를 물려받았기 때문이다: 줄에 붙은
+    /// 연출은 예전에 `Pres_*.yarn`(서브 레인 사본)으로도 나갔는데, 런타임이 단일 대본만
+    /// 읽게 되면서 그 파일이 없어졌다. 연출을 <b>줄 단위로 훑어보는 자리</b>가 여기
+    /// 하나만 남았고, 그때 화자가 없으면 누구 대사인지 세어 가며 맞춰야 한다.
+    ///
+    /// 차후에 별도 엑셀로 빼낼 수 있다(소유자).
+    /// </summary>
     public static OutputPreset DirectionSheet { get; } = new(
         OutputPresetId.DirectionSheet,
         "Direction Sheet",
-        "LineId와 대사 참고문, 모든 범주의 연출 지시를 표시",
+        "LineId · 화자 · 대사 · 모든 범주의 연출 지시를 한눈에",
         new DocumentOutputOptions(
             DocumentOutputFormat.Direction,
             includeStructure: false,
@@ -215,7 +225,7 @@ public static class OutputPresetCatalog
             includeUncategorizedPresentation: true,
             includeDialogueText: true,
             includeLocalizedDialogue: false,
-            includeSpeaker: false,
+            includeSpeaker: true,
             includeLineId: true,
             includeExecutionJumps: false,
             includeDiagnostics: false));

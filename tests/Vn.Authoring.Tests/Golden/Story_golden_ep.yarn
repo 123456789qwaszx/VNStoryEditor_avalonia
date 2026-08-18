@@ -1,19 +1,18 @@
 title: Story_golden_ep
 ---
 <<set $__t1_sf_test_favor = 0>>
-<<beat Set_golden_ep>>
-<<pres_start Pres_golden_ep>>
+<<camera wide>>
 
 <<set $__t1_sf_test_fatigue += 10>>
+<<camera closeup>>
 라루: 첫 줄 그대로 #line:ln_004
 
 <<if $__t1_sf_test_favor >= 5>>
+    <<character_acting smile>>
     윌로: 갈래 안 대사 #line:ln_005
-    <<pres_end>>
     <<jump Story_A로_간다>>
 <<endif>>
 갈래 뒤 대사 #line:ln_006
 
-<<pres_end>>
 <<jump Story_기본으로_간다>>
 ===

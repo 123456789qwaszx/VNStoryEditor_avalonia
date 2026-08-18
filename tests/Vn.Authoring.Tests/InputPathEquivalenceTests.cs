@@ -83,12 +83,11 @@ public class InputPathEquivalenceTests
 
         Assert.False(bundleA.HasBlockingProblems);
         Assert.Equal(bundleA.StoryText, bundleB.StoryText);
-        Assert.Equal(bundleA.SetText, bundleB.SetText);
-        Assert.Equal(bundleA.PresText, bundleB.PresText);
 
         // 결과가 실제로 그 연출을 담고 있는지도 못박는다 — 빈 출력끼리 같은 것이 아니다.
-        Assert.Contains("<<bg_spawn bg0 office>>", bundleA.SetText!, StringComparison.Ordinal);
-        Assert.Contains("<<cast c1 laru a 1>>", bundleA.PresText!, StringComparison.Ordinal);
-        Assert.Contains("<<face_swap c1 5 10fr>>", bundleA.PresText!, StringComparison.Ordinal);
+        // 2026-08-18: 레인이 없어져 노드 셋업도 줄 연출도 모두 Story 하나에 있다.
+        Assert.Contains("<<bg_spawn bg0 office>>", bundleA.StoryText, StringComparison.Ordinal);
+        Assert.Contains("<<cast c1 laru a 1>>", bundleA.StoryText, StringComparison.Ordinal);
+        Assert.Contains("<<face_swap c1 5 10fr>>", bundleA.StoryText, StringComparison.Ordinal);
     }
 }

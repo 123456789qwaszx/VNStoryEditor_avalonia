@@ -308,49 +308,22 @@ public class ChoiceTests
             $"-> 안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15 #line:{world.Label1}",
             bundle.StoryText,
             StringComparison.Ordinal);
-        // 합성 추적 변수(`$__ch_N`)에는 챕터 접두가 붙지 않는다 — 노드 안에서 쓰고 버리는
-        // 값이라 챕터를 넘지 않는다. 작가의 아이템·능력만 접두를 받는다 (2026-08-17).
+        // 옵션 본문의 실제 효과는 작가 변수 set이다 — 챕터 접두를 받는다 (2026-08-17).
         Assert.Contains(
-            "    <<set $__ch_0 = 0>>\n    <<set $__t1_sf_test_fatigue += 10>>",
+            "    <<set $__t1_sf_test_fatigue += 10>>",
             bundle.StoryText,
             StringComparison.Ordinal);
-        Assert.Contains("    <<set $__ch_0 = 1>>", bundle.StoryText, StringComparison.Ordinal);
-        Assert.Contains("    <<set $__ch_1 = 0>>", bundle.StoryText, StringComparison.Ordinal);
 
-        // 옵션 출구는 본문 끝에서 pres_end 뒤 jump다 (A5).
-        Assert.Contains("    <<pres_end>>\n    <<jump Story_A로_간다>>", bundle.StoryText, StringComparison.Ordinal);
+        // 옵션 출구는 본문 끝의 jump다. 2026-08-18까지는 그 앞에 <<pres_end>>가 붙었는데
+        // 서브 레인이 없어져 함께 사라졌다.
+        Assert.Contains("    <<jump Story_A로_간다>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
 
-        // Pres: 라벨 사본 없이 합성 조건으로 갈라진다. set은 복제되지 않는다 (D2).
-        Assert.Contains("<<if $__ch_0 == 0>>", bundle.PresText!, StringComparison.Ordinal);
-        Assert.Contains("<<elseif $__ch_0 == 1>>", bundle.PresText!, StringComparison.Ordinal);
-        Assert.Contains("<<endif>>", bundle.PresText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("->", bundle.PresText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("<<set", bundle.PresText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("#line:", bundle.PresText!, StringComparison.Ordinal);
-
-        // 동기 변수는 선언 파일에 들어간다.
-        string declarations = YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!;
-        Assert.Contains("<<declare $__ch_0 = 0>>", declarations, StringComparison.Ordinal);
-        Assert.Contains("<<declare $__ch_1 = 0>>", declarations, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Pres_사본의_라인_수는_Story_본문_라인_수와_같다()
-    {
-        ChoiceWorld world = BuildChoiceWorld();
-
-        YarnBundle bundle = YarnBundleEmitter.Emit(
-            world.Dialogue,
-            world.Presentation,
-            world.Sample.Project,
-            Sample.Definition,
-            bundleName: "choices_ep");
-
-        // 계약서 B — 라벨(-> 라인)은 advance 0이므로 사본에서 빠지고,
-        // 본문 라인 수는 양쪽이 정확히 같아야 락스텝이 유지된다.
-        Assert.Equal(
-            CountPlainLines(bundle.StoryText),
-            CountPlainLines(bundle.PresText!));
+        // 합성 추적 변수(`$__ch_N`)도 사라졌다 — 서브 레인 사본이 같은 갈래를 타게 하려고
+        // 두었던 것이라, 레인이 없어지자 쓸 곳이 없다. 선언 파일에도 나오지 않는다.
+        Assert.DoesNotContain("__ch_", bundle.StoryText, StringComparison.Ordinal);
+        Assert.DoesNotContain("__ch_", YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle }) ?? string.Empty,
+            StringComparison.Ordinal);
     }
 
     private static int CountPlainLines(string yarn)
@@ -469,9 +442,12 @@ public class ChoiceTests
             bundleName: "nested_ep");
         string story = bundle.Files.Single(file => file.FileName == "Story_nested_ep.yarn").Text;
 
-        Assert.Contains("\n    -> 치킨을 산다", story);         // 라벨이 조건 깊이만큼 들여쓰였다
-        Assert.Contains("\n        <<set $__ch_0 = 0>>", story); // 동기 변수는 라벨보다 한 단 더
-        Assert.Contains("\n        치킨을 샀다.", story);        // 옵션 본문도 한 단 더
+        Assert.Contains("\n    -> 치킨을 산다", story);   // 라벨이 조건 깊이만큼 들여쓰였다
+        Assert.Contains("\n        치킨을 샀다.", story);  // 옵션 본문은 라벨보다 한 단 더
+
+        // 동기 변수(`$__ch_N`)는 2026-08-18에 사라졌다 — 서브 레인 사본이 같은 갈래를
+        // 타게 하려던 것이라, 레인이 없어지자 쓸 곳이 없다.
+        Assert.DoesNotContain("__ch_", story, StringComparison.Ordinal);
 
         // 조건 갈래 출구 점프는 선택 블록의 마지막 본문 뒤, endif 앞에서 나온다 —
         // 선택 전환에 새어 나오면 선택지가 제시되기 전에 점프해 버린다.

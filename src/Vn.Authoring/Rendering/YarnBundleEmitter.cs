@@ -16,23 +16,23 @@ public sealed record YarnBundleProblem(string Message, bool IsBlocking, string? 
 public sealed record YarnDeclaration(string Variable, string InitialValue);
 
 /// <summary>
-/// 합성 하나에서 나온 .yarn 트리오. 파일로 쓰기 전의 순수 문자열이다.
-/// Set·Pres는 연출 결과 없이 합성했으면 null이다 — 레인이 없는 Story는 혼자 재생된다.
+/// 합성 하나에서 나온 <b>대본 하나</b>. 파일로 쓰기 전의 순수 문자열이다.
+///
+/// <b>2026-08-18까지는 트리오(Story/Set/Pres)였다.</b> 런타임이 세 레인을 읽고 동기화하고
+/// 그것을 다시 롤백에 반영하는 값을 치르지 않기로 하면서(소유자: "디버깅비용이 최소
+/// 10배 이상"), <b>합치는 쪽이 이 도구</b>가 됐다 — 런타임은 단일 대본만 읽는다.
+/// 줄에 붙던 연출은 이제 Story 본문 안에서 자기 대사 줄 바로 앞에 선다.
 /// </summary>
 public sealed class YarnBundle
 {
     public YarnBundle(
         string bundleName,
         string storyText,
-        string? setText,
-        string? presText,
         IReadOnlyList<YarnDeclaration> declarations,
         IReadOnlyList<YarnBundleProblem> problems)
     {
         BundleName = bundleName;
         StoryText = storyText;
-        SetText = setText;
-        PresText = presText;
         Declarations = declarations;
         Problems = problems;
     }
@@ -40,10 +40,6 @@ public sealed class YarnBundle
     public string BundleName { get; }
 
     public string StoryText { get; }
-
-    public string? SetText { get; }
-
-    public string? PresText { get; }
 
     /// <summary>이 번들이 쓰는 변수와 초기값. 선언 파일 합집합의 재료다.</summary>
     public IReadOnlyList<YarnDeclaration> Declarations { get; }
@@ -54,27 +50,10 @@ public sealed class YarnBundle
 
     public string StoryFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.StoryPrefix, BundleName);
 
-    public string SetFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.SetPrefix, BundleName);
-
-    public string PresFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.PresPrefix, BundleName);
-
-    /// <summary>파일 이름 → 내용. 쓰는 순서도 이 순서다.</summary>
+    /// <summary>파일 이름 → 내용. 이제 하나다.</summary>
     public IEnumerable<(string FileName, string Text)> Files
     {
-        get
-        {
-            yield return (StoryFileName, StoryText);
-
-            if (SetText is not null)
-            {
-                yield return (SetFileName, SetText);
-            }
-
-            if (PresText is not null)
-            {
-                yield return (PresFileName, PresText);
-            }
-        }
+        get { yield return (StoryFileName, StoryText); }
     }
 
     public string BlockingSummary() => string.Join(
@@ -83,15 +62,12 @@ public sealed class YarnBundle
 }
 
 /// <summary>
-/// 발행 결과 조합 하나를 ked-presentation-runtime이 재생하는 .yarn 트리오
-/// (Story / Set / Pres)로 조립한다. <c>runtime-contract.md</c>가 이 클래스의 사양이다.
+/// 발행 결과 조합 하나를 ked-presentation-runtime이 재생하는 <b>대본 하나</b>로 조립한다.
+/// <c>runtime-contract.md</c>가 이 클래스의 사양이다.
 ///
-/// - Story 대사 라인에만 <c>#line:</c> 태그를 단다 (C1). Pres 사본은 무태그다 (C4).
-/// - 활성 레인이 있는 노드의 모든 <c>&lt;&lt;jump&gt;&gt;</c> 직전에 <c>&lt;&lt;pres_end&gt;&gt;</c>를 낸다 (A5).
-/// - <c>&lt;&lt;set&gt;&gt;</c>은 Story에만 낸다 (D2). 조건 구조는 Pres에 그대로 복제한다 (D3).
-/// - Set 노드는 커맨드 전용이다 (A2). 메인 레인 전용 커맨드는 Set·Pres에 내지 않는다 (E2).
-/// - Pres 사본의 라인 수·순서는 Story의 대사 라인과 정확히 같다 (B) — 같은 결과에서
-///   만들므로 구조적으로 보장된다.
+/// - 레인은 없다 (2026-08-18) — Story 노드 하나에 대사·조건·선택지·연출이 모두 선다.
+/// - 연출 커맨드는 자기 대사 줄 <b>바로 앞</b>에 인라인으로 놓인다.
+/// - <c>#line:</c> 태그는 계속 단다 — 런타임은 요구하지 않지만(§C1) 이쪽의 열쇠다.
 ///
 /// 조립은 <see cref="ResultDocumentComposer"/>의 Runtime Full Segment 목록 위에서 한다.
 /// Preview와 파일이 같은 합성기를 지나야 화면에서 본 것과 파일의 차이를 찾을 필요가 없어진다.
@@ -135,12 +111,11 @@ public static class YarnBundleEmitter
             definition,
             OutputPresetCatalog.RuntimeFull.Options);
 
-        PresentationCommandCatalog catalog = PresentationCommandCatalog.For(definition);
+        // 카탈로그는 이제 이미터가 보지 않는다 (2026-08-18) — 레인이 하나라
+        // `mainLaneOnly` 검사가 가릴 대상을 잃었고, 그 검사가 유일한 소비자였다.
         string name = bundleName is not null
             ? YarnSyntax.SanitizeNodeName(bundleName)
             : BundleNameOf(dialogue.SourceNodeName, dialogue.SourceNodeId);
-
-        bool hasLane = presentation is not null;
 
         // 챕터 네임스페이스 (2026-08-17) — 작가의 아이템·능력은 챕터 단위로만 살아야 하는데
         // Yarn의 변수 저장소는 하나다. 접두가 그 틈을 막는다. A계층 스탯은 그대로 둔다.
@@ -149,34 +124,19 @@ public static class YarnBundleEmitter
 
         var problems = new List<YarnBundleProblem>();
         var story = new StringBuilder();
-        var pres = hasLane ? new StringBuilder() : null;
-        var setup = hasLane ? new StringBuilder() : null;
 
         // ── 헤더 ────────────────────────────────────────────────────────────
         story.Append("title: Story_").Append(name).Append("\n---\n");
-        pres?.Append("title: Pres_").Append(name).Append("\n---\n\n");
-        setup?.Append("title: Set_").Append(name).Append("\n---\n");
 
-        // Story 서두: 변수 초기화(set) → 원샷 레인(beat) → 서브 레인(pres_start).
+        // Story 서두: 변수 초기화(set) → 노드 셋업 커맨드.
         // 헤더가 닫히는 시점은 첫 본문 Segment를 만났을 때다.
         bool storyHeaderClosed = false;
-
-        // 마커가 있는 라인의 커맨드 버퍼. 커맨드 Segment가 언제나 자기 라인보다 먼저 오므로
-        // 리스트 하나면 된다 — 라인을 쓰는 순간 비운다.
-        var bufferedLineCommands = new List<RenderedSegment>();
 
         void CloseStoryHeader()
         {
             if (storyHeaderClosed)
             {
                 return;
-            }
-
-            if (hasLane)
-            {
-                // 레인이 필요한 Story 노드는 각자 자기 pres_start로 연다 (A5).
-                story.Append("<<beat Set_").Append(name).Append(">>\n");
-                story.Append("<<pres_start Pres_").Append(name).Append(">>\n");
             }
 
             story.Append('\n');
@@ -209,82 +169,40 @@ public static class YarnBundleEmitter
                     break;
 
                 case RenderedSegmentKind.PresentationCommand:
-                    // 마커가 있는 라인의 커맨드는 곧바로 쓰지 않고 모아 둔다 —
-                    // 그룹 경계에 따라 사본 라인들 사이에 나뉘어 들어가야 한다.
-                    if (segment.Source.LineId is { } commandLineId &&
-                        presentation?.FindBinding(commandLineId)?.MarkerList.Count > 0)
-                    {
-                        if (!IsMainLaneOnly(segment, catalog, problems))
-                        {
-                            CloseStoryHeader();
-                            bufferedLineCommands.Add(segment);
-                        }
-
-                        break;
-                    }
-
-                    AppendPresentationCommand(segment, setup, pres, catalog, problems, CloseStoryHeader);
+                    AppendPresentationCommand(segment, story, indent, CloseStoryHeader);
                     break;
 
                 case RenderedSegmentKind.ConditionBegin:
                 case RenderedSegmentKind.ConditionElseIf:
                 case RenderedSegmentKind.ConditionEnd:
-                    // 조건 구조는 Pres에 그대로 복제한다 (D3). 읽기 전용이고,
-                    // 서브 레인은 메인이 지나간 뒤에만 평가하므로 같은 분기를 탄다.
                     CloseStoryHeader();
 
-                    RenderedSegment scoped = segment with
+                    AppendCondition(story, segment with
                     {
                         Expression = Tier1Namespace.ApplyToExpression(
                             segment.Expression, tier1Prefix, statNames)
-                    };
-
-                    AppendCondition(story, scoped, indent);
-
-                    if (pres is not null)
-                    {
-                        AppendCondition(pres, scoped, indent);
-                    }
+                    }, indent);
 
                     break;
 
                 case RenderedSegmentKind.ChoiceOption:
                     CloseStoryHeader();
-                    AppendChoiceOption(segment, story, pres, hasLane, problems);
+                    AppendChoiceOption(segment, story, problems);
                     break;
 
                 case RenderedSegmentKind.ChoiceEnd:
+                    // 선택 블록은 마지막 옵션 본문이 끝나면 저절로 닫힌다 — 낼 것이 없다.
                     CloseStoryHeader();
-
-                    // Story에서 선택 블록은 마지막 옵션 본문이 끝나면 저절로 닫힌다.
-                    // Pres 사본의 합성 조건만 명시적으로 닫는다.
-                    pres?.Append("<<endif>>\n");
                     break;
 
                 case RenderedSegmentKind.DialogueLine:
                     CloseStoryHeader();
-                    AppendDialogue(
-                        segment,
-                        story,
-                        pres,
-                        indent,
-                        problems,
-                        presentation?.FindBinding(segment.Source.LineId)?.MarkerList
-                            ?? Array.Empty<PresentationResultMarker>(),
-                        bufferedLineCommands);
-                    bufferedLineCommands.Clear();
+                    AppendDialogue(segment, story, indent, problems);
                     break;
 
                 case RenderedSegmentKind.BranchJump:
                 case RenderedSegmentKind.DefaultJump:
                     CloseStoryHeader();
-
-                    if (hasLane)
-                    {
-                        // jump는 서브 레인을 정리하지 않는다 — 반드시 pres_end 선행 (A5).
-                        story.Append(indent).Append("<<pres_end>>\n");
-                    }
-
                     story.Append(indent);
                     YarnSyntax.AppendJump(story, JumpTargetOf(segment));
                     story.Append('\n');
@@ -301,15 +219,11 @@ public static class YarnBundleEmitter
 
         CloseStoryHeader();
         story.Append("===\n");
-        pres?.Append("===\n");
-        setup?.Append("===\n");
 
         return new YarnBundle(
             name,
             story.ToString(),
-            setup?.ToString(),
-            pres?.ToString(),
-            CollectDeclarations(dialogue, definition, hasLane, tier1Prefix, statNames),
+            CollectDeclarations(dialogue, definition, tier1Prefix, statNames),
             problems);
     }
 
@@ -490,7 +404,6 @@ public static class YarnBundleEmitter
     private static IReadOnlyList<YarnDeclaration> CollectDeclarations(
         DialogueResult dialogue,
         GameDefinition? definition,
-        bool hasLane,
         string tier1Prefix,
         IReadOnlySet<string> statNames)
     {
@@ -521,18 +434,9 @@ public static class YarnBundleEmitter
             Collect(assignment.Variable);
         }
 
-        int choiceBlockOrdinal = -1;
-
+        // 합성 추적 변수(`__ch_N`) 선언은 2026-08-18에 사라졌다 — 서브 레인이 없다.
         foreach (DialogueResultLine line in dialogue.Lines)
         {
-            // 합성 추적 변수도 선언이 필요하다. 블록 서수는 노드마다 0부터라 다른 노드와
-            // 이름이 겹치지만, 초기값이 같아(0) 선언 합집합에서 충돌하지 않는다.
-            if (hasLane && line.Transition?.Kind == ConditionTransitionKind.BeginChoice)
-            {
-                choiceBlockOrdinal++;
-                Collect($"__ch_{choiceBlockOrdinal}");
-            }
-
             foreach (DialogueResultSetOperation operation in line.Sets)
             {
                 Collect(operation.Variable);
@@ -556,60 +460,32 @@ public static class YarnBundleEmitter
     }
 
     /// <summary>
-    /// 메인 레인 전용 커맨드인지 (계약서 E2). 서브 러너들에 등록되어 있지 않아
-    /// unknown command로 즉시 깨지므로 출력 자체를 막는다.
+    /// 연출 커맨드 하나를 Story 본문에 낸다 (2026-08-18 — 단일 대본).
+    ///
+    /// <b>레인이 사라져 갈 곳이 하나가 됐다.</b> 예전에는 LineId 없는 커맨드는 Set 노드
+    /// (원샷 레인), 줄에 붙은 커맨드는 Pres 노드(서브 레인)로 갈렸다. 런타임이 세 레인을
+    /// 읽고 동기화하고 그것을 다시 롤백에 반영하는 값을 치르지 않기로 하면서
+    /// (소유자: "디버깅비용이 최소 10배"), <b>합치는 쪽이 이 도구</b>가 됐다.
+    ///
+    /// - LineId 없음 = 노드 셋업 → 헤더 자리(첫 본문 앞)에 그대로 선다
+    /// - LineId 있음 = 그 줄의 연출 → 세그먼트 순서상 자기 대사 줄 <b>바로 앞</b>에 선다
+    ///
+    /// 메인 레인 전용 검사는 없앴다 — 이제 전부 메인 레인이라 가릴 것이 없다.
     /// </summary>
-    private static bool IsMainLaneOnly(
-        RenderedSegment segment,
-        PresentationCommandCatalog catalog,
-        List<YarnBundleProblem> problems)
-    {
-        if (catalog.Find(segment.DefinitionId)?.MainLaneOnly != true)
-        {
-            return false;
-        }
-
-        problems.Add(new YarnBundleProblem(
-            $"메인 레인 전용 커맨드 '{segment.CommandName ?? segment.DefinitionId}'는 " +
-            "Set·Pres 노드에 출력할 수 없습니다.",
-            IsBlocking: true,
-            segment.Source.LineId));
-        return true;
-    }
-
     private static void AppendPresentationCommand(
         RenderedSegment segment,
-        StringBuilder? setup,
-        StringBuilder? pres,
-        PresentationCommandCatalog catalog,
-        List<YarnBundleProblem> problems,
+        StringBuilder story,
+        string indent,
         Action closeStoryHeader)
     {
-        if (IsMainLaneOnly(segment, catalog, problems))
+        if (segment.Source.LineId is not null)
         {
-            return;
+            closeStoryHeader();
+            story.Append(indent);
         }
 
-        if (segment.Source.LineId is null)
-        {
-            // Setup은 Set 노드 본문이다 (A2 — 커맨드 전용).
-            if (setup is not null)
-            {
-                YarnSyntax.AppendCommand(setup, segment);
-                setup.Append('\n');
-            }
-
-            return;
-        }
-
-        closeStoryHeader();
-
-        if (pres is not null)
-        {
-            pres.Append(YarnSyntax.IndentOf(segment.IndentLevel));
-            YarnSyntax.AppendCommand(pres, segment);
-            pres.Append('\n');
-        }
+        YarnSyntax.AppendCommand(story, segment);
+        story.Append('\n');
     }
 
     /// <summary>
@@ -623,18 +499,8 @@ public static class YarnBundleEmitter
     private static void AppendChoiceOption(
         RenderedSegment segment,
         StringBuilder story,
-        StringBuilder? pres,
-        bool hasLane,
         List<YarnBundleProblem> problems)
     {
-        if (segment.ChoiceBlockOrdinal is not { } ordinal || segment.ChoiceOptionIndex is not { } index)
-        {
-            problems.Add(new YarnBundleProblem(
-                $"옵션 라벨 '{segment.Text}'에 블록 서수가 없습니다.",
-                IsBlocking: true,
-                segment.Source.LineId));
-            return;
-        }
 
         // 라벨은 접두 없이 순수 텍스트로 낸다 (계약서 D6 결정 — 런타임은 라벨을 원문 그대로 렌더한다).
         // 미리보기 태그(D5)는 표시 전용이고, 실제 효과는 뒤따르는 본문의 <<set>>이다.
@@ -661,25 +527,8 @@ public static class YarnBundleEmitter
 
         story.Append('\n');
 
-        if (hasLane)
-        {
-            story.Append(labelIndent).Append(YarnSyntax.Indent)
-                .Append("<<set $__ch_").Append(ordinal)
-                .Append(" = ").Append(index)
-                .Append(">>\n");
-        }
-
-        if (pres is not null)
-        {
-            // 라벨 라인은 advance를 소비하지 않으므로(계약서 B) Pres에 사본을 만들지 않는다.
-            // 합성 조건만 낸다. 갈래별 본문 라인 수는 같은 결과에서 나오므로 일치한다.
-            pres.Append(labelIndent)
-                .Append(index == 0 ? "<<if $__ch_" : "<<elseif $__ch_")
-                .Append(ordinal)
-                .Append(" == ")
-                .Append(index)
-                .Append(">>\n");
-        }
+        // 합성 추적 변수(`$__ch_N`)는 2026-08-18에 사라졌다 — 서브 레인 사본이 같은
+        // 갈래를 타게 하려고 두었던 것이라, 레인이 없어지자 쓸 곳이 없다.
     }
 
     private static void AppendCondition(StringBuilder builder, RenderedSegment segment, string indent)
@@ -705,29 +554,14 @@ public static class YarnBundleEmitter
     private static void AppendDialogue(
         RenderedSegment segment,
         StringBuilder story,
-        StringBuilder? pres,
         string indent,
-        List<YarnBundleProblem> problems,
-        IReadOnlyList<PresentationResultMarker> markers,
-        IReadOnlyList<RenderedSegment> bufferedCommands)
+        List<YarnBundleProblem> problems)
     {
         string text = segment.Text ?? string.Empty;
 
-        if (text.Contains("[adv/]", StringComparison.Ordinal))
-        {
-            // 본문에 직접 입력한 마커는 동기화 그룹이 없다 — 라인 예산이 어긋난다 (B).
-            problems.Add(new YarnBundleProblem(
-                $"LineId '{segment.Source.LineId}'의 본문에 직접 입력한 [adv/] 마커가 있습니다. " +
-                "연출 바인딩의 마커 기능을 사용해야 서브 레인 예산이 맞습니다.",
-                IsBlocking: false,
-                segment.Source.LineId));
-        }
-
-        string[] parts = SplitByMarkers(text, markers);
-
-        // Story 라인에는 #line: 태그가 필수다 (C1). 없으면 implicit ID가 익스포트마다
-        // 바뀌고, 세이브 로드가 조용히 행에 빠진다. 마커는 본문 오프셋 위치에 삽입된다.
-        // 마커명은 `adv` 고정 — InlineAdvanceManifest.DefaultMarkerName.
+        // `#line:` 태그는 런타임이 더 이상 요구하지 않지만(계약서 §C1 — 세이브가 사라졌다)
+        // 계속 낸다: LineId는 이쪽에서 연출이 매달리는 열쇠이고, 세이브가 돌아오면 그때
+        // 제일 먼저 필요해진다. 태그가 있어서 손해 보는 것은 없다.
         story.Append(indent);
 
         if (!string.IsNullOrWhiteSpace(segment.Speaker))
@@ -735,7 +569,7 @@ public static class YarnBundleEmitter
             story.Append(segment.Speaker).Append(": ");
         }
 
-        story.Append(string.Join("[adv/]", parts));
+        story.Append(text);
 
         if (segment.Source.LineId is { Length: > 0 } lineId)
         {
@@ -752,40 +586,6 @@ public static class YarnBundleEmitter
         // 블록이 흩어져 보인다. 숨(빈 줄)은 갈래 밖 일반 흐름에서만 준다.
         story.Append(segment.IndentLevel > 0 ? "\n" : "\n\n");
 
-        if (pres is null)
-        {
-            return;
-        }
-
-        // Pres 사본은 무태그다 — Story와 같은 #line:을 내면 전역 유일성 위반으로
-        // 컴파일이 깨진다 (C4). 마커가 있으면 이 라인 자리에 1 + 마커 수 개의 라인을 내
-        // 라인 예산(B: 대사 라인 + [adv/] 마커 수)을 정확히 맞춘다. 그룹 k의 커맨드가
-        // k번째 사본 라인 앞에 붙는다.
-        for (int part = 0; part < parts.Length; part++)
-        {
-            int groupStart = part == 0 ? 0 : ClampIndex(markers[part - 1].FirstCommandIndex, bufferedCommands.Count);
-            int groupEnd = part < markers.Count
-                ? ClampIndex(markers[part].FirstCommandIndex, bufferedCommands.Count)
-                : bufferedCommands.Count;
-
-            for (int index = groupStart; index < Math.Max(groupStart, groupEnd); index++)
-            {
-                pres.Append(indent);
-                YarnSyntax.AppendCommand(pres, bufferedCommands[index]);
-                pres.Append('\n');
-            }
-
-            pres.Append(indent);
-
-            if (part == 0 && !string.IsNullOrWhiteSpace(segment.Speaker))
-            {
-                pres.Append(segment.Speaker).Append(": ");
-            }
-
-            // 사본 라인의 문구는 표시되지 않는 동기화 앵커다. 빈 조각은 자리 표시로 채운다.
-            pres.Append(string.IsNullOrWhiteSpace(parts[part]) ? "…" : parts[part]);
-            pres.Append("\n\n");
-        }
     }
 
     private static string[] SplitByMarkers(string text, IReadOnlyList<PresentationResultMarker> markers)

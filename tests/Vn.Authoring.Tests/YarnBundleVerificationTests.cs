@@ -25,10 +25,8 @@ public class YarnBundleVerificationTests
 
     [Theory]
     [InlineData("Story_golden_ep.yarn")]
-    [InlineData("Set_golden_ep.yarn")]
-    [InlineData("Pres_golden_ep.yarn")]
     [InlineData("declarations.yarn")]
-    public void 골든_트리오와_글자_하나까지_같다(string fileName)
+    public void 골든_대본과_글자_하나까지_같다(string fileName)
     {
         YarnBundle bundle = EmitGoldenBundle();
         string actual = fileName == YarnBundleEmitter.DeclarationsFileName
@@ -81,10 +79,9 @@ public class YarnBundleVerificationTests
             Sample.Definition,
             bundleName: "golden_ep");
 
-        // Story와 Pres 사본이 같은 새 문구를 담는다.
+        // 대본이 새 문구를 담는다 (2026-08-18 — 대조할 Pres 사본이 없다).
         Assert.Contains($"완전히 고친 첫 줄 #line:{world.FirstLineId}", after.StoryText, StringComparison.Ordinal);
-        Assert.Contains("완전히 고친 첫 줄\n", after.PresText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("첫 줄 그대로", after.PresText!, StringComparison.Ordinal);
+        Assert.DoesNotContain("첫 줄 그대로", after.StoryText, StringComparison.Ordinal);
 
         // #line: 태그 집합 불변 (C1) — 태그가 바뀌면 기존 세이브가 조용히 행에 빠진다.
         Assert.Equal(LineTagsOf(before.StoryText), LineTagsOf(after.StoryText));
@@ -124,11 +121,11 @@ public class YarnBundleVerificationTests
                 Environment.NewLine,
                 errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
 
-            // 트리오 세 노드가 모두 컴파일 결과에 존재한다.
+            // 2026-08-18 — 대본 하나다. 레인 사본 노드(Set/Pres)는 나오지 않는다.
             string[] titles = report.Nodes.Select(node => node.Title).ToArray();
             Assert.Contains("Story_golden_ep", titles);
-            Assert.Contains("Set_golden_ep", titles);
-            Assert.Contains("Pres_golden_ep", titles);
+            Assert.DoesNotContain("Set_golden_ep", titles);
+            Assert.DoesNotContain("Pres_golden_ep", titles);
         }
         finally
         {
@@ -199,7 +196,6 @@ public class YarnBundleVerificationTests
 
     [Theory]
     [InlineData("Story_choices_ep.yarn")]
-    [InlineData("Pres_choices_ep.yarn")]
     public void 선택지_골든과_글자_하나까지_같다(string fileName)
     {
         YarnBundle bundle = EmitChoicesBundle(ChoiceTests.BuildChoiceWorld());
@@ -319,8 +315,10 @@ public class YarnBundleVerificationTests
         YarnBundle bundle = YarnBundleEmitter.Emit(
             dialogue, presentation, sample.Project, Sample.Definition, bundleName: "combined_ep");
 
-        string pres = bundle.Files.Single(file => file.FileName == "Pres_combined_ep.yarn").Text;
-        Assert.Equal(2, Regex.Matches(pres, Regex.Escape("<<endif>>")).Count);
+        // 2026-08-18 — 조건 구조는 대본 하나 안에만 선다. 예전 기대값 2는 Pres 사본이
+        // 선택 갈래를 <<if $__ch_N>>으로 재현하며 만들던 여분의 endif를 세던 것이고,
+        // 그 합성 조건이 사라져 작가가 쓴 조건 하나만 남는다.
+        Assert.Single(Regex.Matches(bundle.StoryText, Regex.Escape("<<endif>>")));
 
         string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Compile.{Guid.NewGuid():N}");
 
@@ -425,13 +423,17 @@ public class YarnBundleVerificationTests
         {
             YarnBundleEmitter.WriteTo(bundle, directory);
 
-            // Pres 사본에 태그를 강제로 복제한 사본을 만든다.
-            string presPath = Path.Combine(directory, bundle.PresFileName);
-            string tampered = File.ReadAllText(presPath, Encoding.UTF8).Replace(
-                "첫 줄 그대로\n",
-                $"첫 줄 그대로 #line:{world.FirstLineId}\n",
+            // 같은 태그를 한 번 더 심는다. 2026-08-18까지는 Pres 사본에 심었는데,
+            // 파일이 하나가 되어 대본 안에서 겹치게 만든다 — 전역 라인 ID 유일성 위반이다.
+            string storyPath = Path.Combine(directory, bundle.StoryFileName);
+            string original = File.ReadAllText(storyPath, Encoding.UTF8);
+            string tampered = original.Replace(
+                $"#line:{world.FirstLineId}",
+                $"#line:{world.FirstLineId}\n또 한 줄 #line:{world.FirstLineId}",
                 StringComparison.Ordinal);
-            File.WriteAllText(presPath, tampered, new UTF8Encoding(false));
+
+            Assert.NotEqual(original, tampered);
+            File.WriteAllText(storyPath, tampered, new UTF8Encoding(false));
 
             AnalysisReport report = Analyze(directory);
 

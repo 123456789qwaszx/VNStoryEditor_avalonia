@@ -12,7 +12,7 @@ namespace Vn.Authoring.Tests;
 public class YarnBundleEmitterTests
 {
     [Fact]
-    public void 트리오는_Story_Set_Pres_세_텍스트로_조립된다()
+    public void 대본은_Story_텍스트_하나로_조립된다()
     {
         BundleFixture fixture = BuildFixture();
 
@@ -25,101 +25,78 @@ public class YarnBundleEmitterTests
 
         Assert.Equal("test_ep", bundle.BundleName);
         Assert.Equal(
-            new[] { "Story_test_ep.yarn", "Set_test_ep.yarn", "Pres_test_ep.yarn" },
+            new[] { "Story_test_ep.yarn" },
             bundle.Files.Select(file => file.FileName));
         Assert.StartsWith("title: Story_test_ep\n---\n", bundle.StoryText, StringComparison.Ordinal);
-        Assert.Contains("title: Set_test_ep\n---\n", bundle.SetText!, StringComparison.Ordinal);
-        Assert.Contains("title: Pres_test_ep\n---\n", bundle.PresText!, StringComparison.Ordinal);
+        // 2026-08-18 — 파일 하나다. 레인이 없어져 Set·Pres 사본을 만들지 않는다.
         Assert.EndsWith("===\n", bundle.StoryText, StringComparison.Ordinal);
         Assert.False(bundle.HasBlockingProblems);
     }
 
     [Fact]
-    public void Story는_beat와_pres_start로_레인을_열고_라인마다_line_태그를_단다()
+    public void 레인_진입_커맨드는_없고_라인마다_line_태그를_단다()
     {
         BundleFixture fixture = BuildFixture();
 
         YarnBundle bundle = Emit(fixture);
 
-        // 레인이 필요한 Story 노드는 자기 pres_start로 연다 (A5).
-        Assert.Contains("<<beat Set_test_ep>>\n<<pres_start Pres_test_ep>>\n", bundle.StoryText, StringComparison.Ordinal);
+        // 레인 진입 커맨드는 사라졌다 — 열 레인이 없다.
+        Assert.DoesNotContain("<<beat Set_", bundle.StoryText, StringComparison.Ordinal);
+        Assert.DoesNotContain("pres_start", bundle.StoryText, StringComparison.Ordinal);
 
         // Story 대사 라인에 #line: 필수 (C1). 없으면 세이브 로드가 조용히 행에 빠진다.
         Assert.Contains($"첫 줄 #line:{fixture.FirstLineId}", bundle.StoryText, StringComparison.Ordinal);
-
-        // Pres 사본은 무태그 (C4) — 전역 라인 ID 유일성 위반은 컴파일 오류다.
-        Assert.DoesNotContain("#line:", bundle.PresText!, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Pres_사본의_라인_수와_순서는_Story와_같다()
+    public void set과_조건은_Story_안에_한_벌만_있다()
     {
         BundleFixture fixture = BuildFixture();
 
         YarnBundle bundle = Emit(fixture);
 
-        // 라인 동기화 예산 (B) — 개수·순서가 같아야 락스텝이 유지된다.
-        Assert.Equal(
-            CountDialogueLines(bundle.StoryText),
-            CountDialogueLines(bundle.PresText!));
-    }
-
-    [Fact]
-    public void set은_Story에만_나오고_조건은_양쪽에_복제된다()
-    {
-        BundleFixture fixture = BuildFixture();
-
-        YarnBundle bundle = Emit(fixture);
-
-        // D2 — 저장소 공유이므로 Pres에 복제하면 이중 실행된다.
+        // set은 Story에 한 번만 나온다 — 복제할 레인이 없다.
         Assert.Contains("<<set $__t1_sf_test_favor = 0>>", bundle.StoryText, StringComparison.Ordinal);
         Assert.Contains("<<set $__t1_sf_test_fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
-        Assert.DoesNotContain("<<set", bundle.PresText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("<<set", bundle.SetText!, StringComparison.Ordinal);
 
-        // D3 — 분기 내 라인 수가 같아야 하므로 구조를 그대로 복제한다.
+        // 조건 구조는 Story 안에 그대로 선다.
         Assert.Contains("<<if $__t1_sf_test_favor >= 5>>", bundle.StoryText, StringComparison.Ordinal);
-        Assert.Contains("<<if $__t1_sf_test_favor >= 5>>", bundle.PresText!, StringComparison.Ordinal);
-        Assert.Contains("<<endif>>", bundle.PresText!, StringComparison.Ordinal);
+        Assert.Contains("<<endif>>", bundle.StoryText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void jump_직전에는_pres_end가_나오고_갈래_출구는_갈래_끝에_놓인다()
+    public void 갈래_출구는_갈래의_끝에_놓인다()
     {
         BundleFixture fixture = BuildFixture();
 
         YarnBundle bundle = Emit(fixture);
 
-        // A5 — jump는 서브 레인을 정리하지 않는다. pres_end 없이 노드를 옮기면
-        // 다음 노드의 라인마다 advance를 계속 소비하며 조용히 어긋난다.
+        // 2026-08-18 — 레인이 없어져 jump 앞의 <<pres_end>>도 함께 사라졌다.
         int branchLine = bundle.StoryText.IndexOf("갈래 안 #line:", StringComparison.Ordinal);
-        int presEnd = bundle.StoryText.IndexOf("<<pres_end>>", StringComparison.Ordinal);
         int jump = bundle.StoryText.IndexOf("<<jump Story_A로_간다>>", StringComparison.Ordinal);
         int endif = bundle.StoryText.IndexOf("<<endif>>", StringComparison.Ordinal);
 
-        Assert.True(branchLine >= 0 && presEnd > branchLine, "pres_end는 갈래 본문 뒤에 있어야 한다");
-        Assert.True(jump > presEnd, "jump는 pres_end 뒤에 있어야 한다");
+        Assert.True(branchLine >= 0 && jump > branchLine, "jump는 갈래 본문 뒤에 있어야 한다");
+        Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
         Assert.True(endif > jump, "갈래 출구는 endif 앞, 갈래의 끝에 있어야 한다");
 
-        // 기본 출구에도 pres_end가 선행한다.
-        Assert.Contains("<<pres_end>>\n<<jump Story_기본으로_간다>>", bundle.StoryText, StringComparison.Ordinal);
-
-        // Pres에는 jump가 없다 — 서브 레인은 자연 소진으로 닫힌다 (A4).
-        Assert.DoesNotContain("<<jump", bundle.PresText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("pres_end", bundle.PresText!, StringComparison.Ordinal);
+        Assert.Contains("<<jump Story_기본으로_간다>>", bundle.StoryText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Setup_커맨드는_Set_노드_본문이_되고_대사는_들어가지_않는다()
+    public void 노드_셋업_커맨드는_Story_머리에_인라인으로_선다()
     {
         BundleFixture fixture = BuildFixture();
 
         YarnBundle bundle = Emit(fixture);
 
-        // A2 — 원샷 레인은 대사 라인을 경고와 함께 건너뛴다. Set 노드는 커맨드 전용이다.
-        Assert.Contains("<<camera wide>>", bundle.SetText!, StringComparison.Ordinal);
-        Assert.DoesNotContain("첫 줄", bundle.SetText!, StringComparison.Ordinal);
-        Assert.DoesNotContain(":", bundle.SetText!.Replace("title: Set_test_ep", string.Empty, StringComparison.Ordinal));
+        // 2026-08-18 — LineId 없는 커맨드는 Set 노드(원샷 레인) 본문이었다. 레인이
+        // 없어져 Story 머리(첫 본문 앞)에 그대로 선다.
+        int camera = bundle.StoryText.IndexOf("<<camera wide>>", StringComparison.Ordinal);
+        int firstLine = bundle.StoryText.IndexOf("첫 줄", StringComparison.Ordinal);
+
+        Assert.True(camera >= 0, "노드 셋업 커맨드가 Story에 있어야 한다");
+        Assert.True(firstLine > camera, "셋업 커맨드는 첫 대사보다 앞에 있어야 한다");
     }
 
     [Fact]
@@ -168,8 +145,14 @@ public class YarnBundleEmitterTests
     }
 
     [Fact]
-    public void 메인_레인_전용_커맨드가_연출에_있으면_출력을_막는다()
+    public void 메인_레인_전용_커맨드도_그냥_나간다()
     {
+        // 2026-08-18 — 레인이 하나뿐이라 "메인 레인 전용"이 가릴 대상을 잃었다.
+        // 예전에는 beat_fx 같은 커맨드가 Set·Pres로 새지 않도록 막았는데(옛 §E2),
+        // 이제 모든 커맨드가 메인 레인에 있으므로 막을 이유가 없다.
+        //
+        // ⚠ 카탈로그의 `mainLaneOnly` 플래그는 이로써 아무 데서도 안 쓰인다 —
+        // 레인이 다시 생기면 그때 이 검사도 함께 돌아온다.
         BundleFixture fixture = BuildFixture(withPresentationCommands: false);
         fixture.Sample.Editor.AddPresentationCommand(
             fixture.PresentationNode.Id,
@@ -178,31 +161,13 @@ public class YarnBundleEmitterTests
         PresentationResult presentation =
             fixture.Sample.Editor.PublishPresentation(fixture.PresentationNode.Id).Result;
 
-        // 기본 카탈로그(definition: null)가 beat_fx를 메인 레인 전용으로 알고 있다 (E2).
         YarnBundle bundle = YarnBundleEmitter.Emit(
             fixture.Dialogue,
             presentation,
             fixture.Sample.Project);
 
-        Assert.True(bundle.HasBlockingProblems);
-        Assert.Throws<InvalidOperationException>(() => YarnBundleEmitter.WriteTo(
-            bundle,
-            Path.Combine(Path.GetTempPath(), $"VnTool.Emit.{Guid.NewGuid():N}")));
-    }
-
-    [Fact]
-    public void adv_마커가_본문에_있으면_경고를_남긴다()
-    {
-        var sample = new Sample();
-        string line = sample.Line("마커가 [adv/] 있는 줄");
-        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
-
-        YarnBundle bundle = YarnBundleEmitter.Emit(dialogue, project: sample.Project);
-
-        YarnBundleProblem problem = Assert.Single(bundle.Problems);
-        Assert.False(problem.IsBlocking);
-        Assert.Equal(line, problem.LineId);
-        Assert.Contains("[adv/]", problem.Message, StringComparison.Ordinal);
+        Assert.False(bundle.HasBlockingProblems);
+        Assert.Contains("beat_fx", bundle.StoryText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -215,8 +180,6 @@ public class YarnBundleEmitterTests
         YarnBundle bundle = YarnBundleEmitter.Emit(dialogue, project: sample.Project);
 
         Assert.Single(bundle.Files);
-        Assert.Null(bundle.SetText);
-        Assert.Null(bundle.PresText);
         Assert.DoesNotContain("pres_start", bundle.StoryText, StringComparison.Ordinal);
         Assert.DoesNotContain("<<beat", bundle.StoryText, StringComparison.Ordinal);
         Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
@@ -233,8 +196,8 @@ public class YarnBundleEmitterTests
         {
             IReadOnlyList<string> written = YarnBundleEmitter.WriteTo(bundle, directory);
 
-            // 트리오 3파일 + 선언 파일 하나.
-            Assert.Equal(4, written.Count);
+            // 대본 하나 + 선언 파일 하나 (2026-08-18 — 트리오가 아니다).
+            Assert.Equal(2, written.Count);
             Assert.Contains(written, path =>
                 Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
             Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
