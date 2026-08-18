@@ -158,12 +158,17 @@ public sealed class ChapterGraphClickTests
         canvas.Measure(new Avalonia.Size(canvas.Width, canvas.Height));
         canvas.Arrange(new Avalonia.Rect(0, 0, canvas.Width, canvas.Height));
 
+        project.Ui.Own(view, window);
+
         return (window, canvas, view);
     }
 
     private sealed class TempProject : IDisposable
     {
         private readonly string _directory;
+
+        /// <summary>이 테스트가 띄운 화면. 폴더를 지우기 <b>전에</b> 닫는다.</summary>
+        public OpenChapterViews Ui { get; } = new();
 
         public TempProject(string samplePath)
         {
@@ -184,6 +189,8 @@ public sealed class ChapterGraphClickTests
 
         public void Dispose()
         {
+            Ui.CloseAll();
+
             if (Directory.Exists(_directory))
             {
                 Directory.Delete(_directory, recursive: true);

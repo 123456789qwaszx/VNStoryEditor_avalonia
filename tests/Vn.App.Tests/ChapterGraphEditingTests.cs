@@ -501,12 +501,18 @@ public sealed class ChapterGraphEditingTests
         view.Attach(session);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
+        // 이 창은 테스트가 끝날 때 TempProject가 닫는다 — 안 닫으면 어셈블리가 나눠 쓰는
+        // 디스패처에 뷰가 살아남아 다음 테스트를 흔든다.
+        project.Ui.Own(view, window);
+
         return (view, session);
     }
 
     private sealed class TempProject : IDisposable
     {
         private readonly string _directory;
+        /// <summary>이 테스트가 띄운 화면. 폴더를 지우기 <b>전에</b> 닫는다.</summary>
+        public OpenChapterViews Ui { get; } = new();
 
         public TempProject(string samplePath)
         {
@@ -532,6 +538,10 @@ public sealed class ChapterGraphEditingTests
 
         public void Dispose()
         {
+            // 순서가 규칙이다 — 감시자를 먼저 닫고 폴더를 지운다. 거꾸로 하면 그 삭제가
+            // 사건이 되어 다음 테스트의 RunJobs()에서 깨어난다.
+            Ui.CloseAll();
+
             if (Directory.Exists(_directory))
             {
                 Directory.Delete(_directory, recursive: true);

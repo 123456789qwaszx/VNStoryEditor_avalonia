@@ -47,8 +47,13 @@ public sealed class EdgePresentationScreenTests : IDisposable
         ProjectStore.Save(ManifestPath, new StoryProject { Title = "v11 화면" });
     }
 
+    /// <summary>이 클래스가 띄운 화면. 폴더를 지우기 <b>전에</b> 닫는다.</summary>
+    private readonly OpenChapterViews _ui = new();
+
     public void Dispose()
     {
+        _ui.CloseAll();
+
         if (Directory.Exists(_directory))
         {
             Directory.Delete(_directory, recursive: true);
@@ -151,6 +156,8 @@ public sealed class EdgePresentationScreenTests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        _ui.Own(view, window);
 
         return (view, window);
     }

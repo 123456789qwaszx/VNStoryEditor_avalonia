@@ -253,9 +253,47 @@ public partial class ChapterGraphView : UserControl
 
     internal void Attach(AuthoringSession session)
     {
+        DetachSession();   // 두 번 붙이면 구독도 감시도 두 벌이 된다
+
         _session = session;
-        session.Changed += (_, _) => QueueReload();
+        _sessionChanged = (_, _) => QueueReload();
+        session.Changed += _sessionChanged;
         WatchAndReload();
+    }
+
+    /// <summary>세션 구독을 끊을 수 있도록 들고 있는다 — 람다를 바로 걸면 뗄 수가 없다.</summary>
+    private EventHandler<Vn.Authoring.Editing.ProjectChangedEventArgs>? _sessionChanged;
+
+    /// <summary>
+    /// 세션에서 손을 뗀다 — 구독을 끊고 감시자를 닫는다.
+    ///
+    /// <b>왜 필요한가</b> (2026-08-18): 이 뷰는 붙기만 하고 떨어질 줄을 몰랐다. 앱에서는
+    /// 뷰가 프로세스와 수명이 같아 티가 안 나지만, 테스트에서는 한 어셈블리가 <b>디스패처
+    /// 하나</b>를 나눠 쓴다. 창을 안 닫고 끝낸 테스트의 뷰가 그대로 살아 있고, 그 감시자는
+    /// 이미 지워진 임시 폴더를 본다.
+    ///
+    /// 그 다음이 나쁘다 — 250ms 디바운스가 <b>타이머 스레드에서</b> 깨어나 없어진 디스패처에
+    /// <c>Post</c>를 하면 <c>NullReferenceException</c>이 나고, 그 자리는 잡을 사람이 없어
+    /// <b>프로세스가 내려간다.</b> 죽는 순간 돌고 있던 테스트가 실패로 찍히므로 매번 다른
+    /// 이름이 나왔고, 혼자 돌리면 통과했다.
+    ///
+    /// 앱에서는 뷰가 하나뿐이라 새는 일이 없지만, <b>끊을 수 있다는 것 자체가 규격</b>이다 —
+    /// 붙이는 길만 있고 떼는 길이 없으면 수명은 언제나 우연에 맡겨진다.
+    /// </summary>
+    internal void DetachSession()
+    {
+        if (_session is not null && _sessionChanged is not null)
+        {
+            _session.Changed -= _sessionChanged;
+        }
+
+        _sessionChanged = null;
+        _session = null;
+
+        _watcher?.Dispose();
+        _watcher = null;
+        _episodeWatcher?.Dispose();
+        _episodeWatcher = null;
     }
 
     /// <summary>이미 예약된 재읽기가 있는가. 한 번의 UI 차례에 하나만 돈다.</summary>

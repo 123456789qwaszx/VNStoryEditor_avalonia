@@ -50,8 +50,13 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         ProjectStore.Save(ManifestPath, new StoryProject { Title = "일의 양" });
     }
 
+    /// <summary>이 클래스가 띄운 화면. 폴더를 지우기 <b>전에</b> 닫는다.</summary>
+    private readonly OpenChapterViews _ui = new();
+
     public void Dispose()
     {
+        _ui.CloseAll();
+
         if (Directory.Exists(_directory))
         {
             Directory.Delete(_directory, recursive: true);
@@ -187,6 +192,61 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         window.Close();
     });
 
+    [Fact]
+    public void 손을_뗀_뷰는_더_이상_일하지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 흔들리던 `ChapterGraphEditingTests`의 뿌리 (2026-08-18). 어셈블리 하나가
+        // <b>디스패처 하나</b>를 나눠 쓰는데, 창을 안 닫고 끝낸 테스트의 뷰가 그대로 살아
+        // 있었다. 그 뷰의 감시자는 이미 지워진 임시 폴더를 보고 있고, 거기서 난 사건이
+        // <b>다음 테스트의</b> RunJobs()에서 깨어나 없는 프로젝트를 다시 읽었다.
+        // 그래서 매번 다른 테스트가 깨졌고, 혼자 돌리면 통과했다.
+        (ChapterGraphView view, AuthoringSession session, Window window) = Show();
+
+        view.DetachSession();
+
+        int drawsAfterDetach = view.CanvasDrawCount;
+        int reloadsAfterDetach = 0;
+        view.EntriesReloaded += _ => reloadsAfterDetach++;
+
+        // 손을 뗐으니 세션이 무슨 말을 해도 이 뷰는 듣지 않는다.
+        for (int index = 0; index < 10; index++)
+        {
+            session.Editor.AddStoryFile($"판{index}");
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(drawsAfterDetach, view.CanvasDrawCount);
+        Assert.Equal(0, reloadsAfterDetach);
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 두_번_붙였어도_한_번_떼면_완전히_떨어진다() => HeadlessUi.Run(() =>
+    {
+        // 붙기만 하고 뗄 줄 모르던 뷰라, 두 번 붙으면 구독이 두 벌 쌓였다. 한 벌만
+        // 떼어지면 <b>뗐다고 믿는 뷰가 계속 듣는다</b> — 이 테스트가 막는 것이 그것이다.
+        //
+        // ⚠ "재읽기가 한 번만 돈다"로는 이걸 못 잡는다. QueueReload가 한 차례에 하나로
+        // 합치기 때문에 구독이 둘이어도 재읽기는 하나다 — 합치기가 이중 구독을 가려 준다.
+        // 그래서 <b>뗀 뒤에</b> 본다.
+        (ChapterGraphView view, AuthoringSession session, Window window) = Show();
+
+        view.Attach(session);
+        view.DetachSession();
+
+        int reloads = 0;
+        view.EntriesReloaded += _ => reloads++;
+
+        session.Editor.AddStoryFile("판");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(0, reloads);
+
+        window.Close();
+    });
+
     private (ChapterGraphView View, AuthoringSession Session, Window Window) Show()
     {
         var session = new AuthoringSession();
@@ -200,6 +260,8 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         window.Measure(new Size(900, 600));
         window.Arrange(new Rect(0, 0, 900, 600));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        _ui.Own(view, window);
 
         return (view, session, window);
     }

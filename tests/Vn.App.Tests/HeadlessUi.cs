@@ -19,9 +19,35 @@ internal static class HeadlessUi
     private static readonly Lazy<HeadlessUnitTestSession> SessionHandle =
         new(() => HeadlessUnitTestSession.StartNew(typeof(TestAppBuilder)));
 
+    /// <summary>
+    /// 지금 이 스레드가 <see cref="Run"/> 안인가.
+    ///
+    /// ⚠ <c>Dispatcher.UIThread.CheckAccess()</c>로는 알 수 없다 — 세션 밖(xUnit 스레드)에서
+    /// 물으면 <b>참을 돌려준다</b>(그쪽은 세션의 디스패처가 아니다). 그 대답을 믿고 창을
+    /// 만지면 "다른 스레드가 소유한 객체"로 터진다. 그래서 우리가 직접 표시해 둔다.
+    /// </summary>
+    [ThreadStatic]
+    private static bool _inside;
+
+    public static bool OnUiThread => _inside;
+
     /// <summary>UI 스레드에서 본문을 돌리고 끝날 때까지 기다린다.</summary>
     public static void Run(Action body) =>
-        SessionHandle.Value.Dispatch(body, CancellationToken.None).GetAwaiter().GetResult();
+        SessionHandle.Value.Dispatch(
+            () =>
+            {
+                _inside = true;
+
+                try
+                {
+                    body();
+                }
+                finally
+                {
+                    _inside = false;
+                }
+            },
+            CancellationToken.None).GetAwaiter().GetResult();
 }
 
 /// <summary>
