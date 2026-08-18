@@ -34,7 +34,20 @@ public static class ChapterProgressionExporter
     {
         ArgumentNullException.ThrowIfNull(chapter);
 
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder);
+        return ExportValidated(chapter, ChapterValidator.Validate(chapter, episodesFolder));
+    }
+
+    /// <summary>
+    /// 이미 계산해 둔 검증 결과로 내보낸다 — <b>같은 증명을 두 번 돌리지 않는다</b>
+    /// (2026-08-18). 화면은 검증 결과를 보고 패널에 세우려고 어차피 한 번 계산하는데,
+    /// 내보내기가 안에서 또 계산하고 있었다. 검증은 에피소드 워크북을 전부 읽고 상태공간을
+    /// 훑으므로 챕터 하나에 200ms 가까이 든다 — 그 값을 두 번 치르고 있었다.
+    /// </summary>
+    public static ChapterExportResult ExportValidated(
+        ChapterGraphModel chapter, ChapterValidationResult validation)
+    {
+        ArgumentNullException.ThrowIfNull(chapter);
+        ArgumentNullException.ThrowIfNull(validation);
 
         if (validation.HasErrors)
         {

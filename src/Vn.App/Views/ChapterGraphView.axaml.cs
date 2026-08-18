@@ -248,8 +248,39 @@ public partial class ChapterGraphView : UserControl
     internal void Attach(AuthoringSession session)
     {
         _session = session;
-        session.Changed += (_, _) => Dispatcher.UIThread.Post(WatchAndReload);
+        session.Changed += (_, _) => QueueReload();
         WatchAndReload();
+    }
+
+    /// <summary>이미 예약된 재읽기가 있는가. 한 번의 UI 차례에 하나만 돈다.</summary>
+    private bool _reloadQueued;
+
+    /// <summary>
+    /// 재읽기 예약 — <b>몰려 오는 변경을 한 번으로 합친다</b> (2026-08-18).
+    ///
+    /// 동기화 한 번이 프로젝트 변경을 수십 개 낸다(에피소드마다 노드·줄이 붙는다).
+    /// 예전에는 그 하나하나가 <see cref="WatchAndReload"/>를 예약했고, 그 한 번이
+    /// 챕터 워크북 전부를 다시 열어 읽고 진행 JSON을 쓰고 판을 통째로 다시 그렸다.
+    /// 노드 60개에서 <b>123번</b> 돌아 58초가 됐다 — 마지막 한 번 말고는 전부 버려질
+    /// 그림이었다.
+    ///
+    /// 예약 표시는 실제로 돌기 직전에 내린다: 재읽기가 도는 동안 들어온 변경은
+    /// 다음 차례를 새로 예약한다(놓치지 않는다).
+    /// </summary>
+    private void QueueReload()
+    {
+        if (_reloadQueued)
+        {
+            return;
+        }
+
+        _reloadQueued = true;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            _reloadQueued = false;
+            WatchAndReload();
+        });
     }
 
     // ── 읽기 ────────────────────────────────────────────────────────────────
@@ -735,8 +766,96 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        _validation = ChapterValidator.Validate(
-            entry.Model, EpisodeLibrary.FolderFor(_session?.ProjectPath, entry.ChapterId));
+        _validation = ValidationFor(entry);
+    }
+
+    /// <summary>디스크가 그대로면 다시 증명하지 않는다 — 챕터별 (지문, 결과) 한 벌.</summary>
+    private readonly Dictionary<string, (string Fingerprint, ChapterValidationResult Result)>
+        _validationCache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 실제로 증명을 돌린 횟수. 테스트가 "일을 몇 번 했는가"를 보는 창이다 —
+    /// 시간(ms)은 기계마다 다르지만 횟수는 규칙이고, 느려지는 회귀는 언제나 횟수가
+    /// 먼저 는다. <b>인스턴스에 갇혀 있어</b> 테스트가 병렬로 돌아도 서로 섞이지 않는다.
+    /// </summary>
+    internal int ValidationComputeCount { get; private set; }
+
+    /// <summary>
+    /// 챕터 하나의 검증 결과 — <b>파일이 그대로면 지난 결과를 그대로 준다</b> (2026-08-18).
+    ///
+    /// 검증은 순수 함수다: 챕터 워크북과 그 챕터의 대본 워크북들만 읽는다(에피소드마다
+    /// 파일을 열고, 평평화하고, 상태공간을 훑는다 — 챕터 하나에 200ms 가까이). 그런데
+    /// 화면은 갱신할 때마다 이것을 처음부터 다시 돌리고 있었다. 판을 한 번 다시 그리는
+    /// 값이 6ms인데 그 옆에서 400ms를 태우고 있던 셈이다.
+    ///
+    /// 지문은 <b>파일 내용의 해시</b>다. 수정 시각·크기가 아니다: 이 화면은 자기가
+    /// 워크북을 쓰고 <b>그 자리에서 곧바로</b> 다시 읽는다(단추 하나가 쓰기와 재읽기를
+    /// 잇따라 낸다). 두 사건이 같은 시각 눈금에 들어가고 길이까지 같으면 시각·크기
+    /// 지문은 "안 바뀌었다"고 답하고, 화면은 방금 적은 값을 모르는 옛 결과를 보여 준다 —
+    /// 캐시가 만드는 가장 나쁜 거짓말이다. 그 위험을 아예 없애려고 내용을 본다.
+    /// </summary>
+    private ChapterValidationResult ValidationFor(ChapterEntry entry)
+    {
+        string? episodesFolder = EpisodeLibrary.FolderFor(_session?.ProjectPath, entry.ChapterId);
+        string fingerprint = Fingerprint(entry.Path, episodesFolder);
+
+        if (_validationCache.TryGetValue(entry.ChapterId, out var cached) &&
+            string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            return cached.Result;
+        }
+
+        ChapterValidationResult result = ChapterValidator.Validate(entry.Model!, episodesFolder);
+        ValidationComputeCount++;
+        _validationCache[entry.ChapterId] = (fingerprint, result);
+        return result;
+    }
+
+    /// <summary>
+    /// 검증이 읽는 파일 전부의 (이름·내용 해시). 하나라도 다르면 다시 증명한다.
+    ///
+    /// 바이트를 읽는 값이 아깝지 않다: 검증은 그 파일들을 <b>엑셀로 파싱하고</b> 평평화한
+    /// 뒤 상태공간까지 훑는다(200ms 가까이). 여기서 재는 것은 그 앞의 몇 ms다.
+    ///
+    /// 읽지 못하는 파일은 이름만 남긴다 — 잠겨 있다가 풀리는 순간을 놓치지 않으려면
+    /// 그 상태도 지문의 일부여야 한다.
+    /// </summary>
+    private static string Fingerprint(string chapterWorkbook, string? episodesFolder)
+    {
+        var builder = new System.Text.StringBuilder();
+
+        void Append(string path)
+        {
+            try
+            {
+                byte[] hash = System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path));
+
+                builder.Append(IoPath.GetFileName(path)).Append('|')
+                       .Append(Convert.ToHexString(hash)).Append('\n');
+            }
+            catch (IOException)
+            {
+                builder.Append(path).Append("|?\n");
+            }
+            catch (UnauthorizedAccessException)
+            {
+                builder.Append(path).Append("|?\n");
+            }
+        }
+
+        Append(chapterWorkbook);
+
+        if (episodesFolder is not null && Directory.Exists(episodesFolder))
+        {
+            foreach (string path in Directory.EnumerateFiles(episodesFolder, "*.xlsx")
+                         .Where(file => !IoPath.GetFileName(file).StartsWith("~$", StringComparison.Ordinal))
+                         .OrderBy(file => file, StringComparer.Ordinal))
+            {
+                Append(path);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private void OpenFolder()
@@ -894,8 +1013,10 @@ public partial class ChapterGraphView : UserControl
                 continue;
             }
 
-            ChapterExportResult result = ChapterProgressionExporter.Export(
-                entry.Model, EpisodeLibrary.FolderFor(projectPath, entry.ChapterId));
+            // 검증은 챕터별로 한 벌만 계산한다 (2026-08-18) — 보고 패널이 쓰는 것과
+            // 같은 결과다. 예전에는 내보내기가 안에서 또 증명해 같은 값을 두 번 치렀다.
+            ChapterExportResult result =
+                ChapterProgressionExporter.ExportValidated(entry.Model, ValidationFor(entry));
 
             if (result.Refused)
             {
@@ -1973,7 +2094,7 @@ public partial class ChapterGraphView : UserControl
 
     private void ApplyEditability()
     {
-        RefreshLockBanner();
+        RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
 
         bool editable = ToolEditable;
 
@@ -2817,13 +2938,30 @@ public partial class ChapterGraphView : UserControl
         Report(result, $"'{episodeId}' 행을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요.");
     }
 
-    /// <summary>쓰기 결과를 상태줄로. 성공이면 감시가 다시 읽어 화면이 따라온다.</summary>
+    /// <summary>
+    /// 쓰기 결과를 상태줄로 + 성공이면 판을 다시 읽는다. 챕터 워크북을 바꾸는 길은
+    /// 전부 여기로 모인다 — 갱신을 한 자리에서 챙기려고 모아 둔 길목이다.
+    /// </summary>
     private void Report(ChapterWriteResult result, string success)
     {
         _session?.SetStatus(result.Written ? success : result.Failure!);
 
         // 거부됐다면 대개 엑셀이 잡고 있어서다 — 그 사실을 배너로도 세운다(상태줄은 묻힌다).
-        RefreshLockBanner();
+        RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
+
+        // 방금 우리가 워크북을 바꿨다 — 판을 다시 읽어야 화면이 파일과 같은 말을 한다.
+        //
+        // <b>예전에는 이 줄이 없어도 됐다</b>: 바로 위 SetStatus가 "프로젝트가 바뀌었다"고
+        // 방송했고 그 신호에 재읽기가 딸려 왔다. 상태 한 줄이 화면 갱신을 대신하던
+        // <b>우연한 배선</b>이었고, 그 우연이 노드 60개에서 58초를 만든 정체이기도 하다
+        // (2026-08-18). 이제는 쓴 쪽이 자기 입으로 말한다 — 쓴 자리가 곧 아는 자리다.
+        //
+        // 감시자도 이 저장을 잡아 같은 길로 오지만, 그쪽은 파일 사건을 기다리느라
+        // 한 박자 늦다. 툴이 누른 단추는 그 자리에서 보여야 한다.
+        if (result.Written)
+        {
+            QueueReload();
+        }
     }
 
     /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>

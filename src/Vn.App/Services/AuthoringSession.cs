@@ -538,6 +538,17 @@ internal sealed class AuthoringSession
 
     public event EventHandler<ProjectChangedEventArgs>? Changed;
 
+    /// <summary>
+    /// 상태줄 글자가 바뀌었을 때. <b><see cref="Changed"/>와 갈라 둔 이유가 성능이다</b>
+    /// (2026-08-18): 예전에는 <see cref="SetStatus"/>가 프로젝트 변경으로 방송돼서,
+    /// "에피소드 3개를 반영했습니다" 한 줄이 챕터 워크북 전체 재읽기 + 판 재구성을
+    /// 불렀다. 동기화가 상태를 여러 번 적으면 그만큼 되풀이됐고, 그 되풀이가 다시
+    /// 상태를 적어 스스로를 먹였다 — 노드 60개에서 첫 화면이 58초 걸리던 정체다.
+    ///
+    /// 상태줄은 프로젝트가 아니다. 듣는 쪽은 글자만 갈아 끼운다.
+    /// </summary>
+    public event EventHandler? StatusChanged;
+
     public event EventHandler? SelectionChanged;
 
     /// <summary>
@@ -692,7 +703,7 @@ internal sealed class AuthoringSession
     public void SetStatus(string message)
     {
         StatusMessage = message;
-        Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
+        StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
