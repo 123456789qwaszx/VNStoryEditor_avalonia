@@ -78,6 +78,12 @@ public partial class ChapterGraphView : UserControl
     internal void RefreshFromDisk() => WatchAndReload();
 
     /// <summary>
+    /// 판을 실제로 다시 만든 횟수. <see cref="ValidationComputeCount"/>와 같은 종류의 창이다 —
+    /// 그리기 자체는 싸지만, 다시 만드는 순간 <b>사람이 누르고 있던 카드가 사라진다</b>.
+    /// </summary>
+    internal int CanvasDrawCount { get; private set; }
+
+    /// <summary>
     /// 챕터를 고른다 — <b>어디서 골랐든 이 길 하나를 지난다</b> (왼쪽 목록 클릭 · 위
     /// 드롭다운 · 코드).
     ///
@@ -339,7 +345,8 @@ public partial class ChapterGraphView : UserControl
         // 알림은 워커 스레드에서 온다 — 화면을 만지기 전에 반드시 UI 스레드로 건너간다.
         _watcher = new ChapterFolderWatcher(
             folder,
-            () => Dispatcher.UIThread.Post(() => UiGuard.Run(_session, "챕터 워크북 반영", Reload)));
+            () => Dispatcher.UIThread.Post(
+                () => UiGuard.Run(_session, "챕터 워크북 반영", ReloadIfDiskChanged)));
     }
 
     /// <summary>
@@ -357,7 +364,97 @@ public partial class ChapterGraphView : UserControl
 
         _episodeWatcher = new ChapterFolderWatcher(
             folder,
-            () => Dispatcher.UIThread.Post(() => UiGuard.Run(_session, "에피소드 반영", SyncEpisodes)));
+            () => Dispatcher.UIThread.Post(
+                () => UiGuard.Run(_session, "에피소드 반영", SyncEpisodesIfDiskChanged)));
+    }
+
+    /// <summary>감시자가 챕터 폴더에서 깨울 때 도는 길. 테스트가 진짜 파일 사건을 기다리지 않고 이 자리를 친다.</summary>
+    internal void ReloadIfDiskChanged() => IfDiskChanged(Reload);
+
+    /// <summary>감시자가 대본 폴더에서 깨울 때 도는 길.</summary>
+    internal void SyncEpisodesIfDiskChanged() => IfDiskChanged(SyncEpisodes);
+
+    /// <summary>마지막으로 우리가 읽은 디스크의 지문. 감시자가 깨울 때 이것과 견준다.</summary>
+    private string _diskFingerprint = string.Empty;
+
+    /// <summary>
+    /// <b>파일이 만져졌다는 신호가 곧 내용이 바뀌었다는 뜻은 아니다</b> (2026-08-18).
+    ///
+    /// 감시자는 <b>우리가 방금 쓴 저장도 똑같이 잡는다.</b> 툴이 쓴 자리는 이미 그 자리에서
+    /// <see cref="QueueReload"/>로 화면을 맞췄으므로, 250ms 뒤 감시자가 들고 오는 것은
+    /// <b>같은 그림을 한 번 더 그리라는 주문</b>이다. v11에서 챕터를 처음 열 때마다 `연출`
+    /// 칸을 되쓰게 되면서 이 두 번째 그리기가 상시가 됐다.
+    ///
+    /// 그리기 자체는 싸다. 비싼 것은 <b>다시 만든다</b>는 사실이다 — 그 순간 사람이 누르고
+    /// 있던 카드가 파괴되어 더블클릭의 둘째 탭이 다른 인스턴스에 떨어지고 드래그 캡처가
+    /// 죽은 카드에 걸린다. 이 클래스의 클릭 테스트가 원래 못 박은 결함 그대로이고, 실제로
+    /// 그 테스트가 <b>불규칙하게</b> 실패하고 있었다: 감시자가 250ms 뒤 아무 때나 끼어들어
+    /// 눌린 손 밑에서 판을 갈아 치웠기 때문이다.
+    ///
+    /// 그래서 감시자가 깨울 때는 디스크의 지문을 먼저 본다. 남이 엑셀에서 저장한 것은
+    /// 지문이 달라 그대로 통과하고, 우리가 쓴 것은 이미 반영돼 있어 조용히 끝난다.
+    /// </summary>
+    private void IfDiskChanged(Action work)
+    {
+        string now = DiskFingerprint();
+
+        if (string.Equals(now, _diskFingerprint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        work();
+    }
+
+    /// <summary>
+    /// 감시 중인 두 폴더(`chapters/`·`episodes/`)에 있는 워크북 전부의 지문.
+    ///
+    /// 파일을 읽어 해싱한다 — 쓴 시각은 초 단위로 뭉개지는 파일 시스템이 있어(FAT·일부 SMB)
+    /// "고쳤는데 안 바뀐 것으로 보이는" 쪽으로 틀린다. 화면이 낡은 채로 남는 실패는 여기서
+    /// 가장 비싸므로, 값을 치르고 내용을 본다. 읽기는 파싱·증명·그리기보다 한참 싸다.
+    /// </summary>
+    private string DiskFingerprint()
+    {
+        var builder = new System.Text.StringBuilder();
+
+        void AppendFolder(string? folder)
+        {
+            if (folder is null || !Directory.Exists(folder))
+            {
+                builder.Append(folder ?? "-").Append("|없음\n");
+                return;
+            }
+
+            foreach (string path in Directory
+                         .EnumerateFiles(folder, "*.xls*", SearchOption.AllDirectories)
+                         .Where(file => !IoPath.GetFileName(file).StartsWith("~$", StringComparison.Ordinal))
+                         .OrderBy(file => file, StringComparer.OrdinalIgnoreCase))
+            {
+                builder.Append(path).Append('|');
+
+                try
+                {
+                    builder.Append(Convert.ToHexString(
+                        System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))));
+                }
+                catch (IOException)
+                {
+                    // 잠긴 파일은 "잠김"으로 남긴다 — 풀리는 순간이 곧 지문의 변화다.
+                    builder.Append('?');
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    builder.Append('?');
+                }
+
+                builder.Append('\n');
+            }
+        }
+
+        AppendFolder(ChapterLibrary.FolderFor(_session?.ProjectPath));
+        AppendFolder(EpisodeLibrary.FolderFor(_session?.ProjectPath));
+
+        return builder.ToString();
     }
 
     /// <summary>
@@ -503,6 +600,10 @@ public partial class ChapterGraphView : UserControl
                 ? $"에피소드 {applied}개를 반영했습니다."
                 : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
         }
+
+        // 동기화는 쓴다 — 첫 대본 워크북, v11의 `연출` 칸. 그 저장이 250ms 뒤 감시자로
+        // 되돌아오는데, 화면은 이미 맞춰졌다. 여기서 지문을 찍어 그 되돌이를 끊는다.
+        _diskFingerprint = DiskFingerprint();
     }
 
     /// <summary>
@@ -799,6 +900,11 @@ public partial class ChapterGraphView : UserControl
         Validate();
         Draw();              // 못 나갔으면 그 결론이 검증 보고 맨 위에 선다
         RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
+
+        // 방금 본 디스크를 지문으로 남긴다 — 감시자가 깨울 때 이것과 견준다(IfDiskChanged).
+        // 이행(.bak)이 위에서 파일을 만졌을 수도 있으므로 읽기가 끝난 지금 찍는다.
+        _diskFingerprint = DiskFingerprint();
+
         EntriesReloaded?.Invoke(_entries);
     }
 
@@ -1120,6 +1226,8 @@ public partial class ChapterGraphView : UserControl
 
     private void Draw()
     {
+        CanvasDrawCount++;
+
         GraphCanvas.Children.Clear();
         DiagnosticsPanel.Children.Clear();
         _cardById.Clear();

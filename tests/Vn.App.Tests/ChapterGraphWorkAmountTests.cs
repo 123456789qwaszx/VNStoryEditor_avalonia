@@ -142,6 +142,51 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         window.Close();
     });
 
+    [Fact]
+    public void 우리가_쓴_저장으로는_감시자가_판을_다시_만들지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 감시자는 남의 저장과 우리 저장을 구별하지 못한다. 툴이 쓴 자리는 그 자리에서
+        // 이미 화면을 맞췄으므로, 250ms 뒤 오는 알림은 같은 그림을 한 번 더 그리라는
+        // 주문이다 — 그 순간 사람이 누르고 있던 카드가 파괴된다.
+        (ChapterGraphView view, _, Window window) = Show();
+
+        int before = view.CanvasDrawCount;
+
+        for (int index = 0; index < 5; index++)
+        {
+            view.ReloadIfDiskChanged();
+            view.SyncEpisodesIfDiskChanged();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+
+        Assert.Equal(before, view.CanvasDrawCount);
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 남이_엑셀에서_저장하면_감시자가_판을_다시_만든다() => HeadlessUi.Run(() =>
+    {
+        // 지문이 남의 저장까지 삼키면 "엑셀에서 고쳤는데 툴이 그대로"가 된다 — Gate A가
+        // 지키던 바로 그것이다.
+        (ChapterGraphView view, _, Window window) = Show();
+
+        ChapterWorkbookWriter.AddEpisode(
+            Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx"),
+            "밖에서온것", title: "남의 저장", 9, 9);
+
+        int before = view.CanvasDrawCount;
+
+        view.ReloadIfDiskChanged();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(
+            view.CanvasDrawCount > before,
+            "디스크가 실제로 바뀌었으면 판을 다시 만들어야 한다");
+
+        window.Close();
+    });
+
     private (ChapterGraphView View, AuthoringSession Session, Window Window) Show()
     {
         var session = new AuthoringSession();
