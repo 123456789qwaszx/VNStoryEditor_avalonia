@@ -423,6 +423,83 @@ public static class EpisodeSyncService
         }
     }
 
+    /// <summary>간선 하나에 세운 연출 노드 — 이름을 워크북에 되써야 하면 <c>NeedsWriteBack</c>.</summary>
+    public sealed record EdgePresentationLink(
+        string FromEpisodeId,
+        string ToEpisodeId,
+        string? MatchOptionLabel,
+        string NodeName,
+        bool NeedsWriteBack);
+
+    /// <summary>
+    /// 간선에 매달린 <b>연출 노드</b>를 세운다 (v11).
+    ///
+    /// <b>선례는 대본이다</b> — 에피소드를 만들면 대본 워크북이 생기고 그 엑셀노드가 판에
+    /// 자동으로 선다. 한 층 위에 같은 손놀림을 올린다: 간선에 `엔딩키`나 `연출`이 적히면
+    /// 그 길을 탈 때 재생할 <b>대사 없는 연출</b> 노드가 판에 선다.
+    ///
+    /// <b>툴은 자리만 만든다.</b> 내용(커맨드)은 사람이 연출 그래프에서 채운다 —
+    /// 빈 노드가 서는 것은 잘못이 아니라 "여기에 연출을 넣을 수 있다"는 표시다.
+    ///
+    /// 멱등이다: 이름이 이미 있으면 다시 만들지 않는다. 돌려주는 목록 가운데
+    /// <see cref="EdgePresentationLink.NeedsWriteBack"/>인 것만 호출자가 워크북에 적는다
+    /// (툴이 이름을 지은 경우다 — 기획자가 직접 적은 이름은 그대로 둔다).
+    /// </summary>
+    public static IReadOnlyList<EdgePresentationLink> SupplyEdgePresentations(
+        ProjectEditor editor,
+        string fileId,
+        ChapterGraphModel chapter)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(chapter);
+
+        var links = new List<EdgePresentationLink>();
+
+        foreach (ChapterEdge edge in chapter.Edges)
+        {
+            bool wants = edge.IsEnding || !string.IsNullOrWhiteSpace(edge.PresentationNodeName);
+
+            if (!wants)
+            {
+                continue;
+            }
+
+            string declared = edge.PresentationNodeName?.Trim() ?? string.Empty;
+            bool toolNamed = declared.Length == 0;
+            string name = toolNamed ? PresentationNameFor(edge) : declared;
+
+            if (FindPresentation(editor, fileId, name) is null)
+            {
+                editor.AddPresentationNode(fileId, name: name);
+            }
+
+            links.Add(new EdgePresentationLink(
+                edge.FromEpisodeId,
+                edge.ToEpisodeId,
+                edge.IsPlainAdvance ? null : edge.OptionLabel,
+                name,
+                toolNamed));
+        }
+
+        return links;
+    }
+
+    /// <summary>
+    /// 툴이 짓는 연출 노드 이름. 엔딩이면 키를, 아니면 잇는 두 에피소드를 쓴다 —
+    /// 판에서 이름만 보고 "무엇에 붙은 연출인지" 알아야 한다.
+    /// </summary>
+    private static string PresentationNameFor(ChapterEdge edge) =>
+        edge.IsEnding
+            ? $"엔딩 {edge.EndingKey!.Trim()}"
+            : $"전이 {edge.FromEpisodeId}→{edge.ToEpisodeId}";
+
+    /// <summary>대사 노드와 같은 규칙 — 그 <b>챕터의 판 안에서만</b> 찾는다.</summary>
+    private static PresentationNode? FindPresentation(
+        ProjectEditor editor, string fileId, string name) =>
+        editor.Project.FindFile(fileId)?.Nodes
+            .OfType<PresentationNode>()
+            .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));
+
     /// <summary>
     /// 챕터의 조건 <b>전부</b>를 그 판의 모든 대사 노드가 쓸 수 있게 공급한다 (2단계 4번).
     /// 작가의 자유 노드가 조건 드롭다운에서 챕터 라벨(A 계층)을 바로 고르게 하는 자리다 —

@@ -467,6 +467,9 @@ public partial class ChapterGraphView : UserControl
         EpisodeSyncService.SupplyChapterConditionsToBoard(
             _session.Editor, _session.Definition, fileId, entry.Model);
 
+        // v11 — 간선에 매달린 연출 노드를 세운다. 툴이 이름을 지었으면 워크북에 되쓴다.
+        SupplyEdgePresentations(entry, fileId);
+
         // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
         _boardWarnings.Clear();
         _boardWarnings.AddRange(
@@ -494,6 +497,45 @@ public partial class ChapterGraphView : UserControl
             _session.SetStatus(rejected == 0
                 ? $"에피소드 {applied}개를 반영했습니다."
                 : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+        }
+    }
+
+    /// <summary>
+    /// 간선의 연출 노드를 세우고, <b>툴이 지은 이름만</b> 워크북에 되쓴다 (v11).
+    ///
+    /// 기획자는 엔딩키만 적으면 된다 — 이름 짓기와 노드 세우기는 툴의 일이다. 사람이
+    /// `연출` 칸에 직접 적은 이름은 그대로 둔다(그것이 이미 정본이다).
+    ///
+    /// 엑셀이 그 파일을 잡고 있으면 쓰기가 거부되는데, 그때는 <b>조용히 넘긴다</b> —
+    /// 노드는 이미 판에 섰고, 이름은 다음 동기화가 다시 적으려 한다. 붉은 배너가 이미
+    /// 잠금을 말하고 있으므로 여기서 같은 말을 한 번 더 할 이유가 없다.
+    /// </summary>
+    private void SupplyEdgePresentations(ChapterEntry entry, string fileId)
+    {
+        if (_session is null || entry.Model is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<EpisodeSyncService.EdgePresentationLink> links =
+            EpisodeSyncService.SupplyEdgePresentations(_session.Editor, fileId, entry.Model);
+
+        foreach (EpisodeSyncService.EdgePresentationLink link in links.Where(item => item.NeedsWriteBack))
+        {
+            try
+            {
+                ChapterWorkbookWriter.SetEdgePresentation(
+                    entry.Path,
+                    link.FromEpisodeId,
+                    link.ToEpisodeId,
+                    link.MatchOptionLabel,
+                    link.NodeName);
+            }
+            catch (InvalidOperationException)
+            {
+                // 읽은 뒤 쓰기 전에 사람이 그 행을 지웠다. 다음 읽기가 정본이므로
+                // 여기서 붙잡지 않는다 — 노드는 이미 섰고, 안 쓰이면 자유 노드로 남는다.
+            }
         }
     }
 
