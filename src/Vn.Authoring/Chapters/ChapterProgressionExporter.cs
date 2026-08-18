@@ -59,11 +59,38 @@ public static class ChapterProgressionExporter
             ChapterId = chapter.ChapterId,
             DisplayName = chapter.ChapterId,
             StartEpisodeId = chapter.StartEpisode?.EpisodeId ?? string.Empty,
+            Stats = chapter.Stats.Select(Stat).ToList(),
             Nodes = chapter.Episodes.Select(episode => Node(chapter, episode)).ToList()
         };
 
         return new ChapterExportResult(JsonSerializer.Serialize(payload, Options), validation);
     }
+
+    /// <summary>
+    /// 스탯 정의 한 벌 → 런타임 <c>StatDefinition</c> (2026-08-18).
+    ///
+    /// <b>이 칸이 비어 있던 것이 Gate D를 막고 있었다.</b> 초기값·최소·최대가 어느 런타임
+    /// 입력에도 없어서, 툴의 도달성 증명만 <c>Clamp(값, 최소, 최대)</c>로 걷고 런타임은
+    /// 경계를 몰랐다 — 증명과 실제 플레이가 갈릴 수 있는 자리였다. 값의 주인은 챕터
+    /// 워크북의 `스탯` 시트다(같은 <c>trust</c>라도 챕터마다 초기값이 다를 수 있어
+    /// 게임 단위가 아니라 챕터에 실린다).
+    ///
+    /// <b>⚠ 타입 이름을 번역한다.</b> 이쪽은 <c>Int</c>, 저쪽(`Ked.Progression.StatType`)은
+    /// <b><c>Number</c></b>다. enum이 이름 문자열로 나가므로 그대로 내면 수입기가 모르는
+    /// 이름을 만난다 — 조건 연산자를 <c>AtLeast → "GreaterOrEqual"</c>로 옮기는 것과
+    /// 같은 자리, 같은 이유다.
+    ///
+    /// <c>SourceRow</c>는 싣지 않는다 — 엑셀 몇 행에서 왔는지는 저작의 사정이다.
+    /// </summary>
+    private static StatJson Stat(ChapterStat stat) => new()
+    {
+        Key = stat.Key,
+        DisplayName = stat.DisplayName,
+        Type = stat.Type == ChapterStatType.Bool ? "Bool" : "Number",
+        Initial = stat.Initial,
+        Minimum = stat.Minimum,
+        Maximum = stat.Maximum
+    };
 
     private static NodeJson Node(ChapterGraphModel chapter, ChapterEpisode episode) => new()
     {
@@ -142,8 +169,30 @@ public static class ChapterProgressionExporter
         public string ChapterId { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public string StartEpisodeId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 이 챕터가 쓰는 스탯의 정의 (2026-08-18 신설 — 계약서 §G-1).
+        /// <c>Nodes</c>보다 <b>앞에</b> 둔다: 수입기가 조건·스탯변화의 키를 검사하려면
+        /// 스탯 사전이 먼저 서야 하고, 사람이 읽을 때도 어휘가 먼저 오는 것이 자연스럽다.
+        /// </summary>
+        public List<StatJson> Stats { get; set; } = new();
+
         public List<NodeJson> Nodes { get; set; } = new();
         public List<object> EndingRules { get; set; } = new();  // v1은 읽고 표시까지 (D5)
+    }
+
+    /// <summary>런타임 <c>StatDefinition</c>과 1:1. <c>Type</c>은 이름 문자열이다.</summary>
+    private sealed class StatJson
+    {
+        public string Key { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+
+        /// <summary><c>"Number"</c> 또는 <c>"Bool"</c> — 이쪽 <c>Int</c>가 저쪽 <c>Number</c>다.</summary>
+        public string Type { get; set; } = "Number";
+
+        public int Initial { get; set; }
+        public int Minimum { get; set; }
+        public int Maximum { get; set; }
     }
 
     private sealed class NodeJson

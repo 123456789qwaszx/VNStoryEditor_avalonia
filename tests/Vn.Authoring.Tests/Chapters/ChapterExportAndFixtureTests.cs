@@ -280,6 +280,60 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.Equal("GreaterThan", option.GetProperty("Conditions")[0].GetProperty("Op").GetString());
     }
 
+    [Fact]
+    public void 스탯_정의가_최상위로_실려_나간다()
+    {
+        // 계약서 §G-1 (2026-08-18) — 이 칸이 비어 있어서 Gate D가 막혀 있었다.
+        // 초기값·최소·최대가 어느 런타임 입력에도 없었고, 툴의 도달성 증명만 clamp하며
+        // 걸었다. `Ked.Progression.ChapterProgression`은 정의되지 않은 스탯을 가리키는
+        // 조건을 만나면 생성을 거부하므로, 이것이 없으면 실데이터를 아예 못 싣는다.
+        // 시트에는 경계를 쓰는 writer 경로가 없어(사람이 엑셀에서 적는다) 모델을 직접
+        // 세운다 — 겨누는 것은 내보내기이지 리더가 아니다.
+        var chapter = new ChapterGraphModel(
+            "stats",
+            string.Empty,
+            [
+                new ChapterEpisode("ep1", "첫 화", "", "Main", "ep1", 0, 0, null, null, 2),
+                new ChapterEpisode("ep2", "둘째", "", "Main", "ep2", 200, 0, null, null, 3)
+            ],
+            [new ChapterEdge("ep1", "ep2", null, null, HideWhenLocked: false, null, 2)],
+            [],
+            [
+                new ChapterStat("trust", "신뢰", Initial: 1, Minimum: 0, Maximum: 5, SourceRow: 2),
+                new ChapterStat("flag", "깃발", Initial: 0, Minimum: 0, Maximum: 1, SourceRow: 3,
+                    Type: ChapterStatType.Bool)
+            ],
+            [],
+            []);
+
+        ChapterExportResult result =
+            ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        Assert.False(result.Refused,
+            string.Join(" / ", result.Validation.All.Select(item => item.Message)));
+
+        using JsonDocument document = JsonDocument.Parse(result.Json!);
+        JsonElement stats = document.RootElement.GetProperty("Stats");
+
+        Assert.Equal(2, stats.GetArrayLength());
+
+        JsonElement trust = stats[0];
+        Assert.Equal("trust", trust.GetProperty("Key").GetString());
+        Assert.Equal("신뢰", trust.GetProperty("DisplayName").GetString());
+        Assert.Equal(1, trust.GetProperty("Initial").GetInt32());
+        Assert.Equal(5, trust.GetProperty("Maximum").GetInt32());
+
+        // ⚠ 이름 번역 — 이쪽은 Int, 저쪽(Ked.Progression.StatType)은 Number다.
+        // enum이 이름 문자열로 나가므로 그대로 내면 수입기가 모르는 이름을 만난다.
+        Assert.Equal("Number", trust.GetProperty("Type").GetString());
+        Assert.Equal("Bool", stats[1].GetProperty("Type").GetString());
+
+        // 경계 0은 키가 살아 있어야 한다 — WhenWritingDefault는 IntValue에만 걸려 있다.
+        Assert.Equal(0, trust.GetProperty("Minimum").GetInt32());
+
+        // SourceRow는 저작의 사정이라 싣지 않는다.
+        Assert.False(trust.TryGetProperty("SourceRow", out _));
+    }
+
     private static ChapterGraphModel Trim(ChapterGraphModel chapter, string remove) => new(
         chapter.ChapterId,
         chapter.SourcePath,
