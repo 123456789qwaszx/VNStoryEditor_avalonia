@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-21 · 테스트 **1373 통과, 실패 0**
-(Ked.Presentation.Core 342 · Vn.Core 60 · Vn.Authoring 706 · Vn.App 265)
+기준: 2026-08-21 · 테스트 **1374 통과, 실패 0**
+(Ked.Presentation.Core 342 · Vn.Core 60 · Vn.Authoring 707 · Vn.App 265)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 
@@ -419,7 +419,11 @@ game.definition.json` / `작가가 더한 화자`.
   터미널 선택이 작업대 띠와 연동된다. 터미널:작업대 영역비는 가로 스플리터 드래그
   (작업대는 고정 높이 + 내부 스크롤). 통로: `PresentationScriptPanel`(그리기와
   신호뿐) · `MovePresentationCommand`(이동 하나 = undo 하나) ·
-  `BuildLineDetailContent(lineId, setup)`(캐시로 칩 팝업 보존)
+  `BuildLineDetailContent(lineId, setup)`(캐시로 칩 팝업 보존). **4차**: 라인마다
+  `<<actor @2 willow>>` 액터 선언 행(캐스팅 폴드에서 배역, 커맨드 표시의 무대 대상도
+  별칭 치환 — 저장 인자는 슬롯 그대로) · X는 선택 구획에서만 · 터미널 툴팁 전무 ·
+  작업대↔터미널 양방향 선택 연동 · 조절 콘솔 [이동] 탭 삭제("이동도 커맨드 하나") ·
+  스크롤바가 X를 가리지 않게 우측 여백
 - **흔들리던 테스트 (2026-08-19)** — 어서션이 아니라 **프로세스가 죽고 있었다.** 닫지 않은
   파일 감시자가 타이머 스레드에서 없어진 디스패처에 `Post`를 했다. `DetachSession()` ·
   `OpenChapterViews`(테스트가 띄운 화면을 폴더 삭제 전에 닫는다) · `Fire()`의 두 번째 방벽

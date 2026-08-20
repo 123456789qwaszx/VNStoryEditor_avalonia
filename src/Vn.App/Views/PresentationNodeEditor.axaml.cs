@@ -581,6 +581,12 @@ public partial class PresentationNodeEditor : UserControl
     private readonly Dictionary<string, Border> _detailRowHosts = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// 작업대에서 커맨드 행을 클릭했다 (2026-08-21 소유자: "편집기에서도 특정 커맨드를
+    /// 클릭했을 때 표시를 하고, 그게 터미널에도 반영") — 호스트가 터미널 띠를 맞춘다.
+    /// </summary>
+    internal event Action<string>? DetailCommandSelected;
+
+    /// <summary>
     /// 선택 대상의 커맨드 편집 작업대 (2026-08-20 소유자: "우측 연출 편집기를 좌측
     /// 터미널로 — 현재 선택한 Line만" · 2026-08-21 "Setup도 터미널 클릭으로") —
     /// 라인 하나 또는 Setup 전체를 같은 행 빌더(활성 체크·칩·갤러리·직접 입력)로 짓는다.
@@ -636,6 +642,14 @@ public partial class PresentationNodeEditor : UserControl
                     CornerRadius = new CornerRadius(4),
                     Padding = new Thickness(6, 4),
                     Child = BuildCommandRow(presentation, rowLineId, command, catalog)
+                };
+                string commandId = command.Id;
+                host.PointerPressed += (_, _) =>
+                {
+                    // 클릭 = 이 커맨드 선택 — 여기와 터미널의 띠가 같이 옮겨 간다.
+                    // Handled를 세우지 않아 칩·체크의 제 동작은 그대로다.
+                    HighlightDetailCommand(commandId);
+                    DetailCommandSelected?.Invoke(commandId);
                 };
                 _detailRowHosts[command.Id] = host;
                 content.Children.Add(host);

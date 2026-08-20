@@ -62,6 +62,10 @@ internal sealed class PresentationScriptPanel : UserControl
 
     public PresentationScriptPanel()
     {
+        // 스크롤바가 행 위에 겹쳐 뜨므로 오른쪽·아래를 비워 둔다 (2026-08-21 소유자:
+        // "두꺼운 바가 삭제 버튼을 가려버려서") — X가 바 밑에 깔리지 않는 자리다.
+        _rows.Margin = new Thickness(0, 0, 16, 8);
+
         _scroll = new ScrollViewer
         {
             Content = _rows,
@@ -116,11 +120,17 @@ internal sealed class PresentationScriptPanel : UserControl
                 group.Children.Add(BuildLineHeader(lineId!));
             }
 
+            // 제거 X는 선택된 구획에서만 보인다 (2026-08-21 소유자: "특정 라인을
+            // 클릭했을 때만 x가 보이도록") — 다른 라인은 읽기 화면처럼 고요하다.
+            bool showRemove = editable && (isSetup
+                ? setupSelected
+                : string.Equals(lineId, selectedLineId, StringComparison.Ordinal));
+
             while (index < rows.Count &&
                    string.Equals(rows[index].LineId, lineId, StringComparison.Ordinal))
             {
                 PresentationScriptRow row = rows[index];
-                Control rowControl = BuildRow(row, editable);
+                Control rowControl = BuildRow(row, editable, showRemove);
                 group.Children.Add(rowControl);
 
                 if (rowControl is Border host)
@@ -194,15 +204,30 @@ internal sealed class PresentationScriptPanel : UserControl
         }
     }
 
-    private Control BuildRow(PresentationScriptRow row, bool editable)
+    private Control BuildRow(PresentationScriptRow row, bool editable, bool showRemove)
     {
         return row.Kind switch
         {
             PresentationScriptRowKind.SectionHeader => BuildSectionHeader(row, editable),
-            PresentationScriptRowKind.Command => BuildCommandRow(row, editable),
+            PresentationScriptRowKind.Command => BuildCommandRow(row, editable, showRemove),
+            PresentationScriptRowKind.Actor => BuildActorRow(row),
             _ => BuildDialogueRow(row)
         };
     }
+
+    /// <summary>
+    /// 라인 단위 액터 선언 <c>&lt;&lt;actor @2 willow&gt;&gt;</c> — 읽기용 표시라
+    /// 점·X·드래그가 없다. 커맨드와 다른 색으로 "선언"임을 알린다.
+    /// </summary>
+    private static TextBlock BuildActorRow(PresentationScriptRow row) => new()
+    {
+        Text = row.Text,
+        FontSize = 11,
+        FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
+        Foreground = new SolidColorBrush(Color.FromRgb(134, 239, 172)),
+        Opacity = 0.8,
+        Margin = new Thickness(14, row.StartsGroup ? 6 : 0, 0, 0)
+    };
 
     private TextBlock BuildSectionHeader(PresentationScriptRow row, bool editable)
     {
@@ -263,7 +288,6 @@ internal sealed class PresentationScriptPanel : UserControl
         };
 
         var host = new Border { Background = Brushes.Transparent, Child = text };
-        ToolTip.SetTip(host, "클릭하면 이 라인을 선택합니다.");
         host.Cursor = new Cursor(StandardCursorType.Hand);
         host.PointerPressed += (_, args) =>
         {
@@ -277,7 +301,7 @@ internal sealed class PresentationScriptPanel : UserControl
         return host;
     }
 
-    private Border BuildCommandRow(PresentationScriptRow row, bool editable)
+    private Border BuildCommandRow(PresentationScriptRow row, bool editable, bool showRemove)
     {
         // Rider 브레이크포인트 감각의 점 — 상세조절 입구.
         var dot = new Ellipse
@@ -323,28 +347,29 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         dot.Cursor = new Cursor(StandardCursorType.Hand);
-        ToolTip.SetTip(host, "클릭 = 선택 · 드래그 = 자리 이동 · 점 = 상세조절 · X = 제거 — 텍스트 편집은 아래 작업대에서");
 
-        // 행 우측 끝의 제거 X (2026-08-21 소유자: "터미널 라인 우측 끝에 X") —
-        // 작업대의 ✕ 버튼을 이것이 대체한다.
-        var remove = new TextBlock
+        if (showRemove)
         {
-            Text = "✕",
-            FontSize = 11,
-            Opacity = 0.35,
-            Foreground = Brushes.Gainsboro,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 2, 0),
-            Cursor = new Cursor(StandardCursorType.Hand)
-        };
-        ToolTip.SetTip(remove, "이 커맨드를 제거합니다.");
-        remove.PointerPressed += (_, args) =>
-        {
-            CommandRemoveRequested?.Invoke(command);
-            args.Handled = true;
-        };
-        DockPanel.SetDock(remove, Dock.Right);
-        layout.Children.Insert(1, remove);
+            // 행 우측 끝의 제거 X (2026-08-21 소유자: "터미널 라인 우측 끝에 X",
+            // 같은 날: "특정 라인을 클릭했을 때만") — 선택된 구획의 행에서만 선다.
+            var remove = new TextBlock
+            {
+                Text = "✕",
+                FontSize = 11,
+                Opacity = 0.35,
+                Foreground = Brushes.Gainsboro,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 2, 0),
+                Cursor = new Cursor(StandardCursorType.Hand)
+            };
+            remove.PointerPressed += (_, args) =>
+            {
+                CommandRemoveRequested?.Invoke(command);
+                args.Handled = true;
+            };
+            DockPanel.SetDock(remove, Dock.Right);
+            layout.Children.Insert(1, remove);
+        }
 
         host.PointerPressed += (_, args) =>
         {
@@ -474,6 +499,16 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         _dropCandidate = null;
+    }
+
+    /// <summary>
+    /// 작업대 쪽에서 고른 커맨드를 터미널 띠에도 반영한다 (2026-08-21 소유자:
+    /// "그게 터미널에도 반영") — 재구성 없이 띠만 옮긴다.
+    /// </summary>
+    internal void SelectCommand(string? commandId)
+    {
+        _selectedCommandId = commandId;
+        RefreshCommandSelection();
     }
 
     /// <summary>선택 띠만 다시 칠한다 — 전체 재구성 없이.</summary>

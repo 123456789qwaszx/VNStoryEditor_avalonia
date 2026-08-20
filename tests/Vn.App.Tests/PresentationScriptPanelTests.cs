@@ -23,7 +23,8 @@ public sealed class PresentationScriptPanelTests
     [
         new(PresentationScriptRowKind.SectionHeader, null, null, "── Setup ──"),
         new(PresentationScriptRowKind.Command, null, Command("char_rig_cast.slot"), "<<slot c1>>"),
-        new(PresentationScriptRowKind.Command, "ln_a", Command("char_rig_staging.move_by"), "<<move_by c1 +2u>>"),
+        new(PresentationScriptRowKind.Actor, "ln_a", null, "<<actor @1 willow>>"),
+        new(PresentationScriptRowKind.Command, "ln_a", Command("char_rig_staging.move_by"), "<<move_by @1 +2u>>"),
         new(PresentationScriptRowKind.Dialogue, "ln_a", null, "라루: 첫 줄"),
         new(PresentationScriptRowKind.Dialogue, "ln_b", null, "윌로: 둘째 줄")
     ];
@@ -91,18 +92,24 @@ public sealed class PresentationScriptPanelTests
     });
 
     [Fact]
-    public void 편집_가능할_때만_커맨드_행_우측에_제거_X가_선다() => HeadlessUi.Run(() =>
+    public void 제거_X는_선택된_구획의_커맨드_행에서만_선다() => HeadlessUi.Run(() =>
     {
         var panel = new PresentationScriptPanel();
-
-        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
-        int editableXCount = panel.GetLogicalDescendants().OfType<TextBlock>()
+        int CountX() => panel.GetLogicalDescendants().OfType<TextBlock>()
             .Count(text => string.Equals(text.Text, "✕", StringComparison.Ordinal));
-        Assert.Equal(2, editableXCount); // 커맨드 행 수만큼 — 대사 행에는 없다.
 
+        // ln_a 선택 — ln_a의 커맨드 행에만 X. Setup 행은 선택 밖이라 없다 (2026-08-21
+        // 소유자: "특정 라인을 클릭했을 때만 x가 보이도록").
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
+        Assert.Equal(1, CountX());
+
+        // Setup 선택 — Setup 커맨드 행에만 X.
+        panel.Show(Rows(), selectedLineId: null, editable: true, setupSelected: true);
+        Assert.Equal(1, CountX());
+
+        // 읽기 전용 — 어디에도 없다.
         panel.Show(Rows(), selectedLineId: "ln_a", editable: false);
-        Assert.DoesNotContain(panel.GetLogicalDescendants().OfType<TextBlock>(),
-            text => string.Equals(text.Text, "✕", StringComparison.Ordinal));
+        Assert.Equal(0, CountX());
     });
 
     [Fact]

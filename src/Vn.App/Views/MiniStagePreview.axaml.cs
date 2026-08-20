@@ -415,6 +415,9 @@ public partial class MiniStagePreview : UserControl
         };
     }
 
+    /// <summary>작업대 쪽 커맨드 클릭을 터미널 띠에 반영한다 (2026-08-21) — MainWindow가 부른다.</summary>
+    internal void SelectTerminalCommand(string commandId) => _script.SelectCommand(commandId);
+
     /// <summary>null이면 보여 줄 라인이 없는 상태다(노드 미선택 등).</summary>
     internal void Show(MiniStagePreviewRequest? request)
     {

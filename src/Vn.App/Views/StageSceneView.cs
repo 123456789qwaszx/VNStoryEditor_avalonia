@@ -1767,76 +1767,6 @@ internal sealed class StageSceneView : UserControl
         }
     }
 
-    /// 조절창 [이동] 탭 (W66, 소유자 요청) — 선택 슬롯의 이 라인 이동을 여기서도 만든다.
-    /// 이동이 이미 있으면 칩과 같은 편집기가 열리고, 없으면 [＋]가 <c>move_by</c>를
-    /// 라인에 단다(같은 슬롯을 다시 눌러도 쌓이지 않고 그 커맨드가 수정된다 — dedupe는
-    /// <see cref="PresentationStageActions.Apply"/>의 규칙 그대로).
-    /// </summary>
-    private Control BuildMotionTab(Action onApplied)
-    {
-        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
-
-        if (_popoverSlotKey is not { } slotKey)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = "슬롯을 먼저 고르세요 — 이동은 슬롯의 것입니다.",
-                FontSize = 10,
-                Opacity = 0.65
-            });
-            return panel;
-        }
-
-        if (_request?.EditContext is not { Editable: true })
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = "읽기 전용 화면입니다 — 연출 노드를 열면 편집할 수 있습니다.",
-                FontSize = 10,
-                Opacity = 0.65,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 250
-            });
-            return panel;
-        }
-
-        // 칩과 같은 원천 — 이 라인에서 이 슬롯을 미는 이동. 여럿이면 마지막 것을 만진다
-        // (앞의 것은 런타임이 즉시 완주시키므로 눈에 보이는 이동은 마지막 것이다).
-        StageMotionCue? cue = _request.MotionCues?
-            .LastOrDefault(item => string.Equals(item.SlotKey, slotKey, StringComparison.Ordinal));
-
-        if (cue is not null)
-        {
-            AddMotionEditorRows(panel, cue);
-            return panel;
-        }
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = "이 라인에는 이 슬롯의 이동이 없습니다.",
-            FontSize = 10,
-            Opacity = 0.65
-        });
-
-        var addButton = new Button
-        {
-            Content = "＋ 이동 추가 (move_by)",
-            FontSize = 11,
-            Padding = new Thickness(8, 3)
-        };
-        ToolTip.SetTip(addButton,
-            "이 라인에 move_by를 답니다 — 시작값 가로 +1u · 12fr. 슬라이더로 바로 고치세요.");
-        addButton.Click += (_, _) =>
-        {
-            ApplyStageCommand("move_by", StageArgs(
-                ("slot", slotKey), ("x", "+1u"), ("y", "0u"), ("duration", "12fr")));
-            onApplied();
-        };
-        panel.Children.Add(addButton);
-
-        return panel;
-    }
-
     /// <summary>
     /// 값 하나짜리 슬라이더 줄. 끄는 동안은 라벨만 갱신하고, <b>손을 뗄 때 한 번</b> 저장한다.
     /// </summary>
@@ -2446,11 +2376,8 @@ internal sealed class StageSceneView : UserControl
             Header = new TextBlock { Text = "캐릭터", FontSize = 11 },
             Content = BuildCharacterTab(rebuild)
         });
-        tabs.Items.Add(new TabItem
-        {
-            Header = new TextBlock { Text = "이동", FontSize = 11 },
-            Content = BuildMotionTab(rebuild)
-        });
+        // [이동] 탭은 없다 (2026-08-21 소유자: "이동도 결국 커맨드 하나일 뿐") —
+        // 이동 편집은 터미널에서 그 커맨드를 고르는 정식 경로 하나로 간다.
         tabs.Items.Add(new TabItem
         {
             Header = new TextBlock { Text = "오디오", FontSize = 11 },

@@ -130,6 +130,9 @@ public partial class MainWindow : Window
                 PresentationEditor.HighlightDetailCommand(commandId);
             }
         };
+        // 역방향 연동 (2026-08-21) — 작업대에서 클릭한 커맨드가 터미널 띠에도 선다.
+        PresentationEditor.DetailCommandSelected += commandId =>
+            StagePreview.SelectTerminalCommand(commandId);
         StagePreview.NodeExitRequested = () =>
         {
             // 문서 끝 도달 (W39) — 활성 편집기가 실행 출구를 따라 다음 노드로 전환하면
