@@ -183,6 +183,22 @@ public class MotionInspectionTests
     }
 
     [Fact]
+    public void ease_인자가_있으면_그것이_기본값을_이긴다()
+    {
+        // W67 — 다섯째 인자. 없으면 선언이 기록한 런타임 기본(OutCubic)이다.
+        StageReducerTuning tuning = LoadTuning();
+        (var setup, var lines, PresentationResultCommand move) =
+            Stage(("slot", "c1"), ("x", "+2u"), ("duration", "12fr"), ("ease", "InOutSine"));
+
+        Assert.Equal("InOutSine", InspectMove(move, setup, lines, tuning).Ease);
+
+        (var setup2, var lines2, PresentationResultCommand plain) =
+            Stage(("slot", "c1"), ("x", "+2u"), ("duration", "12fr"));
+
+        Assert.Equal("OutCubic", InspectMove(plain, setup2, lines2, tuning).Ease);
+    }
+
+    [Fact]
     public void duration이_0이면_계단이다()
     {
         StageReducerTuning tuning = LoadTuning();

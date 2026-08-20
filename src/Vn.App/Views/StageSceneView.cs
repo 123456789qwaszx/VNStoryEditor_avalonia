@@ -1449,17 +1449,106 @@ internal sealed class StageSceneView : UserControl
                 suffix: "fr"));
         }
 
-        // 이징은 아직 편집 칸이 아니다 — 실을 자리가 런타임 텍스트에 없다(W67에서 연다).
-        // "채우면 반드시 동작한다"를 지키려고 값만 보여 주고 만지게 하지 않는다.
-        host.Children.Add(new TextBlock
+        if (motion.EaseParameterName is { } easeParameter)
         {
-            Text = $"이징 {cue.Ease ?? "-"} — 런타임 기본값입니다. 텍스트에 실을 자리가 " +
-                "아직 없어 여기서는 바꿀 수 없습니다.",
-            FontSize = 9,
-            Opacity = 0.55,
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 250
-        });
+            host.Children.Add(BuildEaseSelector(
+                context.PresentationNodeId, cue, motion, easeParameter));
+        }
+    }
+
+    /// <summary>
+    /// 이징 선택기 (W67) — 후보는 코어 <see cref="EaseKind"/> 어휘 그대로이고, 옆의 곡선
+    /// 미리보기는 재생이 쓰는 그 <see cref="EaseFunctions"/>로 그린다(사본 없음 — 선택기가
+    /// 보여 주는 모양 = 재생이 타는 모양). <b>기본값(OutCubic)을 고르면 인자를 지운다</b> —
+    /// 다섯째 토큰이 생략돼 기존 대본과의 diff가 최소가 된다.
+    /// </summary>
+    private Control BuildEaseSelector(
+        string presentationNodeId,
+        StageMotionCue cue,
+        PresentationMotionDeclaration motion,
+        string easeParameter)
+    {
+        string[] candidates = Enum.GetNames<EaseKind>();
+        EaseKind current = EaseKindOf(cue.Ease);
+
+        var curvePreview = new Avalonia.Controls.Shapes.Polyline
+        {
+            Stroke = new SolidColorBrush(Color.FromArgb(220, 250, 204, 21)),
+            StrokeThickness = 1.5,
+            Width = 44,
+            Height = 26,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        void DrawCurve(EaseKind kind)
+        {
+            const int sampleCount = 32;
+            var points = new Avalonia.Points();
+
+            for (int i = 0; i <= sampleCount; i++)
+            {
+                float t = i / (float)sampleCount;
+                float eased = EaseFunctions.Evaluate(kind, t);
+                // Back·Elastic이 [0,1]을 벗어나므로 살짝 여유를 두고 세로를 뒤집는다.
+                points.Add(new Point(t * 44, 26 - Math.Clamp(eased, -0.25f, 1.25f) * 18 - 4));
+            }
+
+            curvePreview.Points = points;
+        }
+
+        DrawCurve(current);
+
+        var combo = new ComboBox
+        {
+            ItemsSource = candidates,
+            SelectedIndex = Array.IndexOf(candidates, current.ToString()),
+            FontSize = 10,
+            MinWidth = 110,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        ToolTip.SetTip(combo, "이징 곡선 — 미리보기 모양 그대로 재생됩니다. 기본(OutCubic)을 고르면 텍스트에서 생략됩니다.");
+
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (_session is null || combo.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            string selected = candidates[combo.SelectedIndex];
+            DrawCurve(Enum.Parse<EaseKind>(selected));
+
+            // 기본값 = 생략 (빈 값이 인자를 지운다 — SetPresentationCommandArgument 규약).
+            string? token = string.Equals(selected, motion.DefaultEase, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : selected;
+
+            UiGuard.Run(_session, "이징 선택", () =>
+            {
+                _session.Editor.SetPresentationCommandArgument(
+                    presentationNodeId, cue.CommandId, easeParameter, token);
+                ManipulationApplied?.Invoke();
+            });
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var label = new TextBlock
+        {
+            Text = "곡선",
+            FontSize = 10,
+            Opacity = 0.7,
+            Width = 30,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        Grid.SetColumn(label, 0);
+        Grid.SetColumn(combo, 1);
+        Grid.SetColumn(curvePreview, 2);
+        row.Children.Add(label);
+        row.Children.Add(combo);
+        row.Children.Add(curvePreview);
+
+        return row;
     }
 
     /// <summary>

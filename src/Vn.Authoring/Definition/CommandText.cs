@@ -165,7 +165,13 @@ public static class CommandText
         return new CommandTextParseResult(definition, arguments, null);
     }
 
-    /// <summary>숫자 타입만 검증한다. 토큰 타입(slot·duration 등)의 어휘는 런타임 파서의 몫이다.</summary>
+    /// <summary>
+    /// 숫자 타입과 ease만 검증한다. 그 외 토큰 타입(slot·duration 등)의 어휘는 런타임
+    /// 파서의 몫이다. ease를 여기서 잡는 이유: 런타임은 모르는 이름을 로그만 남기고
+    /// OutCubic으로 조용히 굴러가므로(ease-open-orders §4), 오타를 저작에서 미리 짚는
+    /// 것이 유일한 방어다 — 판정 규칙은 런타임 YarnEaseParser와 같다(대소문자 무시,
+    /// 숫자 토큰 거부).
+    /// </summary>
     private static string? ValidateType(PresentationCommandParameter parameter, string value)
     {
         return parameter.Type switch
@@ -176,6 +182,9 @@ public static class CommandText
                 $"'{parameter.Name}'은 숫자여야 하는데 '{value}'가 왔습니다.",
             "bool" when !bool.TryParse(value, out _) && value is not ("0" or "1") =>
                 $"'{parameter.Name}'은 true/false여야 하는데 '{value}'가 왔습니다.",
+            "ease" when long.TryParse(value, out _) ||
+                        !Enum.TryParse<Ked.Presentation.Core.EaseKind>(value, ignoreCase: true, out _) =>
+                $"'{parameter.Name}'은 이징 이름이어야 하는데 '{value}'가 왔습니다 (예: OutCubic, Linear, InOutSine).",
             _ => null
         };
     }

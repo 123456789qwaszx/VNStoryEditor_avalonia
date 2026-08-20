@@ -113,6 +113,16 @@ public static class MotionInspection
             seconds = parsed;
         }
 
+        // 이징: 인자가 있으면 그것(W67 — 런타임 다섯째 인자와 같은 자리), 없으면
+        // 선언이 기록한 런타임 기본값이다.
+        string? ease = motion.DefaultEase;
+
+        if (motion.EaseParameterName is { } easeParameter &&
+            Argument(easeParameter) is { Length: > 0 } written)
+        {
+            ease = written;
+        }
+
         return new MotionSegment(
             command.CommandId,
             definition.OutputCommandName,
@@ -122,7 +132,7 @@ public static class MotionInspection
             claim.Value.XY,
             seconds,
             seconds * DurationToken.FramesPerSecond,
-            motion.DefaultEase);
+            ease);
     }
 
     /// <summary>선언된 축을 픽셀 값으로 읽는다. 하나라도 못 읽으면 통째로 실패다(부분 해석 금지).</summary>

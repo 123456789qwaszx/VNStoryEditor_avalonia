@@ -28,9 +28,21 @@ public static class ArgumentTokenCandidates
         ["boxKind"] = ["Portrait", "Speaker", "LetterBox", "OnlyText", "BlackBook", "Surface"]
     };
 
+    /// <summary>
+    /// 이징 후보 (W67) — 어휘의 정본은 코어 <see cref="Ked.Presentation.Core.EaseKind"/>다
+    /// (골든 덤프와 양방향 일치가 테스트로 고정돼 있다). 여기 옮겨 적으면 사본이 된다.
+    /// </summary>
+    private static readonly string[] EaseCandidates =
+        Enum.GetNames<Ked.Presentation.Core.EaseKind>();
+
     /// <summary>이 타입에 보여 줄 후보. 없으면 빈 목록 — 자유 입력만 남는다.</summary>
     public static IReadOnlyList<string> For(string? type)
     {
+        if (string.Equals(type, "ease", StringComparison.Ordinal))
+        {
+            return EaseCandidates;
+        }
+
         return type is not null && ByType.TryGetValue(type, out string[]? candidates)
             ? candidates
             : Array.Empty<string>();

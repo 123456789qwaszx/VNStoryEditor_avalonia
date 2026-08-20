@@ -101,10 +101,19 @@ public class PresentationCommandCatalogTests
         Assert.Equal("CharSlot_Track", motion.NodeId);
         Assert.True(motion.Relative);
         Assert.Equal("duration", motion.DurationParameterName);
+        Assert.Equal("ease", motion.EaseParameterName); // W67 — 런타임 다섯째 인자 개통
         Assert.Equal("OutCubic", motion.DefaultEase); // 런타임 스펙 기본값의 기록
         Assert.Equal("x", motion.FindAxis("x")!.ParameterName);
         Assert.Equal("y", motion.FindAxis("y")!.ParameterName);
         Assert.Equal("u", motion.FindAxis("x")!.Unit);
+
+        // ease 파라미터는 다섯째 자리이고 기본값이 없다 — 미지정이면 다섯째 토큰이
+        // 통째로 생략돼(트레일링 생략 규칙) 기존 대본이 한 글자도 안 바뀐다.
+        PresentationCommandParameter ease = catalog.Find("char_rig_staging.move_by")!.Parameters[^1];
+        Assert.Equal("ease", ease.Name);
+        Assert.Equal("ease", ease.Type);
+        Assert.False(ease.Required);
+        Assert.Null(ease.Default);
 
         // 로더 무해성 — 선언이 없는 커맨드는 예전과 완전히 같다.
         Assert.Null(catalog.Find("char_rig_staging.scale_by")!.Motion);

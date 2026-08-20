@@ -406,19 +406,26 @@
           "type": "duration",
           "required": false,
           "default": "0.4s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 다섯째 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff)."
         }
       ],
       "motion": {
         "node": "CharSlot_Track",
         "relative": true,
         "durationParam": "duration",
+        "easeParam": "ease",
         "defaultEase": "OutCubic",
         "axes": [
           { "param": "x", "axis": "x", "unit": "u" },
           { "param": "y", "axis": "y", "unit": "u" }
         ]
       },
-      "notes": "motion 선언 = 이 커맨드가 무슨 축을 미는가의 정본(W66). 툴은 이름·정규식으로 축을 추측하지 않는다. defaultEase는 런타임 스펙 기본값(MoveByCommandSpecCharR.ease)의 기록이지 편집 칸이 아니다 — ease 인자는 런타임 개통 뒤 W67에서 연다."
+      "notes": "motion 선언 = 이 커맨드가 무슨 축을 미는가의 정본(W66). 툴은 이름·정규식으로 축을 추측하지 않는다. defaultEase는 런타임 스펙 기본값(MoveByCommandSpecCharR.ease)의 기록이다. ease 다섯째 인자는 2026-08-20 런타임 개통(ease-open-orders §4) — 선택기에서 기본값(OutCubic)을 고르면 인자를 지워 생략한다."
     },
     {
       "id": "char_rig_staging.scale_by",

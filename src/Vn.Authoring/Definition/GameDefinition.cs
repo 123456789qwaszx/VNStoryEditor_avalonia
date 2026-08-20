@@ -272,7 +272,11 @@ public sealed class PresentationMotionSpec
     [JsonPropertyName("durationParam")]
     public string? DurationParam { get; init; }
 
-    /// <summary>런타임 스펙 기본 이징의 <b>기록</b>. 편집 칸이 아니다(W67에서 인자가 선다).</summary>
+    /// <summary>이징을 싣는 파라미터 이름 (W67). 없으면 이 커맨드의 이징은 편집 불가다.</summary>
+    [JsonPropertyName("easeParam")]
+    public string? EaseParam { get; init; }
+
+    /// <summary>런타임 스펙 기본 이징의 기록. 선택기에서 이 값을 고르면 인자를 지워 생략한다.</summary>
     [JsonPropertyName("defaultEase")]
     public string? DefaultEase { get; init; }
 

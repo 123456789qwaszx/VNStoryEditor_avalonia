@@ -82,6 +82,41 @@ public class CommandTextTests
     }
 
     [Fact]
+    public void ease_인자는_왕복하고_미지정이면_생략된다()
+    {
+        // W67 — 다섯째 인자. 지정하면 왕복하고, 없으면 텍스트가 기존 그대로다(최소 diff).
+        CommandTextParseResult withEase = CommandText.Parse("<<move_by c1 +2u 0u 12fr Linear>>", Catalog);
+        Assert.True(withEase.Success);
+        Assert.Equal("Linear", withEase.Arguments!["ease"]);
+        Assert.Equal(
+            "<<move_by c1 +2u 0u 12fr Linear>>",
+            CommandText.Format(withEase.Definition, "move_by", withEase.Arguments!));
+
+        CommandTextParseResult without = CommandText.Parse("<<move_by c1 +2u 0u 12fr>>", Catalog);
+        Assert.True(without.Success);
+        Assert.False(without.Arguments!.ContainsKey("ease"));
+        Assert.Equal(
+            "<<move_by c1 +2u 0u 12fr>>",
+            CommandText.Format(without.Definition, "move_by", without.Arguments!));
+    }
+
+    [Fact]
+    public void 잘못된_ease_이름은_오류다()
+    {
+        // 런타임은 모르는 이름을 로그만 남기고 OutCubic으로 굴러간다 — 오타는 저작에서
+        // 짚는 것이 유일한 방어다. 판정은 런타임 YarnEaseParser와 같다(대소문자 무시·숫자 거부).
+        Assert.True(CommandText.Parse("<<move_by c1 +2u 0u 12fr outcubic>>", Catalog).Success);
+
+        CommandTextParseResult typo = CommandText.Parse("<<move_by c1 +2u 0u 12fr OutQubic>>", Catalog);
+        Assert.False(typo.Success);
+        Assert.Contains("이징", typo.Error, StringComparison.Ordinal);
+
+        CommandTextParseResult numeric = CommandText.Parse("<<move_by c1 +2u 0u 12fr 5>>", Catalog);
+        Assert.False(numeric.Success);
+        Assert.Contains("이징", numeric.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void 필수_인자_누락은_오류다()
     {
         CommandTextParseResult parsed = CommandText.Parse("<<face_swap c1>>", Catalog);

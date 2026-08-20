@@ -37,6 +37,7 @@ public sealed record PresentationMotionDeclaration(
     string NodeId,
     bool Relative,
     string? DurationParameterName,
+    string? EaseParameterName,
     string? DefaultEase,
     IReadOnlyList<PresentationMotionAxis> Axes)
 {
@@ -268,6 +269,7 @@ public sealed class PresentationCommandCatalog
             spec.Node,
             spec.Relative,
             string.IsNullOrWhiteSpace(spec.DurationParam) ? null : spec.DurationParam,
+            string.IsNullOrWhiteSpace(spec.EaseParam) ? null : spec.EaseParam,
             string.IsNullOrWhiteSpace(spec.DefaultEase) ? null : spec.DefaultEase,
             axes);
     }
