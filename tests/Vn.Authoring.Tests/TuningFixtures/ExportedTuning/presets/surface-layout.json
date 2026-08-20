@@ -7,13 +7,14 @@
         "entries": [
             {
                 "key": "bottom",
+                "kind": 5,
                 "lineAnchorMin": {
-                    "x": 0.20000000298023225,
-                    "y": 0.019999999552965165
+                    "x": 0.07999999821186066,
+                    "y": 0.07999999821186066
                 },
                 "lineAnchorMax": {
                     "x": 0.9200000166893005,
-                    "y": 0.23999999463558198
+                    "y": 0.2800000011920929
                 },
                 "linePivot": {
                     "x": 0.5,
@@ -27,8 +28,8 @@
                     "x": 0.0,
                     "y": 0.0
                 },
-                "lineAlignment": 514,
-                "lineFontSize": 38.0,
+                "lineAlignment": 257,
+                "lineFontSize": 36.0,
                 "lineSpacing": 0.0,
                 "paragraphSpacing": 0.0,
                 "lineMargin": {
@@ -73,7 +74,144 @@
                 "nameTextWrappingMode": 0
             },
             {
+                "key": "speaker_bottom",
+                "kind": 1,
+                "lineAnchorMin": {
+                    "x": 0.07999999821186066,
+                    "y": 0.07999999821186066
+                },
+                "lineAnchorMax": {
+                    "x": 0.9200000166893005,
+                    "y": 0.25999999046325686
+                },
+                "linePivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                },
+                "lineAnchoredPosition": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "lineSizeDelta": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "lineAlignment": 257,
+                "lineFontSize": 36.0,
+                "lineSpacing": 0.0,
+                "paragraphSpacing": 0.0,
+                "lineMargin": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 0.0
+                },
+                "lineOverflowMode": 0,
+                "lineTextWrappingMode": 1,
+                "useName": true,
+                "clearNameWhenHidden": true,
+                "nameAnchorMin": {
+                    "x": 0.07999999821186066,
+                    "y": 0.2800000011920929
+                },
+                "nameAnchorMax": {
+                    "x": 0.3799999952316284,
+                    "y": 0.3499999940395355
+                },
+                "namePivot": {
+                    "x": 0.0,
+                    "y": 0.5
+                },
+                "nameAnchoredPosition": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "nameSizeDelta": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "nameAlignment": 513,
+                "nameFontSize": 30.0,
+                "nameMargin": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 0.0
+                },
+                "nameOverflowMode": 0,
+                "nameTextWrappingMode": 0
+            },
+            {
+                "key": "portrait_narrow",
+                "kind": 0,
+                "lineAnchorMin": {
+                    "x": 0.3199999928474426,
+                    "y": 0.07999999821186066
+                },
+                "lineAnchorMax": {
+                    "x": 0.9200000166893005,
+                    "y": 0.30000001192092898
+                },
+                "linePivot": {
+                    "x": 0.5,
+                    "y": 0.5
+                },
+                "lineAnchoredPosition": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "lineSizeDelta": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "lineAlignment": 257,
+                "lineFontSize": 34.0,
+                "lineSpacing": 0.0,
+                "paragraphSpacing": 0.0,
+                "lineMargin": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 0.0
+                },
+                "lineOverflowMode": 0,
+                "lineTextWrappingMode": 1,
+                "useName": false,
+                "clearNameWhenHidden": true,
+                "nameAnchorMin": {
+                    "x": 0.3199999928474426,
+                    "y": 0.3100000023841858
+                },
+                "nameAnchorMax": {
+                    "x": 0.6000000238418579,
+                    "y": 0.3700000047683716
+                },
+                "namePivot": {
+                    "x": 0.0,
+                    "y": 0.5
+                },
+                "nameAnchoredPosition": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "nameSizeDelta": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "nameAlignment": 513,
+                "nameFontSize": 26.0,
+                "nameMargin": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 0.0
+                },
+                "nameOverflowMode": 0,
+                "nameTextWrappingMode": 0
+            },
+            {
                 "key": "letterbox_bottom",
+                "kind": 2,
                 "lineAnchorMin": {
                     "x": 0.11999999731779099,
                     "y": 0.03999999910593033
@@ -140,74 +278,8 @@
                 "nameTextWrappingMode": 0
             },
             {
-                "key": "blackbook_page",
-                "lineAnchorMin": {
-                    "x": 0.2199999988079071,
-                    "y": 0.18000000715255738
-                },
-                "lineAnchorMax": {
-                    "x": 0.7799999713897705,
-                    "y": 0.8199999928474426
-                },
-                "linePivot": {
-                    "x": 0.5,
-                    "y": 0.5
-                },
-                "lineAnchoredPosition": {
-                    "x": 0.0,
-                    "y": 0.0
-                },
-                "lineSizeDelta": {
-                    "x": 0.0,
-                    "y": 0.0
-                },
-                "lineAlignment": 257,
-                "lineFontSize": 48.0,
-                "lineSpacing": 12.0,
-                "paragraphSpacing": 18.0,
-                "lineMargin": {
-                    "x": 8.0,
-                    "y": 8.0,
-                    "z": 8.0,
-                    "w": 8.0
-                },
-                "lineOverflowMode": 0,
-                "lineTextWrappingMode": 1,
-                "useName": false,
-                "clearNameWhenHidden": true,
-                "nameAnchorMin": {
-                    "x": 0.2199999988079071,
-                    "y": 0.8299999833106995
-                },
-                "nameAnchorMax": {
-                    "x": 0.44999998807907107,
-                    "y": 0.8899999856948853
-                },
-                "namePivot": {
-                    "x": 0.0,
-                    "y": 0.5
-                },
-                "nameAnchoredPosition": {
-                    "x": 0.0,
-                    "y": 0.0
-                },
-                "nameSizeDelta": {
-                    "x": 0.0,
-                    "y": 0.0
-                },
-                "nameAlignment": 513,
-                "nameFontSize": 26.0,
-                "nameMargin": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0,
-                    "w": 0.0
-                },
-                "nameOverflowMode": 0,
-                "nameTextWrappingMode": 0
-            },
-            {
                 "key": "full_top_left",
+                "kind": 3,
                 "lineAnchorMin": {
                     "x": 0.07999999821186066,
                     "y": 0.10000000149011612
@@ -274,18 +346,19 @@
                 "nameTextWrappingMode": 0
             },
             {
-                "key": "middle",
+                "key": "blackbook_page",
+                "kind": 4,
                 "lineAnchorMin": {
-                    "x": 0.07999999821186066,
-                    "y": 0.5
+                    "x": 0.2199999988079071,
+                    "y": 0.18000000715255738
                 },
                 "lineAnchorMax": {
-                    "x": 0.9200000166893005,
-                    "y": 0.5
+                    "x": 0.7799999713897705,
+                    "y": 0.8199999928474426
                 },
                 "linePivot": {
-                    "x": 0.0,
-                    "y": 1.0
+                    "x": 0.5,
+                    "y": 0.5
                 },
                 "lineAnchoredPosition": {
                     "x": 0.0,
@@ -295,27 +368,27 @@
                     "x": 0.0,
                     "y": 0.0
                 },
-                "lineAlignment": 4098,
-                "lineFontSize": 48.0,
-                "lineSpacing": 8.0,
-                "paragraphSpacing": 16.0,
+                "lineAlignment": 257,
+                "lineFontSize": 34.0,
+                "lineSpacing": 12.0,
+                "paragraphSpacing": 18.0,
                 "lineMargin": {
-                    "x": 0.0,
-                    "y": 0.0,
-                    "z": 0.0,
-                    "w": 0.0
+                    "x": 8.0,
+                    "y": 8.0,
+                    "z": 8.0,
+                    "w": 8.0
                 },
                 "lineOverflowMode": 0,
                 "lineTextWrappingMode": 1,
                 "useName": false,
                 "clearNameWhenHidden": true,
                 "nameAnchorMin": {
-                    "x": 0.07999999821186066,
-                    "y": 0.9100000262260437
+                    "x": 0.2199999988079071,
+                    "y": 0.8299999833106995
                 },
                 "nameAnchorMax": {
-                    "x": 0.3199999928474426,
-                    "y": 0.9599999785423279
+                    "x": 0.44999998807907107,
+                    "y": 0.8899999856948853
                 },
                 "namePivot": {
                     "x": 0.0,

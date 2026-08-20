@@ -3,109 +3,118 @@ using NUnit.Framework;
 namespace Ked.Presentation.Core.Tests
 {
     /// <summary>
-    /// b-5 staging 묶음 골든. yarn staging 커맨드가 실제로 쓰는 스펙 조합 그대로 고정한다:
-    /// rotate_by(SwayPivot, 상대 z) · rotate_reset(절대 0) ·
-    /// scale_by(상대 배율) · scale_reset(절대 1) · move_reset(절대 0).
+    /// staging 묶음. 기대값은 종전 RotateToCommandCharR.ResolveTargetEuler에서 온다:
+    ///   relativeToCurrent ? startEuler + toEuler : toEuler
+    ///
+    /// yarn이 실제로 쓰는 조합 둘(rotate_by · rotate_reset)을 골든으로 고정한다.
     /// </summary>
     public sealed class StagingBundleReductionTests
     {
         private const float Eps = 1e-4f;
 
-        [Test]
-        public void rotate_by는_현재_z에_각도를_더한다()
-        {
-            // EnqueueRotateBySpec: relativeToCurrent=true, toEuler=(0,0,degree).
-            StageNodeClaim claim = RotateToReduction.Reduce(
-                "CharSlot_SwayPivot",
-                new RotateToReduction.Args(relativeToCurrent: true, toEuler: new Vec3(0f, 0f, 15f)),
-                currentLocalEuler: new Vec3(0f, 0f, -10f));
+        // 브리지가 만드는 스펙과 같은 표적.
+        private const string SwayPivot = "CharSlot_SwayPivot";
 
+        [Test]
+        public void rotate_by는_현재_각에_z를_더한다()
+        {
+            // 브리지: toEuler = (0, 0, degree), relativeToCurrent = true
+            StageNodeClaim claim = RotateToReduction.Reduce(
+                SwayPivot,
+                new RotateToReduction.Args(true, new Vec3(0f, 0f, 15f)),
+                new Vec3(0f, 0f, 20f));
+
+            Assert.That(claim.NodeKey, Is.EqualTo(SwayPivot));
             Assert.That(claim.Kind, Is.EqualTo(StageNodeClaimKind.LocalEulerAngles));
-            Assert.That(claim.Value.Z, Is.EqualTo(5f).Within(Eps));
+            Assert.That(claim.Value, Is.EqualTo(new Vec3(0f, 0f, 35f)));
         }
 
         [Test]
         public void rotate_reset은_절대_0이다()
         {
-            // EnqueueRotateResetSpec: relativeToCurrent=false(기본), toEuler=(0,0,0).
+            // 브리지: toEuler = (0, 0, 0), relativeToCurrent 기본값(false)
             StageNodeClaim claim = RotateToReduction.Reduce(
-                "CharSlot_SwayPivot",
-                new RotateToReduction.Args(relativeToCurrent: false, toEuler: Vec3.Zero),
-                currentLocalEuler: new Vec3(0f, 0f, 37f));
+                SwayPivot,
+                new RotateToReduction.Args(false, Vec3.Zero),
+                new Vec3(0f, 0f, 137f));
 
             Assert.That(claim.Value, Is.EqualTo(Vec3.Zero));
         }
 
         [Test]
-        public void rotate_to_절대는_toEuler_그_자체다()
+        public void 절대_모드는_현재_각을_무시한다()
         {
             StageNodeClaim claim = RotateToReduction.Reduce(
-                "node",
+                SwayPivot,
                 new RotateToReduction.Args(false, new Vec3(10f, 20f, 30f)),
-                new Vec3(1f, 2f, 3f));
+                new Vec3(90f, 90f, 90f));
 
             Assert.That(claim.Value, Is.EqualTo(new Vec3(10f, 20f, 30f)));
         }
 
         [Test]
-        public void scale_by는_현재에_배율을_곱한다()
+        public void 상대_모드는_3축_전부_더한다()
         {
-            // EnqueueSizeBySpec: relativeToCurrent=true, toScale=(m,m).
-            StageNodeClaim claim = ScaleToReduction.Reduce(
-                "CharSlot_Scale",
-                new ScaleToReduction.Args(relativeToCurrent: true, toScale: new Vec2(1.2f, 1.2f)),
-                currentLocalScaleXY: new Vec2(0.9f, 0.9f));
+            // Ledger가 Vector3를 게시하므로 리덕션도 3축을 다룬다.
+            StageNodeClaim claim = RotateToReduction.Reduce(
+                SwayPivot,
+                new RotateToReduction.Args(true, new Vec3(5f, -10f, 15f)),
+                new Vec3(1f, 2f, 3f));
 
-            Assert.That(claim.Value.X, Is.EqualTo(1.08f).Within(Eps));
+            Assert.That(claim.Value, Is.EqualTo(new Vec3(6f, -8f, 18f)));
         }
 
         [Test]
-        public void scale_reset은_절대_1이다()
+        public void 회전_클레임을_트리에_접으면_좌표가_돈다()
         {
-            StageNodeClaim claim = ScaleToReduction.Reduce(
-                "CharSlot_Scale",
-                new ScaleToReduction.Args(false, Vec2.One),
-                new Vec2(1.4f, 1.4f));
+            // 값만 보면 "각을 넣었다"까지다. 접은 뒤 좌표까지 봐야 클레임이 실제로 먹는지 안다.
+            RectNodeTree tree = new(RectSpace.Centered(1000f, 500f));
+            tree.Add(SwayPivot, null, RectNodeState.StretchFull);
 
-            Assert.That(claim.Value.XY, Is.EqualTo(Vec2.One));
+            StageNodeClaim claim = RotateToReduction.Reduce(
+                SwayPivot,
+                new RotateToReduction.Args(true, new Vec3(0f, 0f, 90f)),
+                tree.GetState(SwayPivot).LocalEulerAngles);
+
+            claim.ApplyTo(tree);
+
+            // Z 90°는 X축을 Y축으로 보낸다.
+            Vec3 p = tree.TransformPoint(SwayPivot, new Vec3(100f, 0f, 0f));
+
+            Assert.That(p.X, Is.EqualTo(0f).Within(Eps));
+            Assert.That(p.Y, Is.EqualTo(100f).Within(Eps));
         }
 
         [Test]
-        public void move_reset은_절대_0이다()
+        public void show가_되돌리는_축과_rotate_by의_축이_다르다()
         {
-            // EnqueueSetPlaceResetSpecs: useAbsolutePosition=true, delta=(0,0) — Track과 Track_Focus 두 장.
-            StageNodeClaim track = MoveByReduction.Reduce(
-                "CharSlot_Track",
-                new MoveByReduction.Args(useAbsolutePosition: true, delta: Vec2.Zero),
-                currentAnchoredPosition: new Vec2(240f, -60f));
+            // 런타임 실동작이다. set_anchor/show의 오일러 리셋 목록은 CharSlot_Rotation이고
+            // rotate_by의 표적은 CharSlot_SwayPivot이라, show는 rotate_by를 되돌리지 않는다.
+            // 리듀서도 이 동작을 그대로 따라야 하므로 여기 못 박아 둔다.
+            RectNodeTree tree = new(RectSpace.Centered(1000f, 500f));
+            tree.Add("CharSlot_Rotation", null, RectNodeState.StretchFull);
+            tree.Add("CharSlot_SwayPivot", "CharSlot_Rotation", RectNodeState.StretchFull);
 
-            StageNodeClaim focus = MoveByReduction.Reduce(
-                "CharSlot_Track_Focus",
-                new MoveByReduction.Args(useAbsolutePosition: true, delta: Vec2.Zero),
-                currentAnchoredPosition: new Vec2(-80f, 40f));
-
-            Assert.That(track.Value.XY, Is.EqualTo(Vec2.Zero));
-            Assert.That(focus.Value.XY, Is.EqualTo(Vec2.Zero));
-        }
-
-        [Test]
-        public void 회전_클레임은_트리에_접힌다()
-        {
-            RectNodeTree tree = new RectNodeTree(RectSpace.Centered(1920f, 1080f));
-            tree.Add("sway", null, RectNodeState.StretchFull.WithLocalEuler(new Vec3(0f, 0f, -10f)));
-            tree.Add("leaf", "sway", RectNodeState.StretchFull);
-
-            RotateToReduction.Reduce(
-                    "sway",
-                    new RotateToReduction.Args(true, new Vec3(0f, 0f, 100f)),
-                    tree.GetState("sway").LocalEulerAngles)
+            // rotate_by
+            RotateToReduction
+                .Reduce("CharSlot_SwayPivot", new RotateToReduction.Args(true, new Vec3(0f, 0f, 30f)), Vec3.Zero)
                 .ApplyTo(tree);
 
-            // z 90° 회전: leaf 로컬 (1,0) → 루트 (0,1).
-            Vec3 world = tree.TransformPoint("leaf", new Vec3(1f, 0f, 0f));
+            // show 상당: 오일러 리셋 목록에 SwayPivot이 없다.
+            StageNodeClaim[] showClaims = SetAnchorReduction.Reduce(
+                "CharSlot_SwayPivot",
+                SetAnchorReduction.RoleAnchorTuning.Default,
+                resetPositionKeys: null,
+                resetEulerKeys: new[] { "CharSlot_Rotation" },
+                resetScaleKeys: null);
 
-            Assert.That(world.X, Is.EqualTo(0f).Within(1e-3f));
-            Assert.That(world.Y, Is.EqualTo(1f).Within(1e-3f));
+            foreach (StageNodeClaim claim in showClaims)
+                claim.ApplyTo(tree);
+
+            Assert.That(
+                tree.GetState("CharSlot_SwayPivot").LocalEulerAngles.Z,
+                Is.EqualTo(30f).Within(Eps),
+                "show는 SwayPivot의 회전을 되돌리지 않는다");
         }
     }
 }

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Ked.Presentation.Core
 {
     /// <summary>
-    /// set_anchor / show — 캐릭터를 역할 기본 자리로 세우고 연기 축들을 초기화한다.
+    /// set_anchor / show — 캐릭터를 역할 기본 자리에 세우고 연기 축들을 초기화한다.
     /// (SetAnchorCommandCharR의 "스펙 → 목표 상태" 변환부)
     ///
     /// 리셋 대상 노드 목록은 리그 스키마 지식이므로 코드에 박지 않고 인자로 받는다 —
@@ -25,7 +25,7 @@ namespace Ked.Presentation.Core
             }
 
             /// <summary>엔트리가 없는 캐릭터의 기본값: 오프셋 0, 배율 1.</summary>
-            public static readonly RoleAnchorTuning Default = new RoleAnchorTuning(Vec2.Zero, 1f);
+            public static readonly RoleAnchorTuning Default = new(Vec2.Zero, 1f);
         }
 
         /// <summary>종전 규약: visualScale 하한 (Mathf.Max(0.0001f, v)).</summary>
@@ -33,7 +33,8 @@ namespace Ked.Presentation.Core
 
         /// <summary>
         /// 클레임 순서: 위치 리셋들 → 회전 리셋들 → 스케일 리셋들 → 앵커 위치 → 앵커 스케일.
-        /// 호스트 어댑터는 같은 순서로 rect 목록을 만들어 zip으로 적용한다.
+        /// 호스트 어댑터는 같은 순서로 rect 목록을 만들어 zip으로 적용한다 —
+        /// 순서를 바꾸면 조용히 엉뚱한 노드에 값이 들어간다.
         /// </summary>
         public static StageNodeClaim[] Reduce(
             string anchorNodeKey,
@@ -72,7 +73,6 @@ namespace Ked.Presentation.Core
         }
     }
 
-    /// <summary>fade_in — 가시성 축을 1로. 트윈은 호스트의 일이고, 정지 프레임엔 목표값뿐이다.</summary>
     public static class FadeInReduction
     {
         public const float TargetAlpha = 1f;
@@ -81,7 +81,6 @@ namespace Ked.Presentation.Core
             => StageNodeClaim.CanvasAlpha(nodeKey, TargetAlpha);
     }
 
-    /// <summary>fade_out — 가시성 축을 0으로.</summary>
     public static class FadeOutReduction
     {
         public const float TargetAlpha = 0f;

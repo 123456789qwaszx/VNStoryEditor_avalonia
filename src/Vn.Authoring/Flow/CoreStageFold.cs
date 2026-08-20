@@ -151,6 +151,14 @@ public static class CoreStageFold
             return next;
         }
 
+        if (EmotionCarryingCommands.Contains(outputCommand))
+        {
+            // 표정은 코어 상태가 아니다 (코어 사본 최신화 W64) — 런타임 CastBinding도
+            // 변형만 들고, 표정은 커맨드 인자로만 흘러 사이징에 쓰인다. 화면에 지금
+            // 무슨 표정이 떠 있는가는 보완 폴드가 Mirrored와 같은 자리에서 진다.
+            MiniStageFold.Apply(fold, catalog, lineId, command);
+        }
+
         if (DrawnCoreCommands.Contains(outputCommand))
         {
             ProjectSlots(fold, next);
@@ -165,27 +173,42 @@ public static class CoreStageFold
     }
 
     /// <summary>
+    /// 표정을 실어 나르는 코어 커맨드 — 코어는 접되 표정 축만은 보완 폴드가 든다.
+    /// 코어 상태가 표정을 버렸기 때문이다(변형만 상태, 표정은 인자 — StageReducer.Portrait 참조).
+    /// </summary>
+    private static readonly HashSet<string> EmotionCarryingCommands = new(StringComparer.Ordinal)
+    {
+        "cast", "show", "face", "face_swap",
+    };
+
+    /// <summary>
     /// 코어 상태 → 기존 슬롯 표시 모양. 코어가 아는 슬롯만 덮고(merge), 보완 폴드만 아는
-    /// 슬롯(slot_tyrant·관대한 생성분)과 코어 밖 축(Mirrored)은 보존한다.
-    /// 표정 키는 코어의 정규화 2자리("02")다 — 초상 해석(<c>PortraitKey.Normalize</c>)과
-    /// 같은 어휘라 화면 결과는 같고, 팝오버의 현재 표정 강조는 오히려 정확해진다.
+    /// 슬롯(slot_tyrant·관대한 생성분)과 코어 밖 축(Mirrored·표정)은 보존한다.
+    /// 표정은 보완 폴드의 어휘(원문 토큰)다 — 초상 해석이 <c>PortraitKey.Normalize</c>로
+    /// 같은 정규화를 지나므로 화면 결과는 같다.
     /// </summary>
     private static void ProjectSlots(MiniStageFold.FoldState fold, StageState core)
     {
         foreach (string slotKey in core.Slots)
         {
-            bool hasPortrait = core.TryGetPortrait(slotKey, out char variantSuffix, out string? emotion);
-            core.TryGetCharacter(slotKey, out string? characterKey);
+            bool hasCast = core.TryGetCharacter(slotKey, out string? characterKey);
+
+            // 코어의 빈 변형 = 기본 변형으로 물러선다는 뜻 — 화면 어휘로는 "a"다.
+            string variantKey = core.GetVariant(slotKey);
+            if (hasCast && variantKey.Length == 0)
+                variantKey = PortraitDimensionsFileDto.DefaultVariantKey;
 
             bool visible = core.GetAlpha(
                 StageState.NodeKeyOf(slotKey, "CharacterPortraitSprite_Root")) > 0.5f;
 
-            bool mirrored = fold.Slots.TryGetValue(slotKey, out MiniStageSlot? existing) && existing.Mirrored;
+            bool hasExisting = fold.Slots.TryGetValue(slotKey, out MiniStageSlot? existing);
+            bool mirrored = hasExisting && existing!.Mirrored;
+            string? emotion = hasExisting ? existing!.EmotionKey : null;
 
             fold.Slots[slotKey] = new MiniStageSlot(
                 characterKey,
-                hasPortrait ? variantSuffix.ToString() : null,
-                hasPortrait ? emotion : null,
+                hasCast ? variantKey : null,
+                hasCast ? emotion : null,
                 visible,
                 mirrored);
         }

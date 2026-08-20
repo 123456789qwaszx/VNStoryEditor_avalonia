@@ -4,8 +4,7 @@ using System.Globalization;
 namespace Ked.Presentation.Core
 {
     /// <summary>
-    /// UnityEngine.Color 대응 불변 값 타입. 성분은 0~1 float.
-    /// 코어는 UnityEngine을 참조하지 않는다.
+    /// UnityEngine.Color 대응 불변 값 타입.
     /// </summary>
     public readonly struct Rgba : IEquatable<Rgba>
     {
@@ -22,14 +21,14 @@ namespace Ked.Presentation.Core
             A = a;
         }
 
-        public static readonly Rgba White = new Rgba(1f, 1f, 1f, 1f);
-        public static readonly Rgba Black = new Rgba(0f, 0f, 0f, 1f);
-        public static readonly Rgba Clear = new Rgba(0f, 0f, 0f, 0f);
+        public static readonly Rgba White = new(1f, 1f, 1f, 1f);
+        public static readonly Rgba Black = new(0f, 0f, 0f, 1f);
+        public static readonly Rgba Clear = new(0f, 0f, 0f, 0f);
 
-        public Rgba WithAlpha(float a) => new Rgba(R, G, B, a);
+        public Rgba WithAlpha(float a) => new(R, G, B, a);
 
         public bool Equals(Rgba other)
-            => R == other.R && G == other.G && B == other.B && A == other.A;
+            => R.Equals(other.R) && G.Equals(other.G) && B.Equals(other.B) && A.Equals(other.A);
 
         public override bool Equals(object obj) => obj is Rgba other && Equals(other);
 
@@ -39,6 +38,7 @@ namespace Ked.Presentation.Core
             hash = (hash * 397) ^ G.GetHashCode();
             hash = (hash * 397) ^ B.GetHashCode();
             hash = (hash * 397) ^ A.GetHashCode();
+
             return hash;
         }
 

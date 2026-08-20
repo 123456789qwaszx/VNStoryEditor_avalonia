@@ -5,33 +5,35 @@ using System.Globalization;
 namespace Ked.Presentation.Core
 {
     /// <summary>
-    /// U14 등가성 판정: (코어가 접은 상태) vs (실제 재생에서 캡처한 상태).
-    ///
-    /// ε는 b-1에서 정한 정책 그대로다(Documentation~/transform-math-and-epsilon.md):
-    /// 위치 0.1px · 무단위 성분 1e-4 · 각도 0.01°. 불일치가 나면 ε를 늘리는 것이
-    /// 아니라 리듀서를 고친다 — 불일치는 발견이다.
-    ///
-    /// 비교 방향: "캡처된 노드"를 기준으로 돈다. 접은 쪽에 없는 캡처 노드는 불일치다.
-    /// 캡처가 안 덮는 축(접힌 쪽에만 있는 노드)은 침묵하지 않도록 개수로 보고한다.
+    /// 등가성 판정: (코어가 접은 상태) vs (실제 재생에서 캡처한 상태).
     /// </summary>
     public static class StageStateComparer
     {
-        public const float PositionEpsilon = 0.1f;   // px (기준 해상도 공간)
-        public const float ScalarEpsilon = 1e-4f;    // 스케일·anchor·pivot 등 무단위
-        public const float DegreesEpsilon = 0.01f;   // 각도
+        /// <summary>px, 기준 해상도 공간. 잡음 상한 0.09px < ε < 신호 바닥 1px.</summary>
+        public const float PositionEpsilon = 0.1f;
+
+        /// <summary>스케일·anchor·pivot 등 무단위 성분.</summary>
+        public const float ScalarEpsilon = 1e-4f;
+
+        /// <summary>각도(°). 360° 순환으로 비교한다.</summary>
+        public const float DegreesEpsilon = 0.01f;
+
         public const float AlphaEpsilon = 1e-3f;
 
         public sealed class Result
         {
-            public readonly List<string> Mismatches = new List<string>();
+            public readonly List<string> Mismatches = new();
+
             public int ComparedNodes;
-            public int SkippedFoldOnlyNodes;
+
+            /// <summary>접힌 쪽에만 있는 노드 수. 캡처가 안 덮는 축의 크기다.</summary>
+            public int FoldOnlyNodes;
 
             public bool IsEquivalent => Mismatches.Count == 0;
 
             public override string ToString()
                 => IsEquivalent
-                    ? $"등가 (노드 {ComparedNodes}개 비교, 접힌 쪽 전용 {SkippedFoldOnlyNodes}개)"
+                    ? $"등가 (노드 {ComparedNodes}개 비교, 접힘 전용 {FoldOnlyNodes}개)"
                     : $"불일치 {Mismatches.Count}건 (노드 {ComparedNodes}개 비교)";
         }
 
@@ -41,12 +43,13 @@ namespace Ked.Presentation.Core
             if (folded == null) throw new ArgumentNullException(nameof(folded));
             if (captured == null) throw new ArgumentNullException(nameof(captured));
 
-            Result result = new Result();
+            Result result = new();
 
             foreach (string key in captured.Nodes.Keys)
             {
                 if (!folded.Nodes.Contains(key))
                 {
+                    // 실제 무대에 있는데 접지 못한 노드 — 폴드에 빠진 축이다.
                     result.Mismatches.Add($"{key}: 캡처에는 있는데 접힌 상태에 없다");
                     continue;
                 }
@@ -65,7 +68,7 @@ namespace Ked.Presentation.Core
             foreach (string key in folded.Nodes.Keys)
             {
                 if (!captured.Nodes.Contains(key))
-                    result.SkippedFoldOnlyNodes++;
+                    result.FoldOnlyNodes++;
             }
 
             CompareShot(folded.Shot, captured.Shot, result);
@@ -123,7 +126,7 @@ namespace Ked.Presentation.Core
             }
         }
 
-        /// <summary>0°와 360°는 같은 각이다.</summary>
+        /// <summary>0°와 360°는 같은 각이다. 유니티가 오일러를 [0,360)으로 정규화해 돌려주기도 한다.</summary>
         private static float AngleDelta(float a, float b)
         {
             float delta = Math.Abs(a - b) % 360f;

@@ -1,0 +1,85 @@
+{
+    "MonoBehaviour": {
+        "m_Enabled": true,
+        "m_EditorHideFlags": 0,
+        "m_Name": "ScreenFlashPresetDB",
+        "m_EditorClassIdentifier": "Assembly-CSharp::ScreenFlashPresetDBSO",
+        "entries": [
+            {
+                "key": "clear",
+                "color": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                },
+                "amount": 0.0,
+                "attackDuration": 0.0,
+                "holdDuration": 0.0,
+                "releaseDuration": 0.0,
+                "attackEase": 9,
+                "releaseEase": 9
+            },
+            {
+                "key": "default",
+                "color": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                },
+                "amount": 1.0,
+                "attackDuration": 0.019999999552965165,
+                "holdDuration": 0.009999999776482582,
+                "releaseDuration": 0.1599999964237213,
+                "attackEase": 9,
+                "releaseEase": 9
+            },
+            {
+                "key": "soft",
+                "color": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                },
+                "amount": 0.5,
+                "attackDuration": 0.05999999865889549,
+                "holdDuration": 0.019999999552965165,
+                "releaseDuration": 0.30000001192092898,
+                "attackEase": 9,
+                "releaseEase": 9
+            },
+            {
+                "key": "hit",
+                "color": {
+                    "r": 1.0,
+                    "g": 0.1599999964237213,
+                    "b": 0.10000000149011612,
+                    "a": 1.0
+                },
+                "amount": 0.44999998807907107,
+                "attackDuration": 0.014999999664723874,
+                "holdDuration": 0.014999999664723874,
+                "releaseDuration": 0.18000000715255738,
+                "attackEase": 9,
+                "releaseEase": 9
+            },
+            {
+                "key": "camera",
+                "color": {
+                    "r": 1.0,
+                    "g": 1.0,
+                    "b": 1.0,
+                    "a": 1.0
+                },
+                "amount": 1.0,
+                "attackDuration": 0.009999999776482582,
+                "holdDuration": 0.0,
+                "releaseDuration": 0.10000000149011612,
+                "attackEase": 6,
+                "releaseEase": 9
+            }
+        ]
+    }
+}

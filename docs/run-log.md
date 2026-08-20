@@ -3595,3 +3595,97 @@ JSON에 도착한 뒤에는 아무도 볼 수 없다. 엔딩키 충돌과 같은
 
 코드 변경 없음. 문서가 이름 대는 심볼 일곱과 저장소 전체 마크다운 링크를 기계로 확인했다
 (끊어진 링크 0 — `run-log.md`에 `[내보내기](진행 JSON)`으로 잘못 쓰인 링크 문법 하나를 고쳤다).
+
+### 모션 그래프 지시서 — 커맨드가 이미 곡선이다 (`(이 커밋)`)
+
+**한 일** — 소유자 의도("MoveBy 하나를 펼쳐 재현하고, 동선·시간·ease를 편집")를
+지시서 두 장으로: [`work-orders/motion-graph-orders.md`](work-orders/motion-graph-orders.md)
+(VnTool, W64–W67) · [`work-orders/ease-open-orders.md`](work-orders/ease-open-orders.md)
+(런타임 수신 — 이징 골든 덤프 · 코어 `EaseFunctions` · `move_by` 다섯째 인자 ease ·
+채널 사상 회신). 설계 핵심: 포맷을 발명하지 않는다 — `move_by`가 이미 키 2개짜리
+1채널 커브이고, 그래프는 렌즈이며, 편집은 네 번째 입력 경로로 `ProjectEditor`에 수렴한다.
+
+**소유자가 외부 초안(`motionlab-orders.md`)을 받아왔다** — 의도만 알고 코드를 모르는
+쪽이 쓴 문서. 뼈대(골든 선행·왕복 무손실 수용 기준·미해석 보존·스냅 2단)는 계승하고,
+실코드 확인으로 다섯을 정정했다 (근거는 지시서 §0.5 표):
+
+- **`ease=OutCubic` 문법은 존재하지 않는다** — Yarn `move_by`는 위치 인자 4개뿐
+  (`CommandBridge.cs:107`), 모양은 스펙 기본값 OutCubic 고정. ease 편집은 런타임
+  개통이 선행이고, 열려도 다섯째 위치 인자다.
+- **독립 앱(클립보드 접점) 기각** — 곡선의 시작값은 직전 라인의 폴드 상태라
+  클립보드 텍스트에는 없다. 재현이 성립하지 않고, 수렴 원칙의 정반대다.
+- 축 이름 정정: `move_by`가 미는 것은 `CharSlot_Track`(배치축 `_Focus`와 별개).
+- **"연속 move_by = piecewise 곡선"은 같은 라인 안에서 거짓** — 한 라인 = 한 배치
+  동시 시작, 같은 타깃 둘째의 `DOKill(true)`가 첫째를 즉시 완주시킨다(계단+트윈).
+  그래프는 이 의미론을 그대로 그린다 — 이어 그리면 거짓말이다.
+- 1u=40px는 상수가 아니라 `UnitToken` 파생값 · 파서는 Vn.Core가 아니라
+  `Ked.Presentation.Core` 토큰 + `CommandText`.
+
+**되돌리는 법** — 문서 두 장 삭제 + 이 항목 제거. 코드 변경 없음.
+
+**다음** — 소유자가 `ease-open-orders.md`를 런타임 쪽에 전달하면 W64 착수 가능.
+자리(무대 프리뷰 하단 패널 권고)·이름은 소유자 결정 대기.
+
+### 소유자 재조정 — 슬라이더 먼저, 곡선 에디터는 보류 (`(이 커밋)`)
+
+**한 일** — 앞 항목의 모션 그래프 계획을 소유자 지시로 재편성:
+[`work-orders/presentation-refresh-orders.md`](work-orders/presentation-refresh-orders.md)
+(W64–W68)가 순서의 정본이 됐다. ① 패키지화 대신 **Core 사본 최신화**(W64, 런타임이
+정본) ② **카탈로그 최신화 우선**(W65) ③ MoveBy부터 — 연출노드 클릭 → 프리뷰에
+합쳐진 커맨드 목록 → **개별 수치를 슬라이더로 실시간 조절**(아트가 조절, W66) ④
+ease는 런타임 개통 후(W67) ⑤ Move·Anchor·Place·ShotResponse·Depth 계통 확장(W68+).
+곡선 드래그 에디터(`motion-graph-orders.md`)는 **착수 보류**로 지위 변경, 단계 번호
+W64–W67을 회수하고 MG1–MG4로 — 그 문서의 불변식·시간 모델은 슬라이더 편집의 전제로
+계속 유효하다.
+
+**계획 전에 실측했다** (계획서 §1):
+
+- **커맨드 어휘**: 런타임 브리지 실등록 **124종**(+`Nfr` 별칭 생존) vs 카탈로그
+  **179종**. **57종이 런타임에서 사라졌고**(emoji 전부·idle 전부·몸짓 계열·face_swap·
+  rotate_by·box_named 등) 신규 2종(`focus_on`/`focus_clear`)이 누락. "절반 가까이
+  줄었다"는 소유자 감각과 부합(어휘 200 시절 대비). ⚠ 폐지인지 이관 중인지는 종별
+  확정 필요 — `rotate_by`는 브리지에 없는데 코어 리듀서가 아직 접는다.
+- **Core 사본**: "7파일 낡음"이 아니라 **양방향으로 갈라져 있다** — 런타임에만
+  9파일+Tests, 내용 차이 ~20파일(StageReducer.cs만 diff 810줄), 그리고 **툴 사본에도
+  런타임에 없는 멤버가 있다**(Vec2 연산자 등). W64는 덮어쓰기가 아니라 3분류 감사다.
+
+**되돌리는 법** — 계획서 삭제 + motion-graph-orders.md 머리의 보류 문구 제거 +
+current-state §7 두 행 원복. 코드 변경 없음.
+
+**다음** — W64(Core 감사 동기화)부터. ease-open-orders 전달은 W66a까지는 안 급하다
+(슬라이더+정지 재현은 이징 없이 정확하다 — 종점은 리덕션, 궤적은 폴리라인).
+
+### W64 — 코어 사본 최신화. 표정이 상태에서 인자로 내려왔다 (`(이 커밋)`)
+
+**한 일** — `Ked.Presentation.Core` 사본을 런타임 저장소(정본, 2026-08-20 작업 트리)로
+전면 동기화. 소스 35파일 + 순수 테스트 18파일(UnityParity 제외) 이식, 튜닝 실덤프
+픽스처(`TuningFixtures/ExportedTuning`)도 폴더째 갱신. 계획서
+[`work-orders/presentation-refresh-orders.md`](work-orders/presentation-refresh-orders.md) §2.
+
+**감사 결과** — 걱정하던 "툴 쪽 로컬 수정" ⓒ는 **0건**이었다(Vec2 연산자 등은 표기
+스타일 차이가 diff를 부풀린 것 — 런타임에도 전부 있다). 이식 후 코어 단독 빌드는
+경고 0·오류 0으로 바로 섰고, 적응은 전부 소비자 쪽 세 곳이었다:
+
+1. **표정은 더 이상 코어 상태가 아니다** — 새 코어는 변형(pose)만 상태에 들고 표정은
+   커맨드 인자로만 흘린다(런타임 CastBinding과 같은 모양, `StageReducer.Portrait.cs`).
+   `TryGetPortrait`가 사라져 `CoreStageFold.ProjectSlots`가 깨졌다. 화면에는 현재
+   표정이 필요하므로 **표정을 보완 폴드 축으로** 옮겼다 — `actor` 이중 적용과 같은
+   선례로 cast·show·face·face_swap을 보완 폴드에도 접게 하고, ProjectSlots가
+   Mirrored처럼 EmotionKey를 보존한다. 표정 어휘가 코어 정규화 2자리에서 보완 폴드의
+   원문 토큰으로 돌아왔지만 초상 해석이 같은 정규화(`PortraitKey.Normalize`)를
+   지나므로 화면 결과는 같다 — 골든 등가 테스트가 그대로 통과한 것이 그 증거다.
+2. **새 튜닝 축 role-anchor** — 코어가 `StageReducerTuning.RoleAnchors`
+   (`presets/role-anchor.json`)를 요구하고 없으면 show마다 진단을 낸다.
+   `RuntimeTuningLibrary`에 로드 추가. 이게 없던 픽스처가 컴포저 테스트 7개를
+   깨뜨린 것이 발견 경로다 — 실프로젝트에서도 똑같이 어긋났을 실구멍이다.
+3. `CoreStageFoldTests`의 표정 정규화 호출 — 구코어 `PortraitEmotionCode` →
+   신코어 `PortraitKeyNormalizer.EmotionCode`.
+
+**고정** — 전체 **1319 통과, 실패 0** (1197 → +122: 런타임 코어 테스트가 220→342.
+StageStateTests·PortraitDimensionsTests 등 신규 포함). 동기화 절차는
+`src/Ked.Presentation.Core/README.md`에 명문화 — 정본은 런타임, 흐름은 한 방향,
+사본 파일을 소비자 사정으로 고치지 않는다.
+
+**되돌리는 법** — 이 커밋 리버트. 이식 전 사본은 스냅샷 커밋 이력에 있다.
+
+**다음** — W65 카탈로그 최신화(대조 보고 → 소유자 종별 확정 → 적용).

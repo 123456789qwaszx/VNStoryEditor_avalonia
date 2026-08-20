@@ -206,6 +206,12 @@ public sealed class RuntimeTuningLibrary
             guidance: "place/size의 focus 오프셋이 기본값 0으로 접힙니다.");
         tuning.FocusTuning = focus?.MonoBehaviour;
 
+        // ── role-anchor 튜닝 (presets/role-anchor.json) — 코어 사본 최신화(W64)로 생긴 축 ──
+        RoleAnchorTuningFileDto? roleAnchors = ReadFile<RoleAnchorTuningFileDto>(
+            root, Path.Combine("presets", "role-anchor.json"), problems,
+            guidance: "show의 캐릭터별 앵커가 기본값으로 접힙니다(비기본 앵커 캐릭터가 어긋납니다).");
+        tuning.RoleAnchors = roleAnchors?.MonoBehaviour;
+
         // ── 초상 치수 (portrait-dimensions.json) ──
         PortraitDimensionsFileDto? portraits = ReadFile<PortraitDimensionsFileDto>(
             root, "portrait-dimensions.json", problems,

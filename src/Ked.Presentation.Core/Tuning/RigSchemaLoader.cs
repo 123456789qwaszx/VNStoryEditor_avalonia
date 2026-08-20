@@ -1,15 +1,14 @@
 using System;
-using System.Collections.Generic;
 using System.Text;
 
 namespace Ked.Presentation.Core
 {
     /// <summary>
-    /// U12-전체 리그 스키마 덤프 → RectNodeTree.
+    /// 리그 스키마 덤프 → RectNodeTree.
     ///
     /// 스키마는 tuning 인자로 온다 — 코어에 리그 구조를 하드코딩하지 않는다.
     /// 여기 있는 유일한 하드코딩은 덤프 "형식"의 지식이다(__root 키, 캡처 pivot).
-    /// 게임 데이터의 지식(노드 이름·구조)은 전부 인자에서 온다.
+    /// 게임 데이터의 지식(노드 이름·부모 관계·값)은 전부 인자에서 온다.
     /// </summary>
     public static class RigSchemaLoader
     {
@@ -18,6 +17,7 @@ namespace Ked.Presentation.Core
 
         /// <summary>
         /// 덤프 파일에서 rigKind 하나를 골라 트리로 만든다.
+        ///
         /// keyPrefix는 리그 인스턴스 구분용이다(예: "c1/") — 같은 리그를 여러 슬롯에
         /// 세울 때 키가 충돌하지 않게 한다.
         /// </summary>
@@ -37,8 +37,9 @@ namespace Ked.Presentation.Core
 
             RigSchemaRigDto rig = FindRig(file, rigKind);
 
-            // 익스포터는 가운데 pivot 스테이지 밑에서 캡처했다 (schema.md).
-            RectSpace space = new RectSpace(file.capturedUnderParentSize.ToVec2(), Vec2.Half);
+            // 익스포터는 가운데 pivot 스테이지 밑에서 캡처했다 (ExportedTuning/schema.md).
+            // 이 공간이 어긋나면 스트레치 노드의 크기가 전부 어긋난다.
+            RectSpace space = new(file.capturedUnderParentSize.ToVec2(), Vec2.Half);
 
             return BuildTree(rig, space, keyPrefix);
         }
@@ -49,13 +50,13 @@ namespace Ked.Presentation.Core
             RectSpace rootSpace,
             string keyPrefix = "")
         {
-            RectNodeTree tree = new RectNodeTree(rootSpace);
+            RectNodeTree tree = new(rootSpace);
             AddRigTo(tree, rig, keyPrefix, attachParentKey: null);
             return tree;
         }
 
         /// <summary>
-        /// 이미 있는 트리에 리그 인스턴스를 붙인다(StageReducer의 slot 폴드용).
+        /// 이미 있는 트리에 리그 인스턴스를 붙인다 — 리듀서의 slot 폴드가 슬롯마다 부른다.
         /// attachParentKey가 null이면 트리의 루트 공간 직속이다.
         /// </summary>
         public static void AddRigTo(
@@ -83,6 +84,9 @@ namespace Ked.Presentation.Core
                     throw new ArgumentException($"리그 '{rig.rigKind}'의 노드 [{i}]에 id가 없다. 덤프가 손상됐다.", nameof(rig));
 
                 string key = keyPrefix + node.id;
+
+                // 덤프의 빈 parent = 리그 루트 직속. 루트 자신(__root)은 parent가 비어 있고
+                // 부착 지점(없으면 루트 공간 직속)에 붙는다.
                 string parentKey = string.IsNullOrEmpty(node.parent)
                     ? attachParentKey
                     : keyPrefix + node.parent;
@@ -91,12 +95,21 @@ namespace Ked.Presentation.Core
             }
         }
 
-        /// <summary>덤프 노드 → b-1 상태 값. 필드 해석은 여기 한 곳뿐이다.</summary>
+        //    RigSchemaLoader
+        //           │
+        // ┌─────────┼─────────┐
+        // ↓         ↓         ↓
+        // Unity     VNTool     Tests
+        /// <summary>
+        /// 덤프 노드 → 상태 값. 필드 해석은 여기 한 곳뿐이다.
+        /// </summary>
         public static RectNodeState ToState(RigSchemaNodeDto node, string context = null)
         {
             if (node == null)
                 throw new ArgumentNullException(nameof(node));
 
+            // 필드가 null이면 덤프가 손상됐거나 역직렬화가 필드를 못 채운 것이다
+            // (System.Text.Json의 IncludeFields 누락이 대표적). 0으로 떨어뜨리지 않는다.
             if (node.anchoredPosition == null || node.anchorMin == null || node.anchorMax == null ||
                 node.pivot == null || node.sizeDelta == null ||
                 node.localScale == null || node.localEulerAngles == null)
@@ -125,7 +138,7 @@ namespace Ked.Presentation.Core
             }
 
             // 못 찾으면 무엇이 있었는지까지 말한다 — "비슷한 이름"으로 잇지 않는다.
-            StringBuilder available = new StringBuilder();
+            StringBuilder available = new();
 
             for (int i = 0; i < file.rigs.Count; i++)
             {

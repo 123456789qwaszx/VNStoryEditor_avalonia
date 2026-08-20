@@ -3,28 +3,25 @@ namespace Ked.Presentation.Core
     /// <summary>
     /// 리그 노드 하나의 RectTransform 상태 값. 불변 구조체.
     ///
-    /// RectTransform의 위치는 단순 TRS가 아니다 — anchoredPosition이 실제 localPosition이
-    /// 되려면 anchorMin/anchorMax/pivot/sizeDelta와 부모 rect 크기가 계산에 들어간다.
-    /// 그래서 TRS 셋이 아니라 아래 일곱을 담는다.
+    /// anchoredPosition이 실제 localPosition이 되려면
+    /// anchorMin/anchorMax/pivot/sizeDelta와 "부모 rect 크기"가 계산에 들어감.
     ///
-    /// 무엇을 담고 무엇을 뺐는가 — 근거는 실제 리그 코드 조사다
-    /// (CharacterRigBuilder / BackgroundRigBuilder / OverlayRigBuilder /
-    ///  CharRigImageSizingPolicy / OverlayRigOperations / CharacterPlacementTargetLedger):
+    /// 그 중, 필요한 것 5종만 담음.(근거: RigBuilder, RigPolicy)
     ///
     /// 담은 것
     /// - AnchoredPosition : 커맨드가 위치를 쓰는 자리 (Ledger.PublishAnchoredPosition)
-    /// - AnchorMin/Max    : 리그 기본은 스트레치 (0,0)-(1,1) (빌더 StretchFull)이지만
-    ///                      OverlayRig가 고정 앵커 (0.5,0.5)도 쓴다 — 상수화할 수 없어 담는다
+    /// - AnchorMin/Max    : 리그 기본은 스트레치 (0,0)-(1,1)(빌더 StretchFull)이지만
+    ///                      고정 앵커 (0.5,0.5)를 쓰는 노드도 있다.
     /// - Pivot            : 기본 (0.5,0.5). NeedsBottomPivot 노드는 (0.5,0).
-    ///                      초상화 이미지 정렬이 pivot.x 0/0.5/1을 바꾼다
-    /// - SizeDelta        : CharRigImageSizingPolicy(초상화 폭)·OverlayRigOperations(오버레이 크기)가 쓴다.
+    ///                      CharRigImageSizingPolicy가 정렬 때문에 pivot.x를 바꾸기도 함.
+    /// - SizeDelta        : CharRigImageSizingPolicy가 초상 폭(y=0)에 씀.
     ///                      스트레치 앵커면 "앵커 간격 대비 증감", 고정 앵커면 "크기 그 자체"
-    /// - LocalScale       : 스케일 커맨드 (Ledger.PublishLocalScale). z는 유니티 기본값 1을 유지
-    /// - LocalEulerAngles : 회전 커맨드. Ledger.PublishLocalEuler가 Vector3를 게시하므로 3축 전부 담는다
+    /// - LocalScale       : 스케일 커맨드 (Ledger.PublishLocalScale). z는 유니티 기본값 1을 유지.
+    /// - LocalEulerAngles : 회전 커맨드. Ledger.PublishLocalEuler가 Vector3를 게시하므로 3축 전부 가져옴.
     ///
     /// 뺀 것
-    /// - localPosition.z  : 리그 코드 어디에서도 쓰지 않는다. 항상 0으로 취급한다
-    /// - offsetMin/Max    : anchoredPosition + sizeDelta와 같은 정보의 다른 표현이라 중복
+    /// - localPosition.z  : 리그 코드 어디에서도 쓰지 않는다. 항상 0으로 취급.
+    /// - offsetMin/Max    : anchoredPosition + sizeDelta와 같은 정보의 다른 표현이라 중복.
     /// </summary>
     public readonly struct RectNodeState
     {
@@ -55,10 +52,10 @@ namespace Ked.Presentation.Core
         }
 
         /// <summary>
-        /// 빌더 StretchFull과 같은 값: 앵커 (0,0)-(1,1) · pivot 가운데 · 크기 증감 0 · 스케일 1.
-        /// 리그 노드의 초기 상태다. (struct default는 스케일이 0이라 쓰면 안 된다 — 이걸 쓸 것)
+        /// 빌더 StretchFull과 같은 값: 앵커 (0,0)-(1,1) / pivot 가운데 / 크기 증감 0 / 스케일 1.
+        /// 리그 노드의 초기 상태.
         /// </summary>
-        public static readonly RectNodeState StretchFull = new RectNodeState(
+        public static readonly RectNodeState StretchFull = new(
             anchoredPosition: Vec2.Zero,
             anchorMin: Vec2.Zero,
             anchorMax: Vec2.One,
@@ -68,28 +65,30 @@ namespace Ked.Presentation.Core
             localEulerAngles: Vec3.Zero);
 
         public RectNodeState WithAnchoredPosition(Vec2 value)
-            => new RectNodeState(value, AnchorMin, AnchorMax, Pivot, SizeDelta, LocalScale, LocalEulerAngles);
+            => new(value, AnchorMin, AnchorMax, Pivot, SizeDelta, LocalScale, LocalEulerAngles);
 
         public RectNodeState WithAnchors(Vec2 min, Vec2 max)
-            => new RectNodeState(AnchoredPosition, min, max, Pivot, SizeDelta, LocalScale, LocalEulerAngles);
+            => new(AnchoredPosition, min, max, Pivot, SizeDelta, LocalScale, LocalEulerAngles);
 
         public RectNodeState WithPivot(Vec2 value)
-            => new RectNodeState(AnchoredPosition, AnchorMin, AnchorMax, value, SizeDelta, LocalScale, LocalEulerAngles);
+            => new(AnchoredPosition, AnchorMin, AnchorMax, value, SizeDelta, LocalScale, LocalEulerAngles);
 
         public RectNodeState WithSizeDelta(Vec2 value)
-            => new RectNodeState(AnchoredPosition, AnchorMin, AnchorMax, Pivot, value, LocalScale, LocalEulerAngles);
+            => new(AnchoredPosition, AnchorMin, AnchorMax, Pivot, value, LocalScale, LocalEulerAngles);
 
         public RectNodeState WithLocalScale(Vec3 value)
-            => new RectNodeState(AnchoredPosition, AnchorMin, AnchorMax, Pivot, SizeDelta, value, LocalEulerAngles);
+            => new(AnchoredPosition, AnchorMin, AnchorMax, Pivot, SizeDelta, value, LocalEulerAngles);
 
         public RectNodeState WithLocalEuler(Vec3 value)
-            => new RectNodeState(AnchoredPosition, AnchorMin, AnchorMax, Pivot, SizeDelta, LocalScale, value);
+            => new(AnchoredPosition, AnchorMin, AnchorMax, Pivot, SizeDelta, LocalScale, value);
     }
 
     /// <summary>
     /// 체인이 딛고 서는 최상위 공간(예: RigSpaceRoot)의 rect.
+    ///
     /// 코어의 "월드"는 절대 월드가 아니라 이 공간의 로컬 좌표다 —
     /// CharacterPlacementTargetLedger의 stopRoot가 하던 역할과 같다.
+    /// 호스트가 리그를 화면 어디에 놓든 코어 계산은 영향받지 않는다.
     /// </summary>
     public readonly struct RectSpace
     {
@@ -102,8 +101,8 @@ namespace Ked.Presentation.Core
             Pivot = pivot;
         }
 
-        /// <summary>가운데 pivot의 기준 공간. 예: 1920×1080 무대.</summary>
+        // 가운데 pivot의 기준 공간.
         public static RectSpace Centered(float width, float height)
-            => new RectSpace(new Vec2(width, height), Vec2.Half);
+            => new(new Vec2(width, height), Vec2.Half);
     }
 }

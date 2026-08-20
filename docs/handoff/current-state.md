@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-19 · 테스트 **1197 통과, 실패 0**
-(Ked.Presentation.Core 220 · Vn.Core 60 · Vn.Authoring 671 · Vn.App 246)
+기준: 2026-08-20 · 테스트 **1319 통과, 실패 0**
+(Ked.Presentation.Core 342 · Vn.Core 60 · Vn.Authoring 671 · Vn.App 246)
 
 > **⚠ 규격이 며칠 사이 v5 → … → v11(챕터) · v10(대본)로 굴렀다. 이 박스가 최신 계약이다.**
 >
@@ -388,6 +388,7 @@ game.definition.json` / `작가가 더한 화자`.
 |---|---|
 | **⛔ 깃발을 실을 칸** | `StatChangeDto`에 `Op`("Add"/"Set")가 없어 **깃발을 쓰는 챕터는 내보내기가 거부된다.** 없으면 `"Add"`라 기존 파일은 안 깨진다. 서는 날 `BoolSetNotCarried` 한 함수만 지운다. 규격 [`../work-orders/bool-stat-orders.md`](../work-orders/bool-stat-orders.md) — **소유자가 전달해야 한다** |
 | **증명기 오라클 통보** | `ChapterReachabilityProver`는 이제 저쪽의 **고정된 오라클**이다(코퍼스로 등가성 고정). 깃발 지정으로 `ApplyDeltas`가 바뀌었으므로 알려야 한다 — 다만 **코퍼스 일곱 케이스에 지정이 없어 기존 답은 안 바뀐다.** 위 규격 §3에 함께 들어 있다 |
+| **ease 개통 (W66b·W67 선행)** | 이징 골든 덤프 · 코어 `EaseFunctions` · `move_by` 다섯째 인자 ease · 채널 사상 회신 — 규격 [`../work-orders/ease-open-orders.md`](../work-orders/ease-open-orders.md), 수신 `ked-presentation-runtime`. W64(Core 최신화)·W65(카탈로그)·W66a(슬라이더+정지 재현)는 이것 없이 진행 가능 — **소유자가 전달해야 한다** |
 
 **소유자 판단 대기**
 
@@ -396,11 +397,12 @@ game.definition.json` / `작가가 더한 화자`.
 | **깃발의 수명** | 챕터를 넘으면 리셋되나? 저쪽 D1(스탯 수명)과 한 덩어리다. 깃발이 방금 생겨 바로 따라오는 질문 |
 | **세이브가 돌아올 것인가** | 답이 바뀌었다 — **저쪽이 G4(세이브)를 직접 세웠다.** 돌아오면 옛 §C1(`#line:` 필수)·§C3(선택지 순서 동결)이 그대로 되살아난다 |
 | **`EndingRules`를 언제 채우나** | 모양은 저쪽에 이미 있다(`EndingRule`·`ScenarioProgression`·`ScenarioTransition`, 픽스처로 돈다). 이쪽이 빈 배열로 낼 뿐 — **"챕터를 잇는 판을 만들 것인가"**와 같은 질문이다 |
-| **⚠ `Ked.Presentation.Core` 패키지화 시점** | 소스 복사본이 낡았다 — 런타임에만 있는 파일 7개(`StageReducer.{Placement,Portrait,Shot,Show,Slot,Staging}.cs` · `PortraitSizingReduction.cs`). 그동안 무대 프리뷰가 런타임과 **다른 그림**을 그린다. 소유자 방침은 "패키지로 가져온다"이고 시점이 안 정해졌다 |
+| **`Ked.Presentation.Core` 패키지화** | **소유자 결정(2026-08-20): 패키지화는 시간이 없어 보류, 대신 사본 최신화.** W64로 동기화 완료 — 런타임이 정본, 절차는 `src/Ked.Presentation.Core/README.md`. 다음 동기화가 필요해지는 날(예: EaseFunctions가 저쪽에 서는 날) 같은 절차를 탄다 |
 | **부착 표시조건** | v8에서 관문이 간선으로 내려가며 갈 곳을 잃었다(들어오는 간선이 없다). 부착을 실제로 쓸 때 터진다 |
 | **우측 열 접근** | 챕터 탭에서 우측 열이 통째로 접혀 **편집 자료·에셋에 닿을 수 없다**(2026-08-18 팀장 미팅 지시를 구현하며 남은 것) |
 | **⚠ Tier 2 영속화** | `EpisodeSelectionStateData`가 어디에도 저장되지 않는다 |
 | **T3 재시도 여부** | 소유자가 "어느 부분이 어색했는지" 아직 답하지 않음. 코드는 `5841eac`에 보존 |
+| **연출 커맨드 재정비 진행 중 (2026-08-20 재조정)** | 순서: Core 사본 최신화(W64) → 카탈로그 최신화(W65 — 카탈로그 179종 중 **57종이 런타임에서 사라짐**, 실측) → MoveBy 슬라이더 편집(W66) → ease(W67) → 계통 확장(W68+). 계획 [`../work-orders/presentation-refresh-orders.md`](../work-orders/presentation-refresh-orders.md). 곡선 드래그 에디터([`motion-graph-orders.md`](../work-orders/motion-graph-orders.md) MG1–4)는 **보류** — 슬라이더가 아트 검증을 통과한 뒤 |
 | **조건 삭제 기능** | 소유자가 **보류** 결정 (기록만) |
 
 **정리 대상 (급하지 않음)**

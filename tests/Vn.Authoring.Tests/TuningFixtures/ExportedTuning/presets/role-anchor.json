@@ -1,0 +1,98 @@
+{
+    "MonoBehaviour": {
+        "m_Enabled": true,
+        "m_EditorHideFlags": 0,
+        "m_Name": "RoleAnchorTuningDB",
+        "m_EditorClassIdentifier": "Assembly-CSharp::RoleAnchorTuningDBSO",
+        "entries": [
+            {
+                "key": "Albedo",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "Laru",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "Bastelina",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "Mercurio",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "jeoseungsaja",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "soyeong",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "jangsanbeom",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "Willow",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "Leafia",
+                "offset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "visualScale": 1.0
+            },
+            {
+                "key": "tyrant",
+                "offset": {
+                    "x": -30.0,
+                    "y": -800.0
+                },
+                "visualScale": 5.0
+            },
+            {
+                "key": "Amber",
+                "offset": {
+                    "x": 330.0,
+                    "y": 0.0
+                },
+                "visualScale": 10.0
+            }
+        ]
+    }
+}

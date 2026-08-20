@@ -4,7 +4,7 @@ using System.Globalization;
 namespace Ked.Presentation.Core
 {
     /// <summary>
-    /// UnityEngine.Vector3 대응 불변 값 타입. 코어는 UnityEngine을 참조하지 않는다.
+    /// UnityEngine.Vector3 대응 불변 값 타입.
     /// </summary>
     public readonly struct Vec3 : IEquatable<Vec3>
     {
@@ -19,6 +19,7 @@ namespace Ked.Presentation.Core
             Z = z;
         }
 
+        // 2D 값을 z=0 평면으로 올림. 좌표 계산의 입출력용으로 변환한 것.
         public Vec3(Vec2 xy, float z = 0f)
         {
             X = xy.X;
@@ -26,21 +27,24 @@ namespace Ked.Presentation.Core
             Z = z;
         }
 
-        public static readonly Vec3 Zero = new Vec3(0f, 0f, 0f);
-        public static readonly Vec3 One = new Vec3(1f, 1f, 1f);
+        public static readonly Vec3 Zero = new(0f, 0f, 0f);
+        public static readonly Vec3 One = new(1f, 1f, 1f);
 
-        public Vec2 XY => new Vec2(X, Y);
+        public Vec2 XY => new(X, Y);
 
-        public static Vec3 operator +(Vec3 a, Vec3 b) => new Vec3(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
-        public static Vec3 operator -(Vec3 a, Vec3 b) => new Vec3(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
-        public static Vec3 operator -(Vec3 a) => new Vec3(-a.X, -a.Y, -a.Z);
-        public static Vec3 operator *(Vec3 a, float s) => new Vec3(a.X * s, a.Y * s, a.Z * s);
+        public static Vec3 operator +(Vec3 a, Vec3 b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+        public static Vec3 operator -(Vec3 a, Vec3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+        public static Vec3 operator -(Vec3 a) => new(-a.X, -a.Y, -a.Z);
+        public static Vec3 operator *(Vec3 a, float s) => new(a.X * s, a.Y * s, a.Z * s);
         public static Vec3 operator *(float s, Vec3 a) => a * s;
 
-        /// <summary>성분별 곱. Unity Vector3.Scale 대응.</summary>
-        public static Vec3 Scale(Vec3 a, Vec3 b) => new Vec3(a.X * b.X, a.Y * b.Y, a.Z * b.Z);
+        /// <summary>
+        /// UnityEngine.Vector3.Scale 대응.
+        /// </summary>
+        public static Vec3 Scale(Vec3 a, Vec3 b) => new(a.X * b.X, a.Y * b.Y, a.Z * b.Z);
 
-        public bool Equals(Vec3 other) => X == other.X && Y == other.Y && Z == other.Z;
+        public bool Equals(Vec3 other) => X.Equals(other.X) && Y.Equals(other.Y) && Z.Equals(other.Z);
+
         public override bool Equals(object obj) => obj is Vec3 other && Equals(other);
 
         public override int GetHashCode()
@@ -48,6 +52,7 @@ namespace Ked.Presentation.Core
             int hash = X.GetHashCode();
             hash = (hash * 397) ^ Y.GetHashCode();
             hash = (hash * 397) ^ Z.GetHashCode();
+
             return hash;
         }
 

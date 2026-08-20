@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace Ked.Presentation.Core
 {
@@ -9,34 +10,45 @@ namespace Ked.Presentation.Core
     /// </summary>
     public sealed class YarnLineGroup
     {
-        public string LineText;                 // 대사 원문 (화자 포함, 태그 제외). 꼬리 그룹이면 null
-        public string LineId;                   // #line: 태그 값. 없으면 null
-        public readonly List<StageCommand> Commands = new List<StageCommand>();
+        /// <summary>대사 원문(태그 제외). 꼬리 그룹이면 null.</summary>
+        public string LineText;
+
+        /// <summary>
+        /// #line 태그 값. **접두사를 포함한 전체**다 — Yarn 런타임의 라인 ID가
+        /// "line:316f20c1" 형태이므로 접두사를 벗기면 조회가 빗나간다.
+        /// 태그가 없으면 null (이 프로젝트의 원문이 그렇다 — 하네스는 순서 커서로 간다).
+        /// </summary>
+        public string LineId;
+
+        public readonly List<StageCommand> Commands = new();
     }
 
-    /// <summary>
-    /// U14 등가성 하네스 전용 — yarn "원문"에서 커맨드 열을 라인 경계 단위로 뽑는다.
-    ///
-    /// ⚠ 용도 한정: 이것은 Yarn 문법 해석기가 아니다. 대표 에피소드처럼 선형인
-    /// 파일에서 "재생이 만나는 순서 그대로"의 커맨드 열을 얻는 것이 목적이다.
-    /// 분기(if/jump)·옵션은 다루지 않으며, 만나면 커맨드가 아니라 경고 목록에 남긴다 —
-    /// 그런 파일은 이 추출기로 접으면 안 된다는 신호다.
-    /// (VnTool의 붙여넣기 해석과는 별개의 물건이다 — 그쪽은 저작 규칙, 이쪽은 하네스.)
-    /// </summary>
-    /// <summary>노드 하나의 라인 그룹들.</summary>
+    /// <summary>노드 하나의 라인 그룹들. 한 파일에 여러 노드가 있다(Setup + Story).</summary>
     public sealed class YarnNodeGroups
     {
         public string NodeName;
-        public readonly List<YarnLineGroup> Groups = new List<YarnLineGroup>();
+        public readonly List<YarnLineGroup> Groups = new();
     }
 
+    /// <summary>
+    /// yarn "원문"에서 커맨드 열을 라인 경계 단위로 뽑는다 — 등가성 하네스 전용.
+    ///
+    /// **원문을 접는 것이 가장 강한 대조다.** 브리지가 이미 파싱한 커맨드를 받아 접으면
+    /// "파싱은 맞다고 치고" 비교하는 셈이다. 원문에서 직접 뽑으면 브리지 파싱과
+    /// 코어 파싱이 다를 때 여기서 드러난다.
+    ///
+    /// ⚠ 용도 한정: 이것은 Yarn 문법 해석기가 아니다. 대표 에피소드처럼 선형인 파일에서
+    /// "재생이 만나는 순서 그대로"의 커맨드 열을 얻는 것이 목적이다. 분기(if/jump)·옵션(->)은
+    /// 다루지 않으며, 만나면 커맨드가 아니라 경고 목록에 남긴다 — 그런 파일은 이 추출기로
+    /// 접으면 안 된다는 신호다.
+    /// </summary>
     public static class YarnCommandTextExtractor
     {
         /// <summary>파일 전체를 노드 구분 없이 하나의 흐름으로 뽑는다(단일 노드 파일용).</summary>
         public static List<YarnLineGroup> Extract(
             string yarnText, string sourceName, List<string> warnings = null)
         {
-            List<YarnLineGroup> flattened = new List<YarnLineGroup>();
+            List<YarnLineGroup> flattened = new();
 
             foreach (YarnNodeGroups node in ExtractNodes(yarnText, sourceName, warnings))
                 flattened.AddRange(node.Groups);
@@ -44,28 +56,29 @@ namespace Ked.Presentation.Core
             return flattened;
         }
 
-        /// <summary>노드별로 뽑는다. 한 파일에 여러 노드가 있을 수 있다(예: Set + Pres).</summary>
+        /// <summary>노드별로 뽑는다. 한 파일에 Setup 노드와 Story 노드가 함께 있다.</summary>
         public static List<YarnNodeGroups> ExtractNodes(
             string yarnText, string sourceName, List<string> warnings = null)
         {
             if (yarnText == null)
                 throw new ArgumentNullException(nameof(yarnText));
 
-            List<YarnNodeGroups> nodes = new List<YarnNodeGroups>();
+            List<YarnNodeGroups> nodes = new();
             YarnNodeGroups node = null;
-            YarnLineGroup current = new YarnLineGroup();
+            YarnLineGroup current = new();
             string pendingTitle = null;
+            bool inHeader = true;
 
             string[] lines = yarnText.Replace("\r\n", "\n").Split('\n');
-            bool inHeader = true;
 
             void FlushNode()
             {
                 if (node == null)
                     return;
 
+                // 꼬리 커맨드(대사 없이 노드가 끝나는 경우)도 버리지 않는다.
                 if (current.Commands.Count > 0)
-                    node.Groups.Add(current); // 꼬리 커맨드 그룹 (LineText null)
+                    node.Groups.Add(current);
 
                 nodes.Add(node);
                 node = null;
@@ -74,8 +87,10 @@ namespace Ked.Presentation.Core
 
             for (int i = 0; i < lines.Length; i++)
             {
-                string raw = lines[i];
-                string line = StripComment(raw).Trim();
+                string line = StripComment(lines[i]).Trim();
+
+                // 파일 선두 BOM은 공백이 아니라 Trim에 안 걸린다.
+                line = line.TrimStart('﻿');
 
                 if (line.Length == 0)
                     continue;
@@ -138,6 +153,7 @@ namespace Ked.Presentation.Core
             }
 
             FlushNode();
+
             return nodes;
         }
 
@@ -149,7 +165,8 @@ namespace Ked.Presentation.Core
             string trimmed = line.Trim();
 
             if (!trimmed.StartsWith("<<", StringComparison.Ordinal) ||
-                !trimmed.EndsWith(">>", StringComparison.Ordinal))
+                !trimmed.EndsWith(">>", StringComparison.Ordinal) ||
+                trimmed.Length < 4)
             {
                 return false;
             }
@@ -176,7 +193,7 @@ namespace Ked.Presentation.Core
             switch (name)
             {
                 // 선형성을 깨는 것만 경고한다. set/declare는 무대 상태와 무관하고
-                // 분기하지 않으므로 그냥 흘러가 리듀서의 Unhandled로 남는다.
+                // 분기하지도 않으므로 그냥 흘러가 리듀서의 Unhandled로 남는다.
                 case "if":
                 case "elseif":
                 case "else":
@@ -184,6 +201,7 @@ namespace Ked.Presentation.Core
                 case "jump":
                 case "stop":
                     return true;
+
                 default:
                     return false;
             }
@@ -191,8 +209,8 @@ namespace Ked.Presentation.Core
 
         private static List<string> SplitRespectingQuotes(string body)
         {
-            List<string> tokens = new List<string>();
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            List<string> tokens = new();
+            StringBuilder sb = new();
             bool inQuotes = false;
 
             foreach (char c in body)

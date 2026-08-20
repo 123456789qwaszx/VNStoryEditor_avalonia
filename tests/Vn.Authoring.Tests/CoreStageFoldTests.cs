@@ -51,7 +51,8 @@ public class CoreStageFoldTests
             return null;
         }
 
-        return PortraitEmotionCode.TryNormalize(emotion, out string? code) ? code : emotion;
+        // 코어 사본 최신화(W64)로 표정 정규화의 유일한 자리가 PortraitKeyNormalizer가 됐다.
+        return PortraitKeyNormalizer.EmotionCode(emotion);
     }
 
     private static void AssertGoldenEquivalent(MiniStageState legacy, MiniStageState composite)

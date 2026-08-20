@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Ked.Presentation.Core
 {
     // ─────────────────────────────────────────────────────────────────
-    // U12 프리셋 덤프(presets/depth.json · focus-tuning.json)의 전송 타입.
+    // presets/depth.json · presets/focus-tuning.json의 전송 타입.
     // EditorJsonUtility 직렬화 모양 그대로다: {"MonoBehaviour": { ...필드... }}.
     // m_* 메타 필드는 담지 않는다(역직렬화가 무시한다).
     // 필드 의미·단위는 ExportedTuning/schema.md가 규범이다.
@@ -20,7 +20,9 @@ namespace Ked.Presentation.Core
     public sealed class DepthTuningBodyDto
     {
         public DepthPresetSetDto presets;
-        // levelTuning(AnimationCurve)은 담지 않는다 — 커브 폴드는 미지원(레벨 입력은 Unhandled).
+
+        // level(AnimationCurve)은 담지 않는다 — 커브 폴드는 미지원이다.
+        // 실제 원문이 숫자 레벨을 쓰므로(size c1 5 등) 그 커맨드는 Unhandled로 남는다.
     }
 
     [Serializable]
@@ -37,7 +39,7 @@ namespace Ked.Presentation.Core
         /// <summary>프리셋 토큰 → 값. 모르는 토큰이면 false — 비슷한 이름으로 잇지 않는다.</summary>
         public bool TryGet(string presetKey, out DepthPresetDto preset)
         {
-            switch (presetKey)
+            switch ((presetKey ?? "").Trim().ToLowerInvariant())
             {
                 case "far": preset = far; return preset != null;
                 case "back": preset = back; return preset != null;
@@ -56,7 +58,10 @@ namespace Ked.Presentation.Core
     {
         public Float2Dto depthY;
         public float depthScale;
-        public int preserveFocusPreset;   // CharacterFocusPreset 값 (0/10/20/30/31/40/41)
+
+        /// <summary>CharacterFocusPreset 정수 값 (0/10/20/30/31/40/41).</summary>
+        public int preserveFocusPreset;
+
         public Float2Dto preserveFocusOffset;
     }
 
@@ -70,16 +75,21 @@ namespace Ked.Presentation.Core
     public sealed class FocusTuningBodyDto
     {
         public FocusOffsetSetDto baseOffsets;
-        public List<FocusEntryDto> entries = new List<FocusEntryDto>();
+        public List<FocusEntryDto> entries = new();
 
-        public bool TryGetEntry(string key, out FocusEntryDto entry)
+        public bool TryGetEntry(string characterKey, out FocusEntryDto entry)
         {
-            for (int i = 0; i < entries.Count; i++)
+            if (!string.IsNullOrWhiteSpace(characterKey))
             {
-                if (string.Equals(entries[i]?.key, key, StringComparison.Ordinal))
+                string key = characterKey.Trim();
+
+                for (int i = 0; i < entries.Count; i++)
                 {
-                    entry = entries[i];
-                    return true;
+                    if (string.Equals(entries[i]?.key?.Trim(), key, StringComparison.Ordinal))
+                    {
+                        entry = entries[i];
+                        return true;
+                    }
                 }
             }
 
@@ -126,141 +136,13 @@ namespace Ked.Presentation.Core
         }
     }
 
-    // ── 초상 치수 (portrait-dimensions.json) ──────────────────────────
-
-    [Serializable]
-    public sealed class PortraitDimensionsFileDto
-    {
-        public List<PortraitDimensionDto> entries = new List<PortraitDimensionDto>();
-
-        /// <summary>
-        /// (캐릭터, 변형 접미사, 정규화된 표정)의 종횡비. 런타임 PortraitResolver와 같은
-        /// 조회·폴백 규약: 정확 일치 → (캐릭터, 'a', "01") 폴백 → 실패.
-        /// </summary>
-        public bool TryGetAspect(
-            string characterKey, char variantSuffix, string emotion,
-            out float aspect, out string reason)
-        {
-            characterKey = (characterKey ?? "").Trim().ToLowerInvariant();
-            variantSuffix = char.ToLowerInvariant(variantSuffix);
-
-            // 런타임 MakeKey는 DB 엔트리와 요청 양쪽에 같은 정규화를 적용한다.
-            // 지원하지 않는 토큰은 빈 키로 exact 조회한 뒤 a/01 폴백으로 간다.
-            if (!PortraitEmotionCode.TryNormalize(emotion, out string normalizedEmotion))
-                normalizedEmotion = "";
-
-            if (TryFind(characterKey, variantSuffix, normalizedEmotion, out aspect))
-            {
-                reason = null;
-                return true;
-            }
-
-            // 리졸버의 폴백: 기본 변형 'a' + 표정 "01".
-            if (TryFind(characterKey, 'a', "01", out aspect))
-            {
-                reason = null;
-                return true;
-            }
-
-            reason = $"초상 치수가 덤프에 없다: {characterKey}/{variantSuffix}/{normalizedEmotion}";
-            return false;
-        }
-
-        private bool TryFind(string characterKey, char variantSuffix, string emotion, out float aspect)
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                PortraitDimensionDto entry = entries[i];
-
-                if (entry == null || entry.height <= 0f)
-                    continue;
-
-                if (!string.Equals(
-                        (entry.character ?? "").Trim().ToLowerInvariant(), characterKey, StringComparison.Ordinal))
-                    continue;
-
-                // 변형은 접미사 한 글자로 대응한다 ("parkeunseol_a" → 'a') — 리졸버 규약.
-                string variant = (entry.variant ?? "").Trim().ToLowerInvariant();
-                char suffix = variant.Length > 0 ? variant[variant.Length - 1] : 'a';
-
-                if (suffix != variantSuffix)
-                    continue;
-
-                if (!PortraitEmotionCode.TryNormalize(entry.emotion, out string entryEmotion))
-                    entryEmotion = "";
-
-                if (!string.Equals(entryEmotion, emotion, StringComparison.Ordinal))
-                    continue;
-
-                aspect = entry.width / entry.height;
-                return true;
-            }
-
-            aspect = 0f;
-            return false;
-        }
-    }
-
-    /// <summary>초상 표정 코드 규약 (런타임 PortraitResolver.NormalizeEmotionCode와 동일).</summary>
-    public static class PortraitEmotionCode
-    {
-        public const string Default = "01";
-
-        /// <summary>"2" → "02", "02" → "02". 그 외는 실패 — 추측 보정하지 않는다.</summary>
-        public static bool TryNormalize(string input, out string code)
-        {
-            code = null;
-
-            if (string.IsNullOrWhiteSpace(input))
-                return false;
-
-            input = input.Trim();
-
-            if (input.Length == 2 && IsDigit(input[0]) && IsDigit(input[1]))
-            {
-                code = input;
-                return true;
-            }
-
-            if (input.Length == 1 && IsDigit(input[0]))
-            {
-                code = "0" + input;
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>show의 faceToken 별칭("e1"/"emo2"/"face3") → 원시 표정 토큰. 빈 값은 "2" (런타임 규약).</summary>
-        public static string ParseShowFaceAlias(string token)
-        {
-            if (string.IsNullOrWhiteSpace(token))
-                return "2";
-
-            string s = token.Trim().ToLowerInvariant();
-
-            if (s.StartsWith("emotion", StringComparison.Ordinal)) return s.Substring(7);
-            if (s.StartsWith("emo", StringComparison.Ordinal)) return s.Substring(3);
-            if (s.StartsWith("face", StringComparison.Ordinal)) return s.Substring(4);
-            if (s.StartsWith("e", StringComparison.Ordinal)) return s.Substring(1);
-
-            return s;
-        }
-
-        private static bool IsDigit(char c) => c >= '0' && c <= '9';
-    }
-
-    [Serializable]
-    public sealed class PortraitDimensionDto
-    {
-        public string character;
-        public string variant;
-        public string emotion;
-        public float width;
-        public float height;
-    }
-
-    /// <summary>focus 프리셋 어휘 — 런타임 CharacterFocusPreset과의 대응은 값으로 잇는다.</summary>
+    /// <summary>
+    /// focus 프리셋 어휘. 런타임 CharacterFocusPreset과의 대응은 값으로 잇는다.
+    ///
+    /// ⚠ 호스트 파서(CharacterFocusPresetParser)에는 별칭 표가 크다(p3·torso·x1 …).
+    /// 코어는 정규 이름만 안다 — 실측 결과 원문이 정규 이름만 쓰기 때문이다
+    /// (bust·body·face, 별칭 0건). 별칭이 오면 조용히 넘기지 않고 Unhandled로 소리를 낸다.
+    /// </summary>
     public static class FocusPresetName
     {
         /// <summary>덤프의 preserveFocusPreset 정수 → 이름. 모르면 false.</summary>

@@ -3,118 +3,158 @@ using NUnit.Framework;
 namespace Ked.Presentation.Core.Tests
 {
     /// <summary>
-    /// b-5 shot 묶음 골든. 기대값은 호스트 BuildTargetState들이 종전에 내던 값 그대로다.
-    /// zoom_focus는 적용측 규약("보이는 위치 = 논리 × 배율 + pan")으로 명중을 검산한다.
+    /// 샷 리덕션. 기대값은 종전 BuildTargetState 본문에서 온다.
+    ///
+    /// zoom_focus는 값보다 **명중**이 정의다: 적용측 규약("보이는 위치 = 논리 × 배율 + pan")으로
+    /// 역검산해서 원하는 화면 지점에 오는지 본다.
     /// </summary>
     public sealed class ShotReductionTests
     {
         private const float Eps = 1e-4f;
 
-        private static readonly ShotIntentState From = new ShotIntentState(
-            zoom: 2f,
-            panInRigSpace: new Vec2(100f, -50f),
-            focusPointInRigSpace: new Vec2(300f, 200f));
+        private static readonly ShotIntentState From =
+            new(2f, new Vec2(30f, -10f), new Vec2(100f, 200f));
+
+        private static void AssertVec2(Vec2 actual, Vec2 expected, string what)
+        {
+            Assert.That(actual.X, Is.EqualTo(expected.X).Within(Eps), $"{what} X — actual={actual}");
+            Assert.That(actual.Y, Is.EqualTo(expected.Y).Within(Eps), $"{what} Y — actual={actual}");
+        }
+
+        // ── 규약 상수 ────────────────────────────────────────────────
 
         [Test]
-        public void 규약_상수_zoom당_배율_증가는_0_05다()
+        public void zoom은_1당_배율_0_05다()
         {
+            // 커맨드(목표 계산)와 적용측(카메라 루트·response)이 같이 보는 규약이다.
             Assert.That(ShotIntentMath.ZoomToScaleFactor, Is.EqualTo(0.05f));
+
             Assert.That(ShotIntentMath.EvaluateCameraScale(0f), Is.EqualTo(1f).Within(Eps));
-            Assert.That(ShotIntentMath.EvaluateCameraScale(2.5f), Is.EqualTo(1.125f).Within(Eps));
-            Assert.That(ShotIntentMath.EvaluateCameraScale(-10f), Is.EqualTo(0.5f).Within(Eps));
+            Assert.That(ShotIntentMath.EvaluateCameraScale(2f), Is.EqualTo(1.1f).Within(Eps));
+            Assert.That(ShotIntentMath.EvaluateCameraScale(-4f), Is.EqualTo(0.8f).Within(Eps));
         }
+
+        [Test]
+        public void 카메라_제거와_역산은_서로_역이다()
+        {
+            Vec2 logical = new(120f, -45f);
+            Vec2 pan = new(15f, 8f);
+            float scale = ShotIntentMath.EvaluateCameraScale(3f);
+
+            // 적용측 규약대로 보이는 위치를 만든 뒤, 다시 벗기면 논리 좌표로 돌아온다.
+            Vec2 visible = new(logical.X * scale + pan.X, logical.Y * scale + pan.Y);
+
+            AssertVec2(
+                ShotIntentMath.RemoveCurrentCameraTransformFromFocusPoint(visible, pan, scale),
+                logical,
+                "카메라 제거");
+        }
+
+        // ── 단순 리덕션 4종 ──────────────────────────────────────────
 
         [Test]
         public void shot_zoom은_zoom만_바꾼다()
         {
-            ShotIntentState result = ShotZoomReduction.Reduce(From, 5f);
+            ShotIntentState to = ShotZoomReduction.Reduce(From, 5f);
 
-            Assert.That(result.Zoom, Is.EqualTo(5f));
-            Assert.That(result.PanInRigSpace, Is.EqualTo(From.PanInRigSpace));
-            Assert.That(result.FocusPointInRigSpace, Is.EqualTo(From.FocusPointInRigSpace));
+            Assert.That(to.Zoom, Is.EqualTo(5f));
+            AssertVec2(to.PanInRigSpace, From.PanInRigSpace, "pan 유지");
+            AssertVec2(to.FocusPointInRigSpace, From.FocusPointInRigSpace, "focus 유지");
         }
 
         [Test]
-        public void shot_track은_pan에_더한다()
+        public void shot_track은_현재_pan에_더한다()
         {
-            ShotIntentState result = ShotTrackReduction.Reduce(From, new Vec2(-30f, 20f));
+            ShotIntentState to = ShotTrackReduction.Reduce(From, new Vec2(20f, 5f));
 
-            Assert.That(result.PanInRigSpace, Is.EqualTo(new Vec2(70f, -30f)));
-            Assert.That(result.Zoom, Is.EqualTo(From.Zoom));
+            Assert.That(to.Zoom, Is.EqualTo(From.Zoom));
+            AssertVec2(to.PanInRigSpace, new Vec2(50f, -5f), "pan 가산");
+            AssertVec2(to.FocusPointInRigSpace, From.FocusPointInRigSpace, "focus 유지");
         }
 
         [Test]
-        public void shot_to는_절대값이다()
+        public void shot_to는_zoom과_pan을_절대값으로_바꾼다()
         {
-            ShotIntentState result = ShotToReduction.Reduce(From, 1f, new Vec2(48f, 0f));
+            ShotIntentState to = ShotToReduction.Reduce(From, 4f, new Vec2(-80f, 60f));
 
-            Assert.That(result.Zoom, Is.EqualTo(1f));
-            Assert.That(result.PanInRigSpace, Is.EqualTo(new Vec2(48f, 0f)));
-            Assert.That(result.FocusPointInRigSpace, Is.EqualTo(From.FocusPointInRigSpace));
+            Assert.That(to.Zoom, Is.EqualTo(4f));
+            AssertVec2(to.PanInRigSpace, new Vec2(-80f, 60f), "pan 절대");
+
+            // focus는 건드리지 않는다 — 논리 focus는 zoom_focus만 바꾼다.
+            AssertVec2(to.FocusPointInRigSpace, From.FocusPointInRigSpace, "focus 유지");
         }
 
         [Test]
         public void shot_reset은_기본_샷이다()
         {
-            ShotIntentState result = ShotResetReduction.Reduce();
+            ShotIntentState to = ShotResetReduction.Reduce();
 
-            Assert.That(result.Zoom, Is.EqualTo(0f));
-            Assert.That(result.PanInRigSpace, Is.EqualTo(Vec2.Zero));
-            Assert.That(result.FocusPointInRigSpace, Is.EqualTo(Vec2.Zero));
+            Assert.That(to.Zoom, Is.EqualTo(0f));
+            AssertVec2(to.PanInRigSpace, Vec2.Zero, "pan 0");
+            AssertVec2(to.FocusPointInRigSpace, Vec2.Zero, "focus 0");
         }
 
-        // ── zoom_focus ───────────────────────────────────────────────
+        // ── shot_focus_to: 명중 ──────────────────────────────────────
 
         [Test]
-        public void 카메라_제거와_pan_역산은_서로_역이다()
+        public void 접은_뒤_적용측_규약으로_계산하면_원하는_지점에_온다()
         {
-            float scale = ShotIntentMath.EvaluateCameraScale(3f);
-            Vec2 pan = new Vec2(80f, -40f);
-            Vec2 visible = new Vec2(250f, 130f);
+            // 이것이 zoom_focus의 정의다.
+            Vec2 measured = new(250f, 380f);      // 현재 카메라가 적용된 채로 측정된 focus
+            Vec2 desired = new(-460.8f, 0f);      // place_left 상당 화면 지점
+            float targetZoom = 6f;
 
-            Vec2 logical = ShotIntentMath.RemoveCurrentCameraTransformFromFocusPoint(visible, pan, scale);
+            ShotIntentState to = ShotZoomFocusReduction.Reduce(From, targetZoom, measured, desired);
 
-            // 적용 규약: 보이는 위치 = 논리 × 배율 + pan.
-            Assert.That(logical.X * scale + pan.X, Is.EqualTo(visible.X).Within(Eps));
-            Assert.That(logical.Y * scale + pan.Y, Is.EqualTo(visible.Y).Within(Eps));
-        }
+            float targetScale = ShotIntentMath.EvaluateCameraScale(targetZoom);
 
-        [TestCase(2.5f, 0f, 0f)]           // Center로 줌인
-        [TestCase(0f, -460.8f, 172.8f)]    // TopLeft 상당으로
-        [TestCase(-4f, 268.8f, -97.2f)]    // 줌아웃하며 ThirdsLowerRight 상당으로
-        public void zoom_focus를_적용하면_focus가_원하는_화면_지점에_보인다(
-            float targetZoom, float desiredX, float desiredY)
-        {
-            Vec2 measuredFocus = new Vec2(320f, 180f); // 현재 카메라가 적용된 채 측정된 값
-            Vec2 desired = new Vec2(desiredX, desiredY);
+            Vec2 visible = new(
+                to.FocusPointInRigSpace.X * targetScale + to.PanInRigSpace.X,
+                to.FocusPointInRigSpace.Y * targetScale + to.PanInRigSpace.Y);
 
-            ShotIntentState result = ShotZoomFocusReduction.Reduce(
-                From, targetZoom, measuredFocus, desired);
-
-            // 명중 검산: 목표 상태의 논리 focus를 목표 카메라로 다시 보이게 하면 desired다.
-            float targetScale = ShotIntentMath.EvaluateCameraScale(result.Zoom);
-            Vec2 visibleAfter = result.FocusPointInRigSpace * targetScale + result.PanInRigSpace;
-
-            Assert.That(result.Zoom, Is.EqualTo(targetZoom));
-            Assert.That(visibleAfter.X, Is.EqualTo(desired.X).Within(1e-2f));
-            Assert.That(visibleAfter.Y, Is.EqualTo(desired.Y).Within(1e-2f));
+            AssertVec2(visible, desired, "zoom_focus 명중");
+            Assert.That(to.Zoom, Is.EqualTo(targetZoom));
         }
 
         [Test]
-        public void zoom_focus의_논리_focus는_현재_카메라를_벗긴_값이다()
+        public void 논리_focus는_현재_카메라를_벗긴_값이다()
         {
-            // 종전 1~7단계의 4단계 그대로: (측정값 - 현재pan) / 현재배율.
-            Vec2 measured = new Vec2(320f, 180f);
+            Vec2 measured = new(250f, 380f);
 
-            ShotIntentState result = ShotZoomFocusReduction.Reduce(From, 1f, measured, Vec2.Zero);
+            ShotIntentState to = ShotZoomFocusReduction.Reduce(From, 6f, measured, Vec2.Zero);
 
-            float fromScale = ShotIntentMath.EvaluateCameraScale(From.Zoom);
-            Vec2 expected = new Vec2(
-                (measured.X - From.PanInRigSpace.X) / fromScale,
-                (measured.Y - From.PanInRigSpace.Y) / fromScale);
+            Vec2 expected = ShotIntentMath.RemoveCurrentCameraTransformFromFocusPoint(
+                measured, From.PanInRigSpace, ShotIntentMath.EvaluateCameraScale(From.Zoom));
 
-            Assert.That(result.FocusPointInRigSpace.X, Is.EqualTo(expected.X).Within(Eps));
-            Assert.That(result.FocusPointInRigSpace.Y, Is.EqualTo(expected.Y).Within(Eps));
+            AssertVec2(to.FocusPointInRigSpace, expected, "논리 focus 복원");
+        }
+
+        [Test]
+        public void 현재_카메라가_기본이면_측정값이_곧_논리_focus다()
+        {
+            // zoom 0, pan 0이면 배율 1 · 이동 0이라 벗길 것이 없다.
+            Vec2 measured = new(77f, -33f);
+
+            ShotIntentState to = ShotZoomFocusReduction.Reduce(
+                ShotIntentState.Default, 0f, measured, Vec2.Zero);
+
+            AssertVec2(to.FocusPointInRigSpace, measured, "기본 카메라");
+            AssertVec2(to.PanInRigSpace, new Vec2(-77f, 33f), "원점으로 보내는 pan");
+        }
+
+        [Test]
+        public void 같은_지점을_다시_요청하면_같은_결과다()
+        {
+            // 순수 함수 — 같은 입력은 언제나 같은 출력.
+            Vec2 measured = new(120f, 90f);
+            Vec2 desired = new(50f, -20f);
+
+            ShotIntentState a = ShotZoomFocusReduction.Reduce(From, 3f, measured, desired);
+            ShotIntentState b = ShotZoomFocusReduction.Reduce(From, 3f, measured, desired);
+
+            Assert.That(b.Zoom, Is.EqualTo(a.Zoom));
+            AssertVec2(b.PanInRigSpace, a.PanInRigSpace, "pan");
+            AssertVec2(b.FocusPointInRigSpace, a.FocusPointInRigSpace, "focus");
         }
     }
 }

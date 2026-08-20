@@ -1,30 +1,28 @@
 using System;
 using System.Collections.Generic;
-
+// RectNodeState
+// = 노드 하나의 상태
+//
+// RectChainMath
+// = 상태 체인을 받아 좌표를 계산하는 수학
+//
+// RectNodeTree
+// = 노드들을 실제 부모-자식 트리로 관리하고,
+//   필요한 체인을 만들어 RectChainMath에 넘겨주는 관리자
 namespace Ked.Presentation.Core
 {
-    /// <summary>
-    /// 리그 노드 트리 — StageState의 뼈대.
-    ///
-    /// CharacterPlacementTargetLedger가 current.parent로 유니티 계층을 타고 올라가던
-    /// 그 구조를 데이터로 세운 것이다. 키는 문자열 논리 식별자다 —
-    /// RectTransform 참조는 코어에 들어오지 않는다.
-    ///
-    /// 불변식:
-    /// - 부모가 먼저 있어야 자식을 넣을 수 있고, 재부모화 API가 없다.
-    ///   따라서 순환이 생길 방법이 없다(BuildChain이 순환 검사를 안 해도 되는 근거).
-    /// - 없는 키의 조회·갱신은 조용히 0을 돌려주지 않고 예외를 던진다.
-    ///   침묵은 이 프로젝트가 피하는 실패 모양이다.
-    /// </summary>
+    // RectNodeState들을 부모-자식 관계로 보관하고,
+    // 특정 노드의 좌표 계산을 RectChainMath에 연결해주는 리그 트리 모델
+    // (좌표 계산은 전부 RectChainMath에 위임.)
     public sealed class RectNodeTree
     {
         private struct Node
         {
-            public string ParentKey; // null = 루트 공간 직속
+            public string ParentKey; // null = 루트에 직접 생성
             public RectNodeState State;
         }
 
-        private readonly Dictionary<string, Node> _nodes = new Dictionary<string, Node>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Node> _nodes = new(StringComparer.Ordinal);
 
         /// <summary>트리가 딛고 서는 공간. 이 트리의 "월드"가 이 공간의 로컬이다.</summary>
         public RectSpace RootSpace { get; }
@@ -35,6 +33,7 @@ namespace Ked.Presentation.Core
         }
 
         public int Count => _nodes.Count;
+
         public IEnumerable<string> Keys => _nodes.Keys;
 
         public void Add(string key, string parentKey, in RectNodeState state)
@@ -46,19 +45,22 @@ namespace Ked.Presentation.Core
                 throw new ArgumentException($"노드 '{key}'가 이미 있다.", nameof(key));
 
             if (parentKey != null && !_nodes.ContainsKey(parentKey))
+            {
                 throw new ArgumentException(
-                    $"노드 '{key}'의 부모 '{parentKey}'가 아직 없다. 부모를 먼저 넣을 것.", nameof(parentKey));
+                    $"노드 '{key}'의 부모 '{parentKey}'가 아직 없다. 부모를 먼저 넣을 것.",
+                    nameof(parentKey));
+            }
 
             _nodes[key] = new Node { ParentKey = parentKey, State = state };
         }
 
-        public bool Contains(string key) => _nodes.ContainsKey(key);
+        public bool Contains(string key) => key != null && _nodes.ContainsKey(key);
 
         public RectNodeState GetState(string key) => Require(key).State;
 
         public bool TryGetState(string key, out RectNodeState state)
         {
-            if (_nodes.TryGetValue(key, out Node node))
+            if (key != null && _nodes.TryGetValue(key, out Node node))
             {
                 state = node.State;
                 return true;
@@ -68,10 +70,9 @@ namespace Ked.Presentation.Core
             return false;
         }
 
-        /// <summary>부모 키. null이면 루트 공간 직속이다.</summary>
         public string GetParentKey(string key) => Require(key).ParentKey;
 
-        /// <summary>있는 노드의 상태만 바꾼다. 없는 키를 조용히 새로 만들지 않는다.</summary>
+        // 있는 노드의 상태만 바꾼다. 없는 키를 조용히 새로 만들지 않음.
         public void SetState(string key, in RectNodeState state)
         {
             Node node = Require(key);
@@ -79,9 +80,10 @@ namespace Ked.Presentation.Core
             _nodes[key] = node;
         }
 
+        // 구조와 상태를 통째로 복제
         public RectNodeTree Clone()
         {
-            RectNodeTree clone = new RectNodeTree(RootSpace);
+            RectNodeTree clone = new(RootSpace);
 
             foreach (KeyValuePair<string, Node> pair in _nodes)
                 clone._nodes[pair.Key] = pair.Value;
@@ -89,17 +91,17 @@ namespace Ked.Presentation.Core
             return clone;
         }
 
-        // ── 조회 (b-1 수학) ──────────────────────────────────────────
+        // ---- 조회 ----
 
-        /// <summary>노드 로컬 점 → 루트 공간("월드") 점.</summary>
+        /// <summary>노드 로컬 점 -> 루트 공간("월드") 점.</summary>
         public Vec3 TransformPoint(string key, Vec3 localPoint)
             => RectChainMath.TransformPoint(BuildChain(key), RootSpace, localPoint);
 
-        /// <summary>루트 공간("월드") 점 → 노드 로컬 점.</summary>
+        /// <summary>루트 공간("월드") 점 -> 노드 로컬 점.</summary>
         public Vec3 InverseTransformPoint(string key, Vec3 worldPoint)
             => RectChainMath.InverseTransformPoint(BuildChain(key), RootSpace, worldPoint);
 
-        /// <summary>노드의 rect 크기. 스트레치 앵커면 부모 크기에서 파생된다.</summary>
+        /// <summary>노드의 rect 크기. 앵커가 Stretch모드면, 부모 크기에서 파생.</summary>
         public Vec2 GetRectSize(string key)
         {
             RectNodeState[] chain = BuildChain(key);
@@ -118,7 +120,8 @@ namespace Ked.Presentation.Core
 
         /// <summary>
         /// 루트→노드 순서의 상태 사슬과 (원하면) 같은 순서의 키 목록.
-        /// SettledFocusMath처럼 체인 인덱스가 필요한 계산에 쓴다.
+        /// SettledFocusMath처럼 체인 인덱스가 필요한 계산에 쓴다 —
+        /// 호스트 어댑터의 CaptureSettledChain(chainRects)과 같은 역할이다.
         /// </summary>
         public RectNodeState[] BuildChainTo(string key, List<string> chainKeys = null)
         {
@@ -127,7 +130,7 @@ namespace Ked.Presentation.Core
 
             chainKeys.Clear();
 
-            List<string> reversedKeys = new List<string>(16);
+            List<string> reversedKeys = new(16);
             string current = key;
 
             while (current != null)
@@ -142,10 +145,9 @@ namespace Ked.Presentation.Core
             return BuildChain(key);
         }
 
-        /// <summary>루트→노드 순서의 상태 사슬. RectChainMath 규약(chain[0]의 부모가 RootSpace)과 같다.</summary>
         private RectNodeState[] BuildChain(string key)
         {
-            List<RectNodeState> reversed = new List<RectNodeState>(16);
+            List<RectNodeState> reversed = new(16);
 
             string current = key;
 
