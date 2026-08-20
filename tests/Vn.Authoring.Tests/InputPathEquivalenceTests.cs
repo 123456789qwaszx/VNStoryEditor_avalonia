@@ -90,4 +90,33 @@ public class InputPathEquivalenceTests
         Assert.Contains("<<cast c1 laru a 1>>", bundleA.StoryText, StringComparison.Ordinal);
         Assert.Contains("<<face_swap c1 5 10fr>>", bundleA.StoryText, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void 슬라이더로_고친_것과_텍스트로_고친_것의_이미터_출력이_같다()
+    {
+        // W66 — 무대 슬라이더는 네 번째 입력 경로다. 다른 길로 같은 값을 만들었으면
+        // 발행 결과가 문자 하나까지 같아야 한다.
+        //
+        // 슬라이더가 실제로 부르는 것은 ProjectEditor.SetPresentationCommandArgument 하나이고
+        // (UI는 토큰 문자열을 만들 뿐이다), 텍스트 경로는 CommandText.Parse를 지난다.
+        (Sample sampleA, PresentationNode nodeA, string firstA, _) = BuildStage();
+        PresentationCommandInstance slid = sampleA.Editor.AddPresentationCommand(
+            nodeA.Id, firstA, "char_rig_staging.move_by", Args(("slot", "c1"), ("x", "+1u")));
+
+        // 슬라이더를 끌어 가로 +2u, 시간 12fr로 확정 — 인자마다 편집 하나다.
+        sampleA.Editor.SetPresentationCommandArgument(nodeA.Id, slid.Id, "x", "+2u");
+        sampleA.Editor.SetPresentationCommandArgument(nodeA.Id, slid.Id, "duration", "12fr");
+
+        (Sample sampleB, PresentationNode nodeB, string firstB, _) = BuildStage();
+        CommandTextParseResult parsed = CommandText.Parse("<<move_by c1 +2u 0u 12fr>>", Catalog);
+        Assert.True(parsed.Success);
+        sampleB.Editor.AddPresentationCommand(nodeB.Id, firstB, parsed.Definition!.Id, parsed.Arguments!);
+
+        YarnBundle bundleA = Emit(sampleA, nodeA);
+        YarnBundle bundleB = Emit(sampleB, nodeB);
+
+        Assert.False(bundleA.HasBlockingProblems);
+        Assert.Equal(bundleA.StoryText, bundleB.StoryText);
+        Assert.Contains("<<move_by c1 +2u 0u 12fr>>", bundleA.StoryText, StringComparison.Ordinal);
+    }
 }

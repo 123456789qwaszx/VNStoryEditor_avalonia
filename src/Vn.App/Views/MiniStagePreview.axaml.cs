@@ -110,6 +110,78 @@ internal static class StageAudioCues
     }
 }
 
+/// <summary>
+/// 무대에서 수치를 만질 수 있는 이동 커맨드 하나 (W66) — 칩·궤적·슬라이더가 이것 하나를 본다.
+/// 좌표는 <b>루트 공간 픽셀</b>이고, 화면으로 옮기는 것은 <see cref="StageSceneView"/>가
+/// 샷 규약(<c>ShotIntentMath</c>)으로 한다.
+/// </summary>
+/// <param name="Arguments">현재 인자 토큰 — 슬라이더의 시작값이자 되돌릴 자리다.</param>
+internal sealed record StageMotionCue(
+    string CommandId,
+    string DefinitionId,
+    string SlotKey,
+    double DeltaX,
+    double DeltaY,
+    double DurationFrames,
+    string? Ease,
+    IReadOnlyDictionary<string, string> Arguments);
+
+/// <summary>
+/// 이 라인의 이동 커맨드를 무대가 만질 수 있는 모양으로 펼친다 (W66).
+///
+/// 무엇이 이동인지는 <b>카탈로그의 모션 선언</b>만이 정한다 — 이름으로 추측하지 않으므로
+/// 선언이 없는 커맨드는 여기 오지 않고 지금처럼 텍스트·갤러리로만 편집된다.
+/// 값 계산은 전부 <see cref="MotionInspection"/>이 하고 이 클래스는 고르기만 한다.
+/// </summary>
+internal static class StageMotionCues
+{
+    public static IReadOnlyList<StageMotionCue>? Of(
+        PresentationCommandCatalog catalog,
+        IReadOnlyList<PresentationResultCommand> setupCommands,
+        IReadOnlyList<MiniStageFoldLine> foldLines,
+        IReadOnlyList<PresentationResultCommand>? lineCommands,
+        Ked.Presentation.Core.StageReducerTuning? tuning)
+    {
+        if (tuning is null || lineCommands is null || lineCommands.Count == 0)
+        {
+            return null;
+        }
+
+        var cues = new List<StageMotionCue>();
+
+        foreach (PresentationResultCommand command in lineCommands)
+        {
+            if (catalog.Find(command.DefinitionId) is not { Motion: not null } definition)
+            {
+                continue;
+            }
+
+            // 시작 자리는 "이 커맨드 직전"의 상태다 — 접힌 자리에서 빼서 구하지 않는다.
+            Ked.Presentation.Core.StageState? before = CoreStageFold
+                .Fold(catalog, setupCommands, foldLines, tuning, stopBeforeCommandId: command.CommandId)
+                .CoreState;
+
+            if (before is null ||
+                MotionInspection.Inspect(definition, command, before, tuning) is not { } segment)
+            {
+                continue;
+            }
+
+            cues.Add(new StageMotionCue(
+                segment.CommandId,
+                command.DefinitionId,
+                segment.SlotKey,
+                segment.Delta.X,
+                segment.Delta.Y,
+                segment.DurationFrames,
+                segment.Ease,
+                command.Arguments));
+        }
+
+        return cues.Count > 0 ? cues : null;
+    }
+}
+
 /// <summary>공유 무대 프리뷰에 밀어 넣는 요청 하나. 폴드는 호출자가 이미 끝냈다.</summary>
 /// <param name="HasPresentation">false면 연출 공급이 없는 것 — 오류가 아니라 화자만 표시한다.</param>
 /// <param name="LineIndex">문서에서 선택 라인의 0기준 위치. 없으면 -1 — 창 하단 표시용.</param>
@@ -140,7 +212,8 @@ internal sealed record MiniStagePreviewRequest(
     double TransitionSeconds = 0,
     IReadOnlyList<string>? AudioCues = null,
     IReadOnlyList<string>? AutoBranchBlocks = null,
-    IReadOnlyList<PresentationResultCommand>? AudioCommands = null);
+    IReadOnlyList<PresentationResultCommand>? AudioCommands = null,
+    IReadOnlyList<StageMotionCue>? MotionCues = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가

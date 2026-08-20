@@ -271,7 +271,14 @@ public partial class PresentationNodeEditor : UserControl
             AudioCues: StageAudioCues.Of(catalog, lineBinding?.Commands),
             AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
             // 소리 실재생(W62): 재생이 이 라인에 도달하면 칩의 원본 커맨드가 울린다.
-            AudioCommands: StageAudioCues.AudioOf(catalog, lineBinding?.Commands)));
+            AudioCommands: StageAudioCues.AudioOf(catalog, lineBinding?.Commands),
+            // 이동 편집(W66): 모션 선언이 있는 커맨드만 무대에서 수치를 만질 수 있다.
+            MotionCues: StageMotionCues.Of(
+                catalog,
+                draft.SetupCommands,
+                branch.FoldLines,
+                lineBinding?.Commands,
+                _session.TuningLibrary.Tuning)));
     }
 
     /// <summary>

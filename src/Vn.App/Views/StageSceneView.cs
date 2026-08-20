@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Ked.Presentation.Core;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
@@ -362,7 +363,131 @@ internal sealed class StageSceneView : UserControl
         }
 
         RenderAudioCues(request, height, em);
+        RenderMotionCues(request, layout, height, em);
         RenderStatsHud(request, width, em);
+    }
+
+    /// <summary>
+    /// 이 라인의 이동 커맨드 (W66) — 궤적과 출발 자리를 무대에 겹쳐 그리고, 칩을 누르면
+    /// 수치를 슬라이더로 만진다.
+    ///
+    /// <b>왜 출발 자리를 그리나</b>: 정지 프레임은 이동이 <i>끝난</i> 자리다. 그래서 화면만
+    /// 봐서는 "이 캐릭터가 방금 움직였다"는 사실 자체가 안 보인다 — 어디서 왔는지를 그려야
+    /// 연출이 보인다. 값은 전부 <see cref="StageMotionCue"/>가 들고 오고 여기서 다시 계산하지
+    /// 않는다(사본 금지).
+    /// </summary>
+    private void RenderMotionCues(
+        MiniStagePreviewRequest request, StageSceneLayout layout, double height, double em)
+    {
+        if (request.MotionCues is not { Count: > 0 } cues)
+        {
+            return;
+        }
+
+        // 샷 배율은 코어 규약 그대로 — 컴포저가 초상을 놓을 때 쓴 그 함수다.
+        double cameraScale = request.CoreState is { } core
+            ? ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom)
+            : 1;
+
+        var rows = new StackPanel { Spacing = em * 0.15 };
+
+        foreach (StageMotionCue cue in cues)
+        {
+            StagePortraitPlacement? portrait = layout.Portraits.FirstOrDefault(item =>
+                string.Equals(item.SlotKey, cue.SlotKey, StringComparison.Ordinal));
+
+            if (portrait is not null)
+            {
+                RenderMotionTrail(portrait.Rect, cue, cameraScale, em);
+            }
+
+            rows.Children.Add(BuildMotionChip(cue, em));
+        }
+
+        Add(rows, new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 16, em * (cues.Count + 1)));
+    }
+
+    /// <summary>
+    /// 출발 자리의 윤곽 + 거기서 지금 자리로 잇는 선. 무대 좌표 변환은 컴포저의 규약
+    /// 하나를 따른다 — 루트 공간에서 x는 같은 방향, y는 캔버스가 뒤집혀 있다.
+    /// </summary>
+    private void RenderMotionTrail(StageRect current, StageMotionCue cue, double cameraScale, double em)
+    {
+        double startX = current.X - cue.DeltaX * cameraScale;
+        double startY = current.Y + cue.DeltaY * cameraScale;
+
+        if (Math.Abs(startX - current.X) < 0.5 && Math.Abs(startY - current.Y) < 0.5)
+        {
+            return; // 움직이지 않는 이동 — 그릴 궤적이 없다.
+        }
+
+        var ghost = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(120, 250, 204, 21)),
+            BorderThickness = new Thickness(Math.Max(1, em * 0.06)),
+            CornerRadius = new CornerRadius(em * 0.1)
+        };
+        Add(ghost, new StageRect(startX, startY, current.Width, current.Height));
+
+        var line = new Avalonia.Controls.Shapes.Line
+        {
+            StartPoint = new Point(startX + current.Width / 2, startY + current.Height / 2),
+            EndPoint = new Point(current.X + current.Width / 2, current.Y + current.Height / 2),
+            Stroke = new SolidColorBrush(Color.FromArgb(190, 250, 204, 21)),
+            StrokeThickness = Math.Max(1, em * 0.08),
+            StrokeDashArray = [3, 2]
+        };
+
+        // 선은 캔버스 좌표를 직접 쓴다 — 자리 지정 없이 얹는다.
+        _canvas.Children.Add(line);
+        Canvas.SetLeft(line, 0);
+        Canvas.SetTop(line, 0);
+    }
+
+    private Control BuildMotionChip(StageMotionCue cue, double em)
+    {
+        string summary = $"⇢ {cue.SlotKey} " +
+            $"{FormatUnits(cue.DeltaX)} {FormatUnits(cue.DeltaY)} · {cue.DurationFrames:0}fr";
+
+        var chip = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(150, 60, 45, 5)),
+            CornerRadius = new CornerRadius(em * 0.2),
+            Padding = new Thickness(em * 0.35, em * 0.12),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = new TextBlock
+            {
+                Text = summary,
+                FontSize = em * 0.55,
+                Foreground = new SolidColorBrush(Color.FromArgb(235, 250, 204, 21))
+            }
+        };
+
+        ToolTip.SetTip(chip, CanManipulate()
+            ? "눌러서 이동 수치를 조절합니다."
+            : "읽기 전용 화면이라 조절할 수 없습니다.");
+
+        if (CanManipulate())
+        {
+            chip.PointerPressed += (_, args) =>
+            {
+                args.Handled = true;
+                ShowMotionFlyout(cue);
+            };
+        }
+
+        return chip;
+    }
+
+    /// <summary>픽셀 값을 사람이 읽는 u 토큰으로. 환산의 유일한 자리는 UnitToken이다.</summary>
+    private string FormatUnits(double pixels)
+    {
+        float perUnit = UnitToken.PixelsPerUnit(
+            _session?.TuningLibrary.Tuning?.ReferenceStageWidth ?? 1920f);
+        double units = perUnit > 0 ? pixels / perUnit : 0;
+
+        return $"{(units >= 0 ? "+" : "")}{units:0.##}u";
     }
 
     /// <summary>
@@ -1068,6 +1193,178 @@ internal sealed class StageSceneView : UserControl
                 StageArgs(arguments));
             ManipulationApplied?.Invoke();
         });
+    }
+
+    /// <summary>
+    /// 이동 수치 조절창 (W66) — 선언된 축(x·y)과 시간을 슬라이더로 만진다.
+    ///
+    /// <b>끄는 동안은 편집이 아니다</b>(성능 규칙): 값 라벨만 따라 움직이고 프로젝트는
+    /// 그대로다. 손을 뗄 때 한 번만 <see cref="ProjectEditor.UpdatePresentationCommandArguments"/>를
+    /// 지나므로 <b>되돌리기 한 번이 조작 하나</b>를 원복한다 — 슬라이더가 지나온 중간값이
+    /// undo 스택에 쌓이지 않는다.
+    ///
+    /// 만지는 대상은 커맨드 <b>하나</b>(칩이 가리킨 그것)다. 같은 종류를 찾아 합치는
+    /// 직접 조작과 달리, 여기서는 이미 있는 커맨드의 인자만 바뀐다.
+    /// </summary>
+    private void ShowMotionFlyout(StageMotionCue cue)
+    {
+        if (_session is null || _request?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        PresentationCommandDefinition? definition = ManipulationCatalog.Find(cue.DefinitionId);
+
+        if (definition?.Motion is not { } motion)
+        {
+            return;
+        }
+
+        float perUnit = UnitToken.PixelsPerUnit(
+            _session.TuningLibrary.Tuning?.ReferenceStageWidth ?? 1920f);
+
+        ShowManipulationFlyout((host, _) =>
+        {
+            host.MinWidth = 250;
+            host.Children.Add(new TextBlock
+            {
+                Text = $"{definition.DisplayName} — {cue.SlotKey} (우클릭으로 닫기)",
+                FontSize = 10,
+                Opacity = 0.7,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
+            });
+
+            // 축 슬라이더는 선언이 만든다 — x·y를 코드에 박지 않는다.
+            foreach (PresentationMotionAxis axis in motion.Axes)
+            {
+                double pixels = string.Equals(axis.Axis, PresentationMotionAxis.XAxis, StringComparison.Ordinal)
+                    ? cue.DeltaX
+                    : cue.DeltaY;
+
+                host.Children.Add(BuildMotionSlider(
+                    context.PresentationNodeId,
+                    cue.CommandId,
+                    label: axis.Axis == PresentationMotionAxis.XAxis ? "가로" : "세로",
+                    argumentName: axis.ParameterName,
+                    value: perUnit > 0 ? pixels / perUnit : 0,
+                    minimum: -6,
+                    maximum: 6,
+                    tick: 0.25,
+                    format: units => $"{(units >= 0 ? "+" : "")}{units:0.##}u",
+                    suffix: "u"));
+            }
+
+            if (motion.DurationParameterName is { } durationParameter)
+            {
+                host.Children.Add(BuildMotionSlider(
+                    context.PresentationNodeId,
+                    cue.CommandId,
+                    label: "시간",
+                    argumentName: durationParameter,
+                    value: cue.DurationFrames,
+                    minimum: 0,
+                    maximum: 48,
+                    tick: 1,
+                    format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
+                    suffix: "fr"));
+            }
+
+            // 이징은 아직 편집 칸이 아니다 — 실을 자리가 런타임 텍스트에 없다(W67에서 연다).
+            // "채우면 반드시 동작한다"를 지키려고 값만 보여 주고 만지게 하지 않는다.
+            host.Children.Add(new TextBlock
+            {
+                Text = $"이징 {cue.Ease ?? "-"} — 런타임 기본값입니다. 텍스트에 실을 자리가 " +
+                    "아직 없어 여기서는 바꿀 수 없습니다.",
+                FontSize = 9,
+                Opacity = 0.55,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
+            });
+        });
+    }
+
+    /// <summary>
+    /// 값 하나짜리 슬라이더 줄. 끄는 동안은 라벨만 갱신하고, <b>손을 뗄 때 한 번</b> 저장한다.
+    /// </summary>
+    private Control BuildMotionSlider(
+        string presentationNodeId,
+        string commandId,
+        string label,
+        string argumentName,
+        double value,
+        double minimum,
+        double maximum,
+        double tick,
+        Func<double, string> format,
+        string suffix)
+    {
+        double snapped = Math.Clamp(Math.Round(value / tick) * tick, minimum, maximum);
+
+        var valueLabel = new TextBlock
+        {
+            Text = format(snapped),
+            FontSize = 10,
+            Width = 66,
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var slider = new Slider
+        {
+            Minimum = minimum,
+            Maximum = maximum,
+            Value = snapped,
+            TickFrequency = tick,
+            IsSnapToTickEnabled = true,
+            Width = 140,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        slider.ValueChanged += (_, args) => valueLabel.Text = format(args.NewValue);
+
+        // 확정만 편집이다 — 끄는 도중의 중간값은 프로젝트에 닿지 않는다.
+        void Commit()
+        {
+            if (_session is null)
+            {
+                return;
+            }
+
+            string token = suffix == "fr"
+                ? $"{slider.Value:0}fr"
+                : $"{(slider.Value >= 0 ? "+" : "")}{slider.Value:0.##}u";
+
+            UiGuard.Run(_session, "이동 수치 조절", () =>
+            {
+                _session.Editor.SetPresentationCommandArgument(
+                    presentationNodeId, commandId, argumentName, token);
+                ManipulationApplied?.Invoke();
+            });
+        }
+
+        slider.PointerCaptureLost += (_, _) => Commit();
+        slider.KeyUp += (_, _) => Commit();
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+
+        var labelText = new TextBlock
+        {
+            Text = label,
+            FontSize = 10,
+            Opacity = 0.7,
+            Width = 30,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        Grid.SetColumn(labelText, 0);
+        Grid.SetColumn(slider, 1);
+        Grid.SetColumn(valueLabel, 2);
+        row.Children.Add(labelText);
+        row.Children.Add(slider);
+        row.Children.Add(valueLabel);
+
+        return row;
     }
 
     /// <summary>슬롯 표시/숨김 — 같은 라인의 반대 방향 fade는 걷어내고 원하는 쪽만 남는다.</summary>
