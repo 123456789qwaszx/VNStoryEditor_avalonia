@@ -533,11 +533,11 @@ internal sealed class StageSceneView : UserControl
     private Control BuildPlainCommandChip(StageCommandChip source, double em)
     {
         PresentationCommandDefinition? definition = ManipulationCatalog.Find(source.Command.DefinitionId);
-        bool hasSliders = definition is not null &&
-            definition.Parameters.Any(parameter => parameter.Slider is not null);
+        bool hasAdjustable = definition is not null &&
+            definition.Parameters.Any(IsAdjustableParameter);
         // 편집 가능 표시는 요청의 EditContext가 정본이다 — 세션 유무는 클릭 시점의
         // 가드(ShowParameterFlyout)가 본다. CanManipulate로 묶으면 화면 판정이 앱 상태에 결합된다.
-        bool editable = hasSliders && _request?.EditContext?.Editable == true;
+        bool editable = hasAdjustable && _request?.EditContext?.Editable == true;
 
         var chip = new Border
         {
@@ -569,13 +569,25 @@ internal sealed class StageSceneView : UserControl
         }
         else
         {
-            ToolTip.SetTip(chip, hasSliders
+            ToolTip.SetTip(chip, hasAdjustable
                 ? "읽기 전용 화면이라 조절할 수 없습니다."
-                : "이 라인의 연출입니다. 수치 조절은 슬라이더 선언이 있는 커맨드부터 지원합니다.");
+                : "이 라인의 연출입니다. 조절할 수치·프리셋이 선언된 커맨드만 열립니다.");
         }
 
         return chip;
     }
+
+    /// <summary>
+    /// 칩에서 상세 조절이 되는 파라미터인가 (W68b) — 슬라이더 선언(숫자축) ·
+    /// duration(fr 슬라이더) · 후보 토큰이 선언된 타입(depthPreset·focusPreset·
+    /// screenPoint 등 = 선택기). 무대 대상(slot/alias)은 여기서 안 바꾼다 —
+    /// 대상 교체는 조작이 아니라 다른 커맨드다.
+    /// </summary>
+    private static bool IsAdjustableParameter(PresentationCommandParameter parameter) =>
+        parameter.Slider is not null ||
+        string.Equals(parameter.Type, "duration", StringComparison.Ordinal) ||
+        (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) &&
+         ArgumentTokenCandidates.For(parameter.Type).Count > 0);
 
     /// <summary>
     /// 수치 칩의 조절창 (W68) — 슬라이더 선언이 있는 파라미터와 duration이 슬라이더로
@@ -641,8 +653,84 @@ internal sealed class StageSceneView : UserControl
                         format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
                         token: frames => $"{frames:0}fr"));
                 }
+                else if (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) &&
+                         ArgumentTokenCandidates.For(parameter.Type) is { Count: > 0 } candidates)
+                {
+                    // 프리셋 토큰 파라미터 (W68b — Depth·Place가 첫 고객): 후보 선택기.
+                    // 후보는 제안이지 제약이 아니다 — 후보 밖 값(뎁스의 연속 레벨 숫자 등)은
+                    // 선택 없음 + 현재 값 표시로 두고, 자유 입력은 기존 칩 텍스트 편집의 몫이다.
+                    host.Children.Add(BuildTokenSelector(
+                        context.PresentationNodeId,
+                        command.CommandId,
+                        parameter,
+                        written,
+                        candidates));
+                }
             }
         });
+    }
+
+    /// <summary>프리셋 토큰 한 줄 — 고르면 그 인자만 바뀐다(같은 커맨드 인자 수정 통로).</summary>
+    private Control BuildTokenSelector(
+        string presentationNodeId,
+        string commandId,
+        PresentationCommandParameter parameter,
+        string currentValue,
+        IReadOnlyList<string> candidates)
+    {
+        var combo = new ComboBox
+        {
+            ItemsSource = candidates,
+            SelectedIndex = candidates.ToList().FindIndex(candidate =>
+                string.Equals(candidate, currentValue, StringComparison.Ordinal)),
+            FontSize = 10,
+            MinWidth = 120,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        if (combo.SelectedIndex < 0 && currentValue.Length > 0)
+        {
+            combo.PlaceholderText = currentValue; // 후보 밖 값(연속 레벨 등) — 현재 값을 보인다.
+        }
+
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (_session is null || combo.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            string selected = candidates[combo.SelectedIndex];
+
+            if (string.Equals(selected, currentValue, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, "프리셋 선택", () =>
+            {
+                _session.Editor.SetPresentationCommandArgument(
+                    presentationNodeId, commandId, parameter.Name, selected);
+                ManipulationApplied?.Invoke();
+            });
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        var label = new TextBlock
+        {
+            Text = parameter.Name,
+            FontSize = 10,
+            Opacity = 0.7,
+            MinWidth = 74,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        Grid.SetColumn(label, 0);
+        Grid.SetColumn(combo, 1);
+        row.Children.Add(label);
+        row.Children.Add(combo);
+
+        return row;
     }
 
     /// <summary>

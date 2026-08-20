@@ -241,6 +241,35 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
+    public void 프리셋_커맨드도_편집_화면에서_수치_칩으로_선다() => HeadlessUi.Run(() =>
+    {
+        // W68b — Depth(size)·Place(place)는 값이 프리셋 토큰이라 선택기로 열린다.
+        // 후보 토큰이 선언된 타입이 판정의 전부다 — 커맨드별 코드가 없다.
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        MiniStagePreviewRequest request = BuildRequest(
+            Command("char_rig_depth.size", ("slot", "c1"), ("depth", "front")),
+            Command("char_rig_placement.place", ("slot", "c1"), ("focus", "bust"), ("screenPoint", "left")));
+        view.Render(request with { EditContext = new StageEditContext("np_test", "ln1") });
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Canvas canvas = CanvasOf(view);
+        var gearChips = canvas.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => text.Text is { } value && value.StartsWith('⚙'))
+            .Select(text => text.Text!)
+            .ToArray();
+
+        Assert.Contains(gearChips, text => text.Contains("size", StringComparison.Ordinal));
+        Assert.Contains(gearChips, text => text.Contains("place", StringComparison.Ordinal));
+
+        window.Close();
+    });
+
+    [Fact]
     public void 선언이_없는_커맨드는_표시_칩만_서고_궤적은_없다() => HeadlessUi.Run(() =>
     {
         // 커맨드가 이 라인에 있다는 사실은 숨기지 않되(표시 칩), 수치·궤적은
