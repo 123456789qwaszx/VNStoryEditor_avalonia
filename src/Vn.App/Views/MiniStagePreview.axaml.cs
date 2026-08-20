@@ -137,9 +137,11 @@ internal sealed record StageMotionCue(
 /// <summary>
 /// 프리뷰에 합쳐지는 커맨드 스트립의 칩 하나 (W66) — 이 라인의 커맨드가 프리뷰 화면
 /// 안에서 보인다. <see cref="Motion"/>이 있으면 이동 칩(⇢·궤적·슬라이더)이고,
-/// 없으면 커맨드가 있다는 사실만 알리는 표시 칩이다.
+/// 아니면서 슬라이더 선언 파라미터가 있으면 수치 칩(⚙, W68), 그 외엔 표시 칩이다.
+/// <see cref="Command"/>는 편집 대상 원본 — 칩 클릭이 이 커맨드의 인자를 만진다.
 /// </summary>
-internal sealed record StageCommandChip(string Text, StageMotionCue? Motion);
+internal sealed record StageCommandChip(
+    string Text, StageMotionCue? Motion, PresentationResultCommand Command);
 
 /// <summary>이 라인의 커맨드 전부를 프리뷰 칩으로 (W66). 오디오는 ♪ 칩이 따로 있어 뺀다.</summary>
 internal static class StageCommandChips
@@ -171,7 +173,8 @@ internal static class StageCommandChips
 
             chips.Add(new StageCommandChip(
                 CommandText.Format(definition, command.DefinitionId, command.Arguments),
-                motion));
+                motion,
+                command));
         }
 
         return chips.Count > 0 ? chips : null;

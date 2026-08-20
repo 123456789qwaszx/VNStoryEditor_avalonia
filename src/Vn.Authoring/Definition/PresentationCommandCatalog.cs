@@ -14,12 +14,16 @@ public sealed record PresentationCategoryDefinition(string Id, string DisplayNam
 /// 런타임 커맨드는 <c>&lt;&lt;place_br @2 bust -1&gt;&gt;</c>처럼 순서로 인자를 읽으므로
 /// 이름 없는 사전이 아니라 순서 있는 목록이어야 한다.
 /// </summary>
+/// <summary>숫자 파라미터의 슬라이더 범위 (W68). step이 0 이하인 선언은 버려진다.</summary>
+public sealed record PresentationParameterSlider(double Minimum, double Maximum, double Step);
+
 public sealed record PresentationCommandParameter(
     string Name,
     string Type,
     bool Required,
     string? Default,
-    string? Description);
+    string? Description,
+    PresentationParameterSlider? Slider = null);
 
 /// <summary>축 하나 — 어느 파라미터가 어느 축을 어떤 단위로 미는가.</summary>
 public sealed record PresentationMotionAxis(string ParameterName, string Axis, string Unit)
@@ -225,7 +229,10 @@ public sealed class PresentationCommandCatalog
                 parameter.Type,
                 parameter.Required,
                 parameter.Default,
-                parameter.Description))
+                parameter.Description,
+                parameter.Slider is { Step: > 0 } slider && slider.Max > slider.Min
+                    ? new PresentationParameterSlider(slider.Min, slider.Max, slider.Step)
+                    : null))
             .ToArray();
 
         return new PresentationCommandDefinition(

@@ -10,6 +10,7 @@ using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
+using Vn.Authoring.Results;
 
 namespace Vn.App.Views;
 
@@ -457,7 +458,7 @@ internal sealed class StageSceneView : UserControl
         {
             rows.Children.Add(chip.Motion is { } motion
                 ? BuildMotionChip(motion, em)
-                : BuildPlainCommandChip(chip.Text, em));
+                : BuildPlainCommandChip(chip, em));
         }
 
         if (_motionTransitions.Count > 0)
@@ -525,27 +526,123 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이동이 아닌 커맨드의 표시 칩 — 눌러도 조절창이 없다(수치 노출은 모션 선언이 있는
-    /// 커맨드부터 계통별로 연다). 커맨드가 이 라인에 있다는 사실은 화면에서 숨기지 않는다.
+    /// 이동이 아닌 커맨드의 칩 — 카탈로그에 슬라이더 선언 파라미터가 있으면 수치 칩(⚙,
+    /// W68: scale_by·shot_zoom부터)이고, 없으면 커맨드가 있다는 사실을 알리는 표시 칩이다.
+    /// 무엇이 만질 수 있는 수치인지는 코드가 아니라 선언이 정한다.
     /// </summary>
-    private Control BuildPlainCommandChip(string text, double em)
+    private Control BuildPlainCommandChip(StageCommandChip source, double em)
     {
+        PresentationCommandDefinition? definition = ManipulationCatalog.Find(source.Command.DefinitionId);
+        bool hasSliders = definition is not null &&
+            definition.Parameters.Any(parameter => parameter.Slider is not null);
+        // 편집 가능 표시는 요청의 EditContext가 정본이다 — 세션 유무는 클릭 시점의
+        // 가드(ShowParameterFlyout)가 본다. CanManipulate로 묶으면 화면 판정이 앱 상태에 결합된다.
+        bool editable = hasSliders && _request?.EditContext?.Editable == true;
+
         var chip = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(130, 30, 30, 40)),
+            Background = new SolidColorBrush(editable
+                ? Color.FromArgb(150, 25, 45, 60)
+                : Color.FromArgb(130, 30, 30, 40)),
             CornerRadius = new CornerRadius(em * 0.2),
             Padding = new Thickness(em * 0.35, em * 0.12),
             HorizontalAlignment = HorizontalAlignment.Left,
+            Cursor = editable ? new Cursor(StandardCursorType.Hand) : null,
             Child = new TextBlock
             {
-                Text = text,
+                Text = editable ? $"⚙ {source.Text}" : source.Text,
                 FontSize = em * 0.5,
-                Foreground = new SolidColorBrush(Color.FromArgb(200, 203, 213, 225))
+                Foreground = new SolidColorBrush(editable
+                    ? Color.FromArgb(235, 147, 197, 253)
+                    : Color.FromArgb(200, 203, 213, 225))
             }
         };
 
-        ToolTip.SetTip(chip, "이 라인의 연출입니다. 수치 조절은 이동 계통(⇢)부터 지원합니다.");
+        if (editable)
+        {
+            ToolTip.SetTip(chip, "눌러서 수치를 조절합니다.");
+            chip.PointerPressed += (_, args) =>
+            {
+                args.Handled = true;
+                ShowParameterFlyout(definition!, source.Command);
+            };
+        }
+        else
+        {
+            ToolTip.SetTip(chip, hasSliders
+                ? "읽기 전용 화면이라 조절할 수 없습니다."
+                : "이 라인의 연출입니다. 수치 조절은 슬라이더 선언이 있는 커맨드부터 지원합니다.");
+        }
+
         return chip;
+    }
+
+    /// <summary>
+    /// 수치 칩의 조절창 (W68) — 슬라이더 선언이 있는 파라미터와 duration이 슬라이더로
+    /// 선다. 이동 편집기와 같은 규칙: 끄는 동안은 라벨만, 손을 뗄 때 한 번 저장,
+    /// 확정 즉시 정지 프레임이 새 값으로 다시 접힌다.
+    /// </summary>
+    private void ShowParameterFlyout(
+        PresentationCommandDefinition definition, PresentationResultCommand command)
+    {
+        if (_session is null || _request?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        ShowManipulationFlyout((host, _) =>
+        {
+            host.MinWidth = 250;
+            host.Children.Add(new TextBlock
+            {
+                Text = $"{definition.DisplayName} (우클릭으로 닫기)",
+                FontSize = 10,
+                Opacity = 0.7,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
+            });
+
+            foreach (PresentationCommandParameter parameter in definition.Parameters)
+            {
+                string written = command.Arguments.TryGetValue(parameter.Name, out string? value)
+                    ? value
+                    : parameter.Default ?? string.Empty;
+
+                if (parameter.Slider is { } slider)
+                {
+                    double.TryParse(
+                        written, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double current);
+
+                    host.Children.Add(BuildMotionSlider(
+                        context.PresentationNodeId,
+                        command.CommandId,
+                        label: parameter.Name,
+                        argumentName: parameter.Name,
+                        value: current,
+                        minimum: slider.Minimum,
+                        maximum: slider.Maximum,
+                        tick: slider.Step,
+                        format: number => number.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+                        token: number => number.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)));
+                }
+                else if (string.Equals(parameter.Type, "duration", StringComparison.Ordinal) &&
+                         DurationToken.TryParseSeconds(written, out float seconds))
+                {
+                    host.Children.Add(BuildMotionSlider(
+                        context.PresentationNodeId,
+                        command.CommandId,
+                        label: "시간",
+                        argumentName: parameter.Name,
+                        value: seconds * DurationToken.FramesPerSecond,
+                        minimum: 0,
+                        maximum: 48,
+                        tick: 1,
+                        format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
+                        token: frames => $"{frames:0}fr"));
+                }
+            }
+        });
     }
 
     /// <summary>
@@ -1440,7 +1537,7 @@ internal sealed class StageSceneView : UserControl
                 maximum: 6,
                 tick: 0.25,
                 format: units => $"{(units >= 0 ? "+" : "")}{units:0.##}u",
-                suffix: "u"));
+                token: units => $"{(units >= 0 ? "+" : "")}{units:0.##}u"));
         }
 
         if (motion.DurationParameterName is { } durationParameter)
@@ -1455,7 +1552,7 @@ internal sealed class StageSceneView : UserControl
                 maximum: 48,
                 tick: 1,
                 format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
-                suffix: "fr"));
+                token: frames => $"{frames:0}fr"));
         }
 
         if (motion.EaseParameterName is { } easeParameter)
@@ -1886,7 +1983,7 @@ internal sealed class StageSceneView : UserControl
         double maximum,
         double tick,
         Func<double, string> format,
-        string suffix)
+        Func<double, string> token)
     {
         double snapped = Math.Clamp(Math.Round(value / tick) * tick, minimum, maximum);
 
@@ -1920,14 +2017,10 @@ internal sealed class StageSceneView : UserControl
                 return;
             }
 
-            string token = suffix == "fr"
-                ? $"{slider.Value:0}fr"
-                : $"{(slider.Value >= 0 ? "+" : "")}{slider.Value:0.##}u";
-
-            UiGuard.Run(_session, "이동 수치 조절", () =>
+            UiGuard.Run(_session, "수치 조절", () =>
             {
                 _session.Editor.SetPresentationCommandArgument(
-                    presentationNodeId, commandId, argumentName, token);
+                    presentationNodeId, commandId, argumentName, token(slider.Value));
                 ManipulationApplied?.Invoke();
             });
         }

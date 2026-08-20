@@ -316,4 +316,24 @@ public sealed class PresentationParameterSpec
 
     [JsonPropertyName("description")]
     public string? Description { get; init; }
+
+    /// <summary>
+    /// 숫자 파라미터의 슬라이더 선언 (W68) — 있으면 프리뷰 칩에서 이 값을 슬라이더로
+    /// 만질 수 있다. 범위·간격은 코드가 아니라 이 데이터가 정한다.
+    /// </summary>
+    [JsonPropertyName("slider")]
+    public PresentationSliderSpec? Slider { get; init; }
+}
+
+/// <summary>슬라이더 범위 선언 — min·max·step 전부 필수(반쪽 선언은 무시된다).</summary>
+public sealed class PresentationSliderSpec
+{
+    [JsonPropertyName("min")]
+    public double Min { get; init; }
+
+    [JsonPropertyName("max")]
+    public double Max { get; init; }
+
+    [JsonPropertyName("step")]
+    public double Step { get; init; }
 }

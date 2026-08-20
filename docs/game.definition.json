@@ -442,7 +442,9 @@
         {
           "name": "multiplier",
           "type": "float",
-          "required": true
+          "required": true,
+          "slider": { "min": 0.25, "max": 3.0, "step": 0.05 },
+          "description": "현재 배율에 곱해지는 상대 배율 (1 = 그대로)"
         },
         {
           "name": "duration",
@@ -450,7 +452,8 @@
           "required": false,
           "default": "0.4s"
         }
-      ]
+      ],
+      "notes": "W68 — multiplier가 프리뷰 칩에서 슬라이더로 열린다. 시간 재현(재생 중 크기 보간)은 아직 아니고, 확정 시 정지 프레임이 새 배율로 다시 접힌다."
     },
     {
       "id": "char_rig_staging.move_reset",
@@ -2225,7 +2228,9 @@
           "name": "zoom",
           "type": "float",
           "required": false,
-          "default": "1"
+          "default": "1",
+          "slider": { "min": -10, "max": 20, "step": 0.5 },
+          "description": "줌 1당 배율 +0.05 (규약 상수 ZoomToScaleFactor) — 10이면 1.5배, -10이면 0.5배"
         },
         {
           "name": "duration",
@@ -2233,7 +2238,8 @@
           "required": false,
           "default": "0.45s"
         }
-      ]
+      ],
+      "notes": "W68 — zoom이 프리뷰 칩에서 슬라이더로 열린다. 샷은 무대 전역 상태라 슬롯 대상이 없다."
     },
     {
       "id": "shot.shot_track",

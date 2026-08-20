@@ -121,6 +121,28 @@ public class PresentationCommandCatalogTests
     }
 
     [Fact]
+    public void 슬라이더_선언은_scale_by와_shot_zoom에_있고_없는_파라미터는_null이다()
+    {
+        PresentationCommandCatalog catalog = PresentationCommandCatalog.Default;
+
+        // W68 — 무엇이 슬라이더로 만질 수 있는 수치인지는 코드가 아니라 선언이 정한다.
+        PresentationParameterSlider multiplier =
+            catalog.Find("char_rig_staging.scale_by")!.FindParameter("multiplier")!.Slider!;
+        Assert.Equal(0.25, multiplier.Minimum);
+        Assert.Equal(3.0, multiplier.Maximum);
+        Assert.Equal(0.05, multiplier.Step);
+
+        PresentationParameterSlider zoom =
+            catalog.Find("shot.shot_zoom")!.FindParameter("zoom")!.Slider!;
+        Assert.Equal(-10, zoom.Minimum);
+        Assert.Equal(20, zoom.Maximum);
+
+        // 로더 무해성 — 선언 없는 파라미터는 예전과 완전히 같다.
+        Assert.Null(catalog.Find("char_rig_staging.scale_by")!.FindParameter("slot")!.Slider);
+        Assert.Null(catalog.Find("char_rig_staging.move_by")!.FindParameter("x")!.Slider);
+    }
+
+    [Fact]
     public void 범주별_드롭다운_후보는_범주_Id로_거른다()
     {
         PresentationCommandCatalog catalog = PresentationCommandCatalog.Default;

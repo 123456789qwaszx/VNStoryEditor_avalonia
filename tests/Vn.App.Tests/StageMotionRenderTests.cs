@@ -216,6 +216,31 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
+    public void 슬라이더_선언_커맨드는_편집_화면에서_수치_칩으로_선다() => HeadlessUi.Run(() =>
+    {
+        // W68 — scale_by는 모션 선언(궤적)은 없지만 multiplier 슬라이더 선언이 있다.
+        // 편집 가능한 화면에서는 ⚙ 수치 칩으로, 읽기 화면에서는 표시 칩으로 선다.
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        MiniStagePreviewRequest request = BuildRequest(Command(
+            "char_rig_staging.scale_by", ("slot", "c1"), ("multiplier", "1.2")));
+        view.Render(request with { EditContext = new StageEditContext("np_test", "ln1") });
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Canvas canvas = CanvasOf(view);
+
+        Assert.Contains(canvas.GetLogicalDescendants().OfType<TextBlock>(),
+            text => text.Text is { } value &&
+                value.StartsWith('⚙') && value.Contains("scale_by", StringComparison.Ordinal));
+
+        window.Close();
+    });
+
+    [Fact]
     public void 선언이_없는_커맨드는_표시_칩만_서고_궤적은_없다() => HeadlessUi.Run(() =>
     {
         // 커맨드가 이 라인에 있다는 사실은 숨기지 않되(표시 칩), 수치·궤적은
