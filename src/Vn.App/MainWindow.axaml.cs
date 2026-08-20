@@ -115,6 +115,11 @@ public partial class MainWindow : Window
                 PresentationEditor.SelectStageLineById(lineId);
             }
         };
+        // 선택 라인 작업대 (2026-08-20) — 우측 라인 카드에 있던 커맨드 편집 행들을
+        // 연출 편집기가 같은 빌더로 지어 프리뷰 탭에 공급한다. 대사 편집기 화면은
+        // 발행 결과 뷰라 작업대가 없다(잠금 화면 규칙 그대로).
+        StagePreview.LineDetailProvider = lineId =>
+            PresentationEditor.IsVisible ? PresentationEditor.BuildLineDetailContent(lineId) : null;
         StagePreview.NodeExitRequested = () =>
         {
             // 문서 끝 도달 (W39) — 활성 편집기가 실행 출구를 따라 다음 노드로 전환하면

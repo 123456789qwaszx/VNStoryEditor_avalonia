@@ -268,7 +268,12 @@ public partial class MiniStagePreview : UserControl
     internal event Action<string>? LineSelectRequested;
 
     private readonly PresentationScriptPanel _script = new();
-    private readonly LineDetailPanel _detail = new();
+
+    /// <summary>
+    /// 선택 라인의 커맨드 편집 작업대 공급자 (2026-08-20 소유자: "우측 연출 편집기를
+    /// 터미널 아래로") — 활성 편집기가 자기 행 빌더로 짓는다. MainWindow가 배선한다.
+    /// </summary>
+    internal Func<string?, Control?>? LineDetailProvider { get; set; }
 
     public MiniStagePreview()
     {
@@ -276,15 +281,9 @@ public partial class MiniStagePreview : UserControl
 
         SceneHost.Content = _scene;
         ScriptHost.Content = _script;
-        DetailHost.Content = _detail;
         _script.LineClicked += lineId => LineSelectRequested?.Invoke(lineId);
         _script.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
-        _script.CommandTextEdited += ApplyScriptTextEdit;
         _script.CommandMoveRequested += ApplyScriptCommandMove;
-        _detail.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
-        _detail.CommandTextEdited += ApplyScriptTextEdit;
-        _detail.CommandRemoveRequested += ApplyScriptCommandRemove;
-        _detail.CommandAddRequested += ApplyScriptCommandAdd;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
         // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
@@ -419,94 +418,6 @@ public partial class MiniStagePreview : UserControl
         });
     }
 
-    /// <summary>디테일 패널의 ✕ — 기존 삭제 통로 그대로.</summary>
-    private void ApplyScriptCommandRemove(PresentationResultCommand command)
-    {
-        if (_session is null || _current?.EditContext is not { Editable: true } context)
-        {
-            return;
-        }
-
-        UiGuard.Run(_session, "커맨드 삭제", () =>
-        {
-            _session.Editor.RemovePresentationCommand(context.PresentationNodeId, command.CommandId);
-            ManipulationApplied?.Invoke();
-        });
-    }
-
-    /// <summary>디테일 패널의 입력줄 — 텍스트 입력과 같은 파서 하나로 그 라인에 추가한다.</summary>
-    private void ApplyScriptCommandAdd(string lineId, string text)
-    {
-        if (_session is null || _current?.EditContext is not { Editable: true } context)
-        {
-            return;
-        }
-
-        UiGuard.Run(_session, "커맨드 추가", () =>
-        {
-            PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
-            CommandTextParseResult parsed = CommandText.Parse(text, catalog);
-
-            if (!parsed.Success)
-            {
-                _session.SetStatus($"커맨드 텍스트 오류 — {parsed.Error}");
-                return;
-            }
-
-            _session.Editor.AddPresentationCommand(
-                context.PresentationNodeId, lineId, parsed.Definition!.Id, parsed.Arguments!);
-            ManipulationApplied?.Invoke();
-        });
-    }
-
-    /// <summary>
-    /// 대본 패널의 인라인 편집 적용 (2026-08-20) — 파싱은 텍스트 입력과 같은
-    /// <see cref="CommandText.Parse"/> 하나다. 같은 커맨드의 인자 수정만 받는다:
-    /// 다른 커맨드로의 교체·이동은 아직 편집 통로가 없어 상태줄이 이유를 말한다
-    /// (조용한 무시 금지).
-    /// </summary>
-    private void ApplyScriptTextEdit(PresentationResultCommand command, string text)
-    {
-        if (_session is null || _current?.EditContext is not { Editable: true } context)
-        {
-            return;
-        }
-
-        UiGuard.Run(_session, "대본 텍스트 편집", () =>
-        {
-            PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
-            CommandTextParseResult parsed = CommandText.Parse(text, catalog);
-
-            if (!parsed.Success)
-            {
-                _session.SetStatus($"커맨드 텍스트 오류 — {parsed.Error}");
-                return;
-            }
-
-            if (!string.Equals(parsed.Definition!.Id, command.DefinitionId, StringComparison.Ordinal))
-            {
-                _session.SetStatus(
-                    "다른 커맨드로의 교체는 아직 여기서 안 됩니다 — 기존 커맨드 행에서 지우고 새로 추가하세요.");
-                return;
-            }
-
-            _session.Editor.UpdatePresentationCommandArguments(
-                context.PresentationNodeId, command.CommandId, parsed.Arguments!);
-
-            // 지운 인자(짧아진 텍스트)는 덮어쓰기로 안 사라진다 — 명시로 지운다.
-            foreach (string existing in command.Arguments.Keys.ToArray())
-            {
-                if (!parsed.Arguments!.ContainsKey(existing))
-                {
-                    _session.Editor.SetPresentationCommandArgument(
-                        context.PresentationNodeId, command.CommandId, existing, null);
-                }
-            }
-
-            ManipulationApplied?.Invoke();
-        });
-    }
-
     private void Render()
     {
         MiniStagePreviewRequest? request = _current;
@@ -518,9 +429,13 @@ public partial class MiniStagePreview : UserControl
 
         bool editable = request?.EditContext?.Editable == true;
         _script.Show(request?.ScriptRows, request?.SelectedLineId, editable);
-        _detail.Show(request?.ScriptRows, request?.SelectedLineId, editable);
         ScriptHost.IsVisible = _script.IsVisible;
-        DetailHost.IsVisible = _detail.IsVisible;
+
+        // 선택 라인 작업대 — 우측 편집기의 그 행들(체크·칩·▲▼·✕·갤러리)이 여기로 온다.
+        // 공급자가 같은 구성을 캐시하므로 칩 편집 중 재렌더에 팝업이 닫히지 않는다.
+        Control? detail = editable ? LineDetailProvider?.Invoke(request?.SelectedLineId) : null;
+        DetailHost.Content = detail;
+        DetailHost.IsVisible = detail is not null;
 
         if (request is null)
         {

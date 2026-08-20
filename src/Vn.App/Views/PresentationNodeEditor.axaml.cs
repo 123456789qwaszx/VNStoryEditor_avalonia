@@ -22,15 +22,12 @@ namespace Vn.App.Views;
 /// </summary>
 public partial class PresentationNodeEditor : UserControl
 {
-    private static readonly SolidColorBrush SelectedLineBrush = new(Color.FromArgb(160, 37, 99, 235));
-    private static readonly SolidColorBrush NormalLineBrush = new(Color.FromArgb(35, 128, 128, 128));
 
     private AuthoringSession? _session;
     private string? _nodeId;
     private bool _building;
     private AvailablePresentationCommands? _available;
     private string? _selectedLineId;
-    private readonly Dictionary<string, Border> _lineCards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, MiniStageState> _foldCache = new(StringComparer.Ordinal);
 
     /// <summary>MainWindow가 꽂아 주는 공유 하단 무대 프리뷰.</summary>
@@ -73,7 +70,6 @@ public partial class PresentationNodeEditor : UserControl
         if (_session is null || _session.Project.FindPresentation(_nodeId) is not { } presentation)
         {
             LineHost.Children.Clear();
-            _lineCards.Clear();
             StagePreview?.Show(null);
             return;
         }
@@ -84,7 +80,6 @@ public partial class PresentationNodeEditor : UserControl
         {
             NameBox.Text = presentation.Name;
             LineHost.Children.Clear();
-            _lineCards.Clear();
             _foldCache.Clear();
 
             BuildSourcePicker(presentation);
@@ -123,10 +118,8 @@ public partial class PresentationNodeEditor : UserControl
                     _selectedLineId = dialogue.Lines.FirstOrDefault()?.LineId;
                 }
 
-                foreach (DialogueResultLine line in dialogue.Lines)
-                {
-                    LineHost.Children.Add(BuildLineCard(presentation, line, catalog));
-                }
+                // 라인별 커맨드 편집은 2026-08-20에 무대 프리뷰 탭(터미널 아래 디테일)으로
+                // 갔다 — 여기는 노드 수준(입력·Setup·발행·고아)만 남는다.
             }
 
             IReadOnlyList<ResolvedPresentationBinding> orphaned = workspace.Orphans.ToArray();
@@ -432,13 +425,6 @@ public partial class PresentationNodeEditor : UserControl
 
         _selectedLineId = lineId;
 
-        foreach ((string cardLineId, Border card) in _lineCards)
-        {
-            card.BorderBrush = string.Equals(cardLineId, lineId, StringComparison.Ordinal)
-                ? SelectedLineBrush
-                : NormalLineBrush;
-        }
-
         RefreshStagePreview();
     }
 
@@ -636,56 +622,67 @@ public partial class PresentationNodeEditor : UserControl
         return button;
     }
 
-    private Control BuildLineCard(
-        PresentationNode presentation,
-        DialogueResultLine line,
-        PresentationCommandCatalog catalog)
+    // 라인 카드 상태 — 무대 프리뷰 탭의 디테일 작업대가 재요청할 때, 같은 라인·같은
+    // 커맨드 구성이면 행 컨트롤을 그대로 돌려준다. 재생성하면 칩 편집 중 팝업이 닫힌다
+    // (행 자신이 병기 텍스트·칩을 제자리 갱신하므로 유지가 정확하다).
+    private string? _detailLineId;
+    private string? _detailToken;
+    private Control? _detailControl;
+
+    /// <summary>
+    /// 선택 라인의 커맨드 편집 작업대 (2026-08-20 소유자: "우측 연출 편집기를 좌측
+    /// 터미널로 — 현재 선택한 Line만"). 우측 라인 카드에 있던 그 행들(활성 체크·칩·
+    /// ▲▼·✕·갤러리·직접 입력)을 <b>같은 빌더로</b> 하나의 라인에 대해서만 짓는다 —
+    /// 무대 프리뷰 탭이 터미널 아래에 이 컨트롤을 얹는다.
+    /// </summary>
+    internal Control? BuildLineDetailContent(string? lineId)
     {
-        var content = new StackPanel { Spacing = 6 };
-        content.Children.Add(new TextBlock
+        if (_session is null || lineId is null ||
+            _session.Project.FindPresentation(_nodeId) is not { } presentation)
         {
-            Text = $"{line.Index + 1}. {line.LineId}",
-            FontSize = 11,
-            Opacity = 0.6
-        });
-        content.Children.Add(new TextBlock
-        {
-            Text = string.IsNullOrWhiteSpace(line.CharacterName)
-                ? line.Text
-                : $"{line.CharacterName}: {line.Text}",
-            TextWrapping = TextWrapping.Wrap,
-            FontWeight = FontWeight.SemiBold
-        });
-
-        PresentationLineBinding? binding = presentation.FindBinding(line.LineId);
-
-        foreach (PresentationCommandInstance command in binding?.Commands ?? Enumerable.Empty<PresentationCommandInstance>())
-        {
-            content.Children.Add(BuildCommandRow(presentation, line.LineId, command, catalog));
+            _detailControl = null;
+            return null;
         }
 
-        content.Children.Add(BuildAddRow(presentation, line.LineId, catalog));
+        PresentationLineBinding? binding = presentation.FindBinding(lineId);
+        string token = string.Join(
+            "|", (binding?.Commands ?? Enumerable.Empty<PresentationCommandInstance>())
+                .Select(command => command.Id));
 
-        var card = new Border
+        if (_detailControl is not null &&
+            string.Equals(_detailLineId, lineId, StringComparison.Ordinal) &&
+            string.Equals(_detailToken, token, StringComparison.Ordinal))
         {
-            Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(7),
-            BorderBrush = string.Equals(line.LineId, _selectedLineId, StringComparison.Ordinal)
-                ? SelectedLineBrush
-                : NormalLineBrush,
-            BorderThickness = new Thickness(1),
-            Child = content
-        };
+            return _detailControl;
+        }
 
-        // 카드 어디를 만져도(내부 콤보 포함) 그 라인이 무대 프리뷰의 기준이 된다.
-        card.AddHandler(
-            PointerPressedEvent,
-            (_, _) => SelectStageLine(line.LineId),
-            RoutingStrategies.Bubble,
-            handledEventsToo: true);
-        _lineCards[line.LineId] = card;
+        PresentationCommandCatalog catalog = AvailablePresentationCommandResolver.Resolve(
+            _session.Project, presentation.Id, _session.Definition).Catalog;
 
-        return card;
+        bool wasBuilding = _building;
+        _building = true;
+
+        try
+        {
+            var content = new StackPanel { Spacing = 6 };
+
+            foreach (PresentationCommandInstance command in
+                     binding?.Commands ?? Enumerable.Empty<PresentationCommandInstance>())
+            {
+                content.Children.Add(BuildCommandRow(presentation, lineId, command, catalog));
+            }
+
+            content.Children.Add(BuildAddRow(presentation, lineId, catalog));
+
+            _detailLineId = lineId;
+            _detailToken = token;
+            _detailControl = content;
+            return content;
+        }
+        finally
+        {
+            _building = wasBuilding;
+        }
     }
 
     // ── 커맨드 행 — 갤러리·칩·텍스트 입력 (W19) ───────────────────────────

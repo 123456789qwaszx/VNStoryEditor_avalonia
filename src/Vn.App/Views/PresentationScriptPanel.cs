@@ -15,7 +15,7 @@ namespace Vn.App.Views;
 /// - <b>Setup 구획과 라인 구획이 분리</b>돼 있다(다른 바탕 + 구분선)
 /// - <b>좌클릭 한 번</b>이 커맨드 행 선택이다(그 라인도 함께 선택된다)
 /// - 커맨드 행을 <b>드래그</b>하면 자리를 옮긴다 — 같은 라인 안·라인 사이·Setup까지 자유
-/// - 왼쪽 <b>동그란 점</b>(Rider 브레이크포인트 감각)은 상세조절, <b>더블클릭</b>은 인라인 텍스트 편집
+/// - 왼쪽 <b>동그란 점</b>(Rider 브레이크포인트 감각)은 상세조절 — 텍스트·인자 편집은 아래 작업대의 몫이다
 /// - 대사 행 클릭 = 그 라인 선택
 ///
 /// 이 패널은 그리기와 신호뿐이다 — 편집의 실행(파싱·적용·이동·선택)은 호스트가 진다.
@@ -44,9 +44,6 @@ internal sealed class PresentationScriptPanel : UserControl
 
     /// <summary>커맨드 점 클릭 — 이 커맨드의 상세조절을 열어 달라.</summary>
     public event Action<PresentationResultCommand>? CommandDotClicked;
-
-    /// <summary>커맨드 인라인 편집 확정 — 이 커맨드를 이 텍스트로 고쳐 달라.</summary>
-    public event Action<PresentationResultCommand, string>? CommandTextEdited;
 
     /// <summary>드래그 이동 확정 — targetLineId(null=Setup)의 insertIndex 자리로 옮겨 달라.</summary>
     public event Action<PresentationResultCommand, string?, int>? CommandMoveRequested;
@@ -252,18 +249,11 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         dot.Cursor = new Cursor(StandardCursorType.Hand);
-        ToolTip.SetTip(host, "클릭 = 선택 · 드래그 = 자리 이동 · 점 = 상세조절 · 더블클릭 = 텍스트 편집");
+        ToolTip.SetTip(host, "클릭 = 선택 · 드래그 = 자리 이동 · 점 = 상세조절 — 텍스트 편집은 아래 작업대에서");
 
         host.PointerPressed += (_, args) =>
         {
             Point position = args.GetPosition(host);
-
-            if (args.ClickCount >= 2)
-            {
-                BeginInlineEdit(layout, text, command);
-                args.Handled = true;
-                return;
-            }
 
             if (position.X <= 14)
             {
@@ -403,54 +393,4 @@ internal sealed class PresentationScriptPanel : UserControl
         }
     }
 
-    /// <summary>텍스트 자리 편집 — Enter 적용, Esc/포커스 이탈 취소. 적용의 성패는 호스트가 알린다.</summary>
-    private void BeginInlineEdit(DockPanel layout, TextBlock text, PresentationResultCommand command)
-    {
-        var input = new TextBox
-        {
-            Text = text.Text,
-            FontSize = 11,
-            FontFamily = text.FontFamily,
-            MinWidth = 220,
-            Padding = new Thickness(2),
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-        };
-
-        void EndEdit(bool apply)
-        {
-            if (!layout.Children.Contains(input))
-            {
-                return;
-            }
-
-            layout.Children.Remove(input);
-            layout.Children.Add(text);
-
-            if (apply && input.Text is { } edited &&
-                !string.Equals(edited, text.Text, StringComparison.Ordinal))
-            {
-                CommandTextEdited?.Invoke(command, edited);
-            }
-        }
-
-        input.KeyDown += (_, args) =>
-        {
-            if (args.Key == Key.Enter)
-            {
-                EndEdit(apply: true);
-                args.Handled = true;
-            }
-            else if (args.Key == Key.Escape)
-            {
-                EndEdit(apply: false);
-                args.Handled = true;
-            }
-        };
-        input.LostFocus += (_, _) => EndEdit(apply: false);
-
-        layout.Children.Remove(text);
-        layout.Children.Add(input);
-        input.Focus();
-        input.SelectAll();
-    }
 }
