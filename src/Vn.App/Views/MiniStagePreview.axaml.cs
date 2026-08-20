@@ -234,7 +234,8 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<string>? AutoBranchBlocks = null,
     IReadOnlyList<PresentationResultCommand>? AudioCommands = null,
     IReadOnlyList<StageMotionCue>? MotionCues = null,
-    IReadOnlyList<PresentationScriptRow>? ScriptRows = null);
+    IReadOnlyList<PresentationScriptRow>? ScriptRows = null,
+    StageMotionPlan? MotionPlan = null);
 
 /// <summary>
 /// 무대 프리뷰 판 (2026-08-20 중앙 탭 승격) — 좌측 대본 터미널 + 우측 무대.

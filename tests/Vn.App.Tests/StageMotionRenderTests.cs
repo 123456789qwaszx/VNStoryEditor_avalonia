@@ -54,6 +54,7 @@ public sealed class StageMotionRenderTests
         CoreStageFoldResult fold = CoreStageFold.Fold(Catalog, setup, lines, Tuning);
         IReadOnlyList<StageMotionCue>? cues =
             StageMotionCues.Of(Catalog, setup, lines, lineCommands, Tuning);
+        StageMotionPlan? plan = StageMotionPlan.Build(Catalog, setup, lines, lineCommands, Tuning);
 
         return new MiniStagePreviewRequest(
             "테스트",
@@ -65,7 +66,8 @@ public sealed class StageMotionRenderTests
             CoreState: fold.CoreState,
             // 재생 보간 검증용 — 실제 편집기와 같은 계산(라인 커맨드 duration 최대).
             TransitionSeconds: StageTransitions.SecondsFor(Catalog, lineCommands),
-            MotionCues: cues);
+            MotionCues: cues,
+            MotionPlan: plan);
     }
 
     private static Canvas CanvasOf(StageSceneView view) =>
@@ -206,21 +208,78 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
-    public void 모션_선언이_없는_커맨드는_궤적이_없다() => HeadlessUi.Run(() =>
+    public void 시간이_없는_커맨드는_궤적도_보간도_없다() => HeadlessUi.Run(() =>
     {
-        // 추측으로 축을 그리지 않는다 — 궤적은 모션 선언이 있는 커맨드만의 것이다.
-        // (커맨드 목록 자체는 이제 무대가 아니라 왼쪽 대본 패널의 일이다 — 2026-08-20 정리)
+        // 0fr = 런타임도 즉시 스냅이다. 태울 구간이 없으니 궤적도 없다
+        // (place의 duration 기본값이 0fr이라 그냥 쓰면 지금도 스냅이다).
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
 
         view.Render(BuildRequest(Command(
-            "char_rig_staging.scale_by", ("slot", "c1"), ("multiplier", "1.2"))));
+            "char_rig_placement.place", ("slot", "c1"), ("screenPoint", "left"), ("duration", "0fr"))));
         window.Measure(new Avalonia.Size(800, 600));
         window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Empty(Trails(CanvasOf(view)));
+
+        window.Close();
+    });
+
+    [Fact]
+    public void place와_depth도_duration만큼_시간에_따라_움직인다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "place랑 depth의 경우에도 move랑 마찬가지로 … snap 되는게
+        // 아니라 실제 코어쪽과 동일하게 시간에 따라서 움직이도록". 배치는 자리를,
+        // 뎁스는 크기를 바꾸므로 둘 다 정지(라인 시작)와 도착이 달라야 한다.
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        view.Render(BuildRequest(
+            Command("char_rig_placement.place",
+                ("slot", "c1"), ("focus", "bust"), ("screenPoint", "left"), ("duration", "12fr")),
+            Command("char_rig_depth.size",
+                ("slot", "c1"), ("depth", "close"), ("duration", "10fr"))));
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Canvas canvas = CanvasOf(view);
+
+        // 렌더 직후 = 라인이 시작되는 순간. 초상은 아직 옛 자리·옛 크기다.
+        (Control Control, double Left, double Width)[] rests = canvas.Children
+            .Select(control => (Control: control, Left: Canvas.GetLeft(control), control.Width))
+            .Where(entry => !double.IsNaN(entry.Left) && !double.IsNaN(entry.Width))
+            .ToArray();
+
+        // 궤적이 섰다 — 배치·뎁스도 "어디로 얼마나"를 화면이 말한다.
+        Assert.NotEmpty(Trails(canvas));
+
+        view.SetTransitionProgress(1);
+
+        // 자리가 옮겨졌고(place) 크기가 자랐다(depth) — 한 컨트롤에서 둘 다.
+        (Control moved, double restLeft, double restWidth) = Assert.Single(
+            rests,
+            entry => Math.Abs(Canvas.GetLeft(entry.Control) - entry.Left) > 1 &&
+                     Math.Abs(entry.Control.Width - entry.Width) > 1);
+
+        double finalLeft = Canvas.GetLeft(moved);
+        double finalWidth = moved.Width;
+
+        // 중간 프레임은 출발도 도착도 아니다 — 시간에 따라 흐른다.
+        view.SetTransitionProgress(0.5);
+        double midLeft = Canvas.GetLeft(moved);
+        double midWidth = moved.Width;
+
+        Assert.InRange(midLeft, Math.Min(restLeft, finalLeft) + 0.5, Math.Max(restLeft, finalLeft) - 0.5);
+        Assert.InRange(midWidth, Math.Min(restWidth, finalWidth) + 0.5, Math.Max(restWidth, finalWidth) - 0.5);
+
+        // 정지로 돌아오면 다시 라인 시작이다.
+        view.SetTransitionProgress(null);
+        Assert.Equal(restLeft, Canvas.GetLeft(moved), 1);
+        Assert.Equal(restWidth, moved.Width, 1);
 
         window.Close();
     });

@@ -241,6 +241,16 @@ public partial class PresentationNodeEditor : UserControl
             _session.TuningLibrary.Tuning,
             _session.Project.EaseCurves);
 
+        // 이 라인의 시간 흐름 (2026-08-21) — 시간을 가진 커맨드가 저마다 바꾼 노드를
+        // 자기 duration·이징으로 끈다. 이동·배치·뎁스가 같은 규칙 하나를 지난다.
+        StageMotionPlan? motionPlan = StageMotionPlan.Build(
+            catalog,
+            draft.SetupCommands,
+            branch.FoldLines,
+            lineBinding?.Commands,
+            _session.TuningLibrary.Tuning,
+            _session.Project.EaseCurves);
+
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다 —
         // 작업 대본 쪽 프리뷰와 같은 판정 하나(ChoiceOptionBundle)를 지난다.
         IReadOnlyList<StageChoiceOption>? choices = StageChoiceOptions.Build(
@@ -276,6 +286,8 @@ public partial class PresentationNodeEditor : UserControl
             AudioCommands: StageAudioCues.AudioOf(catalog, lineBinding?.Commands),
             // 이동 편집(W66): 모션 선언이 있는 커맨드만 무대에서 수치를 만질 수 있다.
             MotionCues: motionCues,
+            // 시간 흐름(2026-08-21): 정지·스크럽·재생이 이 계획 하나를 본다.
+            MotionPlan: motionPlan,
             // 대본 패널(2026-08-20): 시나리오 전체 텍스트 — 커맨드 목록·편집 입구가 이쪽이다.
             // 발행 초안이 아니라 작업 중 커맨드로 짓는다 (2026-08-21): 꺼진 커맨드도
             // 행으로 남아야 점(켜고 끄기)으로 다시 켤 수 있다 — 초안은 꺼진 것을 걸러낸다.

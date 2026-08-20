@@ -93,29 +93,20 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     internal void SetTransitionProgress(double? progress)
     {
+        double lineSeconds = _request?.TransitionSeconds ?? 0;
+
         if (progress is not { } t || t >= 1)
         {
-            // null = 정지 화면 (W66 소유자 결정): 이동 슬롯은 이 라인이 시작되는 순간의
-            // 자리 — 곧 출발 자리에 선다. 궤적·고스트가 어디로 갈지를 말하고, ▶가 태운다.
-            // 1 = 재생이 이동을 끝까지 태웠다 — 도착 자리에 남는다.
-            bool restAtStart = progress is null;
+            // null = 정지 화면 (W66 소유자 결정): 시간을 가진 커맨드의 슬롯은 이 라인이
+            // 시작되는 순간의 자리·크기 — 곧 출발이다. 궤적·고스트가 어디로 갈지를
+            // 말하고, ▶가 태운다. 1 = 재생이 끝까지 태웠다 — 도착에 남는다.
+            IReadOnlyDictionary<string, StageRect>? rest = progress is null ? _motionStartRects : null;
 
             foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
             {
-                if (restAtStart &&
-                    _motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) rest))
-                {
-                    Canvas.SetLeft(control, rest.From.X);
-                    Canvas.SetTop(control, rest.From.Y);
-                }
-                else
-                {
-                    Canvas.SetLeft(control, to.X);
-                    Canvas.SetTop(control, to.Y);
-                }
-
-                control.Width = to.Width;
-                control.Height = to.Height;
+                ApplyRect(
+                    control,
+                    rest is not null && rest.TryGetValue(slotKey, out StageRect? start) ? start : to);
                 control.Opacity = 1;
             }
 
@@ -133,27 +124,20 @@ internal sealed class StageSceneView : UserControl
             return;
         }
 
+        // 시간을 가진 커맨드가 있는 라인은 그 시각의 무대를 다시 합성한다 (2026-08-21) —
+        // 커맨드마다 제 duration·이징으로 흐르고(라인 최대가 아니다), 자리도 크기도
+        // 코어가 낸 상태에서 나온다. 모양은 코어 EaseFunctions/CurveFunctions —
+        // 런타임과 등가 고정된 그 곡선이다(W66b).
+        IReadOnlyDictionary<string, StageRect>? frame = ComposeMotionRects(t * lineSeconds);
+
         foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
         {
-            if (_motionTransitions.TryGetValue(
-                    slotKey,
-                    out (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) motion))
+            if (frame is not null &&
+                _motionPlan?.AnimatedSlots.Contains(slotKey) == true &&
+                frame.TryGetValue(slotKey, out StageRect? now))
             {
-                // 이동 커맨드가 있는 슬롯은 궤적을 탄다 (W66) — 출발은 직전 렌더가 아니라
-                // 이동의 진짜 출발이고, 시간은 그 커맨드의 duration이다(라인 최대 아님).
-                // 모양은 코어 EaseFunctions/CurveFunctions — 런타임과 등가 고정된 그
-                // 곡선이다(W66b). Back·Elastic·커스텀은 1을 넘나들 수 있고 Lerp가 그대로 태운다.
-                double lineSeconds = _request?.TransitionSeconds ?? 0;
-                double motionProgress = motion.Seconds <= 0
-                    ? 1
-                    : Math.Clamp(t * lineSeconds / motion.Seconds, 0, 1);
-                double eased = EvaluateMotionShape(motion, motionProgress);
-
                 control.Opacity = 1;
-                Canvas.SetLeft(control, Lerp(motion.From.X, to.X, eased));
-                Canvas.SetTop(control, Lerp(motion.From.Y, to.Y, eased));
-                control.Width = to.Width;
-                control.Height = to.Height;
+                ApplyRect(control, now);
             }
             else if (_previousPortraitRects.TryGetValue(slotKey, out StageRect? from) && from is not null)
             {
@@ -205,6 +189,15 @@ internal sealed class StageSceneView : UserControl
     }
 
     private static double Lerp(double from, double to, double t) => from + (to - from) * t;
+
+    /// <summary>자리와 크기를 한 번에 — 뎁스처럼 둘이 함께 걸린 커맨드가 있어 나눌 수 없다.</summary>
+    private static void ApplyRect(Control control, StageRect rect)
+    {
+        Canvas.SetLeft(control, rect.X);
+        Canvas.SetTop(control, rect.Y);
+        control.Width = rect.Width;
+        control.Height = rect.Height;
+    }
 
     /// <summary>
     /// 대사창에 보일 글자 수 (W32). null = 전문. 재생 타이머가 라인 전체를 다시 그리지 않고
@@ -311,7 +304,8 @@ internal sealed class StageSceneView : UserControl
         _backgroundImage = null;
         _backgroundOverlay = null;
         _transitionEntries.Clear();
-        _motionTransitions.Clear();
+        _motionPlan = null;
+        _motionStartRects = null;
 
         (double width, double height) = _session?.Definition.PreviewResolution ?? (1920, 1080);
         _canvas.Width = width;
@@ -328,6 +322,12 @@ internal sealed class StageSceneView : UserControl
         string? speakerCharacterId = _session?.Definition.FindSpeakerCharacterId(request.SpeakerName);
 
         RenderBackground(library, request.State, width, height, em);
+
+        // 시간 흐름 (2026-08-21) — 라인 시작 자리를 <b>같은 컴포저</b>로 짓는다.
+        // 이동·배치·뎁스가 저마다 다른 노드를 만져도 여기 한 번의 합성으로 합쳐진다.
+        _composeContext = (request.State, request.SpeakerName, speakerCharacterId, width, height);
+        _motionPlan = request.MotionPlan;
+        _motionStartRects = ComposeMotionRects(0);
 
         StageSceneLayout layout = StageSceneComposer.Compose(
             request.State,
@@ -405,45 +405,37 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이 라인의 커맨드 스트립 (W66) — 라인에 붙은 연출이 프리뷰 화면 안에서 보인다
-    /// (소유자 그림: "프리뷰에 커맨드 목록이 합쳐진다"). 이동 커맨드(모션 선언 있음)는
-    /// ⇢ 칩 + 궤적 + 슬라이더이고, 나머지는 커맨드가 있다는 사실을 알리는 표시 칩이다.
+    /// 이 라인에서 시간에 따라 흐르는 것들을 무대에 그린다 (W66 → 2026-08-21 일반화).
     ///
-    /// <b>정지 화면 = 이 라인이 시작되는 순간이다</b> (소유자 결정): 이동 슬롯은 출발
-    /// 자리에 서고, 도착 자리에 고스트 윤곽, 둘 사이에 점선 궤적 — ▶가 그 길을 태운다.
-    /// 값은 전부 <see cref="StageMotionCue"/>가 들고 오고 여기서 다시 계산하지 않는다(사본 금지).
+    /// <b>정지 화면 = 이 라인이 시작되는 순간이다</b> (소유자 결정): 시간을 가진 커맨드의
+    /// 슬롯은 출발 자리에 서고, 도착 자리에 고스트 윤곽, 둘 사이에 점선 궤적 — ▶가 그 길을
+    /// 태운다. 출발과 도착 <b>둘 다 코어가 접은 상태를 컴포저에 통과시킨 결과</b>다:
+    /// 이동뿐 아니라 배치(place)·뎁스(size)도 같은 규칙으로 궤적을 얻는다 (2026-08-21).
     /// </summary>
     private void RenderMotionCues(
         MiniStagePreviewRequest request, StageSceneLayout layout, double height, double em)
     {
-        // 샷 배율은 코어 규약 그대로 — 컴포저가 초상을 놓을 때 쓴 그 함수다.
-        double cameraScale = request.CoreState is { } core
-            ? ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom)
-            : 1;
-
-        if (request.MotionCues is { Count: > 0 } cues)
+        if (_motionStartRects is { } startRects)
         {
-            foreach (StageMotionCue cue in cues)
+            foreach (StagePortraitPlacement portrait in layout.Portraits)
             {
-                StagePortraitPlacement? portrait = layout.Portraits.FirstOrDefault(item =>
-                    string.Equals(item.SlotKey, cue.SlotKey, StringComparison.Ordinal));
-
-                if (portrait is not null)
+                if (startRects.TryGetValue(portrait.SlotKey, out StageRect? start) &&
+                    _motionPlan?.AnimatedSlots.Contains(portrait.SlotKey) == true)
                 {
-                    RenderMotionTrail(portrait.Rect, cue, cameraScale, em);
+                    RenderMotionTrail(start, portrait.Rect, em);
                 }
             }
         }
 
         // 휴지 배치 (W66 소유자 결정) — 렌더 직후의 기본 화면은 "이 라인이 시작되는 순간"
-        // 이다: 이동 슬롯은 출발 자리에 선다. 재생이 돌고 있으면 곧이어 오는 전이 동기화가
-        // 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
+        // 이다: 흐르는 슬롯은 출발 자리·크기에 선다. 재생이 돌고 있으면 곧이어 오는 전이
+        // 동기화가 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
         foreach ((string slotKey, Control control, _) in _transitionEntries)
         {
-            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) rest))
+            if (_motionPlan?.AnimatedSlots.Contains(slotKey) == true &&
+                _motionStartRects is { } rects && rects.TryGetValue(slotKey, out StageRect? rest))
             {
-                Canvas.SetLeft(control, rest.From.X);
-                Canvas.SetTop(control, rest.From.Y);
+                ApplyRect(control, rest);
             }
         }
 
@@ -492,7 +484,7 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     internal Control? BuildTimelineScrubber()
     {
-        if (_motionTransitions.Count == 0)
+        if (_motionPlan is null)
         {
             return null;
         }
@@ -688,49 +680,71 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이 라인에서 이동하는 슬롯의 출발 자리·구간 시간·곡선 모양 (W66) — 재생 보간이
-    /// "직전 렌더"가 아니라 <b>이동의 진짜 출발</b>에서 궤적을 타게 한다.
-    /// 같은 슬롯에 이동이 여럿이면 마지막 것이 이긴다(런타임의 DOKill 의미론 —
-    /// 앞의 것은 즉시 완주되므로 출발 자리에 이미 반영돼 있다).
+    /// 이 라인의 시간 흐름 (2026-08-21) — 커맨드마다 자기 duration·이징으로 자기가 바꾼
+    /// 노드를 끈다. 이동·배치·뎁스가 한 라인에 같이 있어도 각자 흐른 뒤 컴포저가 합친다.
     /// </summary>
-    private readonly Dictionary<string, (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve)> _motionTransitions =
-        new(StringComparer.Ordinal);
+    private StageMotionPlan? _motionPlan;
 
-    /// <summary>진행도 → 곡선 값. 커스텀 곡선이 있으면 그것, 없으면 이징 — 재생·스크럽·정지 전부 이 하나다.</summary>
-    private static double EvaluateMotionShape(
-        (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) motion, double progress) =>
-        motion.Curve is { Count: >= 2 } keys
-            ? CurveFunctions.Evaluate(keys as CurveKey[] ?? keys.ToArray(), (float)progress)
-            : EaseFunctions.Evaluate(motion.Ease, (float)progress);
+    /// <summary>라인이 시작되는 순간의 자리들(진행 0) — 정지 화면·궤적의 출발이다.</summary>
+    private IReadOnlyDictionary<string, StageRect>? _motionStartRects;
+
+    /// <summary>합성에 필요한 재료 — 진행도마다 같은 컴포저를 다시 부르기 위해 렌더가 남긴다.</summary>
+    private (MiniStageState State, string? SpeakerName, string? SpeakerCharacterId, double Width, double Height)?
+        _composeContext;
+
+    /// <summary>
+    /// 라인 시작 후 <paramref name="elapsedSeconds"/> 시점의 자리들. 계획이 없으면 null —
+    /// 그때는 라인 사이 전이(직전 렌더 → 이번 렌더)가 화면을 맡는다.
+    ///
+    /// 좌표를 여기서 손으로 더하지 않는다: <b>보간한 무대 상태를 컴포저에 그대로 넘긴다.</b>
+    /// 그래서 배율·포커스 보정처럼 자리와 크기가 함께 걸린 커맨드도 저절로 맞는다.
+    /// </summary>
+    private IReadOnlyDictionary<string, StageRect>? ComposeMotionRects(double elapsedSeconds)
+    {
+        if (_motionPlan is not { } plan || _composeContext is not { } context)
+        {
+            return null;
+        }
+
+        StageSceneLayout layout = StageSceneComposer.Compose(
+            context.State,
+            context.SpeakerName,
+            context.SpeakerCharacterId,
+            context.Width,
+            context.Height,
+            plan.Evaluate(elapsedSeconds),
+            _session?.TuningLibrary.SurfaceLayouts);
+
+        var rects = new Dictionary<string, StageRect>(StringComparer.Ordinal);
+
+        foreach (StagePortraitPlacement portrait in layout.Portraits)
+        {
+            rects[portrait.SlotKey] = portrait.Rect;
+        }
+
+        return rects;
+    }
 
     /// <summary>
     /// 칩의 이징 이름 → 코어 어휘. 모르는 이름은 런타임 스펙 기본값(OutCubic)으로 —
     /// 브리지의 파싱 실패 처리와 같은 방향이다(로그 대신 카탈로그가 후보를 제한한다).
     /// </summary>
-    private static EaseKind EaseKindOf(string? name) =>
-        Enum.TryParse(name, ignoreCase: true, out EaseKind kind) ? kind : EaseKind.OutCubic;
+    private static EaseKind EaseKindOf(string? name) => StageMotionPlan.EaseKindOf(name);
 
     /// <summary>
-    /// 도착 자리의 윤곽 + 출발에서 도착으로 잇는 선. 무대 좌표 변환은 컴포저의 규약
-    /// 하나를 따른다 — 루트 공간에서 x는 같은 방향, y는 캔버스가 뒤집혀 있다.
+    /// 도착 자리의 윤곽 + 출발에서 도착으로 잇는 선. 두 자리 모두 컴포저가 낸 것이라
+    /// 좌표 변환을 여기서 다시 하지 않는다(사본 금지).
     /// </summary>
-    private void RenderMotionTrail(StageRect current, StageMotionCue cue, double cameraScale, double em)
+    private void RenderMotionTrail(StageRect start, StageRect current, double em)
     {
-        double startX = current.X - cue.DeltaX * cameraScale;
-        double startY = current.Y + cue.DeltaY * cameraScale;
+        double startX = start.X;
+        double startY = start.Y;
 
-        if (Math.Abs(startX - current.X) < 0.5 && Math.Abs(startY - current.Y) < 0.5)
+        if (Math.Abs(startX - current.X) < 0.5 && Math.Abs(startY - current.Y) < 0.5 &&
+            Math.Abs(start.Width - current.Width) < 0.5)
         {
-            return; // 움직이지 않는 이동 — 그릴 궤적도, 태울 재생도 없다.
+            return; // 자리도 크기도 그대로 — 그릴 궤적이 없다(제자리 뎁스·0u 이동).
         }
-
-        // 재생 보간용 출발 등록 — 시간은 이 커맨드의 duration이고(라인 최대와 다를 수
-        // 있다), 모양은 커맨드의 이징 또는 커스텀 곡선이다.
-        _motionTransitions[cue.SlotKey] = (
-            new StageRect(startX, startY, current.Width, current.Height),
-            DurationToken.FramesToSeconds((float)cue.DurationFrames),
-            EaseKindOf(cue.Ease),
-            cue.CurveKeys);
 
         // 고스트는 도착 자리다 — 정지 화면의 초상이 출발 자리에 서므로(아래 휴지 배치),
         // 윤곽은 "어디로 가는가"를 말해야 짝이 맞는다.
