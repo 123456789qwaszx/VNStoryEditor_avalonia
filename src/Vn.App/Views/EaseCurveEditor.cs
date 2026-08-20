@@ -46,8 +46,12 @@ internal sealed class EaseCurveEditor : Control
 
     public EaseCurveEditor()
     {
-        Width = 300;
-        Height = 190;
+        // 크기는 호스트가 정한다 — 별도 창에서는 창을 따라 늘어난다(좌표 계산이 전부
+        // Bounds 기반이라 그대로 통한다).
+        MinWidth = 300;
+        MinHeight = 190;
+        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
+        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
         ClipToBounds = true;
         Cursor = new Cursor(StandardCursorType.Cross);
     }
