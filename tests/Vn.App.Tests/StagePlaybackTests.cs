@@ -25,6 +25,54 @@ public class StagePlaybackTests
         StagePlayback playback, int lineIndex, int lineCount, string? text = "대사", bool isChoice = false)
         => playback.OnRequest(lineIndex, lineCount, text, isChoice);
 
+    // ── 라인만 재생 (2026-08-21 소유자: "현재 라인만 재생기능") ──────────
+
+    [Fact]
+    public void 라인만_재생은_이_라인을_끝까지_돌고_다음으로_넘어가지_않는다()
+    {
+        string text = new('가', 30);
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text);
+
+        playback.PlayCurrentLine();
+        Assert.True(playback.IsPlaying);
+        Assert.Equal(0, playback.VisibleCharacters); // 전체 재생과 같은 경로 — 타자 처음부터
+
+        playback.Tick(1.1); // 타자 완료
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds + 0.01); // 여운 끝 = 넘어갈 문턱
+
+        Assert.False(playback.IsPlaying); // 멈춘다 — 이동 요청 없음
+        Assert.Empty(moves);
+    }
+
+    [Fact]
+    public void 라인만_재생_중_전문_클릭_뒤_클릭도_넘어가지_않고_멈춘다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: new string('가', 100));
+
+        playback.PlayCurrentLine();
+        Assert.True(playback.TryAdvanceByInput()); // 1차 = 전문 완성
+        Assert.True(playback.TryAdvanceByInput()); // 2차 = 다음 대신 정지
+
+        Assert.False(playback.IsPlaying);
+        Assert.Empty(moves);
+    }
+
+    [Fact]
+    public void 라인만_재생_뒤_보통_재생은_다시_전체_진행이다()
+    {
+        string text = new('가', 30);
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text);
+
+        playback.PlayCurrentLine();
+        playback.Tick(1.1);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds + 0.01); // 라인만 재생 종료
+
+        playback.Play(); // 라인 전용 상태가 남아 있으면 안 된다
+        playback.Tick(1.1);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds + 0.01);
+        Assert.Equal([1], moves); // 이번에는 다음 라인으로 간다
+    }
+
     // ── 타자기 (W32) ──────────────────────────────────────────────────────
 
     [Fact]

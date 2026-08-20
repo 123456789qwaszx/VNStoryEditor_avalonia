@@ -270,14 +270,16 @@ public partial class MiniStagePreview : UserControl
     private readonly PresentationScriptPanel _script = new();
 
     /// <summary>
-    /// 선택 대상의 커맨드 편집 작업대 공급자 (2026-08-20 소유자: "우측 연출 편집기를
-    /// 터미널 아래로") — (lineId, setup)로 활성 편집기가 자기 행 빌더로 짓는다.
-    /// setup=true면 lineId 없이 Setup 전체다. MainWindow가 배선한다.
+    /// 선택 커맨드 하나의 Inspector 공급자 (2026-08-21 소유자: "일종의 Inspector") —
+    /// 활성 편집기가 커맨드 행 + 수치 조절을 한 판으로 짓는다. MainWindow가 배선한다.
     /// </summary>
-    internal Func<string?, bool, Control?>? LineDetailProvider { get; set; }
+    internal Func<string, Control?>? CommandDetailProvider { get; set; }
 
-    /// <summary>터미널에서 고른 커맨드의 작업대 표시 동기화 (2026-08-21) — MainWindow가 배선한다.</summary>
-    internal Action<string?>? CommandHighlighter { get; set; }
+    /// <summary>
+    /// 커맨드 선택이 없을 때의 작업대 공급자 — 선택 라인(또는 Setup)의 [＋연출 추가]
+    /// 한 줄. 갤러리·직접 입력의 유일한 문이라 걷지 않는다. MainWindow가 배선한다.
+    /// </summary>
+    internal Func<string?, bool, Control?>? AddRowProvider { get; set; }
 
     /// <summary>터미널의 Setup 구획이 선택돼 있다 — 작업대가 라인 대신 Setup을 보인다.</summary>
     private bool _setupSelected;
@@ -301,8 +303,9 @@ public partial class MiniStagePreview : UserControl
             _setupSelected = true;
             Render();
         };
-        _script.CommandSelected += command => CommandHighlighter?.Invoke(command.CommandId);
-        _script.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
+        // 커맨드 선택 = Inspector 전환 (2026-08-21) — 점은 선택이 아니라 켜고 끄기다.
+        _script.CommandSelected += _ => Render();
+        _script.CommandToggleRequested += ApplyScriptCommandToggle;
         _script.CommandMoveRequested += ApplyScriptCommandMove;
         _script.CommandRemoveRequested += ApplyScriptCommandRemove;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
@@ -415,8 +418,25 @@ public partial class MiniStagePreview : UserControl
         };
     }
 
-    /// <summary>작업대 쪽 커맨드 클릭을 터미널 띠에 반영한다 (2026-08-21) — MainWindow가 부른다.</summary>
-    internal void SelectTerminalCommand(string commandId) => _script.SelectCommand(commandId);
+    /// <summary>무대 뷰의 수치 조절 내용 — Inspector 공급자(MainWindow 배선)가 조합해 쓴다.</summary>
+    internal Control? BuildSceneInspector(PresentationResultCommand command) =>
+        _scene.BuildInspectorContent(command);
+
+    /// <summary>점 클릭 = 켜고 끄기 (2026-08-21) — 꺼진 커맨드도 행으로 남아 다시 켤 수 있다.</summary>
+    private void ApplyScriptCommandToggle(PresentationResultCommand command, bool currentlyEnabled)
+    {
+        if (_session is null || _current?.EditContext is not { DisabledReason: null } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "커맨드 켜고 끄기", () =>
+        {
+            _session.Editor.SetPresentationCommandEnabled(
+                context.PresentationNodeId, command.CommandId, !currentlyEnabled);
+            ManipulationApplied?.Invoke();
+        });
+    }
 
     /// <summary>null이면 보여 줄 라인이 없는 상태다(노드 미선택 등).</summary>
     internal void Show(MiniStagePreviewRequest? request)
@@ -507,15 +527,32 @@ public partial class MiniStagePreview : UserControl
         _script.Show(request?.ScriptRows, request?.SelectedLineId, unlocked, _setupSelected);
         ScriptHost.IsVisible = _script.IsVisible;
 
-        // 선택 대상 작업대 — 우측 편집기의 그 행들(체크·칩·갤러리)이 여기로 온다.
-        // Setup 선택이면 라인 대신 Setup 전체다(라인 선택 없이도 편집 대상).
+        // 작업대 = Inspector (2026-08-21 소유자) — 평소에는 비어 있고, 커맨드를 고르면
+        // 그 하나의 편집 행 + 수치 조절이 선다. 커맨드 선택이 없으면 선택 라인(또는
+        // Setup)의 [＋연출 추가] 한 줄만 — 갤러리·직접 입력의 유일한 문이다.
         // 공급자가 같은 구성을 캐시하므로 칩 편집 중 재렌더에 팝업이 닫히지 않는다.
-        Control? detail = _setupSelected
-            ? (unlocked ? LineDetailProvider?.Invoke(null, true) : null)
-            : (editable ? LineDetailProvider?.Invoke(request?.SelectedLineId, false) : null);
+        Control? detail = null;
+
+        if (unlocked)
+        {
+            if (_script.SelectedCommandId is { } selectedCommandId)
+            {
+                detail = CommandDetailProvider?.Invoke(selectedCommandId);
+            }
+
+            if (detail is null)
+            {
+                detail = _setupSelected
+                    ? AddRowProvider?.Invoke(null, true)
+                    : editable ? AddRowProvider?.Invoke(request?.SelectedLineId, false) : null;
+            }
+        }
+
         DetailHost.Content = detail;
         SetDetailVisible(detail is not null);
-        CommandHighlighter?.Invoke(_script.SelectedCommandId);
+
+        // 프레임 타임라인 (2026-08-21) — 무대 아래 재생 줄에 이 라인의 내부 시간이 선다.
+        TimelineHost.Content = _scene.BuildTimelineScrubber();
 
         if (request is null)
         {

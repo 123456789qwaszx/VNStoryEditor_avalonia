@@ -186,12 +186,44 @@ internal sealed class StagePlayback
         }
     }
 
+    /// <summary>
+    /// 이 라인만 재생하고 멈춘다 (2026-08-21 소유자: "현재 라인만 재생기능") —
+    /// 진행 경로는 전체 재생과 완전히 같고(전이·타자·여운), 다음 라인으로 넘어가는
+    /// 문턱에서만 멈춘다. 연출 하나를 다듬으며 반복해서 돌려 보는 용도다.
+    /// </summary>
+    public void PlayCurrentLine()
+    {
+        if (!CanPlay)
+        {
+            return;
+        }
+
+        _lineOnly = true;
+
+        // 현재 라인의 타자·이동을 처음부터 — Play()와 같은 규칙(끝 자리 되감기 없음).
+        _typedCharacters = 0;
+        _elapsed = 0;
+        _phase = _isChoice ? Phase.WaitInput : Phase.Typing;
+        IsPlaying = true;
+        _transitionElapsed = 0;
+        _transitionActive = _transitionDuration > 0;
+
+        TypingProgress?.Invoke();
+        TransitionChanged?.Invoke();
+        StateChanged?.Invoke();
+    }
+
+    /// <summary>라인만 재생 중 — 다음 라인 문턱에서 멈춘다.</summary>
+    private bool _lineOnly;
+
     public void Play()
     {
         if (!CanPlay)
         {
             return;
         }
+
+        _lineOnly = false;
 
         if (LineIndex >= LineCount - 1)
         {
@@ -217,6 +249,7 @@ internal sealed class StagePlayback
     public void Pause()
     {
         IsPlaying = false;
+        _lineOnly = false;
         _transitionActive = false; // 일시정지 = 확정 상태(정지 프레임)로
         TransitionChanged?.Invoke();
         TypingProgress?.Invoke(); // 일시정지 = 전문 표시(조작 모드)
@@ -344,6 +377,19 @@ internal sealed class StagePlayback
 
     private void Advance()
     {
+        if (_lineOnly)
+        {
+            // 라인만 재생 — 다음 라인으로 넘어가지 않고 멈춘다. 멈춤 = 정지 화면
+            // (라인 시작 순간) 규약 그대로라 전이 동기화도 알린다.
+            _lineOnly = false;
+            IsPlaying = false;
+            _transitionActive = false;
+            TransitionChanged?.Invoke();
+            TypingProgress?.Invoke();
+            StateChanged?.Invoke();
+            return;
+        }
+
         if (LineIndex >= LineCount - 1)
         {
             // 문서 끝 — 실행 출구로 이어질 수 있는지 호스트에게 묻는다 (W39). 전환이

@@ -144,10 +144,10 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
-    public void 프레임_스크럽을_끌면_그_프레임의_자리가_보인다() => HeadlessUi.Run(() =>
+    public void 프레임_타임라인을_끌면_그_프레임의_자리가_보인다() => HeadlessUi.Run(() =>
     {
-        // W66b 소유자 요청 — "먹고가는 프레임별로 상태를 확인". 스크럽은 재생과 같은
-        // 보간·같은 곡선에 진행도를 흘릴 뿐이다(별도 계산 없음).
+        // W66b 소유자 요청 — "먹고가는 프레임별로 상태를 확인" → 2026-08-21 무대 아래
+        // 재생 줄로 이사. 스크럽은 재생과 같은 보간·같은 곡선에 진행도를 흘릴 뿐이다.
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
@@ -159,7 +159,12 @@ public sealed class StageMotionRenderTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Canvas canvas = CanvasOf(view);
-        Slider scrub = Assert.Single(canvas.GetLogicalDescendants().OfType<Slider>().ToArray());
+
+        // 무대 위에는 더 이상 스크럽이 없다 — 타임라인은 무대 아래 재생 줄의 것이다.
+        Assert.Empty(canvas.GetLogicalDescendants().OfType<Slider>());
+
+        Control timeline = Assert.IsAssignableFrom<Control>(view.BuildTimelineScrubber());
+        Slider scrub = timeline.GetLogicalDescendants().OfType<Slider>().Single();
         Assert.Equal(12, scrub.Maximum); // 12fr 이동 = 라인 배치 12프레임
 
         var rests = canvas.Children

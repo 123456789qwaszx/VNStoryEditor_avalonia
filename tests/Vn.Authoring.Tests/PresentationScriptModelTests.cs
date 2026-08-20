@@ -162,4 +162,26 @@ public class PresentationScriptModelTests
             row.Text.Contains("cast", StringComparison.Ordinal));
         Assert.Contains(" c2 ", setupCast.Text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void 꺼진_커맨드도_행으로_남고_IsEnabled가_거짓이_된다()
+    {
+        // 2026-08-21 소유자: 점 = 켜고 끄기 — 꺼진 커맨드가 행에서 사라지면 다시 켤
+        // 입구가 없다. 발행·폴드에서 빠지는 것과 표시에서 남는 것은 다른 문제다.
+        DialogueResult dialogue = Dialogue(new DialogueResultLine(0, "ln_a", 1, "라루", "첫 줄"));
+
+        PresentationResultCommand on = Command("char_rig_staging.move_by", ("slot", "c1"), ("x", "+1u"));
+        PresentationResultCommand off = Command("char_rig_staging.move_by", ("slot", "c1"), ("x", "-1u"));
+
+        PresentationResultBinding[] bindings =
+            [new PresentationResultBinding("ln_a", [on, off], IsOrphan: false)];
+
+        IReadOnlyList<PresentationScriptRow> rows = PresentationScriptModel.Build(
+            Catalog, dialogue, [], bindings, disabledCommandIds: new[] { off.CommandId });
+
+        PresentationScriptRow[] commands = rows
+            .Where(row => row.Kind == PresentationScriptRowKind.Command).ToArray();
+        Assert.Equal(2, commands.Length); // 꺼진 것도 행으로 남는다
+        Assert.Equal([true, false], commands.Select(row => row.IsEnabled));
+    }
 }

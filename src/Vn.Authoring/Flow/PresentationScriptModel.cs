@@ -29,12 +29,17 @@ public enum PresentationScriptRowKind
 /// 차분하게 묶는다. 장차 beat 노드가 이 묶음을 액터 타깃 프리셋으로 저장·재사용한다).
 /// 패널은 이 경계에 여백을 준다.
 /// </param>
+/// <param name="IsEnabled">
+/// 커맨드 행의 활성 여부 (2026-08-21 소유자: 점 = 켜고 끄기) — 꺼진 커맨드도 행으로
+/// 남아 다시 켤 수 있다(발행·폴드에서만 빠진다). 커맨드가 아닌 행은 항상 true.
+/// </param>
 public sealed record PresentationScriptRow(
     PresentationScriptRowKind Kind,
     string? LineId,
     PresentationResultCommand? Command,
     string Text,
-    bool StartsGroup = false);
+    bool StartsGroup = false,
+    bool IsEnabled = true);
 
 /// <summary>
 /// 연출 대본 텍스트 패널의 행 모델 (2026-08-20 소유자: "프리뷰 왼쪽에 텍스트 로그 터미널").
@@ -47,11 +52,16 @@ public sealed record PresentationScriptRow(
 /// </summary>
 public static class PresentationScriptModel
 {
+    /// <param name="disabledCommandIds">
+    /// 꺼진 커맨드의 Id들 (2026-08-21) — 편집 화면은 꺼진 커맨드도 행으로 실어 다시 켤
+    /// 입구를 남긴다(발행 뷰는 안 넘기면 전부 활성). 표시·별칭 계산에는 똑같이 참여한다.
+    /// </param>
     public static IReadOnlyList<PresentationScriptRow> Build(
         PresentationCommandCatalog catalog,
         DialogueResult? dialogue,
         IReadOnlyList<PresentationResultCommand> setupCommands,
-        IReadOnlyList<PresentationResultBinding> bindings)
+        IReadOnlyList<PresentationResultBinding> bindings,
+        IReadOnlyCollection<string>? disabledCommandIds = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(setupCommands);
@@ -173,7 +183,8 @@ public static class PresentationScriptModel
 
                 rows.Add(new PresentationScriptRow(
                     PresentationScriptRowKind.Command, lineId, command, TextOf(command, alias),
-                    startsGroup));
+                    startsGroup,
+                    IsEnabled: disabledCommandIds?.Contains(command.CommandId) != true));
 
                 if (CastingOf(command) is { } applied)
                 {

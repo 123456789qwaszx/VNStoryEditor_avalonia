@@ -45,10 +45,13 @@ internal sealed class PresentationScriptPanel : UserControl
     /// <summary>Setup 구획 클릭 — 작업대에 Setup 편집을 열어 달라 (2026-08-21).</summary>
     public event Action? SetupClicked;
 
-    /// <summary>커맨드 점 클릭 — 이 커맨드의 상세조절을 열어 달라.</summary>
-    public event Action<PresentationResultCommand>? CommandDotClicked;
+    /// <summary>
+    /// 커맨드 점 클릭 (2026-08-21 소유자: "세부 디테일 대신에 키고 끄는기능") —
+    /// 이 커맨드를 켜고 꺼 달라. bool은 지금 값(활성 여부)이다.
+    /// </summary>
+    public event Action<PresentationResultCommand, bool>? CommandToggleRequested;
 
-    /// <summary>커맨드 선택 확정 — 아래 작업대의 표시도 이 커맨드로 맞춰 달라.</summary>
+    /// <summary>커맨드 선택 확정 — 아래 작업대(Inspector)를 이 커맨드로 바꿔 달라.</summary>
     public event Action<PresentationResultCommand>? CommandSelected;
 
     /// <summary>행 우측 X 클릭 — 이 커맨드를 제거해 달라 (2026-08-21).</summary>
@@ -101,6 +104,18 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         IsVisible = true;
+
+        // 선택 커맨드가 지금 선택된 구획 밖이면 걷는다 — 라인이 넘어갔는데(재생·이동)
+        // 다른 라인의 커맨드가 Inspector에 남아 있으면 화면이 거짓말한다.
+        if (_selectedCommandId is not null && !rows.Any(row =>
+                row.Kind == PresentationScriptRowKind.Command &&
+                string.Equals(row.Command?.CommandId, _selectedCommandId, StringComparison.Ordinal) &&
+                (row.LineId is null
+                    ? setupSelected
+                    : string.Equals(row.LineId, selectedLineId, StringComparison.Ordinal))))
+        {
+            _selectedCommandId = null;
+        }
 
         // 라인 단위로 묶어 컨테이너 하나(= 하이라이트 박스 단위)로 만든다.
         // Setup 구획(LineId null)은 라인들과 분리된 제 공간을 갖는다(소유자 다듬기 1).
@@ -177,6 +192,7 @@ internal sealed class PresentationScriptPanel : UserControl
                 container.Cursor = new Cursor(StandardCursorType.Hand);
                 container.PointerPressed += (_, args) =>
                 {
+                    _selectedCommandId = null;
                     SetupClicked?.Invoke();
                     args.Handled = true;
                 };
@@ -246,6 +262,7 @@ internal sealed class PresentationScriptPanel : UserControl
             header.Cursor = new Cursor(StandardCursorType.Hand);
             header.PointerPressed += (_, args) =>
             {
+                _selectedCommandId = null;
                 SetupClicked?.Invoke();
                 args.Handled = true;
             };
@@ -269,6 +286,7 @@ internal sealed class PresentationScriptPanel : UserControl
 
         header.PointerPressed += (_, args) =>
         {
+            _selectedCommandId = null;
             LineClicked?.Invoke(lineId);
             args.Handled = true;
         };
@@ -293,6 +311,8 @@ internal sealed class PresentationScriptPanel : UserControl
         {
             if (row.LineId is { } lineId)
             {
+                // 라인 선택 = 커맨드 선택 해제 — 작업대가 그 라인의 추가 입구로 돌아간다.
+                _selectedCommandId = null;
                 LineClicked?.Invoke(lineId);
                 args.Handled = true;
             }
@@ -303,14 +323,21 @@ internal sealed class PresentationScriptPanel : UserControl
 
     private Border BuildCommandRow(PresentationScriptRow row, bool editable, bool showRemove)
     {
-        // Rider 브레이크포인트 감각의 점 — 상세조절 입구.
+        // Rider 브레이크포인트 감각의 점 — 켜고 끄기 토글 (2026-08-21 소유자:
+        // "세부 디테일 대신에 키고 끄는기능"). 찬 점 = 켜짐, 빈 점 = 꺼짐.
         var dot = new Ellipse
         {
             Width = 8,
             Height = 8,
-            Fill = new SolidColorBrush(editable
-                ? Color.FromArgb(230, 250, 204, 21)
-                : Color.FromArgb(90, 148, 163, 184)),
+            Fill = row.IsEnabled
+                ? new SolidColorBrush(editable
+                    ? Color.FromArgb(230, 250, 204, 21)
+                    : Color.FromArgb(90, 148, 163, 184))
+                : Brushes.Transparent,
+            Stroke = row.IsEnabled
+                ? null
+                : new SolidColorBrush(Color.FromArgb(160, 250, 204, 21)),
+            StrokeThickness = row.IsEnabled ? 0 : 1.5,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
             Margin = new Thickness(2, 0, 4, 0)
         };
@@ -324,6 +351,7 @@ internal sealed class PresentationScriptPanel : UserControl
             FontSize = 11,
             FontFamily = new FontFamily("Cascadia Mono,Consolas,monospace"),
             Foreground = new SolidColorBrush(Color.FromRgb(125, 207, 252)),
+            Opacity = row.IsEnabled ? 1.0 : 0.45, // 꺼진 커맨드는 흐리게 — 행은 남는다
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
         };
 
@@ -377,7 +405,8 @@ internal sealed class PresentationScriptPanel : UserControl
 
             if (position.X <= 14)
             {
-                CommandDotClicked?.Invoke(command);
+                // 점 = 켜고 끄기 — 선택을 건드리지 않는다.
+                CommandToggleRequested?.Invoke(command, row.IsEnabled);
                 args.Handled = true;
                 return;
             }
@@ -499,16 +528,6 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         _dropCandidate = null;
-    }
-
-    /// <summary>
-    /// 작업대 쪽에서 고른 커맨드를 터미널 띠에도 반영한다 (2026-08-21 소유자:
-    /// "그게 터미널에도 반영") — 재구성 없이 띠만 옮긴다.
-    /// </summary>
-    internal void SelectCommand(string? commandId)
-    {
-        _selectedCommandId = commandId;
-        RefreshCommandSelection();
     }
 
     /// <summary>선택 띠만 다시 칠한다 — 전체 재구성 없이.</summary>

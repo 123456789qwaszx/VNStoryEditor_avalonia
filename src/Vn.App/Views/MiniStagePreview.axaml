@@ -5,7 +5,7 @@
          예전의 "창으로 열기"·"접기"는 탭이 대체했다. -->
     <Border Padding="14,10">
         <Grid RowDefinitions="Auto,Auto,*,Auto">
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*">
                 <TextBlock Grid.Column="0"
                            Text="무대 프리뷰"
                            FontWeight="SemiBold"
@@ -17,9 +17,6 @@
                            Margin="8,0"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
-                <!-- 재생 컨트롤 (W31) — 편집기 선택과 같은 StagePlayback 하나를 본다. -->
-                <ContentControl Grid.Column="2"
-                                x:Name="PlaybackHost" />
             </Grid>
 
             <!-- 뱃지·갈래 칩 — 많아지면 줄바꿈한다 (W37). 간격은 StageIndicators가 마진으로 준다. -->
@@ -53,8 +50,23 @@
                 <GridSplitter Grid.Column="1"
                               ResizeDirection="Columns"
                               Background="{DynamicResource ThemeBorderLowBrush}" />
-                <ContentControl Grid.Column="2"
-                                x:Name="SceneHost" />
+                <!-- 무대 + 아래 재생 줄 (2026-08-21 소유자: "재생이 프리뷰 아래쪽에 오는게
+                     더 좋아보여. 타임라인이랑 같이") — 재생 컨트롤(W31)과 프레임 타임라인이
+                     무대 바로 밑에 나란히 선다. -->
+                <Grid Grid.Column="2" RowDefinitions="*,Auto">
+                    <ContentControl Grid.Row="0"
+                                    x:Name="SceneHost" />
+                    <Grid Grid.Row="1"
+                          ColumnDefinitions="Auto,16,*"
+                          Margin="0,8,0,0">
+                        <ContentControl Grid.Column="0"
+                                        x:Name="PlaybackHost"
+                                        VerticalAlignment="Center" />
+                        <ContentControl Grid.Column="2"
+                                        x:Name="TimelineHost"
+                                        VerticalAlignment="Center" />
+                    </Grid>
+                </Grid>
             </Grid>
 
             <StackPanel Grid.Row="3" Spacing="4" Margin="0,6,0,0">

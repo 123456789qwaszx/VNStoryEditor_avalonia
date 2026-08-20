@@ -115,24 +115,19 @@ public partial class MainWindow : Window
                 PresentationEditor.SelectStageLineById(lineId);
             }
         };
-        // 선택 대상 작업대 (2026-08-20 / Setup·연동 2026-08-21) — 우측 라인 카드에 있던
-        // 커맨드 편집 행들을 연출 편집기가 같은 빌더로 지어 프리뷰 탭에 공급한다.
-        // setup=true는 라인 대신 Setup 전체다. 대사 편집기 화면은 발행 결과 뷰라
-        // 작업대가 없다(잠금 화면 규칙 그대로).
-        StagePreview.LineDetailProvider = (lineId, setup) =>
+        // 작업대 = Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출 편집창이
+        // 합쳐지는 게 맞겠네") — 선택 커맨드 하나의 편집 행(연출 편집기) + 수치 조절
+        // (무대 뷰)을 연출 편집기가 한 판으로 조합해 프리뷰 탭에 공급한다. 커맨드
+        // 선택이 없으면 선택 라인(또는 Setup)의 [＋연출 추가]만. 대사 편집기 화면은
+        // 발행 결과 뷰라 작업대가 없다(잠금 화면 규칙 그대로).
+        StagePreview.CommandDetailProvider = commandId =>
             PresentationEditor.IsVisible
-                ? PresentationEditor.BuildLineDetailContent(lineId, setup)
+                ? PresentationEditor.BuildCommandInspector(commandId, StagePreview.BuildSceneInspector)
                 : null;
-        StagePreview.CommandHighlighter = commandId =>
-        {
-            if (PresentationEditor.IsVisible)
-            {
-                PresentationEditor.HighlightDetailCommand(commandId);
-            }
-        };
-        // 역방향 연동 (2026-08-21) — 작업대에서 클릭한 커맨드가 터미널 띠에도 선다.
-        PresentationEditor.DetailCommandSelected += commandId =>
-            StagePreview.SelectTerminalCommand(commandId);
+        StagePreview.AddRowProvider = (lineId, setup) =>
+            PresentationEditor.IsVisible
+                ? PresentationEditor.BuildAddRowContent(lineId, setup)
+                : null;
         StagePreview.NodeExitRequested = () =>
         {
             // 문서 끝 도달 (W39) — 활성 편집기가 실행 출구를 따라 다음 노드로 전환하면

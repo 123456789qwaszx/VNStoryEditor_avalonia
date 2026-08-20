@@ -277,8 +277,38 @@ public partial class PresentationNodeEditor : UserControl
             // 이동 편집(W66): 모션 선언이 있는 커맨드만 무대에서 수치를 만질 수 있다.
             MotionCues: motionCues,
             // 대본 패널(2026-08-20): 시나리오 전체 텍스트 — 커맨드 목록·편집 입구가 이쪽이다.
+            // 발행 초안이 아니라 작업 중 커맨드로 짓는다 (2026-08-21): 꺼진 커맨드도
+            // 행으로 남아야 점(켜고 끄기)으로 다시 켤 수 있다 — 초안은 꺼진 것을 걸러낸다.
             ScriptRows: PresentationScriptModel.Build(
-                catalog, dialogue, draft.SetupCommands, draft.Bindings)));
+                catalog,
+                dialogue,
+                presentation.SetupCommands.Select(ScriptCommandOf).ToArray(),
+                presentation.Bindings.Select(binding => new PresentationResultBinding(
+                    binding.LineId,
+                    binding.Commands.Select(ScriptCommandOf).ToArray(),
+                    IsOrphan: false)).ToArray(),
+                disabledCommandIds: presentation.SetupCommands
+                    .Concat(presentation.Bindings.SelectMany(binding => binding.Commands))
+                    .Where(command => !command.IsEnabled)
+                    .Select(command => command.Id)
+                    .ToHashSet(StringComparer.Ordinal))));
+    }
+
+    /// <summary>
+    /// 작업 중 커맨드를 터미널 행 재료로 — 발행 Freeze와 같은 방향(프리셋 정의 치환 +
+    /// 유효 인자)이되 활성 여부로 거르지 않는다. CommandId = 인스턴스 Id라 드래그·X·
+    /// 점(토글)이 이 Id로 편집 통로를 그대로 탄다.
+    /// </summary>
+    private PresentationResultCommand ScriptCommandOf(PresentationCommandInstance command)
+    {
+        string definitionId = command.DefinitionId;
+
+        if (command.PresetId is { } presetId && _available?.FindPreset(presetId) is { } preset)
+        {
+            definitionId = preset.Preset.CommandDefinitionId;
+        }
+
+        return new PresentationResultCommand(command.Id, definitionId, EffectiveArguments(command), command.Note);
     }
 
     /// <summary>
@@ -570,42 +600,37 @@ public partial class PresentationNodeEditor : UserControl
         }
     }
 
-    // 작업대 상태 — 무대 프리뷰 탭이 재요청할 때, 같은 대상·같은 커맨드 구성이면
-    // 행 컨트롤을 그대로 돌려준다. 재생성하면 칩 편집 중 팝업이 닫힌다
-    // (행 자신이 병기 텍스트·칩을 제자리 갱신하므로 유지가 정확하다).
+    // 작업대(Inspector) 상태 — 같은 대상·같은 값이면 컨트롤을 그대로 돌려준다
+    // (재생성하면 칩 편집 중 팝업이 닫힌다). 인자·활성이 바뀌면 다시 짓는다 —
+    // 칩 확정은 팝업을 이미 닫은 뒤라 안전하고, 슬라이더 반영이 병기 텍스트까지 온다.
     private string? _detailKey;
     private string? _detailToken;
     private Control? _detailControl;
 
-    /// <summary>작업대 커맨드 행의 겉 테두리 — 터미널 선택과 표시를 맞추는 붓 자리다.</summary>
-    private readonly Dictionary<string, Border> _detailRowHosts = new(StringComparer.Ordinal);
-
     /// <summary>
-    /// 작업대에서 커맨드 행을 클릭했다 (2026-08-21 소유자: "편집기에서도 특정 커맨드를
-    /// 클릭했을 때 표시를 하고, 그게 터미널에도 반영") — 호스트가 터미널 띠를 맞춘다.
+    /// 선택 커맨드 하나의 Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출
+    /// 편집창이 합쳐지는 게 맞겠네 … 일종의 Inspector") — 커맨드 편집 행(활성 체크·칩·
+    /// 병기 텍스트) 아래에 무대의 수치 조절(슬라이더·이징·곡선·선택기)이 함께 선다.
+    /// sceneContent는 무대 뷰의 <c>BuildInspectorContent</c>다(MainWindow 배선).
+    /// 라인의 커맨드 전체 나열은 걷혔다 — "전부 표시해주는 건 별 의미가 없네".
     /// </summary>
-    internal event Action<string>? DetailCommandSelected;
-
-    /// <summary>
-    /// 선택 대상의 커맨드 편집 작업대 (2026-08-20 소유자: "우측 연출 편집기를 좌측
-    /// 터미널로 — 현재 선택한 Line만" · 2026-08-21 "Setup도 터미널 클릭으로") —
-    /// 라인 하나 또는 Setup 전체를 같은 행 빌더(활성 체크·칩·갤러리·직접 입력)로 짓는다.
-    /// 자리 이동·제거는 터미널(드래그·X)의 몫이라 행에는 없다.
-    /// </summary>
-    internal Control? BuildLineDetailContent(string? lineId, bool setup = false)
+    internal Control? BuildCommandInspector(
+        string commandId, Func<PresentationResultCommand, Control?>? sceneContent)
     {
-        if (_session is null || (!setup && lineId is null) ||
-            _session.Project.FindPresentation(_nodeId) is not { } presentation)
+        if (_session is null ||
+            _session.Project.FindPresentation(_nodeId) is not { } presentation ||
+            FindCommand(presentation, commandId) is not { } found)
         {
             _detailControl = null;
             return null;
         }
 
-        IReadOnlyList<PresentationCommandInstance> commands = setup
-            ? presentation.SetupCommands
-            : presentation.FindBinding(lineId!)?.Commands ?? [];
-        string key = setup ? "\0setup" : lineId!;
-        string token = string.Join("|", commands.Select(command => command.Id));
+        string key = "cmd:" + commandId;
+        string token = string.Join("|",
+            found.Command.Arguments.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => $"{pair.Key}={pair.Value}")
+                .Prepend(found.Command.IsEnabled ? "on" : "off")
+                .Prepend(found.Command.PresetId ?? ""));
 
         if (_detailControl is not null &&
             string.Equals(_detailKey, key, StringComparison.Ordinal) &&
@@ -622,40 +647,21 @@ public partial class PresentationNodeEditor : UserControl
 
         try
         {
-            var content = new StackPanel { Spacing = 6 };
-            _detailRowHosts.Clear();
+            var content = new StackPanel { Spacing = 8 };
 
             content.Children.Add(new TextBlock
             {
-                Text = setup ? "Setup — 장면 준비 (Set 노드 본문)" : lineId,
-                FontSize = 11,
-                FontWeight = FontWeight.SemiBold,
-                Opacity = 0.75
+                Text = found.LineId ?? "Setup — 장면 준비",
+                FontSize = 10,
+                Opacity = 0.55
             });
 
-            string? rowLineId = setup ? null : lineId;
+            content.Children.Add(BuildCommandRow(presentation, found.LineId, found.Command, catalog));
 
-            foreach (PresentationCommandInstance command in commands)
+            if (sceneContent?.Invoke(ScriptCommandOf(found.Command)) is { } sliders)
             {
-                var host = new Border
-                {
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(6, 4),
-                    Child = BuildCommandRow(presentation, rowLineId, command, catalog)
-                };
-                string commandId = command.Id;
-                host.PointerPressed += (_, _) =>
-                {
-                    // 클릭 = 이 커맨드 선택 — 여기와 터미널의 띠가 같이 옮겨 간다.
-                    // Handled를 세우지 않아 칩·체크의 제 동작은 그대로다.
-                    HighlightDetailCommand(commandId);
-                    DetailCommandSelected?.Invoke(commandId);
-                };
-                _detailRowHosts[command.Id] = host;
-                content.Children.Add(host);
+                content.Children.Add(sliders);
             }
-
-            content.Children.Add(BuildAddRow(presentation, rowLineId, catalog));
 
             _detailKey = key;
             _detailToken = token;
@@ -669,17 +675,82 @@ public partial class PresentationNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 터미널에서 고른 커맨드를 작업대에서도 같은 띠로 보여 준다 (2026-08-21 소유자:
-    /// "클릭한 표시가 연동되도록"). 재구성 없이 배경만 다시 칠한다.
+    /// 커맨드 선택이 없을 때의 작업대 — 선택 라인(또는 Setup)의 [＋연출 추가] 한 줄만.
+    /// "평소에는 비워두다가"의 예외 하나다: 갤러리·직접 입력은 이 문이 유일해서
+    /// 아예 걷으면 커맨드를 새로 달 길이 없다.
     /// </summary>
-    internal void HighlightDetailCommand(string? commandId)
+    internal Control? BuildAddRowContent(string? lineId, bool setup)
     {
-        foreach ((string id, Border host) in _detailRowHosts)
+        if (_session is null || (!setup && lineId is null) ||
+            _session.Project.FindPresentation(_nodeId) is not { } presentation)
         {
-            host.Background = string.Equals(id, commandId, StringComparison.Ordinal)
-                ? new SolidColorBrush(Color.FromArgb(45, 250, 204, 21))
-                : Brushes.Transparent;
+            _detailControl = null;
+            return null;
         }
+
+        string key = "add:" + (setup ? "\0setup" : lineId);
+
+        if (_detailControl is not null &&
+            string.Equals(_detailKey, key, StringComparison.Ordinal) &&
+            _detailToken is null)
+        {
+            return _detailControl;
+        }
+
+        PresentationCommandCatalog catalog = AvailablePresentationCommandResolver.Resolve(
+            _session.Project, presentation.Id, _session.Definition).Catalog;
+
+        bool wasBuilding = _building;
+        _building = true;
+
+        try
+        {
+            var content = new StackPanel { Spacing = 6 };
+
+            content.Children.Add(new TextBlock
+            {
+                Text = setup ? "Setup — 장면 준비" : lineId,
+                FontSize = 10,
+                Opacity = 0.55
+            });
+
+            content.Children.Add(BuildAddRow(presentation, setup ? null : lineId, catalog));
+
+            _detailKey = key;
+            _detailToken = null;
+            _detailControl = content;
+            return content;
+        }
+        finally
+        {
+            _building = wasBuilding;
+        }
+    }
+
+    /// <summary>커맨드 Id로 인스턴스와 그 소속(라인 또는 Setup=null)을 찾는다.</summary>
+    private static (PresentationCommandInstance Command, string? LineId)? FindCommand(
+        PresentationNode presentation, string commandId)
+    {
+        foreach (PresentationCommandInstance command in presentation.SetupCommands)
+        {
+            if (string.Equals(command.Id, commandId, StringComparison.Ordinal))
+            {
+                return (command, null);
+            }
+        }
+
+        foreach (PresentationLineBinding binding in presentation.Bindings)
+        {
+            foreach (PresentationCommandInstance command in binding.Commands)
+            {
+                if (string.Equals(command.Id, commandId, StringComparison.Ordinal))
+                {
+                    return (command, binding.LineId);
+                }
+            }
+        }
+
+        return null;
     }
 
     // ── 커맨드 행 — 갤러리·칩·텍스트 입력 (W19) ───────────────────────────

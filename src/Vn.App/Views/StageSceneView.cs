@@ -447,63 +447,64 @@ internal sealed class StageSceneView : UserControl
             }
         }
 
-        // 커맨드 텍스트는 무대에 띄우지 않는다 (2026-08-20 소유자 정리) — 목록·편집 입구는
-        // 왼쪽 대본 패널의 것이고, 무대에는 궤적·고스트와 프레임 스크럽만 남는다.
-        if (_motionTransitions.Count > 0)
-        {
-            Add(BuildFrameScrubber(em),
-                new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 10, em * 1.4));
-        }
+        // 커맨드 텍스트도 프레임 스크럽도 무대에 띄우지 않는다 (2026-08-20 / 2026-08-21
+        // 소유자 정리) — 목록·편집 입구는 왼쪽 대본 패널, 타임라인은 무대 아래 재생 줄이다.
     }
 
     /// <summary>
-    /// 대본 패널의 점(●)이 가리킨 커맨드의 상세조절을 연다 — 이동 커맨드는 이동 편집기
-    /// (슬라이더+이징+곡선), 그 외에 조절 가능한 파라미터가 선언된 커맨드는 파라미터
-    /// 조절창이다. 어느 것도 아니면 열 것이 없다(조용히 무시가 아니라 상태줄이 말한다).
+    /// 선택 커맨드의 수치 조절 내용 (2026-08-21 소유자: "점의 세부 조절창과 연출
+    /// 편집창이 합쳐지는 게 맞겠네") — 예전 플라이아웃 대신 터미널 아래 작업대
+    /// (Inspector)에 얹을 컨트롤을 돌려준다. 이동 커맨드는 이동 편집기(슬라이더+이징+
+    /// 곡선), 조절 가능한 파라미터가 선언된 커맨드는 파라미터 슬라이더·선택기다.
+    /// 어느 것도 아니면 null — 커맨드 행(칩)만으로 충분한 커맨드다.
     /// </summary>
-    internal void ShowInspectorForCommand(PresentationResultCommand command)
+    internal Control? BuildInspectorContent(PresentationResultCommand command)
     {
         if (_session is null || _request?.EditContext is not { Editable: true })
         {
-            return;
+            return null;
         }
+
+        var host = new StackPanel { Spacing = 6 };
 
         StageMotionCue? cue = _request.MotionCues?.FirstOrDefault(item =>
             string.Equals(item.CommandId, command.CommandId, StringComparison.Ordinal));
 
         if (cue is not null)
         {
-            ShowMotionFlyout(cue);
-            return;
+            AddMotionEditorRows(host, cue);
         }
-
-        PresentationCommandDefinition? definition = ManipulationCatalog.Find(command.DefinitionId);
-
-        if (definition is not null && definition.Parameters.Any(IsAdjustableParameter))
+        else if (ManipulationCatalog.Find(command.DefinitionId) is { } definition &&
+                 definition.Parameters.Any(IsAdjustableParameter))
         {
-            ShowParameterFlyout(definition, command);
-            return;
+            AddParameterEditorRows(host, definition, command);
         }
 
-        _session.SetStatus("이 커맨드에는 조절할 수치·프리셋이 선언돼 있지 않습니다 — 텍스트로 고치세요.");
+        return host.Children.Count > 0 ? host : null;
     }
 
     /// <summary>
-    /// 프레임 스크럽 (W66b, 소유자: "먹고가는 프레임별로 상태를 확인") — 이 라인 배치의
-    /// 내부 시간을 손으로 끈다. 렌더가 아닌 것은 아무것도 바꾸지 않는다: 기존 전이 보간
-    /// (<see cref="SetTransitionProgress"/>)에 진행도를 흘릴 뿐이고, 곡선 모양도 재생과
-    /// 같은 코어 이징이다. ▶ 재생이 돌면 재생 틱이 이 값을 덮는다.
+    /// 프레임 타임라인 (W66b → 2026-08-21 무대 아래 이사, 소유자: "재생이 프리뷰
+    /// 아래쪽에 오는게 더 좋아보여. 타임라인이랑 같이") — 이 라인 배치의 내부 시간을
+    /// 손으로 끈다. 기존 전이 보간(<see cref="SetTransitionProgress"/>)에 진행도를
+    /// 흘릴 뿐이고, 곡선 모양도 재생과 같은 코어 이징이다. 이동이 없는 라인은 끌
+    /// 시간이 없으므로 null이다. ▶ 재생이 돌면 재생 틱이 이 값을 덮는다.
     /// </summary>
-    private Control BuildFrameScrubber(double em)
+    internal Control? BuildTimelineScrubber()
     {
+        if (_motionTransitions.Count == 0)
+        {
+            return null;
+        }
+
         double lineSeconds = _request?.TransitionSeconds ?? 0;
         double frames = Math.Max(1, Math.Round(lineSeconds * DurationToken.FramesPerSecond));
 
         var frameLabel = new TextBlock
         {
             Text = "0fr",
-            FontSize = em * 0.45,
-            Width = em * 1.8,
+            FontSize = 11,
+            Width = 34,
             TextAlignment = TextAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = new SolidColorBrush(Color.FromArgb(220, 250, 204, 21))
@@ -516,10 +517,9 @@ internal sealed class StageSceneView : UserControl
             Value = 0,
             TickFrequency = 1,
             IsSnapToTickEnabled = true,
-            Width = em * 8,
+            MinWidth = 160,
             VerticalAlignment = VerticalAlignment.Center
         };
-        ToolTip.SetTip(scrub, "이 라인의 프레임을 끌어 확인합니다. 0 = 라인 시작(출발 자리).");
         scrub.ValueChanged += (_, args) =>
         {
             frameLabel.Text = $"{args.NewValue:0}fr";
@@ -527,21 +527,11 @@ internal sealed class StageSceneView : UserControl
             SetTransitionProgress(args.NewValue / frames);
         };
 
-        var row = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(130, 30, 30, 40)),
-            CornerRadius = new CornerRadius(em * 0.2),
-            Padding = new Thickness(em * 0.35, 0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Child = new StackPanel
-            {
-                Orientation = Avalonia.Layout.Orientation.Horizontal,
-                Spacing = em * 0.2,
-                Children = { scrub, frameLabel }
-            }
-        };
-
-        return row;
+        var layout = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(frameLabel, Dock.Right);
+        layout.Children.Add(frameLabel);
+        layout.Children.Add(scrub);
+        return layout;
     }
 
     /// <summary>
@@ -564,30 +554,20 @@ internal sealed class StageSceneView : UserControl
          ArgumentTokenCandidates.For(parameter.Type).Count > 0);
 
     /// <summary>
-    /// 수치 칩의 조절창 (W68) — 슬라이더 선언이 있는 파라미터와 duration이 슬라이더로
-    /// 선다. 이동 편집기와 같은 규칙: 끄는 동안은 라벨만, 손을 뗄 때 한 번 저장,
-    /// 확정 즉시 정지 프레임이 새 값으로 다시 접힌다.
+    /// 파라미터 수치 편집 행들 (W68 → 2026-08-21 작업대 이사) — 슬라이더 선언이 있는
+    /// 파라미터와 duration이 슬라이더로, 후보 토큰 타입은 선택기로 선다. 이동 편집기와
+    /// 같은 규칙: 끄는 동안은 라벨만, 손을 뗄 때 한 번 저장, 확정 즉시 정지 프레임이
+    /// 새 값으로 다시 접힌다.
     /// </summary>
-    private void ShowParameterFlyout(
-        PresentationCommandDefinition definition, PresentationResultCommand command)
+    private void AddParameterEditorRows(
+        StackPanel host, PresentationCommandDefinition definition, PresentationResultCommand command)
     {
         if (_session is null || _request?.EditContext is not { Editable: true } context)
         {
             return;
         }
 
-        ShowManipulationFlyout((host, _) =>
         {
-            host.MinWidth = 250;
-            host.Children.Add(new TextBlock
-            {
-                Text = $"{definition.DisplayName} (우클릭으로 닫기)",
-                FontSize = 10,
-                Opacity = 0.7,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 250
-            });
-
             foreach (PresentationCommandParameter parameter in definition.Parameters)
             {
                 string written = command.Arguments.TryGetValue(parameter.Name, out string? value)
@@ -641,7 +621,7 @@ internal sealed class StageSceneView : UserControl
                         candidates));
                 }
             }
-        });
+        }
     }
 
     /// <summary>프리셋 토큰 한 줄 — 고르면 그 인자만 바뀐다(같은 커맨드 인자 수정 통로).</summary>
@@ -1494,33 +1474,13 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이동 수치 조절창 (W66) — 선언된 축(x·y)과 시간을 슬라이더로 만진다.
+    /// 이동 수치 편집기 본체 (W66 → 2026-08-21 작업대 Inspector로 이사) — 선언된 축(x·y)과
+    /// 시간을 슬라이더로 만진다. 축 슬라이더는 선언이 만든다: x·y를 코드에 박지 않는다.
     ///
     /// <b>끄는 동안은 편집이 아니다</b>(성능 규칙): 값 라벨만 따라 움직이고 프로젝트는
     /// 그대로다. 손을 뗄 때 한 번만 <see cref="ProjectEditor.UpdatePresentationCommandArguments"/>를
     /// 지나므로 <b>되돌리기 한 번이 조작 하나</b>를 원복한다 — 슬라이더가 지나온 중간값이
-    /// undo 스택에 쌓이지 않는다.
-    ///
-    /// 만지는 대상은 커맨드 <b>하나</b>(칩이 가리킨 그것)다. 같은 종류를 찾아 합치는
-    /// 직접 조작과 달리, 여기서는 이미 있는 커맨드의 인자만 바뀐다.
-    /// </summary>
-    private void ShowMotionFlyout(StageMotionCue cue)
-    {
-        if (_session is null || _request?.EditContext is not { Editable: true })
-        {
-            return;
-        }
-
-        ShowManipulationFlyout((host, _) =>
-        {
-            host.MinWidth = 250;
-            AddMotionEditorRows(host, cue, headerSuffix: " (우클릭으로 닫기)");
-        });
-    }
-
-    /// <summary>
-    /// 이동 수치 편집기 본체 — 칩 플라이아웃과 조절창 [이동] 탭이 <b>같은 이것 하나</b>를
-    /// 쓴다. 축 슬라이더는 선언이 만든다: x·y를 코드에 박지 않는다.
+    /// undo 스택에 쌓이지 않는다. 만지는 대상은 커맨드 <b>하나</b>다.
     /// </summary>
     private void AddMotionEditorRows(StackPanel host, StageMotionCue cue, string headerSuffix = "")
     {

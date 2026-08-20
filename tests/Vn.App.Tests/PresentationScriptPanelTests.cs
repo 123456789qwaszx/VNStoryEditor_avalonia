@@ -113,6 +113,35 @@ public sealed class PresentationScriptPanelTests
     });
 
     [Fact]
+    public void 꺼진_커맨드_행은_빈_점과_흐린_텍스트로_남는다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: 점 = 켜고 끄기 — 꺼진 커맨드는 사라지지 않고 흐려진다.
+        IReadOnlyList<PresentationScriptRow> rows =
+        [
+            new(PresentationScriptRowKind.Command, "ln_a",
+                Command("char_rig_staging.move_by"), "<<move_by @1 +2u>>"),
+            new(PresentationScriptRowKind.Command, "ln_a",
+                Command("char_rig_staging.move_by"), "<<move_by @1 -2u>>", IsEnabled: false),
+            new(PresentationScriptRowKind.Dialogue, "ln_a", null, "라루: 첫 줄")
+        ];
+
+        var panel = new PresentationScriptPanel();
+        panel.Show(rows, selectedLineId: "ln_a", editable: true);
+
+        Ellipse[] dots = panel.GetLogicalDescendants().OfType<Ellipse>().ToArray();
+        Assert.Equal(2, dots.Length);
+
+        // 켜짐 = 찬 점, 꺼짐 = 빈 점(테두리만).
+        Assert.Single(dots, dot => dot.Fill is SolidColorBrush { Color.A: > 0 });
+        Ellipse hollow = Assert.Single(dots, dot => Equals(dot.Fill, Brushes.Transparent));
+        Assert.NotNull(hollow.Stroke);
+
+        // 꺼진 행의 텍스트는 흐리다.
+        Assert.Contains(panel.GetLogicalDescendants().OfType<TextBlock>(),
+            text => text.Text == "<<move_by @1 -2u>>" && text.Opacity < 0.6);
+    });
+
+    [Fact]
     public void Setup_선택이면_Setup_구획이_선택_박스로_칠해진다() => HeadlessUi.Run(() =>
     {
         var panel = new PresentationScriptPanel();
