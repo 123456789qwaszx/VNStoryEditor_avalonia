@@ -283,8 +283,9 @@ public partial class PresentationNodeEditor : UserControl
             AudioCommands: StageAudioCues.AudioOf(catalog, lineBinding?.Commands),
             // 이동 편집(W66): 모션 선언이 있는 커맨드만 무대에서 수치를 만질 수 있다.
             MotionCues: motionCues,
-            // 커맨드 스트립(W66): 이 라인의 연출 전부가 프리뷰 화면 안에 칩으로 선다.
-            CommandChips: StageCommandChips.Of(catalog, lineBinding?.Commands, motionCues)));
+            // 대본 패널(2026-08-20): 시나리오 전체 텍스트 — 커맨드 목록·편집 입구가 이쪽이다.
+            ScriptRows: PresentationScriptModel.Build(
+                catalog, dialogue, draft.SetupCommands, draft.Bindings)));
     }
 
     /// <summary>
@@ -418,6 +419,9 @@ public partial class PresentationNodeEditor : UserControl
         _session.Select(next.Id);
         return true;
     }
+
+    /// <summary>대본 패널(프리뷰 좌측)의 대사 행 클릭이 들어오는 문 — 선택 규칙은 같다.</summary>
+    internal void SelectStageLineById(string lineId) => SelectStageLine(lineId);
 
     private void SelectStageLine(string lineId)
     {

@@ -41,11 +41,18 @@
                        x:Name="BadgeRow"
                        Margin="0,6,0,0" />
 
-            <!-- 축소판 무대 — 분리 창과 같은 StageSceneView를 쓴다(렌더 사본 금지). -->
-            <ContentControl Grid.Row="2"
-                            x:Name="SceneHost"
-                            Height="185"
-                            Margin="0,6,0,0" />
+            <!-- 좌: 연출 대본 텍스트 패널(로그 터미널 감각, 2026-08-20) · 우: 축소판 무대.
+                 무대는 분리 창과 같은 StageSceneView를 쓴다(렌더 사본 금지). -->
+            <Grid Grid.Row="2"
+                  ColumnDefinitions="300,*"
+                  Height="185"
+                  Margin="0,6,0,0">
+                <ContentControl Grid.Column="0"
+                                x:Name="ScriptHost"
+                                Margin="0,0,6,0" />
+                <ContentControl Grid.Column="1"
+                                x:Name="SceneHost" />
+            </Grid>
 
             <StackPanel Grid.Row="3" Spacing="4" Margin="0,6,0,0">
                 <StackPanel x:Name="NoticeHost" Spacing="2" />

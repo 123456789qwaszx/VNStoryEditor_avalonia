@@ -447,26 +447,45 @@ internal sealed class StageSceneView : UserControl
             }
         }
 
-        if (request.CommandChips is not { Count: > 0 } chips)
+        // 커맨드 텍스트는 무대에 띄우지 않는다 (2026-08-20 소유자 정리) — 목록·편집 입구는
+        // 왼쪽 대본 패널의 것이고, 무대에는 궤적·고스트와 프레임 스크럽만 남는다.
+        if (_motionTransitions.Count > 0)
+        {
+            Add(BuildFrameScrubber(em),
+                new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 10, em * 1.4));
+        }
+    }
+
+    /// <summary>
+    /// 대본 패널의 점(●)이 가리킨 커맨드의 상세조절을 연다 — 이동 커맨드는 이동 편집기
+    /// (슬라이더+이징+곡선), 그 외에 조절 가능한 파라미터가 선언된 커맨드는 파라미터
+    /// 조절창이다. 어느 것도 아니면 열 것이 없다(조용히 무시가 아니라 상태줄이 말한다).
+    /// </summary>
+    internal void ShowInspectorForCommand(PresentationResultCommand command)
+    {
+        if (_session is null || _request?.EditContext is not { Editable: true })
         {
             return;
         }
 
-        var rows = new StackPanel { Spacing = em * 0.15 };
+        StageMotionCue? cue = _request.MotionCues?.FirstOrDefault(item =>
+            string.Equals(item.CommandId, command.CommandId, StringComparison.Ordinal));
 
-        foreach (StageCommandChip chip in chips)
+        if (cue is not null)
         {
-            rows.Children.Add(chip.Motion is { } motion
-                ? BuildMotionChip(motion, em)
-                : BuildPlainCommandChip(chip, em));
+            ShowMotionFlyout(cue);
+            return;
         }
 
-        if (_motionTransitions.Count > 0)
+        PresentationCommandDefinition? definition = ManipulationCatalog.Find(command.DefinitionId);
+
+        if (definition is not null && definition.Parameters.Any(IsAdjustableParameter))
         {
-            rows.Children.Add(BuildFrameScrubber(em));
+            ShowParameterFlyout(definition, command);
+            return;
         }
 
-        Add(rows, new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 18, em * (chips.Count + 2)));
+        _session.SetStatus("이 커맨드에는 조절할 수치·프리셋이 선언돼 있지 않습니다 — 텍스트로 고치세요.");
     }
 
     /// <summary>
@@ -530,52 +549,7 @@ internal sealed class StageSceneView : UserControl
     /// W68: scale_by·shot_zoom부터)이고, 없으면 커맨드가 있다는 사실을 알리는 표시 칩이다.
     /// 무엇이 만질 수 있는 수치인지는 코드가 아니라 선언이 정한다.
     /// </summary>
-    private Control BuildPlainCommandChip(StageCommandChip source, double em)
-    {
-        PresentationCommandDefinition? definition = ManipulationCatalog.Find(source.Command.DefinitionId);
-        bool hasAdjustable = definition is not null &&
-            definition.Parameters.Any(IsAdjustableParameter);
-        // 편집 가능 표시는 요청의 EditContext가 정본이다 — 세션 유무는 클릭 시점의
-        // 가드(ShowParameterFlyout)가 본다. CanManipulate로 묶으면 화면 판정이 앱 상태에 결합된다.
-        bool editable = hasAdjustable && _request?.EditContext?.Editable == true;
-
-        var chip = new Border
-        {
-            Background = new SolidColorBrush(editable
-                ? Color.FromArgb(150, 25, 45, 60)
-                : Color.FromArgb(130, 30, 30, 40)),
-            CornerRadius = new CornerRadius(em * 0.2),
-            Padding = new Thickness(em * 0.35, em * 0.12),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Cursor = editable ? new Cursor(StandardCursorType.Hand) : null,
-            Child = new TextBlock
-            {
-                Text = editable ? $"⚙ {source.Text}" : source.Text,
-                FontSize = em * 0.5,
-                Foreground = new SolidColorBrush(editable
-                    ? Color.FromArgb(235, 147, 197, 253)
-                    : Color.FromArgb(200, 203, 213, 225))
-            }
-        };
-
-        if (editable)
-        {
-            ToolTip.SetTip(chip, "눌러서 수치를 조절합니다.");
-            chip.PointerPressed += (_, args) =>
-            {
-                args.Handled = true;
-                ShowParameterFlyout(definition!, source.Command);
-            };
-        }
-        else
-        {
-            ToolTip.SetTip(chip, hasAdjustable
-                ? "읽기 전용 화면이라 조절할 수 없습니다."
-                : "이 라인의 연출입니다. 조절할 수치·프리셋이 선언된 커맨드만 열립니다.");
-        }
-
-        return chip;
-    }
+    // (칩 스트립 제거 — 2026-08-20 소유자 정리: 커맨드 목록은 왼쪽 대본 패널로 갔다)
 
     /// <summary>
     /// 칩에서 상세 조절이 되는 파라미터인가 (W68b) — 슬라이더 선언(숫자축) ·
@@ -803,41 +777,6 @@ internal sealed class StageSceneView : UserControl
         Canvas.SetTop(line, 0);
     }
 
-    private Control BuildMotionChip(StageMotionCue cue, double em)
-    {
-        string summary = $"⇢ {cue.SlotKey} " +
-            $"{FormatUnits(cue.DeltaX)} {FormatUnits(cue.DeltaY)} · {cue.DurationFrames:0}fr";
-
-        var chip = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(150, 60, 45, 5)),
-            CornerRadius = new CornerRadius(em * 0.2),
-            Padding = new Thickness(em * 0.35, em * 0.12),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Cursor = new Cursor(StandardCursorType.Hand),
-            Child = new TextBlock
-            {
-                Text = summary,
-                FontSize = em * 0.55,
-                Foreground = new SolidColorBrush(Color.FromArgb(235, 250, 204, 21))
-            }
-        };
-
-        ToolTip.SetTip(chip, CanManipulate()
-            ? "눌러서 이동 수치를 조절합니다."
-            : "읽기 전용 화면이라 조절할 수 없습니다.");
-
-        if (CanManipulate())
-        {
-            chip.PointerPressed += (_, args) =>
-            {
-                args.Handled = true;
-                ShowMotionFlyout(cue);
-            };
-        }
-
-        return chip;
-    }
 
     /// <summary>픽셀 값을 사람이 읽는 u 토큰으로. 환산의 유일한 자리는 UnitToken이다.</summary>
     private string FormatUnits(double pixels)

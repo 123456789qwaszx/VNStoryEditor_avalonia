@@ -107,6 +107,14 @@ public partial class MainWindow : Window
                 DialogueEditor.MoveStageLine(delta);
             }
         };
+        StagePreview.LineSelectRequested += lineId =>
+        {
+            // 대본 패널의 대사 행 클릭 (2026-08-20) — 같은 규칙: 활성 편집기의 선택 하나.
+            if (PresentationEditor.IsVisible)
+            {
+                PresentationEditor.SelectStageLineById(lineId);
+            }
+        };
         StagePreview.NodeExitRequested = () =>
         {
             // 문서 끝 도달 (W39) — 활성 편집기가 실행 출구를 따라 다음 노드로 전환하면

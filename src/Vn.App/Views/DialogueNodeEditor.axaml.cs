@@ -826,10 +826,11 @@ public partial class DialogueNodeEditor : UserControl
             AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
             // 소리 실재생(W62): 재생이 이 라인에 도달하면 위 칩의 원본 커맨드가 울린다.
             AudioCommands: StageAudioCues.AudioOf(catalog, lineCommands),
-            // 이동 표시(W66): 작가 화면에서도 궤적·칩은 보인다 — 편집은 위 EditContext가
-            // 이미 잠갔으므로 칩을 눌러도 조절창이 열리지 않는다(발행 불변).
+            // 이동 표시(W66): 작가 화면에서도 궤적은 보인다 — 편집은 위 EditContext가 잠근다.
             MotionCues: dialogueMotionCues,
-            CommandChips: StageCommandChips.Of(catalog, lineCommands, dialogueMotionCues)));
+            // 대본 패널(2026-08-20): 공급된 발행본 기준 읽기 전용 — 점·편집은 잠금이 막는다.
+            ScriptRows: PresentationScriptModel.Build(
+                catalog, export.Dialogue, export.Presentation.SetupCommands, export.Presentation.Bindings)));
     }
 
     /// <summary>

@@ -65,8 +65,7 @@ public sealed class StageMotionRenderTests
             CoreState: fold.CoreState,
             // 재생 보간 검증용 — 실제 편집기와 같은 계산(라인 커맨드 duration 최대).
             TransitionSeconds: StageTransitions.SecondsFor(Catalog, lineCommands),
-            MotionCues: cues,
-            CommandChips: StageCommandChips.Of(Catalog, lineCommands, cues));
+            MotionCues: cues);
     }
 
     private static Canvas CanvasOf(StageSceneView view) =>
@@ -76,13 +75,8 @@ public sealed class StageMotionRenderTests
     private static IReadOnlyList<Line> Trails(Canvas canvas) =>
         canvas.Children.OfType<Line>().Where(line => line.StrokeDashArray is { Count: > 0 }).ToArray();
 
-    private static IReadOnlyList<TextBlock> Chips(Canvas canvas) =>
-        canvas.GetLogicalDescendants().OfType<TextBlock>()
-            .Where(text => text.Text is { } value && value.StartsWith('⇢'))
-            .ToArray();
-
     [Fact]
-    public void 이동_커맨드는_칩과_궤적으로_그려진다() => HeadlessUi.Run(() =>
+    public void 이동_커맨드는_궤적으로_그려진다() => HeadlessUi.Run(() =>
     {
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
@@ -95,12 +89,6 @@ public sealed class StageMotionRenderTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Canvas canvas = CanvasOf(view);
-
-        // 칩이 이동량과 시간을 사람이 읽는 말로 든다.
-        TextBlock chip = Assert.Single(Chips(canvas));
-        Assert.Contains("c1", chip.Text!, StringComparison.Ordinal);
-        Assert.Contains("+2u", chip.Text!, StringComparison.Ordinal);
-        Assert.Contains("12fr", chip.Text!, StringComparison.Ordinal);
 
         // 출발 자리에서 지금 자리로 잇는 궤적이 실제로 섰다.
         Assert.Single(Trails(canvas));
@@ -207,73 +195,16 @@ public sealed class StageMotionRenderTests
         window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Canvas canvas = CanvasOf(view);
-
-        Assert.Single(Chips(canvas)); // 칩은 선다 — 커맨드가 있다는 사실은 숨기지 않는다
-        Assert.Empty(Trails(canvas));
+        Assert.Empty(Trails(CanvasOf(view)));
 
         window.Close();
     });
 
     [Fact]
-    public void 슬라이더_선언_커맨드는_편집_화면에서_수치_칩으로_선다() => HeadlessUi.Run(() =>
+    public void 모션_선언이_없는_커맨드는_궤적이_없다() => HeadlessUi.Run(() =>
     {
-        // W68 — scale_by는 모션 선언(궤적)은 없지만 multiplier 슬라이더 선언이 있다.
-        // 편집 가능한 화면에서는 ⚙ 수치 칩으로, 읽기 화면에서는 표시 칩으로 선다.
-        var view = new StageSceneView();
-        var window = new Window { Content = view, Width = 800, Height = 600 };
-        window.Show();
-
-        MiniStagePreviewRequest request = BuildRequest(Command(
-            "char_rig_staging.scale_by", ("slot", "c1"), ("multiplier", "1.2")));
-        view.Render(request with { EditContext = new StageEditContext("np_test", "ln1") });
-        window.Measure(new Avalonia.Size(800, 600));
-        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Canvas canvas = CanvasOf(view);
-
-        Assert.Contains(canvas.GetLogicalDescendants().OfType<TextBlock>(),
-            text => text.Text is { } value &&
-                value.StartsWith('⚙') && value.Contains("scale_by", StringComparison.Ordinal));
-
-        window.Close();
-    });
-
-    [Fact]
-    public void 프리셋_커맨드도_편집_화면에서_수치_칩으로_선다() => HeadlessUi.Run(() =>
-    {
-        // W68b — Depth(size)·Place(place)는 값이 프리셋 토큰이라 선택기로 열린다.
-        // 후보 토큰이 선언된 타입이 판정의 전부다 — 커맨드별 코드가 없다.
-        var view = new StageSceneView();
-        var window = new Window { Content = view, Width = 800, Height = 600 };
-        window.Show();
-
-        MiniStagePreviewRequest request = BuildRequest(
-            Command("char_rig_depth.size", ("slot", "c1"), ("depth", "front")),
-            Command("char_rig_placement.place", ("slot", "c1"), ("focus", "bust"), ("screenPoint", "left")));
-        view.Render(request with { EditContext = new StageEditContext("np_test", "ln1") });
-        window.Measure(new Avalonia.Size(800, 600));
-        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Canvas canvas = CanvasOf(view);
-        var gearChips = canvas.GetLogicalDescendants().OfType<TextBlock>()
-            .Where(text => text.Text is { } value && value.StartsWith('⚙'))
-            .Select(text => text.Text!)
-            .ToArray();
-
-        Assert.Contains(gearChips, text => text.Contains("size", StringComparison.Ordinal));
-        Assert.Contains(gearChips, text => text.Contains("place", StringComparison.Ordinal));
-
-        window.Close();
-    });
-
-    [Fact]
-    public void 선언이_없는_커맨드는_표시_칩만_서고_궤적은_없다() => HeadlessUi.Run(() =>
-    {
-        // 커맨드가 이 라인에 있다는 사실은 숨기지 않되(표시 칩), 수치·궤적은
-        // 모션 선언이 있는 것에만 붙는다 — 추측으로 축을 그리지 않는다.
+        // 추측으로 축을 그리지 않는다 — 궤적은 모션 선언이 있는 커맨드만의 것이다.
+        // (커맨드 목록 자체는 이제 무대가 아니라 왼쪽 대본 패널의 일이다 — 2026-08-20 정리)
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
@@ -284,14 +215,7 @@ public sealed class StageMotionRenderTests
         window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Canvas canvas = CanvasOf(view);
-
-        Assert.Empty(Chips(canvas)); // ⇢ 이동 칩은 없다
-        Assert.Empty(Trails(canvas));
-
-        // 표시 칩은 선다 — 병기 텍스트 그대로.
-        Assert.Contains(canvas.GetLogicalDescendants().OfType<TextBlock>(),
-            text => text.Text is { } value && value.Contains("scale_by", StringComparison.Ordinal));
+        Assert.Empty(Trails(CanvasOf(view)));
 
         window.Close();
     });

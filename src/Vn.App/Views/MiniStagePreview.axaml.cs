@@ -135,53 +135,6 @@ internal sealed record StageMotionCue(
     IReadOnlyList<Ked.Presentation.Core.CurveKey>? CurveKeys = null);
 
 /// <summary>
-/// 프리뷰에 합쳐지는 커맨드 스트립의 칩 하나 (W66) — 이 라인의 커맨드가 프리뷰 화면
-/// 안에서 보인다. <see cref="Motion"/>이 있으면 이동 칩(⇢·궤적·슬라이더)이고,
-/// 아니면서 슬라이더 선언 파라미터가 있으면 수치 칩(⚙, W68), 그 외엔 표시 칩이다.
-/// <see cref="Command"/>는 편집 대상 원본 — 칩 클릭이 이 커맨드의 인자를 만진다.
-/// </summary>
-internal sealed record StageCommandChip(
-    string Text, StageMotionCue? Motion, PresentationResultCommand Command);
-
-/// <summary>이 라인의 커맨드 전부를 프리뷰 칩으로 (W66). 오디오는 ♪ 칩이 따로 있어 뺀다.</summary>
-internal static class StageCommandChips
-{
-    public static IReadOnlyList<StageCommandChip>? Of(
-        PresentationCommandCatalog catalog,
-        IReadOnlyList<PresentationResultCommand>? lineCommands,
-        IReadOnlyList<StageMotionCue>? motionCues)
-    {
-        if (lineCommands is null || lineCommands.Count == 0)
-        {
-            return null;
-        }
-
-        var chips = new List<StageCommandChip>();
-
-        foreach (PresentationResultCommand command in lineCommands)
-        {
-            PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
-
-            if (definition is not null && string.Equals(
-                    definition.CategoryId, "audio", StringComparison.Ordinal))
-            {
-                continue; // ♪ 칩(W34-b)의 자리다.
-            }
-
-            StageMotionCue? motion = motionCues?.FirstOrDefault(cue =>
-                string.Equals(cue.CommandId, command.CommandId, StringComparison.Ordinal));
-
-            chips.Add(new StageCommandChip(
-                CommandText.Format(definition, command.DefinitionId, command.Arguments),
-                motion,
-                command));
-        }
-
-        return chips.Count > 0 ? chips : null;
-    }
-}
-
-/// <summary>
 /// 이 라인의 이동 커맨드를 무대가 만질 수 있는 모양으로 펼친다 (W66).
 ///
 /// 무엇이 이동인지는 <b>카탈로그의 모션 선언</b>만이 정한다 — 이름으로 추측하지 않으므로
@@ -281,7 +234,7 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<string>? AutoBranchBlocks = null,
     IReadOnlyList<PresentationResultCommand>? AudioCommands = null,
     IReadOnlyList<StageMotionCue>? MotionCues = null,
-    IReadOnlyList<StageCommandChip>? CommandChips = null);
+    IReadOnlyList<PresentationScriptRow>? ScriptRows = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
@@ -314,11 +267,20 @@ public partial class MiniStagePreview : UserControl
     /// <summary>도킹/분리 무대 어느 쪽이든 직접 조작이 편집을 만들었다 — 편집기가 다시 그린다.</summary>
     internal event Action? ManipulationApplied;
 
+    /// <summary>대본 패널의 대사 행 클릭 — 활성 편집기가 그 라인을 선택한다.</summary>
+    internal event Action<string>? LineSelectRequested;
+
+    private readonly PresentationScriptPanel _script = new();
+
     public MiniStagePreview()
     {
         InitializeComponent();
 
         SceneHost.Content = _scene;
+        ScriptHost.Content = _script;
+        _script.LineClicked += lineId => LineSelectRequested?.Invoke(lineId);
+        _script.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
+        _script.CommandTextEdited += ApplyScriptTextEdit;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
         // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
@@ -449,6 +411,54 @@ public partial class MiniStagePreview : UserControl
         Render();
     }
 
+    /// <summary>
+    /// 대본 패널의 인라인 편집 적용 (2026-08-20) — 파싱은 텍스트 입력과 같은
+    /// <see cref="CommandText.Parse"/> 하나다. 같은 커맨드의 인자 수정만 받는다:
+    /// 다른 커맨드로의 교체·이동은 아직 편집 통로가 없어 상태줄이 이유를 말한다
+    /// (조용한 무시 금지).
+    /// </summary>
+    private void ApplyScriptTextEdit(PresentationResultCommand command, string text)
+    {
+        if (_session is null || _current?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "대본 텍스트 편집", () =>
+        {
+            PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
+            CommandTextParseResult parsed = CommandText.Parse(text, catalog);
+
+            if (!parsed.Success)
+            {
+                _session.SetStatus($"커맨드 텍스트 오류 — {parsed.Error}");
+                return;
+            }
+
+            if (!string.Equals(parsed.Definition!.Id, command.DefinitionId, StringComparison.Ordinal))
+            {
+                _session.SetStatus(
+                    "다른 커맨드로의 교체는 아직 여기서 안 됩니다 — 기존 커맨드 행에서 지우고 새로 추가하세요.");
+                return;
+            }
+
+            _session.Editor.UpdatePresentationCommandArguments(
+                context.PresentationNodeId, command.CommandId, parsed.Arguments!);
+
+            // 지운 인자(짧아진 텍스트)는 덮어쓰기로 안 사라진다 — 명시로 지운다.
+            foreach (string existing in command.Arguments.Keys.ToArray())
+            {
+                if (!parsed.Arguments!.ContainsKey(existing))
+                {
+                    _session.Editor.SetPresentationCommandArgument(
+                        context.PresentationNodeId, command.CommandId, existing, null);
+                }
+            }
+
+            ManipulationApplied?.Invoke();
+        });
+    }
+
     private void Render()
     {
         MiniStagePreviewRequest? request = _current;
@@ -457,6 +467,8 @@ public partial class MiniStagePreview : UserControl
 
         ContextText.Text = request?.ContextLabel ?? string.Empty;
         _scene.Render(request);
+        _script.Show(request?.ScriptRows, request?.SelectedLineId, request?.EditContext?.Editable == true);
+        ScriptHost.IsVisible = _script.IsVisible;
 
         if (request is null)
         {
