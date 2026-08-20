@@ -92,6 +92,26 @@ public class PresentationCommandCatalogTests
     }
 
     [Fact]
+    public void 모션_선언은_move_by에만_있고_선언_없는_커맨드는_null이다()
+    {
+        PresentationCommandCatalog catalog = PresentationCommandCatalog.Default;
+
+        // W66 — "이 커맨드가 무슨 축을 미는가"의 유일한 근거. 이름·정규식 추측 금지.
+        PresentationMotionDeclaration motion = catalog.Find("char_rig_staging.move_by")!.Motion!;
+        Assert.Equal("CharSlot_Track", motion.NodeId);
+        Assert.True(motion.Relative);
+        Assert.Equal("duration", motion.DurationParameterName);
+        Assert.Equal("OutCubic", motion.DefaultEase); // 런타임 스펙 기본값의 기록
+        Assert.Equal("x", motion.FindAxis("x")!.ParameterName);
+        Assert.Equal("y", motion.FindAxis("y")!.ParameterName);
+        Assert.Equal("u", motion.FindAxis("x")!.Unit);
+
+        // 로더 무해성 — 선언이 없는 커맨드는 예전과 완전히 같다.
+        Assert.Null(catalog.Find("char_rig_staging.scale_by")!.Motion);
+        Assert.Single(catalog.Definitions, item => item.Motion is not null);
+    }
+
+    [Fact]
     public void 범주별_드롭다운_후보는_범주_Id로_거른다()
     {
         PresentationCommandCatalog catalog = PresentationCommandCatalog.Default;

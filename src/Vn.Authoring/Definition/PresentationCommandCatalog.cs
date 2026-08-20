@@ -21,6 +21,29 @@ public sealed record PresentationCommandParameter(
     string? Default,
     string? Description);
 
+/// <summary>축 하나 — 어느 파라미터가 어느 축을 어떤 단위로 미는가.</summary>
+public sealed record PresentationMotionAxis(string ParameterName, string Axis, string Unit)
+{
+    public const string XAxis = "x";
+    public const string YAxis = "y";
+}
+
+/// <summary>
+/// 커맨드가 미는 축의 선언 (W66). 모션 편집기가 "이 커맨드의 어느 인자가 무대의 무엇을
+/// 움직이는가"를 아는 <b>유일한</b> 근거다 — 이름이나 정규식으로 추측하지 않는다.
+/// 선언이 없는 커맨드는 수치를 내밀지 않고 지금처럼 텍스트·갤러리로만 편집된다.
+/// </summary>
+public sealed record PresentationMotionDeclaration(
+    string NodeId,
+    bool Relative,
+    string? DurationParameterName,
+    string? DefaultEase,
+    IReadOnlyList<PresentationMotionAxis> Axes)
+{
+    public PresentationMotionAxis? FindAxis(string axis) =>
+        Axes.FirstOrDefault(item => string.Equals(item.Axis, axis, StringComparison.Ordinal));
+}
+
 /// <summary>
 /// UI와 Formatter가 공유하는 명령 정의. 실제 작성 데이터에는 Id와 인자만 저장하고,
 /// 표시 이름·출력 명령 이름·범주·파라미터 순서는 게임 정의 또는 기본 카탈로그에서 읽는다.
@@ -34,7 +57,8 @@ public sealed record PresentationCommandDefinition(
     string Execution = PresentationCommandDefinition.QueuedExecution,
     bool MainLaneOnly = false,
     string? Notes = null,
-    string? Intensity = null)
+    string? Intensity = null,
+    PresentationMotionDeclaration? Motion = null)
 {
     public const string ImmediateExecution = "immediate";
     public const string QueuedExecution = "queued";
@@ -214,6 +238,37 @@ public sealed class PresentationCommandCatalog
                 : spec.Execution,
             spec.MainLaneOnly,
             string.IsNullOrWhiteSpace(spec.Notes) ? null : spec.Notes,
-            string.IsNullOrWhiteSpace(spec.Intensity) ? null : spec.Intensity);
+            string.IsNullOrWhiteSpace(spec.Intensity) ? null : spec.Intensity,
+            TryConvertMotion(spec.Motion));
+    }
+
+    /// <summary>
+    /// 모션 선언을 옮긴다. 노드 이름이나 축이 비면 <b>선언이 없는 것으로 친다</b> —
+    /// 반쪽 선언으로 편집기가 엉뚱한 축을 미는 것보다 수치를 안 내미는 편이 낫다.
+    /// </summary>
+    private static PresentationMotionDeclaration? TryConvertMotion(PresentationMotionSpec? spec)
+    {
+        if (spec is null || string.IsNullOrWhiteSpace(spec.Node))
+        {
+            return null;
+        }
+
+        PresentationMotionAxis[] axes = spec.Axes
+            .Where(axis =>
+                !string.IsNullOrWhiteSpace(axis.Param) && !string.IsNullOrWhiteSpace(axis.Axis))
+            .Select(axis => new PresentationMotionAxis(axis.Param, axis.Axis, axis.Unit))
+            .ToArray();
+
+        if (axes.Length == 0)
+        {
+            return null;
+        }
+
+        return new PresentationMotionDeclaration(
+            spec.Node,
+            spec.Relative,
+            string.IsNullOrWhiteSpace(spec.DurationParam) ? null : spec.DurationParam,
+            string.IsNullOrWhiteSpace(spec.DefaultEase) ? null : spec.DefaultEase,
+            axes);
     }
 }

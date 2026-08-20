@@ -59,11 +59,17 @@ public static class CoreStageFold
         "shot_focus_to", "shot_zoom", "shot_to", "shot_track", "shot_reset",
     };
 
+    /// <param name="stopBeforeCommandId">
+    /// 주면 그 커맨드를 <b>적용하기 직전</b>에 멈춘다 — 모션 편집이 "이 이동이 시작하는
+    /// 자리"를 알아야 해서 열어 둔 문이다(W66). 그 자리를 뒤에서 빼서 구하지 않는 이유는
+    /// 상대 이동에만 통하는 셈법이기 때문이다. null이면 전부 접는다.
+    /// </param>
     public static CoreStageFoldResult Fold(
         PresentationCommandCatalog catalog,
         IReadOnlyList<PresentationResultCommand> setupCommands,
         IReadOnlyList<MiniStageFoldLine> lines,
-        StageReducerTuning? tuning)
+        StageReducerTuning? tuning,
+        string? stopBeforeCommandId = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(setupCommands);
@@ -77,8 +83,17 @@ public static class CoreStageFold
         var fold = new MiniStageFold.FoldState();
         StageState core = StageReducer.CreateInitialState(tuning);
 
+        bool Stop(PresentationResultCommand command) =>
+            stopBeforeCommandId is not null &&
+            string.Equals(command.CommandId, stopBeforeCommandId, StringComparison.Ordinal);
+
         foreach (PresentationResultCommand command in setupCommands)
         {
+            if (Stop(command))
+            {
+                return new CoreStageFoldResult(MiniStageFold.Build(fold), core);
+            }
+
             core = ApplyOne(core, fold, catalog, tuning, lineId: null, command);
         }
 
@@ -88,6 +103,11 @@ public static class CoreStageFold
 
             foreach (PresentationResultCommand command in line.Commands)
             {
+                if (Stop(command))
+                {
+                    return new CoreStageFoldResult(MiniStageFold.Build(fold), core);
+                }
+
                 core = ApplyOne(core, fold, catalog, tuning, line.LineId, command);
             }
         }

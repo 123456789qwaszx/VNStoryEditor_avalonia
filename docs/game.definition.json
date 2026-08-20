@@ -407,7 +407,18 @@
           "required": false,
           "default": "0.4s"
         }
-      ]
+      ],
+      "motion": {
+        "node": "CharSlot_Track",
+        "relative": true,
+        "durationParam": "duration",
+        "defaultEase": "OutCubic",
+        "axes": [
+          { "param": "x", "axis": "x", "unit": "u" },
+          { "param": "y", "axis": "y", "unit": "u" }
+        ]
+      },
+      "notes": "motion 선언 = 이 커맨드가 무슨 축을 미는가의 정본(W66). 툴은 이름·정규식으로 축을 추측하지 않는다. defaultEase는 런타임 스펙 기본값(MoveByCommandSpecCharR.ease)의 기록이지 편집 칸이 아니다 — ease 인자는 런타임 개통 뒤 W67에서 연다."
     },
     {
       "id": "char_rig_staging.scale_by",

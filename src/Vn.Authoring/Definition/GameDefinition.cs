@@ -246,8 +246,53 @@ public sealed class PresentationCommandSpec
     [JsonPropertyName("parameters")]
     public List<PresentationParameterSpec> Parameters { get; init; } = new();
 
+    /// <summary>
+    /// 이 커맨드가 무슨 축을 미는가의 선언 (W66). 없으면 null — 모션 편집기가 수치를
+    /// 내밀지 않는다. <b>선언만이 근거다</b>: 이름이나 정규식으로 축을 추측하지 않는다.
+    /// </summary>
+    [JsonPropertyName("motion")]
+    public PresentationMotionSpec? Motion { get; init; }
+
     [JsonPropertyName("notes")]
     public string? Notes { get; init; }
+}
+
+/// <summary>커맨드가 미는 축의 선언. 값의 뜻(단위·상대/절대)과 시간 인자가 여기 명시된다.</summary>
+public sealed class PresentationMotionSpec
+{
+    /// <summary>리그 안 노드 이름. 슬롯 키와 합쳐 <c>{slot}/{node}</c>가 무대 상태의 키다.</summary>
+    [JsonPropertyName("node")]
+    public string Node { get; init; } = string.Empty;
+
+    /// <summary>true면 값이 현재 위치에 더해지는 증분, false면 목표 좌표 그 자체다.</summary>
+    [JsonPropertyName("relative")]
+    public bool Relative { get; init; }
+
+    /// <summary>시간을 싣는 파라미터 이름. 없으면 즉시(계단).</summary>
+    [JsonPropertyName("durationParam")]
+    public string? DurationParam { get; init; }
+
+    /// <summary>런타임 스펙 기본 이징의 <b>기록</b>. 편집 칸이 아니다(W67에서 인자가 선다).</summary>
+    [JsonPropertyName("defaultEase")]
+    public string? DefaultEase { get; init; }
+
+    [JsonPropertyName("axes")]
+    public List<PresentationMotionAxisSpec> Axes { get; init; } = new();
+}
+
+/// <summary>축 하나 — 어느 파라미터가 어느 축을 어떤 단위로 미는가.</summary>
+public sealed class PresentationMotionAxisSpec
+{
+    [JsonPropertyName("param")]
+    public string Param { get; init; } = string.Empty;
+
+    /// <summary>x 또는 y.</summary>
+    [JsonPropertyName("axis")]
+    public string Axis { get; init; } = string.Empty;
+
+    /// <summary>값의 단위(u). 픽셀 환산은 <c>UnitToken</c>이 유일한 자리다.</summary>
+    [JsonPropertyName("unit")]
+    public string Unit { get; init; } = string.Empty;
 }
 
 public sealed class PresentationParameterSpec
