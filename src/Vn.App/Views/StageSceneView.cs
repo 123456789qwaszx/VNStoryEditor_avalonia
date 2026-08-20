@@ -94,10 +94,25 @@ internal sealed class StageSceneView : UserControl
     {
         if (progress is not { } t || t >= 1)
         {
-            foreach ((_, Control control, StageRect to) in _transitionEntries)
+            // null = 정지 화면 (W66 소유자 결정): 이동 슬롯은 이 라인이 시작되는 순간의
+            // 자리 — 곧 출발 자리에 선다. 궤적·고스트가 어디로 갈지를 말하고, ▶가 태운다.
+            // 1 = 재생이 이동을 끝까지 태웠다 — 도착 자리에 남는다.
+            bool restAtStart = progress is null;
+
+            foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
             {
-                Canvas.SetLeft(control, to.X);
-                Canvas.SetTop(control, to.Y);
+                if (restAtStart &&
+                    _motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds) rest))
+                {
+                    Canvas.SetLeft(control, rest.From.X);
+                    Canvas.SetTop(control, rest.From.Y);
+                }
+                else
+                {
+                    Canvas.SetLeft(control, to.X);
+                    Canvas.SetTop(control, to.Y);
+                }
+
                 control.Width = to.Width;
                 control.Height = to.Height;
                 control.Opacity = 1;
@@ -390,10 +405,9 @@ internal sealed class StageSceneView : UserControl
     /// (소유자 그림: "프리뷰에 커맨드 목록이 합쳐진다"). 이동 커맨드(모션 선언 있음)는
     /// ⇢ 칩 + 궤적 + 슬라이더이고, 나머지는 커맨드가 있다는 사실을 알리는 표시 칩이다.
     ///
-    /// <b>왜 출발 자리를 그리나</b>: 정지 프레임은 이동이 <i>끝난</i> 자리다. 그래서 화면만
-    /// 봐서는 "이 캐릭터가 방금 움직였다"는 사실 자체가 안 보인다 — 어디서 왔는지를 그려야
-    /// 연출이 보인다. 값은 전부 <see cref="StageMotionCue"/>가 들고 오고 여기서 다시 계산하지
-    /// 않는다(사본 금지).
+    /// <b>정지 화면 = 이 라인이 시작되는 순간이다</b> (소유자 결정): 이동 슬롯은 출발
+    /// 자리에 서고, 도착 자리에 고스트 윤곽, 둘 사이에 점선 궤적 — ▶가 그 길을 태운다.
+    /// 값은 전부 <see cref="StageMotionCue"/>가 들고 오고 여기서 다시 계산하지 않는다(사본 금지).
     /// </summary>
     private void RenderMotionCues(
         MiniStagePreviewRequest request, StageSceneLayout layout, double height, double em)
@@ -414,6 +428,18 @@ internal sealed class StageSceneView : UserControl
                 {
                     RenderMotionTrail(portrait.Rect, cue, cameraScale, em);
                 }
+            }
+        }
+
+        // 휴지 배치 (W66 소유자 결정) — 렌더 직후의 기본 화면은 "이 라인이 시작되는 순간"
+        // 이다: 이동 슬롯은 출발 자리에 선다. 재생이 돌고 있으면 곧이어 오는 전이 동기화가
+        // 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
+        foreach ((string slotKey, Control control, _) in _transitionEntries)
+        {
+            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds) rest))
+            {
+                Canvas.SetLeft(control, rest.From.X);
+                Canvas.SetTop(control, rest.From.Y);
             }
         }
 
@@ -468,7 +494,7 @@ internal sealed class StageSceneView : UserControl
         new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 출발 자리의 윤곽 + 거기서 지금 자리로 잇는 선. 무대 좌표 변환은 컴포저의 규약
+    /// 도착 자리의 윤곽 + 출발에서 도착으로 잇는 선. 무대 좌표 변환은 컴포저의 규약
     /// 하나를 따른다 — 루트 공간에서 x는 같은 방향, y는 캔버스가 뒤집혀 있다.
     /// </summary>
     private void RenderMotionTrail(StageRect current, StageMotionCue cue, double cameraScale, double em)
@@ -486,13 +512,15 @@ internal sealed class StageSceneView : UserControl
             new StageRect(startX, startY, current.Width, current.Height),
             DurationToken.FramesToSeconds((float)cue.DurationFrames));
 
+        // 고스트는 도착 자리다 — 정지 화면의 초상이 출발 자리에 서므로(아래 휴지 배치),
+        // 윤곽은 "어디로 가는가"를 말해야 짝이 맞는다.
         var ghost = new Border
         {
             BorderBrush = new SolidColorBrush(Color.FromArgb(120, 250, 204, 21)),
             BorderThickness = new Thickness(Math.Max(1, em * 0.06)),
             CornerRadius = new CornerRadius(em * 0.1)
         };
-        Add(ghost, new StageRect(startX, startY, current.Width, current.Height));
+        Add(ghost, current);
 
         var line = new Avalonia.Controls.Shapes.Line
         {

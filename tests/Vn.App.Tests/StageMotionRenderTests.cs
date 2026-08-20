@@ -109,10 +109,11 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
-    public void 재생_보간은_출발_자리에서_궤적을_타고_끝나면_확정_자리다() => HeadlessUi.Run(() =>
+    public void 정지는_출발_자리이고_재생_보간이_궤적을_타며_끝은_도착_자리다() => HeadlessUi.Run(() =>
     {
-        // W66 — 전이 진행 t를 흘리면 이동 슬롯의 초상이 "직전 렌더"가 아니라 이동의
-        // 진짜 출발에서 지금 자리로 미끄러진다. 모양은 아직 선형이다(EaseFunctions 대기).
+        // W66 소유자 결정 — 정지 화면은 "이 라인이 시작되는 순간"이라 이동 슬롯이 출발
+        // 자리에 서고, 진행 t가 흐르면 도착으로 미끄러지며, 1이면 도착에 남는다.
+        // 모양은 아직 선형이다(EaseFunctions 대기).
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
@@ -125,28 +126,25 @@ public sealed class StageMotionRenderTests
 
         Canvas canvas = CanvasOf(view);
 
-        // 확정 상태의 자리를 전부 적어 둔다.
-        var finals = canvas.Children
+        // 렌더 직후 = 정지 화면(출발 자리). 이 자리를 기준으로 적어 둔다.
+        var rests = canvas.Children
             .Select(control => (Control: control, Left: Canvas.GetLeft(control)))
             .Where(entry => !double.IsNaN(entry.Left))
             .ToArray();
 
-        // 반쯤 진행 — 12fr 이동이 라인 전이 시간(= 같은 12fr)과 같으므로 진행도 그대로다.
+        double ShiftOf(Control control, double restLeft) => Canvas.GetLeft(control) - restLeft;
+
+        // 진행 1 = 도착. +2u = 80px(1920 기준) 오른쪽으로 간 컨트롤이 정확히 하나.
+        view.SetTransitionProgress(1);
+        Assert.Single(rests, entry => Math.Abs(ShiftOf(entry.Control, entry.Left) - 80) < 0.5);
+
+        // 진행 0.5 = 절반 — 같은 컨트롤이 +40 자리에 있다(12fr 이동 = 라인 전이 시간).
         view.SetTransitionProgress(0.5);
+        Assert.Single(rests, entry => Math.Abs(ShiftOf(entry.Control, entry.Left) - 40) < 0.5);
 
-        // +2u = 80px(1920 기준) 이동의 절반 = 40px 왼쪽에서 오는 중인 컨트롤이 정확히 하나.
-        var moved = canvas.Children
-            .Select(control => (Control: control, Left: Canvas.GetLeft(control)))
-            .Where(entry => !double.IsNaN(entry.Left))
-            .Join(finals, entry => entry.Control, final => final.Control,
-                (entry, final) => final.Left - entry.Left)
-            .Where(shift => Math.Abs(shift - 40) < 0.5)
-            .ToArray();
-        Assert.Single(moved);
-
-        // 전이 종료 — 전부 확정 자리로 돌아온다.
+        // null = 정지 화면 — 전부 출발 자리로 돌아온다.
         view.SetTransitionProgress(null);
-        foreach ((Control control, double left) in finals)
+        foreach ((Control control, double left) in rests)
         {
             Assert.Equal(left, Canvas.GetLeft(control), 1);
         }

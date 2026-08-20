@@ -148,7 +148,9 @@ public class StagePlaybackTests
         Assert.Equal(0.5, playback.TransitionProgress!.Value, precision: 3);
 
         playback.Tick(0.3);
-        Assert.Null(playback.TransitionProgress); // 전이 종료 — 확정 상태
+        // 전이 종료 — 재생 중에는 1로 남는다 (W66): null로 떨어지면 뷰가 정지 화면
+        // (이동 슬롯 = 출발 자리)으로 읽어 캐릭터가 되돌아가 버린다.
+        Assert.Equal(1, playback.TransitionProgress!.Value, precision: 3);
     }
 
     [Fact]
@@ -163,8 +165,8 @@ public class StagePlaybackTests
         playback.Tick(StagePlayback.AfterTypeDwellSeconds + 1);
         Assert.Equal([1], moves); // 전이가 안 끝났으니 다음 라인으로 못 간다
 
-        Assert.True(playback.TryAdvanceByInput()); // 1차 클릭 = 전이 즉시 완료
-        Assert.Null(playback.TransitionProgress);
+        Assert.True(playback.TryAdvanceByInput()); // 1차 클릭 = 전이 즉시 완료 (진행도 1)
+        Assert.Equal(1, playback.TransitionProgress!.Value, precision: 3);
         Assert.Equal([1], moves);
 
         Assert.True(playback.TryAdvanceByInput()); // 2차 클릭 = 다음 라인
@@ -210,7 +212,10 @@ public class StagePlaybackTests
         Assert.Equal(0.5, playback.TransitionProgress!.Value, precision: 3);
 
         playback.Tick(0.3);
-        Assert.Null(playback.TransitionProgress);        // 이동 종료 — 확정 상태
+        Assert.Equal(1, playback.TransitionProgress!.Value, precision: 3); // 이동 종료 — 도착 자리 유지
+
+        playback.Pause();
+        Assert.Null(playback.TransitionProgress); // 정지 화면 — 뷰가 출발 자리로 되돌린다
     }
 
     // ── 진행·정지 (W31) ───────────────────────────────────────────────────
@@ -290,7 +295,9 @@ public class StagePlaybackTests
         Arrive2(playback, 0, 3, transitionSeconds: 0.4); // 같은 인덱스 0으로 도착
 
         Assert.Equal(0, playback.VisibleCharacters); // 새 라인 취급 — 처음부터
-        Assert.Null(playback.TransitionProgress);    // 노드를 넘는 전이는 흐르지 않는다
+        // 노드를 넘는 전이는 흐르지 않는다 — 진행도 1(확정 자리)로 곧장 선다.
+        // (null이 아니라 1인 이유: 재생 중 null은 정지 화면 = 이동 슬롯이 출발 자리다, W66)
+        Assert.Equal(1, playback.TransitionProgress!.Value, precision: 3);
     }
 
     [Fact]

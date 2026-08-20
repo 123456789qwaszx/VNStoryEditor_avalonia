@@ -94,11 +94,13 @@ internal sealed class StagePlayback
             : null;
 
     /// <summary>
-    /// 전이 진행도 (W33). null이면 전이 중이 아니다 — 확정 상태(정지 프레임)만 보인다.
-    /// 값은 0..1이고 뷰가 직전 자리 → 새 자리를 이 비율로 보간한다.
+    /// 전이 진행도 (W33). <b>null = 정지 화면</b> — 뷰는 라인 시작의 정지 프레임을 보인다
+    /// (이동 슬롯은 출발 자리, W66 소유자 결정). 값 0..1은 재생 중의 보간이고,
+    /// <b>전이가 끝나도 재생 중에는 1로 남는다</b> — null로 떨어지면 이동 슬롯이
+    /// 출발 자리로 되돌아가 버린다.
     /// </summary>
     public double? TransitionProgress =>
-        IsPlaying && _transitionActive && _transitionDuration > 0
+        IsPlaying && _transitionDuration > 0
             ? Math.Clamp(_transitionElapsed / _transitionDuration, 0, 1)
             : null;
 
@@ -138,7 +140,9 @@ internal sealed class StagePlayback
 
             _transitionActive = transition;
             _transitionDuration = transitionSeconds;
-            _transitionElapsed = 0;
+            // 전이를 안 태우는 도착(첫 표시 등)은 곧장 끝 자리다 — 0으로 두면 재생 중
+            // 진행도가 0에 얼어붙어 이동 슬롯이 출발 자리에 붙박인다.
+            _transitionElapsed = transition ? 0 : transitionSeconds;
             TransitionChanged?.Invoke();
         }
         else
@@ -226,6 +230,7 @@ internal sealed class StagePlayback
         _typedCharacters = 0;
         _phase = _isChoice ? Phase.WaitInput : Phase.Typing;
         _transitionActive = false;
+        _transitionElapsed = _transitionDuration; // 첫 라인 도착까지의 과도기 — 확정 자리로
         TransitionChanged?.Invoke();
 
         if (LineIndex > 0)
@@ -262,6 +267,7 @@ internal sealed class StagePlayback
             if (_transitionActive)
             {
                 _transitionActive = false;
+                _transitionElapsed = _transitionDuration; // 즉시 완료 = 진행도 1 (끝 자리 유지)
                 TransitionChanged?.Invoke();
             }
 
