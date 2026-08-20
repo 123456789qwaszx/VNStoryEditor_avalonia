@@ -125,6 +125,11 @@ public static class YarnBundleEmitter
         var problems = new List<YarnBundleProblem>();
         var story = new StringBuilder();
 
+        // 커스텀 곡선 참조 검증 (W67 후속) — `@이름`이 프로젝트에 없으면 막는다.
+        // 런타임은 모르는 곡선을 로그만 남기고 OutCubic으로 굴리므로(조용한 어긋남),
+        // 저작이 유일한 방어다. "채우면 반드시 동작한다"의 곡선판이다.
+        ValidateEaseCurveReferences(presentation, project, definition, problems);
+
         // ── 헤더 ────────────────────────────────────────────────────────────
         story.Append("title: Story_").Append(name).Append("\n---\n");
 
@@ -322,6 +327,126 @@ public static class YarnBundleEmitter
 
         builder.Append("===\n");
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// 연출 커맨드의 ease 인자 중 <c>@이름</c> 참조를 프로젝트 곡선 목록과 대조한다.
+    /// 어느 인자가 ease인지는 카탈로그가 정한다 — 이름으로 추측하지 않는다.
+    /// </summary>
+    private static void ValidateEaseCurveReferences(
+        PresentationResult? presentation,
+        StoryProject? project,
+        GameDefinition? definition,
+        List<YarnBundleProblem> problems)
+    {
+        if (presentation is null)
+        {
+            return;
+        }
+
+        PresentationCommandCatalog catalog = PresentationCommandCatalog.For(definition);
+
+        var known = new HashSet<string>(
+            (project?.EaseCurves ?? Enumerable.Empty<Model.EaseCurve>())
+                .Select(curve => curve.Name),
+            StringComparer.Ordinal);
+
+        void Check(string? lineId, PresentationResultCommand command)
+        {
+            if (catalog.Find(command.DefinitionId) is not { } commandDefinition)
+            {
+                return;
+            }
+
+            foreach (PresentationCommandParameter parameter in commandDefinition.Parameters)
+            {
+                if (!string.Equals(parameter.Type, "ease", StringComparison.Ordinal) ||
+                    !command.Arguments.TryGetValue(parameter.Name, out string? value) ||
+                    !value.StartsWith('@'))
+                {
+                    continue;
+                }
+
+                if (!known.Contains(value[1..]))
+                {
+                    problems.Add(new YarnBundleProblem(
+                        $"곡선 '{value}'이 프로젝트에 없습니다 — 런타임은 이 커맨드를 기본 이징으로 조용히 재생하게 됩니다. " +
+                        "곡선을 만들거나 커맨드의 이징을 고치세요.",
+                        IsBlocking: true,
+                        lineId));
+                }
+            }
+        }
+
+        foreach (PresentationResultCommand command in presentation.SetupCommands)
+        {
+            Check(lineId: null, command);
+        }
+
+        foreach (PresentationResultBinding binding in presentation.Bindings)
+        {
+            foreach (PresentationResultCommand command in binding.Commands)
+            {
+                Check(binding.LineId, command);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 프로젝트의 커스텀 곡선을 런타임 스키마(ease-curves/1 — 배열 + name, 그쪽 확정 회신)로
+    /// 번들 폴더에 쓴다. 곡선이 없으면 파일을 만들지 않는다 — 없는 파일은 런타임이
+    /// 무음으로 커브 0개 처리하는 정상 경로다. 결정적 출력: BOM 없는 UTF-8 · LF.
+    /// </summary>
+    public static string? WriteCurves(IReadOnlyList<Model.EaseCurve> curves, string directory)
+    {
+        ArgumentNullException.ThrowIfNull(curves);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+
+        List<Model.EaseCurve> named = curves
+            .Where(curve => Model.EaseCurve.IsValidName(curve.Name))
+            .OrderBy(curve => curve.Name, StringComparer.Ordinal)
+            .ToList();
+
+        if (named.Count == 0)
+        {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        builder.Append("{\n  \"schema\": \"ease-curves/1\",\n  \"curves\": [\n");
+
+        for (int index = 0; index < named.Count; index++)
+        {
+            Model.EaseCurve curve = named[index];
+            builder.Append("    { \"name\": \"").Append(curve.Name).Append("\",\n      \"keys\": [\n");
+
+            for (int keyIndex = 0; keyIndex < curve.Keys.Count; keyIndex++)
+            {
+                Ked.Presentation.Core.CurveKey key = curve.Keys[keyIndex];
+                builder.Append("        { \"t\": ").Append(Compact(key.Time))
+                    .Append(", \"v\": ").Append(Compact(key.Value))
+                    .Append(", \"inTangent\": ").Append(Compact(key.InTangent))
+                    .Append(", \"outTangent\": ").Append(Compact(key.OutTangent))
+                    .Append(" }")
+                    .Append(keyIndex < curve.Keys.Count - 1 ? ",\n" : "\n");
+            }
+
+            builder.Append("      ] }").Append(index < named.Count - 1 ? ",\n" : "\n");
+        }
+
+        builder.Append("  ]\n}\n");
+
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "curves.json");
+        string temporary = path + ".tmp";
+        File.WriteAllText(temporary, builder.ToString().Replace("\r\n", "\n"), new UTF8Encoding(false));
+        File.Move(temporary, path, overwrite: true);
+        return path;
+
+        // 재덤프 결정성: 지수 표기 없이 최단 왕복 표기(G9와 같은 성질의 "R" 대신,
+        // .NET Core의 최단 왕복이 기본이라 그대로 쓴다).
+        static string Compact(float value) =>
+            value.ToString("0.####################", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>트리오 하나를 폴더에 쓴다. 선언 파일도 함께 나온다.</summary>

@@ -102,27 +102,15 @@ public static class ProjectManifestJson
         // 작가가 더한 화자 (2026-08-17) — 정의 파일이 아니라 여기 산다(정의 파일은 기획자 전용).
         // <b>이름이 빈 줄은 파일에 안 쓴다</b> — 편집 중인 빈 자리는 메모리에서는 살아 있어야
         // 하지만(안 그러면 만들자마자 사라진다) 저장물에 남길 이유는 없다.
-        List<WriterSpeaker> named = project.WriterSpeakers
-            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
-            .ToList();
-
-        if (named.Count > 0)
+        if (WriteWriterSpeakers(project.WriterSpeakers) is { } writerSpeakers)
         {
-            var writerSpeakers = new JsonArray();
-
-            foreach (WriterSpeaker speaker in named)
-            {
-                var entry = new JsonObject { ["name"] = speaker.Name };
-
-                if (speaker.CharacterId.Length > 0)
-                {
-                    entry["characterId"] = speaker.CharacterId;
-                }
-
-                writerSpeakers.Add(entry);
-            }
-
             root["writerSpeakers"] = writerSpeakers;
+        }
+
+        // 커스텀 이징 곡선 (W67 후속) — 커브도 작가 자산이라 정의 파일이 아니라 여기 산다.
+        if (WriteEaseCurves(project.EaseCurves) is { } easeCurves)
+        {
+            root["easeCurves"] = easeCurves;
         }
 
         if (compositions.Count > 0)
@@ -267,21 +255,8 @@ public static class ProjectManifestJson
             compositions.Add(composition);
         }
 
-        var writerSpeakers = new List<WriterSpeaker>();
-
-        foreach (JsonNode? item in root["writerSpeakers"]?.AsArray() ?? new JsonArray())
-        {
-            if (item is not JsonObject speaker)
-            {
-                throw new InvalidDataException("프로젝트 manifest의 writerSpeakers 항목이 객체가 아닙니다.");
-            }
-
-            writerSpeakers.Add(new WriterSpeaker
-            {
-                Name = (string?)speaker["name"] ?? string.Empty,
-                CharacterId = (string?)speaker["characterId"] ?? string.Empty
-            });
-        }
+        List<WriterSpeaker> writerSpeakers = ReadWriterSpeakers(root["writerSpeakers"]);
+        List<EaseCurve> easeCurves = ReadEaseCurves(root["easeCurves"]);
 
         return new ProjectManifest(
             (string?)root["title"] ?? "제목 없음",
@@ -294,6 +269,7 @@ public static class ProjectManifestJson
             references,
             links,
             writerSpeakers,
+            easeCurves,
             compositions,
             (string?)root["results"]);
     }
@@ -403,6 +379,136 @@ public static class ProjectManifestJson
                 script.Name,
                 ProjectStore.DefaultScriptPath(script.Id)))
             .ToList();
+    }
+
+    /// <summary>
+    /// 커스텀 곡선 직렬화 (W67 후속) — manifest와 undo 스냅샷 코덱이 <b>같은 이것 하나</b>를
+    /// 쓴다(코덱이 따로 쓰면 undo가 곡선을 조용히 지운다). 필드명(t·v·inTangent·outTangent)은
+    /// 내보내기 curves.json 스키마와 같은 낱말이다 — 두 파일을 나란히 볼 사람이 같은 것을
+    /// 다른 이름으로 읽지 않게. 이름이 빈 곡선은 파일에 안 쓴다.
+    /// </summary>
+    internal static JsonArray? WriteEaseCurves(IReadOnlyList<EaseCurve> curves)
+    {
+        List<EaseCurve> named = curves
+            .Where(curve => !string.IsNullOrWhiteSpace(curve.Name))
+            .ToList();
+
+        if (named.Count == 0)
+        {
+            return null;
+        }
+
+        var array = new JsonArray();
+
+        foreach (EaseCurve curve in named)
+        {
+            var keys = new JsonArray();
+
+            foreach (Ked.Presentation.Core.CurveKey key in curve.Keys)
+            {
+                keys.Add(new JsonObject
+                {
+                    ["t"] = key.Time,
+                    ["v"] = key.Value,
+                    ["inTangent"] = key.InTangent,
+                    ["outTangent"] = key.OutTangent
+                });
+            }
+
+            array.Add(new JsonObject { ["name"] = curve.Name, ["keys"] = keys });
+        }
+
+        return array;
+    }
+
+    internal static List<EaseCurve> ReadEaseCurves(JsonNode? node)
+    {
+        var curves = new List<EaseCurve>();
+
+        foreach (JsonNode? item in node?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject curve)
+            {
+                throw new InvalidDataException("easeCurves 항목이 객체가 아닙니다.");
+            }
+
+            var keys = new List<Ked.Presentation.Core.CurveKey>();
+
+            foreach (JsonNode? keyNode in curve["keys"]?.AsArray() ?? new JsonArray())
+            {
+                if (keyNode is not JsonObject key)
+                {
+                    throw new InvalidDataException("easeCurves의 keys 항목이 객체가 아닙니다.");
+                }
+
+                keys.Add(new Ked.Presentation.Core.CurveKey(
+                    (float?)key["t"] ?? 0f,
+                    (float?)key["v"] ?? 0f,
+                    (float?)key["inTangent"] ?? 0f,
+                    (float?)key["outTangent"] ?? 0f));
+            }
+
+            curves.Add(new EaseCurve
+            {
+                Name = (string?)curve["name"] ?? string.Empty,
+                Keys = keys
+            });
+        }
+
+        return curves;
+    }
+
+    /// <summary>
+    /// 작가 화자 직렬화 — manifest와 undo 스냅샷 코덱이 같은 것을 쓴다. 코덱이 이걸 안 실어
+    /// <b>undo가 작가 화자를 지우는 잠복 버그</b>가 있었다(곡선 undo를 세우다 발견, W67 후속).
+    /// </summary>
+    internal static JsonArray? WriteWriterSpeakers(IReadOnlyList<WriterSpeaker> speakers)
+    {
+        List<WriterSpeaker> named = speakers
+            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
+            .ToList();
+
+        if (named.Count == 0)
+        {
+            return null;
+        }
+
+        var array = new JsonArray();
+
+        foreach (WriterSpeaker speaker in named)
+        {
+            var entry = new JsonObject { ["name"] = speaker.Name };
+
+            if (speaker.CharacterId.Length > 0)
+            {
+                entry["characterId"] = speaker.CharacterId;
+            }
+
+            array.Add(entry);
+        }
+
+        return array;
+    }
+
+    internal static List<WriterSpeaker> ReadWriterSpeakers(JsonNode? node)
+    {
+        var speakers = new List<WriterSpeaker>();
+
+        foreach (JsonNode? item in node?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject speaker)
+            {
+                throw new InvalidDataException("writerSpeakers 항목이 객체가 아닙니다.");
+            }
+
+            speakers.Add(new WriterSpeaker
+            {
+                Name = (string?)speaker["name"] ?? string.Empty,
+                CharacterId = (string?)speaker["characterId"] ?? string.Empty
+            });
+        }
+
+        return speakers;
     }
 
     internal static JsonObject WriteLink(NodeLink link)
@@ -529,6 +635,7 @@ public sealed record ProjectManifest(
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,
     IReadOnlyList<WriterSpeaker> WriterSpeakers,
+    IReadOnlyList<EaseCurve> EaseCurves,
     IReadOnlyList<RuntimeComposition> Compositions,
     string? ResultsRelativePath);
 

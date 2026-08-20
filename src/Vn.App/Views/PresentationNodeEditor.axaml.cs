@@ -245,7 +245,8 @@ public partial class PresentationNodeEditor : UserControl
             draft.SetupCommands,
             branch.FoldLines,
             lineBinding?.Commands,
-            _session.TuningLibrary.Tuning);
+            _session.TuningLibrary.Tuning,
+            _session.Project.EaseCurves);
 
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다 —
         // 작업 대본 쪽 프리뷰와 같은 판정 하나(ChoiceOptionBundle)를 지난다.

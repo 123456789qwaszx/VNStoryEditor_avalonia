@@ -102,7 +102,7 @@ internal sealed class StageSceneView : UserControl
             foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
             {
                 if (restAtStart &&
-                    _motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease) rest))
+                    _motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) rest))
                 {
                     Canvas.SetLeft(control, rest.From.X);
                     Canvas.SetTop(control, rest.From.Y);
@@ -135,17 +135,18 @@ internal sealed class StageSceneView : UserControl
         foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
         {
             if (_motionTransitions.TryGetValue(
-                    slotKey, out (StageRect From, double Seconds, EaseKind Ease) motion))
+                    slotKey,
+                    out (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) motion))
             {
                 // 이동 커맨드가 있는 슬롯은 궤적을 탄다 (W66) — 출발은 직전 렌더가 아니라
                 // 이동의 진짜 출발이고, 시간은 그 커맨드의 duration이다(라인 최대 아님).
-                // 모양은 코어 EaseFunctions — 런타임 DOTween과 골든 대조로 등가 고정된
-                // 그 곡선이다(W66b). Back·Elastic은 1을 넘나들 수 있고 Lerp가 그대로 태운다.
+                // 모양은 코어 EaseFunctions/CurveFunctions — 런타임과 등가 고정된 그
+                // 곡선이다(W66b). Back·Elastic·커스텀은 1을 넘나들 수 있고 Lerp가 그대로 태운다.
                 double lineSeconds = _request?.TransitionSeconds ?? 0;
                 double motionProgress = motion.Seconds <= 0
                     ? 1
                     : Math.Clamp(t * lineSeconds / motion.Seconds, 0, 1);
-                double eased = EaseFunctions.Evaluate(motion.Ease, (float)motionProgress);
+                double eased = EvaluateMotionShape(motion, motionProgress);
 
                 control.Opacity = 1;
                 Canvas.SetLeft(control, Lerp(motion.From.X, to.X, eased));
@@ -438,7 +439,7 @@ internal sealed class StageSceneView : UserControl
         // 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
         foreach ((string slotKey, Control control, _) in _transitionEntries)
         {
-            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease) rest))
+            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) rest))
             {
                 Canvas.SetLeft(control, rest.From.X);
                 Canvas.SetTop(control, rest.From.Y);
@@ -553,8 +554,15 @@ internal sealed class StageSceneView : UserControl
     /// 같은 슬롯에 이동이 여럿이면 마지막 것이 이긴다(런타임의 DOKill 의미론 —
     /// 앞의 것은 즉시 완주되므로 출발 자리에 이미 반영돼 있다).
     /// </summary>
-    private readonly Dictionary<string, (StageRect From, double Seconds, EaseKind Ease)> _motionTransitions =
+    private readonly Dictionary<string, (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve)> _motionTransitions =
         new(StringComparer.Ordinal);
+
+    /// <summary>진행도 → 곡선 값. 커스텀 곡선이 있으면 그것, 없으면 이징 — 재생·스크럽·정지 전부 이 하나다.</summary>
+    private static double EvaluateMotionShape(
+        (StageRect From, double Seconds, EaseKind Ease, IReadOnlyList<CurveKey>? Curve) motion, double progress) =>
+        motion.Curve is { Count: >= 2 } keys
+            ? CurveFunctions.Evaluate(keys as CurveKey[] ?? keys.ToArray(), (float)progress)
+            : EaseFunctions.Evaluate(motion.Ease, (float)progress);
 
     /// <summary>
     /// 칩의 이징 이름 → 코어 어휘. 모르는 이름은 런타임 스펙 기본값(OutCubic)으로 —
@@ -578,11 +586,12 @@ internal sealed class StageSceneView : UserControl
         }
 
         // 재생 보간용 출발 등록 — 시간은 이 커맨드의 duration이고(라인 최대와 다를 수
-        // 있다), 모양은 커맨드의 이징이다.
+        // 있다), 모양은 커맨드의 이징 또는 커스텀 곡선이다.
         _motionTransitions[cue.SlotKey] = (
             new StageRect(startX, startY, current.Width, current.Height),
             DurationToken.FramesToSeconds((float)cue.DurationFrames),
-            EaseKindOf(cue.Ease));
+            EaseKindOf(cue.Ease),
+            cue.CurveKeys);
 
         // 고스트는 도착 자리다 — 정지 화면의 초상이 출발 자리에 서므로(아래 휴지 배치),
         // 윤곽은 "어디로 가는가"를 말해야 짝이 맞는다.
@@ -1531,7 +1540,39 @@ internal sealed class StageSceneView : UserControl
             });
         };
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        // 커스텀 곡선(@이름)을 보고 있으면 콤보 매칭이 없다 — 미리보기는 그 곡선을 그린다.
+        if (cue.CurveKeys is { Count: >= 2 } customKeys)
+        {
+            const int sampleCount = 32;
+            var points = new Avalonia.Points();
+            CurveKey[] keys = customKeys as CurveKey[] ?? customKeys.ToArray();
+
+            for (int i = 0; i <= sampleCount; i++)
+            {
+                float t = i / (float)sampleCount;
+                float eased = CurveFunctions.Evaluate(keys, t);
+                points.Add(new Point(t * 44, 26 - Math.Clamp(eased, -0.25f, 1.25f) * 18 - 4));
+            }
+
+            curvePreview.Points = points;
+            combo.SelectedIndex = -1;
+            combo.PlaceholderText = cue.Ease;
+        }
+
+        // 곡선 편집 (W67 후속, 소유자: "마야처럼 키를 줘서 커스텀") — 선택한 이징에서
+        // 출발해 키를 만진다. 저장은 프로젝트 곡선 + 커맨드 인자 @이름이다.
+        var editButton = new Button
+        {
+            Content = "곡선 편집…",
+            FontSize = 10,
+            Padding = new Thickness(6, 2),
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        ToolTip.SetTip(editButton, "이 곡선에서 출발해 키를 만듭니다 — 저장하면 커스텀 곡선(@이름)이 됩니다.");
+        editButton.Click += (_, _) => ShowCurveEditorFlyout(presentationNodeId, cue, easeParameter);
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
         var label = new TextBlock
         {
             Text = "곡선",
@@ -1544,11 +1585,118 @@ internal sealed class StageSceneView : UserControl
         Grid.SetColumn(label, 0);
         Grid.SetColumn(combo, 1);
         Grid.SetColumn(curvePreview, 2);
+        Grid.SetColumn(editButton, 3);
         row.Children.Add(label);
         row.Children.Add(combo);
         row.Children.Add(curvePreview);
+        row.Children.Add(editButton);
 
         return row;
+    }
+
+    /// <summary>
+    /// 곡선 그래프 에디터 조절창 (W67 후속) — 시작점은 지금 커맨드의 곡선이다:
+    /// 커스텀이면 그 키들, 표준 이징이면 5키로 구운 근사(<see cref="EaseCurveBaker"/>).
+    /// 만지는 동안은 뷰의 작업 사본이고, <b>[저장]만 프로젝트에 닿는다</b> —
+    /// 곡선 upsert + 커맨드 인자 @이름, 편집 둘이라 되돌리기도 두 단계다.
+    /// </summary>
+    private void ShowCurveEditorFlyout(string presentationNodeId, StageMotionCue cue, string easeParameter)
+    {
+        if (_session is null || _request?.EditContext is not { Editable: true })
+        {
+            return;
+        }
+
+        // 시작 키와 제안 이름.
+        IReadOnlyList<CurveKey> initial = cue.CurveKeys is { Count: >= 2 } existing
+            ? existing
+            : EaseCurveBaker.Bake(EaseKindOf(cue.Ease));
+
+        string suggestedName = cue.Ease is ['@', .. var currentName]
+            ? currentName
+            : NextFreeCurveName();
+
+        ShowManipulationFlyout((host, _) =>
+        {
+            host.MinWidth = 310;
+            host.Children.Add(new TextBlock
+            {
+                Text = "곡선 편집 — 키 드래그 · 빈 자리 클릭 = 키 추가 · 핸들 = 기울기 (Shift = 한쪽만)",
+                FontSize = 9,
+                Opacity = 0.65,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 300
+            });
+
+            var curveEditor = new EaseCurveEditor();
+            curveEditor.Load(initial);
+            host.Children.Add(curveEditor);
+
+            var deleteButton = new Button { Content = "키 삭제", FontSize = 10, Padding = new Thickness(6, 2), IsEnabled = false };
+            var nameInput = new TextBox { Text = suggestedName, FontSize = 10, MinWidth = 120, PlaceholderText = "곡선 이름 (소문자·숫자·_)" };
+            var saveButton = new Button { Content = "저장", FontSize = 10, Padding = new Thickness(10, 2) };
+            var problemText = new TextBlock { FontSize = 9, Foreground = Brushes.OrangeRed, TextWrapping = TextWrapping.Wrap, MaxWidth = 300, IsVisible = false };
+
+            curveEditor.CurveChanged += () => deleteButton.IsEnabled = curveEditor.CanDeleteSelected;
+            // 선택 변화는 CurveChanged 없이도 일어난다 — 눌렀다 뗄 때 갱신.
+            curveEditor.PointerReleased += (_, _) => deleteButton.IsEnabled = curveEditor.CanDeleteSelected;
+            deleteButton.Click += (_, _) => curveEditor.DeleteSelected();
+
+            saveButton.Click += (_, _) =>
+            {
+                string name = nameInput.Text?.Trim() ?? string.Empty;
+
+                if (!Vn.Authoring.Model.EaseCurve.IsValidName(name))
+                {
+                    problemText.Text = "이름은 소문자·숫자·언더스코어만 됩니다 — 커맨드 토큰에 실립니다.";
+                    problemText.IsVisible = true;
+                    return;
+                }
+
+                if (Vn.Authoring.Model.EaseCurve.ValidateKeys(curveEditor.Keys) is { } violation)
+                {
+                    problemText.Text = violation;
+                    problemText.IsVisible = true;
+                    return;
+                }
+
+                UiGuard.Run(_session, "곡선 저장", () =>
+                {
+                    _session.Editor.SetEaseCurve(name, curveEditor.Keys);
+                    _session.Editor.SetPresentationCommandArgument(
+                        presentationNodeId, cue.CommandId, easeParameter, "@" + name);
+                    ManipulationApplied?.Invoke();
+                });
+
+                problemText.IsVisible = false;
+            };
+
+            var actions = new StackPanel
+            {
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Spacing = 6,
+                Children = { deleteButton, nameInput, saveButton }
+            };
+            host.Children.Add(actions);
+            host.Children.Add(problemText);
+        });
+    }
+
+    /// <summary>curve_1, curve_2 … — 프로젝트에 없는 첫 이름.</summary>
+    private string NextFreeCurveName()
+    {
+        IReadOnlyList<Vn.Authoring.Model.EaseCurve> curves =
+            _session?.Project.EaseCurves ?? [];
+
+        for (int i = 1; ; i++)
+        {
+            string candidate = $"curve_{i}";
+
+            if (!curves.Any(curve => string.Equals(curve.Name, candidate, StringComparison.Ordinal)))
+            {
+                return candidate;
+            }
+        }
     }
 
     /// <summary>

@@ -58,6 +58,12 @@ public sealed class StoryProject
     /// </summary>
     public List<WriterSpeaker> WriterSpeakers { get; init; } = new();
 
+    /// <summary>
+    /// 작가의 커스텀 이징 곡선 (W67 후속). 커맨드 다섯째 인자 <c>@이름</c>의 유일한 원천 —
+    /// 런타임용 <c>curves.json</c>은 내보내기가 여기서 만든다.
+    /// </summary>
+    public List<EaseCurve> EaseCurves { get; init; } = new();
+
     /// <summary>발행된 불변 결과. 추가만 되고 내용이 바뀌지 않는다.</summary>
     public ResultRepository Results { get; init; } = new();
 
@@ -189,6 +195,7 @@ public sealed class StoryProject
             Files = Files.Select(file => file.Clone()).ToList(),
             Links = Links.Select(link => link.Clone()).ToList(),
             WriterSpeakers = WriterSpeakers.Select(speaker => speaker.Clone()).ToList(),
+            EaseCurves = EaseCurves.Select(curve => curve.Clone()).ToList(),
             Results = Results.Clone(),
             Compositions = Compositions.Select(item => item.Clone()).ToList()
         };

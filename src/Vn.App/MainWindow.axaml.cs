@@ -815,7 +815,14 @@ public partial class MainWindow : Window
                 return;
             }
 
-            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(bundles, folder);
+            var written = new List<string>(YarnBundleEmitter.WriteBundles(bundles, folder));
+
+            // 커스텀 곡선(W67 후속) — 번들이 @이름으로 참조하는 곡선을 런타임 스키마로
+            // 함께 낸다. 곡선이 없으면 파일도 없다(런타임의 무음 0개 경로).
+            if (YarnBundleEmitter.WriteCurves(_session.Project.EaseCurves, folder) is { } curvesPath)
+            {
+                written.Add(curvesPath);
+            }
 
             int warnings = bundles.Sum(bundle => bundle.Problems.Count) +
                 exports.Sum(export => export.Warnings.Count);

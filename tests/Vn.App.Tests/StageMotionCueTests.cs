@@ -69,6 +69,38 @@ public class StageMotionCueTests
     }
 
     [Fact]
+    public void 앳_이름은_프로젝트_곡선의_키로_풀린다()
+    {
+        // W67 후속 — 커스텀 곡선. 프리뷰·재생·스크럽이 이 키들을 코어 CurveFunctions로 탄다.
+        PresentationResultCommand move = Command(
+            "char_rig_staging.move_by",
+            ("slot", "c1"), ("x", "+2u"), ("duration", "12fr"), ("ease", "@hop_snappy"));
+        MiniStageFoldLine[] lines = [new MiniStageFoldLine("ln1", false, [move])];
+
+        var curves = new List<Vn.Authoring.Model.EaseCurve>
+        {
+            new()
+            {
+                Name = "hop_snappy",
+                Keys = [new CurveKey(0f, 0f, 0f, 2.6f), new CurveKey(1f, 1f, 0.1f, 0f)]
+            }
+        };
+
+        StageMotionCue cue = Assert.Single(
+            StageMotionCues.Of(Catalog, Setup, lines, [move], Tuning, curves)!);
+
+        Assert.Equal("@hop_snappy", cue.Ease);
+        Assert.Equal(2, cue.CurveKeys!.Count);
+        Assert.Equal(2.6f, cue.CurveKeys[0].OutTangent);
+
+        // 프로젝트에 그 곡선이 없으면 null — 런타임과 같은 폴백(OutCubic)이고,
+        // 내보내기 검증이 어긋남을 막는다.
+        StageMotionCue orphan = Assert.Single(
+            StageMotionCues.Of(Catalog, Setup, lines, [move], Tuning, curves: [])!);
+        Assert.Null(orphan.CurveKeys);
+    }
+
+    [Fact]
     public void 이동이_없는_라인은_칩이_없다()
     {
         Assert.Null(CuesFor(Command("screen_effect.screen_flash", ("preset", "white"))));

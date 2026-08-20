@@ -25,8 +25,9 @@ MG4(모션 그래프 상세 규격)의 `@curve` 탈출구가 "증거가 쌓이�
   하나를 쓴다**: 툴 프리뷰·스크럽도, 그쪽 트윈도. DOTween은 커스텀 이즈 델리게이트를
   받으므로(`SetEase(EaseFunction)`) 호스트는 `t => CurveFunctions.Evaluate(keys, t/d)`를
   넘기면 된다 — 트윈 경로 구조는 그대로다.
-- **데이터 파일**: 번들 옆 `curves.json` — `{ "curves": { "이름": { "keys": [ {t,v,inTangent,outTangent}, … ] } } }`
-  (스키마 상세는 §3). 저작 쪽 소유는 프로젝트(작가 자산)이고, 내보내기가 이 파일을 함께 낸다.
+- **데이터 파일**: 번들 옆 `curves.json` (스키마 상세는 §3 — **2026-08-20 그쪽 회신으로
+  확정**: `curves`가 딕셔너리가 아니라 **배열 + `name` 필드**다. JsonUtility가 딕셔너리를
+  못 읽는다). 저작 쪽 소유는 프로젝트(작가 자산)이고, 내보내기가 이 파일을 함께 낸다.
 
 ## 2. 부탁 ① — 코어 `CurveFunctions`
 
@@ -47,26 +48,32 @@ MG4(모션 그래프 상세 규격)의 `@curve` 탈출구가 "증거가 쌓이�
 - 다섯째 토큰이 `@`로 시작하면: 커브 저장소에서 이름 조회 → 있으면
   `SetEase(t => CurveFunctions.Evaluate(keys, t / duration))` → 없으면 **로그 + OutCubic**
   (모르는 이징 이름과 같은 처리 — 1차 방어는 이쪽 저작 검증이다).
-- `curves.json` 로더 — 번들(대본) 옆에서 읽는다. 스키마:
+- `curves.json` 로더 — 번들(대본) 옆 `Assets/@Dialogue/curves.json`. 스키마
+  (**그쪽 회신 반영 확정본** — 배열 + `name`. 나머지 키 필드명·이름 규칙은 원안 그대로):
 
   ```json
   {
     "schema": "ease-curves/1",
-    "curves": {
-      "hop_snappy": {
+    "curves": [
+      { "name": "hop_snappy",
         "keys": [
           { "t": 0.0, "v": 0.0, "inTangent": 0.0, "outTangent": 2.6 },
           { "t": 0.4, "v": 0.9, "inTangent": 0.8, "outTangent": 0.3 },
           { "t": 1.0, "v": 1.0, "inTangent": 0.1, "outTangent": 0.0 }
-        ]
-      }
-    }
+        ] }
+    ]
   }
   ```
 
-  이름 규칙: `[a-z0-9_]+` (커맨드 토큰에 실리므로 공백·특수문자 금지). 키는 t 오름차순,
-  첫 키 t=0 · 마지막 키 t=1을 로더가 검증(어긋나면 로그 + 그 커브 무시).
+  이름 규칙: `[a-z0-9_]+` (커맨드 토큰에 실리므로 공백·특수문자 금지). 키는 **2개 이상**,
+  t 오름차순, 첫 키 t=0 · 마지막 키 t=1을 로더가 검증(어긋나면 경고 로그 + 그 커브 무시,
+  깨진 파일은 오류 로그 + 커브 0개).
 - 파일이 없으면 커브 0개로 조용히 동작한다(커브를 안 쓰는 프로젝트가 정상 경로다).
+
+> **2026-08-20 개통 완료** — `CurveFunctions`(반입 완료) · `EaseCurveLibrary` 로더 ·
+> 브리지 `@` 분기 · `MoveByCommandCharR` 커스텀 이즈 델리게이트. 등가는 독립 전개식
+> Hermite 레퍼런스와 교차 검증(4곡선 × 257샘플 최대 오차 3e-7). Unity 에디터 확인
+> 항목(EditMode 러너·`@hop_snappy` 육안)은 1차 개통분과 묶어 대기 중.
 
 ## 4. 이쪽(VnTool)이 지을 것 — 참고
 

@@ -103,6 +103,18 @@ public static class ProjectSnapshotCodec
             root["compositions"] = compositions;
         }
 
+        // 작가 화자·커스텀 곡선 — manifest와 같은 직렬화 하나를 쓴다. 예전엔 스냅샷에
+        // 안 실려 <b>undo가 작가 화자를 지우는 잠복 버그</b>가 있었다(W67 후속에서 발견).
+        if (ProjectManifestJson.WriteWriterSpeakers(project.WriterSpeakers) is { } writerSpeakers)
+        {
+            root["writerSpeakers"] = writerSpeakers;
+        }
+
+        if (ProjectManifestJson.WriteEaseCurves(project.EaseCurves) is { } easeCurves)
+        {
+            root["easeCurves"] = easeCurves;
+        }
+
         if (!project.Results.IsEmpty)
         {
             root["results"] = JsonNode.Parse(ResultStoreJson.Write(project.Results));
@@ -192,6 +204,9 @@ public static class ProjectSnapshotCodec
 
             project.Compositions.Add(ProjectManifestJson.ReadComposition(compositionObject));
         }
+
+        project.WriterSpeakers.AddRange(ProjectManifestJson.ReadWriterSpeakers(root["writerSpeakers"]));
+        project.EaseCurves.AddRange(ProjectManifestJson.ReadEaseCurves(root["easeCurves"]));
 
         if (root["results"] is JsonObject resultsObject)
         {

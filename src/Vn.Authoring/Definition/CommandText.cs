@@ -182,6 +182,12 @@ public static class CommandText
                 $"'{parameter.Name}'은 숫자여야 하는데 '{value}'가 왔습니다.",
             "bool" when !bool.TryParse(value, out _) && value is not ("0" or "1") =>
                 $"'{parameter.Name}'은 true/false여야 하는데 '{value}'가 왔습니다.",
+            // @이름 = 커스텀 곡선 참조 — 문법만 여기서 보고, 실재 여부는 내보내기 검증이
+            // 프로젝트 곡선 목록과 대조한다(카탈로그는 프로젝트를 모른다).
+            "ease" when value.StartsWith('@') =>
+                Model.EaseCurve.IsValidName(value[1..])
+                    ? null
+                    : $"'{parameter.Name}'의 곡선 이름 '{value}'이 규칙에 맞지 않습니다 — @뒤에 소문자·숫자·언더스코어만 됩니다.",
             "ease" when long.TryParse(value, out _) ||
                         !Enum.TryParse<Ked.Presentation.Core.EaseKind>(value, ignoreCase: true, out _) =>
                 $"'{parameter.Name}'은 이징 이름이어야 하는데 '{value}'가 왔습니다 (예: OutCubic, Linear, InOutSine).",

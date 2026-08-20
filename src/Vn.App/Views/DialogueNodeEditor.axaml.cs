@@ -797,7 +797,8 @@ public partial class DialogueNodeEditor : UserControl
             export.Presentation.SetupCommands,
             branch.FoldLines,
             lineCommands,
-            _session.TuningLibrary.Tuning);
+            _session.TuningLibrary.Tuning,
+            _session.Project.EaseCurves);
 
         StagePreview.Show(new MiniStagePreviewRequest(
             contextLabel,

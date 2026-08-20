@@ -1419,6 +1419,64 @@ public sealed partial class ProjectEditor
     public static string ChapterSettingsNodeName(string chapterId) => $"{chapterId} 설정";
 
     /// <summary>
+    /// 커스텀 이징 곡선 하나를 넣거나 고친다 (W67 후속) — 같은 이름이 있으면 키를
+    /// 교체한다. 검증은 저작이 1차 방어다: 이름·키 규칙 위반은 예외로 막는다
+    /// (런타임 로더는 같은 위반을 경고 로그 + 무시로 물러선다 — 조용한 어긋남을
+    /// 이쪽에서 끊는 것이 싸다).
+    /// </summary>
+    public void SetEaseCurve(string name, IReadOnlyList<Ked.Presentation.Core.CurveKey> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (!EaseCurve.IsValidName(name))
+        {
+            throw new InvalidOperationException(
+                $"곡선 이름 '{name}'이 규칙에 맞지 않습니다 — 소문자·숫자·언더스코어만 됩니다 (커맨드 토큰에 실립니다).");
+        }
+
+        if (EaseCurve.ValidateKeys(keys) is { } violation)
+        {
+            throw new InvalidOperationException($"곡선 '{name}'의 키가 잘못됐습니다 — {violation}");
+        }
+
+        EaseCurve? existing = Project.EaseCurves.FirstOrDefault(curve =>
+            string.Equals(curve.Name, name, StringComparison.Ordinal));
+
+        if (existing is not null &&
+            existing.Keys.Count == keys.Count &&
+            existing.Keys.Zip(keys).All(pair => pair.First.Equals(pair.Second)))
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            if (existing is null)
+            {
+                Project.EaseCurves.Add(new EaseCurve { Name = name, Keys = new List<Ked.Presentation.Core.CurveKey>(keys) });
+            }
+            else
+            {
+                existing.Keys = new List<Ked.Presentation.Core.CurveKey>(keys);
+            }
+        });
+    }
+
+    /// <summary>곡선 하나를 지운다. 참조하던 커맨드는 내보내기 검증이 짚는다 — 조용히 안 없어진다.</summary>
+    public void RemoveEaseCurve(string name)
+    {
+        EaseCurve? existing = Project.EaseCurves.FirstOrDefault(curve =>
+            string.Equals(curve.Name, name, StringComparison.Ordinal));
+
+        if (existing is null)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () => Project.EaseCurves.Remove(existing));
+    }
+
+    /// <summary>
     /// 작가가 더한 화자 목록을 통째로 정한다 (2026-08-17) — <b>`game.definition.json`에는
     /// 쓰지 않는다</b>. 정의 파일은 기획자 전용이고, 이건 프로젝트(작가 소유)에 산다.
     /// 이름이 빈 항목은 버린다 — 드롭다운에 빈 줄이 서면 고를 수도 없다.
