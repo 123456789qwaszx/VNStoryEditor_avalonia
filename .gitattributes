@@ -6,3 +6,4 @@
 # 비교 자체는 build-and-run.ps1과 GoldenText가 CRLF/LF와 끝 줄바꿈을 정규화해서 처리하므로,
 # 이 고정은 그 정책의 보조 장치이지 유일한 방어선이 아니다.
 samples/**/expected.txt text eol=lf
+tests/Vn.Authoring.Tests/TuningFixtures/ease-golden.json -text
