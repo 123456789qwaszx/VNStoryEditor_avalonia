@@ -185,6 +185,125 @@ public class EaseCurveTests
         }
     }
 
+    // ── 커맨드 소유 곡선 ↔ 보관함 (2026-08-20 소유자 재설계) ────────────────
+
+    private static (Sample Sample, PresentationNode Node, string CommandId) CommandStage(
+        params (string Key, string Value)[] moveArguments)
+    {
+        var sample = new Sample();
+        string line = sample.Line("첫 줄");
+        sample.Editor.SetScriptLineText(sample.Script.Id, line, "라루", "첫 줄");
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        PresentationNode node = sample.Editor.AddPresentationNode(sample.File.Id, name: "연출");
+        sample.Editor.SetPresentationSource(node.Id, dialogue.Identity.ResultId, dialogue.Identity.Version);
+        var command = sample.Editor.AddPresentationCommand(node.Id, line, "char_rig_staging.move_by",
+            moveArguments.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+
+        return (sample, node, command.Id);
+    }
+
+    [Fact]
+    public void 곡선_편집을_열면_지금_이징이_커맨드만의_곡선으로_복사된다()
+    {
+        (Sample sample, PresentationNode node, string commandId) =
+            CommandStage(("slot", "c1"), ("x", "+2u"), ("ease", "Linear"));
+
+        (string name, IReadOnlyList<CurveKey> keys, EaseKind bakedFrom) =
+            EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "Linear");
+
+        Assert.Equal(EaseCurve.OwnedNameFor(commandId), name);
+        Assert.Equal(EaseKind.Linear, bakedFrom);
+
+        // 소유 곡선이 프로젝트에 서고, 커맨드 인자가 @이름이 됐다.
+        EaseCurve owned = Assert.Single(sample.Project.EaseCurves);
+        Assert.Equal(commandId, owned.OwnerCommandId);
+        Assert.False(owned.IsLibrary);
+        Assert.Equal(keys, owned.Keys);
+        Assert.Equal("@" + name,
+            node.Bindings.SelectMany(binding => binding.Commands).Single().Arguments["ease"]);
+
+        // 두 번째 열기는 새로 만들지 않고 그대로 돌려준다.
+        (string again, _, _) =
+            EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "@" + name);
+        Assert.Equal(name, again);
+        Assert.Single(sample.Project.EaseCurves);
+    }
+
+    [Fact]
+    public void 보관함과는_복사로만_오간다()
+    {
+        (Sample sample, PresentationNode node, string commandId) =
+            CommandStage(("slot", "c1"), ("x", "+2u"));
+
+        (string ownedName, _, _) =
+            EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "OutCubic");
+
+        // 커맨드 곡선을 보관함에 저장 — 사본이고, 커맨드 쪽은 그대로다.
+        EaseCurveCommandActions.SaveToLibrary(
+            sample.Editor, "hop_snappy", sample.Project.EaseCurves[0].Keys.ToArray());
+        Assert.Equal(2, sample.Project.EaseCurves.Count);
+        EaseCurve library = sample.Project.EaseCurves.Single(curve => curve.IsLibrary);
+        Assert.Equal("hop_snappy", library.Name);
+
+        // 보관함을 고쳐도 커맨드 곡선은 안 변한다 (참조 공유 없음).
+        CurveKey[] changed = SampleKeys();
+        EaseCurveCommandActions.SaveToLibrary(sample.Editor, "hop_snappy", changed);
+        EaseCurve owned = sample.Project.EaseCurves.Single(curve => !curve.IsLibrary);
+        Assert.NotEqual(changed.ToList(), owned.Keys);
+
+        // 반대로 보관함에서 가져오면 커맨드 곡선이 그 키의 사본이 된다.
+        EaseCurveCommandActions.CopyFromLibrary(
+            sample.Editor, node.Id, commandId, "ease",
+            sample.Project.EaseCurves.Single(curve => curve.IsLibrary));
+        owned = sample.Project.EaseCurves.Single(curve => !curve.IsLibrary);
+        Assert.Equal(changed.ToList(), owned.Keys);
+        Assert.Equal(ownedName, owned.Name); // 이름은 여전히 커맨드 소유 이름이다
+    }
+
+    [Fact]
+    public void 표준으로_되돌리면_소유_곡선은_지워지고_보관함_사본은_남는다()
+    {
+        (Sample sample, PresentationNode node, string commandId) =
+            CommandStage(("slot", "c1"), ("x", "+2u"));
+
+        EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "OutCubic");
+        EaseCurveCommandActions.SaveToLibrary(sample.Editor, "keep_me", SampleKeys());
+
+        EaseCurveCommandActions.DiscardOwned(
+            sample.Editor, node.Id, commandId, "ease", easeTokenOrNull: null);
+
+        EaseCurve remaining = Assert.Single(sample.Project.EaseCurves);
+        Assert.True(remaining.IsLibrary);
+        Assert.Equal("keep_me", remaining.Name);
+        Assert.False(node.Bindings.SelectMany(binding => binding.Commands).Single()
+            .Arguments.ContainsKey("ease")); // 기본값 복귀 = 인자 생략
+    }
+
+    [Fact]
+    public void 소유자_표시는_manifest와_undo_스냅샷을_왕복한다()
+    {
+        var sample = new Sample();
+        sample.Editor.SetEaseCurve("cmd_pc_1", SampleKeys(), ownerCommandId: "pc_1");
+        sample.Editor.SetEaseCurve("lib_one", SampleKeys());
+
+        ProjectManifest manifest = ProjectManifestJson.Read(ProjectManifestJson.Write(sample.Project));
+        Assert.Equal("pc_1", manifest.EaseCurves.Single(curve => curve.Name == "cmd_pc_1").OwnerCommandId);
+        Assert.Null(manifest.EaseCurves.Single(curve => curve.Name == "lib_one").OwnerCommandId);
+
+        StoryProject restored = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(sample.Project));
+        Assert.Equal("pc_1", restored.EaseCurves.Single(curve => curve.Name == "cmd_pc_1").OwnerCommandId);
+    }
+
+    [Fact]
+    public void 소유_이름은_커맨드_Id에서_안정적으로_나오고_이름_규칙을_지킨다()
+    {
+        string name = EaseCurve.OwnedNameFor("pc_AB-12");
+        Assert.Equal("cmd_pc_ab_12", name);
+        Assert.True(EaseCurve.IsValidName(name));
+        Assert.Equal(name, EaseCurve.OwnedNameFor("pc_AB-12")); // 같은 Id = 같은 이름
+    }
+
     // ── 베이크 ───────────────────────────────────────────────────────────
 
     [Fact]

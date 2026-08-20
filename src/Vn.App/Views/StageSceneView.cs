@@ -1477,8 +1477,11 @@ internal sealed class StageSceneView : UserControl
         PresentationMotionDeclaration motion,
         string easeParameter)
     {
-        string[] candidates = Enum.GetNames<EaseKind>();
-        EaseKind current = EaseKindOf(cue.Ease);
+        // 커스텀(커맨드 소유 곡선)이면 콤보 첫 칸이 그것이다 — 예전처럼 선택 없음(-1)으로
+        // 두면 "지금 쓰이는 ease가 안 보이는" 화면이 된다(2026-08-20 소유자 보고).
+        bool isCustom = cue.Ease is ['@', ..];
+        string[] enumNames = Enum.GetNames<EaseKind>();
+        string[] candidates = isCustom ? ["커스텀 곡선", .. enumNames] : enumNames;
 
         var curvePreview = new Avalonia.Controls.Shapes.Polyline
         {
@@ -1489,7 +1492,7 @@ internal sealed class StageSceneView : UserControl
             VerticalAlignment = VerticalAlignment.Center
         };
 
-        void DrawCurve(EaseKind kind)
+        void DrawShape(Func<float, float> shape)
         {
             const int sampleCount = 32;
             var points = new Avalonia.Points();
@@ -1497,25 +1500,35 @@ internal sealed class StageSceneView : UserControl
             for (int i = 0; i <= sampleCount; i++)
             {
                 float t = i / (float)sampleCount;
-                float eased = EaseFunctions.Evaluate(kind, t);
-                // Back·Elastic이 [0,1]을 벗어나므로 살짝 여유를 두고 세로를 뒤집는다.
-                points.Add(new Point(t * 44, 26 - Math.Clamp(eased, -0.25f, 1.25f) * 18 - 4));
+                // Back·Elastic·커스텀이 [0,1]을 벗어나므로 여유를 두고 세로를 뒤집는다.
+                points.Add(new Point(t * 44, 26 - Math.Clamp(shape(t), -0.25f, 1.25f) * 18 - 4));
             }
 
             curvePreview.Points = points;
         }
 
-        DrawCurve(current);
+        if (isCustom && cue.CurveKeys is { Count: >= 2 } customKeys)
+        {
+            CurveKey[] keys = customKeys as CurveKey[] ?? customKeys.ToArray();
+            DrawShape(t => CurveFunctions.Evaluate(keys, t));
+        }
+        else
+        {
+            EaseKind current = EaseKindOf(cue.Ease);
+            DrawShape(t => EaseFunctions.Evaluate(current, t));
+        }
 
         var combo = new ComboBox
         {
             ItemsSource = candidates,
-            SelectedIndex = Array.IndexOf(candidates, current.ToString()),
+            SelectedIndex = isCustom ? 0 : Array.IndexOf(enumNames, EaseKindOf(cue.Ease).ToString()),
             FontSize = 10,
             MinWidth = 110,
             VerticalAlignment = VerticalAlignment.Center
         };
-        ToolTip.SetTip(combo, "이징 곡선 — 미리보기 모양 그대로 재생됩니다. 기본(OutCubic)을 고르면 텍스트에서 생략됩니다.");
+        ToolTip.SetTip(combo, isCustom
+            ? "이 커맨드의 커스텀 곡선입니다. 표준 이징을 고르면 커스텀을 버리고 되돌아갑니다."
+            : "이징 곡선 — 미리보기 모양 그대로 재생됩니다. 기본(OutCubic)을 고르면 텍스트에서 생략됩니다.");
 
         combo.SelectionChanged += (_, _) =>
         {
@@ -1525,7 +1538,13 @@ internal sealed class StageSceneView : UserControl
             }
 
             string selected = candidates[combo.SelectedIndex];
-            DrawCurve(Enum.Parse<EaseKind>(selected));
+
+            if (string.Equals(selected, "커스텀 곡선", StringComparison.Ordinal))
+            {
+                return; // 이미 커스텀 — 되돌아온 선택은 편집이 아니다.
+            }
+
+            DrawShape(t => EaseFunctions.Evaluate(Enum.Parse<EaseKind>(selected), t));
 
             // 기본값 = 생략 (빈 값이 인자를 지운다 — SetPresentationCommandArgument 규약).
             string? token = string.Equals(selected, motion.DefaultEase, StringComparison.OrdinalIgnoreCase)
@@ -1534,30 +1553,21 @@ internal sealed class StageSceneView : UserControl
 
             UiGuard.Run(_session, "이징 선택", () =>
             {
-                _session.Editor.SetPresentationCommandArgument(
-                    presentationNodeId, cue.CommandId, easeParameter, token);
+                if (isCustom)
+                {
+                    // 표준으로 복귀 = 소유 곡선 폐기(보관함 사본은 남는다).
+                    EaseCurveCommandActions.DiscardOwned(
+                        _session.Editor, presentationNodeId, cue.CommandId, easeParameter, token);
+                }
+                else
+                {
+                    _session.Editor.SetPresentationCommandArgument(
+                        presentationNodeId, cue.CommandId, easeParameter, token);
+                }
+
                 ManipulationApplied?.Invoke();
             });
         };
-
-        // 커스텀 곡선(@이름)을 보고 있으면 콤보 매칭이 없다 — 미리보기는 그 곡선을 그린다.
-        if (cue.CurveKeys is { Count: >= 2 } customKeys)
-        {
-            const int sampleCount = 32;
-            var points = new Avalonia.Points();
-            CurveKey[] keys = customKeys as CurveKey[] ?? customKeys.ToArray();
-
-            for (int i = 0; i <= sampleCount; i++)
-            {
-                float t = i / (float)sampleCount;
-                float eased = CurveFunctions.Evaluate(keys, t);
-                points.Add(new Point(t * 44, 26 - Math.Clamp(eased, -0.25f, 1.25f) * 18 - 4));
-            }
-
-            curvePreview.Points = points;
-            combo.SelectedIndex = -1;
-            combo.PlaceholderText = cue.Ease;
-        }
 
         // 곡선 편집 (W67 후속, 소유자: "마야처럼 키를 줘서 커스텀") — 선택한 이징에서
         // 출발해 키를 만진다. 저장은 프로젝트 곡선 + 커맨드 인자 @이름이다.
@@ -1595,10 +1605,16 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 곡선 그래프 에디터 조절창 (W67 후속) — 시작점은 지금 커맨드의 곡선이다:
-    /// 커스텀이면 그 키들, 표준 이징이면 5키로 구운 근사(<see cref="EaseCurveBaker"/>).
-    /// 만지는 동안은 뷰의 작업 사본이고, <b>[저장]만 프로젝트에 닿는다</b> —
-    /// 곡선 upsert + 커맨드 인자 @이름, 편집 둘이라 되돌리기도 두 단계다.
+    /// 곡선 그래프 에디터 조절창 (2026-08-20 소유자 재설계) —
+    ///
+    /// 여는 순간 지금 골라져 있던 이징이 <b>이 커맨드만의 곡선으로 복사</b>된다
+    /// (<see cref="EaseCurveCommandActions.EnsureOwned"/> — 커맨드 단위 customEase).
+    /// 편집은 <b>실시간</b>이다: 손을 뗄 때마다 커맨드 곡선에 커밋되어 무대 미리보기·
+    /// 재생·스크럽이 바로 그 모양을 탄다(끄는 동안은 이 판만 다시 그린다 — 확정만 편집).
+    ///
+    /// 보관함과는 복사로만 오간다: [보관함에 저장]은 지금 곡선의 이름 붙인 사본을 남기고,
+    /// [가져오기]는 보관함 곡선을 이 커맨드의 곡선으로 복사한다 — 어느 쪽도 참조를
+    /// 공유하지 않으므로 여기서 아무리 만져도 다른 커맨드·보관함은 변하지 않는다.
     /// </summary>
     private void ShowCurveEditorFlyout(string presentationNodeId, StageMotionCue cue, string easeParameter)
     {
@@ -1607,23 +1623,48 @@ internal sealed class StageSceneView : UserControl
             return;
         }
 
-        // 시작 키와 제안 이름.
-        IReadOnlyList<CurveKey> initial = cue.CurveKeys is { Count: >= 2 } existing
-            ? existing
-            : EaseCurveBaker.Bake(EaseKindOf(cue.Ease));
+        // 열기 = 소유 곡선 보장 — 표준 이징이었다면 여기서 복사·전환이 일어난다.
+        string ownedName = string.Empty;
+        IReadOnlyList<CurveKey> initial = [];
+        EaseKind bakedFrom = EaseKind.OutCubic;
+        bool wasCustom = cue.Ease is ['@', ..];
 
-        string suggestedName = cue.Ease is ['@', .. var currentName]
-            ? currentName
-            : NextFreeCurveName();
+        UiGuard.Run(_session, "곡선 편집 열기", () =>
+        {
+            (ownedName, initial, bakedFrom) = EaseCurveCommandActions.EnsureOwned(
+                _session.Editor, presentationNodeId, cue.CommandId, easeParameter, cue.Ease);
+
+            if (!wasCustom)
+            {
+                ManipulationApplied?.Invoke(); // 커맨드 텍스트가 @이름으로 바뀌었다 — 화면에 보여야 한다.
+            }
+        });
+
+        if (ownedName.Length == 0)
+        {
+            return;
+        }
 
         ShowManipulationFlyout((host, _) =>
         {
             host.MinWidth = 310;
+
             host.Children.Add(new TextBlock
             {
-                Text = "곡선 편집 — 키 드래그 · 빈 자리 클릭 = 키 추가 · 핸들 = 기울기 (Shift = 한쪽만)",
+                Text = wasCustom
+                    ? $"이 커맨드의 곡선 (@{ownedName})"
+                    : $"이 커맨드의 곡선 — {bakedFrom}에서 복사해 시작 (@{ownedName})",
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.85,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 300
+            });
+            host.Children.Add(new TextBlock
+            {
+                Text = "키 드래그 · 빈 자리 클릭 = 키 추가 · 핸들 = 기울기 (Shift = 한쪽만) — 놓는 순간 미리보기에 반영됩니다.",
                 FontSize = 9,
-                Opacity = 0.65,
+                Opacity = 0.6,
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 300
             });
@@ -1633,22 +1674,80 @@ internal sealed class StageSceneView : UserControl
             host.Children.Add(curveEditor);
 
             var deleteButton = new Button { Content = "키 삭제", FontSize = 10, Padding = new Thickness(6, 2), IsEnabled = false };
-            var nameInput = new TextBox { Text = suggestedName, FontSize = 10, MinWidth = 120, PlaceholderText = "곡선 이름 (소문자·숫자·_)" };
-            var saveButton = new Button { Content = "저장", FontSize = 10, Padding = new Thickness(10, 2) };
             var problemText = new TextBlock { FontSize = 9, Foreground = Brushes.OrangeRed, TextWrapping = TextWrapping.Wrap, MaxWidth = 300, IsVisible = false };
 
-            curveEditor.CurveChanged += () => deleteButton.IsEnabled = curveEditor.CanDeleteSelected;
-            // 선택 변화는 CurveChanged 없이도 일어난다 — 눌렀다 뗄 때 갱신.
-            curveEditor.PointerReleased += (_, _) => deleteButton.IsEnabled = curveEditor.CanDeleteSelected;
-            deleteButton.Click += (_, _) => curveEditor.DeleteSelected();
+            // 실시간 커밋 — 제스처 하나(드래그 한 번·키 추가·삭제)가 편집 하나다.
+            void Commit()
+            {
+                if (Vn.Authoring.Model.EaseCurve.ValidateKeys(curveEditor.Keys) is { } violation)
+                {
+                    problemText.Text = violation;
+                    problemText.IsVisible = true;
+                    return;
+                }
 
+                problemText.IsVisible = false;
+                UiGuard.Run(_session, "곡선 편집", () =>
+                {
+                    _session!.Editor.SetEaseCurve(ownedName, curveEditor.Keys, ownerCommandId: cue.CommandId);
+                    ManipulationApplied?.Invoke();
+                });
+            }
+
+            curveEditor.CurveChanged += () => deleteButton.IsEnabled = curveEditor.CanDeleteSelected;
+            curveEditor.PointerReleased += (_, _) =>
+            {
+                deleteButton.IsEnabled = curveEditor.CanDeleteSelected;
+                Commit();
+            };
+            deleteButton.Click += (_, _) =>
+            {
+                curveEditor.DeleteSelected();
+                Commit();
+            };
+
+            // ── 보관함 — 복사로만 오간다 ──
+            IReadOnlyList<Vn.Authoring.Model.EaseCurve> library =
+                (_session!.Project.EaseCurves.Where(curve => curve.IsLibrary).ToArray());
+
+            var libraryCombo = new ComboBox
+            {
+                ItemsSource = library.Select(curve => curve.Name).ToArray(),
+                PlaceholderText = library.Count == 0 ? "보관함 비어 있음" : "보관함…",
+                FontSize = 10,
+                MinWidth = 110,
+                IsEnabled = library.Count > 0
+            };
+            var importButton = new Button { Content = "가져오기", FontSize = 10, Padding = new Thickness(6, 2), IsEnabled = false };
+            libraryCombo.SelectionChanged += (_, _) => importButton.IsEnabled = libraryCombo.SelectedIndex >= 0;
+            ToolTip.SetTip(importButton, "보관함 곡선을 이 커맨드의 곡선으로 복사합니다 — 이후 편집은 이 커맨드만의 것입니다.");
+            importButton.Click += (_, _) =>
+            {
+                if (libraryCombo.SelectedIndex < 0 || libraryCombo.SelectedIndex >= library.Count)
+                {
+                    return;
+                }
+
+                Vn.Authoring.Model.EaseCurve source = library[libraryCombo.SelectedIndex];
+                UiGuard.Run(_session, "보관함에서 가져오기", () =>
+                {
+                    EaseCurveCommandActions.CopyFromLibrary(
+                        _session!.Editor, presentationNodeId, cue.CommandId, easeParameter, source);
+                    curveEditor.Load(source.Keys);
+                    ManipulationApplied?.Invoke();
+                });
+            };
+
+            var nameInput = new TextBox { Text = NextFreeCurveName(), FontSize = 10, MinWidth = 100, PlaceholderText = "이름 (소문자·숫자·_)" };
+            var saveButton = new Button { Content = "보관함에 저장", FontSize = 10, Padding = new Thickness(6, 2) };
+            ToolTip.SetTip(saveButton, "지금 곡선의 이름 붙인 사본을 보관함에 남깁니다 — 커맨드 쪽은 그대로입니다.");
             saveButton.Click += (_, _) =>
             {
                 string name = nameInput.Text?.Trim() ?? string.Empty;
 
                 if (!Vn.Authoring.Model.EaseCurve.IsValidName(name))
                 {
-                    problemText.Text = "이름은 소문자·숫자·언더스코어만 됩니다 — 커맨드 토큰에 실립니다.";
+                    problemText.Text = "보관함 이름은 소문자·숫자·언더스코어만 됩니다.";
                     problemText.IsVisible = true;
                     return;
                 }
@@ -1660,24 +1759,28 @@ internal sealed class StageSceneView : UserControl
                     return;
                 }
 
-                UiGuard.Run(_session, "곡선 저장", () =>
+                problemText.IsVisible = false;
+                UiGuard.Run(_session, "보관함에 저장", () =>
                 {
-                    _session.Editor.SetEaseCurve(name, curveEditor.Keys);
-                    _session.Editor.SetPresentationCommandArgument(
-                        presentationNodeId, cue.CommandId, easeParameter, "@" + name);
+                    EaseCurveCommandActions.SaveToLibrary(_session!.Editor, name, curveEditor.Keys);
                     ManipulationApplied?.Invoke();
                 });
-
-                problemText.IsVisible = false;
             };
 
             var actions = new StackPanel
             {
                 Orientation = Avalonia.Layout.Orientation.Horizontal,
                 Spacing = 6,
-                Children = { deleteButton, nameInput, saveButton }
+                Children = { deleteButton, libraryCombo, importButton }
+            };
+            var libraryRow = new StackPanel
+            {
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Spacing = 6,
+                Children = { nameInput, saveButton }
             };
             host.Children.Add(actions);
+            host.Children.Add(libraryRow);
             host.Children.Add(problemText);
         });
     }

@@ -415,7 +415,14 @@ public static class ProjectManifestJson
                 });
             }
 
-            array.Add(new JsonObject { ["name"] = curve.Name, ["keys"] = keys });
+            var entry = new JsonObject { ["name"] = curve.Name, ["keys"] = keys };
+
+            if (curve.OwnerCommandId is { } owner)
+            {
+                entry["ownerCommandId"] = owner; // 커맨드 소유 곡선 — 없으면 보관함
+            }
+
+            array.Add(entry);
         }
 
         return array;
@@ -451,7 +458,8 @@ public static class ProjectManifestJson
             curves.Add(new EaseCurve
             {
                 Name = (string?)curve["name"] ?? string.Empty,
-                Keys = keys
+                Keys = keys,
+                OwnerCommandId = (string?)curve["ownerCommandId"]
             });
         }
 

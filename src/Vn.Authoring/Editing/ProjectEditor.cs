@@ -1424,7 +1424,10 @@ public sealed partial class ProjectEditor
     /// (런타임 로더는 같은 위반을 경고 로그 + 무시로 물러선다 — 조용한 어긋남을
     /// 이쪽에서 끊는 것이 싸다).
     /// </summary>
-    public void SetEaseCurve(string name, IReadOnlyList<Ked.Presentation.Core.CurveKey> keys)
+    public void SetEaseCurve(
+        string name,
+        IReadOnlyList<Ked.Presentation.Core.CurveKey> keys,
+        string? ownerCommandId = null)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
@@ -1443,6 +1446,7 @@ public sealed partial class ProjectEditor
             string.Equals(curve.Name, name, StringComparison.Ordinal));
 
         if (existing is not null &&
+            string.Equals(existing.OwnerCommandId, ownerCommandId, StringComparison.Ordinal) &&
             existing.Keys.Count == keys.Count &&
             existing.Keys.Zip(keys).All(pair => pair.First.Equals(pair.Second)))
         {
@@ -1453,11 +1457,17 @@ public sealed partial class ProjectEditor
         {
             if (existing is null)
             {
-                Project.EaseCurves.Add(new EaseCurve { Name = name, Keys = new List<Ked.Presentation.Core.CurveKey>(keys) });
+                Project.EaseCurves.Add(new EaseCurve
+                {
+                    Name = name,
+                    Keys = new List<Ked.Presentation.Core.CurveKey>(keys),
+                    OwnerCommandId = ownerCommandId
+                });
             }
             else
             {
                 existing.Keys = new List<Ked.Presentation.Core.CurveKey>(keys);
+                existing.OwnerCommandId = ownerCommandId;
             }
         });
     }
