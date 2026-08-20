@@ -395,6 +395,13 @@ game.definition.json` / `작가가 더한 화자`.
   고스트**와 **슬라이더 조절창**. 정지 프레임은 이동이 *끝난* 자리라 출발을 그려야 연출이
   보인다. 끄는 동안은 렌더만, 손 뗄 때 한 번 저장(되돌리기 1 = 조작 1). 이징은 값만
   보이고 못 만진다 — 실을 자리가 런타임에 없다
+- **W66b 실제 이징 재생 + 프레임 스크럽 (2026-08-20)** — 런타임이 ease-open-orders를
+  전부 개통(코어 `Ease/` 2파일 + `ease-golden.json` + `move_by` 다섯째 인자). 반입 후
+  재생 보간의 선형 `Lerp`를 **코어 `EaseFunctions`**(DOTween과 저쪽 비트 동일, 이쪽
+  골든 픽스처 35종×257샘플 <1e-4로 이중 고정)로 교체 — move_by가 진짜 OutCubic으로
+  논다. 칩 아래 **프레임 스크럽**이 라인 배치의 내부 시간을 끈다(재생과 같은 보간·같은
+  곡선에 진행도만 흘린다). 남은 것: W67(카탈로그 ease 칸 + 선택기 — 런타임 인자는
+  이미 열려 있다)
 - **흔들리던 테스트 (2026-08-19)** — 어서션이 아니라 **프로세스가 죽고 있었다.** 닫지 않은
   파일 감시자가 타이머 스레드에서 없어진 디스패처에 `Post`를 했다. `DetachSession()` ·
   `OpenChapterViews`(테스트가 띄운 화면을 폴더 삭제 전에 닫는다) · `Fire()`의 두 번째 방벽
@@ -407,7 +414,7 @@ game.definition.json` / `작가가 더한 화자`.
 |---|---|
 | **⛔ 깃발을 실을 칸** | `StatChangeDto`에 `Op`("Add"/"Set")가 없어 **깃발을 쓰는 챕터는 내보내기가 거부된다.** 없으면 `"Add"`라 기존 파일은 안 깨진다. 서는 날 `BoolSetNotCarried` 한 함수만 지운다. 규격 [`../work-orders/bool-stat-orders.md`](../work-orders/bool-stat-orders.md) — **소유자가 전달해야 한다** |
 | **증명기 오라클 통보** | `ChapterReachabilityProver`는 이제 저쪽의 **고정된 오라클**이다(코퍼스로 등가성 고정). 깃발 지정으로 `ApplyDeltas`가 바뀌었으므로 알려야 한다 — 다만 **코퍼스 일곱 케이스에 지정이 없어 기존 답은 안 바뀐다.** 위 규격 §3에 함께 들어 있다 |
-| **ease 개통 (W66b·W67 선행)** | 이징 골든 덤프 · 코어 `EaseFunctions` · `move_by` 다섯째 인자 ease · 채널 사상 회신 — 규격 [`../work-orders/ease-open-orders.md`](../work-orders/ease-open-orders.md), 수신 `ked-presentation-runtime`. W64(Core 최신화)·W65(카탈로그)·W66a(슬라이더+정지 재현)는 이것 없이 진행 가능 — **소유자가 전달해야 한다** |
+| **ease 개통 — 저쪽 마무리 검증 4건** | 개통 자체는 **2026-08-20 완료**(골든 덤프·코어 `EaseFunctions`·`move_by` 다섯째 인자·채널 사상 회신 — 산출물 반입 끝, §7 닫힌 것 W66b). 저쪽에 남은 것은 Unity 에디터 검증 4건: 리컴파일 확인 · EditMode 등가 테스트 러너 1회 · 기존 코퍼스 스모크 · `<<move_by c1 +2u 0u 12fr Linear>>` 육안. 스탠드얼론 대조(35종×257 오차 0)는 이미 통과 |
 
 **소유자 판단 대기**
 

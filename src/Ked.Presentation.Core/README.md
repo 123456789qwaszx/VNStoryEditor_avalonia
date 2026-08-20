@@ -5,7 +5,10 @@
 패키지화는 소유자 결정으로 보류 중이며(2026-08-20), 그 대신 아래 동기화 절차가
 반복 가능한 대체물이다 (`docs/work-orders/presentation-refresh-orders.md` W64).
 
-- 최근 동기화: **2026-08-20** (저쪽 `0a7f6d0f` 이후 시점의 작업 트리 기준, W64)
+- 최근 동기화: **2026-08-20** (저쪽 `0a7f6d0f` 이후 시점의 작업 트리 기준, W64.
+  같은 날 `Ease/` 두 파일 추가 반입 — ease-open-orders §3 개통분. 등가의 심판은
+  저쪽 `EaseFunctionsDOTweenParityTests`(DOTween 참조라 이쪽에 못 온다)이고, 이쪽은
+  `ease-golden.json` 픽스처 대조(`EaseGoldenTests`)로 사본이 낡는 사고를 잡는다)
 - 이전 반입: `3fe52e9b` (2026-08-05, 최초 복사 스냅샷 — 당시엔 "동기화 없음"이었다)
 - 범위: `Primitives/`·`Reduce/`·`State/`·`Tokens/`·`Transforms/`·`Tuning/` 소스와
   `Documentation~/` 규약 문서. 순수 테스트(UnityParity 제외)는

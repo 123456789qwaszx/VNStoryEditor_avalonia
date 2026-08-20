@@ -102,7 +102,7 @@ internal sealed class StageSceneView : UserControl
             foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
             {
                 if (restAtStart &&
-                    _motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds) rest))
+                    _motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease) rest))
                 {
                     Canvas.SetLeft(control, rest.From.X);
                     Canvas.SetTop(control, rest.From.Y);
@@ -134,20 +134,22 @@ internal sealed class StageSceneView : UserControl
 
         foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
         {
-            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds) motion))
+            if (_motionTransitions.TryGetValue(
+                    slotKey, out (StageRect From, double Seconds, EaseKind Ease) motion))
             {
                 // 이동 커맨드가 있는 슬롯은 궤적을 탄다 (W66) — 출발은 직전 렌더가 아니라
                 // 이동의 진짜 출발이고, 시간은 그 커맨드의 duration이다(라인 최대 아님).
-                // 모양은 아직 선형이다 — 실제 이징 곡선은 코어 EaseFunctions가 서면
-                // 같은 자리에서 갈아 끼운다(W66b, ease-open-orders §3).
+                // 모양은 코어 EaseFunctions — 런타임 DOTween과 골든 대조로 등가 고정된
+                // 그 곡선이다(W66b). Back·Elastic은 1을 넘나들 수 있고 Lerp가 그대로 태운다.
                 double lineSeconds = _request?.TransitionSeconds ?? 0;
                 double motionProgress = motion.Seconds <= 0
                     ? 1
                     : Math.Clamp(t * lineSeconds / motion.Seconds, 0, 1);
+                double eased = EaseFunctions.Evaluate(motion.Ease, (float)motionProgress);
 
                 control.Opacity = 1;
-                Canvas.SetLeft(control, Lerp(motion.From.X, to.X, motionProgress));
-                Canvas.SetTop(control, Lerp(motion.From.Y, to.Y, motionProgress));
+                Canvas.SetLeft(control, Lerp(motion.From.X, to.X, eased));
+                Canvas.SetTop(control, Lerp(motion.From.Y, to.Y, eased));
                 control.Width = to.Width;
                 control.Height = to.Height;
             }
@@ -436,7 +438,7 @@ internal sealed class StageSceneView : UserControl
         // 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
         foreach ((string slotKey, Control control, _) in _transitionEntries)
         {
-            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds) rest))
+            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds, EaseKind Ease) rest))
             {
                 Canvas.SetLeft(control, rest.From.X);
                 Canvas.SetTop(control, rest.From.Y);
@@ -457,7 +459,68 @@ internal sealed class StageSceneView : UserControl
                 : BuildPlainCommandChip(chip.Text, em));
         }
 
-        Add(rows, new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 18, em * (chips.Count + 1)));
+        if (_motionTransitions.Count > 0)
+        {
+            rows.Children.Add(BuildFrameScrubber(em));
+        }
+
+        Add(rows, new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 18, em * (chips.Count + 2)));
+    }
+
+    /// <summary>
+    /// 프레임 스크럽 (W66b, 소유자: "먹고가는 프레임별로 상태를 확인") — 이 라인 배치의
+    /// 내부 시간을 손으로 끈다. 렌더가 아닌 것은 아무것도 바꾸지 않는다: 기존 전이 보간
+    /// (<see cref="SetTransitionProgress"/>)에 진행도를 흘릴 뿐이고, 곡선 모양도 재생과
+    /// 같은 코어 이징이다. ▶ 재생이 돌면 재생 틱이 이 값을 덮는다.
+    /// </summary>
+    private Control BuildFrameScrubber(double em)
+    {
+        double lineSeconds = _request?.TransitionSeconds ?? 0;
+        double frames = Math.Max(1, Math.Round(lineSeconds * DurationToken.FramesPerSecond));
+
+        var frameLabel = new TextBlock
+        {
+            Text = "0fr",
+            FontSize = em * 0.45,
+            Width = em * 1.8,
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.FromArgb(220, 250, 204, 21))
+        };
+
+        var scrub = new Slider
+        {
+            Minimum = 0,
+            Maximum = frames,
+            Value = 0,
+            TickFrequency = 1,
+            IsSnapToTickEnabled = true,
+            Width = em * 8,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        ToolTip.SetTip(scrub, "이 라인의 프레임을 끌어 확인합니다. 0 = 라인 시작(출발 자리).");
+        scrub.ValueChanged += (_, args) =>
+        {
+            frameLabel.Text = $"{args.NewValue:0}fr";
+            // 0은 정지 화면(출발 자리)과 같다 — null이 아니라 0을 흘려도 보간이 같은 자리다.
+            SetTransitionProgress(args.NewValue / frames);
+        };
+
+        var row = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(130, 30, 30, 40)),
+            CornerRadius = new CornerRadius(em * 0.2),
+            Padding = new Thickness(em * 0.35, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = new StackPanel
+            {
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Spacing = em * 0.2,
+                Children = { scrub, frameLabel }
+            }
+        };
+
+        return row;
     }
 
     /// <summary>
@@ -485,13 +548,20 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이 라인에서 이동하는 슬롯의 출발 자리와 구간 시간 (W66) — 재생 보간이
+    /// 이 라인에서 이동하는 슬롯의 출발 자리·구간 시간·곡선 모양 (W66) — 재생 보간이
     /// "직전 렌더"가 아니라 <b>이동의 진짜 출발</b>에서 궤적을 타게 한다.
     /// 같은 슬롯에 이동이 여럿이면 마지막 것이 이긴다(런타임의 DOKill 의미론 —
     /// 앞의 것은 즉시 완주되므로 출발 자리에 이미 반영돼 있다).
     /// </summary>
-    private readonly Dictionary<string, (StageRect From, double Seconds)> _motionTransitions =
+    private readonly Dictionary<string, (StageRect From, double Seconds, EaseKind Ease)> _motionTransitions =
         new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 칩의 이징 이름 → 코어 어휘. 모르는 이름은 런타임 스펙 기본값(OutCubic)으로 —
+    /// 브리지의 파싱 실패 처리와 같은 방향이다(로그 대신 카탈로그가 후보를 제한한다).
+    /// </summary>
+    private static EaseKind EaseKindOf(string? name) =>
+        Enum.TryParse(name, ignoreCase: true, out EaseKind kind) ? kind : EaseKind.OutCubic;
 
     /// <summary>
     /// 도착 자리의 윤곽 + 출발에서 도착으로 잇는 선. 무대 좌표 변환은 컴포저의 규약
@@ -507,10 +577,12 @@ internal sealed class StageSceneView : UserControl
             return; // 움직이지 않는 이동 — 그릴 궤적도, 태울 재생도 없다.
         }
 
-        // 재생 보간용 출발 등록 — 시간은 이 커맨드의 duration이다(라인 최대와 다를 수 있다).
+        // 재생 보간용 출발 등록 — 시간은 이 커맨드의 duration이고(라인 최대와 다를 수
+        // 있다), 모양은 커맨드의 이징이다.
         _motionTransitions[cue.SlotKey] = (
             new StageRect(startX, startY, current.Width, current.Height),
-            DurationToken.FramesToSeconds((float)cue.DurationFrames));
+            DurationToken.FramesToSeconds((float)cue.DurationFrames),
+            EaseKindOf(cue.Ease));
 
         // 고스트는 도착 자리다 — 정지 화면의 초상이 출발 자리에 서므로(아래 휴지 배치),
         // 윤곽은 "어디로 가는가"를 말해야 짝이 맞는다.

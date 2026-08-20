@@ -109,11 +109,11 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
-    public void 정지는_출발_자리이고_재생_보간이_궤적을_타며_끝은_도착_자리다() => HeadlessUi.Run(() =>
+    public void 정지는_출발_자리이고_재생_보간이_실제_이징_곡선을_탄다() => HeadlessUi.Run(() =>
     {
         // W66 소유자 결정 — 정지 화면은 "이 라인이 시작되는 순간"이라 이동 슬롯이 출발
         // 자리에 서고, 진행 t가 흐르면 도착으로 미끄러지며, 1이면 도착에 남는다.
-        // 모양은 아직 선형이다(EaseFunctions 대기).
+        // 모양은 코어 EaseFunctions(W66b) — move_by의 기본 OutCubic 곡선 그대로다.
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
@@ -138,12 +138,53 @@ public sealed class StageMotionRenderTests
         view.SetTransitionProgress(1);
         Assert.Single(rests, entry => Math.Abs(ShiftOf(entry.Control, entry.Left) - 80) < 0.5);
 
-        // 진행 0.5 = 절반 — 같은 컨트롤이 +40 자리에 있다(12fr 이동 = 라인 전이 시간).
+        // 진행 0.5 — 선형(+40)이 아니라 OutCubic 곡선의 자리다. 기대값도 같은 코어
+        // 함수에서 온다(수치 하드코딩 금지 — 골든 대조가 그 함수를 이미 심판했다).
         view.SetTransitionProgress(0.5);
-        Assert.Single(rests, entry => Math.Abs(ShiftOf(entry.Control, entry.Left) - 40) < 0.5);
+        double eased = 80 * EaseFunctions.Evaluate(EaseKind.OutCubic, 0.5f);
+        Assert.True(Math.Abs(eased - 40) > 5, "OutCubic 중간값이 선형과 구분돼야 검증이 의미 있다");
+        Assert.Single(rests, entry => Math.Abs(ShiftOf(entry.Control, entry.Left) - eased) < 0.5);
 
         // null = 정지 화면 — 전부 출발 자리로 돌아온다.
         view.SetTransitionProgress(null);
+        foreach ((Control control, double left) in rests)
+        {
+            Assert.Equal(left, Canvas.GetLeft(control), 1);
+        }
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 프레임_스크럽을_끌면_그_프레임의_자리가_보인다() => HeadlessUi.Run(() =>
+    {
+        // W66b 소유자 요청 — "먹고가는 프레임별로 상태를 확인". 스크럽은 재생과 같은
+        // 보간·같은 곡선에 진행도를 흘릴 뿐이다(별도 계산 없음).
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        view.Render(BuildRequest(Command(
+            "char_rig_staging.move_by", ("slot", "c1"), ("x", "+2u"), ("duration", "12fr"))));
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Canvas canvas = CanvasOf(view);
+        Slider scrub = Assert.Single(canvas.GetLogicalDescendants().OfType<Slider>().ToArray());
+        Assert.Equal(12, scrub.Maximum); // 12fr 이동 = 라인 배치 12프레임
+
+        var rests = canvas.Children
+            .Select(control => (Control: control, Left: Canvas.GetLeft(control)))
+            .Where(entry => !double.IsNaN(entry.Left))
+            .ToArray();
+
+        // 마지막 프레임으로 끌면 도착 자리(+80px)다.
+        scrub.Value = 12;
+        Assert.Single(rests, entry => Math.Abs(Canvas.GetLeft(entry.Control) - entry.Left - 80) < 0.5);
+
+        // 0프레임으로 돌리면 출발 자리다.
+        scrub.Value = 0;
         foreach ((Control control, double left) in rests)
         {
             Assert.Equal(left, Canvas.GetLeft(control), 1);
