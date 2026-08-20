@@ -42,11 +42,23 @@ internal sealed class PresentationScriptPanel : UserControl
     /// <summary>대사 행 클릭 또는 커맨드 선택 — 그 라인을 선택해 달라.</summary>
     public event Action<string>? LineClicked;
 
+    /// <summary>Setup 구획 클릭 — 작업대에 Setup 편집을 열어 달라 (2026-08-21).</summary>
+    public event Action? SetupClicked;
+
     /// <summary>커맨드 점 클릭 — 이 커맨드의 상세조절을 열어 달라.</summary>
     public event Action<PresentationResultCommand>? CommandDotClicked;
 
+    /// <summary>커맨드 선택 확정 — 아래 작업대의 표시도 이 커맨드로 맞춰 달라.</summary>
+    public event Action<PresentationResultCommand>? CommandSelected;
+
+    /// <summary>행 우측 X 클릭 — 이 커맨드를 제거해 달라 (2026-08-21).</summary>
+    public event Action<PresentationResultCommand>? CommandRemoveRequested;
+
     /// <summary>드래그 이동 확정 — targetLineId(null=Setup)의 insertIndex 자리로 옮겨 달라.</summary>
     public event Action<PresentationResultCommand, string?, int>? CommandMoveRequested;
+
+    /// <summary>지금 노란 띠가 선 커맨드 — 작업대 표시 동기화용. 없으면 null.</summary>
+    internal string? SelectedCommandId => _selectedCommandId;
 
     public PresentationScriptPanel()
     {
@@ -60,12 +72,16 @@ internal sealed class PresentationScriptPanel : UserControl
         {
             Background = new SolidColorBrush(Color.FromRgb(17, 19, 24)), // 터미널 감각의 어두운 판
             CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 4),
+            Padding = new Thickness(12, 10), // 빽빽함 완화 (2026-08-21 소유자: "여백도 너무 빽빽")
             Child = _scroll
         };
     }
 
-    public void Show(IReadOnlyList<PresentationScriptRow>? rows, string? selectedLineId, bool editable)
+    public void Show(
+        IReadOnlyList<PresentationScriptRow>? rows,
+        string? selectedLineId,
+        bool editable,
+        bool setupSelected = false)
     {
         _rows.Children.Clear();
         _dropRows.Clear();
@@ -92,6 +108,13 @@ internal sealed class PresentationScriptPanel : UserControl
             bool isSetup = lineId is null;
             var group = new StackPanel { Spacing = 1 };
             int commandIndex = 0;
+
+            if (!isSetup)
+            {
+                // 라인 박스 위쪽의 lineId 헤더 (2026-08-21 소유자: "-setup-과 동일하게") —
+                // 대사 텍스트는 지금 자리(박스 아래쪽) 그대로다.
+                group.Children.Add(BuildLineHeader(lineId!));
+            }
 
             while (index < rows.Count &&
                    string.Equals(rows[index].LineId, lineId, StringComparison.Ordinal))
@@ -122,13 +145,13 @@ internal sealed class PresentationScriptPanel : UserControl
 
             var container = new Border
             {
-                Background = selected
+                Background = selected || (isSetup && setupSelected)
                     ? new SolidColorBrush(Color.FromArgb(60, 125, 211, 252)) // 반투명 박스
                     : isSetup
                         ? new SolidColorBrush(Color.FromArgb(70, 40, 44, 56)) // Setup 전용 바탕
                         : Brushes.Transparent,
                 CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(2, 2),
+                Padding = new Thickness(4, 3),
                 Margin = isSetup ? new Thickness(0, 0, 0, 4) : default,
                 Child = group
             };
@@ -136,6 +159,17 @@ internal sealed class PresentationScriptPanel : UserControl
             if (selected)
             {
                 _selectedGroup = container;
+            }
+
+            if (isSetup && editable)
+            {
+                // 빈 자리 클릭도 Setup 선택이다 — 행 자신이 소화한 클릭은 여기 안 온다.
+                container.Cursor = new Cursor(StandardCursorType.Hand);
+                container.PointerPressed += (_, args) =>
+                {
+                    SetupClicked?.Invoke();
+                    args.Handled = true;
+                };
             }
 
             _rows.Children.Add(container);
@@ -164,17 +198,57 @@ internal sealed class PresentationScriptPanel : UserControl
     {
         return row.Kind switch
         {
-            PresentationScriptRowKind.SectionHeader => new TextBlock
-            {
-                Text = row.Text,
-                FontSize = 10,
-                Opacity = 0.5,
-                Foreground = Brushes.Gainsboro,
-                Margin = new Thickness(14, 4, 0, 2)
-            },
+            PresentationScriptRowKind.SectionHeader => BuildSectionHeader(row, editable),
             PresentationScriptRowKind.Command => BuildCommandRow(row, editable),
             _ => BuildDialogueRow(row)
         };
+    }
+
+    private TextBlock BuildSectionHeader(PresentationScriptRow row, bool editable)
+    {
+        var header = new TextBlock
+        {
+            Text = row.Text,
+            FontSize = 10,
+            Opacity = 0.5,
+            Foreground = Brushes.Gainsboro,
+            Margin = new Thickness(14, 4, 0, 2)
+        };
+
+        if (editable && row.LineId is null)
+        {
+            // Setup 헤더 클릭 = 작업대에 Setup 편집 (2026-08-21 소유자 지시).
+            header.Cursor = new Cursor(StandardCursorType.Hand);
+            header.PointerPressed += (_, args) =>
+            {
+                SetupClicked?.Invoke();
+                args.Handled = true;
+            };
+        }
+
+        return header;
+    }
+
+    /// <summary>라인 박스 위쪽의 lineId 헤더 — Setup 헤더와 같은 결. 클릭 = 그 라인 선택.</summary>
+    private TextBlock BuildLineHeader(string lineId)
+    {
+        var header = new TextBlock
+        {
+            Text = $"── {lineId} ──",
+            FontSize = 10,
+            Opacity = 0.5,
+            Foreground = Brushes.Gainsboro,
+            Margin = new Thickness(14, 4, 0, 2),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+
+        header.PointerPressed += (_, args) =>
+        {
+            LineClicked?.Invoke(lineId);
+            args.Handled = true;
+        };
+
+        return header;
     }
 
     private Border BuildDialogueRow(PresentationScriptRow row)
@@ -249,7 +323,28 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         dot.Cursor = new Cursor(StandardCursorType.Hand);
-        ToolTip.SetTip(host, "클릭 = 선택 · 드래그 = 자리 이동 · 점 = 상세조절 — 텍스트 편집은 아래 작업대에서");
+        ToolTip.SetTip(host, "클릭 = 선택 · 드래그 = 자리 이동 · 점 = 상세조절 · X = 제거 — 텍스트 편집은 아래 작업대에서");
+
+        // 행 우측 끝의 제거 X (2026-08-21 소유자: "터미널 라인 우측 끝에 X") —
+        // 작업대의 ✕ 버튼을 이것이 대체한다.
+        var remove = new TextBlock
+        {
+            Text = "✕",
+            FontSize = 11,
+            Opacity = 0.35,
+            Foreground = Brushes.Gainsboro,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 2, 0),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        ToolTip.SetTip(remove, "이 커맨드를 제거합니다.");
+        remove.PointerPressed += (_, args) =>
+        {
+            CommandRemoveRequested?.Invoke(command);
+            args.Handled = true;
+        };
+        DockPanel.SetDock(remove, Dock.Right);
+        layout.Children.Insert(1, remove);
 
         host.PointerPressed += (_, args) =>
         {
@@ -334,12 +429,18 @@ internal sealed class PresentationScriptPanel : UserControl
 
         if (!wasDragging)
         {
-            // 좌클릭 한 번 = 선택 (소유자 다듬기 2) — 그 라인도 함께 고른다.
+            // 좌클릭 한 번 = 선택 (소유자 다듬기 2) — 그 라인(Setup 커맨드면 Setup 구획)도
+            // 함께 고르고, 아래 작업대의 표시도 같은 커맨드로 맞춘다 (2026-08-21).
             _selectedCommandId = command.CommandId;
+            CommandSelected?.Invoke(command);
 
             if (row.LineId is { } lineId)
             {
                 LineClicked?.Invoke(lineId);
+            }
+            else
+            {
+                SetupClicked?.Invoke();
             }
 
             RefreshCommandSelection();

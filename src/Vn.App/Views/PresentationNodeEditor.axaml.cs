@@ -97,8 +97,8 @@ public partial class PresentationNodeEditor : UserControl
             PresentationCommandCatalog catalog = available.Catalog;
             _available = available;
 
-            // Setup은 어느 줄에도 속하지 않는 장면 준비다. 대사 결과가 없어도 편집할 수 있다.
-            LineHost.Children.Add(BuildSetupSection(presentation, catalog));
+            // Setup 편집은 우측이 아니라 무대 프리뷰 작업대의 몫이다 (2026-08-21 소유자:
+            // "Setup 역시 우측에서 제거") — 터미널의 Setup 구획 클릭이 입구다.
 
             if (workspace.Dialogue is not { } dialogue)
             {
@@ -570,87 +570,39 @@ public partial class PresentationNodeEditor : UserControl
         }
     }
 
-    /// <summary>
-    /// LineId 없는 노드 수준 Setup 커맨드(슬롯·캐스팅·배경 스폰·리셋).
-    /// 이미터에서 Set_ 노드 본문이 된다. 목록 순서가 곧 실행·출력 순서다.
-    /// </summary>
-    private Control BuildSetupSection(PresentationNode presentation, PresentationCommandCatalog catalog)
-    {
-        var content = new StackPanel { Spacing = 6 };
-        content.Children.Add(new TextBlock
-        {
-            Text = "Setup — 장면 준비 (Set 노드 본문)",
-            FontWeight = FontWeight.SemiBold
-        });
-
-        foreach (PresentationCommandInstance command in presentation.SetupCommands)
-        {
-            content.Children.Add(BuildCommandRow(presentation, lineId: null, command, catalog));
-        }
-
-        content.Children.Add(BuildAddRow(presentation, lineId: null, catalog));
-
-        return new Border
-        {
-            Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(7),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(50, 37, 99, 235)),
-            BorderThickness = new Thickness(1),
-            Child = content
-        };
-    }
-
-    private Button SetupButton(string glyph, Action action)
-    {
-        var button = new Button
-        {
-            Content = glyph,
-            FontSize = 10,
-            Padding = new Thickness(6, 2),
-            Margin = new Thickness(4, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Top
-        };
-
-        button.Click += (_, _) =>
-        {
-            if (!_building && _session is not null)
-            {
-                action();
-            }
-        };
-
-        return button;
-    }
-
-    // 라인 카드 상태 — 무대 프리뷰 탭의 디테일 작업대가 재요청할 때, 같은 라인·같은
-    // 커맨드 구성이면 행 컨트롤을 그대로 돌려준다. 재생성하면 칩 편집 중 팝업이 닫힌다
+    // 작업대 상태 — 무대 프리뷰 탭이 재요청할 때, 같은 대상·같은 커맨드 구성이면
+    // 행 컨트롤을 그대로 돌려준다. 재생성하면 칩 편집 중 팝업이 닫힌다
     // (행 자신이 병기 텍스트·칩을 제자리 갱신하므로 유지가 정확하다).
-    private string? _detailLineId;
+    private string? _detailKey;
     private string? _detailToken;
     private Control? _detailControl;
 
+    /// <summary>작업대 커맨드 행의 겉 테두리 — 터미널 선택과 표시를 맞추는 붓 자리다.</summary>
+    private readonly Dictionary<string, Border> _detailRowHosts = new(StringComparer.Ordinal);
+
     /// <summary>
-    /// 선택 라인의 커맨드 편집 작업대 (2026-08-20 소유자: "우측 연출 편집기를 좌측
-    /// 터미널로 — 현재 선택한 Line만"). 우측 라인 카드에 있던 그 행들(활성 체크·칩·
-    /// ▲▼·✕·갤러리·직접 입력)을 <b>같은 빌더로</b> 하나의 라인에 대해서만 짓는다 —
-    /// 무대 프리뷰 탭이 터미널 아래에 이 컨트롤을 얹는다.
+    /// 선택 대상의 커맨드 편집 작업대 (2026-08-20 소유자: "우측 연출 편집기를 좌측
+    /// 터미널로 — 현재 선택한 Line만" · 2026-08-21 "Setup도 터미널 클릭으로") —
+    /// 라인 하나 또는 Setup 전체를 같은 행 빌더(활성 체크·칩·갤러리·직접 입력)로 짓는다.
+    /// 자리 이동·제거는 터미널(드래그·X)의 몫이라 행에는 없다.
     /// </summary>
-    internal Control? BuildLineDetailContent(string? lineId)
+    internal Control? BuildLineDetailContent(string? lineId, bool setup = false)
     {
-        if (_session is null || lineId is null ||
+        if (_session is null || (!setup && lineId is null) ||
             _session.Project.FindPresentation(_nodeId) is not { } presentation)
         {
             _detailControl = null;
             return null;
         }
 
-        PresentationLineBinding? binding = presentation.FindBinding(lineId);
-        string token = string.Join(
-            "|", (binding?.Commands ?? Enumerable.Empty<PresentationCommandInstance>())
-                .Select(command => command.Id));
+        IReadOnlyList<PresentationCommandInstance> commands = setup
+            ? presentation.SetupCommands
+            : presentation.FindBinding(lineId!)?.Commands ?? [];
+        string key = setup ? "\0setup" : lineId!;
+        string token = string.Join("|", commands.Select(command => command.Id));
 
         if (_detailControl is not null &&
-            string.Equals(_detailLineId, lineId, StringComparison.Ordinal) &&
+            string.Equals(_detailKey, key, StringComparison.Ordinal) &&
             string.Equals(_detailToken, token, StringComparison.Ordinal))
         {
             return _detailControl;
@@ -665,16 +617,33 @@ public partial class PresentationNodeEditor : UserControl
         try
         {
             var content = new StackPanel { Spacing = 6 };
+            _detailRowHosts.Clear();
 
-            foreach (PresentationCommandInstance command in
-                     binding?.Commands ?? Enumerable.Empty<PresentationCommandInstance>())
+            content.Children.Add(new TextBlock
             {
-                content.Children.Add(BuildCommandRow(presentation, lineId, command, catalog));
+                Text = setup ? "Setup — 장면 준비 (Set 노드 본문)" : lineId,
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.75
+            });
+
+            string? rowLineId = setup ? null : lineId;
+
+            foreach (PresentationCommandInstance command in commands)
+            {
+                var host = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 4),
+                    Child = BuildCommandRow(presentation, rowLineId, command, catalog)
+                };
+                _detailRowHosts[command.Id] = host;
+                content.Children.Add(host);
             }
 
-            content.Children.Add(BuildAddRow(presentation, lineId, catalog));
+            content.Children.Add(BuildAddRow(presentation, rowLineId, catalog));
 
-            _detailLineId = lineId;
+            _detailKey = key;
             _detailToken = token;
             _detailControl = content;
             return content;
@@ -682,6 +651,20 @@ public partial class PresentationNodeEditor : UserControl
         finally
         {
             _building = wasBuilding;
+        }
+    }
+
+    /// <summary>
+    /// 터미널에서 고른 커맨드를 작업대에서도 같은 띠로 보여 준다 (2026-08-21 소유자:
+    /// "클릭한 표시가 연동되도록"). 재구성 없이 배경만 다시 칠한다.
+    /// </summary>
+    internal void HighlightDetailCommand(string? commandId)
+    {
+        foreach ((string id, Border host) in _detailRowHosts)
+        {
+            host.Background = string.Equals(id, commandId, StringComparison.Ordinal)
+                ? new SolidColorBrush(Color.FromArgb(45, 250, 204, 21))
+                : Brushes.Transparent;
         }
     }
 
@@ -784,45 +767,15 @@ public partial class PresentationNodeEditor : UserControl
         RefreshCommandText();
         body.Children.Add(commandTextBlock);
 
-        Button up = SetupButton("▲", () => MoveCommand(presentation, lineId, command, -1));
-        Button down = SetupButton("▼", () => MoveCommand(presentation, lineId, command, 1));
-        Button remove = SetupButton("✕", () =>
-        {
-            _session!.Editor.RemovePresentationCommand(presentation.Id, command.Id);
-            Rebuild();
-        });
-
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto") };
+        // 자리 이동·제거 버튼은 없다 (2026-08-21 소유자: "▲▼ · ✕는 사용하지 않으니
+        // 제거") — 이동은 터미널 드래그, 제거는 터미널 행 우측 X가 진다.
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
         enabled.Margin = new Thickness(0, 2, 6, 0);
         Grid.SetColumn(enabled, 0);
         Grid.SetColumn(body, 1);
-        Grid.SetColumn(up, 2);
-        Grid.SetColumn(down, 3);
-        Grid.SetColumn(remove, 4);
         row.Children.Add(enabled);
         row.Children.Add(body);
-        row.Children.Add(up);
-        row.Children.Add(down);
-        row.Children.Add(remove);
         return row;
-    }
-
-    private void MoveCommand(
-        PresentationNode presentation,
-        string? lineId,
-        PresentationCommandInstance command,
-        int delta)
-    {
-        if (lineId is null)
-        {
-            _session!.Editor.MovePresentationSetupCommand(presentation.Id, command.Id, delta);
-        }
-        else
-        {
-            _session!.Editor.MovePresentationCommand(presentation.Id, command.Id, delta);
-        }
-
-        Rebuild();
     }
 
     /// <summary>프리셋이 공급한 값 위에 인스턴스 인자가 덮인 유효 인자 — 발행 Freeze와 같은 방향.</summary>

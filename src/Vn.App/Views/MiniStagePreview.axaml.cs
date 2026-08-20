@@ -270,10 +270,17 @@ public partial class MiniStagePreview : UserControl
     private readonly PresentationScriptPanel _script = new();
 
     /// <summary>
-    /// 선택 라인의 커맨드 편집 작업대 공급자 (2026-08-20 소유자: "우측 연출 편집기를
-    /// 터미널 아래로") — 활성 편집기가 자기 행 빌더로 짓는다. MainWindow가 배선한다.
+    /// 선택 대상의 커맨드 편집 작업대 공급자 (2026-08-20 소유자: "우측 연출 편집기를
+    /// 터미널 아래로") — (lineId, setup)로 활성 편집기가 자기 행 빌더로 짓는다.
+    /// setup=true면 lineId 없이 Setup 전체다. MainWindow가 배선한다.
     /// </summary>
-    internal Func<string?, Control?>? LineDetailProvider { get; set; }
+    internal Func<string?, bool, Control?>? LineDetailProvider { get; set; }
+
+    /// <summary>터미널에서 고른 커맨드의 작업대 표시 동기화 (2026-08-21) — MainWindow가 배선한다.</summary>
+    internal Action<string?>? CommandHighlighter { get; set; }
+
+    /// <summary>터미널의 Setup 구획이 선택돼 있다 — 작업대가 라인 대신 Setup을 보인다.</summary>
+    private bool _setupSelected;
 
     public MiniStagePreview()
     {
@@ -281,9 +288,23 @@ public partial class MiniStagePreview : UserControl
 
         SceneHost.Content = _scene;
         ScriptHost.Content = _script;
-        _script.LineClicked += lineId => LineSelectRequested?.Invoke(lineId);
+        _script.LineClicked += lineId =>
+        {
+            // 라인 선택은 Setup 선택을 걷는다. 같은 라인 재클릭이라 편집기가 다시 밀지
+            // 않아도 작업대 전환은 보여야 하므로 여기서도 한 번 그린다.
+            _setupSelected = false;
+            LineSelectRequested?.Invoke(lineId);
+            Render();
+        };
+        _script.SetupClicked += () =>
+        {
+            _setupSelected = true;
+            Render();
+        };
+        _script.CommandSelected += command => CommandHighlighter?.Invoke(command.CommandId);
         _script.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
         _script.CommandMoveRequested += ApplyScriptCommandMove;
+        _script.CommandRemoveRequested += ApplyScriptCommandRemove;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
         // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
@@ -418,6 +439,56 @@ public partial class MiniStagePreview : UserControl
         });
     }
 
+    // 작업대 높이 — 스플리터가 픽셀값으로 바꾼 것을 숨김/복원 사이에 기억한다.
+    // 내용이 이 높이를 못 바꾸는 것이 요지다 (2026-08-21 소유자: "범위가 자꾸 변하는데
+    // 조작감이 너무 별로") — 넘치면 안에서 스크롤한다.
+    private double _detailHeight = 260;
+
+    private void SetDetailVisible(bool visible)
+    {
+        RowDefinitions rows = LeftColumn.RowDefinitions;
+
+        if (visible)
+        {
+            rows[1].Height = new GridLength(8);
+
+            if (!(rows[2].Height.IsAbsolute && rows[2].Height.Value > 0))
+            {
+                rows[2].Height = new GridLength(_detailHeight);
+            }
+        }
+        else
+        {
+            if (rows[2].Height.IsAbsolute && rows[2].Height.Value > 0)
+            {
+                _detailHeight = rows[2].Height.Value;
+            }
+
+            rows[1].Height = new GridLength(0);
+            rows[2].Height = new GridLength(0);
+        }
+
+        DetailSplitter.IsVisible = visible;
+        DetailScroll.IsVisible = visible;
+    }
+
+    /// <summary>터미널 행 우측 X (2026-08-21) — 작업대의 ✕ 버튼을 대체한 제거 통로다.</summary>
+    private void ApplyScriptCommandRemove(PresentationResultCommand command)
+    {
+        // Setup 커맨드는 LineId 없이도 편집 대상이다 — Editable(라인 필요) 대신
+        // 잠금 사유 없음만 본다.
+        if (_session is null || _current?.EditContext is not { DisabledReason: null } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "커맨드 제거", () =>
+        {
+            _session.Editor.RemovePresentationCommand(context.PresentationNodeId, command.CommandId);
+            ManipulationApplied?.Invoke();
+        });
+    }
+
     private void Render()
     {
         MiniStagePreviewRequest? request = _current;
@@ -428,14 +499,20 @@ public partial class MiniStagePreview : UserControl
         _scene.Render(request);
 
         bool editable = request?.EditContext?.Editable == true;
-        _script.Show(request?.ScriptRows, request?.SelectedLineId, editable);
+        // Editable(라인 선택 필요)과 달리 Setup은 라인 없이도 편집 대상 — 잠금 사유만 본다.
+        bool unlocked = request?.EditContext is { DisabledReason: null };
+        _script.Show(request?.ScriptRows, request?.SelectedLineId, unlocked, _setupSelected);
         ScriptHost.IsVisible = _script.IsVisible;
 
-        // 선택 라인 작업대 — 우측 편집기의 그 행들(체크·칩·▲▼·✕·갤러리)이 여기로 온다.
+        // 선택 대상 작업대 — 우측 편집기의 그 행들(체크·칩·갤러리)이 여기로 온다.
+        // Setup 선택이면 라인 대신 Setup 전체다(라인 선택 없이도 편집 대상).
         // 공급자가 같은 구성을 캐시하므로 칩 편집 중 재렌더에 팝업이 닫히지 않는다.
-        Control? detail = editable ? LineDetailProvider?.Invoke(request?.SelectedLineId) : null;
+        Control? detail = _setupSelected
+            ? (unlocked ? LineDetailProvider?.Invoke(null, true) : null)
+            : (editable ? LineDetailProvider?.Invoke(request?.SelectedLineId, false) : null);
         DetailHost.Content = detail;
-        DetailHost.IsVisible = detail is not null;
+        SetDetailVisible(detail is not null);
+        CommandHighlighter?.Invoke(_script.SelectedCommandId);
 
         if (request is null)
         {

@@ -3,7 +3,7 @@
              x:Class="Vn.App.Views.MiniStagePreview">
     <!-- 무대 프리뷰 판 (2026-08-20 중앙 탭 승격) — 좌: 대본 터미널, 우: 무대.
          예전의 "창으로 열기"·"접기"는 탭이 대체했다. -->
-    <Border Padding="10,8">
+    <Border Padding="14,10">
         <Grid RowDefinitions="Auto,Auto,*,Auto">
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
                 <TextBlock Grid.Column="0"
@@ -27,17 +27,28 @@
                        x:Name="BadgeRow"
                        Margin="0,6,0,0" />
 
-            <!-- 좌: 연출 대본 텍스트 패널(위) + 선택 라인 디테일 편집(아래) · 우: 무대.
-                 무대 그리기는 StageSceneView 하나다(렌더 사본 금지). -->
+            <!-- 좌: 연출 대본 텍스트 패널(위) + 선택 대상 작업대(아래) · 우: 무대.
+                 무대 그리기는 StageSceneView 하나다(렌더 사본 금지).
+                 터미널:작업대 영역비는 가로 스플리터 드래그로 조절한다 (2026-08-21 소유자:
+                 "높이에 따라 범위가 자꾸 변하는데 조작감이 너무 별로" — 고정 높이 + 내부 스크롤). -->
             <Grid Grid.Row="2"
-                  ColumnDefinitions="360,6,*"
-                  Margin="0,6,0,0">
-                <Grid Grid.Column="0" RowDefinitions="*,Auto">
+                  ColumnDefinitions="380,10,*"
+                  Margin="0,8,0,0">
+                <Grid Grid.Column="0"
+                      x:Name="LeftColumn"
+                      RowDefinitions="*,8,260">
                     <ContentControl Grid.Row="0"
                                     x:Name="ScriptHost" />
-                    <ContentControl Grid.Row="1"
-                                    x:Name="DetailHost"
-                                    Margin="0,6,0,0" />
+                    <GridSplitter Grid.Row="1"
+                                  x:Name="DetailSplitter"
+                                  ResizeDirection="Rows"
+                                  Background="{DynamicResource ThemeBorderLowBrush}" />
+                    <ScrollViewer Grid.Row="2"
+                                  x:Name="DetailScroll"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ContentControl x:Name="DetailHost"
+                                        Margin="2,4,10,4" />
+                    </ScrollViewer>
                 </Grid>
                 <GridSplitter Grid.Column="1"
                               ResizeDirection="Columns"

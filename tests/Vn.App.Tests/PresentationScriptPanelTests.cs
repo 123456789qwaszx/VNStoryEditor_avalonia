@@ -71,4 +71,52 @@ public sealed class PresentationScriptPanelTests
         panel.Show(Rows(), selectedLineId: null, editable: false);
         Assert.True(panel.IsVisible);
     });
+
+    [Fact]
+    public void 라인_박스_위쪽에_lineId_헤더가_서고_대사는_그대로_박스_안이다() => HeadlessUi.Run(() =>
+    {
+        var panel = new PresentationScriptPanel();
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
+
+        string[] texts = panel.GetLogicalDescendants().OfType<TextBlock>()
+            .Select(text => text.Text ?? "").ToArray();
+
+        // Setup 헤더와 같은 결의 lineId 헤더 — 라인마다 하나 (2026-08-21 소유자 지시).
+        Assert.Contains("── ln_a ──", texts);
+        Assert.Contains("── ln_b ──", texts);
+        Assert.Contains("── Setup ──", texts);
+
+        // 대사 텍스트는 현재 위치 유지 — 헤더가 대사를 대체하지 않는다.
+        Assert.Contains(texts, text => text.Contains("첫 줄", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 편집_가능할_때만_커맨드_행_우측에_제거_X가_선다() => HeadlessUi.Run(() =>
+    {
+        var panel = new PresentationScriptPanel();
+
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
+        int editableXCount = panel.GetLogicalDescendants().OfType<TextBlock>()
+            .Count(text => string.Equals(text.Text, "✕", StringComparison.Ordinal));
+        Assert.Equal(2, editableXCount); // 커맨드 행 수만큼 — 대사 행에는 없다.
+
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: false);
+        Assert.DoesNotContain(panel.GetLogicalDescendants().OfType<TextBlock>(),
+            text => string.Equals(text.Text, "✕", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void Setup_선택이면_Setup_구획이_선택_박스로_칠해진다() => HeadlessUi.Run(() =>
+    {
+        var panel = new PresentationScriptPanel();
+        panel.Show(Rows(), selectedLineId: null, editable: true, setupSelected: true);
+
+        // 선택 라인이 없고 Setup만 선택 — 반투명 선택 박스는 Setup 구획 하나다.
+        Border[] highlighted = panel.GetLogicalDescendants().OfType<Border>()
+            .Where(border => border.Background is SolidColorBrush { Color.A: 60 })
+            .ToArray();
+        Border box = Assert.Single(highlighted);
+        Assert.Contains(box.GetLogicalDescendants().OfType<TextBlock>(),
+            text => (text.Text ?? "").Contains("Setup", StringComparison.Ordinal));
+    });
 }
