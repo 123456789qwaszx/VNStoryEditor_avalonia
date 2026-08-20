@@ -102,6 +102,11 @@
                 <TabItem Header="연출 그래프">
                     <views:GraphEditorView x:Name="Graph" />
                 </TabItem>
+                <!-- 무대 프리뷰 승격 (2026-08-20 소유자) — 우측 아래 조그만 패널이 아니라
+                     그래프들과 같은 급의 판이다. 분리 창(창으로 열기)은 이 탭이 대체한다. -->
+                <TabItem Header="무대 프리뷰">
+                    <views:MiniStagePreview x:Name="StagePreview" />
+                </TabItem>
             </TabControl>
 
             <GridSplitter Grid.Column="3"
@@ -120,7 +125,7 @@
                     x:Name="RightColumn"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1,0,0,0">
-                <Grid RowDefinitions="*,Auto,Auto,Auto,Auto">
+                <Grid RowDefinitions="*,Auto,Auto,Auto">
                     <Panel Grid.Row="0">
                         <views:DialogueNodeEditor x:Name="DialogueEditor" />
                         <views:SetNodeEditor x:Name="SetEditor" />
@@ -133,12 +138,12 @@
                                    Opacity="0.5" />
                     </Panel>
 
-                    <!-- 대사·연출 편집기가 공유하는 하단 무대 프리뷰. 읽기 전용 소비자다. -->
-                    <views:MiniStagePreview Grid.Row="1" x:Name="StagePreview" />
+                    <!-- 무대 프리뷰는 2026-08-20에 중앙 탭으로 승격했다 — 여기 있던
+                         조그만 패널이 그 자리로 갔다. -->
 
                     <!-- 편집 자료 — 에셋 탐색기와 같은 접기 문법이다(▶/▼ 토글). 판이
                          둘인데 접는 법이 다르면 손이 매번 헷갈린다. 기본은 접힘. -->
-                    <Border Grid.Row="2"
+                    <Border Grid.Row="1"
                             Padding="12,8"
                             BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                             BorderThickness="0,1,0,0">
@@ -157,7 +162,7 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer Grid.Row="3"
+                    <ScrollViewer Grid.Row="2"
                                   x:Name="ResourceScroll"
                                   IsVisible="False"
                                   MaxHeight="220"
@@ -170,7 +175,7 @@
 
                     <!-- 에셋 탐색기는 제 머리에 접기 토글을 이미 갖고 있다 — 여기서는
                          기본을 접힘으로만 돌린다(AssetExplorerView의 CollapseToggle). -->
-                    <views:AssetExplorerView Grid.Row="4"
+                    <views:AssetExplorerView Grid.Row="3"
                                              x:Name="AssetExplorer"
                                              MaxHeight="300" />
                 </Grid>

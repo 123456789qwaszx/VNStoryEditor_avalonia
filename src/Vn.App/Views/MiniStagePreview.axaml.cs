@@ -237,25 +237,22 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<PresentationScriptRow>? ScriptRows = null);
 
 /// <summary>
-/// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가
-/// (분리 창과 같은 코드로) 하고, 이 패널은 뱃지·알림·에셋 설정 버튼과
-/// 분리 창(<see cref="StagePreviewWindow"/>)의 수명을 맡는다.
+/// 무대 프리뷰 판 (2026-08-20 중앙 탭 승격) — 좌측 대본 터미널 + 우측 무대.
+/// 무대 그리기는 <see cref="StageSceneView"/>가 하고, 이 판은 뱃지·알림·재생과
+/// 대본 패널의 신호 배선을 맡는다. 옛 분리 창·접기는 탭 승격으로 걷혔다.
 /// </summary>
 public partial class MiniStagePreview : UserControl
 {
     private AuthoringSession? _session;
     private MiniStagePreviewRequest? _current;
     private readonly StageSceneView _scene = new();
-    private StagePreviewWindow? _window;
     private PreviewAssetLibrary? _renderedLibrary;
-    private bool _windowed;
-    private bool _collapsed;
     private readonly Avalonia.Threading.DispatcherTimer _playbackTimer;
 
-    /// <summary>재생 진행 모델 (W31). 도킹·분리 창의 컨트롤과 무대 클릭이 전부 이 하나를 본다.</summary>
+    /// <summary>재생 진행 모델 (W31). 재생 컨트롤과 무대 클릭이 전부 이 하나를 본다.</summary>
     internal StagePlayback Playback { get; } = new();
 
-    /// <summary>분리 창의 이전/다음 버튼과 재생 자동 진행. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
+    /// <summary>이전/다음·재생 자동 진행. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
     internal event Action<int>? LineMoveRequested;
 
     /// <summary>
@@ -264,7 +261,7 @@ public partial class MiniStagePreview : UserControl
     /// </summary>
     internal Func<bool>? NodeExitRequested;
 
-    /// <summary>도킹/분리 무대 어느 쪽이든 직접 조작이 편집을 만들었다 — 편집기가 다시 그린다.</summary>
+    /// <summary>무대 직접 조작이 편집을 만들었다 — 편집기가 다시 그린다.</summary>
     internal event Action? ManipulationApplied;
 
     /// <summary>대본 패널의 대사 행 클릭 — 활성 편집기가 그 라인을 선택한다.</summary>
@@ -284,19 +281,6 @@ public partial class MiniStagePreview : UserControl
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
         // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
-
-        OpenWindowButton.Click += (_, _) => UiGuard.Run(_session, "프리뷰 창 열기", OpenWindow);
-
-        // 아래로 접기 (W38) — 헤더만 남긴다. 창 표시 중 숨김과 같은 자리를 쓴다.
-        CollapseButton.Click += (_, _) =>
-        {
-            _collapsed = !_collapsed;
-            UpdatePanelVisibility();
-            if (!_collapsed)
-            {
-                Render(); // 펼치면 최신 상태로 되살아난다
-            }
-        };
 
         // 재생 배선 — 시간의 원천은 이 타이머 하나, 라인 이동은 기존 선택 경로다.
         Playback.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
@@ -379,14 +363,14 @@ public partial class MiniStagePreview : UserControl
     {
         int? visible = Playback.VisibleCharacters;
         _scene.SetDialogueVisibleCharacters(visible);
-        _window?.SetDialogueVisibleCharacters(visible);
+
     }
 
     private void SyncTransition()
     {
         double? progress = Playback.TransitionProgress;
         _scene.SetTransitionProgress(progress);
-        _window?.SetTransitionProgress(progress);
+
     }
 
     internal void Attach(AuthoringSession session)
@@ -493,9 +477,9 @@ public partial class MiniStagePreview : UserControl
                 includeRootHint: true);
         }
 
-        UpdatePanelVisibility(); // FillBadges가 되살린 표시를 숨김 상태가 덮는다
 
-        _window?.Push(request);
+
+
 
         // 재생 모델에 현재 라인 위치를 알린다 — 이동 요청이 반영됐다는 신호이기도 하다.
         Playback.OnRequest(
@@ -507,78 +491,5 @@ public partial class MiniStagePreview : UserControl
         SyncTypewriter();
         SyncTransition();
         FireLineAudio(request);
-    }
-
-    private void OpenWindow()
-    {
-        if (_session is null)
-        {
-            return;
-        }
-
-        if (_window is null)
-        {
-            _window = new StagePreviewWindow();
-            _window.Attach(_session);
-            _window.AttachPlayback(Playback);
-            _window.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
-            _window.ManipulationApplied += () => ManipulationApplied?.Invoke();
-            _window.Closed += (_, _) =>
-            {
-                _window = null;
-                SetWindowedMode(false);
-            };
-            SetWindowedMode(true);
-
-            if (TopLevel.GetTopLevel(this) is Window owner)
-            {
-                _window.Show(owner);
-            }
-            else
-            {
-                _window.Show();
-            }
-        }
-        else
-        {
-            _window.Activate();
-        }
-
-        _window?.Push(_current);
-    }
-
-    /// <summary>
-    /// 프리뷰가 분리 창으로 빠지면 도킹 패널의 무대·뱃지·알림을 숨긴다 (W37) —
-    /// 같은 화면 두 개가 편집 공간만 차지한다. 창을 닫으면 되살아난다.
-    /// </summary>
-    private void SetWindowedMode(bool windowed)
-    {
-        _windowed = windowed;
-        OpenWindowButton.Content = windowed ? "창으로 보는 중" : "창으로 열기";
-        UpdatePanelVisibility();
-
-        if (!windowed)
-        {
-            Render(); // 창을 닫으면 도킹 무대가 최신 상태로 되살아난다
-        }
-    }
-
-    /// <summary>
-    /// 창 표시(W37)·접기(W38)를 한 자리에서 본다 — 어느 쪽이든 무대·뱃지·알림을 숨기고
-    /// 헤더 줄만 남긴다. Render가 끝날 때마다 다시 적용해 숨김이 렌더에 밀리지 않는다.
-    /// </summary>
-    private void UpdatePanelVisibility()
-    {
-        bool hidden = _windowed || _collapsed;
-        SceneHost.IsVisible = !hidden;
-        BadgeRow.IsVisible = !hidden;
-        NoticeHost.IsVisible = !hidden;
-
-        if (hidden)
-        {
-            UnhandledHost.IsVisible = false;
-        }
-
-        CollapseButton.Content = _collapsed ? "펼치기 ▸" : "접기 ▾";
     }
 }

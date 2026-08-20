@@ -1,12 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Vn.App.Views.MiniStagePreview">
-    <Border BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-            BorderThickness="0,1,0,0"
-            Padding="10,8">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto">
-            <!-- 에셋 루트 지정·새로 고침은 좌측 에셋 탐색기가 맡는다 (X8). -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+    <!-- 무대 프리뷰 판 (2026-08-20 중앙 탭 승격) — 좌: 대본 터미널, 우: 무대.
+         예전의 "창으로 열기"·"접기"는 탭이 대체했다. -->
+    <Border Padding="10,8">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="무대 프리뷰"
                            FontWeight="SemiBold"
@@ -18,22 +17,9 @@
                            Margin="8,0"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
-                <!-- 재생 컨트롤 (W31) — 분리 창과 같은 StagePlayback 하나를 본다. -->
+                <!-- 재생 컨트롤 (W31) — 편집기 선택과 같은 StagePlayback 하나를 본다. -->
                 <ContentControl Grid.Column="2"
-                                x:Name="PlaybackHost"
-                                Margin="0,0,8,0" />
-                <Button Grid.Column="3"
-                        x:Name="OpenWindowButton"
-                        Content="창으로 열기"
-                        FontSize="10"
-                        Padding="6,2"
-                        Margin="0,0,4,0" />
-                <!-- 아래로 접기 (W38) — 편집 공간이 필요할 때 헤더만 남긴다. -->
-                <Button Grid.Column="4"
-                        x:Name="CollapseButton"
-                        Content="접기 ▾"
-                        FontSize="10"
-                        Padding="6,2" />
+                                x:Name="PlaybackHost" />
             </Grid>
 
             <!-- 뱃지·갈래 칩 — 많아지면 줄바꿈한다 (W37). 간격은 StageIndicators가 마진으로 준다. -->
@@ -41,16 +27,17 @@
                        x:Name="BadgeRow"
                        Margin="0,6,0,0" />
 
-            <!-- 좌: 연출 대본 텍스트 패널(로그 터미널 감각, 2026-08-20) · 우: 축소판 무대.
-                 무대는 분리 창과 같은 StageSceneView를 쓴다(렌더 사본 금지). -->
+            <!-- 좌: 연출 대본 텍스트 패널(로그 터미널 감각) · 우: 무대.
+                 무대 그리기는 StageSceneView 하나다(렌더 사본 금지). -->
             <Grid Grid.Row="2"
-                  ColumnDefinitions="300,*"
-                  Height="185"
+                  ColumnDefinitions="360,6,*"
                   Margin="0,6,0,0">
                 <ContentControl Grid.Column="0"
-                                x:Name="ScriptHost"
-                                Margin="0,0,6,0" />
-                <ContentControl Grid.Column="1"
+                                x:Name="ScriptHost" />
+                <GridSplitter Grid.Column="1"
+                              ResizeDirection="Columns"
+                              Background="{DynamicResource ThemeBorderLowBrush}" />
+                <ContentControl Grid.Column="2"
                                 x:Name="SceneHost" />
             </Grid>
 
