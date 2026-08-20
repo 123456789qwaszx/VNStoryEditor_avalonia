@@ -73,8 +73,9 @@ public class CommandTextTests
     [Fact]
     public void 숫자_타입_불일치는_오류다()
     {
-        // char_flip_horizontal의 angle은 int다.
-        CommandTextParseResult parsed = CommandText.Parse("<<char_flip_horizontal c1 넘김>>", Catalog);
+        // frame_wait의 n은 int다 — W65 이후 카탈로그에 남은 유일한 int 인자다.
+        // (출력이 <<Nfr>> 형태인 합성 항목이라 정의 Id로 지목한다.)
+        CommandTextParseResult parsed = CommandText.Parse("control.frame_wait 넘김", Catalog);
 
         Assert.False(parsed.Success);
         Assert.Contains("정수", parsed.Error, StringComparison.Ordinal);
@@ -92,14 +93,14 @@ public class CommandTextTests
     [Fact]
     public void 같은_outputCommand가_여럿이면_카탈로그_첫_정의로_결정된다()
     {
-        // 정의 Id로도 정확히 지목할 수 있다.
-        CommandTextParseResult byId = CommandText.Parse("char_rig_acting.hop c1", Catalog);
+        // 정의 Id로도, outputCommand로도 같은 정의를 지목한다.
+        CommandTextParseResult byId = CommandText.Parse("char_rig_staging.sibling_front c1", Catalog);
         Assert.True(byId.Success);
-        Assert.Equal("char_rig_acting.hop", byId.Definition!.Id);
+        Assert.Equal("char_rig_staging.sibling_front", byId.Definition!.Id);
 
-        CommandTextParseResult byOutput = CommandText.Parse("hop c1", Catalog);
+        CommandTextParseResult byOutput = CommandText.Parse("sibling_front c1", Catalog);
         Assert.True(byOutput.Success);
-        Assert.Equal("char_rig_acting.hop", byOutput.Definition!.Id);
+        Assert.Equal("char_rig_staging.sibling_front", byOutput.Definition!.Id);
     }
 
     [Fact]

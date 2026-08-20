@@ -239,11 +239,6 @@ public static class MiniStageFold
                 EnsureSlot(state, slotKey);
                 break;
 
-            case "slot_tyrant":
-                // 런타임 매크로 의미: 슬롯 "tyrant" 생성 → cast tyrant Tyrant a 2 → fade_in.
-                state.Slots["tyrant"] = new MiniStageSlot("Tyrant", "a", "2", Visible: true, Mirrored: false);
-                break;
-
             case "cast" when Slot("slot") is { } slotKey:
                 state.Slots[slotKey] = EnsureSlot(state, slotKey) with
                 {
@@ -286,16 +281,6 @@ public static class MiniStageFold
                 state.Slots[slotKey] = EnsureSlot(state, slotKey) with { EmotionKey = Arg("emotion") };
                 break;
 
-            case "face_crossfade" when Slot("slot") is { } slotKey:
-                // 캐릭터 키까지 갱신 가능 — 다른 캐릭터로의 전환에도 쓰인다.
-                MiniStageSlot current = EnsureSlot(state, slotKey);
-                state.Slots[slotKey] = current with
-                {
-                    CharacterId = Arg("character") ?? current.CharacterId,
-                    EmotionKey = Arg("emotion") ?? current.EmotionKey
-                };
-                break;
-
             case "mirror" when Slot("slot") is { } slotKey:
                 MiniStageSlot mirrored = EnsureSlot(state, slotKey);
                 state.Slots[slotKey] = mirrored with
@@ -304,18 +289,11 @@ public static class MiniStageFold
                 };
                 break;
 
-            case "box_named" when Arg("kind") is { } namedKind:
-                state.NamedBoxKind = namedKind;
-                break;
-
-            case "box_protagonist" when Arg("kind") is { } protagonistKind:
-                state.ProtagonistBoxKind = protagonistKind;
-                break;
-
-            case "box_reset":
-                state.NamedBoxKind = MiniStageState.DefaultNamedBoxKind;
-                state.ProtagonistBoxKind = MiniStageState.DefaultProtagonistBoxKind;
-                break;
+            // 대사창 종류를 정하던 box_named·box_protagonist·box_reset은 런타임에서 사라졌다
+            // (W65 카탈로그 최신화). 종류의 새 주인은 surface 프리셋(surface_layout)이고
+            // 폴드는 아직 그것을 그리지 않는다 — 그래서 지금 박스는 언제나 기본값이고,
+            // surface_layout은 "반영 안 된 연출"로 선다. 옛 분기를 남겨 두면 런타임이
+            // 실행하지도 않을 종류를 프리뷰가 그리는 거짓말이 된다.
 
             default:
                 // 인식 못 한 것도, 인식했지만 필수 인자가 비어 적용 못 한 것도 여기로 온다.

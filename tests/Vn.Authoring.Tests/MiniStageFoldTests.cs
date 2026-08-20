@@ -47,16 +47,16 @@ public class MiniStageFoldTests
         [
             Line("ln1", branch: false,
                 Command("char_rig_entrance.show", ("slot", "c1"), ("face", "e2")),
-                Command("dialogue_box.box_named", ("kind", "BlackBook"))),
+                Command("dialogue_box.surface_layout", ("presetKey", "black_book"))),
             Line("ln2", branch: false,
                 Command("char_rig_entrance.show", ("slot", "@w")),
                 Command("background.bg_sprite", ("rigKey", "bg0"), ("spriteKey", "street_night"))),
             Line("ln3", branch: true,
                 Command("char_rig_presentation.fade_out", ("slot", "c1")),
-                Command("char_rig_acting.hop", ("slot", "c1")),
+                Command("char_rig_staging.scale_by", ("slot", "c1"), ("multiplier", "1.2")),
                 Command("screen_effect.screen_flash", ("preset", "white"))),
             Line("ln4", branch: false,
-                Command("dialogue_box.box_reset"))
+                Command("dialogue_box.surface_reset"))
         ];
 
         return (setup, lines);
@@ -88,19 +88,23 @@ public class MiniStageFoldTests
         Assert.Equal("1", c2.EmotionKey);
         Assert.Equal("c2", state.Aliases["@w"]);
 
-        // 박스: box_named 후 box_reset이 기본값을 복원했다.
+        // 박스는 언제나 기본값이다 — 종류를 정하던 box_* 셋이 런타임에서 사라졌고(W65),
+        // 새 주인인 surface 프리셋은 폴드가 아직 그리지 않는다(아래 미반영 목록에 선다).
         Assert.Equal(MiniStageState.DefaultNamedBoxKind, state.BoxKindFor(hasSpeaker: true));
         Assert.Equal(MiniStageState.DefaultProtagonistBoxKind, state.BoxKindFor(hasSpeaker: false));
 
         // visible 슬롯 나열은 슬롯 키 순서다.
         Assert.Equal(["c2"], state.VisibleSlots.Select(slot => slot.Key));
 
-        // 미반영 연출: 셋업의 shot_zoom, ln3의 hop·screen_flash — 커맨드명과 라인이 남는다.
+        // 미반영 연출: 셋업의 shot_zoom, ln1의 surface_layout, ln3의 scale_by·screen_flash,
+        // ln4의 surface_reset — 커맨드명과 라인이 순서대로 남는다.
         Assert.Equal(
             [
                 new MiniStageUnhandled(null, "shot_zoom"),
-                new MiniStageUnhandled("ln3", "hop"),
-                new MiniStageUnhandled("ln3", "screen_flash")
+                new MiniStageUnhandled("ln1", "surface_layout"),
+                new MiniStageUnhandled("ln3", "scale_by"),
+                new MiniStageUnhandled("ln3", "screen_flash"),
+                new MiniStageUnhandled("ln4", "surface_reset")
             ],
             state.Unhandled);
         Assert.Equal(2, state.UnhandledCountFor("ln3"));
@@ -119,7 +123,7 @@ public class MiniStageFoldTests
 
         Assert.Equal("office", state.BackgroundKey); // 아직 전환 전
         Assert.True(state.Slots["c1"].Visible);
-        Assert.Equal("BlackBook", state.BoxKindFor(hasSpeaker: true));
+        Assert.Equal(MiniStageState.DefaultNamedBoxKind, state.BoxKindFor(hasSpeaker: true));
         Assert.False(state.PassedBranchApproximation); // 갈래는 ln3부터다
     }
 
@@ -135,22 +139,6 @@ public class MiniStageFoldTests
         Assert.Empty(state.Slots);
         Assert.Empty(state.Unhandled);
         Assert.Equal(MiniStageState.DefaultNamedBoxKind, state.NamedBoxKind);
-    }
-
-    [Fact]
-    public void slot_tyrant는_주인공_캐스팅과_표시를_함께_한다()
-    {
-        MiniStageState state = MiniStageFold.Fold(
-            Catalog,
-            [Command("char_rig_cast.slot_tyrant")],
-            Array.Empty<MiniStageFoldLine>());
-
-        // 런타임 매크로 의미: cast tyrant Tyrant a 2 + fade_in.
-        MiniStageSlot tyrant = state.Slots["tyrant"];
-        Assert.Equal("Tyrant", tyrant.CharacterId);
-        Assert.Equal("a", tyrant.VariantKey);
-        Assert.Equal("2", tyrant.EmotionKey);
-        Assert.True(tyrant.Visible);
     }
 
     [Fact]
@@ -173,8 +161,10 @@ public class MiniStageFoldTests
     }
 
     [Fact]
-    public void face_crossfade는_캐릭터까지_갈아_끼운다()
+    public void face_swap은_표정만_갈아_끼운다()
     {
+        // face_swap은 툴 전용 표현으로 남았다 (W65, 소유자 결정) — 런타임에서는 스파인이
+        // 맡지만 저작에서는 "보이는 슬롯의 표정 바꾸기"를 이 낱말로 적는다.
         MiniStageState state = MiniStageFold.Fold(
             Catalog,
             [
@@ -183,11 +173,10 @@ public class MiniStageFoldTests
             ],
             [
                 Line("ln1", branch: false,
-                    Command("char_rig_presentation.face_crossfade",
-                        ("slot", "c1"), ("character", "willo"), ("emotion", "3")))
+                    Command("char_rig_presentation.face_swap", ("slot", "c1"), ("emotion", "3")))
             ]);
 
-        Assert.Equal("willo", state.Slots["c1"].CharacterId);
+        Assert.Equal("laru", state.Slots["c1"].CharacterId);
         Assert.Equal("3", state.Slots["c1"].EmotionKey);
     }
 
@@ -231,7 +220,7 @@ public class MiniStageFoldTests
         PresentationResultBinding[] bindings =
         [
             new PresentationResultBinding("ln_c", [Command("background.bg_spawn", ("rigKey", "bg0"), ("spriteKey", "office"))], IsOrphan: false),
-            new PresentationResultBinding("ln_zz", [Command("char_rig_cast.slot_tyrant")], IsOrphan: true)
+            new PresentationResultBinding("ln_zz", [Command("char_rig_cast.slot", ("slotKey", "c9"))], IsOrphan: true)
         ];
 
         IReadOnlyList<MiniStageFoldLine> upToB = MiniStageFold.LinesUpTo(dialogue, bindings, "ln_b");

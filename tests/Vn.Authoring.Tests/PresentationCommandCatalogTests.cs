@@ -10,15 +10,44 @@ public class PresentationCommandCatalogTests
         PresentationCommandCatalog catalog = PresentationCommandCatalog.For(GameDefinition.Empty);
 
         // docs/game.definition.json — 런타임 등록 테이블과 교차 검증한다.
+        // 실제 대조는 아래 `카탈로그_어휘는_런타임_등록_목록과_일치한다`가 진다.
         //
-        // 2026-08-18 재검증: 런타임의 `AddCommandHandler` 등록 이름 **178개와 정확히
-        // 일치**하고 런타임에만 있는 것은 0개다. 카탈로그에만 남아 있던 22개
-        // (`pres_*` 6 · `overlay_*` 13 · `beat` · `beat_fx` · `seq`)는 단순화로 사라진
-        // 커맨드라 걷어냈다 — 팔레트에 남겨 두면 작가가 고르는 순간 unknown command다.
-        // (179 = 런타임 등록 이름 178 + 동적 별칭 템플릿 항목 `<N>fr` 하나.)
-        Assert.Equal(179, catalog.Definitions.Count);
-        Assert.Equal(20, catalog.Categories.Count);
+        // 2026-08-20 (W65): 런타임이 연기 커맨드를 스파인으로 넘기며 어휘가 줄었다.
+        // 179 → 126 = 삭제 56(emoji 18 · idle 5 · 몸짓 13 · 배경 모션 7 · 표정/시각 4 ·
+        // 대사창 종류 3 · 기타 6) + 추가 2(focus_on · focus_clear) + 유지 1(face_swap).
+        // 카테고리 20 → 15: emoji_preset·emoji_basic·char_rig_idle·char_rig_acting·
+        // char_rig_acting_preset이 통째로 비었다.
+        Assert.Equal(126, catalog.Definitions.Count);
+        Assert.Equal(15, catalog.Categories.Count);
         Assert.Same(catalog, PresentationCommandCatalog.For(definition: null));
+    }
+
+    /// <summary>
+    /// 카탈로그 어휘 = 런타임 등록 어휘. 이 둘이 갈리면 작가가 고르는 순간 unknown command이거나
+    /// (반대로) 쓸 수 있는 커맨드가 팔레트에 없다. 실측 목록은 픽스처가 지고, 갱신 방법은
+    /// 그 파일 머리에 적혀 있다 — 런타임이 커맨드를 늘리거나 줄이면 이 테스트가 먼저 운다.
+    /// </summary>
+    [Fact]
+    public void 카탈로그_어휘는_런타임_등록_목록과_일치한다()
+    {
+        HashSet<string> runtime = RuntimeCommandFixture.Load();
+
+        HashSet<string> catalog = PresentationCommandCatalog.Default.Definitions
+            .Select(item => item.OutputCommandName)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // 예외는 둘뿐이고, 둘 다 사유가 있다. 늘리려면 사유를 여기 적어야 한다.
+        //   <N>fr    — 1fr~48fr 동적 별칭군을 묶은 합성 항목이라 등록 이름과 글자가 다르다.
+        //   face_swap — 툴 전용 표현 (2026-08-20 소유자 결정). 실제 전환은 스파인이 맡는다.
+        string[] toolOnly = ["<N>fr", "face_swap"];
+
+        Assert.Equal(
+            Array.Empty<string>(),
+            catalog.Except(runtime).Except(toolOnly).OrderBy(name => name, StringComparer.Ordinal));
+
+        Assert.Equal(
+            Array.Empty<string>(),
+            runtime.Except(catalog).OrderBy(name => name, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -26,15 +55,17 @@ public class PresentationCommandCatalogTests
     {
         PresentationCommandCatalog catalog = PresentationCommandCatalog.Default;
 
-        PresentationCommandDefinition hop = catalog.Find("char_rig_acting.hop")!;
-        Assert.Equal("hop", hop.OutputCommandName);
-        Assert.Equal("char_rig_acting", hop.CategoryId);
-        PresentationCommandParameter slot = Assert.Single(hop.Parameters);
+        // 인자 하나짜리 표본. 예전에는 `char_rig_acting.hop`이 이 자리였는데 W65에서
+        // 연기 커맨드가 스파인으로 넘어가며 카탈로그에서 빠졌다.
+        PresentationCommandDefinition front = catalog.Find("char_rig_staging.sibling_front")!;
+        Assert.Equal("sibling_front", front.OutputCommandName);
+        Assert.Equal("char_rig_staging", front.CategoryId);
+        PresentationCommandParameter slot = Assert.Single(front.Parameters);
         Assert.Equal("slot", slot.Name);
         Assert.True(slot.Required);
 
-        // 기본값은 파라미터에 실려 온다. hop처럼 기본값 없는 필수 인자는 빈 사전이다.
-        Assert.Empty(hop.DefaultArgumentValues());
+        // 기본값은 파라미터에 실려 온다. 기본값 없는 필수 인자뿐이면 빈 사전이다.
+        Assert.Empty(front.DefaultArgumentValues());
 
         // 기본값이 실려 오는 예 — `control_flow.pres_hold`가 이 자리였는데 2026-08-18에
         // 카탈로그에서 걷혔다(런타임에 `pres_*`가 없다).
@@ -43,20 +74,21 @@ public class PresentationCommandCatalogTests
     }
 
     [Fact]
-    public void 메인_레인_전용_표시는_박스_셋만_남았다()
+    public void 메인_레인_전용_표시는_이제_아무도_달고_있지_않다()
     {
-        // 2026-08-18 — 옛 11개 중 `pres_*` 계열이 카탈로그에서 사라져 셋만 남았다.
+        // 2026-08-18에 셋(box_named·box_protagonist·box_reset)만 남았었고,
+        // W65에서 그 셋이 런타임에서 사라지며 **표시를 단 커맨드가 0이 됐다.**
         //
-        // ⚠ 이 플래그는 지금 **아무도 읽지 않는다.** 이미터의 `IsMainLaneOnly` 검사가
-        // 유일한 소비자였는데, 레인이 하나뿐이라 가릴 대상을 잃어 함께 걷혔다.
-        // 데이터로는 남겨 둔다 — 레인이 다시 생기면 검사도 같이 돌아온다.
+        // ⚠ 플래그는 읽는 쪽도 없다 — 이미터의 `IsMainLaneOnly` 검사가 유일한 소비자였는데
+        // 레인이 하나뿐이라 가릴 대상을 잃고 걷혔다. 이제 **읽는 쪽도 다는 쪽도 없다.**
+        // 스키마에서 지우는 것은 레인이 정말 안 돌아온다고 정해질 때 한다(그때 이 테스트도 간다).
         string[] mainLaneOnly = PresentationCommandCatalog.Default.Definitions
             .Where(item => item.MainLaneOnly)
             .Select(item => item.OutputCommandName)
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "box_named", "box_protagonist", "box_reset" }, mainLaneOnly);
+        Assert.Empty(mainLaneOnly);
     }
 
     [Fact]
