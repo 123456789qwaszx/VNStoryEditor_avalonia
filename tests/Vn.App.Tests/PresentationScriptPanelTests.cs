@@ -92,24 +92,30 @@ public sealed class PresentationScriptPanelTests
     });
 
     [Fact]
-    public void 제거_X는_선택된_구획의_커맨드_행에서만_선다() => HeadlessUi.Run(() =>
+    public void 제거_X는_선택된_구획의_커맨드_행에서만_보인다() => HeadlessUi.Run(() =>
     {
         var panel = new PresentationScriptPanel();
-        int CountX() => panel.GetLogicalDescendants().OfType<TextBlock>()
-            .Count(text => string.Equals(text.Text, "✕", StringComparison.Ordinal));
 
-        // ln_a 선택 — ln_a의 커맨드 행에만 X. Setup 행은 선택 밖이라 없다 (2026-08-21
-        // 소유자: "특정 라인을 클릭했을 때만 x가 보이도록").
+        TextBlock[] AllX() => panel.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => string.Equals(text.Text, "✕", StringComparison.Ordinal)).ToArray();
+
+        // 보이는 것 = 불투명 + 클릭 가능. 안 보이는 것도 자리는 잡는다(행 높이 고정).
+        int VisibleX() => AllX().Count(text => text.Opacity > 0 && text.IsHitTestVisible);
+
+        // ln_a 선택 — 커맨드 행 둘(Setup 하나·ln_a 하나) 모두 자리는 있고, 보이는 것은
+        // ln_a의 하나뿐이다 (2026-08-21 소유자: "특정 라인을 클릭했을 때만 x가 보이도록").
         panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
-        Assert.Equal(1, CountX());
+        Assert.Equal(2, AllX().Length);
+        Assert.Equal(1, VisibleX());
 
-        // Setup 선택 — Setup 커맨드 행에만 X.
+        // Setup 선택 — 보이는 것은 Setup 행의 하나.
         panel.Show(Rows(), selectedLineId: null, editable: true, setupSelected: true);
-        Assert.Equal(1, CountX());
+        Assert.Equal(2, AllX().Length);
+        Assert.Equal(1, VisibleX());
 
-        // 읽기 전용 — 어디에도 없다.
+        // 읽기 전용 — 아예 없다.
         panel.Show(Rows(), selectedLineId: "ln_a", editable: false);
-        Assert.Equal(0, CountX());
+        Assert.Empty(AllX());
     });
 
     [Fact]
@@ -139,6 +145,61 @@ public sealed class PresentationScriptPanelTests
         // 꺼진 행의 텍스트는 흐리다.
         Assert.Contains(panel.GetLogicalDescendants().OfType<TextBlock>(),
             text => text.Text == "<<move_by @1 -2u>>" && text.Opacity < 0.6);
+    });
+
+    [Fact]
+    public void 선택이_바뀌어도_커맨드_행_높이는_그대로다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "간격이 계속 바뀌면서 레이아웃이 이동하는데 … 어지럽고
+        // 피로해". 제거 X는 보였다 숨었다 하되 자리는 늘 잡아야 한다.
+        var panel = new PresentationScriptPanel();
+        var window = new Window { Content = panel, Width = 400, Height = 500 };
+        window.Show();
+
+        double MeasureRows(string? selectedLine, bool setupSelected)
+        {
+            panel.Show(Rows(), selectedLine, editable: true, setupSelected);
+            window.Measure(new Avalonia.Size(400, 500));
+            window.Arrange(new Avalonia.Rect(0, 0, 400, 500));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            return panel.GetLogicalDescendants().OfType<DockPanel>()
+                .Sum(row => row.Bounds.Height);
+        }
+
+        double selectedLine = MeasureRows("ln_a", false); // X 보임
+        double otherLine = MeasureRows("ln_b", false);    // ln_a의 X 숨음
+        double setup = MeasureRows(null, true);           // Setup의 X만 보임
+
+        Assert.Equal(selectedLine, otherLine, 1);
+        Assert.Equal(selectedLine, setup, 1);
+
+        window.Close();
+    });
+
+    [Fact]
+    public void Setup을_고르면_라인_하이라이트는_꺼진다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "라인을 클릭한 상태로 Setup을 클릭하면 하이라이트가 2군데에".
+        var panel = new PresentationScriptPanel();
+
+        // 라인 선택이 남아 있어도(선택 라인 정보는 살아 있다) 켜지는 박스는 하나다.
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true, setupSelected: true);
+
+        Border[] highlighted = panel.GetLogicalDescendants().OfType<Border>()
+            .Where(border => border.Background is SolidColorBrush { Color.A: 60 })
+            .ToArray();
+        Border box = Assert.Single(highlighted);
+        Assert.Contains(box.GetLogicalDescendants().OfType<TextBlock>(),
+            text => (text.Text ?? "").Contains("Setup", StringComparison.Ordinal));
+
+        // Setup에서 벗어나면 그 라인이 다시 켜진다.
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true, setupSelected: false);
+        Border lineBox = Assert.Single(
+            panel.GetLogicalDescendants().OfType<Border>(),
+            border => border.Background is SolidColorBrush { Color.A: 60 });
+        Assert.Contains(lineBox.GetLogicalDescendants().OfType<TextBlock>(),
+            text => (text.Text ?? "").Contains("ln_a", StringComparison.Ordinal));
     });
 
     [Fact]

@@ -462,38 +462,18 @@ public partial class MiniStagePreview : UserControl
         });
     }
 
-    // 작업대 높이 — 스플리터가 픽셀값으로 바꾼 것을 숨김/복원 사이에 기억한다.
-    // 내용이 이 높이를 못 바꾸는 것이 요지다 (2026-08-21 소유자: "범위가 자꾸 변하는데
-    // 조작감이 너무 별로") — 넘치면 안에서 스크롤한다.
-    private double _detailHeight = 260;
-
-    private void SetDetailVisible(bool visible)
+    /// <summary>
+    /// 작업대가 비었을 때의 안내 — <b>영역은 그대로 두고</b> 글자만 바꾼다 (2026-08-21
+    /// 소유자: 클릭마다 접혔다 펴지며 터미널 높이가 흔들리던 것). 이 높이를 바꾸는 것은
+    /// 사람의 스플리터 드래그뿐이다.
+    /// </summary>
+    private static Control BuildEmptyDetailHint() => new TextBlock
     {
-        RowDefinitions rows = LeftColumn.RowDefinitions;
-
-        if (visible)
-        {
-            rows[1].Height = new GridLength(8);
-
-            if (!(rows[2].Height.IsAbsolute && rows[2].Height.Value > 0))
-            {
-                rows[2].Height = new GridLength(_detailHeight);
-            }
-        }
-        else
-        {
-            if (rows[2].Height.IsAbsolute && rows[2].Height.Value > 0)
-            {
-                _detailHeight = rows[2].Height.Value;
-            }
-
-            rows[1].Height = new GridLength(0);
-            rows[2].Height = new GridLength(0);
-        }
-
-        DetailSplitter.IsVisible = visible;
-        DetailScroll.IsVisible = visible;
-    }
+        Text = "터미널에서 커맨드를 클릭하면 여기에서 수치를 조절합니다.",
+        FontSize = 11,
+        Opacity = 0.4,
+        TextWrapping = Avalonia.Media.TextWrapping.Wrap
+    };
 
     /// <summary>터미널 행 우측 X (2026-08-21) — 작업대의 ✕ 버튼을 대체한 제거 통로다.</summary>
     private void ApplyScriptCommandRemove(PresentationResultCommand command)
@@ -548,8 +528,7 @@ public partial class MiniStagePreview : UserControl
             }
         }
 
-        DetailHost.Content = detail;
-        SetDetailVisible(detail is not null);
+        DetailHost.Content = detail ?? BuildEmptyDetailHint();
 
         // 프레임 타임라인 (2026-08-21) — 무대 아래 재생 줄에 이 라인의 내부 시간이 선다.
         TimelineHost.Content = _scene.BuildTimelineScrubber();

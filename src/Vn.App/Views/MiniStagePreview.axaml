@@ -19,15 +19,23 @@
                            TextTrimming="CharacterEllipsis" />
             </Grid>
 
-            <!-- 뱃지·갈래 칩 — 많아지면 줄바꿈한다 (W37). 간격은 StageIndicators가 마진으로 준다. -->
-            <WrapPanel Grid.Row="1"
-                       x:Name="BadgeRow"
-                       Margin="0,6,0,0" />
+            <!-- 뱃지·갈래 칩 — 많아지면 줄바꿈한다 (W37). 간격은 StageIndicators가 마진으로 준다.
+                 높이는 고정이고 넘치면 이 안에서 스크롤한다 (2026-08-21 소유자: 라인마다
+                 개수가 달라 아래 전체가 밀리던 것 — "레이아웃을 건드리진 않게"). -->
+            <ScrollViewer Grid.Row="1"
+                          Height="28"
+                          Margin="0,6,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <WrapPanel x:Name="BadgeRow" />
+            </ScrollViewer>
 
             <!-- 좌: 연출 대본 텍스트 패널(위) + 선택 대상 작업대(아래) · 우: 무대.
                  무대 그리기는 StageSceneView 하나다(렌더 사본 금지).
                  터미널:작업대 영역비는 가로 스플리터 드래그로 조절한다 (2026-08-21 소유자:
-                 "높이에 따라 범위가 자꾸 변하는데 조작감이 너무 별로" — 고정 높이 + 내부 스크롤). -->
+                 "높이에 따라 범위가 자꾸 변하는데 조작감이 너무 별로" — 고정 높이 + 내부 스크롤).
+                 작업대는 <b>비어 있어도 접지 않는다</b>(같은 날: 클릭마다 레이아웃이 움직이던
+                 원인) — 사람이 스플리터로 정한 비율만이 이 높이를 바꾼다. -->
             <Grid Grid.Row="2"
                   ColumnDefinitions="380,10,*"
                   Margin="0,8,0,0">
@@ -56,8 +64,11 @@
                 <Grid Grid.Column="2" RowDefinitions="*,Auto">
                     <ContentControl Grid.Row="0"
                                     x:Name="SceneHost" />
+                    <!-- 재생 줄 높이도 고정 — 타임라인이 있는 라인과 없는 라인 사이에서
+                         무대 크기가 바뀌지 않는다. -->
                     <Grid Grid.Row="1"
                           ColumnDefinitions="Auto,16,*"
+                          Height="34"
                           Margin="0,8,0,0">
                         <ContentControl Grid.Column="0"
                                         x:Name="PlaybackHost"
@@ -69,10 +80,19 @@
                 </Grid>
             </Grid>
 
-            <StackPanel Grid.Row="3" Spacing="4" Margin="0,6,0,0">
-                <StackPanel x:Name="NoticeHost" Spacing="2" />
-                <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />
-            </StackPanel>
+            <!-- 알림·경고 — 뜨는 것은 좋으나 무대를 밀지 않는다 (2026-08-21 소유자:
+                 "경고문구 뜨는건 좋은데, 레이아웃을 건드리진 않게"). 자리를 늘 비워 두고
+                 길어지면 이 안에서 스크롤한다. -->
+            <ScrollViewer Grid.Row="3"
+                          Height="46"
+                          Margin="0,6,0,0"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="4">
+                    <StackPanel x:Name="NoticeHost" Spacing="2" />
+                    <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </UserControl>

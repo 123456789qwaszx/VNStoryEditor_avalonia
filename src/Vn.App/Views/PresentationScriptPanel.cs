@@ -137,9 +137,10 @@ internal sealed class PresentationScriptPanel : UserControl
 
             // 제거 X는 선택된 구획에서만 보인다 (2026-08-21 소유자: "특정 라인을
             // 클릭했을 때만 x가 보이도록") — 다른 라인은 읽기 화면처럼 고요하다.
+            // 보이지 않을 때도 자리는 그대로 잡는다(아래) — 클릭마다 줄이 흔들리지 않게.
             bool showRemove = editable && (isSetup
                 ? setupSelected
-                : string.Equals(lineId, selectedLineId, StringComparison.Ordinal));
+                : !setupSelected && string.Equals(lineId, selectedLineId, StringComparison.Ordinal));
 
             while (index < rows.Count &&
                    string.Equals(rows[index].LineId, lineId, StringComparison.Ordinal))
@@ -165,7 +166,10 @@ internal sealed class PresentationScriptPanel : UserControl
                 index++;
             }
 
-            bool selected = lineId is not null &&
+            // 선택은 하나다 (2026-08-21 소유자: "하이라이트가 2군데에 잡혀") — Setup을
+            // 고르면 라인 하이라이트는 꺼진다. 라인 선택 정보는 그대로 살아 있다가
+            // Setup에서 벗어나면 다시 그 라인이 켜진다.
+            bool selected = lineId is not null && !setupSelected &&
                 string.Equals(lineId, selectedLineId, StringComparison.Ordinal);
 
             var container = new Border
@@ -376,28 +380,28 @@ internal sealed class PresentationScriptPanel : UserControl
 
         dot.Cursor = new Cursor(StandardCursorType.Hand);
 
-        if (showRemove)
+        // 행 우측 끝의 제거 X (2026-08-21 소유자: "터미널 라인 우측 끝에 X", 같은 날:
+        // "특정 라인을 클릭했을 때만") — 선택된 구획에서만 <b>보이되</b>, 안 보일 때도
+        // 자리는 그대로 잡는다. 넣었다 뺐다 하면 클릭할 때마다 줄 높이가 흔들린다
+        // (같은 날: "간격이 계속 바뀌면서 레이아웃이 이동하는데 … 어지럽고 피로해").
+        var remove = new TextBlock
         {
-            // 행 우측 끝의 제거 X (2026-08-21 소유자: "터미널 라인 우측 끝에 X",
-            // 같은 날: "특정 라인을 클릭했을 때만") — 선택된 구획의 행에서만 선다.
-            var remove = new TextBlock
-            {
-                Text = "✕",
-                FontSize = 11,
-                Opacity = 0.35,
-                Foreground = Brushes.Gainsboro,
-                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 2, 0),
-                Cursor = new Cursor(StandardCursorType.Hand)
-            };
-            remove.PointerPressed += (_, args) =>
-            {
-                CommandRemoveRequested?.Invoke(command);
-                args.Handled = true;
-            };
-            DockPanel.SetDock(remove, Dock.Right);
-            layout.Children.Insert(1, remove);
-        }
+            Text = "✕",
+            FontSize = 11,
+            Opacity = showRemove ? 0.35 : 0,
+            IsHitTestVisible = showRemove, // 안 보이면 클릭도 행 선택으로 흘려보낸다
+            Foreground = Brushes.Gainsboro,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 2, 0),
+            Cursor = new Cursor(StandardCursorType.Hand)
+        };
+        remove.PointerPressed += (_, args) =>
+        {
+            CommandRemoveRequested?.Invoke(command);
+            args.Handled = true;
+        };
+        DockPanel.SetDock(remove, Dock.Right);
+        layout.Children.Insert(1, remove);
 
         host.PointerPressed += (_, args) =>
         {
