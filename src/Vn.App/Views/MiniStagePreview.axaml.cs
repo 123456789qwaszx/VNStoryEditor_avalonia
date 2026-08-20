@@ -127,6 +127,50 @@ internal sealed record StageMotionCue(
     IReadOnlyDictionary<string, string> Arguments);
 
 /// <summary>
+/// 프리뷰에 합쳐지는 커맨드 스트립의 칩 하나 (W66) — 이 라인의 커맨드가 프리뷰 화면
+/// 안에서 보인다. <see cref="Motion"/>이 있으면 이동 칩(⇢·궤적·슬라이더)이고,
+/// 없으면 커맨드가 있다는 사실만 알리는 표시 칩이다.
+/// </summary>
+internal sealed record StageCommandChip(string Text, StageMotionCue? Motion);
+
+/// <summary>이 라인의 커맨드 전부를 프리뷰 칩으로 (W66). 오디오는 ♪ 칩이 따로 있어 뺀다.</summary>
+internal static class StageCommandChips
+{
+    public static IReadOnlyList<StageCommandChip>? Of(
+        PresentationCommandCatalog catalog,
+        IReadOnlyList<PresentationResultCommand>? lineCommands,
+        IReadOnlyList<StageMotionCue>? motionCues)
+    {
+        if (lineCommands is null || lineCommands.Count == 0)
+        {
+            return null;
+        }
+
+        var chips = new List<StageCommandChip>();
+
+        foreach (PresentationResultCommand command in lineCommands)
+        {
+            PresentationCommandDefinition? definition = catalog.Find(command.DefinitionId);
+
+            if (definition is not null && string.Equals(
+                    definition.CategoryId, "audio", StringComparison.Ordinal))
+            {
+                continue; // ♪ 칩(W34-b)의 자리다.
+            }
+
+            StageMotionCue? motion = motionCues?.FirstOrDefault(cue =>
+                string.Equals(cue.CommandId, command.CommandId, StringComparison.Ordinal));
+
+            chips.Add(new StageCommandChip(
+                CommandText.Format(definition, command.DefinitionId, command.Arguments),
+                motion));
+        }
+
+        return chips.Count > 0 ? chips : null;
+    }
+}
+
+/// <summary>
 /// 이 라인의 이동 커맨드를 무대가 만질 수 있는 모양으로 펼친다 (W66).
 ///
 /// 무엇이 이동인지는 <b>카탈로그의 모션 선언</b>만이 정한다 — 이름으로 추측하지 않으므로
@@ -213,7 +257,8 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<string>? AudioCues = null,
     IReadOnlyList<string>? AutoBranchBlocks = null,
     IReadOnlyList<PresentationResultCommand>? AudioCommands = null,
-    IReadOnlyList<StageMotionCue>? MotionCues = null);
+    IReadOnlyList<StageMotionCue>? MotionCues = null,
+    IReadOnlyList<StageCommandChip>? CommandChips = null);
 
 /// <summary>
 /// 편집기 하단의 축소판 무대 프리뷰. 무대 그리기는 <see cref="StageSceneView"/>가

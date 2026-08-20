@@ -239,6 +239,14 @@ public partial class PresentationNodeEditor : UserControl
                     (operation.Variable, operation.Operator, operation.Value)))
                 .ToList());
 
+        // 이동 편집(W66)의 원료 — 요청을 만들기 전에 한 번만 계산한다.
+        IReadOnlyList<StageMotionCue>? motionCues = StageMotionCues.Of(
+            catalog,
+            draft.SetupCommands,
+            branch.FoldLines,
+            lineBinding?.Commands,
+            _session.TuningLibrary.Tuning);
+
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다 —
         // 작업 대본 쪽 프리뷰와 같은 판정 하나(ChoiceOptionBundle)를 지난다.
         IReadOnlyList<StageChoiceOption>? choices = StageChoiceOptions.Build(
@@ -273,12 +281,9 @@ public partial class PresentationNodeEditor : UserControl
             // 소리 실재생(W62): 재생이 이 라인에 도달하면 칩의 원본 커맨드가 울린다.
             AudioCommands: StageAudioCues.AudioOf(catalog, lineBinding?.Commands),
             // 이동 편집(W66): 모션 선언이 있는 커맨드만 무대에서 수치를 만질 수 있다.
-            MotionCues: StageMotionCues.Of(
-                catalog,
-                draft.SetupCommands,
-                branch.FoldLines,
-                lineBinding?.Commands,
-                _session.TuningLibrary.Tuning)));
+            MotionCues: motionCues,
+            // 커맨드 스트립(W66): 이 라인의 연출 전부가 프리뷰 화면 안에 칩으로 선다.
+            CommandChips: StageCommandChips.Of(catalog, lineBinding?.Commands, motionCues)));
     }
 
     /// <summary>

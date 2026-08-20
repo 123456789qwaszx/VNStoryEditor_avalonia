@@ -51,6 +51,8 @@ public sealed class StageMotionRenderTests
 
         MiniStageFoldLine[] lines = [new MiniStageFoldLine("ln1", false, lineCommands)];
         CoreStageFoldResult fold = CoreStageFold.Fold(Catalog, setup, lines, Tuning);
+        IReadOnlyList<StageMotionCue>? cues =
+            StageMotionCues.Of(Catalog, setup, lines, lineCommands, Tuning);
 
         return new MiniStagePreviewRequest(
             "테스트",
@@ -60,7 +62,8 @@ public sealed class StageMotionRenderTests
             SpeakerName: null,
             LineText: "대사",
             CoreState: fold.CoreState,
-            MotionCues: StageMotionCues.Of(Catalog, setup, lines, lineCommands, Tuning));
+            MotionCues: cues,
+            CommandChips: StageCommandChips.Of(Catalog, lineCommands, cues));
     }
 
     private static Canvas CanvasOf(StageSceneView view) =>
@@ -125,8 +128,10 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
-    public void 선언이_없는_커맨드는_칩도_궤적도_없다() => HeadlessUi.Run(() =>
+    public void 선언이_없는_커맨드는_표시_칩만_서고_궤적은_없다() => HeadlessUi.Run(() =>
     {
+        // 커맨드가 이 라인에 있다는 사실은 숨기지 않되(표시 칩), 수치·궤적은
+        // 모션 선언이 있는 것에만 붙는다 — 추측으로 축을 그리지 않는다.
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
@@ -139,8 +144,12 @@ public sealed class StageMotionRenderTests
 
         Canvas canvas = CanvasOf(view);
 
-        Assert.Empty(Chips(canvas));
+        Assert.Empty(Chips(canvas)); // ⇢ 이동 칩은 없다
         Assert.Empty(Trails(canvas));
+
+        // 표시 칩은 선다 — 병기 텍스트 그대로.
+        Assert.Contains(canvas.GetLogicalDescendants().OfType<TextBlock>(),
+            text => text.Text is { } value && value.Contains("scale_by", StringComparison.Ordinal));
 
         window.Close();
     });

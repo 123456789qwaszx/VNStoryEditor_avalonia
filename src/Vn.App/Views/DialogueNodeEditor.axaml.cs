@@ -792,6 +792,13 @@ public partial class DialogueNodeEditor : UserControl
             .FirstOrDefault(item =>
                 string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands;
 
+        IReadOnlyList<StageMotionCue>? dialogueMotionCues = StageMotionCues.Of(
+            catalog,
+            export.Presentation.SetupCommands,
+            branch.FoldLines,
+            lineCommands,
+            _session.TuningLibrary.Tuning);
+
         StagePreview.Show(new MiniStagePreviewRequest(
             contextLabel,
             fold.State,
@@ -817,7 +824,11 @@ public partial class DialogueNodeEditor : UserControl
             AudioCues: StageAudioCues.Of(catalog, lineCommands),
             AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
             // 소리 실재생(W62): 재생이 이 라인에 도달하면 위 칩의 원본 커맨드가 울린다.
-            AudioCommands: StageAudioCues.AudioOf(catalog, lineCommands)));
+            AudioCommands: StageAudioCues.AudioOf(catalog, lineCommands),
+            // 이동 표시(W66): 작가 화면에서도 궤적·칩은 보인다 — 편집은 위 EditContext가
+            // 이미 잠갔으므로 칩을 눌러도 조절창이 열리지 않는다(발행 불변).
+            MotionCues: dialogueMotionCues,
+            CommandChips: StageCommandChips.Of(catalog, lineCommands, dialogueMotionCues)));
     }
 
     /// <summary>

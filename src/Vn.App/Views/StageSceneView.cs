@@ -368,8 +368,9 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이 라인의 이동 커맨드 (W66) — 궤적과 출발 자리를 무대에 겹쳐 그리고, 칩을 누르면
-    /// 수치를 슬라이더로 만진다.
+    /// 이 라인의 커맨드 스트립 (W66) — 라인에 붙은 연출이 프리뷰 화면 안에서 보인다
+    /// (소유자 그림: "프리뷰에 커맨드 목록이 합쳐진다"). 이동 커맨드(모션 선언 있음)는
+    /// ⇢ 칩 + 궤적 + 슬라이더이고, 나머지는 커맨드가 있다는 사실을 알리는 표시 칩이다.
     ///
     /// <b>왜 출발 자리를 그리나</b>: 정지 프레임은 이동이 <i>끝난</i> 자리다. 그래서 화면만
     /// 봐서는 "이 캐릭터가 방금 움직였다"는 사실 자체가 안 보인다 — 어디서 왔는지를 그려야
@@ -379,32 +380,64 @@ internal sealed class StageSceneView : UserControl
     private void RenderMotionCues(
         MiniStagePreviewRequest request, StageSceneLayout layout, double height, double em)
     {
-        if (request.MotionCues is not { Count: > 0 } cues)
-        {
-            return;
-        }
-
         // 샷 배율은 코어 규약 그대로 — 컴포저가 초상을 놓을 때 쓴 그 함수다.
         double cameraScale = request.CoreState is { } core
             ? ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom)
             : 1;
 
-        var rows = new StackPanel { Spacing = em * 0.15 };
-
-        foreach (StageMotionCue cue in cues)
+        if (request.MotionCues is { Count: > 0 } cues)
         {
-            StagePortraitPlacement? portrait = layout.Portraits.FirstOrDefault(item =>
-                string.Equals(item.SlotKey, cue.SlotKey, StringComparison.Ordinal));
-
-            if (portrait is not null)
+            foreach (StageMotionCue cue in cues)
             {
-                RenderMotionTrail(portrait.Rect, cue, cameraScale, em);
-            }
+                StagePortraitPlacement? portrait = layout.Portraits.FirstOrDefault(item =>
+                    string.Equals(item.SlotKey, cue.SlotKey, StringComparison.Ordinal));
 
-            rows.Children.Add(BuildMotionChip(cue, em));
+                if (portrait is not null)
+                {
+                    RenderMotionTrail(portrait.Rect, cue, cameraScale, em);
+                }
+            }
         }
 
-        Add(rows, new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 16, em * (cues.Count + 1)));
+        if (request.CommandChips is not { Count: > 0 } chips)
+        {
+            return;
+        }
+
+        var rows = new StackPanel { Spacing = em * 0.15 };
+
+        foreach (StageCommandChip chip in chips)
+        {
+            rows.Children.Add(chip.Motion is { } motion
+                ? BuildMotionChip(motion, em)
+                : BuildPlainCommandChip(chip.Text, em));
+        }
+
+        Add(rows, new StageRect(em * 0.6, height * 0.10 + em * 3.2, em * 18, em * (chips.Count + 1)));
+    }
+
+    /// <summary>
+    /// 이동이 아닌 커맨드의 표시 칩 — 눌러도 조절창이 없다(수치 노출은 모션 선언이 있는
+    /// 커맨드부터 계통별로 연다). 커맨드가 이 라인에 있다는 사실은 화면에서 숨기지 않는다.
+    /// </summary>
+    private Control BuildPlainCommandChip(string text, double em)
+    {
+        var chip = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(130, 30, 30, 40)),
+            CornerRadius = new CornerRadius(em * 0.2),
+            Padding = new Thickness(em * 0.35, em * 0.12),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = em * 0.5,
+                Foreground = new SolidColorBrush(Color.FromArgb(200, 203, 213, 225))
+            }
+        };
+
+        ToolTip.SetTip(chip, "이 라인의 연출입니다. 수치 조절은 이동 계통(⇢)부터 지원합니다.");
+        return chip;
     }
 
     /// <summary>
