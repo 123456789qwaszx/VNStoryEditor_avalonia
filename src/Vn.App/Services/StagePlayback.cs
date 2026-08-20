@@ -146,6 +146,10 @@ internal sealed class StagePlayback
             // 같은 라인의 재요청(에셋 새로 고침·편집 반영) — 타자 위치는 유지하되 본문은 갱신.
             _textLength = lineText?.Length ?? 0;
             _isChoice = isChoice;
+
+            // 이 라인의 전이 시간도 기억한다 (W66) — ▶가 현재 라인의 이동을 다시
+            // 태우려면(아래 Play) 라인 이동 없이도 시간이 최신이어야 한다.
+            _transitionDuration = transitionSeconds;
         }
 
         if (lineIndex < 0 || lineCount <= 0)
@@ -195,7 +199,14 @@ internal sealed class StagePlayback
         _elapsed = 0;
         _phase = _isChoice ? Phase.WaitInput : Phase.Typing;
         IsPlaying = true;
+
+        // 이 라인의 이동도 처음부터 (W66) — 타자를 되감으면서 연출만 끝 상태로 두면
+        // "재생"이 아니다. 시간이 0이면 탈 것이 없다.
+        _transitionElapsed = 0;
+        _transitionActive = _transitionDuration > 0;
+
         TypingProgress?.Invoke();
+        TransitionChanged?.Invoke();
         StateChanged?.Invoke();
     }
 

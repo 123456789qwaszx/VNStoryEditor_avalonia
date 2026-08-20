@@ -193,6 +193,26 @@ public class StagePlaybackTests
         StagePlayback playback, int lineIndex, int lineCount, double transitionSeconds)
         => playback.OnRequest(lineIndex, lineCount, "", isChoice: false, transitionSeconds);
 
+    [Fact]
+    public void 재생을_누르면_현재_라인의_이동을_처음부터_태운다()
+    {
+        // W66 — 타자만 처음부터 되감고 연출은 끝 상태로 두면 "재생"이 아니다.
+        // 정지 상태에서 라인을 보고 있다가 ▶ — 그 라인의 전이가 0부터 흐른다.
+        (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 2, text: "");
+
+        Arrive2(playback, 0, 2, transitionSeconds: 0.4); // 같은 라인 재요청 — 시간만 갱신
+        Assert.Null(playback.TransitionProgress);        // 정지 중에는 확정 상태
+
+        playback.Play();
+        Assert.Equal(0, playback.TransitionProgress);    // ▶ = 이동도 처음부터
+
+        playback.Tick(0.2);
+        Assert.Equal(0.5, playback.TransitionProgress!.Value, precision: 3);
+
+        playback.Tick(0.3);
+        Assert.Null(playback.TransitionProgress);        // 이동 종료 — 확정 상태
+    }
+
     // ── 진행·정지 (W31) ───────────────────────────────────────────────────
 
     [Fact]

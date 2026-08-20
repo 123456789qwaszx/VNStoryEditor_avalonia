@@ -119,7 +119,24 @@ internal sealed class StageSceneView : UserControl
 
         foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
         {
-            if (_previousPortraitRects.TryGetValue(slotKey, out StageRect? from) && from is not null)
+            if (_motionTransitions.TryGetValue(slotKey, out (StageRect From, double Seconds) motion))
+            {
+                // 이동 커맨드가 있는 슬롯은 궤적을 탄다 (W66) — 출발은 직전 렌더가 아니라
+                // 이동의 진짜 출발이고, 시간은 그 커맨드의 duration이다(라인 최대 아님).
+                // 모양은 아직 선형이다 — 실제 이징 곡선은 코어 EaseFunctions가 서면
+                // 같은 자리에서 갈아 끼운다(W66b, ease-open-orders §3).
+                double lineSeconds = _request?.TransitionSeconds ?? 0;
+                double motionProgress = motion.Seconds <= 0
+                    ? 1
+                    : Math.Clamp(t * lineSeconds / motion.Seconds, 0, 1);
+
+                control.Opacity = 1;
+                Canvas.SetLeft(control, Lerp(motion.From.X, to.X, motionProgress));
+                Canvas.SetTop(control, Lerp(motion.From.Y, to.Y, motionProgress));
+                control.Width = to.Width;
+                control.Height = to.Height;
+            }
+            else if (_previousPortraitRects.TryGetValue(slotKey, out StageRect? from) && from is not null)
             {
                 control.Opacity = 1;
                 Canvas.SetLeft(control, Lerp(from.X, to.X, t));
@@ -275,6 +292,7 @@ internal sealed class StageSceneView : UserControl
         _backgroundImage = null;
         _backgroundOverlay = null;
         _transitionEntries.Clear();
+        _motionTransitions.Clear();
 
         (double width, double height) = _session?.Definition.PreviewResolution ?? (1920, 1080);
         _canvas.Width = width;
@@ -441,6 +459,15 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
+    /// 이 라인에서 이동하는 슬롯의 출발 자리와 구간 시간 (W66) — 재생 보간이
+    /// "직전 렌더"가 아니라 <b>이동의 진짜 출발</b>에서 궤적을 타게 한다.
+    /// 같은 슬롯에 이동이 여럿이면 마지막 것이 이긴다(런타임의 DOKill 의미론 —
+    /// 앞의 것은 즉시 완주되므로 출발 자리에 이미 반영돼 있다).
+    /// </summary>
+    private readonly Dictionary<string, (StageRect From, double Seconds)> _motionTransitions =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
     /// 출발 자리의 윤곽 + 거기서 지금 자리로 잇는 선. 무대 좌표 변환은 컴포저의 규약
     /// 하나를 따른다 — 루트 공간에서 x는 같은 방향, y는 캔버스가 뒤집혀 있다.
     /// </summary>
@@ -451,8 +478,13 @@ internal sealed class StageSceneView : UserControl
 
         if (Math.Abs(startX - current.X) < 0.5 && Math.Abs(startY - current.Y) < 0.5)
         {
-            return; // 움직이지 않는 이동 — 그릴 궤적이 없다.
+            return; // 움직이지 않는 이동 — 그릴 궤적도, 태울 재생도 없다.
         }
+
+        // 재생 보간용 출발 등록 — 시간은 이 커맨드의 duration이다(라인 최대와 다를 수 있다).
+        _motionTransitions[cue.SlotKey] = (
+            new StageRect(startX, startY, current.Width, current.Height),
+            DurationToken.FramesToSeconds((float)cue.DurationFrames));
 
         var ghost = new Border
         {
@@ -1241,6 +1273,24 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     private void ShowMotionFlyout(StageMotionCue cue)
     {
+        if (_session is null || _request?.EditContext is not { Editable: true })
+        {
+            return;
+        }
+
+        ShowManipulationFlyout((host, _) =>
+        {
+            host.MinWidth = 250;
+            AddMotionEditorRows(host, cue, headerSuffix: " (우클릭으로 닫기)");
+        });
+    }
+
+    /// <summary>
+    /// 이동 수치 편집기 본체 — 칩 플라이아웃과 조절창 [이동] 탭이 <b>같은 이것 하나</b>를
+    /// 쓴다. 축 슬라이더는 선언이 만든다: x·y를 코드에 박지 않는다.
+    /// </summary>
+    private void AddMotionEditorRows(StackPanel host, StageMotionCue cue, string headerSuffix = "")
+    {
         if (_session is null || _request?.EditContext is not { Editable: true } context)
         {
             return;
@@ -1256,65 +1306,131 @@ internal sealed class StageSceneView : UserControl
         float perUnit = UnitToken.PixelsPerUnit(
             _session.TuningLibrary.Tuning?.ReferenceStageWidth ?? 1920f);
 
-        ShowManipulationFlyout((host, _) =>
+        host.Children.Add(new TextBlock
         {
-            host.MinWidth = 250;
-            host.Children.Add(new TextBlock
-            {
-                Text = $"{definition.DisplayName} — {cue.SlotKey} (우클릭으로 닫기)",
-                FontSize = 10,
-                Opacity = 0.7,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 250
-            });
-
-            // 축 슬라이더는 선언이 만든다 — x·y를 코드에 박지 않는다.
-            foreach (PresentationMotionAxis axis in motion.Axes)
-            {
-                double pixels = string.Equals(axis.Axis, PresentationMotionAxis.XAxis, StringComparison.Ordinal)
-                    ? cue.DeltaX
-                    : cue.DeltaY;
-
-                host.Children.Add(BuildMotionSlider(
-                    context.PresentationNodeId,
-                    cue.CommandId,
-                    label: axis.Axis == PresentationMotionAxis.XAxis ? "가로" : "세로",
-                    argumentName: axis.ParameterName,
-                    value: perUnit > 0 ? pixels / perUnit : 0,
-                    minimum: -6,
-                    maximum: 6,
-                    tick: 0.25,
-                    format: units => $"{(units >= 0 ? "+" : "")}{units:0.##}u",
-                    suffix: "u"));
-            }
-
-            if (motion.DurationParameterName is { } durationParameter)
-            {
-                host.Children.Add(BuildMotionSlider(
-                    context.PresentationNodeId,
-                    cue.CommandId,
-                    label: "시간",
-                    argumentName: durationParameter,
-                    value: cue.DurationFrames,
-                    minimum: 0,
-                    maximum: 48,
-                    tick: 1,
-                    format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
-                    suffix: "fr"));
-            }
-
-            // 이징은 아직 편집 칸이 아니다 — 실을 자리가 런타임 텍스트에 없다(W67에서 연다).
-            // "채우면 반드시 동작한다"를 지키려고 값만 보여 주고 만지게 하지 않는다.
-            host.Children.Add(new TextBlock
-            {
-                Text = $"이징 {cue.Ease ?? "-"} — 런타임 기본값입니다. 텍스트에 실을 자리가 " +
-                    "아직 없어 여기서는 바꿀 수 없습니다.",
-                FontSize = 9,
-                Opacity = 0.55,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 250
-            });
+            Text = $"{definition.DisplayName} — {cue.SlotKey}{headerSuffix}",
+            FontSize = 10,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 250
         });
+
+        foreach (PresentationMotionAxis axis in motion.Axes)
+        {
+            double pixels = string.Equals(axis.Axis, PresentationMotionAxis.XAxis, StringComparison.Ordinal)
+                ? cue.DeltaX
+                : cue.DeltaY;
+
+            host.Children.Add(BuildMotionSlider(
+                context.PresentationNodeId,
+                cue.CommandId,
+                label: axis.Axis == PresentationMotionAxis.XAxis ? "가로" : "세로",
+                argumentName: axis.ParameterName,
+                value: perUnit > 0 ? pixels / perUnit : 0,
+                minimum: -6,
+                maximum: 6,
+                tick: 0.25,
+                format: units => $"{(units >= 0 ? "+" : "")}{units:0.##}u",
+                suffix: "u"));
+        }
+
+        if (motion.DurationParameterName is { } durationParameter)
+        {
+            host.Children.Add(BuildMotionSlider(
+                context.PresentationNodeId,
+                cue.CommandId,
+                label: "시간",
+                argumentName: durationParameter,
+                value: cue.DurationFrames,
+                minimum: 0,
+                maximum: 48,
+                tick: 1,
+                format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
+                suffix: "fr"));
+        }
+
+        // 이징은 아직 편집 칸이 아니다 — 실을 자리가 런타임 텍스트에 없다(W67에서 연다).
+        // "채우면 반드시 동작한다"를 지키려고 값만 보여 주고 만지게 하지 않는다.
+        host.Children.Add(new TextBlock
+        {
+            Text = $"이징 {cue.Ease ?? "-"} — 런타임 기본값입니다. 텍스트에 실을 자리가 " +
+                "아직 없어 여기서는 바꿀 수 없습니다.",
+            FontSize = 9,
+            Opacity = 0.55,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 250
+        });
+    }
+
+    /// <summary>
+    /// 조절창 [이동] 탭 (W66, 소유자 요청) — 선택 슬롯의 이 라인 이동을 여기서도 만든다.
+    /// 이동이 이미 있으면 칩과 같은 편집기가 열리고, 없으면 [＋]가 <c>move_by</c>를
+    /// 라인에 단다(같은 슬롯을 다시 눌러도 쌓이지 않고 그 커맨드가 수정된다 — dedupe는
+    /// <see cref="PresentationStageActions.Apply"/>의 규칙 그대로).
+    /// </summary>
+    private Control BuildMotionTab(Action onApplied)
+    {
+        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
+
+        if (_popoverSlotKey is not { } slotKey)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "슬롯을 먼저 고르세요 — 이동은 슬롯의 것입니다.",
+                FontSize = 10,
+                Opacity = 0.65
+            });
+            return panel;
+        }
+
+        if (_request?.EditContext is not { Editable: true })
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "읽기 전용 화면입니다 — 연출 노드를 열면 편집할 수 있습니다.",
+                FontSize = 10,
+                Opacity = 0.65,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
+            });
+            return panel;
+        }
+
+        // 칩과 같은 원천 — 이 라인에서 이 슬롯을 미는 이동. 여럿이면 마지막 것을 만진다
+        // (앞의 것은 런타임이 즉시 완주시키므로 눈에 보이는 이동은 마지막 것이다).
+        StageMotionCue? cue = _request.MotionCues?
+            .LastOrDefault(item => string.Equals(item.SlotKey, slotKey, StringComparison.Ordinal));
+
+        if (cue is not null)
+        {
+            AddMotionEditorRows(panel, cue);
+            return panel;
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "이 라인에는 이 슬롯의 이동이 없습니다.",
+            FontSize = 10,
+            Opacity = 0.65
+        });
+
+        var addButton = new Button
+        {
+            Content = "＋ 이동 추가 (move_by)",
+            FontSize = 11,
+            Padding = new Thickness(8, 3)
+        };
+        ToolTip.SetTip(addButton,
+            "이 라인에 move_by를 답니다 — 시작값 가로 +1u · 12fr. 슬라이더로 바로 고치세요.");
+        addButton.Click += (_, _) =>
+        {
+            ApplyStageCommand("move_by", StageArgs(
+                ("slot", slotKey), ("x", "+1u"), ("y", "0u"), ("duration", "12fr")));
+            onApplied();
+        };
+        panel.Children.Add(addButton);
+
+        return panel;
     }
 
     /// <summary>
@@ -1932,11 +2048,16 @@ internal sealed class StageSceneView : UserControl
         });
         tabs.Items.Add(new TabItem
         {
+            Header = new TextBlock { Text = "이동", FontSize = 11 },
+            Content = BuildMotionTab(rebuild)
+        });
+        tabs.Items.Add(new TabItem
+        {
             Header = new TextBlock { Text = "오디오", FontSize = 11 },
             Content = BuildAudioTab(rebuild)
         });
 
-        tabs.SelectedIndex = Math.Clamp(_popoverTabIndex, 0, 2);
+        tabs.SelectedIndex = Math.Clamp(_popoverTabIndex, 0, tabs.Items.Count - 1);
 
         host.Children.Add(tabs);
 

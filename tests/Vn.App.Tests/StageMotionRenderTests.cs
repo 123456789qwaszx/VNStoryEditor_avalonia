@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.LogicalTree;
 using Ked.Presentation.Core;
+using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
@@ -62,6 +63,8 @@ public sealed class StageMotionRenderTests
             SpeakerName: null,
             LineText: "대사",
             CoreState: fold.CoreState,
+            // 재생 보간 검증용 — 실제 편집기와 같은 계산(라인 커맨드 duration 최대).
+            TransitionSeconds: StageTransitions.SecondsFor(Catalog, lineCommands),
             MotionCues: cues,
             CommandChips: StageCommandChips.Of(Catalog, lineCommands, cues));
     }
@@ -101,6 +104,52 @@ public sealed class StageMotionRenderTests
 
         // 출발 자리에서 지금 자리로 잇는 궤적이 실제로 섰다.
         Assert.Single(Trails(canvas));
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 재생_보간은_출발_자리에서_궤적을_타고_끝나면_확정_자리다() => HeadlessUi.Run(() =>
+    {
+        // W66 — 전이 진행 t를 흘리면 이동 슬롯의 초상이 "직전 렌더"가 아니라 이동의
+        // 진짜 출발에서 지금 자리로 미끄러진다. 모양은 아직 선형이다(EaseFunctions 대기).
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        view.Render(BuildRequest(Command(
+            "char_rig_staging.move_by", ("slot", "c1"), ("x", "+2u"), ("duration", "12fr"))));
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Canvas canvas = CanvasOf(view);
+
+        // 확정 상태의 자리를 전부 적어 둔다.
+        var finals = canvas.Children
+            .Select(control => (Control: control, Left: Canvas.GetLeft(control)))
+            .Where(entry => !double.IsNaN(entry.Left))
+            .ToArray();
+
+        // 반쯤 진행 — 12fr 이동이 라인 전이 시간(= 같은 12fr)과 같으므로 진행도 그대로다.
+        view.SetTransitionProgress(0.5);
+
+        // +2u = 80px(1920 기준) 이동의 절반 = 40px 왼쪽에서 오는 중인 컨트롤이 정확히 하나.
+        var moved = canvas.Children
+            .Select(control => (Control: control, Left: Canvas.GetLeft(control)))
+            .Where(entry => !double.IsNaN(entry.Left))
+            .Join(finals, entry => entry.Control, final => final.Control,
+                (entry, final) => final.Left - entry.Left)
+            .Where(shift => Math.Abs(shift - 40) < 0.5)
+            .ToArray();
+        Assert.Single(moved);
+
+        // 전이 종료 — 전부 확정 자리로 돌아온다.
+        view.SetTransitionProgress(null);
+        foreach ((Control control, double left) in finals)
+        {
+            Assert.Equal(left, Canvas.GetLeft(control), 1);
+        }
 
         window.Close();
     });
