@@ -93,12 +93,28 @@ internal sealed class EaseCurveEditor : Control
         Math.Clamp((pixel.X - PadX) / PlotWidth, 0, 1),
         ValueMax - (pixel.Y - PadY) / PlotHeight * (ValueMax - ValueMin));
 
+    /// <summary>
+    /// 기울기(dv/dt) ↔ 화면 팔 벡터 변환의 순수 산수 — <b>화면 y는 값과 반대로 자란다</b>
+    /// (값이 오르면 픽셀 y는 줄어든다). 처음 이 부호를 빼먹어 핸들이 곡선과 거울로 서고
+    /// 날개를 돌리면 반대로 굽는 버그가 있었다(2026-08-20 소유자 보고) — 왕복 항등과
+    /// 방향을 테스트가 지킨다.
+    /// </summary>
+    internal static double HandleDyPixels(double slope, double dxPixels, double pixelsPerT, double pixelsPerValue)
+        => -slope * dxPixels / pixelsPerT * pixelsPerValue;
+
+    internal static double SlopeFromHandleDelta(double dxPixels, double dyPixels, double pixelsPerT, double pixelsPerValue)
+        => -dyPixels / pixelsPerValue * pixelsPerT / dxPixels;
+
+    private double PixelsPerT => PlotWidth;
+
+    private double PixelsPerValue => PlotHeight / (ValueMax - ValueMin);
+
     /// <summary>기울기(dv/dt)를 화면 팔 벡터로 — x는 항상 진행 방향으로 한 팔 길이.</summary>
     private Point TangentHandle(CurveKey key, double slope, bool inward)
     {
         Point origin = ToPixel(key.Time, key.Value);
         double dx = TangentArm * (inward ? -1 : 1);
-        double dy = slope * (PlotHeight / (ValueMax - ValueMin)) / PlotWidth * dx;
+        double dy = HandleDyPixels(slope, dx, PixelsPerT, PixelsPerValue);
         return new Point(origin.X + dx, origin.Y + dy);
     }
 
@@ -113,7 +129,7 @@ internal sealed class EaseCurveEditor : Control
         }
 
         double dy = handle.Y - origin.Y;
-        return dy / dx * PlotWidth / (PlotHeight / (ValueMax - ValueMin));
+        return SlopeFromHandleDelta(dx, dy, PixelsPerT, PixelsPerValue);
     }
 
     // ── 그리기 ───────────────────────────────────────────────────────────
