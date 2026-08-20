@@ -268,6 +268,7 @@ public partial class MiniStagePreview : UserControl
     internal event Action<string>? LineSelectRequested;
 
     private readonly PresentationScriptPanel _script = new();
+    private readonly LineDetailPanel _detail = new();
 
     public MiniStagePreview()
     {
@@ -275,9 +276,15 @@ public partial class MiniStagePreview : UserControl
 
         SceneHost.Content = _scene;
         ScriptHost.Content = _script;
+        DetailHost.Content = _detail;
         _script.LineClicked += lineId => LineSelectRequested?.Invoke(lineId);
         _script.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
         _script.CommandTextEdited += ApplyScriptTextEdit;
+        _script.CommandMoveRequested += ApplyScriptCommandMove;
+        _detail.CommandDotClicked += command => _scene.ShowInspectorForCommand(command);
+        _detail.CommandTextEdited += ApplyScriptTextEdit;
+        _detail.CommandRemoveRequested += ApplyScriptCommandRemove;
+        _detail.CommandAddRequested += ApplyScriptCommandAdd;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
         // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
@@ -395,6 +402,63 @@ public partial class MiniStagePreview : UserControl
         Render();
     }
 
+    /// <summary>드래그 이동 적용 — 편집 통로 하나(<see cref="ProjectEditor.MovePresentationCommand"/>), undo 한 번.</summary>
+    private void ApplyScriptCommandMove(
+        PresentationResultCommand command, string? targetLineId, int insertIndex)
+    {
+        if (_session is null || _current?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "커맨드 자리 이동", () =>
+        {
+            _session.Editor.MovePresentationCommand(
+                context.PresentationNodeId, command.CommandId, targetLineId, insertIndex);
+            ManipulationApplied?.Invoke();
+        });
+    }
+
+    /// <summary>디테일 패널의 ✕ — 기존 삭제 통로 그대로.</summary>
+    private void ApplyScriptCommandRemove(PresentationResultCommand command)
+    {
+        if (_session is null || _current?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "커맨드 삭제", () =>
+        {
+            _session.Editor.RemovePresentationCommand(context.PresentationNodeId, command.CommandId);
+            ManipulationApplied?.Invoke();
+        });
+    }
+
+    /// <summary>디테일 패널의 입력줄 — 텍스트 입력과 같은 파서 하나로 그 라인에 추가한다.</summary>
+    private void ApplyScriptCommandAdd(string lineId, string text)
+    {
+        if (_session is null || _current?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "커맨드 추가", () =>
+        {
+            PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
+            CommandTextParseResult parsed = CommandText.Parse(text, catalog);
+
+            if (!parsed.Success)
+            {
+                _session.SetStatus($"커맨드 텍스트 오류 — {parsed.Error}");
+                return;
+            }
+
+            _session.Editor.AddPresentationCommand(
+                context.PresentationNodeId, lineId, parsed.Definition!.Id, parsed.Arguments!);
+            ManipulationApplied?.Invoke();
+        });
+    }
+
     /// <summary>
     /// 대본 패널의 인라인 편집 적용 (2026-08-20) — 파싱은 텍스트 입력과 같은
     /// <see cref="CommandText.Parse"/> 하나다. 같은 커맨드의 인자 수정만 받는다:
@@ -451,8 +515,12 @@ public partial class MiniStagePreview : UserControl
 
         ContextText.Text = request?.ContextLabel ?? string.Empty;
         _scene.Render(request);
-        _script.Show(request?.ScriptRows, request?.SelectedLineId, request?.EditContext?.Editable == true);
+
+        bool editable = request?.EditContext?.Editable == true;
+        _script.Show(request?.ScriptRows, request?.SelectedLineId, editable);
+        _detail.Show(request?.ScriptRows, request?.SelectedLineId, editable);
         ScriptHost.IsVisible = _script.IsVisible;
+        DetailHost.IsVisible = _detail.IsVisible;
 
         if (request is null)
         {

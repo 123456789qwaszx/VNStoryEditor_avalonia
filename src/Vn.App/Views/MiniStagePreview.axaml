@@ -27,13 +27,18 @@
                        x:Name="BadgeRow"
                        Margin="0,6,0,0" />
 
-            <!-- 좌: 연출 대본 텍스트 패널(로그 터미널 감각) · 우: 무대.
+            <!-- 좌: 연출 대본 텍스트 패널(위) + 선택 라인 디테일 편집(아래) · 우: 무대.
                  무대 그리기는 StageSceneView 하나다(렌더 사본 금지). -->
             <Grid Grid.Row="2"
                   ColumnDefinitions="360,6,*"
                   Margin="0,6,0,0">
-                <ContentControl Grid.Column="0"
-                                x:Name="ScriptHost" />
+                <Grid Grid.Column="0" RowDefinitions="*,Auto">
+                    <ContentControl Grid.Row="0"
+                                    x:Name="ScriptHost" />
+                    <ContentControl Grid.Row="1"
+                                    x:Name="DetailHost"
+                                    Margin="0,6,0,0" />
+                </Grid>
                 <GridSplitter Grid.Column="1"
                               ResizeDirection="Columns"
                               Background="{DynamicResource ThemeBorderLowBrush}" />

@@ -1255,6 +1255,72 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>
+    /// 커맨드 하나를 다른 자리로 옮긴다 (2026-08-20 소유자: "드래그해서 위치를 자유롭게") —
+    /// 같은 라인 안 재배열, 라인 사이 이동, Setup ↔ 라인 이동 전부 이 통로 하나다.
+    /// <paramref name="targetLineId"/>가 null이면 Setup, 아니면 그 라인의 바인딩
+    /// (없으면 만든다). <paramref name="insertIndex"/>는 대상 목록 기준이고 범위를
+    /// 벗어나면 끝에 붙는다. <b>한 번의 mutate</b>라 되돌리기 한 번이 이동 하나를 원복한다.
+    /// </summary>
+    public void MovePresentationCommand(
+        string presentationNodeId, string commandId, string? targetLineId, int insertIndex)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+
+        List<PresentationCommandInstance>? source = null;
+
+        if (node.SetupCommands.Any(command => string.Equals(command.Id, commandId, StringComparison.Ordinal)))
+        {
+            source = node.SetupCommands;
+        }
+        else
+        {
+            source = node.Bindings.FirstOrDefault(item => item.Commands.Any(command =>
+                string.Equals(command.Id, commandId, StringComparison.Ordinal)))?.Commands;
+        }
+
+        if (source is null)
+        {
+            throw new InvalidOperationException($"커맨드 '{commandId}'를 찾을 수 없습니다.");
+        }
+
+        PresentationCommandInstance moving = source.First(command =>
+            string.Equals(command.Id, commandId, StringComparison.Ordinal));
+        int sourceIndex = source.IndexOf(moving);
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            source.Remove(moving);
+
+            List<PresentationCommandInstance> target;
+
+            if (targetLineId is null)
+            {
+                target = node.SetupCommands;
+            }
+            else
+            {
+                PresentationLineBinding? binding = node.FindBinding(targetLineId);
+
+                if (binding is null)
+                {
+                    binding = new PresentationLineBinding(targetLineId);
+                    node.Bindings.Add(binding);
+                }
+
+                target = binding.Commands;
+            }
+
+            // 같은 목록 안에서 앞자리에서 뽑혀 나갔으면 목표가 한 칸 당겨졌다 —
+            // 호출자는 "제거 전 화면"의 자리를 말하므로 여기서 보정한다.
+            int adjusted = ReferenceEquals(source, target) && sourceIndex < insertIndex
+                ? insertIndex - 1
+                : insertIndex;
+
+            target.Insert(Math.Clamp(adjusted, 0, target.Count), moving);
+        });
+    }
+
     public void RemovePresentationCommand(string presentationNodeId, string commandId)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);
