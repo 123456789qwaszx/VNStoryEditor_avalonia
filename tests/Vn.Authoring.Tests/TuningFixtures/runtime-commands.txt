@@ -11,7 +11,7 @@
 # 동적 별칭 1fr~48fr(BindFramePauseAliases)은 이름이 48개로 불어나므로 여기 싣지 않는다.
 # 카탈로그는 그것을 합성 항목 <N>fr 하나로 들고, 테스트가 예외로 안다.
 #
-# 스냅샷 시점: 2026-08-20 (W65)
+# 스냅샷 시점: 2026-08-21 (place·size 이징 개통 + 회전 3종 복원)
 actor
 bg_fade_in
 bg_fade_out
@@ -30,6 +30,7 @@ box_hide
 box_show
 cast
 char_move_to
+char_rotate_to
 char_scale_to
 char_to
 char_to_s0
@@ -74,6 +75,8 @@ place_tr
 pose
 right
 right_per
+rotate_by
+rotate_reset
 scale_by
 scale_reset
 screen_blur

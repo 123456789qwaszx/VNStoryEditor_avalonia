@@ -497,6 +497,66 @@
       ]
     },
     {
+      "id": "char_rig_staging.rotate_by",
+      "name": "ì¬ë¡¯ íì (ìë)",
+      "category": "char_rig_staging",
+      "outputCommand": "rotate_by",
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "slot",
+          "type": "aliasOrSlot",
+          "required": true
+        },
+        {
+          "name": "degree",
+          "type": "float",
+          "required": true,
+          "description": "íì¬ ê°ëì ëí  Zì¶ ê°ë(ë). ìì ê°ë¥"
+        },
+        {
+          "name": "duration",
+          "type": "duration",
+          "required": false,
+          "default": "0.4s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
+        }
+      ],
+      "notes": "íì ì CharSlot_SwayPivotì´ë¤ â ì½ì´ ë¦¬ëì ApplyRotateByê° ì ë ë¸ëì ê°ë¤."
+    },
+    {
+      "id": "char_rig_staging.rotate_reset",
+      "name": "ì¬ë¡¯ íì  ë¦¬ì",
+      "category": "char_rig_staging",
+      "outputCommand": "rotate_reset",
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "slot",
+          "type": "aliasOrSlot",
+          "required": true
+        },
+        {
+          "name": "duration",
+          "type": "duration",
+          "required": false,
+          "default": "0.4s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
+        }
+      ],
+      "notes": "CharSlot_SwayPivotì ì ë 0ëë¡ ëëë¦°ë¤."
+    },
+    {
       "id": "char_rig_staging.sibling_front",
       "name": "형제 중 최전면으로",
       "category": "char_rig_staging",
@@ -865,6 +925,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개(서로 간섭하지 않음)."
@@ -893,6 +959,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -921,6 +993,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -949,6 +1027,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -977,6 +1061,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1005,6 +1095,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1033,6 +1129,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1061,6 +1163,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1089,6 +1197,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1117,6 +1231,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1145,6 +1265,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1173,6 +1299,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1201,6 +1333,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1229,6 +1367,12 @@
           "type": "duration",
           "required": false,
           "default": "0fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "place_* 계열의 두 번째 인자는 screenPoint가 아니라 focus(신체 지점)다. screenPoint는 커맨드 이름에 고정되어 있다. 이동 타겟은 CharSlot_Track_Focus로 move_by 축과 별개."
@@ -1263,6 +1407,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "알 수 없는 프리셋/포커스는 경고 후 각각 Mid/Bust로 폴백된다."
@@ -1290,6 +1440,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ]
     },
@@ -1316,6 +1472,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ]
     },
@@ -1342,6 +1504,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ]
     },
@@ -1368,6 +1536,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ]
     },
@@ -1394,6 +1568,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ]
     },
@@ -1414,6 +1594,12 @@
           "type": "seconds",
           "required": true,
           "description": "순수 float 초"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
         }
       ],
       "notes": "마지막 인자는 duration 토큰이 아니라 float 초다. <<size_reset c1 0.4>> (○) / <<size_reset c1 10fr>> (✗ — 파싱 실패)."
@@ -1653,6 +1839,39 @@
           "default": "10fr"
         }
       ]
+    },
+    {
+      "id": "char_rig_presentation.char_rotate_to",
+      "name": "ìºë¦­í° ì ë íì ",
+      "category": "char_rig_presentation",
+      "outputCommand": "char_rotate_to",
+      "execution": "queued",
+      "parameters": [
+        {
+          "name": "slot",
+          "type": "aliasOrSlot",
+          "required": true
+        },
+        {
+          "name": "degree",
+          "type": "float",
+          "required": true,
+          "description": "ì ë Zì¶ ê°ë(ë). ìì ê°ë¥"
+        },
+        {
+          "name": "duration",
+          "type": "duration",
+          "required": false,
+          "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "ì´ì§ ê³¡ì  ì´ë¦(EaseKind 35ì¢, ëìë¬¸ì ë¬´ì). ë¹ì°ë©´ ë°íì ê¸°ë³¸ OutCubic â ë¯¸ì§ì  ì ë§ì§ë§ í í°ì´ ìëµëê² ê¸°ë³¸ê°ì ì ì§ ìëë¤(ê¸°ì¡´ ëë³¸ ìµì diff)."
+        }
+      ],
+      "notes": "íì ì CharacterPortrait_SwayPivot(ì´ì ì¶)ì´ë¼ ì¬ë¡¯ íì (rotate_by)ê³¼ ë³ê°ë¤. êµ¬íì ë¤ë¨ ì°ì¶ PivotRotateToë ëì´ë¦¬ì§ ììë¤ â ì ë íì  í ê²¹ì´ë¤."
     },
     {
       "id": "char_rig_visual.char_visual",

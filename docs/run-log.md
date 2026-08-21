@@ -4460,3 +4460,36 @@ RectChain에 맞춰서 … 타겟만 잘 잡아주면 알아서 계산이 될텐
 **전체 1387 통과, 실패 0** (Core 342 · Vn.Core 60 · Vn.Authoring 713 · Vn.App 272 —
 플래너 5건 신규, 렌더 테스트는 place·depth 보간 검증으로 갱신: 배치가 자리를·뎁스가
 크기를 같은 컨트롤에서 함께 끌고, 중간 프레임이 출발과 도착 사이에 있음을 고정).
+
+### 이징 개통 반영 + 회전 복원 — 가정이 선언이 됐다 (`(이 커밋)`)
+
+**저쪽 개통 보고 (2026-08-21)** — ① place·size의 이징 가정(OutCubic)이 **맞다**고 확인됐고
+(`PlaceCharacterFocusCommandCharR`·`SetDepthCommandCharR`의 `public Ease ease = Ease.OutCubic`),
+② 이제 가정할 필요 없이 **이징 인자가 실제로 열렸다**(마지막 위치 인자, 미지정 OutCubic,
+`@이름` 커스텀 곡선). ③ 회전 3종이 되살아났다.
+
+**한 일 — 실측으로 맞췄다**
+
+- **카탈로그 이징 칸 20종**: `place`(4→5) · `place_*` 13종(3→4) · `size`(4→5) ·
+  `size_far/back/mid/front/close`(3→4) · `size_reset`(2→3). 모양은 `move_by`의 그것과
+  같다 — 기본값을 적지 않아 미지정 시 토큰이 생략된다(기존 대본 최소 diff)
+- **회전 3종 복원**: `rotate_by`(slot degree duration [ease], CharSlot_SwayPivot 상대) ·
+  `rotate_reset`(slot duration [ease], 절대 0) · `char_rotate_to`(slot degree duration
+  [ease], **CharacterPortrait_SwayPivot** 초상 축). 어휘 **126 → 129**, 카테고리는 15 그대로
+- **코어 사본 동기화** — 저쪽이 더한 `ApplyPortraitRotateTo`(StageReducer.Staging.cs)와
+  `char_rotate_to` 라우팅(StageReducer.cs) 두 조각. 나머지 파일은 줄바꿈 외 차이 0으로
+  대조 확인. 이로써 `char_rotate_to`가 폴드에서 Unhandled로 새지 않는다
+- **어휘 대조 픽스처 재스캔** — 저쪽 `AddCommandHandler` 전수 스캔 결과와 **정확히 일치**
+  (127종 + 동적 별칭 `<N>fr`). 신규는 회전 3종뿐이었다
+- **이징 선택기 일반화** — `BuildEaseSelector`가 `StageMotionCue`·모션 선언 대신
+  (커맨드 Id · 현재 이징 · 곡선 키)를 받는다. 이제 **타입이 `ease`인 파라미터면 무엇이든**
+  곡선 미리보기 + 커스텀 곡선(@이름) 편집 창을 갖는다 — place·size·회전이 이동과 같은
+  편집 경험이다. 미지정 기본은 `StageMotionPlan.EaseKindOf(null)` 한 자리가 말한다
+- 시간 흐름 계획(직전 커밋)이 이징 인자를 자동으로 집어 든다 — `ease` 타입 파라미터
+  선언이 곧 근거라 코드 변경 없이 place·size·회전이 제 곡선을 탄다
+
+**남은 것** — 저쪽 EditMode 러너·육안 확인(`<<place_left c1 face 24fr OutBack>>`,
+`<<rotate_by c1 15 12fr>>`)은 앞선 개통분과 함께 에디터에서 한 번에. 이쪽은 폐지 커맨드
+경고 목록에서 회전이 빠졌다(옛 프로젝트 호환 회복).
+
+**전체 1389 통과, 실패 0** (Core 342 · Vn.Core 60 · Vn.Authoring 715 · Vn.App 272).

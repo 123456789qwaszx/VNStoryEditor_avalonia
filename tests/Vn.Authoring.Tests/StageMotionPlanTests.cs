@@ -155,6 +155,46 @@ public class StageMotionPlanTests
     }
 
     [Fact]
+    public void 회전_3종이_되살아나_시간에_따라_흐른다()
+    {
+        // 2026-08-21 런타임 복원 — rotate_by·rotate_reset은 CharSlot_SwayPivot,
+        // char_rotate_to는 CharacterPortrait_SwayPivot(초상 축)이다. 노드가 코어
+        // 리듀서가 접는 그것과 같아야 "재생 = 정지 프레임"이 유지된다.
+        StageMotionPlan slot = Plan(Command(
+            "char_rig_staging.rotate_by", ("slot", "c1"), ("degree", "15"), ("duration", "12fr")))!;
+        Assert.Contains(
+            Assert.Single(slot.Tweens).Nodes,
+            node => node.NodeKey.EndsWith("CharSlot_SwayPivot", StringComparison.Ordinal));
+
+        StageMotionPlan portrait = Plan(Command(
+            "char_rig_presentation.char_rotate_to", ("slot", "c1"), ("degree", "20"), ("duration", "10fr")))!;
+        MotionNodeTween portraitNode = Assert.Single(
+            Assert.Single(portrait.Tweens).Nodes,
+            node => node.NodeKey.EndsWith("CharacterPortrait_SwayPivot", StringComparison.Ordinal));
+
+        // 각도가 시간에 따라 돈다 — 스냅이 아니다.
+        Assert.Equal(0, portraitNode.From.LocalEulerAngles.Z, 3);
+        Assert.Equal(20, portraitNode.To.LocalEulerAngles.Z, 3);
+        float middle = portrait.Evaluate(0.2).Nodes.GetState(portraitNode.NodeKey).LocalEulerAngles.Z;
+        Assert.InRange(middle, 0.5f, 19.5f);
+    }
+
+    [Fact]
+    public void place와_size의_이징_인자가_계획에_실린다()
+    {
+        // 2026-08-21 런타임이 이징 칸을 열었다(마지막 위치 인자) — 가정이 아니라 선언이다.
+        StageMotionPlan plan = Plan(
+            Command("char_rig_placement.place_left",
+                ("slot", "c1"), ("focus", "face"), ("duration", "12fr"), ("ease", "OutBack")),
+            Command("char_rig_depth.size_close",
+                ("slot", "c1"), ("preserveFocus", "bust"), ("duration", "10fr"), ("ease", "Linear")))!;
+
+        Assert.Equal(
+            [EaseKind.OutBack, EaseKind.Linear],
+            plan.Tweens.Select(tween => StageMotionPlan.EaseKindOf(tween.Ease)));
+    }
+
+    [Fact]
     public void 이징이_없는_커맨드는_런타임_기본값_곡선을_탄다()
     {
         // place·size에는 이징 칸이 없다 — 런타임 스펙 기본(OutCubic)으로 받는다.

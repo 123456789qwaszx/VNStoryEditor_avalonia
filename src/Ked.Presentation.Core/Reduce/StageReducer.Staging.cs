@@ -119,6 +119,29 @@ namespace Ked.Presentation.Core
             return true;
         }
 
+
+        // char_rotate_to — 초상 축의 절대 회전(브리지: CharacterPortrait_SwayPivot).
+        // rotate_by가 미는 CharSlot_SwayPivot과는 다른 노드다.
+        private static bool ApplyPortraitRotateTo(StageState state, in StageCommand cmd, out string reason)
+        {
+            if (!TryGetSpawnedSlot(state, cmd, out string slotKey, out reason))
+                return false;
+
+            if (!NumberToken.TryParseFloat(cmd.Arg(1), out float degree))
+            {
+                reason = $"각도를 읽지 못했다: '{cmd.Arg(1)}'";
+                return false;
+            }
+
+            string nodeKey = StageState.NodeKeyOf(slotKey, "CharacterPortrait_SwayPivot");
+
+            state.Apply(RotateToReduction.Reduce(
+                nodeKey,
+                new RotateToReduction.Args(false, new Vec3(0f, 0f, degree)),
+                state.Nodes.GetState(nodeKey).LocalEulerAngles));
+
+            return true;
+        }
         private static bool ApplyRotateBy(StageState state, in StageCommand cmd, out string reason)
         {
             if (!TryGetSpawnedSlot(state, cmd, out string slotKey, out reason))

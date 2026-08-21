@@ -120,24 +120,25 @@ internal sealed class EaseCurveWindow : Window
     public void ShowFor(
         AuthoringSession session,
         string presentationNodeId,
-        StageMotionCue cue,
+        string commandId,
+        string? ease,
         string easeParameter,
         Action onApplied)
     {
         _session = session;
         _presentationNodeId = presentationNodeId;
-        _commandId = cue.CommandId;
+        _commandId = commandId;
         _easeParameter = easeParameter;
         _onApplied = onApplied;
 
-        bool wasCustom = cue.Ease is ['@', ..];
+        bool wasCustom = ease is ['@', ..];
         IReadOnlyList<CurveKey> initial = [];
         EaseKind bakedFrom = EaseKind.OutCubic;
 
         UiGuard.Run(session, "곡선 편집 열기", () =>
         {
             (_ownedName, initial, bakedFrom) = EaseCurveCommandActions.EnsureOwned(
-                session.Editor, presentationNodeId, cue.CommandId, easeParameter, cue.Ease);
+                session.Editor, presentationNodeId, commandId, easeParameter, ease);
 
             if (!wasCustom)
             {

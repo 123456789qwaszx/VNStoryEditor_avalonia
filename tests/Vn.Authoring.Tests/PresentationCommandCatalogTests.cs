@@ -17,7 +17,10 @@ public class PresentationCommandCatalogTests
         // 대사창 종류 3 · 기타 6) + 추가 2(focus_on · focus_clear) + 유지 1(face_swap).
         // 카테고리 20 → 15: emoji_preset·emoji_basic·char_rig_idle·char_rig_acting·
         // char_rig_acting_preset이 통째로 비었다.
-        Assert.Equal(126, catalog.Definitions.Count);
+        //
+        // 2026-08-21: 런타임이 회전 3종을 되살렸다(rotate_by · rotate_reset · char_rotate_to).
+        // 126 → 129. 카테고리는 그대로 15다 — 셋 다 살아 있는 계열에 붙었다.
+        Assert.Equal(129, catalog.Definitions.Count);
         Assert.Equal(15, catalog.Categories.Count);
         Assert.Same(catalog, PresentationCommandCatalog.For(definition: null));
     }

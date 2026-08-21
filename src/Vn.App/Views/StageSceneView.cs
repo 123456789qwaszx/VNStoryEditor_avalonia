@@ -599,6 +599,19 @@ internal sealed class StageSceneView : UserControl
                         format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
                         token: frames => $"{frames:0}fr"));
                 }
+                else if (string.Equals(parameter.Type, "ease", StringComparison.Ordinal))
+                {
+                    // 이징 칸 (2026-08-21 런타임이 place·size·회전에도 열었다) — 이동과
+                    // 같은 선택기다: 곡선 미리보기 + 커스텀 곡선(@이름) 편집까지.
+                    // 미지정 기본은 런타임 스펙 그대로 EaseKindOf(null)가 말한다.
+                    host.Children.Add(BuildEaseSelector(
+                        context.PresentationNodeId,
+                        command.CommandId,
+                        written.Length > 0 ? written : null,
+                        CurveKeysOf(written),
+                        parameter.Name,
+                        StageMotionPlan.EaseKindOf(null).ToString()));
+                }
                 else if (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) &&
                          ArgumentTokenCandidates.For(parameter.Type) is { Count: > 0 } candidates)
                 {
@@ -615,6 +628,16 @@ internal sealed class StageSceneView : UserControl
             }
         }
     }
+
+    /// <summary>
+    /// <c>@이름</c>이면 프로젝트 곡선의 키. 못 찾으면 null — 런타임과 같은 폴백이고,
+    /// 내보내기 검증이 그 어긋남을 막는다(계획이 쓰는 규칙과 같은 자리).
+    /// </summary>
+    private IReadOnlyList<CurveKey>? CurveKeysOf(string? ease) =>
+        ease is ['@', .. var name]
+            ? _session?.Project.EaseCurves.FirstOrDefault(curve =>
+                string.Equals(curve.Name, name, StringComparison.Ordinal))?.Keys
+            : null;
 
     /// <summary>프리셋 토큰 한 줄 — 고르면 그 인자만 바뀐다(같은 커맨드 인자 수정 통로).</summary>
     private Control BuildTokenSelector(
@@ -1559,7 +1582,8 @@ internal sealed class StageSceneView : UserControl
         if (motion.EaseParameterName is { } easeParameter)
         {
             host.Children.Add(BuildEaseSelector(
-                context.PresentationNodeId, cue, motion, easeParameter));
+                context.PresentationNodeId, cue.CommandId, cue.Ease, cue.CurveKeys,
+                easeParameter, motion.DefaultEase));
         }
     }
 
@@ -1571,13 +1595,15 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     private Control BuildEaseSelector(
         string presentationNodeId,
-        StageMotionCue cue,
-        PresentationMotionDeclaration motion,
-        string easeParameter)
+        string commandId,
+        string? ease,
+        IReadOnlyList<CurveKey>? curveKeys,
+        string easeParameter,
+        string? defaultEase)
     {
         // 커스텀(커맨드 소유 곡선)이면 콤보 첫 칸이 그것이다 — 예전처럼 선택 없음(-1)으로
         // 두면 "지금 쓰이는 ease가 안 보이는" 화면이 된다(2026-08-20 소유자 보고).
-        bool isCustom = cue.Ease is ['@', ..];
+        bool isCustom = ease is ['@', ..];
         string[] enumNames = Enum.GetNames<EaseKind>();
         string[] candidates = isCustom ? ["커스텀 곡선", .. enumNames] : enumNames;
 
@@ -1605,21 +1631,21 @@ internal sealed class StageSceneView : UserControl
             curvePreview.Points = points;
         }
 
-        if (isCustom && cue.CurveKeys is { Count: >= 2 } customKeys)
+        if (isCustom && curveKeys is { Count: >= 2 } customKeys)
         {
             CurveKey[] keys = customKeys as CurveKey[] ?? customKeys.ToArray();
             DrawShape(t => CurveFunctions.Evaluate(keys, t));
         }
         else
         {
-            EaseKind current = EaseKindOf(cue.Ease);
+            EaseKind current = EaseKindOf(ease);
             DrawShape(t => EaseFunctions.Evaluate(current, t));
         }
 
         var combo = new ComboBox
         {
             ItemsSource = candidates,
-            SelectedIndex = isCustom ? 0 : Array.IndexOf(enumNames, EaseKindOf(cue.Ease).ToString()),
+            SelectedIndex = isCustom ? 0 : Array.IndexOf(enumNames, EaseKindOf(ease).ToString()),
             FontSize = 10,
             MinWidth = 110,
             VerticalAlignment = VerticalAlignment.Center
@@ -1645,7 +1671,7 @@ internal sealed class StageSceneView : UserControl
             DrawShape(t => EaseFunctions.Evaluate(Enum.Parse<EaseKind>(selected), t));
 
             // 기본값 = 생략 (빈 값이 인자를 지운다 — SetPresentationCommandArgument 규약).
-            string? token = string.Equals(selected, motion.DefaultEase, StringComparison.OrdinalIgnoreCase)
+            string? token = string.Equals(selected, defaultEase, StringComparison.OrdinalIgnoreCase)
                 ? null
                 : selected;
 
@@ -1655,12 +1681,12 @@ internal sealed class StageSceneView : UserControl
                 {
                     // 표준으로 복귀 = 소유 곡선 폐기(보관함 사본은 남는다).
                     EaseCurveCommandActions.DiscardOwned(
-                        _session.Editor, presentationNodeId, cue.CommandId, easeParameter, token);
+                        _session.Editor, presentationNodeId, commandId, easeParameter, token);
                 }
                 else
                 {
                     _session.Editor.SetPresentationCommandArgument(
-                        presentationNodeId, cue.CommandId, easeParameter, token);
+                        presentationNodeId, commandId, easeParameter, token);
                 }
 
                 ManipulationApplied?.Invoke();
@@ -1678,7 +1704,8 @@ internal sealed class StageSceneView : UserControl
             VerticalAlignment = VerticalAlignment.Center
         };
         ToolTip.SetTip(editButton, "이 곡선에서 출발해 키를 만듭니다 — 저장하면 커스텀 곡선(@이름)이 됩니다.");
-        editButton.Click += (_, _) => ShowCurveEditorWindow(presentationNodeId, cue, easeParameter);
+        editButton.Click += (_, _) =>
+            ShowCurveEditorWindow(presentationNodeId, commandId, ease, easeParameter);
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
         var label = new TextBlock
@@ -1710,7 +1737,8 @@ internal sealed class StageSceneView : UserControl
     /// 이미 열려 있으면 그 창이 새 커맨드로 갈아탄다. 편집 규칙(열면 소유 곡선 생성 ·
     /// 실시간 커밋 · 보관함 복사)은 창이 진다 — <see cref="EaseCurveWindow"/>.
     /// </summary>
-    private void ShowCurveEditorWindow(string presentationNodeId, StageMotionCue cue, string easeParameter)
+    private void ShowCurveEditorWindow(
+        string presentationNodeId, string commandId, string? ease, string easeParameter)
     {
         if (_session is null || _request?.EditContext is not { Editable: true })
         {
@@ -1722,7 +1750,8 @@ internal sealed class StageSceneView : UserControl
             _curveWindow = new EaseCurveWindow();
             _curveWindow.Closed += (_, _) => _curveWindow = null;
             _curveWindow.ShowFor(
-                _session, presentationNodeId, cue, easeParameter, () => ManipulationApplied?.Invoke());
+                _session, presentationNodeId, commandId, ease, easeParameter,
+                () => ManipulationApplied?.Invoke());
 
             if (VisualRoot is Window owner)
             {
@@ -1736,7 +1765,8 @@ internal sealed class StageSceneView : UserControl
         else
         {
             _curveWindow.ShowFor(
-                _session, presentationNodeId, cue, easeParameter, () => ManipulationApplied?.Invoke());
+                _session, presentationNodeId, commandId, ease, easeParameter,
+                () => ManipulationApplied?.Invoke());
             _curveWindow.Activate();
         }
     }
