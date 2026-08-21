@@ -4661,3 +4661,25 @@ y는 손대지 않았다(−56/레벨 직선, 20에서 −1000) — 포커스 �
 정석이다. 바이트가 같으면 이쪽은 할 일이 없고, 달라지면 그 파일만 받아 동기화한다.
 
 **전체 1394 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 716 · Vn.App 275).
+
+### 덤프 재생성본 반영 — 손으로 맞춘 값과 익스포터 출력을 대조했다 (`(이 커밋)`)
+
+저쪽이 `Ked/U12/Export Presentation Tuning Dump`를 돌렸다(2026-08-21T04:28Z, unity
+6000.3.16f1). 직전 커밋의 덤프는 **에셋을 고친 뒤 값을 손으로 맞춘 것**이었으므로,
+재생성본과 갈리는지 확인하는 것이 이 커밋의 일이다.
+
+**대조 결과 — 15개 파일 전수**
+
+- **바이트 동일 11개**(base-resolution · portrait-dimensions · rig-schemas · schema.md ·
+  focus-tuning · role-anchor · screen-flash/noise/vignette · surface-layout · visual-focus)
+- **줄바꿈만 다름 2개**(mask-motion · ease-golden — 후자는 우리가 `TuningFixtures/` 바로
+  아래 두는 파일이라 위치도 다르다)
+- **내용 다름 2개** — 아래 둘뿐이고 값의 변화는 **없다**
+
+| 파일 | 차이 | 판단 |
+|---|---|---|
+| `presets/depth.json` | float **표기 자릿수**만: `0.082000002264976501` → `0.0820000022649765`, `2.2000000476837158` → `2.200000047683716` | 같은 float의 다른 인쇄다. 값 고정 테스트가 그대로 통과했다 — 손으로 맞춘 값이 익스포터 출력과 일치했다는 뜻 |
+| `export-report.json` | 시각 갱신 + **`warnings`가 비었다**(우리 것엔 mask-motion 에셋 누락 경고가 남아 있었다) | 새 덤프가 정상이다(schema.md §5: 경고가 한 건이라도 있으면 덤프를 믿지 말 것). 낡은 경고를 픽스처에 남겨 두면 그 자체가 거짓말이라 함께 갈았다 |
+
+둘 다 재생성본으로 갱신했다. **전체 1394 통과, 실패 0**
+(Core 343 · Vn.Core 60 · Vn.Authoring 716 · Vn.App 275).

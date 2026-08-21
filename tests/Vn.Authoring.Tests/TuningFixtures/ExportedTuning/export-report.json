@@ -1,10 +1,8 @@
 {
-    "exportedAtUtc": "2026-08-20T07:12:02.6047426Z",
+    "exportedAtUtc": "2026-08-21T04:28:05.9428435Z",
     "unityVersion": "6000.3.16f1",
     "scenePath": "Assets/Scenes/PresentationSample.unity",
-    "warnings": [
-        "프리셋 'mask-motion': Assets/Data/Generated/StageMaskMotionPresetDB.asset 를 찾지 못했다. 건너뛰었다."
-    ],
+    "warnings": [],
     "knownButNotExported": [
         "Assets/Data/Generated/DialogueSpeakerPresentationPolicyDB.asset (speaker policy — 범위 밖)",
         "Assets/Data/Generated/CharacterEmojiVisualPreset.asset (emoji preset — 범위 밖)",
