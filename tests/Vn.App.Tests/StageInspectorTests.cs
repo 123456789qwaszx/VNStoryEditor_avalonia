@@ -93,4 +93,54 @@ public sealed class StageInspectorTests
             inspector.GetLogicalDescendants().OfType<Button>(),
             button => (button.Content as string) == "곡선 편집…");
     });
+
+    [Fact]
+    public void 넛지의_거리는_u_토큰_슬라이더로_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "nudge의 경우 … distance slide를 추가".
+        // ⚠ 값이 "3u" 같은 토큰이라 일반 숫자 슬라이더로는 안 된다 — 읽을 때도
+        // 쓸 때도 u를 알아야 한다.
+        StageSceneView view = EditableView();
+
+        Control inspector = Assert.IsAssignableFrom<Control>(
+            view.BuildInspectorContent(Command(
+                "char_rig_entrance.left",
+                ("slot", "c1"), ("distance", "3u"), ("duration", "12fr"))));
+
+        Slider[] sliders = inspector.GetLogicalDescendants().OfType<Slider>().ToArray();
+
+        // 거리 슬라이더 — 카탈로그가 선언한 범위(0~6)이고 적힌 3u 자리에 선다.
+        Slider distance = Assert.Single(sliders, slider => slider.Maximum == 6);
+        Assert.Equal(0, distance.Minimum);
+        Assert.Equal(3, distance.Value, 3);
+
+        // 시간 슬라이더도 함께 — 넛지는 원래부터 시간을 갖고 있었다.
+        Assert.Contains(sliders, slider => Math.Abs(slider.Value - 12) < 0.001);
+
+        // 거리 라벨은 u로 읽힌다(숫자만 두면 무엇의 3인지 화면이 침묵한다).
+        Assert.Contains(
+            inspector.GetLogicalDescendants().OfType<TextBlock>(),
+            text => (text.Text ?? "").Contains("3u", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 넛지_거리_슬라이더는_u_토큰으로_저장한다() => HeadlessUi.Run(() =>
+    {
+        // 손을 뗄 때 한 번 저장하는 규칙 그대로이되, 쓰는 값이 "2.5u"여야 한다 —
+        // 맨 숫자를 쓰면 런타임 파서가 다른 것을 읽는다.
+        var session = new AuthoringSession();
+        StoryFile file = session.ActiveFile!;
+        PresentationNode presentation = session.Editor.AddPresentationNode(file.Id, name: "연출");
+        PresentationCommandInstance command = session.Editor.AddPresentationCommand(
+            presentation.Id, "ln1", "char_rig_entrance.left",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["slot"] = "c1", ["distance"] = "3u", ["duration"] = "12fr"
+            });
+
+        session.Editor.SetPresentationCommandArgument(presentation.Id, command.Id, "distance", "2.5u");
+
+        Assert.Equal("2.5u", session.Project.FindPresentation(presentation.Id)!
+            .FindBinding("ln1")!.Commands[0].Arguments["distance"]);
+    });
 }

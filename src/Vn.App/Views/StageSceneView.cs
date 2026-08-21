@@ -565,7 +565,30 @@ internal sealed class StageSceneView : UserControl
                     ? value
                     : parameter.Default ?? string.Empty;
 
-                if (parameter.Slider is { } slider)
+                // 거리 토큰 슬라이더 (2026-08-21 소유자: "nudge의 경우 … distance slide를
+                // 추가") — 값이 <c>3u</c> 같은 <b>토큰</b>이라 일반 숫자 슬라이더로는 안
+                // 된다: 읽을 때도 쓸 때도 u를 알아야 한다. 그래서 <see cref="UnitToken"/>을
+                // 지나는 제 갈래를 두고, 숫자 슬라이더보다 <b>먼저</b> 본다.
+                //
+                // 이동 편집기의 축 슬라이더와 같은 문법이되 <b>부호를 안 붙인다</b> —
+                // 방향은 커맨드 이름이 지고(left·right·up·down) 음수는 런타임이 0으로
+                // 클램프해 아무 일도 안 일어난다(카탈로그 note).
+                if (string.Equals(parameter.Type, "unit", StringComparison.Ordinal) &&
+                    UnitToken.TryParseUnits(written, out float writtenUnits))
+                {
+                    host.Children.Add(BuildMotionSlider(
+                        context.PresentationNodeId,
+                        command.CommandId,
+                        label: "거리",
+                        argumentName: parameter.Name,
+                        value: writtenUnits,
+                        minimum: parameter.Slider?.Minimum ?? 0,
+                        maximum: parameter.Slider?.Maximum ?? 12,
+                        tick: parameter.Slider?.Step ?? 0.25,
+                        format: units => units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u",
+                        token: units => units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u"));
+                }
+                else if (parameter.Slider is { } slider)
                 {
                     double.TryParse(
                         written, System.Globalization.NumberStyles.Float,
