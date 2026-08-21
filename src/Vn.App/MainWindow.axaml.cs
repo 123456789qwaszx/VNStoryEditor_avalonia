@@ -117,9 +117,9 @@ public partial class MainWindow : Window
         };
         // 작업대 = Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출 편집창이
         // 합쳐지는 게 맞겠네") — 선택 커맨드 하나의 편집 행(연출 편집기) + 수치 조절
-        // (무대 뷰)을 연출 편집기가 한 판으로 조합해 프리뷰 탭에 공급한다. 커맨드
-        // 선택이 없으면 선택 라인(또는 Setup)의 [＋연출 추가]만. 대사 편집기 화면은
-        // 발행 결과 뷰라 작업대가 없다(잠금 화면 규칙 그대로).
+        // (무대 뷰)을 연출 편집기가 한 판으로 조합해 프리뷰 탭에 공급한다. 추가 UI는
+        // 터미널 우클릭 [＋ 연출 추가]가 청했을 때만 선다 (2026-08-21 상시 줄 제거).
+        // 대사 편집기 화면은 발행 결과 뷰라 작업대가 없다(잠금 화면 규칙 그대로).
         StagePreview.CommandDetailProvider = commandId =>
             PresentationEditor.IsVisible
                 ? PresentationEditor.BuildCommandInspector(commandId, StagePreview.BuildSceneInspector)

@@ -216,4 +216,90 @@ public sealed class PresentationScriptPanelTests
         Assert.Contains(box.GetLogicalDescendants().OfType<TextBlock>(),
             text => (text.Text ?? "").Contains("Setup", StringComparison.Ordinal));
     });
+
+    // ── 우클릭 메뉴 + 단축키 (2026-08-21 소유자 지시) ────────────────────────
+
+    private static void RightClick(Control target) => target.RaiseEvent(
+        new Avalonia.Input.PointerPressedEventArgs(
+            target, new Avalonia.Input.Pointer(0, Avalonia.Input.PointerType.Mouse, true),
+            target, default, 0,
+            new Avalonia.Input.PointerPointProperties(
+                Avalonia.Input.RawInputModifiers.RightMouseButton,
+                Avalonia.Input.PointerUpdateKind.RightButtonPressed),
+            Avalonia.Input.KeyModifiers.None));
+
+    private static void PressCtrl(Control target, Avalonia.Input.Key key) => target.RaiseEvent(
+        new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+            Key = key,
+            KeyModifiers = Avalonia.Input.KeyModifiers.Control
+        });
+
+    private static Border CommandRowOf(PresentationScriptPanel panel, string containsText) =>
+        panel.GetLogicalDescendants().OfType<TextBlock>()
+            .Where(text => (text.Text ?? "").Contains(containsText, StringComparison.Ordinal))
+            .Select(text => text.FindLogicalAncestorOfType<Border>()!)
+            .First();
+
+    [Fact]
+    public void 우클릭은_그_커맨드를_선택하고_Ctrl_C가_그것을_복사한다() => HeadlessUi.Run(() =>
+    {
+        var panel = new PresentationScriptPanel();
+        var window = new Window { Content = panel, Width = 400, Height = 500 };
+        window.Show();
+
+        PresentationResultCommand? selected = null;
+        PresentationResultCommand? copied = null;
+        panel.CommandSelected += command => selected = command;
+        panel.CommandCopyRequested += command => copied = command;
+
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
+        window.Measure(new Avalonia.Size(400, 500));
+        window.Arrange(new Avalonia.Rect(0, 0, 400, 500));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        RightClick(CommandRowOf(panel, "move_by"));
+
+        // 우클릭 = 선택 — 메뉴·단축키가 보이는 것과 같은 대상을 잡는다.
+        Assert.NotNull(selected);
+        Assert.Equal("char_rig_staging.move_by", selected!.DefinitionId);
+        Assert.Equal(selected.CommandId, panel.SelectedCommandId);
+
+        PressCtrl(panel, Avalonia.Input.Key.C);
+        Assert.Equal(selected.CommandId, copied?.CommandId);
+
+        window.Close();
+    });
+
+    [Fact]
+    public void Ctrl_V는_지금_구획으로_붙여넣기를_청하고_읽기_전용이면_침묵한다() => HeadlessUi.Run(() =>
+    {
+        var panel = new PresentationScriptPanel();
+        (string? LineId, bool Setup)? pasted = null;
+        panel.HasClipboardCommand = () => true;
+        panel.CommandPasteRequested += (lineId, setup) => pasted = (lineId, setup);
+
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
+        PressCtrl(panel, Avalonia.Input.Key.V);
+        Assert.Equal(("ln_a", false), pasted);
+
+        // Setup 구획이 선택돼 있으면 Setup으로 간다.
+        pasted = null;
+        panel.Show(Rows(), selectedLineId: null, editable: true, setupSelected: true);
+        PressCtrl(panel, Avalonia.Input.Key.V);
+        Assert.Equal(((string?)null, true), pasted);
+
+        // 읽기 전용 — 단축키가 아무것도 청하지 않는다.
+        pasted = null;
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: false);
+        PressCtrl(panel, Avalonia.Input.Key.V);
+        Assert.Null(pasted);
+
+        // 클립보드가 비어 있어도 침묵한다.
+        panel.HasClipboardCommand = () => false;
+        panel.Show(Rows(), selectedLineId: "ln_a", editable: true);
+        PressCtrl(panel, Avalonia.Input.Key.V);
+        Assert.Null(pasted);
+    });
 }

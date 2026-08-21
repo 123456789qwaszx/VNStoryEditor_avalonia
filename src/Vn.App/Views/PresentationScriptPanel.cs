@@ -60,11 +60,39 @@ internal sealed class PresentationScriptPanel : UserControl
     /// <summary>드래그 이동 확정 — targetLineId(null=Setup)의 insertIndex 자리로 옮겨 달라.</summary>
     public event Action<PresentationResultCommand, string?, int>? CommandMoveRequested;
 
+    // ── 우클릭 메뉴 + 클립보드 (2026-08-21 소유자: "터미널에서 마우스 우클릭을 했을 때
+    // 연출 추가 표시" + "복사 붙여넣기 기능도, ctrl+c/v/d 단축키도") ──────────────
+    // 클립보드 자체는 호스트가 진다 — 이 패널은 그리기와 신호뿐이라는 규칙 그대로.
+
+    /// <summary>[＋ 연출 추가] — 이 자리(lineId 또는 Setup)의 추가 UI를 작업대에 열어 달라.</summary>
+    public event Action<string?, bool>? AddCommandRequested;
+
+    /// <summary>[복사] / Ctrl+C — 이 커맨드를 클립보드에 담아 달라.</summary>
+    public event Action<PresentationResultCommand>? CommandCopyRequested;
+
+    /// <summary>[복제] / Ctrl+D — 이 커맨드를 바로 뒤에 복제해 달라.</summary>
+    public event Action<PresentationResultCommand>? CommandDuplicateRequested;
+
+    /// <summary>[붙여넣기] / Ctrl+V — 클립보드 커맨드를 이 자리(lineId 또는 Setup)에 붙여 달라.</summary>
+    public event Action<string?, bool>? CommandPasteRequested;
+
+    /// <summary>클립보드에 붙여넣을 커맨드가 있는가 — 메뉴 항목 활성의 근거. 호스트가 배선한다.</summary>
+    public Func<bool>? HasClipboardCommand { get; set; }
+
     /// <summary>지금 노란 띠가 선 커맨드 — 작업대 표시 동기화용. 없으면 null.</summary>
     internal string? SelectedCommandId => _selectedCommandId;
 
+    // 단축키·우클릭 판정에 쓰는 마지막 Show의 문맥.
+    private string? _shownSelectedLineId;
+    private bool _shownSetupSelected;
+    private bool _shownEditable;
+
     public PresentationScriptPanel()
     {
+        // 단축키(Ctrl+C/V/D)는 포커스가 이 패널 안에 있을 때만 듣는다 — 다른 곳의
+        // 텍스트 편집을 가로채지 않는다. 행 클릭이 포커스를 이리로 가져온다.
+        Focusable = true;
+
         // 스크롤바가 행 위에 겹쳐 뜨므로 오른쪽·아래를 비워 둔다 (2026-08-21 소유자:
         // "두꺼운 바가 삭제 버튼을 가려버려서") — X가 바 밑에 깔리지 않는 자리다.
         _rows.Margin = new Thickness(0, 0, 16, 8);
@@ -104,6 +132,9 @@ internal sealed class PresentationScriptPanel : UserControl
         }
 
         IsVisible = true;
+        _shownSelectedLineId = selectedLineId;
+        _shownSetupSelected = setupSelected;
+        _shownEditable = editable;
 
         // 선택 커맨드가 지금 선택된 구획 밖이면 걷는다 — 라인이 넘어갔는데(재생·이동)
         // 다른 라인의 커맨드가 Inspector에 남아 있으면 화면이 거짓말한다.
@@ -196,10 +227,21 @@ internal sealed class PresentationScriptPanel : UserControl
                 container.Cursor = new Cursor(StandardCursorType.Hand);
                 container.PointerPressed += (_, args) =>
                 {
+                    if (TryShowContextMenu(container, args, null, setup: true, command: null))
+                    {
+                        return;
+                    }
+
                     _selectedCommandId = null;
                     SetupClicked?.Invoke();
                     args.Handled = true;
                 };
+            }
+            else if (!isSetup && editable && lineId is { } groupLineId)
+            {
+                // 라인 박스의 빈 자리 우클릭도 그 라인의 메뉴다 — 행 사이 틈에서도 열린다.
+                container.PointerPressed += (_, args) =>
+                    TryShowContextMenu(container, args, groupLineId, setup: false, command: null);
             }
 
             _rows.Children.Add(container);
@@ -290,6 +332,12 @@ internal sealed class PresentationScriptPanel : UserControl
 
         header.PointerPressed += (_, args) =>
         {
+            if (TryShowContextMenu(header, args, lineId, setup: false, command: null))
+            {
+                return;
+            }
+
+            Focus();
             _selectedCommandId = null;
             LineClicked?.Invoke(lineId);
             args.Handled = true;
@@ -313,13 +361,21 @@ internal sealed class PresentationScriptPanel : UserControl
         host.Cursor = new Cursor(StandardCursorType.Hand);
         host.PointerPressed += (_, args) =>
         {
-            if (row.LineId is { } lineId)
+            if (row.LineId is not { } lineId)
             {
-                // 라인 선택 = 커맨드 선택 해제 — 작업대가 그 라인의 추가 입구로 돌아간다.
-                _selectedCommandId = null;
-                LineClicked?.Invoke(lineId);
-                args.Handled = true;
+                return;
             }
+
+            if (TryShowContextMenu(host, args, lineId, setup: false, command: null))
+            {
+                return;
+            }
+
+            // 라인 선택 = 커맨드 선택 해제 — 작업대가 그 라인의 추가 입구로 돌아간다.
+            Focus();
+            _selectedCommandId = null;
+            LineClicked?.Invoke(lineId);
+            args.Handled = true;
         };
 
         return host;
@@ -405,6 +461,17 @@ internal sealed class PresentationScriptPanel : UserControl
 
         host.PointerPressed += (_, args) =>
         {
+            // 우클릭 = 메뉴 — 그 커맨드를 먼저 선택해, 메뉴·단축키가 보이는 것과 같은
+            // 대상을 잡게 한다(선택 없이 뜨면 [복사]가 무엇을 복사하는지 화면이 침묵한다).
+            if (args.GetCurrentPoint(host).Properties.IsRightButtonPressed)
+            {
+                _selectedCommandId = command.CommandId;
+                CommandSelected?.Invoke(command);
+                RefreshCommandSelection();
+                TryShowContextMenu(host, args, row.LineId, setup: row.LineId is null, command);
+                return;
+            }
+
             Point position = args.GetPosition(host);
 
             if (position.X <= 14)
@@ -416,6 +483,7 @@ internal sealed class PresentationScriptPanel : UserControl
             }
 
             // 좌클릭 = 선택 후보 + 드래그 시작 후보 — 놓을 때까지 판정을 미룬다.
+            Focus();
             _pressedCommand = command;
             _pressedHost = host;
             _pressedAt = args.GetPosition(this);
@@ -552,4 +620,125 @@ internal sealed class PresentationScriptPanel : UserControl
         }
     }
 
+    // ── 우클릭 메뉴 + 단축키 (2026-08-21 소유자 지시) ────────────────────────
+
+    /// <summary>
+    /// 우클릭이면 그 자리의 메뉴를 열고 true. 좌클릭이면 아무것도 안 하고 false —
+    /// 각 행 핸들러가 제 좌클릭 처리로 이어 간다. 편집 잠금 중에는 메뉴가 없다.
+    /// </summary>
+    private bool TryShowContextMenu(
+        Control anchor,
+        PointerPressedEventArgs args,
+        string? lineId,
+        bool setup,
+        PresentationResultCommand? command)
+    {
+        if (!args.GetCurrentPoint(anchor).Properties.IsRightButtonPressed)
+        {
+            return false;
+        }
+
+        args.Handled = true;
+
+        if (!_shownEditable)
+        {
+            return true; // 잠금 화면 — 우클릭을 소비만 한다(행 선택으로 흘리지 않는다)
+        }
+
+        Focus();
+
+        var menu = new MenuFlyout();
+
+        var add = new MenuItem { Header = "＋ 연출 추가" };
+        add.Click += (_, _) => AddCommandRequested?.Invoke(lineId, setup);
+        menu.Items.Add(add);
+
+        if (command is not null)
+        {
+            var copy = new MenuItem
+            {
+                Header = "복사",
+                InputGesture = new KeyGesture(Key.C, KeyModifiers.Control)
+            };
+            copy.Click += (_, _) => CommandCopyRequested?.Invoke(command);
+            menu.Items.Add(copy);
+
+            var duplicate = new MenuItem
+            {
+                Header = "복제",
+                InputGesture = new KeyGesture(Key.D, KeyModifiers.Control)
+            };
+            duplicate.Click += (_, _) => CommandDuplicateRequested?.Invoke(command);
+            menu.Items.Add(duplicate);
+        }
+
+        var paste = new MenuItem
+        {
+            Header = "붙여넣기",
+            InputGesture = new KeyGesture(Key.V, KeyModifiers.Control),
+            IsEnabled = HasClipboardCommand?.Invoke() == true
+        };
+        paste.Click += (_, _) => CommandPasteRequested?.Invoke(lineId, setup);
+        menu.Items.Add(paste);
+
+        menu.ShowAt(anchor, showAtPointer: true);
+        return true;
+    }
+
+    /// <summary>지금 노란 띠가 선 커맨드의 결과 레코드 — 화면에 있는 행에서 찾는다.</summary>
+    private PresentationResultCommand? SelectedCommand =>
+        _selectedCommandId is null
+            ? null
+            : _dropRows.FirstOrDefault(entry =>
+                entry.Row.Kind == PresentationScriptRowKind.Command &&
+                string.Equals(entry.Row.Command?.CommandId, _selectedCommandId, StringComparison.Ordinal))
+                .Row?.Command;
+
+    /// <summary>선택 커맨드가 속한 자리, 없으면 지금 보고 있는 구획 — 붙여넣기의 목적지다.</summary>
+    private (string? LineId, bool Setup) PasteTarget()
+    {
+        if (SelectedCommand is { } selected)
+        {
+            string? lineId = _dropRows
+                .First(entry => ReferenceEquals(entry.Row.Command, selected))
+                .TargetLineId;
+            return (lineId, lineId is null);
+        }
+
+        return _shownSetupSelected ? (null, true) : (_shownSelectedLineId, false);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs args)
+    {
+        base.OnKeyDown(args);
+
+        if (args.Handled || !_shownEditable || !args.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            return;
+        }
+
+        switch (args.Key)
+        {
+            case Key.C when SelectedCommand is { } copySource:
+                CommandCopyRequested?.Invoke(copySource);
+                args.Handled = true;
+                break;
+
+            case Key.D when SelectedCommand is { } duplicateSource:
+                CommandDuplicateRequested?.Invoke(duplicateSource);
+                args.Handled = true;
+                break;
+
+            case Key.V when HasClipboardCommand?.Invoke() == true:
+                (string? lineId, bool setup) = PasteTarget();
+
+                if (setup || lineId is not null)
+                {
+                    CommandPasteRequested?.Invoke(lineId, setup);
+                    args.Handled = true;
+                }
+
+                break;
+        }
+    }
 }

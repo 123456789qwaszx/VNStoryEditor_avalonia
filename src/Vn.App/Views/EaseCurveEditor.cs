@@ -10,7 +10,9 @@ namespace Vn.App.Views;
 /// <summary>
 /// 이징 곡선 그래프 에디터 (W67 후속) — 마야 그래프 에디터의 감각으로 키를 만진다.
 ///
-/// - 키 드래그: 자리(t)와 값(v). 첫/끝 키는 t가 0/1에 잠긴다(런타임 로더 규칙)
+/// - 키 드래그: 자리(t)와 값(v). 첫/끝 키는 <b>자리째 잠긴다</b> — (0,0)·(1,1) 고정,
+///   기울기(탄젠트)만 만진다 (2026-08-21 소유자: "overshoot은 중간에서만 허용" —
+///   끝값이 1을 벗어나면 리듀서가 도착을 넘어간 채로 끝난다)
 /// - 탄젠트 핸들 드래그: 선택 키의 in/out 기울기. Shift를 누르면 한쪽만 꺾인다
 /// - 곡선 빈 자리 클릭: 그 t에 키 추가(값은 지금 곡선 위)
 /// - 키 삭제는 바깥의 [키 삭제] 버튼 — 우클릭은 소유자 보류라 여기서 쓰지 않는다
@@ -60,6 +62,17 @@ internal sealed class EaseCurveEditor : Control
     {
         _keys.Clear();
         _keys.AddRange(keys);
+
+        // 끝점은 (0,0)·(1,1)이 계약이다 (2026-08-21) — 이전에 값까지 끌 수 있던 시절의
+        // 곡선이 어긋난 끝값을 들고 올 수 있어, 여기서 자리로 되돌린다(탄젠트는 보존).
+        if (_keys.Count >= 2)
+        {
+            CurveKey first = _keys[0];
+            CurveKey last = _keys[^1];
+            _keys[0] = new CurveKey(0f, 0f, first.InTangent, first.OutTangent);
+            _keys[^1] = new CurveKey(1f, 1f, last.InTangent, last.OutTangent);
+        }
+
         _selected = -1;
         _drag = DragTarget.None;
         InvalidateVisual();
@@ -234,14 +247,20 @@ internal sealed class EaseCurveEditor : Control
             }
         }
 
-        // 2) 키.
+        // 2) 키. 첫/끝 키는 자리째 잠겨 있어 선택만 된다 — 탄젠트 핸들이 만질 전부다.
         for (int i = 0; i < _keys.Count; i++)
         {
             if (Distance(position, ToPixel(_keys[i].Time, _keys[i].Value)) < HitRadius)
             {
+                bool locked = i == 0 || i == _keys.Count - 1;
                 _selected = i;
-                _drag = DragTarget.Key;
-                args.Pointer.Capture(this);
+                _drag = locked ? DragTarget.None : DragTarget.Key;
+
+                if (!locked)
+                {
+                    args.Pointer.Capture(this);
+                }
+
                 InvalidateVisual();
                 args.Handled = true;
                 return;
@@ -286,12 +305,16 @@ internal sealed class EaseCurveEditor : Control
 
         if (_drag == DragTarget.Key)
         {
-            (double t, double v) = ToCurve(position);
+            // 첫/끝 키는 자리째 잠겨 애초에 Key 드래그가 시작되지 않는다(OnPointerPressed).
+            // 중간 키는 이웃 사이로만 — 순서가 신원이다.
+            if (_selected == 0 || _selected == _keys.Count - 1)
+            {
+                return;
+            }
 
-            // 첫/끝 키는 t 잠금(런타임 로더 규칙), 중간 키는 이웃 사이로만 — 순서가 신원이다.
-            float clampedT = _selected == 0 ? 0f
-                : _selected == _keys.Count - 1 ? 1f
-                : (float)Math.Clamp(t, _keys[_selected - 1].Time + 0.005, _keys[_selected + 1].Time - 0.005);
+            (double t, double v) = ToCurve(position);
+            float clampedT = (float)Math.Clamp(
+                t, _keys[_selected - 1].Time + 0.005, _keys[_selected + 1].Time - 0.005);
 
             _keys[_selected] = new CurveKey(
                 clampedT,

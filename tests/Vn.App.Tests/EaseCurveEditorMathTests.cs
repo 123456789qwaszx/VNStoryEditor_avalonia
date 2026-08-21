@@ -1,3 +1,4 @@
+using Ked.Presentation.Core;
 using Vn.App.Views;
 
 namespace Vn.App.Tests;
@@ -45,4 +46,30 @@ public class EaseCurveEditorMathTests
             Assert.Equal(slope, roundTripped, 9);
         }
     }
+
+    [Fact]
+    public void 끝점은_계약_자리로_되돌아온다_탄젠트와_중간_오버슈트는_그대로다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "overshoot은 중간에서만 허용 … 처음과 끝은 기울기만 조정".
+        // 값까지 끌 수 있던 시절의 곡선이 어긋난 끝값(0.2·0.9)을 들고 와도, 로드가
+        // (0,0)·(1,1)로 되돌린다 — 리듀서가 출발·도착을 정확히 밟는 계약이다.
+        var editor = new EaseCurveEditor();
+
+        editor.Load(
+        [
+            new CurveKey(0f, 0.2f, 0f, 1.2f),
+            new CurveKey(0.5f, 1.4f, 0f, 0f),   // 중간 오버슈트는 허용 — 건드리지 않는다
+            new CurveKey(1f, 0.9f, 2.5f, 0f)
+        ]);
+
+        Assert.Equal(0f, editor.Keys[0].Time);
+        Assert.Equal(0f, editor.Keys[0].Value);
+        Assert.Equal(1f, editor.Keys[^1].Time);
+        Assert.Equal(1f, editor.Keys[^1].Value);
+
+        // 기울기는 사람의 것 — 로드가 빼앗지 않는다.
+        Assert.Equal(1.2f, editor.Keys[0].OutTangent);
+        Assert.Equal(2.5f, editor.Keys[^1].InTangent);
+        Assert.Equal(1.4f, editor.Keys[1].Value);
+    });
 }

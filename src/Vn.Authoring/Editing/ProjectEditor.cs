@@ -1321,6 +1321,44 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>
+    /// 커맨드 하나를 <b>바로 뒤에</b> 복제한다 (2026-08-21 소유자: 터미널 Ctrl+D) —
+    /// Setup·라인 어느 목록이든 원본이 있는 그 자리 다음이다. 새 Id를 받으므로 원본과
+    /// 독립으로 편집된다. 한 번의 mutate라 되돌리기 한 번이 복제 하나를 원복한다.
+    /// </summary>
+    public PresentationCommandInstance DuplicatePresentationCommand(
+        string presentationNodeId, string commandId)
+    {
+        PresentationNode node = RequirePresentation(presentationNodeId);
+
+        List<PresentationCommandInstance>? list =
+            node.SetupCommands.Any(command => string.Equals(command.Id, commandId, StringComparison.Ordinal))
+                ? node.SetupCommands
+                : node.Bindings.FirstOrDefault(item => item.Commands.Any(command =>
+                    string.Equals(command.Id, commandId, StringComparison.Ordinal)))?.Commands;
+
+        if (list is null)
+        {
+            throw new InvalidOperationException($"커맨드 '{commandId}'를 찾을 수 없습니다.");
+        }
+
+        PresentationCommandInstance original = list.First(command =>
+            string.Equals(command.Id, commandId, StringComparison.Ordinal));
+
+        var copy = new PresentationCommandInstance(definitionId: original.DefinitionId)
+        {
+            PresetId = original.PresetId,
+            IsEnabled = original.IsEnabled,
+            Arguments = new Dictionary<string, string>(original.Arguments, StringComparer.Ordinal),
+            Note = original.Note
+        };
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+            list.Insert(list.IndexOf(original) + 1, copy));
+
+        return copy;
+    }
+
     public void RemovePresentationCommand(string presentationNodeId, string commandId)
     {
         PresentationNode node = RequirePresentation(presentationNodeId);

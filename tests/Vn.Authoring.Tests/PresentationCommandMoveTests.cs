@@ -86,4 +86,52 @@ public class PresentationCommandMoveTests
         Assert.Throws<InvalidOperationException>(() =>
             sample.Editor.MovePresentationCommand(node.Id, "pc_없음", lineA, 0));
     }
+
+    // ── 복제 (2026-08-21 소유자: 터미널 Ctrl+D) ─────────────────────────────
+
+    [Fact]
+    public void 복제는_원본_바로_뒤에_서고_새_Id로_독립이며_undo_한_번이_원복한다()
+    {
+        (Sample sample, PresentationNode node, string lineA, _) = Stage();
+        PresentationCommandInstance first = Add(sample, node, lineA, "c1");
+        Add(sample, node, lineA, "c2");
+
+        PresentationCommandInstance copy =
+            sample.Editor.DuplicatePresentationCommand(node.Id, first.Id);
+
+        // 목록 끝이 아니라 원본 바로 뒤다.
+        Assert.Equal(["c1", "c1", "c2"], SlotsOf(node, lineA));
+        Assert.NotEqual(first.Id, copy.Id);
+
+        // 인자 사전이 복사본이다 — 복제를 고쳐도 원본은 그대로.
+        copy.Arguments["slot"] = "c9";
+        Assert.Equal("c1", first.Arguments["slot"]);
+
+        sample.Editor.Undo();
+        PresentationNode restored = sample.Project.FindPresentation(node.Id)!;
+        Assert.Equal(["c1", "c2"], SlotsOf(restored, lineA));
+    }
+
+    [Fact]
+    public void Setup_커맨드도_같은_통로로_복제된다()
+    {
+        (Sample sample, PresentationNode node, _, _) = Stage();
+        PresentationCommandInstance setup = sample.Editor.AddPresentationSetupCommand(
+            node.Id, "char_rig_cast.slot",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["slot"] = "c1" });
+
+        sample.Editor.DuplicatePresentationCommand(node.Id, setup.Id);
+
+        Assert.Equal(2, node.SetupCommands.Count);
+        Assert.Equal("c1", node.SetupCommands[1].Arguments["slot"]);
+    }
+
+    [Fact]
+    public void 없는_커맨드_복제는_거부한다()
+    {
+        (Sample sample, PresentationNode node, _, _) = Stage();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            sample.Editor.DuplicatePresentationCommand(node.Id, "pc_없음"));
+    }
 }
