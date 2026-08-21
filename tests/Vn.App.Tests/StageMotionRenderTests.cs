@@ -73,31 +73,6 @@ public sealed class StageMotionRenderTests
     private static Canvas CanvasOf(StageSceneView view) =>
         view.GetLogicalDescendants().OfType<Canvas>().First();
 
-    /// <summary>궤적 선 — 점선으로 그려진 것만 센다(다른 선과 섞이지 않게).</summary>
-    private static IReadOnlyList<Line> Trails(Canvas canvas) =>
-        canvas.Children.OfType<Line>().Where(line => line.StrokeDashArray is { Count: > 0 }).ToArray();
-
-    [Fact]
-    public void 이동_커맨드는_궤적으로_그려진다() => HeadlessUi.Run(() =>
-    {
-        var view = new StageSceneView();
-        var window = new Window { Content = view, Width = 800, Height = 600 };
-        window.Show();
-
-        view.Render(BuildRequest(Command(
-            "char_rig_staging.move_by", ("slot", "c1"), ("x", "+2u"), ("duration", "12fr"))));
-        window.Measure(new Avalonia.Size(800, 600));
-        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Canvas canvas = CanvasOf(view);
-
-        // 출발 자리에서 지금 자리로 잇는 궤적이 실제로 섰다.
-        Assert.Single(Trails(canvas));
-
-        window.Close();
-    });
-
     [Fact]
     public void 정지는_출발_자리이고_재생_보간이_실제_이징_곡선을_탄다() => HeadlessUi.Run(() =>
     {
@@ -231,29 +206,10 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
-    public void 움직이지_않는_이동은_궤적을_그리지_않는다() => HeadlessUi.Run(() =>
+    public void 시간이_없는_커맨드는_보간_없이_스냅이다() => HeadlessUi.Run(() =>
     {
-        // 0u 이동은 그릴 궤적이 없다 — 없는 선을 그려 두면 화면이 거짓말한다.
-        var view = new StageSceneView();
-        var window = new Window { Content = view, Width = 800, Height = 600 };
-        window.Show();
-
-        view.Render(BuildRequest(Command(
-            "char_rig_staging.move_by", ("slot", "c1"), ("x", "0u"), ("y", "0u"))));
-        window.Measure(new Avalonia.Size(800, 600));
-        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.Empty(Trails(CanvasOf(view)));
-
-        window.Close();
-    });
-
-    [Fact]
-    public void 시간이_없는_커맨드는_궤적도_보간도_없다() => HeadlessUi.Run(() =>
-    {
-        // 0fr = 런타임도 즉시 스냅이다. 태울 구간이 없으니 궤적도 없다
-        // (place의 duration 기본값이 0fr이라 그냥 쓰면 지금도 스냅이다).
+        // 0fr = 런타임도 즉시 스냅이다. 태울 구간이 없으니 진행도를 흘려도 자리가
+        // 그대로다(place의 duration 기본값이 0fr이라 그냥 쓰면 지금도 스냅이다).
         var view = new StageSceneView();
         var window = new Window { Content = view, Width = 800, Height = 600 };
         window.Show();
@@ -264,7 +220,12 @@ public sealed class StageMotionRenderTests
         window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.Empty(Trails(CanvasOf(view)));
+        Canvas canvas = CanvasOf(view);
+        double[] before = canvas.Children.Select(Canvas.GetLeft).ToArray();
+
+        view.SetTransitionProgress(1);
+
+        Assert.Equal(before, canvas.Children.Select(Canvas.GetLeft).ToArray());
 
         window.Close();
     });
@@ -296,9 +257,6 @@ public sealed class StageMotionRenderTests
             .Where(entry => !double.IsNaN(entry.Left) && !double.IsNaN(entry.Width))
             .ToArray();
 
-        // 궤적이 섰다 — 배치·뎁스도 "어디로 얼마나"를 화면이 말한다.
-        Assert.NotEmpty(Trails(canvas));
-
         view.SetTransitionProgress(1);
 
         // 자리가 옮겨졌고(place) 크기가 자랐다(depth) — 한 컨트롤에서 둘 다.
@@ -322,6 +280,38 @@ public sealed class StageMotionRenderTests
         view.SetTransitionProgress(null);
         Assert.Equal(restLeft, Canvas.GetLeft(moved), 1);
         Assert.Equal(restWidth, moved.Width, 1);
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 타임라인은_시간이_없는_라인에서도_비활성으로_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "어떨 때는 나오고 어떨때는 안 나오는데 상시 표기되도록".
+        // 있다 없다 하면 재생 줄이 라인마다 다른 얼굴이 되고, 없는 날에는 이 도구가
+        // 있다는 사실 자체가 안 보인다.
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        Slider SliderOf()
+        {
+            Control timeline = view.BuildTimelineScrubber();
+            Assert.NotNull(timeline);
+            return timeline.GetLogicalDescendants().OfType<Slider>().Single();
+        }
+
+        // 아무것도 안 그린 상태 — 그래도 선다(끌 수는 없다).
+        Assert.False(SliderOf().IsEnabled);
+
+        // 시간을 가진 커맨드가 있으면 끌 수 있다.
+        view.Render(BuildRequest(Command(
+            "char_rig_staging.move_by", ("slot", "c1"), ("x", "+2u"), ("duration", "12fr"))));
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(SliderOf().IsEnabled);
 
         window.Close();
     });

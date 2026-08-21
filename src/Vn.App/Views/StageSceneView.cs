@@ -408,25 +408,17 @@ internal sealed class StageSceneView : UserControl
     /// 이 라인에서 시간에 따라 흐르는 것들을 무대에 그린다 (W66 → 2026-08-21 일반화).
     ///
     /// <b>정지 화면 = 이 라인이 시작되는 순간이다</b> (소유자 결정): 시간을 가진 커맨드의
-    /// 슬롯은 출발 자리에 서고, 도착 자리에 고스트 윤곽, 둘 사이에 점선 궤적 — ▶가 그 길을
-    /// 태운다. 출발과 도착 <b>둘 다 코어가 접은 상태를 컴포저에 통과시킨 결과</b>다:
-    /// 이동뿐 아니라 배치(place)·뎁스(size)도 같은 규칙으로 궤적을 얻는다 (2026-08-21).
+    /// 슬롯은 출발 자리에 선다 — ▶가 그 길을 태우고, 무대 아래 타임라인이 중간 프레임을
+    /// 짚는다. 자리는 <b>코어가 접은 상태를 컴포저에 통과시킨 결과</b>이고, 이동뿐 아니라
+    /// 배치(place)·뎁스(size)도 같은 규칙을 탄다 (2026-08-21).
+    ///
+    /// ⚠ 도착 자리의 <b>노란 고스트 윤곽과 점선 궤적은 2026-08-21에 걷혔다</b>
+    /// (소유자: "잘 안쓰게 되네"). 어디로 가는지는 타임라인을 끌거나 재생하면 보인다 —
+    /// 상시로 겹쳐 그리면 정지 화면이 그만큼 시끄러워진다.
     /// </summary>
     private void RenderMotionCues(
         MiniStagePreviewRequest request, StageSceneLayout layout, double height, double em)
     {
-        if (_motionStartRects is { } startRects)
-        {
-            foreach (StagePortraitPlacement portrait in layout.Portraits)
-            {
-                if (startRects.TryGetValue(portrait.SlotKey, out StageRect? start) &&
-                    _motionPlan?.AnimatedSlots.Contains(portrait.SlotKey) == true)
-                {
-                    RenderMotionTrail(start, portrait.Rect, em);
-                }
-            }
-        }
-
         // 휴지 배치 (W66 소유자 결정) — 렌더 직후의 기본 화면은 "이 라인이 시작되는 순간"
         // 이다: 흐르는 슬롯은 출발 자리·크기에 선다. 재생이 돌고 있으면 곧이어 오는 전이
         // 동기화가 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
@@ -479,17 +471,18 @@ internal sealed class StageSceneView : UserControl
     /// 프레임 타임라인 (W66b → 2026-08-21 무대 아래 이사, 소유자: "재생이 프리뷰
     /// 아래쪽에 오는게 더 좋아보여. 타임라인이랑 같이") — 이 라인 배치의 내부 시간을
     /// 손으로 끈다. 기존 전이 보간(<see cref="SetTransitionProgress"/>)에 진행도를
-    /// 흘릴 뿐이고, 곡선 모양도 재생과 같은 코어 이징이다. 이동이 없는 라인은 끌
-    /// 시간이 없으므로 null이다. ▶ 재생이 돌면 재생 틱이 이 값을 덮는다.
+    /// 흘릴 뿐이고, 곡선 모양도 재생과 같은 코어 이징이다. ▶ 재생이 돌면 재생 틱이
+    /// 이 값을 덮는다.
+    ///
+    /// <b>상시로 선다</b> (2026-08-21 소유자: "어떨 때는 나오고 어떨때는 안 나오는데
+    /// 상시 표기되도록") — 끌 시간이 없는 라인에서는 <b>비활성</b>으로 서고 사라지지
+    /// 않는다. 있다 없다 하면 재생 줄이 라인마다 다른 얼굴이 되고, 없는 날에는 이
+    /// 도구가 있다는 사실 자체가 안 보인다.
     /// </summary>
-    internal Control? BuildTimelineScrubber()
+    internal Control BuildTimelineScrubber()
     {
-        if (_motionPlan is null)
-        {
-            return null;
-        }
-
         double lineSeconds = _request?.TransitionSeconds ?? 0;
+        bool scrubbable = _motionPlan is not null && lineSeconds > 0;
         double frames = Math.Max(1, Math.Round(lineSeconds * DurationToken.FramesPerSecond));
 
         var frameLabel = new TextBlock
@@ -512,8 +505,12 @@ internal sealed class StageSceneView : UserControl
             TickFrequency = 1,
             IsSnapToTickEnabled = true,
             MinWidth = 160,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            IsEnabled = scrubbable
         };
+        ToolTip.SetTip(scrub, scrubbable
+            ? "이 라인 배치의 내부 시간 — 끌면 그 프레임의 정지 화면이 선다."
+            : "이 라인에는 시간을 가진 연출이 없습니다.");
         scrub.ValueChanged += (_, args) =>
         {
             frameLabel.Text = $"{args.NewValue:0}fr";
@@ -837,46 +834,6 @@ internal sealed class StageSceneView : UserControl
     /// 브리지의 파싱 실패 처리와 같은 방향이다(로그 대신 카탈로그가 후보를 제한한다).
     /// </summary>
     private static EaseKind EaseKindOf(string? name) => StageMotionPlan.EaseKindOf(name);
-
-    /// <summary>
-    /// 도착 자리의 윤곽 + 출발에서 도착으로 잇는 선. 두 자리 모두 컴포저가 낸 것이라
-    /// 좌표 변환을 여기서 다시 하지 않는다(사본 금지).
-    /// </summary>
-    private void RenderMotionTrail(StageRect start, StageRect current, double em)
-    {
-        double startX = start.X;
-        double startY = start.Y;
-
-        if (Math.Abs(startX - current.X) < 0.5 && Math.Abs(startY - current.Y) < 0.5 &&
-            Math.Abs(start.Width - current.Width) < 0.5)
-        {
-            return; // 자리도 크기도 그대로 — 그릴 궤적이 없다(제자리 뎁스·0u 이동).
-        }
-
-        // 고스트는 도착 자리다 — 정지 화면의 초상이 출발 자리에 서므로(아래 휴지 배치),
-        // 윤곽은 "어디로 가는가"를 말해야 짝이 맞는다.
-        var ghost = new Border
-        {
-            BorderBrush = new SolidColorBrush(Color.FromArgb(120, 250, 204, 21)),
-            BorderThickness = new Thickness(Math.Max(1, em * 0.06)),
-            CornerRadius = new CornerRadius(em * 0.1)
-        };
-        Add(ghost, current);
-
-        var line = new Avalonia.Controls.Shapes.Line
-        {
-            StartPoint = new Point(startX + current.Width / 2, startY + current.Height / 2),
-            EndPoint = new Point(current.X + current.Width / 2, current.Y + current.Height / 2),
-            Stroke = new SolidColorBrush(Color.FromArgb(190, 250, 204, 21)),
-            StrokeThickness = Math.Max(1, em * 0.08),
-            StrokeDashArray = [3, 2]
-        };
-
-        // 선은 캔버스 좌표를 직접 쓴다 — 자리 지정 없이 얹는다.
-        _canvas.Children.Add(line);
-        Canvas.SetLeft(line, 0);
-        Canvas.SetTop(line, 0);
-    }
 
 
     /// <summary>픽셀 값을 사람이 읽는 u 토큰으로. 환산의 유일한 자리는 UnitToken이다.</summary>
