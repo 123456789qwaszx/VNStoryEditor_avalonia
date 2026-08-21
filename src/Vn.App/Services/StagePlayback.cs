@@ -28,6 +28,7 @@ internal sealed class StagePlayback
     /// <summary>
     /// 재생 속도 배율 (W34-a) — 타자·여운·전이 전부에 일괄 적용된다(시간의 원천이 하나라
     /// 배율도 한 곳이다). 툴 편의 설정이라 세션을 넘어 기억된다(AppSettings).
+    /// <b>실제 게임에도 배속이 있어 남긴다</b> (2026-08-21 소유자).
     /// </summary>
     public double SpeedMultiplier
     {
@@ -83,6 +84,15 @@ internal sealed class StagePlayback
     public int LineCount { get; private set; }
 
     public bool CanPlay => LineCount > 0 && LineIndex >= 0;
+
+    /// <summary>
+    /// 전체 재생 중 — [▶] 버튼만 ⏸로 선다 (2026-08-21 소유자: "라인만 재생을 눌렀는데
+    /// 재생버튼이 일시정지로 바뀌는 것도 불편"). 두 버튼이 각자 제 모드만 비춘다.
+    /// </summary>
+    public bool IsPlayingAll => IsPlaying && !_lineOnly;
+
+    /// <summary>이 라인만 재생 중 — [라인] 버튼만 ⏸로 선다.</summary>
+    public bool IsPlayingLine => IsPlaying && _lineOnly;
 
     /// <summary>
     /// 대사창에 보일 글자 수 (W32). null이면 전문 — 타자 중일 때만 값이 있다.
@@ -174,15 +184,32 @@ internal sealed class StagePlayback
         TypingProgress?.Invoke();
     }
 
+    /// <summary>
+    /// [▶] — <b>전체 재생만</b> 토글한다. 라인만 재생 중에 누르면 멈추는 것이 아니라
+    /// 전체 재생으로 갈아탄다(그 버튼이 뜻하는 일 하나를 그대로 한다).
+    /// </summary>
     public void TogglePlay()
     {
-        if (IsPlaying)
+        if (IsPlayingAll)
         {
             Pause();
         }
         else
         {
             Play();
+        }
+    }
+
+    /// <summary>[라인] — 이 라인만 재생을 토글한다. 전체 재생 중이면 이 라인 반복으로 갈아탄다.</summary>
+    public void ToggleLinePlay()
+    {
+        if (IsPlayingLine)
+        {
+            Pause();
+        }
+        else
+        {
+            PlayCurrentLine();
         }
     }
 
@@ -216,6 +243,11 @@ internal sealed class StagePlayback
     /// <summary>라인만 재생 중 — 다음 라인 문턱에서 멈춘다.</summary>
     private bool _lineOnly;
 
+    /// <summary>
+    /// <b>현재 라인부터 끝까지</b> 재생한다 (2026-08-21 소유자 지시). 예전에는 마지막
+    /// 라인에서 누르면 첫 라인으로 되감아 다시 틀었는데, 그 되감기는 [⏮] 버튼과 한 쌍의
+    /// 규칙이었다 — 버튼이 걷힌 지금은 ▶가 있는 자리에서 앞으로만 간다.
+    /// </summary>
     public void Play()
     {
         if (!CanPlay)
@@ -224,11 +256,6 @@ internal sealed class StagePlayback
         }
 
         _lineOnly = false;
-
-        if (LineIndex >= LineCount - 1)
-        {
-            Restart(); // 끝에서 ▶ = 처음부터 다시
-        }
 
         // 현재 라인의 타자를 처음부터 — 일시정지에서 돌아와도 같은 규칙이다.
         _typedCharacters = 0;
@@ -256,25 +283,9 @@ internal sealed class StagePlayback
         StateChanged?.Invoke();
     }
 
-    /// <summary>처음부터 — 재생 중이면 이어서 재생, 일시정지면 첫 라인만 보여 준다.</summary>
-    public void Restart()
-    {
-        _elapsed = 0;
-        _typedCharacters = 0;
-        _phase = _isChoice ? Phase.WaitInput : Phase.Typing;
-        _transitionActive = false;
-        _transitionElapsed = _transitionDuration; // 첫 라인 도착까지의 과도기 — 확정 자리로
-        TransitionChanged?.Invoke();
-
-        if (LineIndex > 0)
-        {
-            _awaitingMove = true;
-            MoveRequested?.Invoke(-LineIndex);
-        }
-
-        TypingProgress?.Invoke();
-        StateChanged?.Invoke();
-    }
+    // [⏮ 처음부터]는 2026-08-21에 걷혔다 (소유자: 배속과 함께 "거의 쓰지도 않는게 너무
+    // 큰 위치를 차지"). 첫 라인으로 가려면 터미널에서 그 라인을 고르면 된다 — 재생 모델이
+    // 따로 질 일이 아니었다(이동은 어차피 편집기 선택 경로로 나갔다).
 
     /// <summary>
     /// 재생 중 무대 클릭 — 타자 중이면 전문을 즉시 완성하고, 그 뒤면 다음 라인으로.

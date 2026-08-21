@@ -394,30 +394,85 @@ public class StagePlaybackTests
     }
 
     [Fact]
-    public void 처음부터는_첫_라인으로_돌아가는_이동_요청이다()
+    public void 재생은_현재_라인부터_끝까지이고_되감지_않는다()
     {
-        (StagePlayback playback, List<int> moves) = Build(lineIndex: 2, lineCount: 3);
-
-        playback.Restart();
-        Assert.Equal([-2], moves);
-
-        Arrive(playback, 0, 3);
-        Assert.Equal(0, playback.LineIndex);
-    }
-
-    [Fact]
-    public void 끝에서_재생을_누르면_처음부터_다시_시작한다()
-    {
+        // 2026-08-21 소유자: [⏮ 처음부터]를 걷고 ▶는 "현재 라인부터 끝까지"가 됐다.
+        // 예전에는 마지막 라인에서 ▶가 첫 라인으로 되감았다(⏮와 한 쌍의 규칙이었다).
         (StagePlayback playback, List<int> moves) = Build(lineIndex: 2, lineCount: 3, text: "");
 
         playback.Play();
-        Assert.Equal([-2], moves); // 끝에서 ▶ = ⏮ + 재생
         Assert.True(playback.IsPlaying);
+        Assert.Empty(moves); // 되감기 없음
 
-        Arrive(playback, 0, 3, "");
         playback.Tick(0.01);
         playback.Tick(StagePlayback.AfterTypeDwellSeconds);
-        Assert.Equal([-2, 1], moves);
+
+        // 마지막 라인이라 여운 뒤에는 그대로 끝난다 — 이동도 없다.
+        Assert.Empty(moves);
+        Assert.False(playback.IsPlaying);
+    }
+
+    [Fact]
+    public void 중간_라인에서_재생하면_거기서부터_끝까지_간다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 1, lineCount: 3, text: "");
+
+        playback.Play();
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
+        Assert.Equal([1], moves); // 앞이 아니라 다음 라인으로
+
+        Arrive(playback, 2, 3, "");
+        playback.Tick(0.01);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds);
+        Assert.Equal([1], moves); // 끝에 닿았다 — 더 가지 않는다
+        Assert.False(playback.IsPlaying);
+    }
+
+    // ── 두 버튼은 각자 제 모드만 비춘다 (2026-08-21 소유자) ────────────────
+
+    [Fact]
+    public void 라인만_재생_중에는_전체_재생_버튼이_재생_상태로_남는다()
+    {
+        // 소유자: "라인만 재생을 누르는데 재생버튼이 일시정지로 바뀌는 것도 불편".
+        (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 3, text: new string('가', 30));
+
+        playback.ToggleLinePlay();
+        Assert.True(playback.IsPlaying);
+        Assert.True(playback.IsPlayingLine);   // [라인]이 ⏸로 선다
+        Assert.False(playback.IsPlayingAll);   // [▶]는 ▶ 그대로
+
+        // 같은 버튼을 다시 누르면 멈춘다.
+        playback.ToggleLinePlay();
+        Assert.False(playback.IsPlaying);
+        Assert.False(playback.IsPlayingLine);
+    }
+
+    [Fact]
+    public void 전체_재생_중에는_라인_버튼이_재생_상태로_남고_서로_갈아탄다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 0, lineCount: 3, text: new string('가', 30));
+
+        playback.TogglePlay();
+        Assert.True(playback.IsPlayingAll);
+        Assert.False(playback.IsPlayingLine);
+
+        // 전체 재생 중 [라인]을 누르면 멈추는 게 아니라 이 라인 반복으로 갈아탄다.
+        playback.ToggleLinePlay();
+        Assert.True(playback.IsPlayingLine);
+        Assert.False(playback.IsPlayingAll);
+
+        // 라인만 재생 중 [▶]를 누르면 전체 재생으로 갈아탄다 — 실제로 다음 라인까지 간다.
+        playback.TogglePlay();
+        Assert.True(playback.IsPlayingAll);
+        playback.Tick(1.1);
+        playback.Tick(StagePlayback.AfterTypeDwellSeconds + 0.01);
+        Assert.Equal([1], moves);
+
+        // 전체 재생 중 [▶]는 일시정지다.
+        Arrive(playback, 1, 3, "대사");
+        playback.TogglePlay();
+        Assert.False(playback.IsPlaying);
     }
 
     [Fact]
