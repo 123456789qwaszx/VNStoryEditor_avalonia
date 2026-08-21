@@ -4544,3 +4544,20 @@ RectChain에 맞춰서 … 타겟만 잘 잡아주면 알아서 계산이 될텐
 
 **전체 1392 통과, 실패 0** (Core 342 · Vn.Core 60 · Vn.Authoring 715 · Vn.App 275 —
 작업대 조작 테스트 신규 2건: 뎁스 레벨 슬라이더 · 이징 칸의 곡선 선택기).
+
+### 뎁스 레벨 폴드 지시서 (`(이 커밋)`)
+
+소유자 요청으로 저쪽 코어 개통 규격을 문서화했다 —
+[`docs/work-orders/depth-level-orders.md`](work-orders/depth-level-orders.md).
+
+실코드를 읽고 썼고, 요지는 **데이터도 계산기도 이미 저쪽에 있다**는 것이다:
+덤프 `presets/depth.json`에 `level.yCurve`·`level.scaleCurve`가 이미 실려 나오고,
+평가기 `CurveFunctions`(AnimationCurve 등가, 골든 고정)도 코어에 있다. 없는 것은 배선뿐.
+
+문서가 짚는 함정 셋: ① 외삽은 **끝 두 키의 할선**이지 탄젠트가 아니다(지금 덤프가
+Linear라 우연히 같다) ② 레벨 경로의 `preserveFocus`는 **사장 데이터**다 —
+`ResolveRawDepth`가 커맨드 인자로 덮어쓴다(프리셋에서 이미 겪은 함정)
+③ WrapMode(`m_PreInfinity`)는 읽지 않는다 — 런타임이 직접 외삽한다.
+
+덧붙여 기록: **실제 원고가 이미 숫자 레벨을 쓰고 있어**(코어 DTO 주석) 이 구멍은
+새 슬라이더만의 문제가 아니라 기존 콘텐츠의 재현 구멍이기도 하다.
