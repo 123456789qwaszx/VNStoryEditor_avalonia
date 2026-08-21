@@ -342,7 +342,10 @@ public partial class MiniStagePreview : UserControl
         Playback.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
         Playback.NodeExitRequested = () => NodeExitRequested?.Invoke() == true;
         _scene.PlaybackAdvance = Playback.TryAdvanceByInput;
-        PlaybackHost.Content = StagePlaybackControls.Build(Playback);
+        // 재생 컨트롤은 타임라인을 사이에 두고 양 끝으로 갈린다 (2026-08-21 소유자) —
+        // 왼쪽은 지금 다듬는 라인의 것, 오른쪽 끝은 가끔 쓰는 것(노드 전체 재생·배속).
+        PlaybackHost.Content = StagePlaybackControls.BuildLeading(Playback);
+        PlaybackTrailingHost.Content = StagePlaybackControls.BuildTrailing(Playback);
 
         // 재생 배율은 툴 편의 설정 — 세션을 넘어 기억된다 (W34-a).
         Playback.SpeedMultiplier = AppSettingsService.LoadPlaybackSpeed();

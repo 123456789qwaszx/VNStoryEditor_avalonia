@@ -1,4 +1,7 @@
+using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Vn.App.Services;
+using Vn.App.Views;
 
 namespace Vn.App.Tests;
 
@@ -474,6 +477,61 @@ public class StagePlaybackTests
         playback.TogglePlay();
         Assert.False(playback.IsPlaying);
     }
+
+    // ── 컨트롤 자리 (2026-08-21 소유자: 타임라인을 사이에 두고 양 끝) ──────
+
+    [Fact]
+    public void 라인_재생은_왼쪽_노드_전체_재생과_배속은_오른쪽_줄이고_아이콘이_갈린다() =>
+        HeadlessUi.Run(() =>
+        {
+            // 소유자: "타임라인 가장 오른쪽으로 보내서 위치상 안 겹치게" +
+            // "아이콘을 라인재생과 똑같이 하지말고 … 노드 전체 재생이라는게 드러나도록".
+            (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 3);
+
+            string[] LabelsOf(Control row) => row.GetLogicalDescendants().OfType<Button>()
+                .Select(button => button.Content?.ToString() ?? string.Empty).ToArray();
+
+            string[] leading = LabelsOf(StagePlaybackControls.BuildLeading(playback));
+            string[] trailing = LabelsOf(StagePlaybackControls.BuildTrailing(playback));
+
+            // 왼쪽은 라인 재생 하나뿐 — 전체 재생·배속이 끼어들지 않는다.
+            Assert.Equal(["▶ 라인"], leading);
+
+            // 오른쪽은 노드 전체 재생 + 배속.
+            Assert.Equal(["▶▶ 전체", "1×"], trailing);
+
+            // 두 재생 버튼의 아이콘이 갈린다 — 같은 ▶ 하나면 무엇이 다른지 안 보인다.
+            Assert.NotEqual(leading[0], trailing[0]);
+        });
+
+    [Fact]
+    public void 라인만_재생_중에는_라인_버튼만_일시정지로_바뀐다() => HeadlessUi.Run(() =>
+    {
+        (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 3);
+
+        Control leading = StagePlaybackControls.BuildLeading(playback);
+        Control trailing = StagePlaybackControls.BuildTrailing(playback);
+        var window = new Window
+        {
+            Content = new StackPanel { Children = { leading, trailing } }
+        };
+        window.Show(); // 붙어야 StateChanged 구독이 산다
+
+        playback.ToggleLinePlay();
+
+        Button lineButton = leading.GetLogicalDescendants().OfType<Button>().First();
+        Button allButton = trailing.GetLogicalDescendants().OfType<Button>().First();
+
+        Assert.Equal("⏸ 라인", lineButton.Content);
+        Assert.Equal("▶▶ 전체", allButton.Content); // 여기가 ⏸로 바뀌던 것이 헷갈림의 정체
+
+        // 전체 재생으로 갈아타면 반대가 된다.
+        playback.TogglePlay();
+        Assert.Equal("▶ 라인", lineButton.Content);
+        Assert.Equal("⏸ 전체", allButton.Content);
+
+        window.Close();
+    });
 
     [Fact]
     public void 보여_줄_라인이_없으면_재생하지_않는다()

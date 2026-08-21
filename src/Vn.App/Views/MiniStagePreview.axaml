@@ -65,9 +65,14 @@
                     <ContentControl Grid.Row="0"
                                     x:Name="SceneHost" />
                     <!-- 재생 줄 높이도 고정 — 타임라인이 있는 라인과 없는 라인 사이에서
-                         무대 크기가 바뀌지 않는다. -->
+                         무대 크기가 바뀌지 않는다.
+
+                         자리로 무게를 가른다 (2026-08-21 소유자: "타임라인 가장 오른쪽으로
+                         보내서 위치상 안 겹치게"): 왼쪽은 지금 다듬는 라인의 것([▶ 라인]·
+                         진행), 오른쪽 끝은 가끔 쓰는 것(노드 전체 재생·배속). 타임라인이
+                         가운데를 채우며 둘을 벌려 놓는다. -->
                     <Grid Grid.Row="1"
-                          ColumnDefinitions="Auto,16,*"
+                          ColumnDefinitions="Auto,16,*,16,Auto"
                           Height="34"
                           Margin="0,8,0,0">
                         <ContentControl Grid.Column="0"
@@ -75,6 +80,9 @@
                                         VerticalAlignment="Center" />
                         <ContentControl Grid.Column="2"
                                         x:Name="TimelineHost"
+                                        VerticalAlignment="Center" />
+                        <ContentControl Grid.Column="4"
+                                        x:Name="PlaybackTrailingHost"
                                         VerticalAlignment="Center" />
                     </Grid>
                 </Grid>
