@@ -268,4 +268,104 @@ public class StageMotionPlanTests
         Assert.Null(Plan(Command(
             "char_rig_depth.size", ("slot", "c1"), ("depth", "헛토큰"), ("duration", "10fr"))));
     }
+
+    // ── 카메라 (2026-08-21 소유자: "shot_to, shot_focus_to 등의 카메라가 시간이 안 먹고 있어") ──
+
+    [Fact]
+    public void shot_to는_duration만큼_카메라가_흐른다()
+    {
+        // ⚠ 샷은 RectNode가 아니라 StageState.Shot이다 — 노드 차이만 보던 계획이
+        // 카메라를 못 봐서 zoom·pan이 늘 스냅이었다.
+        StageMotionPlan plan = Plan(Command(
+            "shot.shot_to", ("zoom", "4"), ("x", "2u"), ("y", "0u"), ("duration", "12fr")))!;
+
+        MotionTween tween = Assert.Single(plan.Tweens);
+        Assert.NotNull(tween.Shot);
+        MotionShotTween shot = tween.Shot!;
+
+        // 출발은 기본 카메라, 도착은 적은 값이다.
+        Assert.Equal(0, shot.From.Zoom, 3);
+        Assert.Equal(4, shot.To.Zoom, 3);
+
+        // 중간은 출발도 도착도 아니다 — 시간이 실제로 흐른다.
+        float middle = plan.Evaluate(0.2).Shot.Zoom;
+        Assert.NotEqual(shot.From.Zoom, middle, 3);
+        Assert.NotEqual(shot.To.Zoom, middle, 3);
+        Assert.InRange(middle, 0.0001f, 4f);
+
+        // 진행 0 = 라인 시작, 충분히 지나면 확정이다.
+        Assert.Equal(0, plan.Evaluate(0).Shot.Zoom, 3);
+        Assert.Equal(4, plan.Evaluate(10).Shot.Zoom, 3);
+        Assert.Equal(4, plan.Final.Shot.Zoom, 3);
+    }
+
+    [Fact]
+    public void shot_focus_to도_같은_규칙으로_흐르고_pan이_함께_간다()
+    {
+        StageMotionPlan plan = Plan(Command(
+            "shot.shot_focus_to",
+            ("slot", "c1"), ("focus", "face"), ("screenPoint", "center"),
+            ("zoom", "3"), ("duration", "0.5s")))!;
+
+        MotionTween tween = Assert.Single(plan.Tweens);
+        Assert.NotNull(tween.Shot);
+        MotionShotTween shot = tween.Shot!;
+
+        // 카메라가 확대되고 pan도 움직인다 — focus를 화면 지점으로 데려오는 일이다.
+        Assert.Equal(3, shot.To.Zoom, 3);
+        Assert.True(
+            Math.Abs(shot.To.PanInRigSpace.X - shot.From.PanInRigSpace.X) > 0.5f ||
+            Math.Abs(shot.To.PanInRigSpace.Y - shot.From.PanInRigSpace.Y) > 0.5f,
+            "focus를 데려오려면 pan이 움직여야 한다");
+
+        // 중간 프레임의 pan은 두 끝 사이다(런타임과 같은 셋 Lerp).
+        Vec2 middle = plan.Evaluate(0.25).Shot.PanInRigSpace;
+        Assert.InRange(
+            middle.X,
+            Math.Min(shot.From.PanInRigSpace.X, shot.To.PanInRigSpace.X),
+            Math.Max(shot.From.PanInRigSpace.X, shot.To.PanInRigSpace.X));
+    }
+
+    [Fact]
+    public void 카메라가_흐르면_무대_위의_모든_슬롯이_흐르는_것으로_센다()
+    {
+        // 샷은 슬롯 하나의 일이 아니다 — 화면 전체가 함께 움직인다.
+        StageMotionPlan plan = Plan(Command(
+            "shot.shot_to", ("zoom", "4"), ("x", "2u"), ("y", "0u"), ("duration", "12fr")))!;
+
+        Assert.Contains("c1", plan.AnimatedSlots);
+    }
+
+    [Fact]
+    public void 시간이_0인_카메라는_계획에_들어오지_않는다()
+    {
+        // 런타임도 duration 0 이하면 즉시 스냅이다(ShotIntentCommandBase).
+        Assert.Null(Plan(Command(
+            "shot.shot_to", ("zoom", "4"), ("x", "2u"), ("y", "0u"), ("duration", "0fr"))));
+    }
+
+    [Fact]
+    public void 샷의_이징_칸이_계획에_실린다()
+    {
+        // 2026-08-21 런타임이 샷 5종의 마지막 위치 인자로 이징을 열었다 —
+        // place·size와 같은 자리이므로 계획도 같은 통로(EaseOf)로 읽는다.
+        StageMotionPlan eased = Plan(Command(
+            "shot.shot_to",
+            ("zoom", "4"), ("x", "2u"), ("y", "0u"), ("duration", "12fr"), ("ease", "InOutCubic")))!;
+
+        Assert.Equal("InOutCubic", Assert.Single(eased.Tweens).Ease);
+
+        // 안 적으면 null — 런타임 스펙 기본(OutCubic)으로 물러선다(토큰도 안 나간다).
+        StageMotionPlan bare = Plan(Command(
+            "shot.shot_to", ("zoom", "4"), ("x", "2u"), ("y", "0u"), ("duration", "12fr")))!;
+
+        Assert.Null(Assert.Single(bare.Tweens).Ease);
+        Assert.Equal(EaseKind.OutCubic, StageMotionPlan.EaseKindOf(null));
+
+        // 이징이 다르면 중간 프레임의 zoom도 다르다 — 모양이 실제로 곡선을 탄다.
+        Assert.NotEqual(
+            eased.Evaluate(0.15).Shot.Zoom,
+            bare.Evaluate(0.15).Shot.Zoom,
+            3);
+    }
 }

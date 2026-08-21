@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-21 · 테스트 **1406 통과, 실패 0**
-(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 719 · Vn.App 284)
+기준: 2026-08-21 · 테스트 **1411 통과, 실패 0**
+(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 724 · Vn.App 284)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 
@@ -475,6 +475,13 @@ game.definition.json` / `작가가 더한 화자`.
   정지·스크럽·재생이 같은 합성을 지나므로 자리뿐 아니라 **크기**도 보간된다(뎁스가
   스냅하던 원인). 이징은 **선언이 말한다** — 2026-08-21 런타임이 place·size·회전에도
   이징 인자를 열어 가정이 사라졌다
+- **카메라도 시간을 탄다 (2026-08-21)** — 샷 5종(`shot_to`·`shot_focus_to`·`shot_zoom`·
+  `shot_track`·`shot_reset`)이 `duration`·`ease`를 탄다. ⚠ 막혀 있던 이유는 **샷이
+  노드가 아니라 `StageState.Shot`(zoom·pan·focus)** 이라 노드 차이만 보던 계획이 못 봤던
+  것이다(`MotionShotTween`). 보간은 런타임 `PresentationShotIntentMath.Interpolate`와
+  같은 셋 Lerp이고, **카메라가 흐르면 무대 전체 슬롯이 흐르는 것으로 센다**. 이징은
+  런타임이 같은 날 브리지를 열어(항수 +1) place·size와 같은 마지막 위치 인자가 됐다 —
+  미지정이면 토큰이 안 나가고 `@이름` 커스텀 곡선도 같은 자리다
 - **이징 개통 + 회전 복원 (2026-08-21)** — 런타임이 `place`·`size` 계열 20종에 이징
   인자를 열고(마지막 위치 인자 · 미지정 OutCubic · `@이름` 커스텀 곡선) 회전 3종
   (`rotate_by`·`rotate_reset`·`char_rotate_to`)을 되살렸다. 이쪽은 카탈로그 반영

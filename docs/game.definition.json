@@ -2397,6 +2397,12 @@
           "type": "duration",
           "required": false,
           "default": "1.2s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 샷 5종에 열었다."
         }
       ],
       "notes": "지정 캐릭터의 focus 지점을 화면 screenPoint로 가져오며 zoom 적용 — 인물 클로즈업의 표준 수단."
@@ -2433,6 +2439,12 @@
           "type": "duration",
           "required": false,
           "default": "0.45s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 샷 5종에 열었다."
         }
       ]
     },
@@ -2456,6 +2468,12 @@
           "type": "duration",
           "required": false,
           "default": "0.45s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 샷 5종에 열었다."
         }
       ],
       "notes": "W68 — zoom이 프리뷰 칩에서 슬라이더로 열린다. 샷은 무대 전역 상태라 슬롯 대상이 없다."
@@ -2486,6 +2504,12 @@
           "type": "duration",
           "required": false,
           "default": "0.35s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 샷 5종에 열었다."
         }
       ]
     },
@@ -2501,6 +2525,12 @@
           "type": "duration",
           "required": false,
           "default": "0.3s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 샷 5종에 열었다."
         }
       ]
     },

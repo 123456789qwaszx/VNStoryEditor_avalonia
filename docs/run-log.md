@@ -4981,3 +4981,70 @@ id가 같을 수 없다.
 보고 보간은 안 봤다).
 
 **전체 1406 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 719 · Vn.App 284).
+
+---
+
+## 카메라도 시간을 탄다 — 샷 5종의 duration·ease (소유자 지시, `(다음 커밋)`)
+
+**소유자 지시 (2026-08-21)** — "shot_to, shot_focus_to 등의 **카메라가 지금 시간이 안
+먹고 있어**. 이것들도 시간으로 ease를 추가하면서 depth, place와 비슷한 형태로 맞추려고 해."
+
+### 왜 시간이 안 먹었나 — 샷은 노드가 아니다
+
+카탈로그는 이미 샷 5종에 `duration`을 선언하고 있었고 런타임도 그 값을 받고 있었다.
+막힌 곳은 **툴의 시간 계획**이었다:
+
+> `StageMotionPlan.Build`는 커맨드의 직전·직후 상태를 **`StageState.Nodes`(RectNodeTree)만**
+> 훑어 차이를 찾았다. 그런데 카메라는 노드가 아니라 **`StageState.Shot`(`ShotIntentState`
+> — zoom·pan·focus)** 이라는 별도 상태다. 그래서 샷 커맨드는 언제나 "바뀐 노드 0개"로
+> 읽혀 계획에서 탈락했고, 프리뷰·스크럽·재생이 전부 스냅이었다.
+
+축을 해석하지 않는다는 설계는 옳았지만, **"상태 = 노드"라는 암묵 가정**이 하나 숨어
+있었던 것이다. 이제 계획이 두 갈래를 본다.
+
+### 한 일 (툴)
+
+- **`MotionShotTween(From, To)`** 신설 + `MotionTween`에 칸 하나(`Shot`, 기본 null).
+  `Build`가 `before.Shot` ≠ `after.Shot`이면 구간을 만든다 — 노드가 안 바뀌어도 실린다.
+- **`Evaluate`가 샷도 보간한다** — zoom·pan·focus 셋을 함께 Lerp한다. 런타임의
+  `PresentationShotIntentMath.Interpolate`와 **같은 셋, 같은 선형 보간**이고 곡선 모양은
+  기존 `Shape`(코어 이징/커스텀 곡선)를 그대로 지난다.
+- **`AnimatedSlots`가 카메라일 때 무대 전체를 담는다** — 샷은 슬롯 하나의 일이 아니라
+  화면 전부를 옮긴다. 이게 없으면 뷰의 `AnimatedSlots.Contains` 관문에서 걸려 정지
+  프레임이 안 움직인다.
+- **카탈로그: 샷 5종에 `ease` 칸**(`shot_focus_to`·`shot_to`·`shot_zoom`·`shot_track`·
+  `shot_reset`). place·size와 같은 규약이라 **기본값을 안 적는다** — 미지정이면 마지막
+  토큰이 아예 안 나가고(기존 대본 최소 diff) 런타임 스펙 기본 OutCubic으로 굴러간다.
+  커스텀 곡선 `@이름`도 같은 자리다. 내보내기의 미정의 곡선 차단은 `type: "ease"` 기준이라
+  **자동으로 함께 걸린다**(`YarnBundleEmitter.ValidateEaseCurveReferences`).
+
+### 런타임 (소유자가 같은 날 직접 개통)
+
+샷 스펙은 이미 `ShotIntentCommandSpecBase.ease`를 갖고 하드코딩으로 쓰고 있었을 뿐이라
+**배선만** 남아 있었다. 소유자가 `ShotIntentCommandBase`에 `customCurveKeys`를 더하고
+트윈 두 경로(본 트윈 + 스텝 경계 가속)를 `ApplyEase`로 돌렸으며, `CommandBridge.ShotResponse`의
+다섯 커맨드를 `ResolveEase` 경유로 바꿨다. 항수: `shot_focus_to` 5→6 · `shot_to` 4→5 ·
+`shot_zoom` 2→3 · `shot_track` 3→4 · `shot_reset` 1→2.
+
+⚠ **리듀서는 안 건드렸다** — 이징은 종점에 관여하지 않는다. 다만 리듀서가 샷 인자를
+**인덱스로** 읽으므로(그쪽 테스트 `샷_계열의_마지막_이징_인자는_폴드에_무해하다`가
+자리 안 밀림을 못 박았다) 이 순서는 함부로 바꾸지 않는다.
+
+**확인한 출력**: `<<shot_to 1.4 0u 0u 24fr InOutCubic>>` · 미지정이면
+`<<shot_to 1.4 0u 0u 24fr>>` · `<<shot_focus_to c1 face center 2.5 1.2s @push_in>>`.
+
+**되돌리는 법** — `MotionShotTween`과 `Build`의 샷 분기, `Evaluate`의 샷 Lerp,
+생성자의 전체 슬롯 담기, 카탈로그 ease 칸 다섯을 지운다.
+
+**테스트** — `StageMotionPlanTests`: `shot_to는_duration만큼_카메라가_흐른다`(중간이
+출발도 도착도 아니다) · `shot_focus_to도_같은_규칙으로_흐르고_pan이_함께_간다` ·
+`카메라가_흐르면_무대_위의_모든_슬롯이_흐르는_것으로_센다` ·
+`시간이_0인_카메라는_계획에_들어오지_않는다` · `샷의_이징_칸이_계획에_실린다`
+(이징이 다르면 중간 프레임의 zoom도 다르다).
+
+**아직 안 연 것** (소유자 보고) — `.SetEase(_spec.ease)`가 남은 넷: `scale_by`·
+`scale_reset`·`char_scale_to` · `focus_on` · `char_visual_*` · `mirror`. 전부 스펙에
+`ease`가 이미 있어 같은 패턴으로 열린다. **`scale_by`는 `move_by`와 짝**이라 함께 여는
+것이 자연스럽다 — 열린 항목.
+
+**전체 1411 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 724 · Vn.App 284).

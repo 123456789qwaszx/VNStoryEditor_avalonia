@@ -9,6 +9,16 @@ namespace Vn.Authoring.Flow;
 public sealed record MotionNodeTween(string NodeKey, RectNodeState From, RectNodeState To);
 
 /// <summary>
+/// 카메라가 이 커맨드 동안 지나는 구간 (2026-08-21 소유자: "shot_to, shot_focus_to 등의
+/// 카메라가 지금 시간이 안 먹고 있어").
+///
+/// ⚠ 샷은 <b>RectNode가 아니라</b> <see cref="StageState.Shot"/>이라는 별도 상태다 —
+/// 노드 차이만 보던 계획이 카메라를 못 본 것이 그 정체였다. 런타임도 zoom·pan·focus
+/// 셋을 함께 Lerp한다(<c>PresentationShotIntentMath.Interpolate</c>).
+/// </summary>
+public sealed record MotionShotTween(ShotIntentState From, ShotIntentState To);
+
+/// <summary>
 /// 커맨드 하나의 시간 구간 — 자기 <c>duration</c>·<c>ease</c>로 자기가 바꾼 노드들을 끈다.
 /// 노드가 여럿인 것은 정상이다(예: <c>size</c>는 배율과 포커스 보정을 함께 바꾼다).
 /// </summary>
@@ -18,7 +28,8 @@ public sealed record MotionTween(
     double DurationSeconds,
     string? Ease,
     IReadOnlyList<CurveKey>? CurveKeys,
-    IReadOnlyList<MotionNodeTween> Nodes);
+    IReadOnlyList<MotionNodeTween> Nodes,
+    MotionShotTween? Shot = null);
 
 /// <summary>
 /// 한 라인이 시간에 따라 흐르는 모양 (2026-08-21 소유자: "place랑 depth의 경우에도 move랑
@@ -39,11 +50,22 @@ public sealed class StageMotionPlan
     {
         Tweens = tweens;
         Final = final;
-        AnimatedSlots = tweens
+        var animated = tweens
             .SelectMany(tween => tween.Nodes)
             .Select(node => SlotOfNode(node.NodeKey))
             .Where(slot => slot.Length > 0)
             .ToHashSet(StringComparer.Ordinal);
+
+        // 카메라가 흐르면 무대 위의 <b>전부</b>가 흐른다 — 샷은 슬롯 하나의 일이 아니다.
+        if (tweens.Any(tween => tween.Shot is not null))
+        {
+            foreach (string slot in final.Slots)
+            {
+                animated.Add(slot);
+            }
+        }
+
+        AnimatedSlots = animated;
         LongestSeconds = tweens.Count == 0 ? 0 : tweens.Max(tween => tween.DurationSeconds);
     }
 
@@ -74,6 +96,12 @@ public sealed class StageMotionPlan
                 ? 1
                 : Math.Clamp(elapsedSeconds / tween.DurationSeconds, 0, 1);
             float shaped = Shape(tween, progress);
+
+            if (tween.Shot is { } shot)
+            {
+                // 런타임과 같은 셋 Lerp — zoom·pan·focus(PresentationShotIntentMath).
+                state.Shot = Lerp(shot.From, shot.To, shaped);
+            }
 
             foreach (MotionNodeTween node in tween.Nodes)
             {
@@ -115,6 +143,11 @@ public sealed class StageMotionPlan
         Lerp(from.SizeDelta, to.SizeDelta, t),
         Lerp(from.LocalScale, to.LocalScale, t),
         Lerp(from.LocalEulerAngles, to.LocalEulerAngles, t));
+
+    private static ShotIntentState Lerp(in ShotIntentState from, in ShotIntentState to, float t) => new(
+        from.Zoom + ((to.Zoom - from.Zoom) * t),
+        Lerp(from.PanInRigSpace, to.PanInRigSpace, t),
+        Lerp(from.FocusPointInRigSpace, to.FocusPointInRigSpace, t));
 
     private static Vec2 Lerp(in Vec2 from, in Vec2 to, float t) =>
         new(from.X + ((to.X - from.X) * t), from.Y + ((to.Y - from.Y) * t));
@@ -181,7 +214,13 @@ public sealed class StageMotionPlan
 
             IReadOnlyList<MotionNodeTween> nodes = DiffNodes(before, after);
 
-            if (nodes.Count == 0)
+            // 카메라(shot_to·shot_focus_to·shot_zoom·shot_track·shot_reset)는 노드가
+            // 아니라 StageState.Shot을 바꾼다 — 노드 차이만 보면 영원히 스냅이다.
+            MotionShotTween? shot = Differs(before.Shot, after.Shot)
+                ? new MotionShotTween(before.Shot, after.Shot)
+                : null;
+
+            if (nodes.Count == 0 && shot is null)
             {
                 continue; // 바뀐 자리가 없다 — 태울 것도 없다(0u 이동 등).
             }
@@ -194,7 +233,8 @@ public sealed class StageMotionPlan
                 seconds,
                 ease,
                 CurveKeysOf(ease, curves),
-                nodes));
+                nodes,
+                shot));
         }
 
         return tweens.Count > 0 ? new StageMotionPlan(tweens, final) : null;
@@ -233,6 +273,11 @@ public sealed class StageMotionPlan
         Differs(from.SizeDelta, to.SizeDelta) ||
         Differs(from.LocalScale, to.LocalScale) ||
         Differs(from.LocalEulerAngles, to.LocalEulerAngles);
+
+    private static bool Differs(in ShotIntentState from, in ShotIntentState to) =>
+        Math.Abs(from.Zoom - to.Zoom) > Epsilon ||
+        Differs(from.PanInRigSpace, to.PanInRigSpace) ||
+        Differs(from.FocusPointInRigSpace, to.FocusPointInRigSpace);
 
     private static bool Differs(in Vec2 from, in Vec2 to) =>
         Math.Abs(from.X - to.X) > Epsilon || Math.Abs(from.Y - to.Y) > Epsilon;
