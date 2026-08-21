@@ -5092,3 +5092,41 @@ id가 같을 수 없다.
 `mirror`는 진행하지 않기로 했다.
 
 **전체 1414 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 727 · Vn.App 284).
+
+---
+
+## 등속 이동이 프리뷰에서만 스냅했다 — `frames`도 시간이다 (`(다음 커밋)`)
+
+**맥락 (2026-08-21)** — 소유자: "이제 nudge 계통 커맨드를 다룰 차례야." 양쪽 실코드를
+훑고 실측한 결과, 넛지 계통은 **넷이 이미 되고 넷이 안 되고** 있었다.
+
+| 커맨드 | 폴드 | 프리뷰 시간 | 런타임 이징 |
+|---|---|---|---|
+| `left`·`right`·`up`·`down` (넛지) | ○ `ApplyNudge` | **○ 이미 흐름**(0.5초/12fr) | ✗ `OutCubic` 하드코딩 |
+| `left_per`·`right_per`·`up_per`·`down_per` (등속) | ○ `ApplyMovePer` | **✗ 스냅** | ✗ `Linear` 하드코딩 |
+
+**왜 등속만 스냅했나** — `_per`의 시간 칸은 `frames`인데 타입 이름이 `"frames"`다.
+`StageMotionPlan.TryReadSeconds`가 `type == "duration"`만 시간으로 세고 있어서 **선언이
+있는데도 못 봤다.** 폴드는 멀쩡했으므로(`Unhandled` 0건) 화면은 최종 자리를 정확히
+그렸고, 다만 **거기까지 가는 시간이 없었다** — 조용한 종류의 어긋남이다.
+
+`frames`는 시간이 아닌 게 아니라 **전용 파서를 쓰느라 타입 이름이 갈린 것**이다
+(`12fr` = 0.5초 동안 12u — 값 하나가 거리이자 시간이다). 토큰 해석은 어차피
+`DurationToken` 한 자리를 지난다.
+
+**한 일** — `TryReadSeconds`가 `type: "frames"`도 시간으로 센다. 한 줄이다.
+⚠ 이 타입은 **`_per` 넷 전용**이라(카탈로그 전수 확인) 다른 커맨드에 번지지 않는다.
+
+**되돌리는 법** — `TryReadSeconds`의 `|| type == "frames"` 한 항을 지운다.
+
+**테스트** — `넛지_4종은_방향축에서_duration만큼_흐른다`(left·right는 `CharSlot_Track_X`,
+up·down은 `CharSlot_Track_Y` — 코어가 접는 그 노드다) ·
+`등속_이동은_frames_한_칸이_거리이자_시간이다`(12fr → 0.5초·12u, 중간이 양 끝이 아니다).
+
+**남은 것 — 이징은 소유자 결정 대기**. 넛지 넷은 `Ease.OutCubic`, 등속 넷은 `Ease.Linear`가
+브리지에 **하드코딩**돼 있다(`CommandBridge.CharRigPlacement.cs`). 넛지는 지금까지의
+place·size·shot·scale과 같은 패턴으로 열면 되지만, **등속은 `Linear`가 이름값**
+(`등속 이동(프레임당 1u)`)이라 이징을 열면 커맨드의 뜻이 흔들린다 — 열지 말지는 규격
+결정이라 여기서 정하지 않는다.
+
+**전체 1416 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 729 · Vn.App 284).

@@ -288,8 +288,14 @@ public sealed class StageMotionPlan
         Math.Abs(from.Z - to.Z) > Epsilon;
 
     /// <summary>
-    /// 이 커맨드가 가진 시간. <c>duration</c> 파라미터 <b>선언</b>이 근거다 — 이름으로
-    /// 추측하지 않는다. 모션 선언이 따로 시간 파라미터를 말하면 그것이 우선이다.
+    /// 이 커맨드가 가진 시간. 파라미터 <b>선언</b>이 근거다 — 이름으로 추측하지 않는다.
+    /// 모션 선언이 따로 시간 파라미터를 말하면 그것이 우선이다.
+    ///
+    /// 시간을 말하는 타입은 둘이다: <c>duration</c>(fr·s 토큰)과 <c>frames</c>.
+    /// <c>frames</c>는 <c>left_per</c> 계열 넷 전용인데, <b>그 값 하나가 거리이자
+    /// 시간</b>이다(12fr = 0.5초 동안 12u). 전용 파서를 쓰느라 타입 이름이 갈렸을 뿐
+    /// 시간이 아닌 것이 아니다 — 이걸 안 세는 바람에 등속 이동이 프리뷰에서만 스냅했다
+    /// (2026-08-21). 토큰 해석은 <see cref="DurationToken"/> 한 자리 그대로다.
     /// </summary>
     private static bool TryReadSeconds(
         PresentationCommandDefinition definition, PresentationResultCommand command, out double seconds)
@@ -298,7 +304,9 @@ public sealed class StageMotionPlan
 
         string? parameterName = definition.Motion?.DurationParameterName ??
             definition.Parameters
-                .FirstOrDefault(item => string.Equals(item.Type, "duration", StringComparison.Ordinal))?
+                .FirstOrDefault(item =>
+                    string.Equals(item.Type, "duration", StringComparison.Ordinal) ||
+                    string.Equals(item.Type, "frames", StringComparison.Ordinal))?
                 .Name;
 
         if (parameterName is null)

@@ -436,4 +436,57 @@ public class StageMotionPlanTests
         Assert.Equal("InOutQuad", tween.Ease);
         Assert.Contains(tween.Nodes, node => node.From.LocalScale.X > node.To.LocalScale.X);
     }
+
+    // ── 넛지·등속 (2026-08-21) ──────────────────────────────────────────────
+
+    [Fact]
+    public void 넛지_4종은_방향축에서_duration만큼_흐른다()
+    {
+        // left·right는 CharSlot_Track_X, up·down은 CharSlot_Track_Y — 코어가 접는
+        // 그 노드와 같아야 "재생 = 정지 프레임"이 유지된다.
+        foreach ((string id, string axisNode) in new[]
+                 {
+                     ("char_rig_entrance.left", "CharSlot_Track_X"),
+                     ("char_rig_entrance.right", "CharSlot_Track_X"),
+                     ("char_rig_entrance.up", "CharSlot_Track_Y"),
+                     ("char_rig_entrance.down", "CharSlot_Track_Y"),
+                 })
+        {
+            StageMotionPlan plan = Plan(Command(
+                id, ("slot", "c1"), ("distance", "3u"), ("duration", "12fr")))!;
+
+            MotionTween tween = Assert.Single(plan.Tweens);
+            Assert.Equal(0.5, tween.DurationSeconds, 3);
+
+            MotionNodeTween node = Assert.Single(
+                tween.Nodes, item => item.NodeKey.EndsWith(axisNode, StringComparison.Ordinal));
+
+            Vec2 middle = PositionOf(plan.Evaluate(0.25), node.NodeKey);
+            Assert.NotEqual(node.From.AnchoredPosition, middle);
+            Assert.NotEqual(node.To.AnchoredPosition, middle);
+        }
+    }
+
+    [Fact]
+    public void 등속_이동은_frames_한_칸이_거리이자_시간이다()
+    {
+        // ⚠ `frames`는 타입 이름이 `duration`과 갈려 있을 뿐 시간이다(12fr = 0.5초 동안
+        // 12u). 이걸 안 세는 바람에 등속 이동이 프리뷰에서만 스냅했다 — 2026-08-21 수리.
+        StageMotionPlan plan = Plan(Command(
+            "char_rig_entrance.left_per", ("slot", "c1"), ("frames", "12fr")))!;
+
+        MotionTween tween = Assert.Single(plan.Tweens);
+        Assert.Equal(0.5, tween.DurationSeconds, 3); // 12fr / 24 = 0.5초
+
+        MotionNodeTween node = Assert.Single(
+            tween.Nodes, item => item.NodeKey.EndsWith("CharSlot_Track_X", StringComparison.Ordinal));
+
+        // 12u만큼 왼쪽으로 — 거리도 frames가 정한다.
+        Assert.Equal(-12 * 40, node.To.AnchoredPosition.X - node.From.AnchoredPosition.X, 1);
+
+        // 중간은 양 끝이 아니다.
+        Vec2 middle = PositionOf(plan.Evaluate(0.25), node.NodeKey);
+        Assert.NotEqual(node.From.AnchoredPosition, middle);
+        Assert.NotEqual(node.To.AnchoredPosition, middle);
+    }
 }
