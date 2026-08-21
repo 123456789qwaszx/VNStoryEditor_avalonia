@@ -30,14 +30,18 @@ public sealed record MotionShotTween(ShotIntentState From, ShotIntentState To);
 /// <param name="NodeKey">흔들 노드(<c>{슬롯}/CharacterPortrait_Shake</c>).</param>
 /// <param name="AmplitudeX">가로 진폭(픽셀). 부호는 곡선 좌우 반전.</param>
 /// <param name="AmplitudeY">세로 진폭(픽셀).</param>
-/// <param name="CurveX">가로 진동 곡선. null이면 내장 기본 혹.</param>
-/// <param name="CurveY">세로 진동 곡선. null이면 내장 기본 혹.</param>
+/// <param name="SourceX">
+/// 가로 진동 재료 — <b>곡선 키 → 이징 핑퐁 → 기본 혹</b>의 우선순위를 값 하나가 담는다.
+/// 그 세 갈래를 푸는 것은 코어 <see cref="OscillationFunctions.Evaluate(in OscillationSource, float)"/>
+/// 하나이고 런타임 스펙도 같은 타입을 싣는다 — 프리뷰가 재생과 갈릴 자리가 없다.
+/// </param>
+/// <param name="SourceY">세로 진동 재료.</param>
 public sealed record MotionGestureTween(
     string NodeKey,
     double AmplitudeX,
     double AmplitudeY,
-    IReadOnlyList<CurveKey>? CurveX,
-    IReadOnlyList<CurveKey>? CurveY);
+    OscillationSource SourceX,
+    OscillationSource SourceY);
 
 /// <summary>
 /// 커맨드 하나의 시간 구간 — 자기 <c>duration</c>·<c>ease</c>로 자기가 바꾼 노드들을 끈다.
@@ -142,8 +146,8 @@ public sealed class StageMotionPlan
 
                 RectNodeState rest = state.Nodes.GetState(gesture.NodeKey);
                 state.Nodes.SetState(gesture.NodeKey, rest.WithAnchoredPosition(new Vec2(
-                    (float)(gesture.AmplitudeX * OscillationFunctions.Evaluate(KeyArray(gesture.CurveX), raw)),
-                    (float)(gesture.AmplitudeY * OscillationFunctions.Evaluate(KeyArray(gesture.CurveY), raw)))));
+                    (float)(gesture.AmplitudeX * OscillationFunctions.Evaluate(gesture.SourceX, raw)),
+                    (float)(gesture.AmplitudeY * OscillationFunctions.Evaluate(gesture.SourceY, raw)))));
             }
 
             foreach (MotionNodeTween node in tween.Nodes)
@@ -435,8 +439,8 @@ public sealed class StageMotionPlan
             StageState.NodeKeyOf(slotKey, "CharacterPortrait_Shake"),
             x,
             y,
-            OscillationKeysOf(Argument(definition, command, "xEase"), curves),
-            OscillationKeysOf(Argument(definition, command, "yEase"), curves));
+            OscillationOf(Argument(definition, command, "xEase"), curves),
+            OscillationOf(Argument(definition, command, "yEase"), curves));
     }
 
     /// <summary>적힌 값, 없으면 카탈로그 기본값. 둘 다 없으면 빈 문자열.</summary>
@@ -458,32 +462,42 @@ public sealed class StageMotionPlan
             : 0;
 
     /// <summary>
-    /// <c>@이름</c>이면 프로젝트 곡선의 키 — 단 <b>진동 곡선일 때만</b>이다.
+    /// 진동 한 축의 재료 — <b>브리지 <c>ResolveOscillation</c>과 같은 세 갈래</b>다
+    /// (2026-08-21 증보 개통):
     ///
-    /// 종류 판정은 코어 <see cref="CurveKindRules"/> 하나를 쓴다(런타임 로더와 같은 규칙).
-    /// 이동 곡선이나 표준 이징 이름이 오면 null을 돌려주고, 그 자리는 내장 기본 혹이 된다 —
-    /// <b>런타임이 하는 그대로다</b>. 한쪽만 알면 "툴에서는 되는데 재생에서 사라지는"
-    /// 곡선이 생긴다(2026-08-21 런타임 회신).
+    /// <list type="number">
+    /// <item><c>@이름</c> → 프로젝트 곡선. 단 <b>진동 종류일 때만</b>이고, 판정은 코어
+    /// <see cref="CurveKindRules"/> 하나를 쓴다(런타임 로더와 같은 규칙). 이동 곡선이면
+    /// 못 찾은 것으로 친다 — 한쪽만 알면 "툴에서는 되는데 재생에서 사라지는" 곡선이 된다</item>
+    /// <item><b>표준 이징 이름</b> → 그 이징의 핑퐁. 숫자 토큰은 안 받는다 —
+    /// <see cref="EaseKind"/>가 임의 정수로도 파싱돼 엉뚱한 이징이 되기 때문이다(런타임과 같은 방어)</item>
+    /// <item>그 밖(빈 토큰·못 읽는 낱말) → 기본 혹. <c>OutSine</c>의 핑퐁과 같은 함수다</item>
+    /// </list>
     /// </summary>
-    private static IReadOnlyList<CurveKey>? OscillationKeysOf(
-        string token, IReadOnlyList<EaseCurve>? curves)
+    private static OscillationSource OscillationOf(string token, IReadOnlyList<EaseCurve>? curves)
     {
-        if (token is not ['@', .. var name])
+        if (token is ['@', .. var name])
         {
-            return null;
+            if (curves?.FirstOrDefault(curve =>
+                    string.Equals(curve.Name, name, StringComparison.Ordinal))?.Keys is { } keys &&
+                CurveKindRules.TryClassify(KeyArray(keys)!, out CurveKind kind, out _) &&
+                kind == CurveKind.Oscillation)
+            {
+                return OscillationSource.FromCurve(KeyArray(keys)!);
+            }
+
+            return OscillationSource.Default;
         }
 
-        if (curves?.FirstOrDefault(curve =>
-                string.Equals(curve.Name, name, StringComparison.Ordinal))?.Keys is not { } keys)
-        {
-            return null;
-        }
-
-        return CurveKindRules.TryClassify(KeyArray(keys)!, out CurveKind kind, out _) &&
-            kind == CurveKind.Oscillation
-                ? keys
-                : null;
+        // 숫자로 읽히는 토큰은 이징 이름이 아니다 — Enum.TryParse가 "3"을 받아들인다.
+        return !string.IsNullOrWhiteSpace(token) &&
+            !double.TryParse(token, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out _) &&
+            Enum.TryParse(token, ignoreCase: true, out EaseKind ease)
+                ? OscillationSource.FromEase(ease)
+                : OscillationSource.Default;
     }
+
     /// <summary><c>@이름</c>이면 프로젝트 곡선의 키. 못 찾으면 null — 런타임과 같은 폴백이다.</summary>
     private static IReadOnlyList<CurveKey>? CurveKeysOf(string? ease, IReadOnlyList<EaseCurve>? curves) =>
         ease is ['@', .. var name]

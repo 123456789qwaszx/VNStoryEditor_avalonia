@@ -600,4 +600,76 @@ public class StageMotionPlanTests
             "char_rig_staging.gesture",
             ("slot", "c1"), ("xAmp", "0u"), ("yAmp", "0u"), ("duration", "12fr"))));
     }
+
+    [Fact]
+    public void gesture는_표준_이징을_핑퐁으로_받는다()
+    {
+        // 2026-08-21 증보 — 준비 과정 없이 이징 이름 하나로 몸짓이 된다.
+        StageMotionPlan plan = Plan(Command(
+            "char_rig_staging.gesture",
+            ("slot", "c1"), ("xAmp", "1u"), ("duration", "24fr"), ("xEase", "OutBack")))!;
+
+        MotionGestureTween gesture = Assert.Single(plan.Tweens).Gesture!;
+        string node = gesture.NodeKey;
+
+        // 끝점은 여전히 제자리 — 핑퐁이 그것을 수식으로 지킨다.
+        Assert.Equal(0, PositionOf(plan.Evaluate(0), node).X, 3);
+        Assert.Equal(0, PositionOf(plan.Evaluate(1.0), node).X, 3);
+
+        // 값은 코어 한 함수와 같다 — 프리뷰가 재생과 갈릴 자리가 없다.
+        float perUnit = UnitToken.PixelsPerUnit(1920f);
+
+        foreach (double t in (double[])[0.25, 0.5, 0.75])
+        {
+            Assert.Equal(
+                perUnit * OscillationFunctions.PingPong(EaseKind.OutBack, (float)t),
+                PositionOf(plan.Evaluate(t * 1.0), node).X,
+                2);
+        }
+
+        // OutBack은 가운데 양옆에서 1을 넘긴다(오버슈트) — 중간이 최대가 아니다.
+        Assert.True(
+            Math.Abs(PositionOf(plan.Evaluate(0.25), node).X) >
+            Math.Abs(PositionOf(plan.Evaluate(0.5), node).X),
+            "OutBack 핑퐁은 가운데보다 양옆이 커야 한다");
+    }
+
+    [Fact]
+    public void 기본_혹은_OutSine_핑퐁과_같은_함수다()
+    {
+        // 2026-08-21 런타임 실측 정정 — 지시서에 InOutSine이라 적었던 것이 틀렸다.
+        // 기본 혹과 같은 것은 OutSine이고 수식상 동일하다: sin(2t·π/2) = sin(πt).
+        // 덕분에 "기본"은 특별한 무엇이 아니라 선택지 하나의 별칭이 된다.
+        foreach (float t in (float[])[0f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 1f])
+        {
+            Assert.Equal(
+                OscillationFunctions.Bump(t),
+                OscillationFunctions.PingPong(EaseKind.OutSine, t),
+                5);
+        }
+
+        // 계획을 통해서도 같다 — 빈 토큰과 OutSine이 같은 자리를 그린다.
+        StageMotionPlan bare = Plan(Command("char_rig_staging.gesture",
+            ("slot", "c1"), ("yAmp", "1u"), ("duration", "24fr")))!;
+        StageMotionPlan named = Plan(Command("char_rig_staging.gesture",
+            ("slot", "c1"), ("yAmp", "1u"), ("duration", "24fr"), ("yEase", "OutSine")))!;
+
+        string node = bare.Tweens[0].Gesture!.NodeKey;
+        Assert.Equal(
+            PositionOf(bare.Evaluate(0.3), node).Y,
+            PositionOf(named.Evaluate(0.3), node).Y,
+            3);
+    }
+
+    [Fact]
+    public void 숫자_토큰은_이징으로_안_받는다()
+    {
+        // ⚠ Enum.TryParse가 "3"을 EaseKind로 받아들인다 — 런타임과 같은 방어다.
+        StageMotionPlan plan = Plan(Command(
+            "char_rig_staging.gesture",
+            ("slot", "c1"), ("xAmp", "1u"), ("duration", "24fr"), ("xEase", "3")))!;
+
+        MotionGestureTween gesture = Assert.Single(plan.Tweens).Gesture!;
+        Assert.False(gesture.SourceX.UseEase); // 기본 혹으로 물러선다
+    }
 }

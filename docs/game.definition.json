@@ -606,16 +606,16 @@
           "name": "xEase",
           "type": "oscillation",
           "required": false,
-          "description": "가로 진동 곡선(@이름). 비우면 내장 기본 혹 sin(πt) — 0→1→0 한 번"
+          "description": "가로 진동 곡선. 표준 이징 이름(OutBack·OutBounce·OutElastic…)이면 그 이징의 핑퐁(나갔다 돌아오는 왕복의 절반)이고, @이름이면 손으로 그린 진동 곡선이다. 비우면 내장 기본 혹 — OutSine의 핑퐁과 정확히 같은 함수라 거기서 손대기 시작하면 된다"
         },
         {
           "name": "yEase",
           "type": "oscillation",
           "required": false,
-          "description": "세로 진동 곡선(@이름). 비우면 내장 기본 혹"
+          "description": "세로 진동 곡선. 규칙은 xEase와 같다(표준 이징 = 핑퐁 · @이름 = 진동 곡선 · 비우면 기본 혹 = OutSine 핑퐁)"
         }
       ],
-      "notes": "제자리 몸짓 — 순변위 0이라 최종 자리가 안 바뀐다(shake·hop·jolt·surprise를 곡선으로 그린다). 변위(t) = 진폭 × 진동곡선(t)이고 축마다 곡선이 따로 간다. 표적은 CharacterPortrait_Shake라 move_by·place·넛지와 다른 노드다 — 같은 라인에 겹쳐 쓰면 '총총 뛰며 이동'이 된다. 진동 곡선은 (0,0)→(1,0)이고, 이동 곡선이나 표준 이징 이름을 적으면 런타임이 경고 후 기본 혹으로 굴러간다(CurveKindRules)."
+      "notes": "제자리 몸짓 — 순변위 0이라 최종 자리가 안 바뀐다(shake·hop·jolt·surprise를 곡선으로 그린다). 변위(t) = 진폭 × 진동곡선(t)이고 축마다 곡선이 따로 간다. 표적은 CharacterPortrait_Shake라 move_by·place·넛지와 다른 노드다 — 같은 라인에 겹쳐 쓰면 '총총 뛰며 이동'이 된다. 진동 곡선은 (0,0)→(1,0)이다. 표준 이징 이름은 핑퐁으로 받고(2026-08-21 증보), 이동 곡선(@이름)을 잘못 끼우면 내보내기가 막는다(CurveKindRules를 툴·런타임이 공유)."
     },
     {
       "id": "char_rig_staging.sibling_front",
