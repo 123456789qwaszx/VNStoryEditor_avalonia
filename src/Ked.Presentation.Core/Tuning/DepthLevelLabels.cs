@@ -16,17 +16,17 @@ namespace Ked.Presentation.Core
     public static class DepthLevelLabels
     {
         /// <summary>
-        /// 눈금. 커브 설계 구간은 [0,20]이고 라벨은 그중 [0,10]에 균등하게 얹혀 있다 —
-        /// close 위로 10레벨이 비어 있는 것은 의도다(더 붙는 클로즈업이 필요할 때 쓴다).
-        /// scale 커브는 close에 무릎이 있어 그 위로 더 가파르다(상한 2.2).
+        /// 눈금. 커브 설계 구간은 [0,20]이고 라벨이 그 위쪽을 쓴다 — 2026-08-21 소유자
+        /// 지시로 back 10 · mid 14 · front 16 · close 20으로 올렸다(종전 2.5 · 5 · 7.5 · 10).
+        /// close가 설계 구간의 끝에 서므로 그 너머는 외삽이다. far(0)만 제자리다.
         /// </summary>
         public const float Far = 0f;
-        public const float Back = 2.5f;
-        public const float Mid = 5f;
-        public const float Front = 7.5f;
-        public const float Close = 10f;
+        public const float Back = 10f;
+        public const float Mid = 14f;
+        public const float Front = 16f;
+        public const float Close = 20f;
 
-        /// <summary>실험용 눈금. close 너머 / mid와 같은 자리 — 필요하면 여기서 옮긴다.</summary>
+        /// <summary>실험용 눈금. back과 mid 사이 / mid와 같은 자리 — 필요하면 여기서 옮긴다.</summary>
         public const float Exp1 = 12f;
         public const float Exp2 = Mid;
 

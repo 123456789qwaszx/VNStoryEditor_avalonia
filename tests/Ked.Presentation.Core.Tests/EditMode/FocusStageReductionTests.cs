@@ -268,10 +268,11 @@ namespace Ked.Presentation.Core.Tests
         // ── size: 보존 ───────────────────────────────────────────────
 
         // 라벨은 level 커브 위의 눈금이다(DepthLevelLabels):
-        // far=0 · back=2.5 · mid=5 · front=7.5 · close=10, scale = 0.86 + 0.052L.
-        [TestCase("size_back", 0.99f)]
-        [TestCase("size_front", 1.25f)]
-        [TestCase("size_close", 1.38f)]
+        // far=0 · back=10 · mid=14 · front=16 · close=20 (2026-08-21 소유자 상향),
+        // scale = 0.86 + 0.052L.
+        [TestCase("size_back", 1.38f)]
+        [TestCase("size_front", 1.692f)]
+        [TestCase("size_close", 1.9f)]
         [TestCase("size_far", 0.86f)]
         public void size는_배율을_적용하고_focus를_보존한다(string command, float expectedScale)
         {
@@ -337,11 +338,11 @@ namespace Ked.Presentation.Core.Tests
         [Test]
         public void 라벨과_같은_레벨의_숫자는_같은_값으로_접힌다()
         {
-            // 라벨은 커브 위의 눈금일 뿐이다 — size_front와 size 7.5는 같은 자리다.
+            // 라벨은 커브 위의 눈금일 뿐이다 — size_front와 size 16은 같은 자리다.
             StageReducerTuning tuning = NewTuning();
 
             StageState byLabel = Fold(tuning, Cmd("slot", "c1"), Cmd("size_front", "c1", "bust"));
-            StageState byNumber = Fold(tuning, Cmd("slot", "c1"), Cmd("size", "c1", "7.5", "bust"));
+            StageState byNumber = Fold(tuning, Cmd("slot", "c1"), Cmd("size", "c1", "16", "bust"));
 
             Assert.That(byNumber.Nodes.GetState("c1/CharSlot_DepthScale").LocalScale.XY.X,
                 Is.EqualTo(byLabel.Nodes.GetState("c1/CharSlot_DepthScale").LocalScale.XY.X).Within(1e-4f));

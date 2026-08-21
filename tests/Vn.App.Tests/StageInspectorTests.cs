@@ -48,7 +48,7 @@ public sealed class StageInspectorTests
         StageSceneView view = EditableView();
 
         // 라벨이 적혀 있으면 <b>그 라벨의 눈금</b>에 선다 (2026-08-21 런타임 개통:
-        // 라벨은 커브 위의 점 이름이 됐다 — close = 레벨 10).
+        // 라벨은 커브 위의 점 이름이 됐다 — close = 레벨 20, 소유자 상향).
         Control inspector = Assert.IsAssignableFrom<Control>(
             view.BuildInspectorContent(Command(
                 "char_rig_depth.size", ("slot", "c1"), ("depth", "close"), ("duration", "10fr"))));
@@ -56,14 +56,14 @@ public sealed class StageInspectorTests
         Slider[] sliders = inspector.GetLogicalDescendants().OfType<Slider>().ToArray();
         Slider level = Assert.Single(sliders, slider => slider.Minimum == -10);
         Assert.Equal(20, level.Maximum); // 커브 설계 구간 [0,20] (2026-08-21 확장)
-        Assert.Equal(10, level.Value); // close = 눈금 10
+        Assert.Equal(20, level.Value); // close = 눈금 20
 
         // 알 수 없는 토큰이면 가운데에 서고 원문을 보인다(폴드도 거부하는 값이다).
         Control unknown = Assert.IsAssignableFrom<Control>(
             view.BuildInspectorContent(Command(
                 "char_rig_depth.size", ("slot", "c1"), ("depth", "헛토큰"), ("duration", "10fr"))));
         Assert.Equal(
-            5,
+            14, // 가운데 = mid 눈금 (2026-08-21 상향으로 14)
             Assert.Single(
                 unknown.GetLogicalDescendants().OfType<Slider>(),
                 slider => slider.Minimum == -10).Value);

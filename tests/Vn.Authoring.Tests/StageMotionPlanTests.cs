@@ -222,11 +222,12 @@ public class StageMotionPlanTests
     public void 숫자_레벨_뎁스도_라벨과_같은_커브로_접히고_흐른다()
     {
         // 2026-08-21 런타임 개통 — 깊이의 진실이 레벨 커브 하나가 됐다.
-        // 라벨은 그 커브 위의 눈금이라 `mid`와 `5`는 같은 무대여야 한다.
+        // 라벨은 그 커브 위의 눈금이라 `mid`와 `14`는 같은 무대여야 한다
+        // (2026-08-21 소유자 상향: back 10 · mid 14 · front 16 · close 20).
         StageMotionPlan byLabel = Plan(Command(
             "char_rig_depth.size", ("slot", "c1"), ("depth", "mid"), ("duration", "10fr")))!;
         StageMotionPlan byLevel = Plan(Command(
-            "char_rig_depth.size", ("slot", "c1"), ("depth", "5"), ("duration", "10fr")))!;
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "14"), ("duration", "10fr")))!;
 
         MotionNodeTween labelScale = Assert.Single(
             byLabel.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
@@ -248,10 +249,9 @@ public class StageMotionPlanTests
         Assert.NotEqual(farScale.From.LocalScale.X, middle, 3);
         Assert.NotEqual(farScale.To.LocalScale.X, middle, 3);
 
-        // 커브 설계 구간이 [0,20]으로 늘었다 (2026-08-21) — close(10) 위도 접힌다.
-        // 라벨 값은 그대로다: 무릎을 close에 두어 0~10 기울기를 안 건드렸기 때문이다.
+        // close(20)가 설계 구간 끝이 됐다 — 그 너머(22)도 끝 두 키의 할선으로 외삽되어 접힌다.
         StageMotionPlan closeUp = Plan(Command(
-            "char_rig_depth.size", ("slot", "c1"), ("depth", "20"), ("duration", "10fr")))!;
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "22"), ("duration", "10fr")))!;
         MotionNodeTween closeUpScale = Assert.Single(
             closeUp.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
 
@@ -262,7 +262,7 @@ public class StageMotionPlanTests
 
         Assert.True(
             closeUpScale.To.LocalScale.X > atCloseScale.To.LocalScale.X,
-            "20은 close(10)보다 더 붙어야 한다");
+            "22는 close(20)보다 더 붙어야 한다");
 
         // 눈금도 수치도 아닌 토큰은 여전히 거부된다 — 조용히 삼키지 않는다.
         Assert.Null(Plan(Command(

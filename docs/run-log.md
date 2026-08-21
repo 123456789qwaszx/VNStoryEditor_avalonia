@@ -4725,3 +4725,32 @@ id가 같을 수 없다.
 **테스트** — `AuthoringSessionTests.다른_폴더로_저장하면_챕터_대본_정의_에셋이_함께_이사한다`
 (불가침·`~$` 배제·정의 즉시 반영·원본 보존·같은 폴더 재저장 무이사까지 한 번에).
 **전체 1395 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 716 · Vn.App 276).
+
+---
+
+## 뎁스 눈금 상향 + size 기본 시간 0fr (소유자 지시, `(다음 커밋)`)
+
+**한 일** — 소유자 지시 둘.
+
+1. **눈금 상향**: `DepthLevelLabels`를 back 2.5→**10** · mid 5→**14** · front 7.5→**16** ·
+   close 10→**20**으로(far 0 유지). close가 설계 구간 [0,20]의 끝에 서므로 그 너머는
+   외삽이다. 실측 커브(무릎 10, 위 기울기 0.082) 기준 배율: back 1.38 · mid 1.708 ·
+   front 1.872 · close 2.2(상한). **양쪽에 같은 편집**: 정본인 런타임 저장소
+   (`ked-presentation-runtime`)의 `DepthLevelLabels.cs`에 같은 값을 넣고, 그쪽
+   `FocusStageReductionTests`의 라벨 고정값 4곳도 맞춰 갱신했다 — ⚠ 그쪽은 유니티에서
+   돌려야 하므로 **미검증**이고 소유자 확인 대상이다(zip 스냅샷 경고와 같은 결).
+   그쪽 `CharacterDepthTuningSO.ResolvePreserveFocus`의 문턱(2.5/6.5/8.5)은 옛 눈금
+   기준이지만 **사장 데이터라 안 건드렸다** — 보존 focus는 커맨드 인자가 덮어쓴다
+   (그쪽 테스트 `보존_focus는_커맨드_인자가_정한다`가 그 사실을 고정).
+2. **size 기본 시간**: 카탈로그(`docs/game.definition.json`)의 `size`·`size_far`·
+   `size_back`·`size_mid`·`size_front`·`size_close` 여섯 개 duration 기본을
+   `10fr`→**`0fr`**로. place 계열은 이미 0fr이었다. 다른 카테고리의 10fr은 그대로.
+   `size_reset`은 duration 토큰이 아니라 float 초라 대상이 아니다.
+
+**고친 테스트** — 눈금이 데이터라 기대값이 따라간다: `FocusStageReductionTests`(이쪽 —
+선형 픽스처라 back 1.38 · front 1.692 · close 1.9), `StageMotionPlanTests`(mid↔14 등가,
+외삽 표본 20→22), `StageInspectorTests`(close 슬라이더 20, 미지 토큰 가운데 14).
+
+**되돌리는 법** — `DepthLevelLabels` 상수 넷(양쪽 저장소)과 카탈로그 기본값 여섯을 되돌린다.
+
+**전체 1395 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 716 · Vn.App 276).

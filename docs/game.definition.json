@@ -1393,7 +1393,7 @@
           "name": "depth",
           "type": "depthPreset",
           "required": true,
-          "description": "깊이의 진실은 레벨 커브 하나다(2026-08-21 런타임 개통). 숫자는 그 커브 위의 레벨이고(설계 구간 0~20, 배율 상한 2.2, 밖은 끝 두 키의 할선으로 외삽되므로 음수도 유효 — 작업대 슬라이더는 -10~20), 라벨(far 0 · back 2.5 · mid 5 · front 7.5 · close 10 및 별칭)은 그 위의 눈금 이름이다. close 위는 이름 없이 비워 둔 자리이고(더 붙는 클로즈업), 배율 커브는 close에 무릎이 있어 그 위로만 가팔라진다 — 라벨 다섯의 값은 그대로다. 재생과 폴드가 같은 커브·같은 눈금표를 지난다."
+          "description": "깊이의 진실은 레벨 커브 하나다(2026-08-21 런타임 개통). 숫자는 그 커브 위의 레벨이고(설계 구간 0~20, 배율 상한 2.2, 밖은 끝 두 키의 할선으로 외삽되므로 음수도 유효 — 작업대 슬라이더는 -10~20), 라벨(far 0 · back 10 · mid 14 · front 16 · close 20 및 별칭)은 그 위의 눈금 이름이다(2026-08-21 소유자 지시로 상향 — 종전 2.5·5·7.5·10). close가 설계 구간 끝에 서므로 그 너머는 외삽이다. 재생과 폴드가 같은 커브·같은 눈금표를 지난다."
         },
         {
           "name": "preserveFocus",
@@ -1406,7 +1406,7 @@
           "name": "duration",
           "type": "duration",
           "required": false,
-          "default": "10fr"
+          "default": "0fr"
         },
         {
           "name": "ease",
@@ -1439,7 +1439,7 @@
           "name": "duration",
           "type": "duration",
           "required": false,
-          "default": "10fr"
+          "default": "0fr"
         },
         {
           "name": "ease",
@@ -1471,7 +1471,7 @@
           "name": "duration",
           "type": "duration",
           "required": false,
-          "default": "10fr"
+          "default": "0fr"
         },
         {
           "name": "ease",
@@ -1503,7 +1503,7 @@
           "name": "duration",
           "type": "duration",
           "required": false,
-          "default": "10fr"
+          "default": "0fr"
         },
         {
           "name": "ease",
@@ -1535,7 +1535,7 @@
           "name": "duration",
           "type": "duration",
           "required": false,
-          "default": "10fr"
+          "default": "0fr"
         },
         {
           "name": "ease",
@@ -1567,7 +1567,7 @@
           "name": "duration",
           "type": "duration",
           "required": false,
-          "default": "10fr"
+          "default": "0fr"
         },
         {
           "name": "ease",
