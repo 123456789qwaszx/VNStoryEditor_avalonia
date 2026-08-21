@@ -626,6 +626,7 @@ internal sealed class AuthoringSession
         string target = path ?? ProjectPath
             ?? throw new InvalidOperationException("저장할 경로가 없습니다.");
         bool firstSave = ProjectPath is null;
+        string? previousManifestPath = ProjectPath;
 
         // 새 프로젝트의 첫 저장 (W48): 에셋 폴더 규약을 프로젝트에 미리 심는다 —
         // 루트가 저장본에 들어가야 하므로 디스크에 쓰기 전에 지정한다. 오디오도 같은 구조 (W59).
@@ -637,6 +638,10 @@ internal sealed class AuthoringSession
         ProjectStore.Save(target, Project);
 
         ProjectPath = Path.GetFullPath(target);
+        // 규약 데이터 이사는 정의 읽기보다 먼저다 — 이사해 온 game.definition.json을
+        // 바로 아래 LoadBeside가 읽어야 하고, EnsureProjectFolders가 빈 뼈대를 먼저
+        // 깔면 "있는 파일은 불가침"에 걸려 진짜 정의가 영영 못 들어온다.
+        int carried = CarryProjectData(previousManifestPath, ProjectPath);
         _savedSnapshot = ProjectSnapshotCodec.Encode(Project);
         Definition = GameDefinition.LoadBeside(ProjectPath);
         AppSettingsService.SaveRecentProject(ProjectPath);
@@ -644,8 +649,107 @@ internal sealed class AuthoringSession
         bool provisioned = EnsureProjectFolders();
 
         StatusMessage = $"{Path.GetFileName(ProjectPath)}에 저장했습니다." +
+            (carried > 0 ? $" 이전 폴더의 챕터·대본·정의·에셋 {carried}개 파일을 함께 복사했습니다." : string.Empty) +
             (provisioned ? " 없던 에셋 폴더·기본 튜닝을 준비했습니다." : string.Empty);
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
+    }
+
+    /// <summary>
+    /// 다른 폴더로 저장 = 프로젝트 이사 (2026-08-21 소유자 보고). 매니페스트만 옮기면
+    /// 프로젝트가 찢어진다: 판(StoryFile)·대본·작가 화자는 매니페스트에 실려 따라오는데,
+    /// 챕터 워크북·에피소드 대본·정의 파일·에셋은 <b>폴더 규약</b>이라 옛 집에 남는다.
+    /// 그 반쪽 상태가 "새 프로젝트인데 연출 그래프에 이전 프로젝트의 챕터가 보인다"의
+    /// 정체였다 — 챕터 목록은 새(빈) chapters/를 읽어 비어 있는데, 옛 챕터의 판은 설정
+    /// 노드(조건·아이템·화자)까지 달고 그대로 서 있었다.
+    ///
+    /// 복사이지 이동이 아니다(옛 매니페스트는 계속 그 폴더에서 산다). 새 자리에 이미 있는
+    /// 파일은 불가침이고, 엑셀 잠금 임시 파일(~$)은 데이터가 아니라 거른다. `exported/`는
+    /// 산출물이라 안 옮긴다 — 다음 재읽기의 자동 내보내기가 새로 만든다.
+    /// </summary>
+    /// <returns>실제로 복사한 파일 수. 같은 폴더 재저장·첫 저장은 0이다.</returns>
+    private int CarryProjectData(string? previousManifestPath, string targetManifestPath)
+    {
+        if (previousManifestPath is null)
+        {
+            return 0;
+        }
+
+        string? fromRoot = Path.GetDirectoryName(Path.GetFullPath(previousManifestPath));
+        string? toRoot = Path.GetDirectoryName(targetManifestPath);
+
+        if (fromRoot is null || toRoot is null ||
+            string.Equals(fromRoot, toRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        int copied = 0;
+
+        copied += CopyMissing(
+            ChapterLibrary.FolderFor(previousManifestPath), ChapterLibrary.FolderFor(targetManifestPath));
+        copied += CopyMissing(
+            EpisodeLibrary.FolderFor(previousManifestPath), EpisodeLibrary.FolderFor(targetManifestPath));
+        copied += CopyMissingFile(
+            GameDefinition.PathFor(previousManifestPath), GameDefinition.PathFor(targetManifestPath));
+
+        foreach (string? root in new[]
+        {
+            Project.AssetRoots.BackgroundsPath,
+            Project.AssetRoots.PortraitsPath,
+            Project.AssetRoots.BgmPath,
+            Project.AssetRoots.SfxPath,
+            string.IsNullOrWhiteSpace(Definition.RuntimeTuningPath)
+                ? RuntimeTuningLibrary.DefaultFolderName
+                : Definition.RuntimeTuningPath
+        })
+        {
+            // 절대 경로 루트는 이사와 무관하게 그대로 유효하다 — 옮길 것이 없다.
+            if (string.IsNullOrWhiteSpace(root) || Path.IsPathRooted(root))
+            {
+                continue;
+            }
+
+            copied += CopyMissing(
+                AssetRootSettings.ResolveFrom(previousManifestPath, root),
+                AssetRootSettings.ResolveFrom(targetManifestPath, root));
+        }
+
+        return copied;
+    }
+
+    private static int CopyMissing(string? sourceFolder, string? destinationFolder)
+    {
+        if (sourceFolder is null || destinationFolder is null || !Directory.Exists(sourceFolder))
+        {
+            return 0;
+        }
+
+        int copied = 0;
+
+        foreach (string file in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
+        {
+            if (Path.GetFileName(file).StartsWith("~$", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            copied += CopyMissingFile(
+                file, Path.Combine(destinationFolder, Path.GetRelativePath(sourceFolder, file)));
+        }
+
+        return copied;
+    }
+
+    private static int CopyMissingFile(string source, string destination)
+    {
+        if (!File.Exists(source) || File.Exists(destination))
+        {
+            return 0;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        File.Copy(source, destination);
+        return 1;
     }
 
     /// <summary>

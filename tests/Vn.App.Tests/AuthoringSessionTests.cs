@@ -483,6 +483,60 @@ public class AuthoringSessionTests
     }
 
     [Fact]
+    public void 다른_폴더로_저장하면_챕터_대본_정의_에셋이_함께_이사한다()
+    {
+        // 2026-08-21 소유자 보고: [다른 이름으로…]로 새 폴더에 저장해 "새 프로젝트"를
+        // 만들면, 판·작가 화자는 매니페스트에 실려 따라오는데 챕터 워크북·대본·정의는
+        // 옛 폴더에 남아 프로젝트가 찢어졌다 — 연출 그래프에는 옛 챕터의 판이 보이는데
+        // 챕터 목록은 비어 있었다. 이제 규약 데이터가 함께 복사된다.
+        string first = TempDirectory();
+        string second = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(first, "project.vnproject.json"));
+
+            Directory.CreateDirectory(Path.Combine(first, "chapters"));
+            File.WriteAllText(Path.Combine(first, "chapters", "ch01.xlsx"), "챕터 워크북");
+            File.WriteAllText(Path.Combine(first, "chapters", "~$ch01.xlsx"), "엑셀 잠금 임시");
+            Directory.CreateDirectory(Path.Combine(first, "episodes", "ch01"));
+            File.WriteAllText(Path.Combine(first, "episodes", "ch01", "ep01.xlsx"), "대본");
+            File.WriteAllText(Path.Combine(first, "game.definition.json"),
+                """{"variables":[{"name":"trust","type":"number"}],"speakers":[]}""");
+            File.WriteAllBytes(Path.Combine(first, "assets", "backgrounds", "room.png"), [1]);
+
+            // 새 자리에 이미 있는 파일은 불가침이다.
+            Directory.CreateDirectory(Path.Combine(second, "chapters"));
+            File.WriteAllText(Path.Combine(second, "chapters", "ch01.xlsx"), "선주민");
+
+            session.Save(Path.Combine(second, "moved.vnproject.json"));
+
+            Assert.Equal("선주민", File.ReadAllText(Path.Combine(second, "chapters", "ch01.xlsx")));
+            Assert.True(File.Exists(Path.Combine(second, "episodes", "ch01", "ep01.xlsx")));
+            Assert.True(File.Exists(Path.Combine(second, "assets", "backgrounds", "room.png")));
+            Assert.False(File.Exists(Path.Combine(second, "chapters", "~$ch01.xlsx")));
+
+            // 이사해 온 정의를 곧바로 읽는다 — 빈 뼈대가 먼저 깔려 진짜 정의를 막으면 안 된다.
+            Assert.Contains(session.Definition.Variables, variable =>
+                string.Equals(variable.Name, "trust", StringComparison.Ordinal));
+            Assert.Contains("함께 복사했습니다", session.StatusMessage);
+
+            // 복사이지 이동이 아니다 — 옛 매니페스트는 계속 그 폴더에서 산다.
+            Assert.True(File.Exists(Path.Combine(first, "chapters", "ch01.xlsx")));
+
+            // 같은 폴더 재저장은 이사가 아니다.
+            session.Save();
+            Assert.DoesNotContain("함께 복사했습니다", session.StatusMessage);
+        }
+        finally
+        {
+            Directory.Delete(first, recursive: true);
+            Directory.Delete(second, recursive: true);
+        }
+    }
+
+    [Fact]
     public void 오디오_가져오기는_복제하고_저장_후_다시_열어도_루트가_남는다()
     {
         string directory = TempDirectory();
