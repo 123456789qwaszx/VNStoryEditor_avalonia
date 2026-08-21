@@ -43,11 +43,12 @@ public sealed class StageInspectorTests
     }
 
     [Fact]
-    public void 뎁스는_레벨_슬라이더로_직접_조절한다() => HeadlessUi.Run(() =>
+    public void 뎁스는_레벨_슬라이더_하나로_조절하고_라벨은_그_눈금이다() => HeadlessUi.Run(() =>
     {
         StageSceneView view = EditableView();
 
-        // 프리셋이 적혀 있어도 작업대는 레벨 슬라이더를 낸다 — 끌면 수치가 된다.
+        // 라벨이 적혀 있으면 <b>그 라벨의 눈금</b>에 선다 (2026-08-21 런타임 개통:
+        // 라벨은 커브 위의 점 이름이 됐다 — close = 레벨 10).
         Control inspector = Assert.IsAssignableFrom<Control>(
             view.BuildInspectorContent(Command(
                 "char_rig_depth.size", ("slot", "c1"), ("depth", "close"), ("duration", "10fr"))));
@@ -55,7 +56,17 @@ public sealed class StageInspectorTests
         Slider[] sliders = inspector.GetLogicalDescendants().OfType<Slider>().ToArray();
         Slider level = Assert.Single(sliders, slider => slider.Minimum == -10);
         Assert.Equal(10, level.Maximum);
-        Assert.Equal(5, level.Value); // 프리셋이면 가운데에서 출발한다(끌기 전엔 안 쓴다)
+        Assert.Equal(10, level.Value); // close = 눈금 10
+
+        // 알 수 없는 토큰이면 가운데에 서고 원문을 보인다(폴드도 거부하는 값이다).
+        Control unknown = Assert.IsAssignableFrom<Control>(
+            view.BuildInspectorContent(Command(
+                "char_rig_depth.size", ("slot", "c1"), ("depth", "헛토큰"), ("duration", "10fr"))));
+        Assert.Equal(
+            5,
+            Assert.Single(
+                unknown.GetLogicalDescendants().OfType<Slider>(),
+                slider => slider.Minimum == -10).Value);
 
         // 이미 레벨이 적혀 있으면 그 자리에 선다.
         Control written = Assert.IsAssignableFrom<Control>(

@@ -156,9 +156,9 @@ namespace Ked.Presentation.Core
             StageState state,
             string slotKey,
             string characterKey,
-            string depthPresetKey,
+            string depthToken,
             string preserveFocusToken,
-            DepthPresetSetDto depthPresets,
+            DepthLevelTuningDto depthLevel,
             FocusTuningBodyDto focusTuning,
             out StageNodeClaim depthYClaim,
             out StageNodeClaim depthScaleClaim,
@@ -167,18 +167,25 @@ namespace Ked.Presentation.Core
             depthYClaim = default;
             depthScaleClaim = default;
 
-            if (depthPresets == null)
+            // 깊이의 진실은 level 커브 하나다. 토큰은 숫자이거나 라벨이고,
+            // 라벨은 커브 위에서 쓸 수치를 고르는 이름표일 뿐이다(DepthLevelLabels).
+            // 그래서 재생·정지 프레임·툴 프리뷰가 같은 커브 한 장을 지난다.
+            if (!NumberToken.TryParseFloat(depthToken, out float level) &&
+                !DepthLevelLabels.TryGetLevel(depthToken, out level))
             {
-                reason = "tuning에 depth 프리셋이 없다";
+                reason = $"depth 토큰 '{depthToken}'을 모른다 (숫자 레벨도, 라벨도 아니다)";
                 return false;
             }
 
-            if (!depthPresets.TryGet(depthPresetKey, out DepthPresetDto preset))
+            if (depthLevel == null ||
+                !depthLevel.TryResolve(level, out float levelY, out float levelScale))
             {
-                // 숫자 레벨(size c1 5)이 여기로 온다 — 커브 폴드는 미지원이다.
-                reason = $"depth 프리셋 '{depthPresetKey}'를 모른다 (레벨 수치는 커브 폴드 미지원)";
+                reason = $"depth 레벨 {level}을 풀 커브가 tuning에 없다";
                 return false;
             }
+
+            Vec2 rawDepthYSource = new(0f, levelY);
+            float depthScaleSource = levelScale;
 
             if (!FocusPresetName.TryNormalizeToken(preserveFocusToken, out string preserveName))
             {
@@ -206,8 +213,8 @@ namespace Ked.Presentation.Core
                 return false;
             }
 
-            Vec2 rawDepthY = preset.depthY?.ToVec2() ?? Vec2.Zero;
-            Vec2 targetScale = new(preset.depthScale, preset.depthScale);
+            Vec2 rawDepthY = rawDepthYSource;
+            Vec2 targetScale = new(depthScaleSource, depthScaleSource);
 
             Vec2 solvedDepthY = SettledFocusMath.SolveDepthYPreservingFocus(
                 chain,

@@ -86,5 +86,46 @@ namespace Ked.Presentation.Core
 
             return h00 * k0.Value + h10 * m0 + h01 * k1.Value + h11 * m1;
         }
+
+        /// <summary>
+        /// 구간 밖을 **끝 두 키의 할선(secant)**으로 외삽한다 — 런타임
+        /// CharacterDepthLevelTuningSet.EvaluateUnclamped와 같은 규칙이다.
+        ///
+        /// ⚠ 탄젠트가 아니라 할선이다. 지금 덤프의 yCurve가 Linear라
+        /// outSlope(-56)과 할선((-440-120)/10 = -56)이 우연히 같지만,
+        /// 커브를 손보는 날 조용히 갈린다.
+        ///
+        /// ⚠ WrapMode(m_PreInfinity/m_PostInfinity)는 보지 않는다 —
+        /// 런타임이 그걸 쓰지 않는다. 흉내 내면 재생과 갈린다.
+        /// </summary>
+        public static float EvaluateUnclamped(CurveKey[] keys, float t)
+        {
+            if (keys == null || keys.Length == 0)
+                return 0f;
+
+            if (keys.Length == 1)
+                return keys[0].Value;
+
+            CurveKey first = keys[0];
+            CurveKey last = keys[keys.Length - 1];
+
+            if (t < first.Time)
+                return first.Value + Secant(first, keys[1]) * (t - first.Time);
+
+            if (t > last.Time)
+                return last.Value + Secant(keys[keys.Length - 2], last) * (t - last.Time);
+
+            return Evaluate(keys, t);
+        }
+
+        private static float Secant(CurveKey a, CurveKey b)
+        {
+            float dt = b.Time - a.Time;
+
+            if (Math.Abs(dt) <= 0.0001f)
+                return 0f;
+
+            return (b.Value - a.Value) / dt;
+        }
     }
 }

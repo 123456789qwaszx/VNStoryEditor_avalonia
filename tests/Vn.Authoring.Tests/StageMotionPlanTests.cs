@@ -217,4 +217,39 @@ public class StageMotionPlanTests
         Assert.Equal(eased, half, 2);
         Assert.NotEqual(Math.Round(linear, 2), Math.Round(half, 2));
     }
+
+    [Fact]
+    public void 숫자_레벨_뎁스도_라벨과_같은_커브로_접히고_흐른다()
+    {
+        // 2026-08-21 런타임 개통 — 깊이의 진실이 레벨 커브 하나가 됐다.
+        // 라벨은 그 커브 위의 눈금이라 `mid`와 `5`는 같은 무대여야 한다.
+        StageMotionPlan byLabel = Plan(Command(
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "mid"), ("duration", "10fr")))!;
+        StageMotionPlan byLevel = Plan(Command(
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "5"), ("duration", "10fr")))!;
+
+        MotionNodeTween labelScale = Assert.Single(
+            byLabel.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
+        MotionNodeTween levelScale = Assert.Single(
+            byLevel.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
+        Assert.Equal(labelScale.To.LocalScale.X, levelScale.To.LocalScale.X, 4);
+
+        // 설계 구간 밖도 접힌다 — 끝 두 키의 할선으로 외삽되기 때문이다.
+        StageMotionPlan far = Plan(Command(
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "-3.5"), ("duration", "10fr")))!;
+        MotionNodeTween farScale = Assert.Single(
+            far.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
+        Assert.True(
+            farScale.To.LocalScale.X < labelScale.To.LocalScale.X,
+            "음수 레벨은 mid보다 더 작아야 한다(뒤로 물러난다)");
+
+        // 시간도 흐른다 — 중간 프레임이 출발도 도착도 아니다.
+        float middle = far.Evaluate(0.2).Nodes.GetState(farScale.NodeKey).LocalScale.X;
+        Assert.NotEqual(farScale.From.LocalScale.X, middle, 3);
+        Assert.NotEqual(farScale.To.LocalScale.X, middle, 3);
+
+        // 눈금도 수치도 아닌 토큰은 여전히 거부된다 — 조용히 삼키지 않는다.
+        Assert.Null(Plan(Command(
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "헛토큰"), ("duration", "10fr"))));
+    }
 }

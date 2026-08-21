@@ -654,37 +654,59 @@ internal sealed class StageSceneView : UserControl
         PresentationCommandParameter parameter,
         string written)
     {
-        bool isLevel = double.TryParse(
-            written,
-            System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out double level);
+        // 적힌 것이 수치면 그 자리, 라벨(far·mid…)이면 <b>그 라벨의 눈금</b>이다
+        // (2026-08-21 런타임 개통: 라벨은 커브 위의 점 이름이 됐다 — DepthLevelLabels).
+        // 둘 다 아니면 폴드도 거부하는 토큰이라 가운데에 세우고 원문을 보인다.
+        bool known =
+            double.TryParse(
+                written,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double level) ||
+            TryLabelLevel(written, out level);
 
         host.Children.Add(BuildMotionSlider(
             presentationNodeId,
             command.CommandId,
-            label: "레벨",
+            label: "뎁스",
             argumentName: parameter.Name,
-            value: isLevel ? level : 5,
+            value: known ? level : DepthLevelLabels.Mid,
             minimum: -10,
             maximum: 10,
             tick: 0.5,
-            format: value => isLevel || Math.Abs(value - 5) > 0.001
-                ? value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)
-                : $"({written})",
+            // 눈금에 정확히 선 값은 이름으로도 읽힌다 — 슬라이더 하나가 두 표기를 겸한다.
+            format: value => !known && Math.Abs(value - DepthLevelLabels.Mid) < 0.001
+                ? "(" + written + ")"
+                : FormatDepthLevel(value),
             token: value => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)));
+    }
 
-        if (isLevel)
+    /// <summary>라벨 토큰(far·mid·별칭)의 눈금 — 판정은 코어 <see cref="DepthLevelLabels"/> 하나다.</summary>
+    private static bool TryLabelLevel(string token, out double level)
+    {
+        if (DepthLevelLabels.TryGetLevel(token, out float found))
         {
-            host.Children.Add(new TextBlock
-            {
-                Text = "레벨 수치는 런타임이 커브로 풀지만, 프리뷰 폴드는 아직 프리셋만 압니다 — 무대에 \"반영 안 됨\"으로 섭니다.",
-                FontSize = 10,
-                Opacity = 0.6,
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 260
-            });
+            level = found;
+            return true;
         }
+
+        level = 0;
+        return false;
+    }
+
+    /// <summary>눈금에 정확히 선 값은 이름을 함께 보인다(5 → "5 (mid)").</summary>
+    private static string FormatDepthLevel(double level)
+    {
+        string number = level.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+        string name = Math.Abs(level - DepthLevelLabels.Far) < 0.001 ? "far"
+            : Math.Abs(level - DepthLevelLabels.Back) < 0.001 ? "back"
+            : Math.Abs(level - DepthLevelLabels.Mid) < 0.001 ? "mid"
+            : Math.Abs(level - DepthLevelLabels.Front) < 0.001 ? "front"
+            : Math.Abs(level - DepthLevelLabels.Close) < 0.001 ? "close"
+            : string.Empty;
+
+        return name.Length > 0 ? number + " (" + name + ")" : number;
     }
 
     /// <summary>

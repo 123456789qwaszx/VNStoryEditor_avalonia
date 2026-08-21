@@ -45,7 +45,7 @@ namespace Ked.Presentation.Core
 
             if (!SetDepthStageReduction.TryReduce(
                     state, slotKey, characterKey, depthPresetKey, preserveFocusToken,
-                    tuning.DepthPresets, tuning.FocusTuning,
+                    tuning.DepthLevel, tuning.FocusTuning,
                     out StageNodeClaim depthYClaim, out StageNodeClaim depthScaleClaim,
                     out reason))
             {

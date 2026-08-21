@@ -104,7 +104,7 @@ public sealed class RuntimeTuningLibrary
 
             if (HasDepthPresets)
             {
-                parts.Add("depth 프리셋");
+                parts.Add("depth 커브");
             }
 
             if (HasFocusTuning)
@@ -194,11 +194,14 @@ public sealed class RuntimeTuningLibrary
             guidance: "리그 스키마가 없어 슬롯 좌표를 세울 수 없습니다(해당 축은 '반영 안 됨'으로 남습니다).");
         tuning.RigSchemas = rigSchemas;
 
-        // ── depth 프리셋 (presets/depth.json) ──
+        // ── depth 커브 (presets/depth.json) ──
+        // 2026-08-21 저쪽 개통: 깊이의 진실은 <b>레벨 커브 하나</b>다. 라벨(far·mid…)은
+        // 그 커브 위의 눈금이 됐고(DepthLevelLabels), presets 표는 사장 데이터로 남았다.
         DepthTuningFileDto? depth = ReadFile<DepthTuningFileDto>(
             root, Path.Combine("presets", "depth.json"), problems,
             guidance: "size 계열(뎁스)이 '반영 안 됨'으로 남습니다.");
-        tuning.DepthPresets = depth?.MonoBehaviour?.presets;
+        tuning.DepthLevel = depth?.MonoBehaviour?.level;
+        tuning.DepthPresets = depth?.MonoBehaviour?.presets; // 읽지 않는다 — 로더 호환용
 
         // ── focus 튜닝 (presets/focus-tuning.json) ──
         FocusTuningFileDto? focus = ReadFile<FocusTuningFileDto>(
@@ -247,7 +250,7 @@ public sealed class RuntimeTuningLibrary
             tuning,
             rigCount: rigSchemas?.rigs?.Count ?? 0,
             portraitDimensionCount: portraits?.entries?.Count ?? 0,
-            hasDepthPresets: tuning.DepthPresets is not null,
+            hasDepthPresets: tuning.DepthLevel is not null, // 깊이의 근거는 이제 레벨 커브다
             hasFocusTuning: tuning.FocusTuning is not null,
             surfaceLayouts,
             problems);

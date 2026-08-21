@@ -23,8 +23,15 @@ namespace Ked.Presentation.Core
         /// </summary>
         public RoleAnchorTuningBodyDto RoleAnchors;
 
-        /// <summary>presets/depth.json — size 계열 폴드. 없으면 size는 Unhandled.</summary>
+        /// <summary>
+        /// presets/depth.json의 프리셋 표. **size 폴드는 더 이상 읽지 않는다** —
+        /// 라벨은 level 커브 위의 눈금이 됐다(DepthLevelLabels). 기존 로더가 계속
+        /// 컴파일되도록 필드만 남겨 둔다. 사본 동기화 후 지워도 된다.
+        /// </summary>
         public DepthPresetSetDto DepthPresets;
+
+        /// <summary>presets/depth.json의 "level" 커브 — 숫자 레벨(size c1 5) 폴드. 없으면 그 커맨드만 Unhandled.</summary>
+        public DepthLevelTuningDto DepthLevel;
 
         /// <summary>presets/focus-tuning.json — place/size의 focus 오프셋. 없으면 base 0으로 접는다.</summary>
         public FocusTuningBodyDto FocusTuning;

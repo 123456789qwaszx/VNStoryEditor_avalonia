@@ -20,9 +20,11 @@ namespace Ked.Presentation.Core
     public sealed class DepthTuningBodyDto
     {
         public DepthPresetSetDto presets;
-
-        // level(AnimationCurve)은 담지 않는다 — 커브 폴드는 미지원이다.
-        // 실제 원문이 숫자 레벨을 쓰므로(size c1 5 등) 그 커맨드는 Unhandled로 남는다.
+        /// <summary>
+        /// 숫자 레벨(size c1 5)이 쓰는 커브. 프리셋 표와는 **다른 데이터**다 —
+        /// 라벨(far·mid…)은 이 커브 위의 점이 아니라 손으로 튜닝한 별도 값이다.
+        /// </summary>
+        public DepthLevelTuningDto level;
     }
 
     [Serializable]
@@ -65,6 +67,74 @@ namespace Ked.Presentation.Core
         public Float2Dto preserveFocusOffset;
     }
 
+
+    // ── 레벨 커브 (presets/depth.json 의 "level") ─────────────────────
+    //
+    // Unity AnimationCurve의 직렬화 모양 그대로다: { "m_Curve": [ {time,value,inSlope,outSlope}, … ] }.
+    // m_PreInfinity/m_PostInfinity(WrapMode)는 **읽지 않는다** — 런타임이 그걸 쓰지 않고
+    // 직접 외삽하기 때문이다(CharacterDepthLevelTuningSet.EvaluateUnclamped).
+    // 흉내 내면 재생과 갈린다.
+
+    [Serializable]
+    public sealed class DepthLevelTuningDto
+    {
+        public AnimationCurveDto yCurve;
+        public AnimationCurveDto scaleCurve;
+
+        // farPreserveFocus 등 보존 프리셋은 담지 않는다 — 프리셋 경로와 같은 이유로
+        // 런타임이 커맨드 인자로 덮어쓰는 사장 데이터다(SetDepthStageReduction 주석 참조).
+
+        public bool TryResolve(float level, out float depthY, out float depthScale)
+        {
+            depthY = 0f;
+            depthScale = 0f;
+
+            CurveKey[] yKeys = yCurve?.ToKeys();
+            CurveKey[] scaleKeys = scaleCurve?.ToKeys();
+
+            if (yKeys == null || yKeys.Length == 0 || scaleKeys == null || scaleKeys.Length == 0)
+                return false;
+
+            depthY = CurveFunctions.EvaluateUnclamped(yKeys, level);
+
+            // 런타임과 같은 하한(Mathf.Max(0.0001f, …)).
+            float rawScale = CurveFunctions.EvaluateUnclamped(scaleKeys, level);
+            depthScale = rawScale < 0.0001f ? 0.0001f : rawScale;
+
+            return true;
+        }
+    }
+
+    [Serializable]
+    public sealed class AnimationCurveDto
+    {
+        public List<KeyframeDto> m_Curve = new();
+
+        public CurveKey[] ToKeys()
+        {
+            if (m_Curve == null || m_Curve.Count == 0)
+                return null;
+
+            CurveKey[] keys = new CurveKey[m_Curve.Count];
+
+            for (int i = 0; i < m_Curve.Count; i++)
+            {
+                KeyframeDto k = m_Curve[i];
+                keys[i] = new CurveKey(k.time, k.value, k.inSlope, k.outSlope);
+            }
+
+            return keys;
+        }
+    }
+
+    [Serializable]
+    public sealed class KeyframeDto
+    {
+        public float time;
+        public float value;
+        public float inSlope;
+        public float outSlope;
+    }
     [Serializable]
     public sealed class FocusTuningFileDto
     {
