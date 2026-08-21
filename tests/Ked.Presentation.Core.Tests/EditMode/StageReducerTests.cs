@@ -374,6 +374,22 @@ namespace Ked.Presentation.Core.Tests
         // ── 이동 계열 (1u = 기준 폭 / 48) ────────────────────────────
 
         [Test]
+        public void nudge의_마지막_이징_인자는_폴드에_무해하다()
+        {
+            // 이징은 경로의 모양만 정한다 — 종점은 그대로다.
+            // 지키는 것은 인자 자리다: 이징 토큰이 붙어도 거리를 읽는 인덱스가 밀리면 안 된다.
+            StageState plain = Fold(
+                Cmd("slot", "c1"), Cmd("left", "c1", "2u", "8fr"));
+
+            StageState eased = Fold(
+                Cmd("slot", "c1"), Cmd("left", "c1", "2u", "8fr", "InOutSine"));
+
+            Assert.That(eased.Unhandled, Is.Empty);
+            Assert.That(eased.Nodes.GetState("c1/CharSlot_Track_X").AnchoredPosition.X,
+                Is.EqualTo(plain.Nodes.GetState("c1/CharSlot_Track_X").AnchoredPosition.X).Within(Eps));
+        }
+
+        [Test]
         public void nudge는_1u를_기준_폭에서_파생한다()
         {
             // 브리지: left/right → Track_X, up/down → Track_Y. unitToken은 필수.
@@ -386,24 +402,6 @@ namespace Ked.Presentation.Core.Tests
                 Is.EqualTo(-80f).Within(Eps));
             Assert.That(state.Nodes.GetState("c1/CharSlot_Track_Y").AnchoredPosition.Y,
                 Is.EqualTo(60f).Within(Eps));
-        }
-
-        [Test]
-        public void move_per는_프레임_수에_1u를_곱하고_실패하면_8프레임이다()
-        {
-            // 브리지: ParseFrames(frameToken, 폴백 8f), 기본 "1fr".
-            StageState threeFrames = Fold(
-                Cmd("slot", "c1"), Cmd("right_per", "c1", "3fr"));
-
-            Assert.That(threeFrames.Nodes.GetState("c1/CharSlot_Track_X").AnchoredPosition.X,
-                Is.EqualTo(3f * PixelsPerUnit).Within(Eps));
-
-            StageState fallback = Fold(
-                Cmd("slot", "c1"), Cmd("down_per", "c1", "이상한토큰"));
-
-            Assert.That(fallback.Nodes.GetState("c1/CharSlot_Track_Y").AnchoredPosition.Y,
-                Is.EqualTo(-8f * PixelsPerUnit).Within(Eps));
-            Assert.That(fallback.Unhandled, Is.Empty, "폴백은 브리지 규약이지 실패가 아니다");
         }
 
         [Test]

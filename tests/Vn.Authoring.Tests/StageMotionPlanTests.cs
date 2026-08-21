@@ -468,25 +468,26 @@ public class StageMotionPlanTests
     }
 
     [Fact]
-    public void 등속_이동은_frames_한_칸이_거리이자_시간이다()
+    public void 넛지의_이징_칸이_계획에_실린다()
     {
-        // ⚠ `frames`는 타입 이름이 `duration`과 갈려 있을 뿐 시간이다(12fr = 0.5초 동안
-        // 12u). 이걸 안 세는 바람에 등속 이동이 프리뷰에서만 스냅했다 — 2026-08-21 수리.
-        StageMotionPlan plan = Plan(Command(
-            "char_rig_entrance.left_per", ("slot", "c1"), ("frames", "12fr")))!;
+        // 2026-08-21 런타임이 넛지 4종에도 이징을 열었다(항수 3→4) — place·size·shot·
+        // scale과 같은 마지막 위치 인자다.
+        StageMotionPlan eased = Plan(Command(
+            "char_rig_entrance.left",
+            ("slot", "c1"), ("distance", "3u"), ("duration", "12fr"), ("ease", "InOutSine")))!;
 
-        MotionTween tween = Assert.Single(plan.Tweens);
-        Assert.Equal(0.5, tween.DurationSeconds, 3); // 12fr / 24 = 0.5초
+        Assert.Equal("InOutSine", Assert.Single(eased.Tweens).Ease);
 
-        MotionNodeTween node = Assert.Single(
-            tween.Nodes, item => item.NodeKey.EndsWith("CharSlot_Track_X", StringComparison.Ordinal));
+        // 안 적으면 null — 런타임 스펙 기본(OutCubic)으로 물러선다(토큰도 안 나간다).
+        StageMotionPlan bare = Plan(Command(
+            "char_rig_entrance.left", ("slot", "c1"), ("distance", "3u"), ("duration", "12fr")))!;
 
-        // 12u만큼 왼쪽으로 — 거리도 frames가 정한다.
-        Assert.Equal(-12 * 40, node.To.AnchoredPosition.X - node.From.AnchoredPosition.X, 1);
+        Assert.Null(Assert.Single(bare.Tweens).Ease);
 
-        // 중간은 양 끝이 아니다.
-        Vec2 middle = PositionOf(plan.Evaluate(0.25), node.NodeKey);
-        Assert.NotEqual(node.From.AnchoredPosition, middle);
-        Assert.NotEqual(node.To.AnchoredPosition, middle);
+        // 이징이 다르면 중간 프레임의 자리도 다르다 — 모양이 실제로 곡선을 탄다.
+        string node = Assert.Single(eased.Tweens[0].Nodes).NodeKey;
+        Assert.NotEqual(
+            PositionOf(eased.Evaluate(0.15), node).X,
+            PositionOf(bare.Evaluate(0.15), node).X);
     }
 }

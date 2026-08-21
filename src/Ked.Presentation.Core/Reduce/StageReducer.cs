@@ -183,12 +183,6 @@ namespace Ked.Presentation.Core
                 case "up":    return ApplyNudge(state, cmd, tuning, 0f, 1f, "CharSlot_Track_Y", out reason);
                 case "down":  return ApplyNudge(state, cmd, tuning, 0f, -1f, "CharSlot_Track_Y", out reason);
 
-                // move-per-frame (거리 = 1u × 프레임 수. 브리지: ParseFrames(token, 폴백 8), 기본 "1fr")
-                case "left_per":  return ApplyMovePer(state, cmd, tuning, -1f, 0f, "CharSlot_Track_X", out reason);
-                case "right_per": return ApplyMovePer(state, cmd, tuning, 1f, 0f, "CharSlot_Track_X", out reason);
-                case "up_per":    return ApplyMovePer(state, cmd, tuning, 0f, 1f, "CharSlot_Track_Y", out reason);
-                case "down_per":  return ApplyMovePer(state, cmd, tuning, 0f, -1f, "CharSlot_Track_Y", out reason);
-
                 // staging 이동/스케일/회전
                 case "move_by":      return ApplyMoveBy(state, cmd, tuning, out reason);
                 case "move_reset":   return ApplyMoveReset(state, cmd, out reason);

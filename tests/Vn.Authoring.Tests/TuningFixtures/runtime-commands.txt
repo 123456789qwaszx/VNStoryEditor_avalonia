@@ -46,14 +46,12 @@ char_visual_outer_rim
 char_visual_silhouette
 debug_log
 down
-down_per
 face
 fade_in
 fade_out
 focus_clear
 focus_on
 left
-left_per
 mirror
 move_by
 move_reset
@@ -74,7 +72,6 @@ place_top
 place_tr
 pose
 right
-right_per
 rotate_by
 rotate_reset
 scale_by
@@ -137,5 +134,4 @@ tx_vstrip_open
 tx_vstrip_out
 ui_patch
 up
-up_per
 voice

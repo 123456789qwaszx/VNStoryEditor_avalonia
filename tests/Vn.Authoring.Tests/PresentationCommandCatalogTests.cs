@@ -20,7 +20,12 @@ public class PresentationCommandCatalogTests
         //
         // 2026-08-21: 런타임이 회전 3종을 되살렸다(rotate_by · rotate_reset · char_rotate_to).
         // 126 → 129. 카테고리는 그대로 15다 — 셋 다 살아 있는 계열에 붙었다.
-        Assert.Equal(129, catalog.Definitions.Count);
+        //
+        // 2026-08-21: 등속 이동 4종 폐지(left_per·right_per·up_per·down_per) → 125.
+        // 속도가 1u/프레임에 잠겨 있어 "프레임당 특정 거리"를 못 냈고, 같은 노드에 같은
+        // 클레임을 거는 넛지가 그 일을 다 한다(소유자 결정 · 실사용 0건).
+        // 카테고리는 15 그대로 — char_rig_entrance에 show·넛지 4종이 남았다.
+        Assert.Equal(125, catalog.Definitions.Count);
         Assert.Equal(15, catalog.Categories.Count);
         Assert.Same(catalog, PresentationCommandCatalog.For(definition: null));
     }

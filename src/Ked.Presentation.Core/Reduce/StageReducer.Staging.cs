@@ -27,23 +27,6 @@ namespace Ked.Presentation.Core
             return true;
         }
 
-        private static bool ApplyMovePer(
-            StageState state, in StageCommand cmd, StageReducerTuning tuning,
-            float xSign, float ySign, string targetId, out string reason)
-        {
-            if (!TryGetSpawnedSlot(state, cmd, out string slotKey, out reason))
-                return false;
-
-            // 브리지 규약: 거리 = 1u × 프레임 수 (기본 "1fr", 파싱 실패 폴백 8).
-            if (!DurationToken.TryParseFrames(cmd.Arg(1, "1fr"), out float frames))
-                frames = 8f;
-
-            float pixels = UnitToken.UnitsToPixels(1f, tuning.ReferenceStageWidth) * frames;
-
-            ApplyMoveClaim(state, slotKey, targetId, relative: true, new Vec2(pixels * xSign, pixels * ySign));
-            return true;
-        }
-
         private static bool ApplyMoveBy(
             StageState state, in StageCommand cmd, StageReducerTuning tuning, out string reason)
         {

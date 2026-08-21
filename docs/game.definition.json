@@ -734,6 +734,12 @@
           "type": "duration",
           "required": false,
           "default": "8fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 넛지 4종에 열었다."
         }
       ],
       "notes": "unitToken은 필수 인자(기본값 없음)이며 음수는 0으로 클램프되어 아무 일도 일어나지 않는다. 반대 방향 이동은 반대 방향 커맨드를 쓸 것."
@@ -762,6 +768,12 @@
           "type": "duration",
           "required": false,
           "default": "8fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 넛지 4종에 열었다."
         }
       ],
       "notes": "unitToken은 필수 인자(기본값 없음)이며 음수는 0으로 클램프되어 아무 일도 일어나지 않는다. 반대 방향 이동은 반대 방향 커맨드를 쓸 것."
@@ -790,6 +802,12 @@
           "type": "duration",
           "required": false,
           "default": "8fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 넛지 4종에 열었다."
         }
       ],
       "notes": "unitToken은 필수 인자(기본값 없음)이며 음수는 0으로 클램프되어 아무 일도 일어나지 않는다. 반대 방향 이동은 반대 방향 커맨드를 쓸 것."
@@ -818,97 +836,15 @@
           "type": "duration",
           "required": false,
           "default": "8fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 넛지 4종에 열었다."
         }
       ],
       "notes": "unitToken은 필수 인자(기본값 없음)이며 음수는 0으로 클램프되어 아무 일도 일어나지 않는다. 반대 방향 이동은 반대 방향 커맨드를 쓸 것."
-    },
-    {
-      "id": "char_rig_entrance.left_per",
-      "name": "왼쪽 등속 이동(프레임당 1u)",
-      "category": "char_rig_entrance",
-      "outputCommand": "left_per",
-      "execution": "queued",
-      "parameters": [
-        {
-          "name": "slot",
-          "type": "aliasOrSlot",
-          "required": true
-        },
-        {
-          "name": "frames",
-          "type": "frames",
-          "required": false,
-          "default": "1fr",
-          "description": "프레임 전용 파서(12fr/12frame/12frames/12 허용)"
-        }
-      ],
-      "notes": "frames 값이 곧 이동 거리(frames × 1u)이자 지속시간(frames/24초)인 등속 이동. 예: 12fr = 0.5초 동안 12u(480px)."
-    },
-    {
-      "id": "char_rig_entrance.right_per",
-      "name": "오른쪽 등속 이동(프레임당 1u)",
-      "category": "char_rig_entrance",
-      "outputCommand": "right_per",
-      "execution": "queued",
-      "parameters": [
-        {
-          "name": "slot",
-          "type": "aliasOrSlot",
-          "required": true
-        },
-        {
-          "name": "frames",
-          "type": "frames",
-          "required": false,
-          "default": "1fr",
-          "description": "프레임 전용 파서(12fr/12frame/12frames/12 허용)"
-        }
-      ],
-      "notes": "frames 값이 곧 이동 거리(frames × 1u)이자 지속시간(frames/24초)인 등속 이동. 예: 12fr = 0.5초 동안 12u(480px)."
-    },
-    {
-      "id": "char_rig_entrance.up_per",
-      "name": "위 등속 이동(프레임당 1u)",
-      "category": "char_rig_entrance",
-      "outputCommand": "up_per",
-      "execution": "queued",
-      "parameters": [
-        {
-          "name": "slot",
-          "type": "aliasOrSlot",
-          "required": true
-        },
-        {
-          "name": "frames",
-          "type": "frames",
-          "required": false,
-          "default": "1fr",
-          "description": "프레임 전용 파서(12fr/12frame/12frames/12 허용)"
-        }
-      ],
-      "notes": "frames 값이 곧 이동 거리(frames × 1u)이자 지속시간(frames/24초)인 등속 이동. 예: 12fr = 0.5초 동안 12u(480px)."
-    },
-    {
-      "id": "char_rig_entrance.down_per",
-      "name": "아래 등속 이동(프레임당 1u)",
-      "category": "char_rig_entrance",
-      "outputCommand": "down_per",
-      "execution": "queued",
-      "parameters": [
-        {
-          "name": "slot",
-          "type": "aliasOrSlot",
-          "required": true
-        },
-        {
-          "name": "frames",
-          "type": "frames",
-          "required": false,
-          "default": "1fr",
-          "description": "프레임 전용 파서(12fr/12frame/12frames/12 허용)"
-        }
-      ],
-      "notes": "frames 값이 곧 이동 거리(frames × 1u)이자 지속시간(frames/24초)인 등속 이동. 예: 12fr = 0.5초 동안 12u(480px)."
     },
     {
       "id": "char_rig_placement.place",

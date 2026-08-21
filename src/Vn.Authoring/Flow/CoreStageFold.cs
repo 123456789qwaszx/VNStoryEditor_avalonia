@@ -52,7 +52,6 @@ public static class CoreStageFold
 
         // 이동·스케일·회전.
         "left", "right", "up", "down",
-        "left_per", "right_per", "up_per", "down_per",
         "move_by", "move_reset", "scale_by", "scale_reset", "rotate_by", "rotate_reset",
 
         // 샷 5종.
