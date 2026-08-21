@@ -451,9 +451,15 @@
           "type": "duration",
           "required": false,
           "default": "0.4s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 scale 3종에 열었다."
         }
       ],
-      "notes": "W68 — multiplier가 프리뷰 칩에서 슬라이더로 열린다. 시간 재현(재생 중 크기 보간)은 아직 아니고, 확정 시 정지 프레임이 새 배율로 다시 접힌다."
+      "notes": "W68 — multiplier가 프리뷰 칩에서 슬라이더로 열린다. 2026-08-21 런타임이 이징을 열면서 시간 재현도 함께 닫혔다 — 재생·스크럽 중 배율이 duration만큼 보간된다(StageMotionPlan)."
     },
     {
       "id": "char_rig_staging.move_reset",
@@ -493,6 +499,12 @@
           "type": "duration",
           "required": false,
           "default": "0.4s"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 scale 3종에 열었다."
         }
       ]
     },
@@ -1837,6 +1849,12 @@
           "type": "duration",
           "required": false,
           "default": "10fr"
+        },
+        {
+          "name": "ease",
+          "type": "ease",
+          "required": false,
+          "description": "이징 곡선 이름(EaseKind 35종, 대소문자 무시). 비우면 런타임 기본 OutCubic — 기본값을 여기 적지 않는 이유는 미지정 시 마지막 토큰이 아예 생략되게 하기 위해서다(기존 대본 최소 diff). 2026-08-21 런타임이 scale 3종에 열었다."
         }
       ]
     },

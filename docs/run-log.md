@@ -5048,3 +5048,47 @@ id가 같을 수 없다.
 것이 자연스럽다 — 열린 항목.
 
 **전체 1411 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 724 · Vn.App 284).
+
+---
+
+## scale 3종의 이징 + `char_scale_to`의 코어 구멍 (`(다음 커밋)`)
+
+**소유자 (2026-08-21)** — "Scale 계열도 열었다. Core·Core.Tests·Assembly-CSharp 모두 오류 0."
+`scale_by` 3→4 · `scale_reset` 2→3 · `char_scale_to` 3→4. 셋 다 `ScaleToCommandSpecCharR`을
+쓰므로 스펙 한 곳에 `customCurveKeys`를 넣고 트윈을 `ApplyEase`로 돌린 것으로 전부 따라왔다.
+**mirror는 진행하지 않는다.**
+
+**한 일 (툴)** — 카탈로그 3종에 `ease` 칸. 샷 때와 같은 규약이다(기본값 없음 → 미지정이면
+토큰이 안 나간다). 계획·검증은 이미 제네릭이라 **코드 변경 0**:
+- 시간·이징 읽기는 `type`이 `duration`/`ease`인 파라미터 선언이 근거다(`StageMotionPlan`)
+- 미정의 `@이름` 차단도 `type: "ease"` 기준이다(`YarnBundleEmitter`)
+
+`scale_by`의 낡은 notes("시간 재현은 아직 아니고")도 고쳤다 — 이번에 닫혔다.
+
+**확인한 출력**: `<<scale_by c1 1.5 24fr OutBack>>` · `<<scale_reset c1 12fr InOutQuad>>` ·
+`<<char_scale_to c1 1.2 10fr @pop>>` · 미지정이면 `<<scale_by c1 1.5 24fr>>`.
+
+### ⚠ 찾은 것 — `char_scale_to`는 코어가 접지 않는다
+
+테스트를 쓰다 드러났다: **`char_scale_to`가 `StageReducer`에 없다**(양쪽 저장소 모두 —
+`scale_by`·`scale_reset`만 있고, 짝처럼 보이는 `char_rotate_to`는 `ApplyPortraitRotateTo`로
+있다). 그래서:
+
+- **런타임 재생은 정상**이다 — duration·ease로 잘 돈다(브리지·스펙이 다 열렸다)
+- **프리뷰는 이 커맨드의 시간을 못 그린다** — 폴드 차이가 계획의 유일한 근거인데 접히질
+  않으니 계획에 안 들어온다. 조용히 삼키지는 않고 `Unhandled`로 **"아직 코어로 이관되지
+  않은 커맨드"**라고 화면에 말한다(규칙 14)
+
+이건 이번 작업이 만든 것이 아니라 **먼저 있던 구멍**이고, 이징을 열면서 드러났을 뿐이다.
+`char_scale_to`를 코어로 이관하면 나머지는 저절로 따라온다(계획이 제네릭이라 코드 0) —
+**열린 항목**. 지금 상태는 테스트가 못 박아 두었다
+(`char_scale_to는_코어_미이관이라_프리뷰가_시간을_못_그리고_그렇다고_말한다`).
+
+**테스트** — `scale_by는_시간에_따라_배율이_자란다`(CharSlot_Scale 1→1.5, 중간이 양 끝이
+아니다) · `scale_by의_이징_칸이_계획에_실리고_리셋은_배율을_되돌린다`(0fr grow는 스냅이라
+계획에서 빠지고 reset만 남는다) · 위의 코어 구멍 고정.
+
+**아직 안 연 것** (소유자 보고) — `focus_on`(DepthFocus) · `char_visual_*`(CharVisualFocus).
+`mirror`는 진행하지 않기로 했다.
+
+**전체 1414 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 727 · Vn.App 284).

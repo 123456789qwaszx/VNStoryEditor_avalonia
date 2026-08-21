@@ -368,4 +368,72 @@ public class StageMotionPlanTests
             bare.Evaluate(0.15).Shot.Zoom,
             3);
     }
+
+    // ── 배율 (2026-08-21 런타임이 scale 3종에 이징을 열었다) ────────────────
+
+    [Fact]
+    public void scale_by는_시간에_따라_배율이_자란다()
+    {
+        // 축 선언 없이 폴드 차이가 근거다 — place·size와 같은 규칙 하나.
+        StageMotionPlan plan = Plan(Command(
+            "char_rig_staging.scale_by",
+            ("slot", "c1"), ("multiplier", "1.5"), ("duration", "24fr")))!;
+
+        MotionTween tween = Assert.Single(plan.Tweens);
+        MotionNodeTween node = Assert.Single(
+            tween.Nodes,
+            item => item.NodeKey.EndsWith("CharSlot_Scale", StringComparison.Ordinal));
+
+        Assert.Equal(1f, node.From.LocalScale.X, 3);
+        Assert.Equal(1.5f, node.To.LocalScale.X, 3);
+
+        // 중간은 출발도 도착도 아니다 — 스냅이 아니라 시간이 흐른다.
+        float middle = plan.Evaluate(tween.DurationSeconds / 2)
+            .Nodes.GetState(node.NodeKey).LocalScale.X;
+        Assert.NotEqual(node.From.LocalScale.X, middle, 3);
+        Assert.NotEqual(node.To.LocalScale.X, middle, 3);
+        Assert.Equal(1.5f, plan.Evaluate(10).Nodes.GetState(node.NodeKey).LocalScale.X, 3);
+    }
+
+    [Fact]
+    public void char_scale_to는_코어_미이관이라_프리뷰가_시간을_못_그리고_그렇다고_말한다()
+    {
+        // ⚠ 런타임은 duration·ease로 잘 돈다. 못 그리는 쪽은 <b>프리뷰</b>다 —
+        // 코어 리듀서에 char_scale_to가 없다(scale_by·scale_reset만 있다).
+        // 조용히 삼키지 않고 Unhandled로 소리를 내는 것이 지금의 정답이다.
+        PresentationResultCommand command = Command(
+            "char_rig_presentation.char_scale_to",
+            ("slot", "c1"), ("xy", "1.2"), ("duration", "10fr"), ("ease", ""));
+
+        Assert.Null(Plan(command));
+
+        StageState folded = CoreStageFold.Fold(
+            Catalog, Setup(), [new MiniStageFoldLine("ln1", false, [command])], LoadTuning()).CoreState!;
+
+        Assert.Contains(folded.Unhandled, item =>
+            item.Command.Name == "char_scale_to" && item.Reason.Contains("코어"));
+    }
+
+    [Fact]
+    public void scale_by의_이징_칸이_계획에_실리고_리셋은_배율을_되돌린다()
+    {
+        StageMotionPlan eased = Plan(Command(
+            "char_rig_staging.scale_by",
+            ("slot", "c1"), ("multiplier", "1.5"), ("duration", "24fr"), ("ease", "OutBack")))!;
+
+        Assert.Equal("OutBack", Assert.Single(eased.Tweens).Ease);
+
+        // 리셋도 같은 통로다 — 키운 배율이 시간을 두고 1로 돌아온다.
+        PresentationResultCommand grow = Command(
+            "char_rig_staging.scale_by", ("slot", "c1"), ("multiplier", "1.5"), ("duration", "0fr"));
+        PresentationResultCommand reset = Command(
+            "char_rig_staging.scale_reset", ("slot", "c1"), ("duration", "12fr"), ("ease", "InOutQuad"));
+
+        StageMotionPlan plan = Plan(grow, reset)!;
+        MotionTween tween = Assert.Single(plan.Tweens); // 0fr인 grow는 스냅이라 빠진다
+
+        Assert.Equal("scale_reset", tween.OutputCommand);
+        Assert.Equal("InOutQuad", tween.Ease);
+        Assert.Contains(tween.Nodes, node => node.From.LocalScale.X > node.To.LocalScale.X);
+    }
 }
