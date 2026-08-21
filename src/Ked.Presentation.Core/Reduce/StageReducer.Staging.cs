@@ -103,6 +103,31 @@ namespace Ked.Presentation.Core
         }
 
 
+        // char_scale_to — 초상 축의 절대 배율(브리지: CharacterPortrait_ActingScale).
+        // scale_by가 미는 CharSlot_Scale과는 다른 노드다 — 슬롯을 키우는 것과
+        // 초상만 키우는 것은 다른 일이고, 겹쳐 써도 서로를 덮지 않는다.
+        private static bool ApplyPortraitScaleTo(StageState state, in StageCommand cmd, out string reason)
+        {
+            if (!TryGetSpawnedSlot(state, cmd, out string slotKey, out reason))
+                return false;
+
+            if (!NumberToken.TryParseFloat(cmd.Arg(1), out float scale))
+            {
+                reason = $"배율을 읽지 못했다: '{cmd.Arg(1)}'";
+                return false;
+            }
+
+            string nodeKey = StageState.NodeKeyOf(slotKey, "CharacterPortrait_ActingScale");
+
+            // 브리지가 xy 하나를 두 축에 함께 넣는다(toScale = new Vector2(xy, xy)).
+            state.Apply(ScaleToReduction.Reduce(
+                nodeKey,
+                new ScaleToReduction.Args(false, new Vec2(scale, scale)),
+                state.Nodes.GetState(nodeKey).LocalScale.XY));
+
+            return true;
+        }
+
         // char_rotate_to — 초상 축의 절대 회전(브리지: CharacterPortrait_SwayPivot).
         // rotate_by가 미는 CharSlot_SwayPivot과는 다른 노드다.
         private static bool ApplyPortraitRotateTo(StageState state, in StageCommand cmd, out string reason)

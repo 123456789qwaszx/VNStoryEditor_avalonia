@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-21 · 테스트 **1418 통과, 실패 0**
-(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 729 · Vn.App 286)
+기준: 2026-08-21 · 테스트 **1421 통과, 실패 0**
+(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 730 · Vn.App 288)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 
@@ -486,10 +486,10 @@ game.definition.json` / `작가가 더한 화자`.
   `rotate` 3종 · `shot` 5종 · `scale` 3종이 **마지막 위치 인자 = 이징**이라는 같은 규약을
   쓴다(미지정이면 토큰 생략 · `@이름`이면 커스텀 곡선). 툴은 파라미터 `type`만 보므로
   카탈로그에 칸을 더하는 것으로 끝난다 — 계획·검증 코드는 안 건드린다.
-  ⚠ **`char_scale_to`는 코어가 안 접는다**(`scale_by`·`scale_reset`만 있다) — 런타임
-  재생은 정상인데 **프리뷰만** 시간을 못 그리고 `Unhandled`로 그렇다고 말한다. 코어로
-  이관하면 나머지는 저절로 따라온다(열린 항목). `focus_on`·`char_visual_*`도 런타임
-  이징 미개통이고, `mirror`는 안 하기로 했다
+  `char_scale_to`는 2026-08-21에 **코어로 이관**했다(`ApplyPortraitScaleTo` — 표적은
+  초상 축 `CharacterPortrait_ActingScale`이라 `scale_by`의 `CharSlot_Scale`과 겹쳐도
+  서로를 안 덮는다. 양쪽 저장소 동일 · 유니티 검증은 소유자 몫).
+  `focus_on`·`char_visual_*`은 런타임 이징 미개통이고, `mirror`는 안 하기로 했다
 - **등속 이동 4종 폐지 (2026-08-21)** — `left_per` 계열이 사라졌다. 속도가 **1u/프레임에
   잠겨** 있어 "프레임당 특정 거리"를 못 냈고, 같은 노드에 같은 클레임을 거는 넛지가 그
   일을 다 한다(`left c1 12u 12fr` ≡ `left_per c1 12fr`). 실사용 0건 · 소유자 확정.
@@ -498,7 +498,9 @@ game.definition.json` / `작가가 더한 화자`.
   토큰이라 숫자 슬라이더로는 읽지도 쓰지도 못한다(`UnitToken`을 지나고 숫자 갈래보다
   먼저 본다). 부호는 안 붙인다 — 방향은 커맨드 이름이 진다. 카탈로그 넷에
   `slider {0, 6, 0.25}`. 넛지 이징도 런타임이 열어(항수 3→4) 같은 날 붙었다 — 이로써
-  이징 문법이 `move_by`·place·size·rotate·shot·scale·넛지에서 하나다
+  이징 문법이 `move_by`·place·size·rotate·shot·scale·넛지에서 하나다.
+  **샷 x·y도 슬라이더**(`shot_to`·`shot_track`, `-12~12`) — `signedUnit`은 부호를 붙이고
+  `unit`은 안 붙인다. ⚠ 슬라이더는 **카탈로그 선언이 있을 때만** 선다("선언이 정한다")
 - **이징 개통 + 회전 복원 (2026-08-21)** — 런타임이 `place`·`size` 계열 20종에 이징
   인자를 열고(마지막 위치 인자 · 미지정 OutCubic · `@이름` 커스텀 곡선) 회전 3종
   (`rotate_by`·`rotate_reset`·`char_rotate_to`)을 되살렸다. 이쪽은 카탈로그 반영

@@ -190,6 +190,7 @@ namespace Ked.Presentation.Core
                 case "scale_reset":  return ApplyScaleReset(state, cmd, out reason);
                 case "rotate_by":    return ApplyRotateBy(state, cmd, out reason);
                 case "rotate_reset": return ApplyRotateReset(state, cmd, out reason);
+                case "char_scale_to":  return ApplyPortraitScaleTo(state, cmd, out reason);
                 case "char_rotate_to": return ApplyPortraitRotateTo(state, cmd, out reason);
 
                 // shot

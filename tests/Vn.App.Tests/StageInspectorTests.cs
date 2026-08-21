@@ -143,4 +143,50 @@ public sealed class StageInspectorTests
         Assert.Equal("2.5u", session.Project.FindPresentation(presentation.Id)!
             .FindBinding("ln1")!.Commands[0].Arguments["distance"]);
     });
+
+    [Fact]
+    public void 샷의_x_y는_부호_있는_u_슬라이더로_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "shot 계열 커맨드에도 x, y에 슬라이더 조절을 추가".
+        // 넛지 거리와 같은 u 갈래이되 <b>부호를 붙인다</b> — 축 하나가 양쪽으로 간다.
+        StageSceneView view = EditableView();
+
+        Control inspector = Assert.IsAssignableFrom<Control>(
+            view.BuildInspectorContent(Command(
+                "shot.shot_to",
+                ("zoom", "1.4"), ("x", "-2.5u"), ("y", "0u"), ("duration", "24fr"))));
+
+        Slider[] pan = inspector.GetLogicalDescendants().OfType<Slider>()
+            .Where(slider => slider.Minimum == -12 && slider.Maximum == 12)
+            .ToArray();
+        Assert.Equal(2, pan.Length); // x·y 둘
+
+        // 적힌 자리에 선다 — 음수도 그대로.
+        Assert.Contains(pan, slider => Math.Abs(slider.Value - (-2.5)) < 0.001);
+        Assert.Contains(pan, slider => Math.Abs(slider.Value) < 0.001);
+
+        // 라벨은 부호와 u를 함께 읽는다.
+        string[] texts = inspector.GetLogicalDescendants().OfType<TextBlock>()
+            .Select(text => text.Text ?? "").ToArray();
+        Assert.Contains(texts, text => text.Contains("-2.5u", StringComparison.Ordinal));
+        Assert.Contains(texts, text => text.Contains("+0u", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 슬라이더_선언이_없는_u_칸은_슬라이더가_안_선다() => HeadlessUi.Run(() =>
+    {
+        // "선언이 정한다" — 어느 칸을 슬라이더로 만질지는 카탈로그가 고른다.
+        // char_move_to의 x·y는 unit이지만 선언이 없으므로 칩 텍스트 편집 그대로다.
+        StageSceneView view = EditableView();
+
+        Control inspector = Assert.IsAssignableFrom<Control>(
+            view.BuildInspectorContent(Command(
+                "char_rig_presentation.char_move_to",
+                ("slot", "c1"), ("x", "1u"), ("y", "0u"), ("duration", "10fr"))));
+
+        // 시간 슬라이더는 서지만 거리 슬라이더는 없다.
+        Assert.DoesNotContain(
+            inspector.GetLogicalDescendants().OfType<TextBlock>(),
+            text => (text.Text ?? "").Contains("1u", StringComparison.Ordinal));
+    });
 }

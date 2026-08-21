@@ -565,28 +565,38 @@ internal sealed class StageSceneView : UserControl
                     ? value
                     : parameter.Default ?? string.Empty;
 
-                // 거리 토큰 슬라이더 (2026-08-21 소유자: "nudge의 경우 … distance slide를
-                // 추가") — 값이 <c>3u</c> 같은 <b>토큰</b>이라 일반 숫자 슬라이더로는 안
-                // 된다: 읽을 때도 쓸 때도 u를 알아야 한다. 그래서 <see cref="UnitToken"/>을
-                // 지나는 제 갈래를 두고, 숫자 슬라이더보다 <b>먼저</b> 본다.
+                // u 토큰 슬라이더 (2026-08-21 소유자: 넛지 distance · 샷 x·y) — 값이
+                // <c>3u</c>·<c>-2.5u</c> 같은 <b>토큰</b>이라 숫자 슬라이더로는 안 된다:
+                // 읽을 때도(`double.TryParse("3u")`가 0을 낸다) 쓸 때도 u를 알아야 한다.
+                // 그래서 <see cref="UnitToken"/>을 지나는 제 갈래를 두고 숫자 슬라이더보다
+                // <b>먼저</b> 본다.
                 //
-                // 이동 편집기의 축 슬라이더와 같은 문법이되 <b>부호를 안 붙인다</b> —
-                // 방향은 커맨드 이름이 지고(left·right·up·down) 음수는 런타임이 0으로
-                // 클램프해 아무 일도 안 일어난다(카탈로그 note).
-                if (string.Equals(parameter.Type, "unit", StringComparison.Ordinal) &&
+                // <b>슬라이더 선언이 있을 때만 선다</b> — 어느 칸을 슬라이더로 만질지는
+                // 카탈로그가 정한다(이 코드베이스의 "선언이 정한다" 규칙). 선언이 없는
+                // u 칸은 지금처럼 칩 텍스트로 편집한다.
+                //
+                // 부호는 타입이 정한다: <c>unit</c>은 안 붙이고(방향이 커맨드 이름에
+                // 있다 — left·right·up·down, 음수는 런타임이 0으로 클램프),
+                // <c>signedUnit</c>은 붙인다(축 하나가 양쪽으로 간다).
+                if (UnitSliderKind(parameter) is { } unitSigned &&
+                    parameter.Slider is { } unitSlider &&
                     UnitToken.TryParseUnits(written, out float writtenUnits))
                 {
+                    string UnitLabel(double units) =>
+                        (unitSigned && units >= 0 ? "+" : string.Empty) +
+                        units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u";
+
                     host.Children.Add(BuildMotionSlider(
                         context.PresentationNodeId,
                         command.CommandId,
-                        label: "거리",
+                        label: unitSigned ? parameter.Name : "거리",
                         argumentName: parameter.Name,
                         value: writtenUnits,
-                        minimum: parameter.Slider?.Minimum ?? 0,
-                        maximum: parameter.Slider?.Maximum ?? 12,
-                        tick: parameter.Slider?.Step ?? 0.25,
-                        format: units => units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u",
-                        token: units => units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u"));
+                        minimum: unitSlider.Minimum,
+                        maximum: unitSlider.Maximum,
+                        tick: unitSlider.Step,
+                        format: UnitLabel,
+                        token: UnitLabel));
                 }
                 else if (parameter.Slider is { } slider)
                 {
@@ -704,6 +714,16 @@ internal sealed class StageSceneView : UserControl
                 : FormatDepthLevel(value),
             token: value => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)));
     }
+
+    /// <summary>
+    /// u 토큰 슬라이더로 만질 칸인가, 그렇다면 부호를 붙이는가.
+    /// <c>unit</c> = 부호 없음(false) · <c>signedUnit</c> = 부호 있음(true) ·
+    /// 그 밖 = null(슬라이더 갈래가 아니다).
+    /// </summary>
+    private static bool? UnitSliderKind(PresentationCommandParameter parameter) =>
+        string.Equals(parameter.Type, "unit", StringComparison.Ordinal) ? false
+        : string.Equals(parameter.Type, "signedUnit", StringComparison.Ordinal) ? true
+        : null;
 
     /// <summary>라벨 토큰(far·mid·별칭)의 눈금 — 판정은 코어 <see cref="DepthLevelLabels"/> 하나다.</summary>
     private static bool TryLabelLevel(string token, out double level)

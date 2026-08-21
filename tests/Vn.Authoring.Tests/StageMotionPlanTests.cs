@@ -396,22 +396,51 @@ public class StageMotionPlanTests
     }
 
     [Fact]
-    public void char_scale_to는_코어_미이관이라_프리뷰가_시간을_못_그리고_그렇다고_말한다()
+    public void char_scale_to도_코어로_이관돼_시간을_탄다()
     {
-        // ⚠ 런타임은 duration·ease로 잘 돈다. 못 그리는 쪽은 <b>프리뷰</b>다 —
-        // 코어 리듀서에 char_scale_to가 없다(scale_by·scale_reset만 있다).
-        // 조용히 삼키지 않고 Unhandled로 소리를 내는 것이 지금의 정답이다.
-        PresentationResultCommand command = Command(
+        // 2026-08-21 소유자 지시로 코어에 이관했다(`ApplyPortraitScaleTo`). 표적은
+        // <b>초상 축</b> `CharacterPortrait_ActingScale`이다 — `scale_by`가 미는
+        // 슬롯 축 `CharSlot_Scale`과 다른 노드라 겹쳐 써도 서로를 안 덮는다.
+        StageMotionPlan plan = Plan(Command(
             "char_rig_presentation.char_scale_to",
-            ("slot", "c1"), ("xy", "1.2"), ("duration", "10fr"), ("ease", ""));
+            ("slot", "c1"), ("xy", "1.2"), ("duration", "10fr"), ("ease", "OutBack")))!;
 
-        Assert.Null(Plan(command));
+        MotionTween tween = Assert.Single(plan.Tweens);
+        Assert.Equal("OutBack", tween.Ease);
 
-        StageState folded = CoreStageFold.Fold(
-            Catalog, Setup(), [new MiniStageFoldLine("ln1", false, [command])], LoadTuning()).CoreState!;
+        MotionNodeTween node = Assert.Single(
+            tween.Nodes,
+            item => item.NodeKey.EndsWith("CharacterPortrait_ActingScale", StringComparison.Ordinal));
 
-        Assert.Contains(folded.Unhandled, item =>
-            item.Command.Name == "char_scale_to" && item.Reason.Contains("코어"));
+        Assert.Equal(1f, node.From.LocalScale.X, 3);
+        Assert.Equal(1.2f, node.To.LocalScale.X, 3);
+
+        // 중간은 양 끝이 아니다 — 스냅이 아니라 시간이 흐른다.
+        float middle = plan.Evaluate(tween.DurationSeconds / 2)
+            .Nodes.GetState(node.NodeKey).LocalScale.X;
+        Assert.NotEqual(node.From.LocalScale.X, middle, 3);
+        Assert.NotEqual(node.To.LocalScale.X, middle, 3);
+    }
+
+    [Fact]
+    public void 슬롯_배율과_초상_배율은_다른_노드라_겹쳐도_안_덮는다()
+    {
+        // scale_by = CharSlot_Scale, char_scale_to = CharacterPortrait_ActingScale.
+        StageMotionPlan plan = Plan(
+            Command("char_rig_staging.scale_by",
+                ("slot", "c1"), ("multiplier", "1.5"), ("duration", "12fr")),
+            Command("char_rig_presentation.char_scale_to",
+                ("slot", "c1"), ("xy", "1.2"), ("duration", "12fr")))!;
+
+        Assert.Equal(2, plan.Tweens.Count);
+        Assert.Contains(plan.Tweens[0].Nodes, node =>
+            node.NodeKey.EndsWith("CharSlot_Scale", StringComparison.Ordinal));
+        Assert.Contains(plan.Tweens[1].Nodes, node =>
+            node.NodeKey.EndsWith("CharacterPortrait_ActingScale", StringComparison.Ordinal));
+
+        // 둘 다 최종 상태에 살아 있다 — 뒤의 것이 앞의 것을 덮지 않는다.
+        Assert.Equal(1.5f, plan.Final.Nodes.GetState("c1/CharSlot_Scale").LocalScale.X, 3);
+        Assert.Equal(1.2f, plan.Final.Nodes.GetState("c1/CharacterPortrait_ActingScale").LocalScale.X, 3);
     }
 
     [Fact]
