@@ -300,6 +300,17 @@ public sealed class DialogueNode : StoryNode
     /// </summary>
     public Dictionary<int, string> ExcelLineMap { get; init; } = new();
 
+    /// <summary>
+    /// 실행이 보는 기본 출구 — <b>커스텀(자유) 노드는 언제나 없다</b> (2026-08-21 소유자).
+    ///
+    /// 커스텀 노드는 조건 갈래의 <c>&lt;&lt;detour&gt;&gt;</c>로 재생되고 끝나면 호출한
+    /// 갈래로 돌아간다 — 출구가 있으면 돌아가지 못한다. 다른 커스텀 씬으로 이어 가는 것도
+    /// 조건 갈래(detour)의 몫이다. 기본 출구는 엑셀노드의 것(진행 칩 곁가지)만 남는다.
+    /// 구판 데이터의 <see cref="StoryNode.DefaultExitTargetNodeId"/>는 지우지 않고 조용히
+    /// 무시한다(Links 데이터와 같은 대접). 발행·포트·재생·레일이 전부 이 속성을 본다.
+    /// </summary>
+    public string? EffectiveDefaultExit => ExcelEpisodeId is null ? null : DefaultExitTargetNodeId;
+
     public DialogueLineExtension? FindExtension(string? lineId)
     {
         return lineId is null

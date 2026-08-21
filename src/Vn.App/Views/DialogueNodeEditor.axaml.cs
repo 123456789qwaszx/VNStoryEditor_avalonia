@@ -912,7 +912,7 @@ public partial class DialogueNodeEditor : UserControl
             line => line.Transition?.Kind,
             line => line.LineId,
             line => node.BranchExits.TryGetValue(line.LineId, out string? exit) ? exit : null,
-            node.DefaultExitTargetNodeId,
+            node.EffectiveDefaultExit,
             SimulateBranches(node, script).Effective,
             _selectedLineId);
     }
@@ -2303,6 +2303,22 @@ public partial class DialogueNodeEditor : UserControl
 
     private void BuildDefaultExit(DialogueNode node)
     {
+        // 커스텀(자유) 노드에는 출구가 없다 (2026-08-21 소유자) — detour로 재생되고
+        // 끝나면 호출한 갈래로 돌아간다. 편집 줄을 감추고 이유만 말한다.
+        bool custom = node.ExcelEpisodeId is null;
+        DefaultExitControls.IsVisible = !custom;
+
+        if (custom)
+        {
+            DefaultExitSubtitle.Text =
+                "커스텀 노드는 출구가 없습니다 — 갈래의 <<detour>>로 재생되고, 끝나면 " +
+                "호출한 곳으로 돌아갑니다. 다른 커스텀 씬은 조건 갈래로 이어 가세요.";
+            ExitHintText.IsVisible = false;
+            return;
+        }
+
+        DefaultExitSubtitle.Text = "모든 줄과 조건 갈래가 끝난 뒤 이동합니다.";
+
         List<StoryNode> targets = ExitTargets(node);
 
         DefaultExitCombo.ItemsSource = targets.Select(target => target.Name).ToList();
@@ -2317,19 +2333,11 @@ public partial class DialogueNodeEditor : UserControl
             : -1;
 
         // "출구가 없으면 무슨 일이 일어나는가"를 화면이 말한다 (소유자 보고 — 의미는 있는데
-        // 아는 방법이 없었다). 챕터 판이면 에피소드 종료이고, 다음은 기획자의 간선이 정한다.
-        bool onChapterBoard = _session!.Project.FindFileContainingNode(node.Id)?.Nodes
-            .OfType<DialogueNode>()
-            .Any(item => item.ExcelEpisodeId is not null) == true;
-
+        // 아는 방법이 없었다). 여기 오는 것은 엑셀노드뿐이다 — 커스텀 노드는 위에서 끝났다.
         ExitHintText.IsVisible = !connected;
-        ExitHintText.Text = node.ExcelEpisodeId is not null
-            ? "출구 없음 = 에피소드 종료. 다음 에피소드는 챕터 간선(기획자)이 정합니다. " +
-              "끝에 곁가지를 붙이려면 자유 노드를 대상으로 고르세요."
-            : onChapterBoard
-                ? "출구 없음 = (진행) — 에피소드가 끝나고 다음은 챕터 간선(기획자)이 정합니다. " +
-                  "그래프에서 이 노드의 출력이 레인 끝(진행 접점)으로 이어져 보입니다."
-                : "출구 없음 — 대화가 여기서 끝납니다.";
+        ExitHintText.Text =
+            "출구 없음 = 에피소드 종료. 다음 에피소드는 챕터 간선(기획자)이 정합니다. " +
+            "끝에 곁가지를 붙이려면 자유 노드를 대상으로 고르세요.";
     }
 
     private void OnDefaultExitToggled()

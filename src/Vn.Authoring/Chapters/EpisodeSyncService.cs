@@ -741,7 +741,7 @@ public static class EpisodeSyncService
                 }
             }
 
-            Check(dialogue.DefaultExitTargetNodeId, "기본 출구");
+            Check(dialogue.EffectiveDefaultExit, "기본 출구");
 
             foreach ((_, string targetId) in dialogue.BranchExits)
             {

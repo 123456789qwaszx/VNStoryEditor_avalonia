@@ -70,26 +70,32 @@ public sealed class ExcelNodeLockTests
         // 소유자 결정 (2026-08-14) — 에피소드 사이 흐름은 챕터 간선(기획자) 소유다.
         // 자유 노드의 출구로 엑셀노드를 고를 수 있으면 챕터 장부(표시/해금·스탯 환산·
         // cleared)를 지나치는 뒷길이 생기고, Yarn 점프라 "복귀"도 처음부터 다시 재생된다.
-        (DialogueNodeEditor editor, AuthoringSession session, _) = ShowSyncedNode();
+        (DialogueNodeEditor editor, AuthoringSession session, string excelNodeId) = ShowSyncedNode();
 
         string fileId = session.EnsureChapterBoard("ch05");
         DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "곁가지");
         session.Editor.AddDialogueNode(fileId, name: "곁가지2");
 
-        editor.Show(free.Id);
+        // 엑셀노드(에피소드)의 출구 후보 — 자유 노드만 남고 엑셀노드는 빠진다.
+        editor.Show(excelNodeId);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
+        Assert.True(editor.FindControl<Grid>("DefaultExitControls")!.IsVisible);
         var targets = (List<StoryNode>)editor.FindControl<ComboBox>("DefaultExitCombo")!.Tag!;
 
-        // 자유 노드는 후보다 — 자유끼리는 넘길 수 있다.
         Assert.Contains(targets, target => target.Name == "곁가지2");
         Assert.DoesNotContain(targets, target =>
             target is DialogueNode { ExcelEpisodeId: not null });
 
-        // 출구가 꺼져 있으면 그 의미를 화면이 말한다 — 챕터 판의 자유 노드는 "(진행)".
-        var hint = editor.FindControl<TextBlock>("ExitHintText")!;
-        Assert.True(hint.IsVisible);
-        Assert.Contains("(진행)", hint.Text);
+        // 커스텀(자유) 노드에는 출구 편집 줄 자체가 없다 (2026-08-21) — detour로
+        // 재생되고 호출한 갈래로 돌아가므로, 화면이 그 이유를 말한다.
+        editor.Show(free.Id);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(editor.FindControl<Grid>("DefaultExitControls")!.IsVisible);
+        var subtitle = editor.FindControl<TextBlock>("DefaultExitSubtitle")!;
+        Assert.Contains("detour", subtitle.Text);
+        Assert.False(editor.FindControl<TextBlock>("ExitHintText")!.IsVisible);
     });
 
     [Fact]
@@ -100,7 +106,13 @@ public sealed class ExcelNodeLockTests
 
         string fileId = session.EnsureChapterBoard("ch05");
         DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "우회로");
-        session.Editor.SetExitTarget(free.Id, Vn.Authoring.Flow.ExitPortKind.Default, null, excelNodeId);
+
+        // 갈래(detour) 출구가 엑셀노드를 가리키면 여전히 크게 말한다.
+        free.BranchExits["ln_legacy"] = excelNodeId;
+
+        // 커스텀 노드의 기본 출구는 죽었다 (2026-08-21) — 구판 데이터가 엑셀노드를
+        // 가리키고 있어도 실행이 안 보는 값이라 경고도 내지 않는다.
+        free.DefaultExitTargetNodeId = excelNodeId;
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
@@ -110,6 +122,7 @@ public sealed class ExcelNodeLockTests
         ChapterDiagnostic warning = Assert.Single(warnings);
         Assert.Equal(ChapterDiagnosticSeverity.Warning, warning.Severity);
         Assert.Contains("우회로", warning.Message);
+        Assert.Contains("갈래 출구", warning.Message);
         Assert.Contains("챕터 간선", warning.Message);
     });
 

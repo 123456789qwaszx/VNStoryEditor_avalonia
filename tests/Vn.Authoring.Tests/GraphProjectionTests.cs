@@ -1,5 +1,6 @@
 using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
+using Vn.Authoring.Script;
 
 namespace Vn.Authoring.Tests;
 
@@ -38,7 +39,7 @@ public class GraphProjectionTests
             new HashSet<string>(new[] { fileA.Id }, StringComparer.Ordinal));
 
         GraphConnectionProjection execution = projection.Connections.Single(
-            connection => connection.Kind == GraphConnectionKind.ExecutionDefault);
+            connection => connection.Kind == GraphConnectionKind.ExecutionBranch);
 
         Assert.Equal("nd_a", execution.SourceNodeId);
         Assert.Equal(dialogueB.Id, execution.TargetNodeId);
@@ -74,7 +75,7 @@ public class GraphProjectionTests
             new HashSet<string>(new[] { fileB.Id }, StringComparer.Ordinal));
 
         GraphConnectionProjection execution = projection.Connections.Single(
-            connection => connection.Kind == GraphConnectionKind.ExecutionDefault);
+            connection => connection.Kind == GraphConnectionKind.ExecutionBranch);
 
         Assert.Equal("nd_a", execution.SourceNodeId);
         Assert.Equal(dialogueB.Id, execution.TargetNodeId);
@@ -94,7 +95,7 @@ public class GraphProjectionTests
             new HashSet<string>(StringComparer.Ordinal));
 
         GraphConnectionProjection execution = projection.Connections.Single(
-            connection => connection.Kind == GraphConnectionKind.ExecutionDefault);
+            connection => connection.Kind == GraphConnectionKind.ExecutionBranch);
 
         Assert.Equal("nd_a", execution.Source.NodeId);
         Assert.Equal(dialogueB.Id, execution.Target.NodeId);
@@ -163,14 +164,13 @@ public class GraphProjectionTests
             new GraphFilter(ShowSet: false));
 
         GraphConnectionProjection remaining = Assert.Single(filtered.Connections);
-        Assert.Equal(GraphConnectionKind.ExecutionDefault, remaining.Kind);
+        Assert.Equal(GraphConnectionKind.ExecutionBranch, remaining.Kind);
     }
 
     [Fact]
     public void 흐름_보기는_대사_노드와_실행_간선만_남긴다()
     {
-        var (project, fileA, fileB, _, dialogueA, dialogueB) = BuildProject();
-        dialogueA.DefaultExitTargetNodeId = dialogueB.Id;
+        var (project, fileA, fileB, _, dialogueA, _) = BuildProject();
 
         GraphProjection projection = GraphProjectionBuilder.Build(
             project,
@@ -182,7 +182,7 @@ public class GraphProjectionTests
             projection.Items.OfType<ExpandedNodeProjection>(),
             item => Assert.Equal(GraphNodeKind.Dialogue, item.NodeKind));
         GraphConnectionProjection connection = Assert.Single(projection.Connections);
-        Assert.Equal(GraphConnectionKind.ExecutionDefault, connection.Kind);
+        Assert.Equal(GraphConnectionKind.ExecutionBranch, connection.Kind);
         Assert.Equal(dialogueA.Id, connection.SourceNodeId);
     }
 
@@ -249,11 +249,25 @@ public class GraphProjectionTests
         {
             Layout = new NodeLayout { X = 80, Y = 100 }
         };
+        // 실행 흐름은 DialogueNode만 정한다. SetNode는 조건 공급자일 뿐이다.
+        // 간선의 매개는 조건 갈래 출구다 (2026-08-21) — 기본 출구는 커스텀 노드에서
+        // 폐지됐고 엑셀노드의 것은 카드가 아니라 철도 칩에 살아, 카드 간선을 만드는
+        // 출구는 갈래 하나뿐이다.
+        var script = new ScriptDocument("sc_a", "대본 A");
+        script.Lines.Add(new ScriptLine("ln_a1"));
+
         var dialogueA = new DialogueNode("nd_a", "대사 A")
         {
             Layout = new NodeLayout { X = 340, Y = 100 },
-            // 실행 흐름은 DialogueNode만 정한다. SetNode는 조건 공급자일 뿐이다.
-            DefaultExitTargetNodeId = "nd_b"
+            ScriptId = script.Id,
+            LineExtensions =
+            {
+                new DialogueLineExtension("ln_a1")
+                {
+                    Transition = LineConditionTransition.BeginIf("cd_x")
+                }
+            },
+            BranchExits = { ["ln_a1"] = "nd_b" }
         };
         var dialogueB = new DialogueNode("nd_b", "대사 B")
         {
@@ -263,6 +277,7 @@ public class GraphProjectionTests
         fileA.Nodes.Add(setA);
         fileA.Nodes.Add(dialogueA);
         fileB.Nodes.Add(dialogueB);
+        project.Scripts.Add(script);
         project.Files.Add(fileA);
         project.Files.Add(fileB);
         project.Links.Add(new NodeLink(

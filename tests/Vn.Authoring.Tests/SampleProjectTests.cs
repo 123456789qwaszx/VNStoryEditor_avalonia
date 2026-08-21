@@ -139,8 +139,11 @@ public class SampleProjectTests
         // SetNode(nd_setup)는 조건 공급자라 실행 간선을 만들지 않는다.
         Assert.Contains(("nd_scene", ExitPortKind.Branch, "호감 높음", "nd_good"), connections);
         Assert.Contains(("nd_scene", ExitPortKind.Branch, "신뢰 높음 (elseif)", "nd_trust"), connections);
-        Assert.Contains(("nd_scene", ExitPortKind.Default, "기본", "nd_normal"), connections);
-        Assert.Equal(3, connections.Count);
+
+        // 이 견본의 nd_scene은 커스텀(자유) 노드다 — 기본 출구는 엑셀노드만 가지므로
+        // (2026-08-21) 구판 defaultExit(nd_normal) 배선은 지워지지 않은 채 무시된다.
+        Assert.DoesNotContain(connections, connection => connection.Kind == ExitPortKind.Default);
+        Assert.Equal(2, connections.Count);
     }
 
     [Fact]

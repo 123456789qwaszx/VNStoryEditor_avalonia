@@ -274,7 +274,8 @@ public static class DialoguePublisher
             script.Locale,
             lines,
             assignments,
-            node.DefaultExitTargetNodeId,
+            // 커스텀 노드는 기본 출구 없이 발행된다 — detour의 복귀가 그 자리를 맡는다.
+            node.EffectiveDefaultExit,
             problems);
     }
 

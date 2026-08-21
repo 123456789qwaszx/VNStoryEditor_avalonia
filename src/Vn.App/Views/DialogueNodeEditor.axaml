@@ -54,11 +54,13 @@
                             BorderThickness="0,1,0,0">
                         <StackPanel Spacing="6">
                             <TextBlock Text="기본 출구" FontWeight="SemiBold" FontSize="12" />
-                            <TextBlock Text="모든 줄과 조건 갈래가 끝난 뒤 이동합니다."
+                            <TextBlock x:Name="DefaultExitSubtitle"
+                                       Text="모든 줄과 조건 갈래가 끝난 뒤 이동합니다."
                                        FontSize="11"
                                        Opacity="0.65"
                                        TextWrapping="Wrap" />
-                            <Grid ColumnDefinitions="Auto,*">
+                            <!-- 커스텀 노드에는 출구가 없다 (2026-08-21) — 이 줄은 엑셀노드에서만 보인다. -->
+                            <Grid x:Name="DefaultExitControls" ColumnDefinitions="Auto,*">
                                 <CheckBox Grid.Column="0"
                                           x:Name="DefaultExitCheck"
                                           Content="다음 노드로 이동"

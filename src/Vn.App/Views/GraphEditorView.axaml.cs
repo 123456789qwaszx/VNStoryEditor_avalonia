@@ -825,7 +825,9 @@ public partial class GraphEditorView : UserControl
                 queue.Enqueue(next);
             }
 
-            if (node.DefaultExitTargetNodeId is { } defaultNext)
+            // 커스텀 노드의 기본 출구는 죽었다 (2026-08-21) — EffectiveDefaultExit가
+            // 늘 null이므로 배선된 씬은 전부 (진행) 합류다.
+            if (node.EffectiveDefaultExit is { } defaultNext)
             {
                 queue.Enqueue(defaultNext);
             }
@@ -877,7 +879,7 @@ public partial class GraphEditorView : UserControl
                 queue.Enqueue(next);
             }
 
-            if (node.DefaultExitTargetNodeId is { } defaultNext)
+            if (node.EffectiveDefaultExit is { } defaultNext)
             {
                 queue.Enqueue(defaultNext);
             }
@@ -899,7 +901,8 @@ public partial class GraphEditorView : UserControl
                _session!.Project.FindNode(currentId) is DialogueNode { ExcelEpisodeId: null } free)
         {
             rects.Add(rect);
-            currentId = free.DefaultExitTargetNodeId;
+            // 커스텀→커스텀 배선이 죽어(2026-08-21) 체인은 첫 씬 하나로 끝난다.
+            currentId = free.EffectiveDefaultExit;
         }
 
         return rects;

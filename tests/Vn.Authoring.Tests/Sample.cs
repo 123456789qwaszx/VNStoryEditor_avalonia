@@ -34,6 +34,10 @@ internal sealed class Sample
         ConditionB = Editor.AddCondition(SetNode.Id, "신뢰 높음", "trust >= 3");
 
         Dialogue = Editor.AddDialogueNode(File.Id, name: "본문", scriptId: Script.Id);
+        // 이 노드는 실제 제품의 에피소드(엑셀노드) 자리다 — 기본 출구는 엑셀노드만
+        // 가지므로(2026-08-21) 그렇게 표시해야 출구 테스트들이 실물과 같은 길을 지난다.
+        // 대상 노드 셋(TargetA·TargetB·TargetDefault)은 커스텀(자유) 씬 그대로다.
+        Dialogue.ExcelEpisodeId = "ep_본문";
         SettingsLink = Editor.AddSettingsLink(SetNode.Id, Dialogue.Id);
 
         TargetA = AddEndNode("A로 간다");

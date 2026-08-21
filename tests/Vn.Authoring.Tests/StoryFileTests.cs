@@ -53,6 +53,8 @@ public class StoryFileTests
         var editor = new ProjectEditor(project);
 
         DialogueNode source = editor.AddDialogueNode(first.Id, name: "출발");
+        // 기본 출구는 엑셀노드만 가진다 (2026-08-21) — 출발 노드를 에피소드 자리로 표시한다.
+        source.ExcelEpisodeId = "ep_출발";
         DialogueNode moved = editor.AddDialogueNode(first.Id, name: "이동 대상");
         editor.SetExitTarget(source.Id, Vn.Authoring.Flow.ExitPortKind.Default, null, moved.Id);
 
@@ -94,6 +96,7 @@ public class StoryFileTests
         var editor = new ProjectEditor(project);
 
         DialogueNode source = editor.AddDialogueNode(first.Id, name: "출발");
+        source.ExcelEpisodeId = "ep_출발";
         DialogueNode target = editor.AddDialogueNode(second.Id, name: "도착");
         editor.SetExitTarget(source.Id, Vn.Authoring.Flow.ExitPortKind.Default, null, target.Id);
 
@@ -115,6 +118,7 @@ public class StoryFileTests
         var editor = new ProjectEditor(project);
 
         DialogueNode source = editor.AddDialogueNode(first.Id, name: "출발");
+        source.ExcelEpisodeId = "ep_출발";
         DialogueNode target = editor.AddDialogueNode(second.Id, name: "도착");
         editor.SetExitTarget(source.Id, Vn.Authoring.Flow.ExitPortKind.Default, null, target.Id);
 

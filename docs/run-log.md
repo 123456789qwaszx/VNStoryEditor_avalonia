@@ -5472,3 +5472,74 @@ OutBack은 가운데보다 양옆이 크다) · `기본_혹은_OutSine_핑퐁과
 t=0.5가 키로 선다 · 구운 모양이 핑퐁과 가깝다 · 이동 베이크는 5키·끝값 1 그대로).
 
 **전체 1434 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 740 · Vn.App 291).
+
+---
+
+## 조건 갈래의 커스텀 씬은 jump가 아니라 detour다 (`(다음 커밋)`)
+
+**맥락** — 소유자 요청. 챕터 그래프에서 에피소드 엑셀에 IF를 달면 연출 그래프에
+그 갈래의 커스텀 대사(자유 씬) 포트가 선다. 이 출구가 `<<jump>>`로 나가고 있어서
+커스텀 씬으로 **떠나면 끝**이었다 — 갈래 뒤의 대사(endif 아래 본문·기본 출구)가
+전부 죽는다. `<<detour>>`(YarnSpinner 3.x)로 바꿔 **재생하고 갈래로 돌아오게** 했다.
+
+**한 일**
+
+- **`RenderedSegmentKind.BranchDetour` 신설** — 갈래 출구가 둘로 갈린다:
+  선택지 옵션의 출구는 그대로 `BranchJump`(고르면 그 씬으로 **이동**), 조건 갈래(IF)의
+  출구는 `BranchDetour`(커스텀 씬을 재생하고 **돌아온다**). 가르는 곳은
+  `ResultDocumentComposer.AddBranchExit` 하나 — 대기 중인 출구(`pendingBranchJump`)가
+  이미 들고 있던 `IsChoice`로 판정하므로 새 상태가 없다.
+- **표기는 `YarnSyntax.AppendDetour` 하나** — 이미터(`YarnBundleEmitter`)와
+  프리뷰(`YarnPreviewFormatter`)가 같은 코드를 지난다(화면에서 본 것 = 파일에 쓴 것).
+- 놓이는 자리는 그대로다 — 갈래 본문 끝, `<<endif>>` 앞(W54의 소유 체인 규칙 불변).
+  기본 출구(`DefaultJump`)도 그대로 jump다.
+- `detour`는 YarnSpinner 3.2.1 **렉서 키워드**라 스키마 등록이 필요 없고, 되읽는 쪽
+  (`YarnBlockIndex.TryReadJump`)은 원래부터 detour를 점프로 치지 않는다 — 조건 갈래에는
+  Destination 개념 자체가 없어 왕복도 안 흔들린다.
+- 계약서 §A2 예시를 갱신하고 **A2-1**로 명문화했다(`docs/runtime-contract.md`).
+
+**갈린 기대값** — 골든 `Story_golden_ep.yarn`의 갈래 출구 한 줄(jump → detour),
+합성기·이미터·프리셋·수직 슬라이스 테스트의 조건 갈래 기대값. 선택지 골든
+(`Story_choices_ep.yarn`)은 **한 글자도 안 바뀌었다** — 옵션 출구는 jump가 맞다.
+실컴파일 3종(골든·선택지·중첩)이 detour 산출물을 실제 Yarn 컴파일러로 통과시킨다.
+
+**전체 1434 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 740 · Vn.App 291).
+
+---
+
+## 커스텀 노드의 출구 폐지 — 돌아오는 것이 곧 출구다 (`(다음 커밋)`)
+
+**맥락** — 소유자 요청, 앞 항목(detour)의 후속. 커스텀(자유) 노드는 detour로 재생되고
+끝나면 **호출한 갈래로 돌아간다** — 그 복귀가 곧 출구라, 노드에 달린 기본 출구는 쓸모가
+없을 뿐 아니라 **복귀를 막는다**(뒤에 jump가 서 있으면 못 돌아간다). 커스텀→커스텀
+연결도 배선이 아니라 **조건 갈래(detour)로 제한**한다(소유자: "조건같은걸 활용해서").
+
+**규칙은 한 곳이다** — `DialogueNode.EffectiveDefaultExit`: 커스텀 노드면 언제나 null,
+엑셀노드면 `DefaultExitTargetNodeId` 그대로. 발행(`DialoguePublisher`) · 포트
+(`NodeConnections` — 기본 포트를 엑셀노드에만 세운다) · 흐름 검증
+(`ConditionFlowResolver`) · 엑셀 유입 경고(`EpisodeSyncService`) · 재생 경로 · 레일
+워커(`GraphEditorView`)가 전부 이 속성을 본다. `ProjectEditor.SetExitTarget`은 커스텀
+노드의 기본 출구 쓰기를 조용히 거절한다.
+
+**구판 데이터는 지우지 않고 무시한다** — Links 데이터와 같은 대접. 없는 노드를 가리키는
+낡은 배선도 실행이 안 보는 값이므로 문제로 잡지 않는다(엑셀노드의 같은 상태는 여전히
+문제다). 남는 출구는 **엑셀노드의 것뿐**: 진행·선택지 칩의 곁가지(jump)와 IF 갈래(detour).
+
+**화면** — 노드 편집기의 기본 출구 줄(체크+콤보)이 커스텀 노드에서 사라지고 부제가
+이유를 말한다("갈래의 &lt;&lt;detour&gt;&gt;로 재생되고 … 돌아갑니다"). 연출 그래프에서
+커스텀 카드의 기본 출구 포트·커스텀 간 기본 배선 간선이 사라지고, 배선된 씬은 전부
+(진행) 합류선으로 레인 끝에 모인다(체인 개념 소멸 — 첫 씬 하나가 곧 웹이다).
+
+**픽스처가 실물을 따라왔다** — `Sample.Dialogue`(조건 갈래·기본 출구를 다 가진 본문
+노드)는 실제 제품에서 에피소드 자리이므로 `ExcelEpisodeId`를 달았다. 덕분에 골든·이미터
+출력은 **한 글자도 안 바뀌었다**(기본 출구 jump는 엑셀노드의 것으로 그대로 나간다).
+`GraphProjectionTests`는 간선 매개를 기본 출구에서 **조건 갈래 출구**로 바꿨다 — 카드
+간선을 만드는 출구는 이제 갈래 하나뿐이다(엑셀 기본 출구는 T2대로 철도 칩에 산다).
+견본 `samples/Authoring`의 nd_scene(커스텀) defaultExit는 무시되는 쪽 기대값으로 옮겼다.
+
+**고정 3개**(`ExitTests`): 커스텀 노드에는 기본 출구 포트가 없다 · 쓰지도 발행하지도
+않는다(편집기 거절 + 구판 데이터 무시 + 발행 결과 null) · 낡은 배선은 문제로 잡지 않는다.
+화면 쪽은 `ExcelNodeLockTests`(편집 줄 숨김 + detour 안내, 갈래 출구의 엑셀 유입 경고
+유지) · `ChapterRailTests`(기본 배선 거절 + 첫 씬 합류)가 잇는다. 계약서 **A2-2** 신설.
+
+**전체 1437 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 743 · Vn.App 291).

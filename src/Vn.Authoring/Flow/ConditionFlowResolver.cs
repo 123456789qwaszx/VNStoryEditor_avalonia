@@ -435,8 +435,8 @@ public static class ConditionFlowResolver
             }
         }
 
-        if (node.DefaultExitTargetNodeId is not null &&
-            project.FindNode(node.DefaultExitTargetNodeId) is null)
+        if (node.EffectiveDefaultExit is not null &&
+            project.FindNode(node.EffectiveDefaultExit) is null)
         {
             problems.Add(new FlowProblem(
                 FlowProblemKind.MissingExitTarget,

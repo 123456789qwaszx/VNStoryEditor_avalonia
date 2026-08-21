@@ -587,6 +587,14 @@ public sealed partial class ProjectEditor
 
         if (kind == ExitPortKind.Default)
         {
+            if (node is DialogueNode { ExcelEpisodeId: null })
+            {
+                // 커스텀(자유) 노드는 기본 출구가 없다 (2026-08-21) — detour로 재생되고
+                // 호출한 갈래로 돌아간다. 구판 데이터는 지우지 않고 무시하므로 여기서도
+                // 새로 쓰지 않는 것만 지킨다.
+                return;
+            }
+
             if (!string.Equals(node.DefaultExitTargetNodeId, targetNodeId, StringComparison.Ordinal))
             {
                 Mutate(() => node.DefaultExitTargetNodeId = targetNodeId);

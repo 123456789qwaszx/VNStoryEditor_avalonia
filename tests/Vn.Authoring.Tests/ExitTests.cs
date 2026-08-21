@@ -175,6 +175,66 @@ public class ExitTests
         Assert.Empty(sample.Dialogue.LineExtensions);
     }
 
+    /// <summary>
+    /// 커스텀(자유) 노드는 출구가 없다 (2026-08-21 소유자). detour로 재생되고 끝나면
+    /// 호출한 갈래로 돌아가므로, 출구가 있으면 돌아가지 못한다. 다른 커스텀 씬으로
+    /// 이어 가는 것은 조건 갈래(detour)의 몫이다.
+    /// </summary>
+    [Fact]
+    public void 커스텀_노드에는_기본_출구_포트가_없다()
+    {
+        var sample = new Sample();
+        sample.BuildSpecExample();
+
+        // 엑셀노드(에피소드)에는 기본 출구가 선다.
+        Assert.Contains(
+            NodeConnections.PortsOf(sample.Dialogue, sample.Project),
+            port => port.Kind == ExitPortKind.Default);
+
+        // 커스텀 노드에는 기본 출구 포트 자체가 없다.
+        Assert.DoesNotContain(
+            NodeConnections.PortsOf(sample.TargetA, sample.Project),
+            port => port.Kind == ExitPortKind.Default);
+    }
+
+    [Fact]
+    public void 커스텀_노드의_기본_출구는_쓰지도_발행하지도_않는다()
+    {
+        var sample = new Sample();
+
+        // 편집기는 커스텀 노드의 기본 출구 쓰기를 조용히 거절한다.
+        sample.Editor.SetExitTarget(sample.TargetA.Id, ExitPortKind.Default, null, sample.TargetB.Id);
+        Assert.Null(sample.TargetA.DefaultExitTargetNodeId);
+
+        // 구판 데이터가 남아 있어도 실행이 보는 값은 없다 — 지우지 않고 무시한다.
+        sample.TargetA.DefaultExitTargetNodeId = sample.TargetB.Id;
+        Assert.Null(sample.TargetA.EffectiveDefaultExit);
+
+        // 발행 결과에도 실리지 않는다 — detour의 복귀가 그 자리를 맡는다.
+        var result = sample.Editor.PublishDialogue(sample.TargetA.Id).Result;
+        Assert.Null(result.DefaultExitTargetNodeId);
+    }
+
+    [Fact]
+    public void 커스텀_노드의_낡은_배선은_문제로_잡지_않는다()
+    {
+        var sample = new Sample();
+
+        // 없는 노드를 가리키는 구판 배선 — 실행이 안 보는 값이므로 문제도 아니다.
+        sample.TargetA.DefaultExitTargetNodeId = "없는_노드";
+
+        Assert.DoesNotContain(
+            ConditionFlowResolver.Resolve(sample.TargetA, sample.Project).Problems,
+            problem => problem.Kind == FlowProblemKind.MissingExitTarget);
+
+        // 엑셀노드의 같은 상태는 여전히 문제다.
+        sample.Dialogue.DefaultExitTargetNodeId = "없는_노드";
+
+        Assert.Contains(
+            ConditionFlowResolver.Resolve(sample.Dialogue, sample.Project).Problems,
+            problem => problem.Kind == FlowProblemKind.MissingExitTarget);
+    }
+
     [Fact]
     public void 노드를_지우면_그것을_가리키던_출구가_함께_끊긴다()
     {

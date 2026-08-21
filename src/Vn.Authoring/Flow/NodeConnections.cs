@@ -101,13 +101,19 @@ public static class NodeConnections
                     ChoiceText: branch.IsChoice ? flow.Script.Find(branch.OpenLineId)?.Text : null));
             }
 
-            ports.Add(new ExitPort(
-                ExitPortKind.Default,
-                dialogue.Id,
-                null,
-                "기본",
-                dialogue.DefaultExitTargetNodeId,
-                -1));
+            // 기본 출구는 엑셀노드만 가진다 (2026-08-21 소유자) — 커스텀(자유) 노드는
+            // detour로 재생되고 호출한 갈래로 돌아가므로 출구 자체가 없다.
+            // 다른 커스텀 씬으로 잇는 것도 조건 갈래(detour)의 몫이다.
+            if (dialogue.ExcelEpisodeId is not null)
+            {
+                ports.Add(new ExitPort(
+                    ExitPortKind.Default,
+                    dialogue.Id,
+                    null,
+                    "기본",
+                    dialogue.DefaultExitTargetNodeId,
+                    -1));
+            }
         }
 
         return ports;
