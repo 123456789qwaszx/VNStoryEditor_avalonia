@@ -193,6 +193,10 @@ namespace Ked.Presentation.Core
                 case "char_scale_to":  return ApplyPortraitScaleTo(state, cmd, out reason);
                 case "char_rotate_to": return ApplyPortraitRotateTo(state, cmd, out reason);
 
+                // gesture — 제자리 몸짓. 순변위 0이라 접을 것이 없다(정지 프레임은 이미 옳다).
+                // 곡선·진폭을 읽지 않으므로 인자 자리에 의존하지 않는다.
+                case "gesture": return ApplyGesture(state, cmd, out reason);
+
                 // shot
                 case "shot_zoom":  return ApplyShotZoom(state, cmd, out reason);
                 case "shot_to":    return ApplyShotTo(state, cmd, tuning, out reason);

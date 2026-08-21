@@ -51,6 +51,7 @@ fade_in
 fade_out
 focus_clear
 focus_on
+gesture
 left
 mirror
 move_by

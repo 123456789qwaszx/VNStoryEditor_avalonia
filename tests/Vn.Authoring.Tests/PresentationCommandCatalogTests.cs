@@ -25,7 +25,8 @@ public class PresentationCommandCatalogTests
         // 속도가 1u/프레임에 잠겨 있어 "프레임당 특정 거리"를 못 냈고, 같은 노드에 같은
         // 클레임을 거는 넛지가 그 일을 다 한다(소유자 결정 · 실사용 0건).
         // 카테고리는 15 그대로 — char_rig_entrance에 show·넛지 4종이 남았다.
-        Assert.Equal(125, catalog.Definitions.Count);
+        // 2026-08-21: 제자리 몸짓 gesture 개통 → 126.
+        Assert.Equal(126, catalog.Definitions.Count);
         Assert.Equal(15, catalog.Categories.Count);
         Assert.Same(catalog, PresentationCommandCatalog.For(definition: null));
     }

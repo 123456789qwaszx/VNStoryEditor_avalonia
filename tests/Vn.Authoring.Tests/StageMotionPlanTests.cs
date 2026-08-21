@@ -519,4 +519,85 @@ public class StageMotionPlanTests
             PositionOf(eased.Evaluate(0.15), node).X,
             PositionOf(bare.Evaluate(0.15), node).X);
     }
+
+    // ── 제자리 몸짓 (2026-08-21 `gesture` 개통) ─────────────────────────────
+
+    [Fact]
+    public void gesture는_흔들되_최종_자리를_안_바꾼다()
+    {
+        // 이 커맨드의 정의다: 순변위 0. 폴드는 무변으로 접고(그래서 차이로는 안 보인다),
+        // 흔드는 폭은 인자가 말한다 — 변위(t) = 진폭 × 진동곡선(t).
+        StageMotionPlan plan = Plan(Command(
+            "char_rig_staging.gesture",
+            ("slot", "c1"), ("xAmp", "0.5u"), ("yAmp", "0u"), ("duration", "12fr")))!;
+
+        MotionTween tween = Assert.Single(plan.Tweens);
+        Assert.NotNull(tween.Gesture);
+        Assert.Empty(tween.Nodes); // 폴드 차이는 0 — 그것이 정상이다
+
+        string node = tween.Gesture!.NodeKey;
+        Assert.EndsWith("CharacterPortrait_Shake", node, StringComparison.Ordinal);
+
+        // 시작·끝은 제자리, 중간은 아니다(기본 혹 sin(πt)는 절반에서 최대).
+        Assert.Equal(0, PositionOf(plan.Evaluate(0), node).X, 3);
+        Assert.Equal(0, PositionOf(plan.Evaluate(0.5), node).X, 3);
+
+        float middle = PositionOf(plan.Evaluate(0.25), node).X;
+        Assert.True(Math.Abs(middle) > 1f, $"중간 프레임이 제자리다 ({middle})");
+
+        // 최종 상태(진행 1)도 제자리 — 흔들고 나면 있던 자리다.
+        Assert.Equal(0, PositionOf(plan.Evaluate(10), node).X, 3);
+    }
+
+    [Fact]
+    public void gesture는_축을_가른다_한쪽만_주면_다른_축은_내내_0이다()
+    {
+        StageMotionPlan plan = Plan(Command(
+            "char_rig_staging.gesture",
+            ("slot", "c1"), ("xAmp", "0u"), ("yAmp", "1u"), ("duration", "12fr")))!;
+
+        string node = Assert.Single(plan.Tweens).Gesture!.NodeKey;
+
+        foreach (double t in (double[])[0, 0.1, 0.25, 0.4, 0.5])
+        {
+            Assert.Equal(0, PositionOf(plan.Evaluate(t), node).X, 3);
+        }
+
+        Assert.True(Math.Abs(PositionOf(plan.Evaluate(0.25), node).Y) > 1f);
+    }
+
+    [Fact]
+    public void gesture와_move_by는_다른_노드라_같은_라인에_겹친다()
+    {
+        // "총총 뛰며 이동" — 이동은 CharSlot_Track, 몸짓은 CharacterPortrait_Shake.
+        StageMotionPlan plan = Plan(
+            Command("char_rig_staging.move_by",
+                ("slot", "c1"), ("x", "+3u"), ("y", "0u"), ("duration", "24fr")),
+            Command("char_rig_staging.gesture",
+                ("slot", "c1"), ("xAmp", "0u"), ("yAmp", "1u"), ("duration", "24fr")))!;
+
+        Assert.Equal(2, plan.Tweens.Count);
+
+        string moveNode = Assert.Single(plan.Tweens[0].Nodes).NodeKey;
+        string shakeNode = plan.Tweens[1].Gesture!.NodeKey;
+        Assert.NotEqual(moveNode, shakeNode);
+
+        // 중간: 이동은 가는 중이고 몸짓은 떠 있다.
+        StageState mid = plan.Evaluate(0.5);
+        Assert.NotEqual(0, PositionOf(mid, moveNode).X, 3);
+        Assert.True(Math.Abs(PositionOf(mid, shakeNode).Y) > 1f);
+
+        // 끝: 이동은 도착에 남고 몸짓은 제자리로 — 서로를 안 덮는다.
+        StageState end = plan.Evaluate(10);
+        Assert.Equal(UnitToken.UnitsToPixels(3f, 1920f), PositionOf(end, moveNode).X, 1);
+        Assert.Equal(0, PositionOf(end, shakeNode).Y, 3);
+    }
+
+    [Fact]
+    public void 진폭이_0이면_계획에_안_들어온다()
+    {
+        Assert.Null(Plan(Command(
+            "char_rig_staging.gesture",
+            ("slot", "c1"), ("xAmp", "0u"), ("yAmp", "0u"), ("duration", "12fr"))));
+    }
 }

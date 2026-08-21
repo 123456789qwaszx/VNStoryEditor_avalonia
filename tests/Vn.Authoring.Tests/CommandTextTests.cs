@@ -211,4 +211,38 @@ public class CommandTextTests
         // 비어 있으면 키 자체가 없다 — 기존 프로젝트 파일이 바뀌지 않는다.
         Assert.DoesNotContain("recentCommands", ProjectManifestJson.Write(new StoryProject()), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void 중간이_빈_인자는_자리표로_메워_자리가_안_밀린다()
+    {
+        // ⚠ 2026-08-21 `gesture`가 드러낸 결함의 고정. 예전에는 값 없는 파라미터에서
+        // 끊어서, 뒤에 값이 있으면 그 인자가 앞 자리로 밀렸다 — yEase만 적었는데
+        // <<gesture c1 0u 1u 24fr @bump>>가 나와 @bump가 가로 곡선이 됐다
+        // (세로로 흔들려던 것이 좌우로 흔들린다).
+        PresentationCommandCatalog catalog = PresentationCommandCatalog.Default;
+
+        string text = CommandText.Format(
+            catalog.Find("char_rig_staging.gesture"), "char_rig_staging.gesture",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["slot"] = "c1", ["yAmp"] = "1u", ["duration"] = "24fr", ["yEase"] = "@bump"
+            });
+
+        Assert.Equal("<<gesture c1 0u 1u 24fr \"\" @bump>>", text);
+
+        // 되읽어도 같은 자리다 — 자리표는 "안 적은 것"과 같게 받힌다.
+        CommandTextParseResult parsed = CommandText.Parse(text, catalog);
+        Assert.True(parsed.Success, parsed.Error);
+        Assert.Equal("@bump", parsed.Arguments!["yEase"]);
+
+        // 트레일링 생략은 그대로다 — 뒤에 값이 없으면 자리표도 안 붙는다.
+        Assert.Equal(
+            "<<gesture c1 0.3u 0u 12fr>>",
+            CommandText.Format(
+                catalog.Find("char_rig_staging.gesture"), "char_rig_staging.gesture",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["slot"] = "c1", ["xAmp"] = "0.3u", ["duration"] = "12fr"
+                }));
+    }
 }

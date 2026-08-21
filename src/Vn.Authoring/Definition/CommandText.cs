@@ -29,9 +29,24 @@ public sealed record CommandTextParseResult(
 public static class CommandText
 {
     /// <summary>
+    /// 빈 자리를 메우는 자리표. 뒤 인자가 값을 가졌는데 앞이 비면 <b>자리가 밀리므로</b>
+    /// 반드시 무언가를 적어야 한다 — Yarn은 이것을 빈 문자열로 넘기고, 브리지의
+    /// <c>IsNullOrWhiteSpace</c> 폴백이 "안 적은 것"과 같게 받는다.
+    /// </summary>
+    public const string EmptyArgumentPlaceholder = "\"\"";
+
+    /// <summary>
     /// 카탈로그의 파라미터 순서대로 인자 값을 해석한다. 작성 값이 없으면 정의의 기본값을 쓰고,
-    /// 값이 아예 없는 파라미터부터는 트레일링 생략으로 자른다(뒤쪽부터만 생략 규칙).
+    /// <b>값이 있는 마지막 파라미터 뒤부터</b> 트레일링 생략으로 자른다.
     /// 정의를 모르는 명령이나 파라미터 밖의 인자는 버리지 않고 이름순으로 뒤에 붙인다.
+    ///
+    /// ⚠ <b>중간이 비면 자리표를 적는다</b> (2026-08-21 `gesture`가 드러낸 결함).
+    /// 예전에는 값 없는 파라미터를 만나면 그 자리에서 끊었는데, 그러면 뒤에 값이 있는 경우
+    /// 그 인자가 <b>앞 자리로 밀려</b> 런타임이 다른 것을 읽었다 — <c>gesture</c>의
+    /// <c>yEase</c>만 적으면 <c>&lt;&lt;gesture c1 0u 1u 24fr @bump&gt;&gt;</c>가 나와
+    /// <c>@bump</c>가 <b>가로</b> 곡선이 됐다(세로로 흔들려던 것이 좌우로 흔들린다).
+    /// 트레일링 생략이 대부분의 커맨드에서 통했던 것은 선택 인자가 <b>맨 뒤 하나</b>뿐이라
+    /// 우연히 안 드러났을 뿐이다.
     /// </summary>
     public static IReadOnlyList<OrderedCommandArgument> ResolveOrdered(
         PresentationCommandDefinition? definition,
@@ -44,18 +59,21 @@ public static class CommandText
 
         if (definition is not null)
         {
-            foreach (PresentationCommandParameter parameter in definition.Parameters)
-            {
-                string? value = arguments.TryGetValue(parameter.Name, out string? provided)
+            // 값(작성값 또는 기본값)이 있는 마지막 자리까지만 낸다 — 그 뒤는 트레일링 생략.
+            var values = definition.Parameters
+                .Select(parameter => arguments.TryGetValue(parameter.Name, out string? provided)
                     ? provided
-                    : parameter.Default;
+                    : parameter.Default)
+                .ToList();
 
-                if (value is null)
-                {
-                    break;
-                }
+            int last = values.FindLastIndex(value => value is not null);
 
-                ordered.Add(new OrderedCommandArgument(parameter.Name, value));
+            for (int index = 0; index <= last; index++)
+            {
+                PresentationCommandParameter parameter = definition.Parameters[index];
+
+                ordered.Add(new OrderedCommandArgument(
+                    parameter.Name, values[index] ?? EmptyArgumentPlaceholder));
                 consumed.Add(parameter.Name);
             }
         }

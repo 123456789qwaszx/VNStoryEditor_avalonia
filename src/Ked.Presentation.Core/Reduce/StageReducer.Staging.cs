@@ -128,6 +128,19 @@ namespace Ked.Presentation.Core
             return true;
         }
 
+        /// <summary>
+        /// gesture — 무변으로 접는 것이 정답이다.
+        ///
+        /// 변위(t) = 진폭 × 곡선(t)이고 곡선이 (0,0)→(1,0)이라 순변위가 0이다.
+        /// 라인 시작과 끝의 무대가 같으므로 정지 프레임은 손대지 않는 것이 옳다 —
+        /// 그래서 리듀서가 곡선 내용을 알 필요가 없고, "이징은 종점에 관여하지 않는다"는
+        /// 불변식도 지켜진다(그게 이 커맨드를 move_by 위에 얹지 않은 이유다).
+        ///
+        /// 슬롯 존재 검사는 한다 — 없는 슬롯이면 다른 커맨드와 같은 규약으로 사유를 남긴다.
+        /// </summary>
+        private static bool ApplyGesture(StageState state, in StageCommand cmd, out string reason)
+            => TryGetSpawnedSlot(state, cmd, out _, out reason);
+
         // char_rotate_to — 초상 축의 절대 회전(브리지: CharacterPortrait_SwayPivot).
         // rotate_by가 미는 CharSlot_SwayPivot과는 다른 노드다.
         private static bool ApplyPortraitRotateTo(StageState state, in StageCommand cmd, out string reason)

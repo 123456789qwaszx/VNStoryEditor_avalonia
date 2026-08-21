@@ -72,4 +72,39 @@ public class EaseCurveEditorMathTests
         Assert.Equal(2.5f, editor.Keys[^1].InTangent);
         Assert.Equal(1.4f, editor.Keys[1].Value);
     });
+
+    [Fact]
+    public void 진동_모드는_끝점을_0으로_잠근다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 `gesture` 개통 — 잠그는 끝값이 곡선 종류를 따른다.
+        // 이동은 (1,1), 진동은 (1,0). 규칙의 정본은 코어 CurveKindRules다.
+        var editor = new EaseCurveEditor();
+
+        editor.Load(
+        [
+            new CurveKey(0f, 0.3f, 0f, 2f),
+            new CurveKey(0.5f, 1.4f, 0f, 0f),   // 중간 오버슈트는 진동에서도 자유
+            new CurveKey(1f, 0.9f, -2f, 0f)
+        ],
+        CurveKind.Oscillation);
+
+        Assert.Equal(CurveKind.Oscillation, editor.Kind);
+        Assert.Equal(0f, editor.Keys[0].Value);
+        Assert.Equal(1f, editor.Keys[^1].Time);
+        Assert.Equal(0f, editor.Keys[^1].Value); // ← 이동이면 1이었을 자리
+        Assert.Equal(1.4f, editor.Keys[1].Value);
+
+        // 기울기는 사람의 것 — 종류가 바뀌어도 안 빼앗는다.
+        Assert.Equal(2f, editor.Keys[0].OutTangent);
+        Assert.Equal(-2f, editor.Keys[^1].InTangent);
+
+        // 코어가 이 곡선을 진동으로 읽는다 — 툴과 런타임이 같은 판정이다.
+        Assert.True(CurveKindRules.TryClassify(editor.Keys.ToArray(), out CurveKind kind, out _));
+        Assert.Equal(CurveKind.Oscillation, kind);
+
+        // 인자 없는 Load는 이동 모드 그대로(기존 호출부 불변).
+        editor.Load([new CurveKey(0f, 0f, 0f, 1f), new CurveKey(1f, 0.4f, 1f, 0f)]);
+        Assert.Equal(CurveKind.Motion, editor.Kind);
+        Assert.Equal(1f, editor.Keys[^1].Value);
+    });
 }

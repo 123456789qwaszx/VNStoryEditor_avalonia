@@ -10,9 +10,11 @@ namespace Vn.App.Views;
 /// <summary>
 /// 이징 곡선 그래프 에디터 (W67 후속) — 마야 그래프 에디터의 감각으로 키를 만진다.
 ///
-/// - 키 드래그: 자리(t)와 값(v). 첫/끝 키는 <b>자리째 잠긴다</b> — (0,0)·(1,1) 고정,
-///   기울기(탄젠트)만 만진다 (2026-08-21 소유자: "overshoot은 중간에서만 허용" —
-///   끝값이 1을 벗어나면 리듀서가 도착을 넘어간 채로 끝난다)
+/// - 키 드래그: 자리(t)와 값(v). 첫/끝 키는 <b>자리째 잠긴다</b> — 기울기(탄젠트)만
+///   만진다 (2026-08-21 소유자: "overshoot은 중간에서만 허용" — 끝값이 어긋나면
+///   리듀서가 접은 종점과 재생이 갈린다)
+/// - 잠기는 끝값은 <b>곡선 종류</b>가 정한다: 이동은 (1,1), 진동(`gesture`)은 (1,0).
+///   판정 규칙은 코어 <see cref="CurveKindRules"/> 하나이고 런타임 로더도 그것을 쓴다
 /// - 탄젠트 핸들 드래그: 선택 키의 in/out 기울기. Shift를 누르면 한쪽만 꺾인다
 /// - 곡선 빈 자리 클릭: 그 t에 키 추가(값은 지금 곡선 위)
 /// - 키 삭제는 바깥의 [키 삭제] 버튼 — 우클릭은 소유자 보류라 여기서 쓰지 않는다
@@ -58,19 +60,38 @@ internal sealed class EaseCurveEditor : Control
         Cursor = new Cursor(StandardCursorType.Cross);
     }
 
-    public void Load(IReadOnlyList<CurveKey> keys)
+    /// <summary>
+    /// 이 곡선이 무엇에 쓰이는가 — <b>끝값이 곧 종류</b>다 (2026-08-21 `gesture` 개통).
+    /// <see cref="CurveKind.Motion"/>은 (1,1)로, <see cref="CurveKind.Oscillation"/>은
+    /// (1,0)으로 끝난다. 판정 규칙은 코어 <see cref="CurveKindRules"/> 하나이고
+    /// 런타임 로더도 그것을 쓴다 — 여기서 다른 눈금을 쓰면 "툴에서는 저장되는데 재생에서는
+    /// 사라지는" 곡선이 생긴다.
+    /// </summary>
+    public CurveKind Kind { get; private set; } = CurveKind.Motion;
+
+    /// <summary>끝 키가 서야 할 값. 이동은 1, 진동은 0.</summary>
+    private float EndValue => Kind == CurveKind.Oscillation ? 0f : 1f;
+
+    public void Load(IReadOnlyList<CurveKey> keys) => Load(keys, CurveKind.Motion);
+
+    /// <param name="kind">
+    /// 잠글 끝값을 정한다. 들어온 곡선이 그 종류가 아니어도 <b>자리로 되돌린다</b> —
+    /// 값까지 끌 수 있던 시절의 곡선이나 종류를 바꿔 여는 경우가 여기로 온다.
+    /// </param>
+    public void Load(IReadOnlyList<CurveKey> keys, CurveKind kind)
     {
+        Kind = kind;
         _keys.Clear();
         _keys.AddRange(keys);
 
-        // 끝점은 (0,0)·(1,1)이 계약이다 (2026-08-21) — 이전에 값까지 끌 수 있던 시절의
-        // 곡선이 어긋난 끝값을 들고 올 수 있어, 여기서 자리로 되돌린다(탄젠트는 보존).
+        // 끝점은 (0,0)·(1, EndValue)가 계약이다 — 어긋난 끝값을 들고 오면 자리로
+        // 되돌린다(탄젠트는 사람의 것이라 보존).
         if (_keys.Count >= 2)
         {
             CurveKey first = _keys[0];
             CurveKey last = _keys[^1];
             _keys[0] = new CurveKey(0f, 0f, first.InTangent, first.OutTangent);
-            _keys[^1] = new CurveKey(1f, 1f, last.InTangent, last.OutTangent);
+            _keys[^1] = new CurveKey(1f, EndValue, last.InTangent, last.OutTangent);
         }
 
         _selected = -1;
@@ -156,7 +177,13 @@ internal sealed class EaseCurveEditor : Control
         var faint = new Pen(new SolidColorBrush(Color.FromArgb(50, 148, 163, 184)), 1);
         var baseline = new Pen(new SolidColorBrush(Color.FromArgb(110, 148, 163, 184)), 1);
         context.DrawLine(baseline, ToPixel(0, 0), ToPixel(1, 0));
-        context.DrawLine(baseline, ToPixel(0, 1), ToPixel(1, 1));
+
+        // v=1 선은 <b>이동 곡선의 도착선</b>이다 — 진동은 0으로 돌아오는 것이 전부라
+        // 그 선을 그리면 있지도 않은 목표가 있는 것처럼 읽힌다.
+        if (Kind != CurveKind.Oscillation)
+        {
+            context.DrawLine(baseline, ToPixel(0, 1), ToPixel(1, 1));
+        }
 
         for (int i = 1; i < 4; i++)
         {

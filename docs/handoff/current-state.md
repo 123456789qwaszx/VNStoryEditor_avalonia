@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-21 · 테스트 **1421 통과, 실패 0**
-(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 730 · Vn.App 288)
+기준: 2026-08-21 · 테스트 **1429 통과, 실패 0**
+(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 737 · Vn.App 289)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 
@@ -486,9 +486,14 @@ game.definition.json` / `작가가 더한 화자`.
   `rotate` 3종 · `shot` 5종 · `scale` 3종이 **마지막 위치 인자 = 이징**이라는 같은 규약을
   쓴다(미지정이면 토큰 생략 · `@이름`이면 커스텀 곡선). 툴은 파라미터 `type`만 보므로
   카탈로그에 칸을 더하는 것으로 끝난다 — 계획·검증 코드는 안 건드린다.
-  몸짓 커맨드 **`gesture` 지시서**가 런타임에 나가 있다([`../work-orders/gesture-orders.md`](../work-orders/gesture-orders.md)
-  — 최종값 무변 + 축별 곡선, 표적은 미사용 노드 `CharacterPortrait_Shake`, 폴드 no-op.
-  이름은 소유자 확정: 제자리 몸짓 전반이라 넓은 말이 맞다).
+  **몸짓 커맨드 `gesture` (2026-08-21 개통)** — 최종값 무변 + 축별 곡선, 표적은
+  `CharacterPortrait_Shake`(이동 계열과 다른 노드라 같은 라인에 겹쳐 "총총 뛰며 이동").
+  ⚠ **폴드가 무변**이라 계획이 상태 차이가 아니라 **인자**로 읽는다(`MotionGestureTween`) ·
+  진동은 이징을 안 탄다(런타임도 Linear로 흘리고 곡선이 모양을 진다) · 곡선이 **두 종류**로
+  갈렸다(이동 (1,1) · 진동 (1,0), 판정은 코어 `CurveKindRules` 하나를 툴·런타임이 공유 —
+  종류가 어긋나면 내보내기가 막는다). 규격: [`../work-orders/gesture-orders.md`](../work-orders/gesture-orders.md)
+  ⚠ **인자 자리 밀림 결함**이 여기서 드러나 함께 고쳤다 — 중간이 빈 선택 인자는 자리표
+  `""`로 메운다(예전에는 끊어서 뒤 인자가 앞 자리로 밀렸다).
   `char_scale_to`는 2026-08-21에 **코어로 이관**했다(`ApplyPortraitScaleTo` — 표적은
   초상 축 `CharacterPortrait_ActingScale`이라 `scale_by`의 `CharSlot_Scale`과 겹쳐도
   서로를 안 덮는다. 양쪽 저장소 동일 · 유니티 검증은 소유자 몫).

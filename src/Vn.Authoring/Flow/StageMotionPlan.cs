@@ -19,6 +19,27 @@ public sealed record MotionNodeTween(string NodeKey, RectNodeState From, RectNod
 public sealed record MotionShotTween(ShotIntentState From, ShotIntentState To);
 
 /// <summary>
+/// 제자리 몸짓 하나가 이 커맨드 동안 흔드는 폭 (2026-08-21 `gesture` 개통).
+///
+/// ⚠ 다른 구간과 근본이 다르다: <b>폴드 차이가 근거가 아니다.</b> gesture는 순변위 0이라
+/// 코어가 무변으로 접고(그것이 정의다), 그래서 직전·직후 상태가 같다 — 차이를 재는
+/// 방식으로는 영원히 안 보인다. 대신 <b>인자가 직접</b> 말한다: 변위(t) = 진폭 × 곡선(t).
+///
+/// 표적은 <c>CharacterPortrait_Shake</c> — 이동 계열이 안 쓰는 노드라 겹쳐도 안 부딪친다.
+/// </summary>
+/// <param name="NodeKey">흔들 노드(<c>{슬롯}/CharacterPortrait_Shake</c>).</param>
+/// <param name="AmplitudeX">가로 진폭(픽셀). 부호는 곡선 좌우 반전.</param>
+/// <param name="AmplitudeY">세로 진폭(픽셀).</param>
+/// <param name="CurveX">가로 진동 곡선. null이면 내장 기본 혹.</param>
+/// <param name="CurveY">세로 진동 곡선. null이면 내장 기본 혹.</param>
+public sealed record MotionGestureTween(
+    string NodeKey,
+    double AmplitudeX,
+    double AmplitudeY,
+    IReadOnlyList<CurveKey>? CurveX,
+    IReadOnlyList<CurveKey>? CurveY);
+
+/// <summary>
 /// 커맨드 하나의 시간 구간 — 자기 <c>duration</c>·<c>ease</c>로 자기가 바꾼 노드들을 끈다.
 /// 노드가 여럿인 것은 정상이다(예: <c>size</c>는 배율과 포커스 보정을 함께 바꾼다).
 /// </summary>
@@ -29,7 +50,8 @@ public sealed record MotionTween(
     string? Ease,
     IReadOnlyList<CurveKey>? CurveKeys,
     IReadOnlyList<MotionNodeTween> Nodes,
-    MotionShotTween? Shot = null);
+    MotionShotTween? Shot = null,
+    MotionGestureTween? Gesture = null);
 
 /// <summary>
 /// 한 라인이 시간에 따라 흐르는 모양 (2026-08-21 소유자: "place랑 depth의 경우에도 move랑
@@ -55,6 +77,14 @@ public sealed class StageMotionPlan
             .Select(node => SlotOfNode(node.NodeKey))
             .Where(slot => slot.Length > 0)
             .ToHashSet(StringComparer.Ordinal);
+
+        foreach (MotionTween tween in tweens)
+        {
+            if (tween.Gesture is { } gesture && SlotOfNode(gesture.NodeKey) is { Length: > 0 } slot)
+            {
+                animated.Add(slot);
+            }
+        }
 
         // 카메라가 흐르면 무대 위의 <b>전부</b>가 흐른다 — 샷은 슬롯 하나의 일이 아니다.
         if (tweens.Any(tween => tween.Shot is not null))
@@ -103,6 +133,19 @@ public sealed class StageMotionPlan
                 state.Shot = Lerp(shot.From, shot.To, shaped);
             }
 
+            if (tween.Gesture is { } gesture && state.Nodes.Contains(gesture.NodeKey))
+            {
+                // ⚠ 진동은 <b>이징을 안 탄다</b> — 런타임도 트윈을 Linear로 흘리고 콜백에서
+                // 두 축 곡선을 각각 평가한다(GestureCommandCharR). 모양의 주인이 진동
+                // 곡선이라, 진행도에 또 곡선을 먹이면 재생과 갈린다.
+                float raw = (float)progress;
+
+                RectNodeState rest = state.Nodes.GetState(gesture.NodeKey);
+                state.Nodes.SetState(gesture.NodeKey, rest.WithAnchoredPosition(new Vec2(
+                    (float)(gesture.AmplitudeX * OscillationFunctions.Evaluate(KeyArray(gesture.CurveX), raw)),
+                    (float)(gesture.AmplitudeY * OscillationFunctions.Evaluate(KeyArray(gesture.CurveY), raw)))));
+            }
+
             foreach (MotionNodeTween node in tween.Nodes)
             {
                 if (state.Nodes.Contains(node.NodeKey))
@@ -143,6 +186,10 @@ public sealed class StageMotionPlan
         Lerp(from.SizeDelta, to.SizeDelta, t),
         Lerp(from.LocalScale, to.LocalScale, t),
         Lerp(from.LocalEulerAngles, to.LocalEulerAngles, t));
+
+    /// <summary>코어 평가기가 배열을 받는다 — 이미 배열이면 그대로 쓴다(복사 없음).</summary>
+    private static CurveKey[]? KeyArray(IReadOnlyList<CurveKey>? keys) =>
+        keys is null ? null : keys as CurveKey[] ?? keys.ToArray();
 
     private static ShotIntentState Lerp(in ShotIntentState from, in ShotIntentState to, float t) => new(
         from.Zoom + ((to.Zoom - from.Zoom) * t),
@@ -220,7 +267,10 @@ public sealed class StageMotionPlan
                 ? new MotionShotTween(before.Shot, after.Shot)
                 : null;
 
-            if (nodes.Count == 0 && shot is null)
+            // 제자리 몸짓은 상태를 안 바꾸는 것이 정의라 차이로는 안 보인다 — 인자가 말한다.
+            MotionGestureTween? gesture = GestureOf(definition, command, final, tuning, curves);
+
+            if (nodes.Count == 0 && shot is null && gesture is null)
             {
                 continue; // 바뀐 자리가 없다 — 태울 것도 없다(0u 이동 등).
             }
@@ -234,7 +284,8 @@ public sealed class StageMotionPlan
                 ease,
                 CurveKeysOf(ease, curves),
                 nodes,
-                shot));
+                shot,
+                gesture));
         }
 
         return tweens.Count > 0 ? new StageMotionPlan(tweens, final) : null;
@@ -346,6 +397,93 @@ public sealed class StageMotionPlan
         return definition.Motion?.DefaultEase;
     }
 
+    /// <summary>
+    /// 이 커맨드가 제자리 몸짓인가, 그렇다면 무엇을 얼마나 흔드는가 (2026-08-21).
+    ///
+    /// 판정은 <b>출력 커맨드 이름</b>이다 — 폴드가 무변이라 상태 차이로는 못 알아본다.
+    /// 이름으로 추측하지 않는다는 규칙의 예외처럼 보이지만 그렇지 않다: <c>gesture</c>는
+    /// "상태를 안 바꾸는 것이 정의"인 유일한 시간 커맨드라, 계약을 아는 것 말고는 길이 없다.
+    ///
+    /// 진폭이 양쪽 다 0이면 null — 흔들 것이 없다(런타임도 같은 값에서 아무 일도 안 한다).
+    /// </summary>
+    private static MotionGestureTween? GestureOf(
+        PresentationCommandDefinition definition,
+        PresentationResultCommand command,
+        StageState state,
+        StageReducerTuning tuning,
+        IReadOnlyList<EaseCurve>? curves)
+    {
+        if (!string.Equals(definition.OutputCommandName, "gesture", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (!state.TryResolveSlot(Argument(definition, command, "slot"), out string slotKey))
+        {
+            return null; // 없는 슬롯 — 폴드가 이미 사유를 남겼다
+        }
+
+        double x = AmplitudePixels(definition, command, "xAmp", tuning);
+        double y = AmplitudePixels(definition, command, "yAmp", tuning);
+
+        if (Math.Abs(x) < 0.001 && Math.Abs(y) < 0.001)
+        {
+            return null;
+        }
+
+        return new MotionGestureTween(
+            StageState.NodeKeyOf(slotKey, "CharacterPortrait_Shake"),
+            x,
+            y,
+            OscillationKeysOf(Argument(definition, command, "xEase"), curves),
+            OscillationKeysOf(Argument(definition, command, "yEase"), curves));
+    }
+
+    /// <summary>적힌 값, 없으면 카탈로그 기본값. 둘 다 없으면 빈 문자열.</summary>
+    private static string Argument(
+        PresentationCommandDefinition definition, PresentationResultCommand command, string name) =>
+        command.Arguments.TryGetValue(name, out string? written) && !string.IsNullOrWhiteSpace(written)
+            ? written
+            : definition.FindParameter(name)?.Default ?? string.Empty;
+
+    /// <summary>u 토큰 → 픽셀. 환산의 유일한 자리는 <see cref="UnitToken"/>이다.</summary>
+    private static double AmplitudePixels(
+        PresentationCommandDefinition definition,
+        PresentationResultCommand command,
+        string name,
+        StageReducerTuning tuning) =>
+        UnitToken.TryParseSignedPixels(
+            Argument(definition, command, name), tuning.ReferenceStageWidth, out float pixels)
+            ? pixels
+            : 0;
+
+    /// <summary>
+    /// <c>@이름</c>이면 프로젝트 곡선의 키 — 단 <b>진동 곡선일 때만</b>이다.
+    ///
+    /// 종류 판정은 코어 <see cref="CurveKindRules"/> 하나를 쓴다(런타임 로더와 같은 규칙).
+    /// 이동 곡선이나 표준 이징 이름이 오면 null을 돌려주고, 그 자리는 내장 기본 혹이 된다 —
+    /// <b>런타임이 하는 그대로다</b>. 한쪽만 알면 "툴에서는 되는데 재생에서 사라지는"
+    /// 곡선이 생긴다(2026-08-21 런타임 회신).
+    /// </summary>
+    private static IReadOnlyList<CurveKey>? OscillationKeysOf(
+        string token, IReadOnlyList<EaseCurve>? curves)
+    {
+        if (token is not ['@', .. var name])
+        {
+            return null;
+        }
+
+        if (curves?.FirstOrDefault(curve =>
+                string.Equals(curve.Name, name, StringComparison.Ordinal))?.Keys is not { } keys)
+        {
+            return null;
+        }
+
+        return CurveKindRules.TryClassify(KeyArray(keys)!, out CurveKind kind, out _) &&
+            kind == CurveKind.Oscillation
+                ? keys
+                : null;
+    }
     /// <summary><c>@이름</c>이면 프로젝트 곡선의 키. 못 찾으면 null — 런타임과 같은 폴백이다.</summary>
     private static IReadOnlyList<CurveKey>? CurveKeysOf(string? ease, IReadOnlyList<EaseCurve>? curves) =>
         ease is ['@', .. var name]

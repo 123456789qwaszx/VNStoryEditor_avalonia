@@ -337,4 +337,85 @@ public class EaseCurveTests
             }
         }
     }
+
+    // ── 곡선 종류 격리 (2026-08-21 `gesture` 개통) ─────────────────────────
+
+    /// <summary>진동 곡선 — (0,0) → (1,0). 중간에 혹 하나.</summary>
+    private static CurveKey[] BumpKeys() =>
+    [
+        new(0f, 0f, 0f, 3f),
+        new(0.5f, 1f, 0f, 0f),
+        new(1f, 0f, -3f, 0f)
+    ];
+
+    [Fact]
+    public void 종류가_어긋난_곡선은_내보내기를_막는다()
+    {
+        // ⚠ 여기서 안 막으면 "툴에서는 저장되는데 재생에서는 조용히 사라지는" 곡선이
+        // 된다 — 런타임 로더가 종류로 격리하기 때문이다(2026-08-21 회신). 판정 규칙은
+        // 코어 CurveKindRules 하나를 양쪽이 함께 쓴다.
+        var sample = new Sample();
+        sample.Editor.SetEaseCurve("bump", BumpKeys()); // 진동 곡선인데…
+
+        string line = sample.Line("첫 줄");
+        sample.Editor.SetScriptLineText(sample.Script.Id, line, "라루", "첫 줄");
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        PresentationNode node = sample.Editor.AddPresentationNode(sample.File.Id, name: "연출");
+        sample.Editor.SetPresentationSource(node.Id, dialogue.Identity.ResultId, dialogue.Identity.Version);
+
+        // …이동 커맨드의 이징 자리에 끼웠다.
+        sample.Editor.AddPresentationCommand(node.Id, line, "char_rig_staging.move_by",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["slot"] = "c1", ["x"] = "+2u", ["duration"] = "12fr", ["ease"] = "@bump"
+            });
+
+        YarnBundle bundle = YarnBundleEmitter.Emit(
+            dialogue, sample.Editor.PublishPresentation(node.Id).Result,
+            sample.Project, GameDefinition.Empty, "curve_ep");
+
+        Assert.True(bundle.HasBlockingProblems);
+        Assert.Contains(bundle.Problems, problem =>
+            problem.Message.Contains("진동", StringComparison.Ordinal) &&
+            problem.Message.Contains("이동", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void gesture는_진동_곡선을_받고_이동_곡선은_막는다()
+    {
+        var sample = new Sample();
+        sample.Editor.SetEaseCurve("bump", BumpKeys());
+        sample.Editor.SetEaseCurve("hop_snappy", SampleKeys()); // 이동 곡선
+
+        string line = sample.Line("첫 줄");
+        sample.Editor.SetScriptLineText(sample.Script.Id, line, "라루", "첫 줄");
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        YarnBundle Emit(string curveToken)
+        {
+            PresentationNode node = sample.Editor.AddPresentationNode(sample.File.Id, name: "연출" + curveToken);
+            sample.Editor.SetPresentationSource(node.Id, dialogue.Identity.ResultId, dialogue.Identity.Version);
+            sample.Editor.AddPresentationCommand(node.Id, line, "char_rig_staging.gesture",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["slot"] = "c1", ["yAmp"] = "1u", ["duration"] = "24fr", ["yEase"] = curveToken
+                });
+
+            return YarnBundleEmitter.Emit(
+                dialogue, sample.Editor.PublishPresentation(node.Id).Result,
+                sample.Project, GameDefinition.Empty, "curve_ep");
+        }
+
+        // 진동 곡선은 통과하고 토큰이 그대로 실린다.
+        YarnBundle good = Emit("@bump");
+        Assert.False(good.HasBlockingProblems);
+        Assert.Contains("<<gesture c1 0u 1u 24fr \"\" @bump>>", good.StoryText, StringComparison.Ordinal);
+
+        // 이동 곡선을 끼우면 막는다.
+        YarnBundle bad = Emit("@hop_snappy");
+        Assert.True(bad.HasBlockingProblems);
+        Assert.Contains(bad.Problems, problem =>
+            problem.Message.Contains("@hop_snappy", StringComparison.Ordinal));
+    }
 }

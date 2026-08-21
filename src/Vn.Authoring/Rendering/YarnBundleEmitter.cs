@@ -1,3 +1,4 @@
+using Ked.Presentation.Core;
 using System.Text;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Model;
@@ -346,10 +347,13 @@ public static class YarnBundleEmitter
 
         PresentationCommandCatalog catalog = PresentationCommandCatalog.For(definition);
 
-        var known = new HashSet<string>(
+        // 이름 → 곡선. <b>종류(이동/진동)까지 봐야 한다</b> — 판정 규칙은 코어
+        // CurveKindRules 하나이고 런타임 로더도 그것을 쓴다(2026-08-21 회신).
+        // 한쪽만 알면 "툴에서는 저장되는데 재생에서는 조용히 사라지는" 곡선이 생긴다.
+        Dictionary<string, Model.EaseCurve> known =
             (project?.EaseCurves ?? Enumerable.Empty<Model.EaseCurve>())
-                .Select(curve => curve.Name),
-            StringComparer.Ordinal);
+                .GroupBy(curve => curve.Name, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
 
         void Check(string? lineId, PresentationResultCommand command)
         {
@@ -360,18 +364,40 @@ public static class YarnBundleEmitter
 
             foreach (PresentationCommandParameter parameter in commandDefinition.Parameters)
             {
-                if (!string.Equals(parameter.Type, "ease", StringComparison.Ordinal) ||
+                if (KindFor(parameter.Type) is not { } wanted ||
                     !command.Arguments.TryGetValue(parameter.Name, out string? value) ||
                     !value.StartsWith('@'))
                 {
                     continue;
                 }
 
-                if (!known.Contains(value[1..]))
+                if (!known.TryGetValue(value[1..], out Model.EaseCurve? curve))
                 {
                     problems.Add(new YarnBundleProblem(
-                        $"곡선 '{value}'이 프로젝트에 없습니다 — 런타임은 이 커맨드를 기본 이징으로 조용히 재생하게 됩니다. " +
-                        "곡선을 만들거나 커맨드의 이징을 고치세요.",
+                        $"곡선 '{value}'이 프로젝트에 없습니다 — 런타임은 이 커맨드를 기본값으로 조용히 재생하게 됩니다. " +
+                        "곡선을 만들거나 커맨드의 곡선을 고치세요.",
+                        IsBlocking: true,
+                        lineId));
+                    continue;
+                }
+
+                if (!CurveKindRules.TryClassify(curve.Keys.ToArray(), out CurveKind kind, out string? why))
+                {
+                    problems.Add(new YarnBundleProblem(
+                        $"곡선 '{value}'은 런타임이 받지 않습니다({why}) — " +
+                        "이동 곡선은 1로, 진동 곡선은 0으로 끝나야 합니다.",
+                        IsBlocking: true,
+                        lineId));
+                    continue;
+                }
+
+                if (kind != wanted)
+                {
+                    problems.Add(new YarnBundleProblem(
+                        $"곡선 '{value}'은 {KindName(kind)} 곡선인데 " +
+                        $"{commandDefinition.OutputCommandName}의 '{parameter.Name}'은 " +
+                        $"{KindName(wanted)} 곡선을 받습니다 — " +
+                        "런타임은 이 곡선을 못 찾은 것으로 치고 기본값으로 재생합니다.",
                         IsBlocking: true,
                         lineId));
                 }
@@ -391,6 +417,18 @@ public static class YarnBundleEmitter
             }
         }
     }
+
+    /// <summary>
+    /// 이 파라미터가 요구하는 곡선 종류. <c>ease</c> = 이동 · <c>oscillation</c> = 진동 ·
+    /// 그 밖 = null(곡선 칸이 아니다).
+    /// </summary>
+    private static CurveKind? KindFor(string parameterType) =>
+        string.Equals(parameterType, "ease", StringComparison.Ordinal) ? CurveKind.Motion
+        : string.Equals(parameterType, "oscillation", StringComparison.Ordinal) ? CurveKind.Oscillation
+        : null;
+
+    private static string KindName(CurveKind kind) =>
+        kind == CurveKind.Oscillation ? "진동" : "이동";
 
     /// <summary>
     /// 프로젝트의 커스텀 곡선을 런타임 스키마(ease-curves/1 — 배열 + name, 그쪽 확정 회신)로
