@@ -594,7 +594,7 @@ internal sealed class StageSceneView : UserControl
                         argumentName: parameter.Name,
                         value: seconds * DurationToken.FramesPerSecond,
                         minimum: 0,
-                        maximum: 48,
+                        maximum: DurationSliderMax(seconds * DurationToken.FramesPerSecond),
                         tick: 1,
                         format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
                         token: frames => $"{frames:0}fr"));
@@ -1573,7 +1573,7 @@ internal sealed class StageSceneView : UserControl
                 argumentName: durationParameter,
                 value: cue.DurationFrames,
                 minimum: 0,
-                maximum: 48,
+                maximum: DurationSliderMax(cue.DurationFrames),
                 tick: 1,
                 format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
                 token: frames => $"{frames:0}fr"));
@@ -1770,6 +1770,15 @@ internal sealed class StageSceneView : UserControl
             _curveWindow.Activate();
         }
     }
+
+    /// <summary>
+    /// 시간 슬라이더의 오른쪽 끝. 기본은 프레임 별칭이 있는 48fr(2초)까지지만,
+    /// <b>이미 그보다 길게 적힌 값은 그 자리가 보이게</b> 늘린다 (2026-08-21 소유자:
+    /// "실제 커맨드가 사용하는 프레임을 쓰도록") — 48로 잘라 두면 슬라이더가 대본을
+    /// 잘못 말한다. 초 단위 토큰(예: 3s)이 이 자리로 온다.
+    /// </summary>
+    private static double DurationSliderMax(double frames) =>
+        Math.Max(48, Math.Ceiling(frames));
 
     /// <summary>
     /// 값 하나짜리 슬라이더 줄. 끄는 동안은 라벨만 갱신하고, <b>손을 뗄 때 한 번</b> 저장한다.

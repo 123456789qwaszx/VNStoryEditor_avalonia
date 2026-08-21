@@ -189,6 +189,48 @@ public sealed class StageMotionRenderTests
     });
 
     [Fact]
+    public void 스물네_프레임을_넘는_이동도_끝까지_흐른다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 소유자: "24프레임 넘어가는 건 그냥 바로 끊긴다음 snap시키는데,
+        // 실제 커맨드가 사용하는 프레임을 쓰도록". 라인 시계에 1초(=24fr) 상한이
+        // 있어 그보다 긴 커맨드는 중간에 잘리고 확정 자리로 튀었다.
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+
+        MiniStagePreviewRequest request = BuildRequest(Command(
+            "char_rig_staging.move_by", ("slot", "c1"), ("x", "+2u"), ("duration", "48fr")));
+
+        // 라인 시계가 커맨드가 쓴 프레임 그대로다 — 48fr = 2초.
+        Assert.Equal(2.0, request.TransitionSeconds, 3);
+
+        view.Render(request);
+        window.Measure(new Avalonia.Size(800, 600));
+        window.Arrange(new Avalonia.Rect(0, 0, 800, 600));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Canvas canvas = CanvasOf(view);
+        var rests = canvas.Children
+            .Select(control => (Control: control, Left: Canvas.GetLeft(control)))
+            .Where(entry => !double.IsNaN(entry.Left))
+            .ToArray();
+
+        // 진행 0.5 = 24프레임 지점. 예전에는 여기서 이미 도착해 있었다(상한 탓).
+        // 이제는 OutCubic이 24fr에 놓는 자리 — 도착(+80px)보다 앞이다.
+        view.SetTransitionProgress(0.5);
+        double eased = 80 * EaseFunctions.Evaluate(EaseKind.OutCubic, 0.5f);
+        (Control moved, double restLeft) = Assert.Single(
+            rests, entry => Math.Abs(Canvas.GetLeft(entry.Control) - entry.Left - eased) < 0.5);
+        Assert.True(Canvas.GetLeft(moved) - restLeft < 80 - 1, "24프레임 지점이 도착이면 안 된다");
+
+        // 끝까지 가면 도착이다.
+        view.SetTransitionProgress(1);
+        Assert.Equal(80, Canvas.GetLeft(moved) - restLeft, 1);
+
+        window.Close();
+    });
+
+    [Fact]
     public void 움직이지_않는_이동은_궤적을_그리지_않는다() => HeadlessUi.Run(() =>
     {
         // 0u 이동은 그릴 궤적이 없다 — 없는 선을 그려 두면 화면이 거짓말한다.
