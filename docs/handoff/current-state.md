@@ -486,8 +486,9 @@ game.definition.json` / `작가가 더한 화자`.
   `rotate` 3종 · `shot` 5종 · `scale` 3종이 **마지막 위치 인자 = 이징**이라는 같은 규약을
   쓴다(미지정이면 토큰 생략 · `@이름`이면 커스텀 곡선). 툴은 파라미터 `type`만 보므로
   카탈로그에 칸을 더하는 것으로 끝난다 — 계획·검증 코드는 안 건드린다.
-  진동 커맨드 **`sway` 지시서**가 런타임에 나가 있다([`../work-orders/sway-orders.md`](../work-orders/sway-orders.md)
-  — 최종값 무변 + 축별 곡선, 표적은 미사용 노드 `CharacterPortrait_Shake`, 폴드 no-op).
+  몸짓 커맨드 **`gesture` 지시서**가 런타임에 나가 있다([`../work-orders/gesture-orders.md`](../work-orders/gesture-orders.md)
+  — 최종값 무변 + 축별 곡선, 표적은 미사용 노드 `CharacterPortrait_Shake`, 폴드 no-op.
+  이름은 소유자 확정: 제자리 몸짓 전반이라 넓은 말이 맞다).
   `char_scale_to`는 2026-08-21에 **코어로 이관**했다(`ApplyPortraitScaleTo` — 표적은
   초상 축 `CharacterPortrait_ActingScale`이라 `scale_by`의 `CharSlot_Scale`과 겹쳐도
   서로를 안 덮는다. 양쪽 저장소 동일 · 유니티 검증은 소유자 몫).
