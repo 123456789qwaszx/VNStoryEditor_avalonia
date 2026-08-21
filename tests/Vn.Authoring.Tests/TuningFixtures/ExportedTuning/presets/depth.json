@@ -107,8 +107,8 @@
                     },
                     {
                         "serializedVersion": "3",
-                        "time": 16.0,
-                        "value": -776.0,
+                        "time": 20.0,
+                        "value": -1000.0,
                         "inSlope": -56.0,
                         "outSlope": 0.0,
                         "tangentMode": 0,
@@ -137,9 +137,20 @@
                     },
                     {
                         "serializedVersion": "3",
-                        "time": 16.0,
-                        "value": 1.6919999122619629,
+                        "time": 10.0,
+                        "value": 1.3799999952316285,
                         "inSlope": 0.05199999734759331,
+                        "outSlope": 0.082000002264976501,
+                        "tangentMode": 0,
+                        "weightedMode": 0,
+                        "inWeight": 0.0,
+                        "outWeight": 0.0
+                    },
+                    {
+                        "serializedVersion": "3",
+                        "time": 20.0,
+                        "value": 2.2000000476837158,
+                        "inSlope": 0.082000002264976501,
                         "outSlope": 0.0,
                         "tangentMode": 0,
                         "weightedMode": 0,

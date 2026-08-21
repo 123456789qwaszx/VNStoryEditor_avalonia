@@ -671,10 +671,10 @@ internal sealed class StageSceneView : UserControl
             label: "뎁스",
             argumentName: parameter.Name,
             value: known ? level : DepthLevelLabels.Mid,
-            // 커브 설계 구간은 [0,16]이다 (2026-08-21 저쪽이 close 위로 6레벨 늘렸다 —
-            // 더 붙는 클로즈업 자리). 음수 쪽은 외삽이라 소유자가 정한 -10을 유지한다.
+            // 커브 설계 구간은 [0,20]이다 (2026-08-21 저쪽이 close 위로 늘렸다 — 배율
+            // 상한 2.2). 음수 쪽은 외삽이라 소유자가 정한 -10을 유지한다.
             minimum: -10,
-            maximum: 16,
+            maximum: 20,
             tick: 0.5,
             // 눈금에 정확히 선 값은 이름으로도 읽힌다 — 슬라이더 하나가 두 표기를 겸한다.
             format: value => !known && Math.Abs(value - DepthLevelLabels.Mid) < 0.001

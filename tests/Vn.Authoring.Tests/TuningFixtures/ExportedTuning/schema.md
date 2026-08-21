@@ -148,9 +148,10 @@ MonoBehaviour
 
 > `level`은 `AnimationCurve` 기반이고, 코어 DTO가 `m_Curve` 키 배열을 그대로 읽는다
 > (`m_PreInfinity`/`m_PostInfinity`는 읽지 않는다 — 런타임이 쓰지 않고 직접 외삽한다).
-> 레벨 수치 입력(커브 조회)도 접는다. 깊이의 진실은 `level` 커브 하나이고(설계 구간 [0,16]),
+> 레벨 수치 입력(커브 조회)도 접는다. 깊이의 진실은 `level` 커브 하나이고(설계 구간 [0,20]),
 > 프리셋 표(`presets`)는 더 이상 읽지 않는다 — 라벨 far·back·mid·front·close는 커브 위의
 > 눈금이다(코어 `DepthLevelLabels`: 0 · 2.5 · 5 · 7.5 · 10).
+> `scaleCurve`는 close(레벨 10)에 무릎이 있다 — 0~10은 +0.052/레벨, 10~20은 +0.082/레벨(상한 2.2).
 
 ### `focus-tuning.json` — `CharacterFocusTuningDBSO`
 

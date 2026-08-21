@@ -32,6 +32,31 @@ public class RuntimeTuningLibraryTests
         Assert.True(library.RigCount > 0);
         Assert.Contains(tuning.RigSchemas!.rigs, rig => rig.rigKind == "character");
 
+        // depth 커브 — size 계열 폴드의 진짜 입력이다(프리셋 표는 사장 데이터).
+        // 라벨은 이 커브 위의 눈금이고, 값은 저쪽 표와 한 자리도 달라선 안 된다.
+        Assert.NotNull(tuning.DepthLevel);
+
+        // 저쪽이 close(레벨 10)에 무릎을 넣어 배율 상한을 2.2로 올렸다(2026-08-21).
+        // 무릎 아래(0~10)는 종전 기울기 그대로라 다섯 라벨의 값이 안 움직인다 —
+        // 그 불변이 이 표의 요점이고, 픽스처가 낡으면 여기가 먼저 운다.
+        (float Level, float Y, float Scale)[] expected =
+        [
+            (0f, 120f, 0.86f),      // far
+            (2.5f, -20f, 0.99f),    // back
+            (5f, -160f, 1.12f),     // mid
+            (7.5f, -300f, 1.25f),   // front
+            (10f, -440f, 1.38f),    // close
+            (12f, -552f, 1.544f),   // 무릎 위 — 직선이었다면 1.484
+            (20f, -1000f, 2.2f)     // 설계 구간 끝, 배율 상한
+        ];
+
+        foreach ((float level, float y, float scale) in expected)
+        {
+            Assert.True(tuning.DepthLevel!.TryResolve(level, out float actualY, out float actualScale));
+            Assert.Equal(y, actualY, 2);
+            Assert.Equal(scale, actualScale, 3);
+        }
+
         // depth 프리셋 — size 계열 폴드의 입력. 대표 프리셋 하나가 실제로 조회돼야 한다.
         Assert.NotNull(tuning.DepthPresets);
         Assert.True(tuning.DepthPresets!.TryGet("close", out DepthPresetDto close));
