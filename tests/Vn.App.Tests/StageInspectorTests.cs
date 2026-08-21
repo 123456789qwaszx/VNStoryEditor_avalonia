@@ -1,3 +1,4 @@
+using Ked.Presentation.Core;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using Vn.App.Services;
@@ -189,4 +190,67 @@ public sealed class StageInspectorTests
             inspector.GetLogicalDescendants().OfType<TextBlock>(),
             text => (text.Text ?? "").Contains("1u", StringComparison.Ordinal));
     });
+
+    [Fact]
+    public void 진동_칸도_이징_선택기로_서고_기본은_OutSine이다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-21 증보 — 준비 과정 없이 낱말 하나로 몸짓을 고른다.
+        StageSceneView view = EditableView();
+
+        Control inspector = Assert.IsAssignableFrom<Control>(
+            view.BuildInspectorContent(Command(
+                "char_rig_staging.gesture",
+                ("slot", "c1"), ("yAmp", "1u"), ("duration", "24fr"), ("yEase", "OutBounce"))));
+
+        // 곡선 편집 단추가 있다 = 이동 칸과 같은 선택기다(즉석 커스텀까지 이어진다).
+        Assert.Contains(
+            inspector.GetLogicalDescendants().OfType<Button>(),
+            button => (button.Content as string) == "곡선 편집…");
+
+        // 축이 둘이라 선택기도 둘이다(xEase·yEase) — gesture의 정의다.
+        ComboBox[] combos = inspector.GetLogicalDescendants().OfType<ComboBox>()
+            .Where(item => item.ItemsSource is string[] names && names.Contains("OutBounce"))
+            .ToArray();
+        Assert.Equal(2, combos.Length);
+
+        string Selected(ComboBox item) => (item.ItemsSource as string[])![item.SelectedIndex];
+
+        // 적은 쪽은 그 이징을, 안 적은 쪽은 기본(OutSine = 기본 혹과 같은 함수)을 짚는다.
+        Assert.Contains(combos, item => Selected(item) == "OutBounce");
+        Assert.Contains(combos, item => Selected(item) == "OutSine");
+    });
+
+    [Fact]
+    public void 진동_베이크는_그대로_유효한_진동_곡선이다()
+    {
+        // 이음매의 핵심 — 핑퐁을 구우면 끝점이 (0,0)·(1,0)이라 CurveKindRules가
+        // 진동으로 읽는다. 그래서 "이징 고르기 → 곡선 편집 → 저장"이 한 줄로 이어진다.
+        foreach (EaseKind kind in (EaseKind[])[EaseKind.OutSine, EaseKind.OutBack, EaseKind.OutBounce])
+        {
+            CurveKey[] baked = EaseCurveBaker.Bake(kind, CurveKind.Oscillation);
+
+            Assert.True(
+                CurveKindRules.TryClassify(baked, out CurveKind classified, out string? why),
+                $"{kind}: {why}");
+            Assert.Equal(CurveKind.Oscillation, classified);
+
+            // 봉우리를 잡으려면 t=0.5가 키로 서야 한다(5키로는 못 잡는다).
+            Assert.Contains(baked, key => Math.Abs(key.Time - 0.5f) < 1e-4f);
+
+            // 구운 모양이 핑퐁과 가깝다 — 완벽 재현이 아니라 편집 출발점이 목표다.
+            foreach (float t in (float[])[0.125f, 0.375f, 0.625f, 0.875f])
+            {
+                Assert.Equal(
+                    OscillationFunctions.PingPong(kind, t),
+                    CurveFunctions.Evaluate(baked, t),
+                    2);
+            }
+        }
+
+        // 이동 베이크는 그대로다 — 5키, 끝값 1.
+        CurveKey[] motion = EaseCurveBaker.Bake(EaseKind.OutCubic);
+        Assert.Equal(EaseCurveBaker.KeyCount, motion.Length);
+        Assert.True(CurveKindRules.TryClassify(motion, out CurveKind motionKind, out _));
+        Assert.Equal(CurveKind.Motion, motionKind);
+    }
 }

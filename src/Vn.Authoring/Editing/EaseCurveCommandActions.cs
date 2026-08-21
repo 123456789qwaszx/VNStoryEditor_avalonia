@@ -31,7 +31,8 @@ public static class EaseCurveCommandActions
         string presentationNodeId,
         string commandId,
         string easeParameterName,
-        string? currentEase)
+        string? currentEase,
+        CurveKind curveKind = CurveKind.Motion)
     {
         ArgumentNullException.ThrowIfNull(editor);
 
@@ -48,7 +49,9 @@ public static class EaseCurveCommandActions
             return (ownedName, existing.Keys, source);
         }
 
-        CurveKey[] baked = EaseCurveBaker.Bake(source);
+        // 진동이면 핑퐁을 굽는다 — 끝점이 (0,0)·(1,0)이라 구운 결과가 그대로 유효한
+        // 진동 곡선이고, 종류가 어긋나 재생에서 버려지는 일이 없다.
+        CurveKey[] baked = EaseCurveBaker.Bake(source, curveKind);
         editor.SetEaseCurve(ownedName, baked, ownerCommandId: commandId);
         editor.SetPresentationCommandArgument(
             presentationNodeId, commandId, easeParameterName, "@" + ownedName);

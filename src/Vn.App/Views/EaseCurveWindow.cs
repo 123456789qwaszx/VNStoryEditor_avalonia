@@ -123,7 +123,8 @@ internal sealed class EaseCurveWindow : Window
         string commandId,
         string? ease,
         string easeParameter,
-        Action onApplied)
+        Action onApplied,
+        CurveKind curveKind = CurveKind.Motion)
     {
         _session = session;
         _presentationNodeId = presentationNodeId;
@@ -138,7 +139,7 @@ internal sealed class EaseCurveWindow : Window
         UiGuard.Run(session, "곡선 편집 열기", () =>
         {
             (_ownedName, initial, bakedFrom) = EaseCurveCommandActions.EnsureOwned(
-                session.Editor, presentationNodeId, commandId, easeParameter, ease);
+                session.Editor, presentationNodeId, commandId, easeParameter, ease, curveKind);
 
             if (!wasCustom)
             {
@@ -152,11 +153,12 @@ internal sealed class EaseCurveWindow : Window
         }
 
         Title = $"곡선 편집 — @{_ownedName}";
+        string kindWord = curveKind == CurveKind.Oscillation ? "진동" : "이동";
         _header.Text = wasCustom
-            ? $"이 커맨드의 곡선 (@{_ownedName})"
-            : $"이 커맨드의 곡선 — {bakedFrom}에서 복사해 시작 (@{_ownedName})";
+            ? $"이 커맨드의 {kindWord} 곡선 (@{_ownedName})"
+            : $"이 커맨드의 {kindWord} 곡선 — {bakedFrom}에서 복사해 시작 (@{_ownedName})";
         _problem.IsVisible = false;
-        _editor.Load(initial);
+        _editor.Load(initial, curveKind);
         RefreshLibrary();
         _nameInput.Text = NextFreeLibraryName();
     }

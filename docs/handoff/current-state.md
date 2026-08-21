@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-21 · 테스트 **1432 통과, 실패 0**
-(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 740 · Vn.App 289)
+기준: 2026-08-21 · 테스트 **1434 통과, 실패 0**
+(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 740 · Vn.App 291)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 
@@ -500,6 +500,10 @@ game.definition.json` / `작가가 더한 화자`.
   이징 핑퐁 → 기본 혹)는 코어 `OscillationSource` + `OscillationFunctions.Evaluate` 하나가
   진다. ⚠ **기본 혹 = `OutSine` 핑퐁과 같은 함수**(오차 0) — 기본이 선택지 하나의 별칭이라
   선택기에서 OutSine을 고르고 [곡선 편집…]하면 기본 혹이 키로 펼쳐진다.
+  **작업대 (2026-08-21)** — `oscillation` 칸이 이동과 같은 선택기로 서되 미리보기를 핑퐁으로
+  그리고, [곡선 편집…]은 그 핑퐁을 **9키로** 굽는다(가운데가 봉우리라 5키로는 못 잡는다).
+  ⚠ 콤보의 빈 칸 기본은 **종류마다 다르다** — 이동 `OutCubic` · 진동 `OutSine`(기본 혹과
+  같은 함수라 화면과 재생이 일치하고 인자도 안 늘어난다).
   `char_scale_to`는 2026-08-21에 **코어로 이관**했다(`ApplyPortraitScaleTo` — 표적은
   초상 축 `CharacterPortrait_ActingScale`이라 `scale_by`의 `CharSlot_Scale`과 겹쳐도
   서로를 안 덮는다. 양쪽 저장소 동일 · 유니티 검증은 소유자 몫).

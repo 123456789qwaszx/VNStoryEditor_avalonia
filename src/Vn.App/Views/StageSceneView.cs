@@ -652,6 +652,24 @@ internal sealed class StageSceneView : UserControl
                         parameter.Name,
                         StageMotionPlan.EaseKindOf(null).ToString()));
                 }
+                else if (string.Equals(parameter.Type, "oscillation", StringComparison.Ordinal))
+                {
+                    // 진동 칸 (2026-08-21 증보) — 같은 선택기이되 <b>핑퐁</b>으로 그린다.
+                    // 표준 이징이 왕복의 절반으로 읽히므로 35종이 그대로 몸짓이 되고,
+                    // [곡선 편집…]은 그 핑퐁을 구워 열어 준다(끝점이 (0,0)·(1,0)이라
+                    // 구운 결과가 그대로 유효한 진동 곡선이다).
+                    //
+                    // 기본값은 <c>OutSine</c>이다 — 빈 토큰의 기본 혹 sin(πt)와
+                    // <b>같은 함수</b>라(오차 0) 고르면 인자가 지워지고 텍스트가 안 늘어난다.
+                    host.Children.Add(BuildEaseSelector(
+                        context.PresentationNodeId,
+                        command.CommandId,
+                        written.Length > 0 ? written : null,
+                        CurveKeysOf(written),
+                        parameter.Name,
+                        EaseKind.OutSine.ToString(),
+                        CurveKind.Oscillation));
+                }
                 else if (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) &&
                          ArgumentTokenCandidates.For(parameter.Type) is { Count: > 0 } candidates)
                 {
@@ -1683,8 +1701,25 @@ internal sealed class StageSceneView : UserControl
         string? ease,
         IReadOnlyList<CurveKey>? curveKeys,
         string easeParameter,
-        string? defaultEase)
+        string? defaultEase,
+        CurveKind curveKind = CurveKind.Motion)
     {
+        // 진동 칸은 같은 선택기를 쓰되 <b>모양을 핑퐁으로</b> 그린다 — 표준 이징이
+        // 왕복의 절반으로 읽히기 때문이다(2026-08-21 증보). 미리보기가 재생과 같은
+        // 코어 함수를 지나므로 고를 때 보이는 것이 그대로 나온다.
+        bool oscillation = curveKind == CurveKind.Oscillation;
+        Func<EaseKind, float, float> Shape = oscillation
+            ? OscillationFunctions.PingPong
+            : EaseFunctions.Evaluate;
+
+        // 안 적었을 때 콤보가 짚을 자리 — <b>종류마다 다르다</b>. 이동은 런타임 스펙
+        // 기본 OutCubic이고, 진동은 <c>OutSine</c>이다(빈 토큰의 기본 혹 sin(πt)와 같은
+        // 함수라 오차 0). 여기서 이동 기본을 쓰면 "안 적었는데 OutCubic이라고 적힌"
+        // 화면이 되어 실제 재생과 어긋난다.
+        EaseKind Current(string? token) =>
+            Enum.TryParse(token, ignoreCase: true, out EaseKind parsed)
+                ? parsed
+                : oscillation ? EaseKind.OutSine : EaseKindOf(null);
         // 커스텀(커맨드 소유 곡선)이면 콤보 첫 칸이 그것이다 — 예전처럼 선택 없음(-1)으로
         // 두면 "지금 쓰이는 ease가 안 보이는" 화면이 된다(2026-08-20 소유자 보고).
         bool isCustom = ease is ['@', ..];
@@ -1722,14 +1757,14 @@ internal sealed class StageSceneView : UserControl
         }
         else
         {
-            EaseKind current = EaseKindOf(ease);
-            DrawShape(t => EaseFunctions.Evaluate(current, t));
+            EaseKind current = Current(ease);
+            DrawShape(t => Shape(current, t));
         }
 
         var combo = new ComboBox
         {
             ItemsSource = candidates,
-            SelectedIndex = isCustom ? 0 : Array.IndexOf(enumNames, EaseKindOf(ease).ToString()),
+            SelectedIndex = isCustom ? 0 : Array.IndexOf(enumNames, Current(ease).ToString()),
             FontSize = 10,
             MinWidth = 110,
             VerticalAlignment = VerticalAlignment.Center
@@ -1752,7 +1787,7 @@ internal sealed class StageSceneView : UserControl
                 return; // 이미 커스텀 — 되돌아온 선택은 편집이 아니다.
             }
 
-            DrawShape(t => EaseFunctions.Evaluate(Enum.Parse<EaseKind>(selected), t));
+            DrawShape(t => Shape(Enum.Parse<EaseKind>(selected), t));
 
             // 기본값 = 생략 (빈 값이 인자를 지운다 — SetPresentationCommandArgument 규약).
             string? token = string.Equals(selected, defaultEase, StringComparison.OrdinalIgnoreCase)
@@ -1789,7 +1824,7 @@ internal sealed class StageSceneView : UserControl
         };
         ToolTip.SetTip(editButton, "이 곡선에서 출발해 키를 만듭니다 — 저장하면 커스텀 곡선(@이름)이 됩니다.");
         editButton.Click += (_, _) =>
-            ShowCurveEditorWindow(presentationNodeId, commandId, ease, easeParameter);
+            ShowCurveEditorWindow(presentationNodeId, commandId, ease, easeParameter, curveKind);
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
         var label = new TextBlock
@@ -1822,7 +1857,8 @@ internal sealed class StageSceneView : UserControl
     /// 실시간 커밋 · 보관함 복사)은 창이 진다 — <see cref="EaseCurveWindow"/>.
     /// </summary>
     private void ShowCurveEditorWindow(
-        string presentationNodeId, string commandId, string? ease, string easeParameter)
+        string presentationNodeId, string commandId, string? ease, string easeParameter,
+        CurveKind curveKind = CurveKind.Motion)
     {
         if (_session is null || _request?.EditContext is not { Editable: true })
         {
@@ -1835,7 +1871,7 @@ internal sealed class StageSceneView : UserControl
             _curveWindow.Closed += (_, _) => _curveWindow = null;
             _curveWindow.ShowFor(
                 _session, presentationNodeId, commandId, ease, easeParameter,
-                () => ManipulationApplied?.Invoke());
+                () => ManipulationApplied?.Invoke(), curveKind);
 
             if (VisualRoot is Window owner)
             {
@@ -1850,7 +1886,7 @@ internal sealed class StageSceneView : UserControl
         {
             _curveWindow.ShowFor(
                 _session, presentationNodeId, commandId, ease, easeParameter,
-                () => ManipulationApplied?.Invoke());
+                () => ManipulationApplied?.Invoke(), curveKind);
             _curveWindow.Activate();
         }
     }
