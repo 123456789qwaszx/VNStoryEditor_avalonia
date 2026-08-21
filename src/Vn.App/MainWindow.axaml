@@ -114,23 +114,22 @@
                           ResizeDirection="Columns"
                           Background="{DynamicResource ThemeBorderLowBrush}" />
 
-            <!-- 연출 그래프의 우측 — 노드 편집기 + 무대 프리뷰, 그 아래 편집 자료·에셋.
+            <!-- 연출 그래프의 우측 — 노드 편집기 + 무대 프리뷰, 그 아래 에셋 탐색기.
                  챕터 그래프 탭에서는 열째로 접힌다(스플리터 포함): 그 화면의 편집·보고는
                  전부 챕터 그래프 뷰 안에 있고, 여기 남겨 두면 다른 화면의 발행·프리뷰가
                  소음이 된다(소유자 보고).
-                 편집 자료·에셋이 왼쪽에서 여기로 내려온 이유 (2026-08-18 팀장 미팅):
-                 둘 다 평소에 볼 필요가 없는 현황판이다. 왼쪽 맨 위에 있으면 챕터 목록과
-                 같은 무게로 읽히므로, 접힌 채로 맨 아래에 둔다. -->
+                 ⚠ [편집 자료]는 2026-08-21에 사라졌다 (소유자: "이제 편집자료는 굳이
+                 표시할 필요가 없는 것 같아") — 대본·발행 결과·연출 공급의 읽기 전용
+                 현황판이었는데, 발행·배선이 자동이 된 뒤로는 볼 이유가 없다. -->
             <Border Grid.Column="4"
                     x:Name="RightColumn"
                     BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                     BorderThickness="1,0,0,0">
-                <Grid RowDefinitions="*,Auto,Auto,Auto">
+                <Grid RowDefinitions="*,Auto">
                     <Panel Grid.Row="0">
                         <views:DialogueNodeEditor x:Name="DialogueEditor" />
                         <views:SetNodeEditor x:Name="SetEditor" />
                         <views:PresentationNodeEditor x:Name="PresentationEditor" />
-                        <views:CommandSupplyNodeEditor x:Name="SupplyEditor" />
                         <TextBlock x:Name="EmptyText"
                                    Text="노드를 선택하면 여기서 편집합니다."
                                    HorizontalAlignment="Center"
@@ -141,41 +140,9 @@
                     <!-- 무대 프리뷰는 2026-08-20에 중앙 탭으로 승격했다 — 여기 있던
                          조그만 패널이 그 자리로 갔다. -->
 
-                    <!-- 편집 자료 — 에셋 탐색기와 같은 접기 문법이다(▶/▼ 토글). 판이
-                         둘인데 접는 법이 다르면 손이 매번 헷갈린다. 기본은 접힘. -->
-                    <Border Grid.Row="1"
-                            Padding="12,8"
-                            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-                            BorderThickness="0,1,0,0">
-                        <Grid ColumnDefinitions="Auto,*">
-                            <ToggleButton Grid.Column="0"
-                                          x:Name="ResourceCollapseToggle"
-                                          IsChecked="False"
-                                          FontSize="10"
-                                          Padding="4,1"
-                                          Content="▶" />
-                            <TextBlock Grid.Column="1"
-                                       Text="편집 자료"
-                                       FontWeight="SemiBold"
-                                       Margin="6,0,0,0"
-                                       VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
-
-                    <ScrollViewer Grid.Row="2"
-                                  x:Name="ResourceScroll"
-                                  IsVisible="False"
-                                  MaxHeight="220"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="ResourcePanel"
-                                    Margin="10,8,10,10"
-                                    Spacing="10" />
-                    </ScrollViewer>
-
                     <!-- 에셋 탐색기는 제 머리에 접기 토글을 이미 갖고 있다 — 여기서는
                          기본을 접힘으로만 돌린다(AssetExplorerView의 CollapseToggle). -->
-                    <views:AssetExplorerView Grid.Row="3"
+                    <views:AssetExplorerView Grid.Row="1"
                                              x:Name="AssetExplorer"
                                              MaxHeight="300" />
                 </Grid>

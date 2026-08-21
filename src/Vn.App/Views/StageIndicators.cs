@@ -67,7 +67,7 @@ internal static class StageIndicators
         {
             foreach (MiniStageUnhandled unhandled in state.Unhandled)
             {
-                unhandledHost.Children.Add(new TextBlock
+                unhandledHost.Children.Add(new SelectableTextBlock
                 {
                     Text = $"• {unhandled.CommandName} — " +
                         $"{(unhandled.LineId is null ? "Setup" : unhandled.LineId)}" +
@@ -82,7 +82,7 @@ internal static class StageIndicators
             {
                 foreach (Ked.Presentation.Core.UnhandledCommand diagnostic in core.Unhandled)
                 {
-                    unhandledHost.Children.Add(new TextBlock
+                    unhandledHost.Children.Add(new SelectableTextBlock
                     {
                         Text = $"◦ 코어 진단: {diagnostic.Command.Name} — {diagnostic.Reason}" +
                             (diagnostic.Command.Source is { } source ? $" ({source})" : string.Empty),
@@ -246,9 +246,14 @@ internal static class StageIndicators
         badgeRow.Children.Add(badge);
     }
 
+    /// <summary>
+    /// 알림 한 줄. <b>SelectableTextBlock</b>이다 (2026-08-21 소유자: "이런 문구를 복사할
+    /// 수 있도록") — 드래그로 한 줄을 집어 가고, 전체는 [진단 복사]가 들고 간다.
+    /// 챕터 그래프 검증 보고와 같은 문법이다(`ChapterGraphView.DiagnosticLine`).
+    /// </summary>
     private static void AddNotice(Panel host, string message, bool warning)
     {
-        host.Children.Add(new TextBlock
+        host.Children.Add(new SelectableTextBlock
         {
             Text = message,
             FontSize = 10,
@@ -256,5 +261,51 @@ internal static class StageIndicators
             Opacity = warning ? 0.9 : 0.6,
             Foreground = warning ? new SolidColorBrush(Color.FromRgb(194, 65, 12)) : null
         });
+    }
+
+    /// <summary>
+    /// 지금 화면에 뜬 진단을 텍스트로 모은다 — <b>그려진 줄이 곧 복사되는 줄이다</b>
+    /// (별도 조립 금지: 두 벌이면 어긋난다). 접혀 있는 상세 목록도 함께 담는다 —
+    /// 펼쳐 놓아야만 복사되면 "붙여 달라"는 부탁이 두 걸음이 된다.
+    /// </summary>
+    public static IReadOnlyList<string> CollectText(
+        string? context,
+        Panel badgeRow,
+        Panel noticeHost,
+        Panel unhandledHost)
+    {
+        var lines = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(context))
+        {
+            lines.Add(context.Trim());
+        }
+
+        string[] badges = badgeRow.Children
+            .Select(child => child switch
+            {
+                Button button => button.Content as string,
+                Border { Child: TextBlock label } => label.Text,
+                _ => null
+            })
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Select(text => text!.Trim())
+            .ToArray();
+
+        if (badges.Length > 0)
+        {
+            lines.Add(string.Join(" · ", badges));
+        }
+
+        foreach (Panel host in new[] { noticeHost, unhandledHost })
+        {
+            lines.AddRange(host.Children
+                .OfType<TextBlock>()
+                .Select(block => block.Text ?? string.Empty)
+                .Where(text => !string.IsNullOrWhiteSpace(text))
+                .Select(text => text.Trim()));
+        }
+
+        return lines;
     }
 }

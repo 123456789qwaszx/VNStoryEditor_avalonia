@@ -1,4 +1,4 @@
-using Vn.Authoring.Definition;
+﻿using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
@@ -33,11 +33,17 @@ public static class GraphProjectionBuilder
         var kindByNodeId = new Dictionary<string, GraphNodeKind>(StringComparer.Ordinal);
         var portsByNodeId = new Dictionary<string, IReadOnlyList<GraphOutputPortProjection>>(StringComparer.Ordinal);
 
-        // A 계층 격리 (2026-08-15 소유자) — 챕터 조건 공급 설정노드는 동기화의 배관이지
-        // 작가의 데이터가 아니다. 식(스탯 변수)이 연출 그래프에 노출되면 안 되므로
-        // 카드도 공급 링크도 그리지 않는다. 공급 자체는 데이터에 그대로 살아 있어서
-        // 조건 드롭다운의 라벨과 <<if>> 역조회는 변함없이 동작한다.
-        var hiddenSupplyNodeIds = new HashSet<string>(StringComparer.Ordinal);
+        // 배관 노드는 카드를 그리지 않는다:
+        // - A 계층 격리 (2026-08-15 소유자) — 챕터 조건 공급 설정노드는 동기화의 배관이지
+        //   작가의 데이터가 아니다. 식(스탯 변수)이 연출 그래프에 노출되면 안 된다.
+        //   공급 자체는 데이터에 살아 있어 조건 라벨과 <<if>> 역조회는 변함없다.
+        // - 연출 노드 (2026-08-21 소유자) — 발행·배선이 자동화됐다
+        //   (ProjectEditor.EnsurePresentationChannel). 입구는 무대 프리뷰의 선택기이고
+        //   그래프에는 카드도 결과·공급 배선도 그리지 않는다. 데이터는 그대로 산다.
+        // - 연출 공급 노드 (같은 날, 소유자: "연출 공급을 제거해") — 이 노드가 잇던
+        //   상대가 연출 노드인데 그쪽이 숨었다. 공급 데이터는 살아 있어 커맨드 범위·
+        //   프리셋 해석(AvailablePresentationCommandResolver)은 변함없이 돈다.
+        var hiddenPlumbingNodeIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (StoryFile file in project.Files)
         {
@@ -49,9 +55,10 @@ public static class GraphProjectionBuilder
                 kindByNodeId[node.Id] = KindOf(node);
                 portsByNodeId[node.Id] = BuildPorts(node, project, definition);
 
-                if (Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file))
+                if (node is PresentationNode or CommandSupplyNode ||
+                    Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file))
                 {
-                    hiddenSupplyNodeIds.Add(node.Id);
+                    hiddenPlumbingNodeIds.Add(node.Id);
                 }
             }
         }
@@ -70,7 +77,7 @@ public static class GraphProjectionBuilder
             {
                 foreach (StoryNode node in file.Nodes)
                 {
-                    if (!filter.Shows(KindOf(node)) || hiddenSupplyNodeIds.Contains(node.Id))
+                    if (!filter.Shows(KindOf(node)) || hiddenPlumbingNodeIds.Contains(node.Id))
                     {
                         continue;
                     }
@@ -89,7 +96,7 @@ public static class GraphProjectionBuilder
             }
 
             IReadOnlyList<CollapsedNodeEntry> entries = file.Nodes
-                .Where(node => filter.Shows(KindOf(node)) && !hiddenSupplyNodeIds.Contains(node.Id))
+                .Where(node => filter.Shows(KindOf(node)) && !hiddenPlumbingNodeIds.Contains(node.Id))
                 .Select(node => new CollapsedNodeEntry(
                     node.Id,
                     node.Name,
@@ -129,16 +136,11 @@ public static class GraphProjectionBuilder
                 continue;
             }
 
-            // 간선 정합: 한쪽 끝 노드가 필터나 공급 숨김으로 안 보이면 간선도 숨는다.
+            // 간선 정합: 한쪽 끝 노드가 필터나 배관 숨김으로 안 보이면 간선도 숨는다.
             if (!filter.Shows(kindByNodeId[raw.SourceNodeId]) ||
                 !filter.Shows(kindByNodeId[raw.TargetNodeId]) ||
-                hiddenSupplyNodeIds.Contains(raw.SourceNodeId) ||
-                hiddenSupplyNodeIds.Contains(raw.TargetNodeId))
-            {
-                continue;
-            }
-
-            if (raw.Kind == GraphConnectionKind.ResultSnapshot && !filter.ShowResultConnections)
+                hiddenPlumbingNodeIds.Contains(raw.SourceNodeId) ||
+                hiddenPlumbingNodeIds.Contains(raw.TargetNodeId))
             {
                 continue;
             }
@@ -223,62 +225,9 @@ public static class GraphProjectionBuilder
                 null));
         }
 
-        // 공급 간선은 Settings와 같은 비실행 연결이다. 포트 종류도 같은 것을 쓴다 —
-        // 화면이 새 종류를 몰라도 그려진다.
-        if (node is CommandSupplyNode)
-        {
-            bool connected = project.Links.Any(link =>
-                link.Kind == NodeLinkKind.CommandSupply &&
-                link.IsEnabled &&
-                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
-
-            ports.Add(new GraphOutputPortProjection(
-                SupplyPortKey(node.Id),
-                GraphOutputPortKind.Settings,
-                node.Id,
-                "커맨드 공급",
-                -1,
-                connected,
-                null));
-        }
-
-        // 연출 노드는 발행한 결과를 대사 노드에 되돌려 공급한다. 내보내기 짝은 이 연결이 정한다.
-        if (node is PresentationNode)
-        {
-            bool connected = project.Links.Any(link =>
-                link.Kind == NodeLinkKind.PresentationSupply &&
-                link.IsEnabled &&
-                string.Equals(link.SourceNodeId, node.Id, StringComparison.Ordinal));
-
-            ports.Add(new GraphOutputPortProjection(
-                PresentationSupplyPortKey(node.Id),
-                GraphOutputPortKind.Settings,
-                node.Id,
-                "연출 공급",
-                -1,
-                connected,
-                null));
-        }
-
-        // 발행 결과 포트는 대사 노드 쪽에 붙는다. 연출은 이 결과를 읽는 소비자이지
-        // 대사에 무언가를 공급하는 쪽이 아니다. 화살표 방향이 의존 방향과 같아야 한다.
-        if (node is DialogueNode)
-        {
-            DialogueResult? latest = project.Results.DialogueResultsOf(node.Id).LastOrDefault();
-            bool consumed = latest is not null && project.EnumerateNodes()
-                .OfType<PresentationNode>()
-                .Any(presentation => presentation.Source is { } source &&
-                    string.Equals(source.ResultId, latest.Identity.ResultId, StringComparison.Ordinal));
-
-            ports.Add(new GraphOutputPortProjection(
-                ResultPortKey(node.Id),
-                GraphOutputPortKind.PublishedResult,
-                node.Id,
-                latest is null ? "발행 없음" : $"결과 v{latest.Identity.Version}",
-                -1,
-                consumed,
-                null));
-        }
+        // 연출·연출 공급 노드의 포트와 대사 노드의 발행 결과 포트는 2026-08-21에 사라졌다 —
+        // 발행·배선이 자동이 되면서(EnsurePresentationChannel) 그 카드들이 배관으로 숨었고,
+        // 끌어서 잇던 포트들은 이을 주체가 없다.
 
         return ports;
     }
@@ -370,63 +319,10 @@ public static class GraphProjectionBuilder
         // 범위가 판 전체이므로 선을 그리면 대사노드 수만큼 거미줄이 되고, 그 선이 무엇을
         // 정하지도 않는다. 구판 프로젝트에 남은 Settings 링크 데이터는 조용히 무시된다.
 
-        foreach (NodeLink link in project.Links.Where(link =>
-                     link.Kind == NodeLinkKind.CommandSupply && link.IsEnabled))
-        {
-            result.Add(new RawConnection(
-                $"link:{link.Id}",
-                GraphConnectionKind.Settings,
-                link.SourceNodeId,
-                link.TargetNodeId,
-                SupplyPortKey(link.SourceNodeId),
-                "커맨드 공급",
-                -1,
-                link.Id,
-                null));
-        }
-
-        foreach (NodeLink link in project.Links.Where(link =>
-                     link.Kind == NodeLinkKind.PresentationSupply && link.IsEnabled))
-        {
-            result.Add(new RawConnection(
-                $"link:{link.Id}",
-                GraphConnectionKind.Settings,
-                link.SourceNodeId,
-                link.TargetNodeId,
-                PresentationSupplyPortKey(link.SourceNodeId),
-                "연출 공급",
-                -1,
-                link.Id,
-                null));
-        }
-
-        // 연출이 어느 대사 결과를 읽는지는 링크가 아니라 계산이다. 결과를 낳은 노드가
-        // 아직 프로젝트에 있을 때만 간선을 그린다. 없으면 뱃지에 "(없음)"으로 남는다.
-        foreach (PresentationNode presentation in project.EnumerateNodes().OfType<PresentationNode>())
-        {
-            if (presentation.Source is not { } source)
-            {
-                continue;
-            }
-
-            DialogueResult? dialogue = project.Results.FindDialogue(source.ResultId, source.Version);
-
-            if (dialogue is null || project.FindDialogue(dialogue.SourceNodeId) is null)
-            {
-                continue;
-            }
-
-            result.Add(new RawConnection(
-                $"result:{presentation.Id}",
-                GraphConnectionKind.ResultSnapshot,
-                dialogue.SourceNodeId,
-                presentation.Id,
-                ResultPortKey(dialogue.SourceNodeId),
-                $"결과 v{source.Version}",
-                -1,
-                null,
-                null));
-        }
+        // 커맨드 공급·연출 공급 링크와 결과 스냅샷 간선은 2026-08-21에 그리기를 멈췄다 —
+        // 연출·연출 공급 노드가 배관으로 숨어 양 끝 중 하나가 늘 없는 간선이었다.
+        // 데이터(링크·Source)는 그대로 살아 내보내기 짝(NodeExportResolver)과 커맨드
+        // 범위 해석(AvailablePresentationCommandResolver)이 계속 쓴다.
 
         return result;
     }
@@ -478,12 +374,6 @@ public static class GraphProjectionBuilder
     }
 
     private static string SettingsPortKey(string nodeId) => $"settings:{nodeId}";
-
-    private static string SupplyPortKey(string nodeId) => $"supply:{nodeId}";
-
-    private static string PresentationSupplyPortKey(string nodeId) => $"presSupply:{nodeId}";
-
-    private static string ResultPortKey(string nodeId) => $"result:{nodeId}";
 
     private sealed record RawConnection(
         string Key,

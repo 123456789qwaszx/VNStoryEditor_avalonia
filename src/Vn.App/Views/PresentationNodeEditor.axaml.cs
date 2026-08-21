@@ -45,9 +45,8 @@ public partial class PresentationNodeEditor : UserControl
             }
         };
 
-        SourceCombo.SelectionChanged += (_, _) => OnSourceSelected();
-        SupplyCombo.SelectionChanged += (_, _) => OnSupplySelected();
-        PublishButton.Click += (_, _) => Publish();
+        // 입력·공급 콤보와 [연출 발행]은 2026-08-21에 사라졌다 — 채널이 자동이다
+        // (ProjectEditor.EnsurePresentationChannel). 이 편집기는 상태를 보여 줄 뿐이다.
     }
 
     internal void Attach(AuthoringSession session) => _session = session;
@@ -82,8 +81,7 @@ public partial class PresentationNodeEditor : UserControl
             LineHost.Children.Clear();
             _foldCache.Clear();
 
-            BuildSourcePicker(presentation);
-            BuildSupplyPicker(presentation);
+            BuildChannelStatus(presentation);
 
             PresentationWorkspace workspace = PresentationBindingResolver.Resolve(
                 _session.Project,
@@ -104,7 +102,7 @@ public partial class PresentationNodeEditor : UserControl
             {
                 TargetText.Text = presentation.Source is { } missing
                     ? $"입력으로 지정한 대사 결과 '{missing.Label}'을 찾을 수 없습니다."
-                    : "읽을 대사 결과가 없습니다. 대사 노드에서 먼저 발행한 뒤 위에서 고르세요.";
+                    : "읽을 대사 결과가 없습니다 — 무대 프리뷰에서 이 씬을 고르면 자동으로 고정됩니다.";
             }
             else
             {
@@ -139,7 +137,6 @@ public partial class PresentationNodeEditor : UserControl
                 }
             }
 
-            BuildPublishState(presentation);
             RefreshStagePreview();
         }
         finally
@@ -471,145 +468,26 @@ public partial class PresentationNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 읽을 수 있는 대사 결과 목록. <b>버전을 하나하나 고르게 한다.</b>
-    /// "최신"이라는 선택지를 두면 다음 발행 때 연출가 모르게 대사가 바뀐다.
+    /// 자동 채널의 현재 상태 한 줄 — 무엇을 읽고 어디에 공급하며 언제 발행됐는지.
+    /// 편집 UI가 아니다: 값의 주인은 EnsurePresentationChannel이다.
     /// </summary>
-    private void BuildSourcePicker(PresentationNode presentation)
+    private void BuildChannelStatus(PresentationNode presentation)
     {
-        List<DialogueResult> results = _session!.Project.Results.DialogueResults
-            .OrderBy(result => result.SourceNodeName, StringComparer.Ordinal)
-            .ThenBy(result => result.Identity.Version)
-            .ToList();
-
-        SourceCombo.ItemsSource = results
-            .Select(result => $"{result.SourceNodeName} · v{result.Identity.Version} · {result.Lines.Count}줄")
-            .ToList();
-        SourceCombo.Tag = results;
-        SourceCombo.SelectedIndex = presentation.Source is { } source
-            ? results.FindIndex(result =>
-                string.Equals(result.Identity.ResultId, source.ResultId, StringComparison.Ordinal) &&
-                result.Identity.Version == source.Version)
-            : -1;
-        SourceCombo.IsEnabled = results.Count > 0;
-        SourceCombo.PlaceholderText = results.Count == 0
-            ? "발행된 대사 결과가 없습니다"
-            : "발행된 대사 결과 선택";
-    }
-
-    /// <summary>
-    /// 발행한 연출 결과를 어느 대사 노드에 공급할지. 내보내기는 이 연결로 짝을 찾는다.
-    /// 첫 항목 "(공급 안 함)"이 연결 해제다.
-    /// </summary>
-    private void BuildSupplyPicker(PresentationNode presentation)
-    {
-        List<DialogueNode> dialogues = _session!.Project.EnumerateNodes()
-            .OfType<DialogueNode>()
-            .ToList();
-
-        var labels = new List<string> { "(공급 안 함)" };
-        labels.AddRange(dialogues.Select(dialogue => dialogue.Name));
-
-        NodeLink? current = _session.Project.Links.FirstOrDefault(link =>
+        NodeLink? supply = _session!.Project.Links.FirstOrDefault(link =>
             link.Kind == NodeLinkKind.PresentationSupply &&
             link.IsEnabled &&
             string.Equals(link.SourceNodeId, presentation.Id, StringComparison.Ordinal));
-
-        SupplyCombo.ItemsSource = labels;
-        SupplyCombo.Tag = dialogues;
-        SupplyCombo.SelectedIndex = current is null
-            ? 0
-            : dialogues.FindIndex(dialogue =>
-                  string.Equals(dialogue.Id, current.TargetNodeId, StringComparison.Ordinal)) + 1;
-        SupplyCombo.IsEnabled = dialogues.Count > 0;
-    }
-
-    private void OnSupplySelected()
-    {
-        if (_building ||
-            _session is null ||
-            _nodeId is null ||
-            SupplyCombo.Tag is not List<DialogueNode> dialogues ||
-            SupplyCombo.SelectedIndex < 0)
-        {
-            return;
-        }
-
-        try
-        {
-            _session.Editor.SetPresentationSupplyTarget(
-                _nodeId,
-                SupplyCombo.SelectedIndex == 0
-                    ? null
-                    : dialogues[SupplyCombo.SelectedIndex - 1].Id);
-        }
-        catch (InvalidOperationException exception)
-        {
-            _session.SetStatus(exception.Message);
-        }
-    }
-
-    private void OnSourceSelected()
-    {
-        if (_building ||
-            _session is null ||
-            _nodeId is null ||
-            SourceCombo.Tag is not List<DialogueResult> results ||
-            SourceCombo.SelectedIndex < 0 ||
-            SourceCombo.SelectedIndex >= results.Count)
-        {
-            return;
-        }
-
-        DialogueResult picked = results[SourceCombo.SelectedIndex];
-
-        try
-        {
-            _session.Editor.SetPresentationSource(
-                _nodeId,
-                picked.Identity.ResultId,
-                picked.Identity.Version);
-        }
-        catch (InvalidOperationException exception)
-        {
-            _session.SetStatus(exception.Message);
-        }
-    }
-
-    private void BuildPublishState(PresentationNode presentation)
-    {
-        PresentationDraft draft = _session!.Editor.InspectPresentationPublish(presentation.Id);
-        PublishButton.IsEnabled = draft.CanPublish;
+        string target = supply is null
+            ? "(공급 안 함)"
+            : _session.Project.FindNode(supply.TargetNodeId)?.Name ?? supply.TargetNodeId;
 
         PresentationResult? latest = _session.Project.Results
             .PresentationResultsOf(presentation.Id)
             .LastOrDefault();
 
-        PublishStatusText.Text = draft.CanPublish
-            ? latest is null
-                ? "아직 발행하지 않았습니다."
-                : $"최신 발행: {latest.Identity.Label} · 대사 {latest.Source.Label}"
-            : draft.BlockingSummary();
-    }
-
-    private void Publish()
-    {
-        if (_session is null || _nodeId is null)
-        {
-            return;
-        }
-
-        try
-        {
-            PublishOutcome<PresentationResult> outcome = _session.Editor.PublishPresentation(_nodeId);
-
-            _session.SetStatus(outcome.Created
-                ? $"{outcome.Result.Identity.Label}을 발행했습니다. 대사 {outcome.Result.Source.Label} 기준입니다."
-                : $"내용이 같아 {outcome.Result.Identity.Label}을 그대로 사용합니다.");
-        }
-        catch (PublishRejectedException exception)
-        {
-            _session.SetStatus(exception.Message.Replace(Environment.NewLine, " ", StringComparison.Ordinal));
-        }
+        ChannelStatusText.Text =
+            $"자동 채널 — 입력 {presentation.Source?.Label ?? "없음"} · 공급 → {target}" +
+            (latest is null ? string.Empty : $" · 발행 {latest.Identity.Label}");
     }
 
     // 작업대(Inspector) 상태 — 같은 대상·같은 값이면 컨트롤을 그대로 돌려준다

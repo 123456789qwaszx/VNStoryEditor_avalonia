@@ -9,18 +9,17 @@
             <StackPanel Orientation="Horizontal" Spacing="6">
                 <!-- [+ 설정 노드]는 폐지됐다 (2026-08-17 소유자) — 설정노드는 챕터마다
                      하나가 자동으로 서는 컨트롤러라, 만들고 지우는 것이 아니다. -->
+                <!-- [+ 연출 노드]도 폐지됐다 (2026-08-21 소유자) — 연출 채널은 무대
+                     프리뷰에서 고르면 자동으로 선다(EnsurePresentationChannel).
+                     [+ 연출 공급]도 같은 날 폐지됐다 — 공급 노드가 잇던 상대(연출 노드)가
+                     배관으로 숨어 이 판에서 할 일이 없다. 남는 필터는 대사·설정 둘이다. -->
                 <Button x:Name="AddDialogueButton" Content="+ 대사 노드" />
-                <Button x:Name="AddPresentationButton" Content="+ 연출 노드" />
-                <Button x:Name="AddSupplyButton" Content="+ 연출 공급" />
                 <Border Width="1" Margin="4,2" Background="{DynamicResource ThemeBorderLowBrush}" />
                 <Button x:Name="DeleteNodeButton" Content="노드 삭제" />
                 <Border Width="1" Margin="4,2" Background="{DynamicResource ThemeBorderLowBrush}" />
                 <TextBlock Text="필터" FontSize="11" Opacity="0.6" VerticalAlignment="Center" />
                 <CheckBox x:Name="FilterDialogueCheck" Content="대사" FontSize="11" IsChecked="True" />
                 <CheckBox x:Name="FilterSetCheck" Content="설정" FontSize="11" IsChecked="True" />
-                <CheckBox x:Name="FilterPresentationCheck" Content="연출" FontSize="11" IsChecked="True" />
-                <CheckBox x:Name="FilterSupplyCheck" Content="공급" FontSize="11" IsChecked="True" />
-                <CheckBox x:Name="FilterResultCheck" Content="결과" FontSize="11" IsChecked="True" />
                 <Button x:Name="FlowOnlyButton" Content="흐름만" FontSize="11" />
             </StackPanel>
         </Border>

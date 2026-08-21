@@ -114,13 +114,13 @@ public partial class GraphEditorView : UserControl
     private Point _groupDragStart;
     private readonly Dictionary<string, Point> _groupStartPositions = new(StringComparer.Ordinal);
 
-    /// <summary>토글 상태로 만든 필터. 거르는 것은 화면이 아니라 투영이다.</summary>
+    /// <summary>
+    /// 토글 상태로 만든 필터. 거르는 것은 화면이 아니라 투영이다.
+    /// 연출·연출 공급 노드는 필터 이전에 배관으로 숨는다(2026-08-21) — 토글이 없다.
+    /// </summary>
     private GraphFilter CurrentFilter => new(
         ShowDialogue: FilterDialogueCheck.IsChecked == true,
-        ShowSet: FilterSetCheck.IsChecked == true,
-        ShowPresentation: FilterPresentationCheck.IsChecked == true,
-        ShowCommandSupply: FilterSupplyCheck.IsChecked == true,
-        ShowResultConnections: FilterResultCheck.IsChecked == true);
+        ShowSet: FilterSetCheck.IsChecked == true);
 
     /// <summary>DialogueNode만 남기는 흐름 보기.</summary>
     private void ApplyFlowOnlyFilter()
@@ -131,9 +131,6 @@ public partial class GraphEditorView : UserControl
         {
             FilterDialogueCheck.IsChecked = true;
             FilterSetCheck.IsChecked = false;
-            FilterPresentationCheck.IsChecked = false;
-            FilterSupplyCheck.IsChecked = false;
-            FilterResultCheck.IsChecked = false;
         }
         finally
         {
@@ -152,15 +149,9 @@ public partial class GraphEditorView : UserControl
         GraphCanvas.Height = CanvasHeight;
 
         AddDialogueButton.Click += (_, _) => AddNode(GraphNodeKind.Dialogue);
-        AddPresentationButton.Click += (_, _) => AddNode(GraphNodeKind.Presentation);
-        AddSupplyButton.Click += (_, _) => AddNode(GraphNodeKind.CommandSupply);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
 
-        foreach (CheckBox check in new[]
-                 {
-                     FilterDialogueCheck, FilterSetCheck, FilterPresentationCheck,
-                     FilterSupplyCheck, FilterResultCheck
-                 })
+        foreach (CheckBox check in new[] { FilterDialogueCheck, FilterSetCheck })
         {
             check.IsCheckedChanged += (_, _) =>
             {
@@ -238,7 +229,6 @@ public partial class GraphEditorView : UserControl
         DrawChapterFrames();
 
         AddDialogueButton.IsEnabled = _session.ActiveFileId is not null;
-        AddPresentationButton.IsEnabled = _session.ActiveFileId is not null;
 
         DrawEdges();
         HighlightSelection();
@@ -2191,8 +2181,6 @@ public partial class GraphEditorView : UserControl
         {
             GraphOutputPortKind.Settings =>
                 "조건을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요.",
-            GraphOutputPortKind.PublishedResult =>
-                "이 대사 노드의 최신 발행 결과를 읽을 연출 노드 위에서 놓으세요.",
             _ =>
                 "연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다."
         };
@@ -2369,17 +2357,6 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        if (port.Kind == GraphOutputPortKind.PublishedResult)
-        {
-            AttachLatestResult(port.NodeId, dropped);
-            return;
-        }
-
-        if (dropped is { NodeKind: GraphNodeKind.Presentation })
-        {
-            _session?.SetStatus("PresentationNode는 실행 출구의 대상이 될 수 없습니다.");
-            return;
-        }
 
         string? target = dropped is null || string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal)
             ? null
@@ -2392,8 +2369,8 @@ public partial class GraphEditorView : UserControl
     }
 
     /// <summary>
-    /// 공급 포트(조건·커맨드·연출 — 전부 비실행 연결)를 놓았을 때.
-    /// 어떤 연결이 되는지는 <b>포트를 소유한 노드의 종류</b>가 정한다.
+    /// 공급 포트를 놓았을 때. 2026-08-21 이후 이 판에 남은 공급자는 <b>설정노드</b>뿐이다
+    /// (연출·연출 공급 노드는 배관으로 숨었다).
     /// 잘못된 대상은 상태 표시줄로 알리기만 한다 — 드래그 한 번에 툴이 죽으면 안 된다.
     /// </summary>
     private void HandleSupplyDrop(GraphOutputPortProjection port, GraphNodeHit? dropped)
@@ -2417,24 +2394,6 @@ public partial class GraphEditorView : UserControl
                 case SetNode:
                     _session.SetStatus("조건 공급은 대사 노드에만 연결할 수 있습니다.");
                     break;
-
-                case CommandSupplyNode when dropped.NodeKind == GraphNodeKind.Presentation:
-                    _session.Editor.AddCommandSupplyLink(port.NodeId, dropped.NodeId);
-                    _session.SetStatus("커맨드 공급을 연결했습니다.");
-                    break;
-
-                case CommandSupplyNode:
-                    _session.SetStatus("커맨드 공급은 연출 노드에만 연결할 수 있습니다.");
-                    break;
-
-                case PresentationNode when dropped.NodeKind == GraphNodeKind.Dialogue:
-                    _session.Editor.SetPresentationSupplyTarget(port.NodeId, dropped.NodeId);
-                    _session.SetStatus("연출 공급을 연결했습니다. 내보내기가 이 짝을 사용합니다.");
-                    break;
-
-                case PresentationNode:
-                    _session.SetStatus("연출 공급은 대사 노드에만 연결할 수 있습니다.");
-                    break;
             }
         }
         catch (InvalidOperationException exception)
@@ -2443,56 +2402,8 @@ public partial class GraphEditorView : UserControl
         }
     }
 
-    /// <summary>
-    /// 대사 노드의 발행 결과 포트를 연출 노드에 끌어다 놓았을 때.
-    ///
-    /// <b>최신 버전을 명시적으로 고정한다.</b> "이 노드의 최신"으로 저장하면 다음 발행 때
-    /// 연출가가 모르는 사이에 발밑의 대사가 바뀐다. 다른 버전으로 옮기는 것은 연출 편집기의
-    /// 버전 목록에서 한다.
-    /// </summary>
-    private void AttachLatestResult(string dialogueNodeId, GraphNodeHit? dropped)
-    {
-        if (_session is null)
-        {
-            return;
-        }
-
-        if (dropped is null)
-        {
-            _session.SetStatus("연출 노드 위에 놓아야 입력 결과가 연결됩니다.");
-            return;
-        }
-
-        if (dropped.NodeKind != GraphNodeKind.Presentation)
-        {
-            _session.SetStatus("발행 결과는 연출 노드만 읽을 수 있습니다.");
-            return;
-        }
-
-        DialogueResult? latest = _session.Project.Results
-            .DialogueResultsOf(dialogueNodeId)
-            .LastOrDefault();
-
-        if (latest is null)
-        {
-            _session.SetStatus(
-                "이 대사 노드는 아직 발행된 결과가 없습니다. 대사 편집기에서 먼저 발행하세요.");
-            return;
-        }
-
-        try
-        {
-            _session.Editor.SetPresentationSource(
-                dropped.NodeId,
-                latest.Identity.ResultId,
-                latest.Identity.Version);
-            _session.SetStatus($"연출이 '{latest.SourceNodeName} v{latest.Identity.Version}'을 읽습니다.");
-        }
-        catch (InvalidOperationException exception)
-        {
-            _session.SetStatus(exception.Message);
-        }
-    }
+    // AttachLatestResult(발행 결과 끌어 연결)는 2026-08-21에 사라졌다 — 연출 채널이
+    // 자동으로 최신 발행본을 고정한다(ProjectEditor.EnsurePresentationChannel).
 
     private GraphNodeHit? NodeAt(Point point)
     {
@@ -2604,12 +2515,12 @@ public partial class GraphEditorView : UserControl
         double y = ClampNodeY(
             ((GraphScroll.Offset.Y + (GraphScroll.Viewport.Height / 2)) / _zoom) - 90 + stagger);
 
+        // 이 판에서 사람이 만드는 노드는 대사·설정뿐이다 (2026-08-21) — 연출·연출 공급은
+        // 배관이라 채널이 짓고(EnsurePresentationChannel), 설정노드는 챕터마다 자동으로 선다.
         StoryNode node = kind switch
         {
             GraphNodeKind.Dialogue => _session.Editor.AddDialogueNode(fileId, x, y),
             GraphNodeKind.Set => _session.Editor.AddSetNode(fileId, x, y),
-            GraphNodeKind.Presentation => _session.Editor.AddPresentationNode(fileId, x, y),
-            GraphNodeKind.CommandSupply => _session.Editor.AddCommandSupplyNode(fileId, x, y),
             _ => throw new NotSupportedException($"지원하지 않는 그래프 노드 종류 '{kind}'입니다.")
         };
 

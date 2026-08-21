@@ -77,30 +77,25 @@ public enum GraphNodeKind
 ///
 /// <b>간선 정합 규칙:</b> 간선의 어느 한쪽 끝 노드가 필터로 숨으면 그 간선도 함께 숨는다.
 /// 허공에 매달린 간선을 그리지 않는다.
+///
+/// 고를 수 있는 것은 <b>대사·설정 둘</b>이다 (2026-08-21) — 연출·연출 공급 노드는 필터보다
+/// 먼저 배관으로 숨으므로(<see cref="GraphProjectionBuilder"/>) 토글이 정할 것이 없다.
 /// </summary>
 public sealed record GraphFilter(
     bool ShowDialogue = true,
-    bool ShowSet = true,
-    bool ShowPresentation = true,
-    bool ShowCommandSupply = true,
-    bool ShowResultConnections = true)
+    bool ShowSet = true)
 {
     public static GraphFilter All { get; } = new();
 
     /// <summary>DialogueNode만 남기는 흐름 보기.</summary>
     public static GraphFilter FlowOnly { get; } = new(
         ShowDialogue: true,
-        ShowSet: false,
-        ShowPresentation: false,
-        ShowCommandSupply: false,
-        ShowResultConnections: false);
+        ShowSet: false);
 
     public bool Shows(GraphNodeKind kind) => kind switch
     {
         GraphNodeKind.Dialogue => ShowDialogue,
         GraphNodeKind.Set => ShowSet,
-        GraphNodeKind.Presentation => ShowPresentation,
-        GraphNodeKind.CommandSupply => ShowCommandSupply,
         _ => true
     };
 }

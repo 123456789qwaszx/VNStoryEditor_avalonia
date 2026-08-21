@@ -77,30 +77,20 @@ public sealed class MainChromeTests
     });
 
     [Fact]
-    public void 편집_자료와_에셋은_우측_열에서_접힌_채로_시작한다() => HeadlessUi.Run(() =>
+    public void 편집_자료는_사라지고_에셋만_우측_열에_남는다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-18 팀장 미팅 — "평소에 굳이 보일 필요가 없지". 둘 다 왼쪽 챕터
-        // 목록과 같은 무게로 읽히던 자리에서 우측 맨 아래로 내려왔고, 기본은 접힘이다.
+        // 2026-08-21 소유자 — "이제 편집자료는 굳이 표시할 필요가 없는 것 같아".
+        // 대본·발행 결과·연출 공급을 나열하던 현황판인데, 발행·배선이 자동이 된 뒤로는
+        // 볼 이유가 없다. 에셋 탐색기는 그 자리(우측 열 맨 아래)에 그대로 남는다.
         var window = new MainWindow();
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        var resourceScroll = window.FindControl<ScrollViewer>("ResourceScroll")!;
-        var toggle = window.FindControl<ToggleButton>("ResourceCollapseToggle")!;
+        Assert.Null(window.FindControl<ScrollViewer>("ResourceScroll"));
+        Assert.Null(window.FindControl<ToggleButton>("ResourceCollapseToggle"));
 
-        Assert.False(resourceScroll.IsVisible);
-        Assert.Equal("▶", toggle.Content);
-
-        // 왼쪽에는 더 이상 없다 — 우측 열(RightColumn) 안에 산다.
         var right = window.FindControl<Border>("RightColumn")!;
-        Assert.Contains(right, resourceScroll.GetVisualAncestors());
         Assert.Contains(right, window.FindControl<AssetExplorerView>("AssetExplorer")!.GetVisualAncestors());
-
-        toggle.IsChecked = true;
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.True(resourceScroll.IsVisible);
-        Assert.Equal("▼", toggle.Content);
 
         window.Close();
     });

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
 
@@ -29,11 +30,8 @@ public partial class AssetExplorerView : UserControl
     {
         InitializeComponent();
 
-        RefreshButton.Click += (_, _) => UiGuard.Run(_session, "에셋 새로 고침", () =>
-        {
-            _session?.RefreshAssets();
-            Rebuild();
-        });
+        RefreshButton.Click += async (_, _) =>
+            await UiGuard.RunAsync(_session, "에셋 새로 고침", RefreshWithFeedbackAsync);
         // 에셋 루트 변경의 상시 진입점 (X8 — 프리뷰 위 버튼을 걷어낸 자리).
         RootsButton.Click += (_, _) => UiGuard.Run(_session, "에셋 폴더 설정", ShowRootsFlyout);
         // 튜닝 관리의 상시 진입점 (W46) — 기본 생성·기존 폴더 연결.
@@ -60,6 +58,41 @@ public partial class AssetExplorerView : UserControl
         };
 
         Rebuild();
+    }
+
+    /// <summary>
+    /// 새로 고침 — <b>도는 동안 그 사실이 화면에 보여야 한다</b> (2026-08-21 소유자 보고:
+    /// 새 튜닝 덤프를 넣고 누르자 창이 30초 넘게 굳어 멈춘 줄 알았다).
+    ///
+    /// 일 자체는 여전히 UI 스레드의 동기 작업이다(에셋 png 재귀 스캔 + 튜닝 재읽기 +
+    /// 비트맵 캐시 비우기 + 트리 재구성). 가벼운 쪽으로 고른 것은 <b>일을 옮기는 대신
+    /// 상태를 먼저 그리는 것</b>이다: 단추를 잠그고 "다시 읽는 중"을 적은 뒤, 렌더 패스가
+    /// 지나가도록 <see cref="DispatcherPriority.Background"/>로 한 박자 양보하고 시작한다.
+    /// 양보가 없으면 상태줄도 잠긴 단추도 <b>일이 끝난 뒤에야</b> 그려져 아무 소용이 없다.
+    ///
+    /// 이 대기가 위험한 이유는 느려서가 아니라, 굳은 창을 죽이면 저장 안 한 편집이
+    /// 함께 날아가기 때문이다(같은 보고). 근본 해결(스캔을 백그라운드 스레드로)은 호출처가
+    /// 일곱 군데라 따로 다룬다.
+    /// </summary>
+    private async Task RefreshWithFeedbackAsync()
+    {
+        RefreshButton.IsEnabled = false;
+        _session?.SetStatus("프리뷰 에셋과 튜닝을 다시 읽는 중… (폴더가 크면 시간이 걸립니다)");
+
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(
+                () =>
+                {
+                    _session?.RefreshAssets();
+                    Rebuild();
+                },
+                DispatcherPriority.Background);
+        }
+        finally
+        {
+            RefreshButton.IsEnabled = true;
+        }
     }
 
     internal void Rebuild()

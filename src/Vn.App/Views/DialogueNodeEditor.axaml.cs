@@ -63,7 +63,6 @@ public partial class DialogueNodeEditor : UserControl
 
         NameBox.LostFocus += (_, _) => CommitName();
         AddLineButton.Click += (_, _) => AddLine();
-        PublishButton.Click += (_, _) => Publish();
         ApplyScenarioButton.Click += (_, _) => UiGuard.Run(_session, "텍스트 반영", ApplyScenario);
         ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
         ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
@@ -2215,10 +2214,9 @@ public partial class DialogueNodeEditor : UserControl
         ResultHost.Children.Clear();
 
         DialogueDraft draft = _session!.Editor.InspectDialoguePublish(node.Id, _session.Definition);
-        PublishButton.IsEnabled = draft.CanPublish;
         PublishStatusText.Text = draft.CanPublish
-            ? "발행할 수 있습니다."
-            : draft.BlockingSummary();
+            ? string.Empty
+            : $"자동 발행이 막혀 있습니다: {draft.BlockingSummary()}";
 
         foreach (DialogueResult result in _session.Project.Results.DialogueResultsOf(node.Id).Reverse())
         {
@@ -2264,28 +2262,8 @@ public partial class DialogueNodeEditor : UserControl
         }
     }
 
-    private void Publish()
-    {
-        if (_session is null || _nodeId is null)
-        {
-            return;
-        }
-
-        try
-        {
-            PublishOutcome<DialogueResult> outcome = _session.Editor.PublishDialogue(
-                _nodeId,
-                _session.Definition);
-
-            _session.SetStatus(outcome.Created
-                ? $"{outcome.Result.Identity.Label}을 발행했습니다."
-                : $"내용이 같아 {outcome.Result.Identity.Label}을 그대로 사용합니다.");
-        }
-        catch (PublishRejectedException exception)
-        {
-            _session.SetStatus(exception.Message.Replace(Environment.NewLine, " ", StringComparison.Ordinal));
-        }
-    }
+    // Publish()(수동 발행)는 2026-08-21에 사라졌다 — 무대 프리뷰에서 씬을 고르면
+    // 채널이 자동으로 발행한다(ProjectEditor.EnsurePresentationChannel).
 
     // ── 기본 출구 ───────────────────────────────────────────────────────────
 

@@ -81,17 +81,10 @@ public partial class MainWindow : Window
         // SelectionChanged는 이미 정해진 선택에는 오지 않는다.
         ApplyTabChrome();
 
-        // 편집 자료 접기 — 에셋 탐색기의 토글과 같은 문법이다(▶/▼).
-        ResourceCollapseToggle.IsCheckedChanged += (_, _) =>
-        {
-            ResourceScroll.IsVisible = ResourceCollapseToggle.IsChecked == true;
-            ResourceCollapseToggle.Content = ResourceCollapseToggle.IsChecked == true ? "▼" : "▶";
-        };
         ChapterGraph.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
         PresentationEditor.Attach(_session);
-        SupplyEditor.Attach(_session);
         StagePreview.Attach(_session);
         AssetExplorer.Attach(_session);
         _liveOutput = new LiveOutputService(_session);
@@ -114,6 +107,24 @@ public partial class MainWindow : Window
             {
                 PresentationEditor.SelectStageLineById(lineId);
             }
+        };
+        StagePreview.SceneChosen += dialogueNodeId =>
+        {
+            // 씬 선택 = 연출 채널 자동 확보 (2026-08-21 소유자 — "미리 다 해둔 다음에
+            // 무대 프리뷰측에서 뭘 할지 고르도록"). 발행·연결은 여기서 전부 자동이다.
+            PresentationChannelOutcome outcome = _session.Editor.EnsurePresentationChannel(
+                dialogueNodeId,
+                _session.Definition);
+
+            if (!outcome.Ready)
+            {
+                // 채널이 못 서도(대사 발행 불가 등) 씬 자체는 보여 준다 — 이유는 상태줄로.
+                _session.SetStatus(outcome.Problem ?? "연출 채널을 세울 수 없습니다.");
+                _session.Select(dialogueNodeId);
+                return;
+            }
+
+            _session.Select(outcome.Presentation!.Id);
         };
         // 작업대 = Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출 편집창이
         // 합쳐지는 게 맞겠네") — 선택 커맨드 하나의 편집 행(연출 편집기) + 수치 조절
@@ -1045,66 +1056,9 @@ public partial class MainWindow : Window
         Background = new SolidColorBrush(Color.FromArgb(60, 128, 128, 128))
     };
 
-    /// <summary>
-    /// 좌측의 편집 자료 요약 — 대본 원본·발행 결과·합성 목록. 전부 읽기 전용이다.
-    /// 발행된 것에는 수정 UI가 없다는 원칙 그대로, 여기는 현황판일 뿐이다.
-    /// </summary>
-    private void RebuildResourcePanel()
-    {
-        ResourcePanel.Children.Clear();
-
-        void Section(string title, IEnumerable<string> rows)
-        {
-            var stack = new StackPanel { Spacing = 2 };
-            stack.Children.Add(new TextBlock
-            {
-                Text = title,
-                FontSize = 11,
-                FontWeight = FontWeight.SemiBold,
-                Opacity = 0.8
-            });
-
-            bool any = false;
-
-            foreach (string row in rows)
-            {
-                any = true;
-                stack.Children.Add(new TextBlock
-                {
-                    Text = row,
-                    FontSize = 11,
-                    Opacity = 0.7,
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                });
-            }
-
-            if (!any)
-            {
-                stack.Children.Add(new TextBlock { Text = "없음", FontSize = 11, Opacity = 0.4 });
-            }
-
-            ResourcePanel.Children.Add(stack);
-        }
-
-        Section("대본", _session.Project.Scripts.Select(script =>
-            $"{script.Name} · {script.ActiveLines.Count()}줄" +
-            (string.IsNullOrWhiteSpace(script.SourcePath) ? string.Empty : " · 원본 연결됨")));
-
-        Section("발행 결과", _session.Project.Results.DialogueResults
-            .Select(result => $"{result.SourceNodeName} · {result.Identity.Label} · 대사")
-            .Concat(_session.Project.Results.PresentationResults
-                .Select(result => $"{result.SourceNodeName} · {result.Identity.Label} · 연출")));
-
-        // 내보내기 짝은 명시적 합성이 아니라 연출 공급 연결에서 계산된다.
-        Section("연출 공급", _session.Project.Links
-            .Where(link => link.Kind == NodeLinkKind.PresentationSupply && link.IsEnabled)
-            .Select(link =>
-            {
-                string presentation = _session.Project.FindNode(link.SourceNodeId)?.Name ?? link.SourceNodeId;
-                string dialogue = _session.Project.FindNode(link.TargetNodeId)?.Name ?? link.TargetNodeId;
-                return $"{dialogue} ← {presentation}";
-            }));
-    }
+    // [편집 자료] 현황판(RebuildResourcePanel)은 2026-08-21에 사라졌다 (소유자) —
+    // 대본·발행 결과·연출 공급을 읽기 전용으로 나열하던 판인데, 발행·배선이 자동이
+    // 된 뒤로는 볼 이유가 없다. 대본은 노드 카드가, 짝은 내보내기가 말한다.
 
     private void ShowSelectedNode()
     {
@@ -1113,7 +1067,6 @@ public partial class MainWindow : Window
         DialogueEditor.IsVisible = node is DialogueNode;
         SetEditor.IsVisible = node is SetNode;
         PresentationEditor.IsVisible = node is PresentationNode;
-        SupplyEditor.IsVisible = node is CommandSupplyNode;
         EmptyText.IsVisible = node is null;
         EmptyText.Text = "노드를 선택하면 여기서 편집합니다.";
 
@@ -1129,16 +1082,24 @@ public partial class MainWindow : Window
         {
             PresentationEditor.Show(node.Id);
         }
-        else if (node is CommandSupplyNode)
-        {
-            SupplyEditor.Show(node.Id);
-        }
 
         // 무대 프리뷰는 대사·연출 편집기만 채운다. 다른 노드에서는 빈 상태로 돌린다.
         if (node is not DialogueNode && node is not PresentationNode)
         {
             StagePreview.Show(null);
         }
+
+        // 씬 선택기가 현재 씬을 따라온다 — 연출 노드는 공급 대상(대사 노드)으로 옮겨 읽는다.
+        StagePreview.SetCurrentScene(node switch
+        {
+            DialogueNode dialogue => dialogue.Id,
+            PresentationNode presentation => _session.Project.Links.FirstOrDefault(link =>
+                    link.Kind == NodeLinkKind.PresentationSupply &&
+                    link.IsEnabled &&
+                    string.Equals(link.SourceNodeId, presentation.Id, StringComparison.Ordinal))
+                ?.TargetNodeId,
+            _ => null
+        });
     }
 
     /// <summary>
@@ -1167,19 +1128,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (node is CommandSupplyNode && SupplyEditor.NodeId == node.Id)
-        {
-            SupplyEditor.Rebuild();
-            return;
-        }
-
         ShowSelectedNode();
     }
 
     private void RefreshShell()
     {
-        RebuildResourcePanel();
-
         string name = _session.ProjectPath is null
             ? _session.Project.Title
             : ProjectDisplayName(_session.ProjectPath);

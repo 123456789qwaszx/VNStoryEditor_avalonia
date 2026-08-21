@@ -21,6 +21,15 @@ public sealed class PublishRejectedException : InvalidOperationException
 public readonly record struct PublishOutcome<TResult>(TResult Result, bool Created);
 
 /// <summary>
+/// 연출 채널 확보의 결과. <see cref="Presentation"/>이 null이면 <see cref="Problem"/>이
+/// 이유를 말한다(대사가 발행 불가 상태 등).
+/// </summary>
+public sealed record PresentationChannelOutcome(PresentationNode? Presentation, string? Problem)
+{
+    public bool Ready => Presentation is not null;
+}
+
+/// <summary>
 /// 작업 상태를 불변 결과로 발행하고, 결과끼리 짝지어 두는 편집 명령.
 /// </summary>
 public sealed partial class ProjectEditor
@@ -138,6 +147,83 @@ public sealed partial class ProjectEditor
     public PresentationDraft InspectPresentationPublish(string presentationNodeId)
     {
         return PresentationPublisher.Draft(Project, presentationNodeId);
+    }
+
+    /// <summary>
+    /// 대사 노드 하나의 <b>연출 채널</b>을 확보한다 (2026-08-21 소유자 — "미리 다 해둔
+    /// 다음에 무대 프리뷰측에서 뭘 할지 고르도록"). 예전에 사람이 그래프에서 하던
+    /// 네 단계(대사 발행 → 연출 노드 만들기 → 발행 결과 연결 → 공급 연결)를 한 번에,
+    /// 몇 번을 불러도 같은 채널로 한다:
+    ///
+    /// ① 대사를 발행한다 — 내용이 같으면 새 버전이 안 생긴다(고정용 데이터는 그대로 산다).
+    ///    발행 불가(막는 문제)인데 이전 발행본도 없으면 채널을 못 세우고 이유를 돌려준다.
+    /// ② 이 노드에 공급 중인 연출 노드를 찾고, 없으면 만들어 공급 연결까지 잇는다.
+    /// ③ 연출의 입력을 <b>최신 대사 발행본으로 고정</b>한다 — 낡았으면 갱신한다.
+    ///    binding은 손대지 않으므로 사라진 LineId는 고아로 표시된다(자동 삭제 금지).
+    /// ④ 연출도 발행해 둔다 — 내보내기 짝(NodeExportResolver)이 늘 신선하다.
+    ///
+    /// 연출 노드는 더 이상 그래프에 그려지지 않는다(배관) — 이 채널이 유일한 입구다.
+    /// </summary>
+    public PresentationChannelOutcome EnsurePresentationChannel(
+        string dialogueNodeId,
+        GameDefinition? definition = null)
+    {
+        if (Project.FindDialogue(dialogueNodeId) is not { } node)
+        {
+            return new PresentationChannelOutcome(null, $"'{dialogueNodeId}'는 대사 노드가 아닙니다.");
+        }
+
+        // ① 대사 고정 — 발행할 수 있으면 발행하고(같은 내용이면 no-op), 못 하면
+        // 이전 발행본 위에서라도 연출을 계속한다(없으면 여기서 멈춘다).
+        DialogueDraft draft = DialoguePublisher.Draft(Project, node.Id, definition);
+        DialogueResult? latest;
+
+        if (draft.CanPublish)
+        {
+            latest = PublishDialogue(node.Id, definition).Result;
+        }
+        else
+        {
+            latest = Project.Results.DialogueResultsOf(node.Id).LastOrDefault();
+
+            if (latest is null)
+            {
+                return new PresentationChannelOutcome(
+                    null,
+                    $"'{node.Name}'의 대사를 고정할 수 없습니다: {draft.BlockingSummary()}");
+            }
+        }
+
+        // ② 공급 중인 연출 노드 — 내보내기와 같은 규칙으로 찾는다(사본 금지).
+        PresentationNode? presentation =
+            NodeExportResolver.SupplyLinkOf(Project, node.Id) is { } supply
+                ? Project.FindPresentation(supply.SourceNodeId)
+                : null;
+
+        if (presentation is null)
+        {
+            string fileId = Project.FindFileContainingNode(node.Id)!.Id;
+            presentation = AddPresentationNode(
+                fileId,
+                node.Layout.X,
+                node.Layout.Y + 240,
+                name: $"{node.Name} 연출");
+            SetPresentationSupplyTarget(presentation.Id, node.Id);
+        }
+
+        // ③ 최신 발행본으로 고정 — 같은 참조면 SetPresentationSource가 no-op이다.
+        SetPresentationSource(presentation.Id, latest.Identity.ResultId, latest.Identity.Version);
+
+        // ④ 연출 발행 — 내용이 같으면 새 버전이 안 생긴다. 발행 불가면 조용히 넘어간다:
+        // 채널 자체는 섰고, 문제는 편집 화면의 기존 진단이 말한다.
+        PresentationDraft presentationDraft = PresentationPublisher.Draft(Project, presentation.Id);
+
+        if (presentationDraft.CanPublish)
+        {
+            PublishPresentation(presentation.Id);
+        }
+
+        return new PresentationChannelOutcome(presentation, null);
     }
 
     // ── RuntimeComposition ──────────────────────────────────────────────────

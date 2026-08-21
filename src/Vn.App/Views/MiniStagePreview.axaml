@@ -41,14 +41,22 @@
                   Margin="0,8,0,0">
                 <Grid Grid.Column="0"
                       x:Name="LeftColumn"
-                      RowDefinitions="*,8,260">
-                    <ContentControl Grid.Row="0"
+                      RowDefinitions="Auto,*,8,260">
+                    <!-- 씬 선택기 (2026-08-21 소유자) — "미리 다 해둔 다음에 무대
+                         프리뷰측에서 뭘 할지 고르도록". 에피소드(📄)·커스텀 씬(✎)을
+                         고르면 연출 채널이 자동으로 서고(발행·연결 전부) 터미널이 채워진다. -->
+                    <ComboBox Grid.Row="0"
+                              x:Name="SceneCombo"
+                              Margin="0,0,0,6"
+                              HorizontalAlignment="Stretch"
+                              PlaceholderText="연출할 씬 선택 — 에피소드·커스텀 씬" />
+                    <ContentControl Grid.Row="1"
                                     x:Name="ScriptHost" />
-                    <GridSplitter Grid.Row="1"
+                    <GridSplitter Grid.Row="2"
                                   x:Name="DetailSplitter"
                                   ResizeDirection="Rows"
                                   Background="{DynamicResource ThemeBorderLowBrush}" />
-                    <ScrollViewer Grid.Row="2"
+                    <ScrollViewer Grid.Row="3"
                                   x:Name="DetailScroll"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ContentControl x:Name="DetailHost"
@@ -90,17 +98,31 @@
 
             <!-- 알림·경고 — 뜨는 것은 좋으나 무대를 밀지 않는다 (2026-08-21 소유자:
                  "경고문구 뜨는건 좋은데, 레이아웃을 건드리진 않게"). 자리를 늘 비워 두고
-                 길어지면 이 안에서 스크롤한다. -->
-            <ScrollViewer Grid.Row="3"
-                          Height="46"
-                          Margin="0,6,0,0"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="4">
-                    <StackPanel x:Name="NoticeHost" Spacing="2" />
-                    <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />
-                </StackPanel>
-            </ScrollViewer>
+                 길어지면 이 안에서 스크롤한다.
+                 오른쪽 [진단 복사]는 같은 날 소유자 요청("이런 문구를 복사할 수 있도록") —
+                 줄 하나는 드래그(SelectableTextBlock), 전부는 이 단추가 들고 간다. -->
+            <Grid Grid.Row="3"
+                  ColumnDefinitions="*,Auto"
+                  Height="46"
+                  Margin="0,6,0,0">
+                <ScrollViewer Grid.Column="0"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="4">
+                        <StackPanel x:Name="NoticeHost" Spacing="2" />
+                        <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Button Grid.Column="1"
+                        x:Name="CopyDiagnosticsButton"
+                        Content="진단 복사"
+                        FontSize="10"
+                        Padding="6,2"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Top"
+                        IsVisible="False" />
+            </Grid>
         </Grid>
     </Border>
 </UserControl>

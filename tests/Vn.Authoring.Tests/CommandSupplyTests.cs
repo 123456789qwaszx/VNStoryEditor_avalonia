@@ -187,6 +187,50 @@ public class CommandSupplyTests
     /// 수용 기준의 카메라 노드 예제 — camera 범주 공급 + 프리셋 하나,
     /// 프리셋을 참조하는 라인 연출 하나.
     /// </summary>
+    /// <summary>
+    /// 연출 공급 노드는 연출 그래프에서 <b>배관으로 숨는다</b> (2026-08-21 소유자:
+    /// "연출 그래프에서도, 연출 공급을 제거해"). 잇던 상대(연출 노드)가 먼저 숨어
+    /// 이 판에서 할 일이 없어졌다 — 그래도 데이터는 살아서 커맨드 범위·프리셋을
+    /// 그대로 정한다(위 테스트들이 그 해석을 진다).
+    /// </summary>
+    [Fact]
+    public void 공급_노드는_판에_안_보이지만_커맨드_범위는_그대로_정한다()
+    {
+        SupplyWorld world = BuildWorld();
+        StoryProject project = world.Sample.Project;
+
+        Graph.GraphProjection expanded = Graph.GraphProjectionBuilder.Build(
+            project,
+            project.Files.Select(file => file.Id).ToHashSet(StringComparer.Ordinal),
+            Sample.Definition);
+
+        // 카드가 없다 — 공급 노드도, 상대인 연출 노드도.
+        Assert.DoesNotContain(expanded.Items.OfType<Graph.ExpandedNodeProjection>(),
+            item => item.NodeId == world.Supply.Id || item.NodeId == world.Presentation.Id);
+
+        // 그 노드들에 닿는 간선도 없다 — 허공에 매달린 선을 그리지 않는다.
+        Assert.DoesNotContain(expanded.Connections, connection =>
+            connection.SourceNodeId == world.Supply.Id ||
+            connection.TargetNodeId == world.Supply.Id ||
+            connection.SourceNodeId == world.Presentation.Id ||
+            connection.TargetNodeId == world.Presentation.Id);
+
+        // 접힌 파일 프록시의 행 목록에도 없다.
+        Graph.GraphProjection collapsed = Graph.GraphProjectionBuilder.Build(
+            project, new HashSet<string>(StringComparer.Ordinal), Sample.Definition);
+
+        Assert.DoesNotContain(
+            collapsed.Items.OfType<Graph.CollapsedFileProjection>().SelectMany(proxy => proxy.Nodes),
+            entry => entry.NodeId == world.Supply.Id || entry.NodeId == world.Presentation.Id);
+
+        // 데이터는 산다 — 범위 제한이 변함없이 돈다.
+        AvailablePresentationCommands available = AvailablePresentationCommandResolver.Resolve(
+            project, world.Presentation.Id, Sample.Definition);
+
+        Assert.True(available.IsRestricted);
+        Assert.Equal(new[] { "camera" }, available.Categories.Select(category => category.Id));
+    }
+
     private static SupplyWorld BuildWorld()
     {
         var sample = new Sample();

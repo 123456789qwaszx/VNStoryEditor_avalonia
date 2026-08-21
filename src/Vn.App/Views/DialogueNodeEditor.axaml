@@ -85,22 +85,19 @@
                 <Grid RowDefinitions="Auto,Auto,*" Margin="12">
                     <StackPanel Grid.Row="0" Spacing="4">
                         <TextBlock Text="발행 결과 (연출 바인딩용 스냅샷)" FontWeight="SemiBold" />
-                        <TextBlock Text="발행은 내보내기 게이트가 아닙니다. 연출노드가 읽을 읽기전용 스냅샷(LineId·화자·대사·선택지·조건)을 얼릴 뿐이며, 출력은 편집 즉시 현재 상태로 합성됩니다."
+                        <!-- [이 상태를 발행]은 2026-08-21에 사라졌다 — 무대 프리뷰에서 씬을
+                             고르면 채널이 자동으로 발행·고정한다(EnsurePresentationChannel). -->
+                        <TextBlock Text="발행은 자동입니다. 무대 프리뷰에서 이 씬을 고르면 현재 상태가 스냅샷(LineId·화자·대사·선택지·조건)으로 얼어 연출이 그 위에 붙습니다. 출력은 편집 즉시 현재 상태로 합성됩니다."
                                    FontSize="11"
                                    Opacity="0.65"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="PublishStatusText"
+                                   FontSize="11"
+                                   Opacity="0.75"
                                    TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Spacing="8" Margin="0,10">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Name="PublishButton" Content="이 상태를 발행" />
-                            <TextBlock x:Name="PublishStatusText"
-                                       FontSize="11"
-                                       Opacity="0.75"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="ExportNodeButton" Content="이 노드 내보내기…" FontSize="11" />
                             <Button x:Name="ExportNodeCsvButton" Content="이 노드 CSV…" FontSize="11" />

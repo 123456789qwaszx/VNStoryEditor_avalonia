@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
@@ -268,6 +269,14 @@ public partial class MiniStagePreview : UserControl
     /// <summary>대본 패널의 대사 행 클릭 — 활성 편집기가 그 라인을 선택한다.</summary>
     internal event Action<string>? LineSelectRequested;
 
+    /// <summary>
+    /// 씬 선택기에서 대사 노드 하나를 골랐다 (2026-08-21) — MainWindow가 연출 채널을
+    /// 확보하고(EnsurePresentationChannel) 그 채널을 연다. 값은 대사 노드 Id다.
+    /// </summary>
+    internal event Action<string>? SceneChosen;
+
+    private bool _updatingSceneCombo;
+
     private readonly PresentationScriptPanel _script = new();
 
     /// <summary>
@@ -298,6 +307,22 @@ public partial class MiniStagePreview : UserControl
 
         SceneHost.Content = _scene;
         ScriptHost.Content = _script;
+
+        CopyDiagnosticsButton.Click += async (_, _) => await CopyDiagnosticsAsync();
+
+        // 목록은 열 때마다 다시 짓는다 — 노드 생성·개명·동기화를 따로 구독하지 않아도
+        // 여는 순간이 곧 최신이다.
+        SceneCombo.DropDownOpened += (_, _) => RebuildScenePicker(CurrentComboSceneId());
+        SceneCombo.SelectionChanged += (_, _) =>
+        {
+            if (!_updatingSceneCombo &&
+                SceneCombo.Tag is List<DialogueNode> scenes &&
+                SceneCombo.SelectedIndex >= 0 &&
+                SceneCombo.SelectedIndex < scenes.Count)
+            {
+                SceneChosen?.Invoke(scenes[SceneCombo.SelectedIndex].Id);
+            }
+        };
         _script.LineClicked += lineId =>
         {
             // 라인 선택은 Setup 선택을 걷는다. 같은 라인 재클릭이라 편집기가 다시 밀지
@@ -427,6 +452,7 @@ public partial class MiniStagePreview : UserControl
     {
         _session = session;
         _scene.Attach(session);
+        RebuildScenePicker(null);
 
         // 에셋 루트가 바뀌면(탐색기에서 지정·새로 고침·되돌리기) 같은 요청을 새 에셋으로 다시 그린다.
         session.Changed += (_, _) =>
@@ -441,6 +467,89 @@ public partial class MiniStagePreview : UserControl
     /// <summary>무대 뷰의 수치 조절 내용 — Inspector 공급자(MainWindow 배선)가 조합해 쓴다.</summary>
     internal Control? BuildSceneInspector(PresentationResultCommand command) =>
         _scene.BuildInspectorContent(command);
+
+    // ── 진단 복사 (2026-08-21) ──────────────────────────────────────────────
+
+    /// <summary>지금 화면에 뜬 진단 줄 전부 — 뱃지·알림·상세(접혀 있어도) 순서대로.</summary>
+    internal IReadOnlyList<string> DiagnosticsText() =>
+        StageIndicators.CollectText(ContextText.Text, BadgeRow, NoticeHost, UnhandledHost);
+
+    /// <summary>
+    /// 뜬 경고를 텍스트 그대로 클립보드에 (소유자 요청 2026-08-21) — 협업자나 세션에
+    /// 붙여넣는 통로다. 챕터 그래프의 [보고 복사]와 같은 문법이고, 화면에 그려진 줄이
+    /// 곧 복사되는 줄이다.
+    /// </summary>
+    private async Task CopyDiagnosticsAsync()
+    {
+        IReadOnlyList<string> lines = DiagnosticsText();
+
+        if (lines.Count == 0)
+        {
+            return;
+        }
+
+        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        {
+            _session?.SetStatus("클립보드에 접근할 수 없습니다.");
+            return;
+        }
+
+        await clipboard.SetTextAsync(string.Join(Environment.NewLine, lines));
+        _session?.SetStatus($"무대 진단 {lines.Count}줄을 복사했습니다.");
+    }
+
+    // ── 씬 선택기 (2026-08-21) ──────────────────────────────────────────────
+
+    /// <summary>지금 콤보가 가리키는 대사 노드 Id — 목록을 다시 지어도 선택을 지킨다.</summary>
+    private string? CurrentComboSceneId()
+    {
+        return SceneCombo.Tag is List<DialogueNode> scenes &&
+            SceneCombo.SelectedIndex >= 0 &&
+            SceneCombo.SelectedIndex < scenes.Count
+                ? scenes[SceneCombo.SelectedIndex].Id
+                : null;
+    }
+
+    /// <summary>
+    /// 바깥(그래프 클릭 등)에서 씬이 바뀌었다 — 콤보를 따라오게 한다. 이벤트는 안 쏜다.
+    /// null이면 선택만 비운다(대사·연출이 아닌 노드).
+    /// </summary>
+    internal void SetCurrentScene(string? dialogueNodeId) => RebuildScenePicker(dialogueNodeId);
+
+    /// <summary>
+    /// 연출할 수 있는 씬 목록 — 프로젝트의 모든 대사 노드. 에피소드(📄)가 먼저,
+    /// 커스텀 씬(✎)이 뒤다(파일 순서 그대로 — 판의 읽는 순서와 같다).
+    /// </summary>
+    private void RebuildScenePicker(string? selectedDialogueId)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        List<DialogueNode> scenes = _session.Project.EnumerateNodes()
+            .OfType<DialogueNode>()
+            .OrderBy(node => node.ExcelEpisodeId is null ? 1 : 0)
+            .ToList();
+
+        _updatingSceneCombo = true;
+
+        try
+        {
+            SceneCombo.ItemsSource = scenes
+                .Select(node => $"{(node.ExcelEpisodeId is null ? "✎" : "📄")} {node.Name}")
+                .ToList();
+            SceneCombo.Tag = scenes;
+            SceneCombo.SelectedIndex = selectedDialogueId is null
+                ? -1
+                : scenes.FindIndex(node =>
+                    string.Equals(node.Id, selectedDialogueId, StringComparison.Ordinal));
+        }
+        finally
+        {
+            _updatingSceneCombo = false;
+        }
+    }
 
     /// <summary>점 클릭 = 켜고 끄기 (2026-08-21) — 꺼진 커맨드도 행으로 남아 다시 켤 수 있다.</summary>
     private void ApplyScriptCommandToggle(PresentationResultCommand command, bool currentlyEnabled)
@@ -657,6 +766,9 @@ public partial class MiniStagePreview : UserControl
                 NoticeHost,
                 includeRootHint: true);
         }
+
+        // 복사할 것이 있을 때만 단추가 선다 — 늘 서 있으면 "아무 문제 없음"과 구분이 안 된다.
+        CopyDiagnosticsButton.IsVisible = DiagnosticsText().Count > 0;
 
 
 
