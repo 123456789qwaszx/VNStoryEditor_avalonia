@@ -499,7 +499,9 @@ internal sealed class StageSceneView : UserControl
             Width = 34,
             TextAlignment = TextAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.FromArgb(220, 250, 204, 21))
+            // 색은 평범하게 (2026-08-21 소유자) — 노란 강조가 이 숫자를 실제보다
+            // 중요해 보이게 했다. 진행 표시(1/3)와 같은 결이면 충분하다.
+            Opacity = 0.75
         };
 
         var scrub = new Slider

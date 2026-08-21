@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.LogicalTree;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -481,27 +482,36 @@ public class StagePlaybackTests
     // ── 컨트롤 자리 (2026-08-21 소유자: 타임라인을 사이에 두고 양 끝) ──────
 
     [Fact]
-    public void 라인_재생은_왼쪽_노드_전체_재생과_배속은_오른쪽_줄이고_아이콘이_갈린다() =>
+    public void 라인_재생은_왼쪽_진행표시와_전체_재생과_배속은_오른쪽_묶음이다() =>
         HeadlessUi.Run(() =>
         {
-            // 소유자: "타임라인 가장 오른쪽으로 보내서 위치상 안 겹치게" +
-            // "아이콘을 라인재생과 똑같이 하지말고 … 노드 전체 재생이라는게 드러나도록".
+            // 소유자: "타임라인 가장 오른쪽으로 보내서 위치상 안 겹치게" ·
+            // "1/3 역시 전체실행쪽으로" · "아이콘을 라인재생과 똑같이 하지말고".
             (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 3);
 
-            string[] LabelsOf(Control row) => row.GetLogicalDescendants().OfType<Button>()
-                .Select(button => button.Content?.ToString() ?? string.Empty).ToArray();
+            Control leading = StagePlaybackControls.BuildLeading(playback);
+            Control trailing = StagePlaybackControls.BuildTrailing(playback);
 
-            string[] leading = LabelsOf(StagePlaybackControls.BuildLeading(playback));
-            string[] trailing = LabelsOf(StagePlaybackControls.BuildTrailing(playback));
+            // 왼쪽은 라인 재생 하나뿐 — 진행 표시도 전체 재생도 여기 없다.
+            Button lineButton = Assert.Single(leading.GetLogicalDescendants().OfType<Button>());
+            Assert.Equal("▶ 라인", lineButton.Content);
 
-            // 왼쪽은 라인 재생 하나뿐 — 전체 재생·배속이 끼어들지 않는다.
-            Assert.Equal(["▶ 라인"], leading);
+            // 오른쪽은 진행 표시 + 전체 재생 + 배속.
+            Button[] trailingButtons = trailing.GetLogicalDescendants().OfType<Button>().ToArray();
+            Assert.Equal(2, trailingButtons.Length);
+            Assert.Equal("1×", trailingButtons[1].Content);
+            Assert.Contains(trailing.GetLogicalDescendants().OfType<TextBlock>(),
+                text => text.Text == "1/3");
 
-            // 오른쪽은 노드 전체 재생 + 배속.
-            Assert.Equal(["▶▶ 전체", "1×"], trailing);
+            // 아이콘이 갈린다 — 라인은 글리프, 전체는 도형(꼬리 긴 화살표)이다.
+            Assert.Empty(leading.GetLogicalDescendants().OfType<ShapePath>());
+            ShapePath arrow = Assert.Single(trailingButtons[0].GetLogicalDescendants().OfType<ShapePath>());
+            Assert.Contains(trailingButtons[0].GetLogicalDescendants().OfType<TextBlock>(),
+                text => text.Text == "전체");
 
-            // 두 재생 버튼의 아이콘이 갈린다 — 같은 ▶ 하나면 무엇이 다른지 안 보인다.
-            Assert.NotEqual(leading[0], trailing[0]);
+            // 꼬리가 길다 — 화살표가 아이콘 폭을 처음부터 끝까지 쓴다(멈춤 아이콘은 좁다).
+            Assert.Equal(0, arrow.Data!.Bounds.X, precision: 3);
+            Assert.Equal(18, arrow.Data.Bounds.Width, precision: 3);
         });
 
     [Fact]
@@ -517,18 +527,25 @@ public class StagePlaybackTests
         };
         window.Show(); // 붙어야 StateChanged 구독이 산다
 
-        playback.ToggleLinePlay();
-
         Button lineButton = leading.GetLogicalDescendants().OfType<Button>().First();
         Button allButton = trailing.GetLogicalDescendants().OfType<Button>().First();
 
+        // 전체 재생 버튼은 글자가 늘 "전체"라 모드는 아이콘과 툴팁이 말한다.
+        string AllTip() => ToolTip.GetTip(allButton) as string ?? string.Empty;
+        double IconWidth() => allButton.GetLogicalDescendants().OfType<ShapePath>()
+            .First().Data!.Bounds.Width;
+
+        playback.ToggleLinePlay();
+
         Assert.Equal("⏸ 라인", lineButton.Content);
-        Assert.Equal("▶▶ 전체", allButton.Content); // 여기가 ⏸로 바뀌던 것이 헷갈림의 정체
+        Assert.DoesNotContain("멈추기", AllTip()); // 여기가 ⏸로 바뀌던 것이 헷갈림의 정체
+        Assert.Equal(18, IconWidth(), precision: 3); // 화살표 그대로
 
         // 전체 재생으로 갈아타면 반대가 된다.
         playback.TogglePlay();
         Assert.Equal("▶ 라인", lineButton.Content);
-        Assert.Equal("⏸ 전체", allButton.Content);
+        Assert.Contains("멈추기", AllTip());
+        Assert.True(IconWidth() < 12, "멈춤 아이콘(두 막대)은 화살표보다 좁다");
 
         window.Close();
     });
