@@ -277,20 +277,14 @@ public partial class MiniStagePreview : UserControl
     internal Func<string, Control?>? CommandDetailProvider { get; set; }
 
     /// <summary>
-    /// 추가 UI(갤러리·직접 입력) 공급자 — 터미널 우클릭 [＋ 연출 추가]가 청했을 때만
-    /// 작업대에 선다 (2026-08-21 상시 추가 줄 제거). MainWindow가 배선한다.
+    /// 연출 추가 콘솔 공급자 — (lineId, setup, close)를 받아 콘솔 한 판을 짓는다.
+    /// 터미널 우클릭 [＋ 연출 추가]가 플라이아웃으로 띄운다 (2026-08-21 소유자: "아래쪽에서
+    /// 보이게 한다는 느낌 대신에 콘솔을 띄운다는 느낌으로"). MainWindow가 배선한다.
     /// </summary>
-    internal Func<string?, bool, Control?>? AddRowProvider { get; set; }
+    internal Func<string?, bool, Action, Control?>? AddConsoleProvider { get; set; }
 
     /// <summary>터미널의 Setup 구획이 선택돼 있다 — 작업대가 라인 대신 Setup을 보인다.</summary>
     private bool _setupSelected;
-
-    /// <summary>
-    /// 우클릭 [＋ 연출 추가]가 눌렸다 — 작업대가 추가 UI(갤러리·직접 입력)를 보인다
-    /// (2026-08-21 소유자: 상시로 서 있던 추가 줄을 걷고 우클릭을 문으로). 커맨드나
-    /// 라인을 새로 고르면 내려간다.
-    /// </summary>
-    private bool _addRowRequested;
 
     /// <summary>
     /// 복사한 커맨드 (2026-08-21 소유자: 복사/붙여넣기 + Ctrl+C/V) — 결과 행의 해석된
@@ -309,20 +303,17 @@ public partial class MiniStagePreview : UserControl
             // 라인 선택은 Setup 선택을 걷는다. 같은 라인 재클릭이라 편집기가 다시 밀지
             // 않아도 작업대 전환은 보여야 하므로 여기서도 한 번 그린다.
             _setupSelected = false;
-            _addRowRequested = false;
             LineSelectRequested?.Invoke(lineId);
             Render();
         };
         _script.SetupClicked += () =>
         {
             _setupSelected = true;
-            _addRowRequested = false;
             Render();
         };
         // 커맨드 선택 = Inspector 전환 (2026-08-21) — 점은 선택이 아니라 켜고 끄기다.
         _script.CommandSelected += _ =>
         {
-            _addRowRequested = false;
             Render();
         };
         _script.CommandToggleRequested += ApplyScriptCommandToggle;
@@ -506,13 +497,13 @@ public partial class MiniStagePreview : UserControl
     };
 
     /// <summary>
-    /// 우클릭 [＋ 연출 추가] — 그 자리(라인 또는 Setup)를 선택 상태로 맞추고 작업대에
-    /// 추가 UI를 올린다. 다른 라인에서 불렸으면 편집기의 라인 선택이 먼저 따라온다.
+    /// 우클릭 [＋ 연출 추가] — 그 자리(라인 또는 Setup)를 선택 상태로 맞추고 연출 추가
+    /// 콘솔을 플라이아웃으로 띄운다 (2026-08-21 소유자: "아래쪽에서 보이게 한다는 느낌
+    /// 대신에 콘솔을 띄운다는 느낌으로"). 플라이아웃의 과녁은 터미널 패널 자신이다 —
+    /// 선택 이동이 터미널을 다시 그려 우클릭한 행이 사라져도 콘솔은 제자리에 남는다.
     /// </summary>
     private void OnAddCommandRequested(string? lineId, bool setup)
     {
-        _addRowRequested = true;
-
         if (setup)
         {
             _setupSelected = true;
@@ -528,6 +519,17 @@ public partial class MiniStagePreview : UserControl
         }
 
         Render();
+
+        var flyout = new Flyout();
+        Control? console = AddConsoleProvider?.Invoke(setup ? null : lineId, setup, () => flyout.Hide());
+
+        if (console is null)
+        {
+            return;
+        }
+
+        flyout.Content = console;
+        flyout.ShowAt(_script, showAtPointer: true);
     }
 
     /// <summary>복사 = 결과 행의 해석된 값을 담는다 — 붙여넣은 커맨드는 원본과 독립이다.</summary>
@@ -615,9 +617,9 @@ public partial class MiniStagePreview : UserControl
         ScriptHost.IsVisible = _script.IsVisible;
 
         // 작업대 = Inspector (2026-08-21 소유자) — 평소에는 비어 있고, 커맨드를 고르면
-        // 그 하나의 편집 행 + 수치 조절이 선다. 추가 UI(갤러리·직접 입력)는 상시가 아니라
-        // 터미널 우클릭 [＋ 연출 추가]가 청했을 때만 선다 (2026-08-21 소유자: 상시 추가
-        // 줄 제거). 공급자가 같은 구성을 캐시하므로 칩 편집 중 재렌더에 팝업이 닫히지 않는다.
+        // 그 하나의 편집 행 + 수치 조절이 선다. 추가 UI는 여기 안 선다 — 터미널 우클릭
+        // [＋ 연출 추가]가 콘솔을 플라이아웃으로 띄운다(OnAddCommandRequested).
+        // 공급자가 같은 구성을 캐시하므로 칩 편집 중 재렌더에 팝업이 닫히지 않는다.
         Control? detail = null;
 
         if (unlocked)
@@ -625,13 +627,6 @@ public partial class MiniStagePreview : UserControl
             if (_script.SelectedCommandId is { } selectedCommandId)
             {
                 detail = CommandDetailProvider?.Invoke(selectedCommandId);
-            }
-
-            if (detail is null && _addRowRequested)
-            {
-                detail = _setupSelected
-                    ? AddRowProvider?.Invoke(null, true)
-                    : editable ? AddRowProvider?.Invoke(request?.SelectedLineId, false) : null;
             }
         }
 

@@ -686,59 +686,6 @@ public partial class PresentationNodeEditor : UserControl
         }
     }
 
-    /// <summary>
-    /// 커맨드 선택이 없을 때의 작업대 — 선택 라인(또는 Setup)의 [＋연출 추가] 한 줄만.
-    /// "평소에는 비워두다가"의 예외 하나다: 갤러리·직접 입력은 이 문이 유일해서
-    /// 아예 걷으면 커맨드를 새로 달 길이 없다.
-    /// </summary>
-    internal Control? BuildAddRowContent(string? lineId, bool setup)
-    {
-        if (_session is null || (!setup && lineId is null) ||
-            _session.Project.FindPresentation(_nodeId) is not { } presentation)
-        {
-            _detailControl = null;
-            return null;
-        }
-
-        string key = "add:" + (setup ? "\0setup" : lineId);
-
-        if (_detailControl is not null &&
-            string.Equals(_detailKey, key, StringComparison.Ordinal) &&
-            _detailToken is null)
-        {
-            return _detailControl;
-        }
-
-        PresentationCommandCatalog catalog = AvailablePresentationCommandResolver.Resolve(
-            _session.Project, presentation.Id, _session.Definition).Catalog;
-
-        bool wasBuilding = _building;
-        _building = true;
-
-        try
-        {
-            var content = new StackPanel { Spacing = 6 };
-
-            content.Children.Add(new TextBlock
-            {
-                Text = setup ? "Setup — 장면 준비" : lineId,
-                FontSize = 10,
-                Opacity = 0.55
-            });
-
-            content.Children.Add(BuildAddRow(presentation, setup ? null : lineId, catalog));
-
-            _detailKey = key;
-            _detailToken = null;
-            _detailControl = content;
-            return content;
-        }
-        finally
-        {
-            _building = wasBuilding;
-        }
-    }
-
     /// <summary>커맨드 Id로 인스턴스와 그 소속(라인 또는 Setup=null)을 찾는다.</summary>
     private static (PresentationCommandInstance Command, string? LineId)? FindCommand(
         PresentationNode presentation, string commandId)
@@ -1059,138 +1006,76 @@ public partial class PresentationNodeEditor : UserControl
         return state;
     }
 
-    // ── 갤러리와 텍스트 입력 ──────────────────────────────────────────────
-
-    /// <summary>"연출 추가" 갤러리 버튼 + 텍스트 직접 입력 한 줄.</summary>
-    private Control BuildAddRow(
-        PresentationNode presentation,
-        string? lineId,
-        PresentationCommandCatalog catalog)
-    {
-        var gallery = new Button
-        {
-            Content = "+ 연출 추가",
-            FontSize = 11,
-            Padding = new Thickness(8, 3)
-        };
-        gallery.Click += (_, _) => ShowGallery(gallery, presentation, lineId, catalog);
-
-        var error = new TextBlock
-        {
-            FontSize = 10,
-            Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38)),
-            TextWrapping = TextWrapping.Wrap,
-            IsVisible = false
-        };
-
-        var input = new TextBox
-        {
-            PlaceholderText = "<<커맨드 인자…>> 직접 입력 후 Enter",
-            FontFamily = MonoFont,
-            FontSize = 11
-        };
-
-        input.KeyDown += (_, args) =>
-        {
-            if (args.Key != Avalonia.Input.Key.Enter || _session is null)
-            {
-                return;
-            }
-
-            // 카탈로그 기준 파싱 — 틀리면 그 자리에서 이유를 말하고, 추측 보정은 없다.
-            CommandTextParseResult parsed = CommandText.Parse(input.Text, catalog);
-
-            if (!parsed.Success)
-            {
-                error.Text = parsed.Error;
-                error.IsVisible = true;
-                return;
-            }
-
-            if (_available is { } available && available.Categories.Count > 0 &&
-                available.Categories.All(category =>
-                    !string.Equals(category.Id, parsed.Definition!.CategoryId, StringComparison.Ordinal)))
-            {
-                error.Text = $"'{parsed.Definition!.OutputCommandName}'의 범주는 연결된 공급 노드의 범위 밖입니다.";
-                error.IsVisible = true;
-                return;
-            }
-
-            AddCommand(presentation, lineId, parsed.Definition!.Id, parsed.Arguments!);
-        };
-
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
-        Grid.SetColumn(gallery, 0);
-        Grid.SetColumn(input, 1);
-        input.Margin = new Thickness(6, 0, 0, 0);
-        row.Children.Add(gallery);
-        row.Children.Add(input);
-
-        var host = new StackPanel { Spacing = 3 };
-        host.Children.Add(row);
-        host.Children.Add(error);
-        return host;
-    }
-
-    private void AddCommand(
-        PresentationNode presentation,
-        string? lineId,
-        string definitionId,
-        IReadOnlyDictionary<string, string> arguments,
-        string? presetId = null)
-    {
-        if (_session is null)
-        {
-            return;
-        }
-
-        if (lineId is null)
-        {
-            _session.Editor.AddPresentationSetupCommand(presentation.Id, definitionId, arguments);
-        }
-        else
-        {
-            _session.Editor.AddPresentationCommand(
-                presentation.Id, lineId, definitionId, arguments, presetId: presetId);
-        }
-
-        Rebuild();
-    }
-
-    private static readonly string[] IntensityOrder = ["미세", "가벼움", "보통", "강함"];
+    // ── 연출 추가 콘솔과 직접 입력 ──────────────────────────────────────
 
     /// <summary>
-    /// 갤러리 팝업: ★프리셋 → 최근 사용(프로젝트 저장) → 카테고리(강도 부그룹) → 검색.
-    /// 후보 범위는 <see cref="AvailablePresentationCommandResolver"/>가 정한 것 그대로다 — 사본 금지.
+    /// 연출 추가 콘솔 (2026-08-21 소유자: "아래쪽에서 보이게 한다는 느낌 대신에 연출
+    /// 추가용 콘솔을 띄운다는 느낌으로 … 최근 사용·검색은 유지하되 종류별로 탭으로") —
+    /// 터미널 우클릭 [＋ 연출 추가]가 플라이아웃으로 띄운다. 후보 범위는
+    /// <see cref="AvailablePresentationCommandResolver"/>가 정한 것 그대로다(사본 금지).
+    ///
+    /// 구성: 검색(입력하면 탭을 덮고 전 범위 평면 결과 — 종류를 몰라도 찾는 길) ·
+    /// 탭(최근 · ★프리셋 · 카테고리별) · 직접 입력(<c>&lt;&lt;커맨드…&gt;&gt;</c> —
+    /// 갤러리 밖의 유일한 문이라 콘솔 바닥에 함께 산다). 항목을 고르면 커맨드가 붙고
+    /// 콘솔이 닫힌다(<paramref name="close"/>).
     /// </summary>
-    private void ShowGallery(
-        Control anchor,
-        PresentationNode presentation,
-        string? lineId,
-        PresentationCommandCatalog catalog)
+    internal Control? BuildAddConsole(string? lineId, bool setup, Action close)
     {
+        if (_session is null || (!setup && lineId is null) ||
+            _session.Project.FindPresentation(_nodeId) is not { } presentation)
+        {
+            return null;
+        }
+
+        string? targetLineId = setup ? null : lineId;
+        AvailablePresentationCommands available = AvailablePresentationCommandResolver.Resolve(
+            _session.Project, presentation.Id, _session.Definition);
+        PresentationCommandCatalog catalog = available.Catalog;
+
+        bool InScope(PresentationCommandDefinition definition) =>
+            available.Categories.Count == 0 ||
+            available.Categories.Any(category =>
+                string.Equals(category.Id, definition.CategoryId, StringComparison.Ordinal));
+
+        var search = new TextBox { PlaceholderText = "이름 검색… (전 종류에서 찾습니다)", FontSize = 11 };
+        var tabStrip = new WrapPanel { Orientation = Avalonia.Layout.Orientation.Horizontal };
         var list = new StackPanel { Spacing = 2 };
-        var search = new TextBox { PlaceholderText = "이름 검색…", FontSize = 11 };
         var scroll = new ScrollViewer
         {
             Content = list,
-            MaxHeight = 380,
+            Height = 320,
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
         };
 
-        var panel = new StackPanel { Spacing = 6, Width = 340 };
-        panel.Children.Add(search);
-        panel.Children.Add(scroll);
+        IReadOnlyList<PresentationCategoryDefinition> categories =
+            available.Categories.Count > 0 ? available.Categories : catalog.Categories;
+        bool hasPresets = available.Presets.Count > 0;
 
-        var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+        // 탭 하나가 종류 하나 — 검색 중에는 탭이 물러나고(흐림) 전 범위가 평면으로 선다.
+        var tabButtons = new Dictionary<string, Button>(StringComparer.Ordinal);
+        string selectedTab =
+            _session.Project.RecentCommandIds.Count > 0 ? "recent"
+            : hasPresets ? "preset"
+            : categories.Count > 0 ? "cat:" + categories[0].Id
+            : "recent";
 
         void Fill()
         {
             list.Children.Clear();
             string query = search.Text?.Trim() ?? string.Empty;
+            bool searching = query.Length > 0;
+
+            foreach ((string key, Button tab) in tabButtons)
+            {
+                bool active = !searching && string.Equals(key, selectedTab, StringComparison.Ordinal);
+                tab.Background = active
+                    ? new SolidColorBrush(Color.FromArgb(70, 125, 211, 252))
+                    : Brushes.Transparent;
+                tab.Opacity = searching ? 0.45 : active ? 1 : 0.75;
+            }
 
             bool Matches(PresentationCommandDefinition definition) =>
-                query.Length == 0 ||
+                !searching ||
                 definition.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 definition.OutputCommandName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 definition.Id.Contains(query, StringComparison.OrdinalIgnoreCase);
@@ -1234,10 +1119,10 @@ public partial class PresentationNodeEditor : UserControl
 
                 item.Click += (_, _) =>
                 {
-                    flyout.Hide();
+                    close();
                     AddCommand(
                         presentation,
-                        lineId,
+                        targetLineId,
                         definition.Id,
                         definition.DefaultArgumentValues(),
                         presetId);
@@ -1246,16 +1131,23 @@ public partial class PresentationNodeEditor : UserControl
                 list.Children.Add(item);
             }
 
-            // ① 프리셋 — 값이 세팅된 "정확한 연출"이 언제나 먼저다.
-            AvailablePreset[] presets = (_available?.Presets ?? Array.Empty<AvailablePreset>())
-                .Where(preset => catalog.Find(preset.Preset.CommandDefinitionId) is { } definition &&
-                    (Matches(definition) ||
-                        preset.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)))
-                .ToArray();
-
-            if (presets.Length > 0)
+            void FillPresets(bool withHeader)
             {
-                Header("프리셋");
+                AvailablePreset[] presets = available.Presets
+                    .Where(preset => catalog.Find(preset.Preset.CommandDefinitionId) is { } definition &&
+                        (Matches(definition) ||
+                            preset.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                    .ToArray();
+
+                if (presets.Length == 0)
+                {
+                    return;
+                }
+
+                if (withHeader)
+                {
+                    Header("프리셋");
+                }
 
                 foreach (AvailablePreset preset in presets)
                 {
@@ -1263,16 +1155,23 @@ public partial class PresentationNodeEditor : UserControl
                 }
             }
 
-            // ② 최근 사용 — 프로젝트에 저장된 목록. 공급 범위 밖 정의는 걸러진다.
-            PresentationCommandDefinition[] recents = _session!.Project.RecentCommandIds
-                .Select(catalog.Find)
-                .Where(definition => definition is not null && Matches(definition) && InScope(definition))
-                .Cast<PresentationCommandDefinition>()
-                .ToArray();
-
-            if (recents.Length > 0)
+            void FillRecents(bool withHeader)
             {
-                Header("최근 사용");
+                PresentationCommandDefinition[] recents = _session!.Project.RecentCommandIds
+                    .Select(catalog.Find)
+                    .Where(definition => definition is not null && Matches(definition) && InScope(definition))
+                    .Cast<PresentationCommandDefinition>()
+                    .ToArray();
+
+                if (recents.Length == 0)
+                {
+                    return;
+                }
+
+                if (withHeader)
+                {
+                    Header("최근 사용");
+                }
 
                 foreach (PresentationCommandDefinition definition in recents)
                 {
@@ -1280,8 +1179,7 @@ public partial class PresentationNodeEditor : UserControl
                 }
             }
 
-            // ③ 카테고리 — 액팅류는 강도(미세→강함) 부그룹으로.
-            foreach (PresentationCategoryDefinition category in _available?.Categories ?? catalog.Categories)
+            void FillCategory(PresentationCategoryDefinition category, bool withHeader)
             {
                 PresentationCommandDefinition[] commands = catalog.For(category.Id)
                     .Where(Matches)
@@ -1289,11 +1187,15 @@ public partial class PresentationNodeEditor : UserControl
 
                 if (commands.Length == 0)
                 {
-                    continue;
+                    return;
                 }
 
-                Header(category.DisplayName);
+                if (withHeader)
+                {
+                    Header(category.DisplayName);
+                }
 
+                // 액팅류는 강도(미세→강함) 부그룹으로 — 옛 갤러리 규칙 그대로.
                 if (commands.Any(definition => definition.Intensity is not null))
                 {
                     foreach (string intensity in IntensityOrder)
@@ -1331,26 +1233,184 @@ public partial class PresentationNodeEditor : UserControl
                 }
             }
 
-            if (list.Children.Count == 0)
+            if (searching)
             {
-                list.Children.Add(new TextBlock
+                // 검색은 탭을 덮는다 — 종류를 몰라도 찾도록 옛 갤러리 순서(프리셋 → 최근 →
+                // 카테고리)의 평면 결과다.
+                FillPresets(withHeader: true);
+                FillRecents(withHeader: true);
+
+                foreach (PresentationCategoryDefinition category in categories)
                 {
-                    Text = $"'{query}'에 맞는 커맨드가 없습니다.",
-                    FontSize = 11,
-                    Opacity = 0.6
-                });
+                    FillCategory(category, withHeader: true);
+                }
+
+                if (list.Children.Count == 0)
+                {
+                    list.Children.Add(new TextBlock
+                    {
+                        Text = $"'{query}'에 맞는 커맨드가 없습니다.",
+                        FontSize = 11,
+                        Opacity = 0.6
+                    });
+                }
+
+                return;
+            }
+
+            if (string.Equals(selectedTab, "recent", StringComparison.Ordinal))
+            {
+                FillRecents(withHeader: false);
+
+                if (list.Children.Count == 0)
+                {
+                    list.Children.Add(new TextBlock
+                    {
+                        Text = "최근 사용한 연출이 없습니다 — 탭에서 종류별로 고르세요.",
+                        FontSize = 11,
+                        Opacity = 0.6
+                    });
+                }
+            }
+            else if (string.Equals(selectedTab, "preset", StringComparison.Ordinal))
+            {
+                FillPresets(withHeader: false);
+            }
+            else if (categories.FirstOrDefault(category =>
+                    string.Equals("cat:" + category.Id, selectedTab, StringComparison.Ordinal)) is { } picked)
+            {
+                FillCategory(picked, withHeader: false);
             }
         }
 
-        bool InScope(PresentationCommandDefinition definition) =>
-            _available is not { } available || available.Categories.Count == 0 ||
-            available.Categories.Any(category =>
-                string.Equals(category.Id, definition.CategoryId, StringComparison.Ordinal));
+        void AddTab(string key, string label)
+        {
+            var tab = new Button
+            {
+                Content = label,
+                FontSize = 10,
+                Padding = new Thickness(7, 2),
+                Margin = new Thickness(0, 0, 4, 4),
+                BorderThickness = default
+            };
+
+            tab.Click += (_, _) =>
+            {
+                selectedTab = key;
+
+                if (!string.IsNullOrEmpty(search.Text))
+                {
+                    search.Text = string.Empty; // TextChanged가 Fill을 부른다
+                }
+                else
+                {
+                    Fill();
+                }
+            };
+
+            tabButtons[key] = tab;
+            tabStrip.Children.Add(tab);
+        }
+
+        AddTab("recent", "최근");
+
+        if (hasPresets)
+        {
+            AddTab("preset", "★ 프리셋");
+        }
+
+        foreach (PresentationCategoryDefinition category in categories)
+        {
+            AddTab("cat:" + category.Id, category.DisplayName);
+        }
+
+        // 직접 입력 — 카탈로그 기준 파싱, 틀리면 그 자리에서 이유를 말하고 추측 보정은 없다.
+        var error = new TextBlock
+        {
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38)),
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false
+        };
+
+        var input = new TextBox
+        {
+            PlaceholderText = "<<커맨드 인자…>> 직접 입력 후 Enter",
+            FontFamily = MonoFont,
+            FontSize = 11
+        };
+
+        input.KeyDown += (_, args) =>
+        {
+            if (args.Key != Avalonia.Input.Key.Enter || _session is null)
+            {
+                return;
+            }
+
+            CommandTextParseResult parsed = CommandText.Parse(input.Text, catalog);
+
+            if (!parsed.Success)
+            {
+                error.Text = parsed.Error;
+                error.IsVisible = true;
+                return;
+            }
+
+            if (available.Categories.Count > 0 && !InScope(parsed.Definition!))
+            {
+                error.Text = $"'{parsed.Definition!.OutputCommandName}'의 범주는 연결된 공급 노드의 범위 밖입니다.";
+                error.IsVisible = true;
+                return;
+            }
+
+            close();
+            AddCommand(presentation, targetLineId, parsed.Definition!.Id, parsed.Arguments!);
+        };
+
+        var panel = new StackPanel { Spacing = 6, Width = 380 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = setup ? "연출 추가 — Setup (장면 준비)" : $"연출 추가 — {lineId}",
+            FontSize = 10,
+            Opacity = 0.55
+        });
+        panel.Children.Add(search);
+        panel.Children.Add(tabStrip);
+        panel.Children.Add(scroll);
+        panel.Children.Add(input);
+        panel.Children.Add(error);
 
         search.TextChanged += (_, _) => Fill();
         Fill();
-        flyout.ShowAt(anchor);
+        panel.AttachedToVisualTree += (_, _) => search.Focus();
+        return panel;
     }
+    private void AddCommand(
+        PresentationNode presentation,
+        string? lineId,
+        string definitionId,
+        IReadOnlyDictionary<string, string> arguments,
+        string? presetId = null)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (lineId is null)
+        {
+            _session.Editor.AddPresentationSetupCommand(presentation.Id, definitionId, arguments);
+        }
+        else
+        {
+            _session.Editor.AddPresentationCommand(
+                presentation.Id, lineId, definitionId, arguments, presetId: presetId);
+        }
+
+        Rebuild();
+    }
+
+    private static readonly string[] IntensityOrder = ["미세", "가벼움", "보통", "강함"];
 
     /// <summary>notes 요약 한 줄 — 첫 문장 또는 60자.</summary>
     private static string Summarize(string notes)
