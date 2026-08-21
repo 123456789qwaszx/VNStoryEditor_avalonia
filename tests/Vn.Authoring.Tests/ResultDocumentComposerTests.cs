@@ -66,7 +66,8 @@ public class ResultDocumentComposerTests
             .ToArray();
 
         // 갈래 출구의 소유자는 여는 줄이지만(§4.2), 실행은 갈래의 끝에서 일어난다.
-        // jump가 여는 줄 바로 뒤에 나오면 갈래 본문이 그 아래 묻혀 실행되지 않는다.
+        // 출구가 여는 줄 바로 뒤에 나오면 갈래 본문이 그 아래 묻혀 실행되지 않는다.
+        // 조건 갈래의 출구는 detour다 — 커스텀 씬을 재생하고 돌아온다.
         Assert.Equal(
             new[]
             {
@@ -75,11 +76,11 @@ public class ResultDocumentComposerTests
                 RenderedSegmentKind.ConditionBegin,
                 RenderedSegmentKind.DialogueLine,
                 RenderedSegmentKind.DialogueLine,
-                RenderedSegmentKind.BranchJump,
+                RenderedSegmentKind.BranchDetour,
                 RenderedSegmentKind.ConditionElseIf,
                 RenderedSegmentKind.DialogueLine,
                 RenderedSegmentKind.DialogueLine,
-                RenderedSegmentKind.BranchJump,
+                RenderedSegmentKind.BranchDetour,
                 RenderedSegmentKind.ConditionEnd,
                 RenderedSegmentKind.DialogueLine,
                 RenderedSegmentKind.DialogueLine,
@@ -89,10 +90,10 @@ public class ResultDocumentComposerTests
             meaningful.Select(segment => segment.Kind));
 
         RenderedSegment firstJump = meaningful.Single(segment =>
-            segment.Kind == RenderedSegmentKind.BranchJump &&
+            segment.Kind == RenderedSegmentKind.BranchDetour &&
             segment.TargetNodeId == sample.TargetA.Id);
         RenderedSegment secondJump = meaningful.Single(segment =>
-            segment.Kind == RenderedSegmentKind.BranchJump &&
+            segment.Kind == RenderedSegmentKind.BranchDetour &&
             segment.TargetNodeId == sample.TargetB.Id);
 
         // 갈래 출구는 화면상 마지막 줄이 아니라 갈래를 여는 안정된 LineId를 소유한다.
@@ -133,7 +134,7 @@ public class ResultDocumentComposerTests
             "<<set $favor = 0>>\n" +
             $"<<if {sample.ConditionA.Expression}>>\n" +
             $"    라루: 맞아요 #line:{opening}\n" +
-            $"    <<jump {sample.TargetA.Id}>>\n" +
+            $"    <<detour {sample.TargetA.Id}>>\n" +
             "<<endif>>\n" +
             $"끝 #line:{ending}\n" +
             $"<<jump {sample.TargetDefault.Id}>>\n" +

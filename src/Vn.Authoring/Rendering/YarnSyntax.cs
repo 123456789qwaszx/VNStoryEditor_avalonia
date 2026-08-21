@@ -59,6 +59,15 @@ internal static class YarnSyntax
         builder.Append("<<jump ").Append(target).Append(">>");
     }
 
+    /// <summary>
+    /// <c>&lt;&lt;detour 노드&gt;&gt;</c> — 대상 노드를 재생하고 이 자리로 돌아온다.
+    /// 조건 갈래의 커스텀 씬 출구가 쓴다 (YarnSpinner 3.x).
+    /// </summary>
+    public static void AppendDetour(StringBuilder builder, string target)
+    {
+        builder.Append("<<detour ").Append(target).Append(">>");
+    }
+
     /// <summary>화자가 있으면 <c>화자: 대사</c>, 없으면 대사만.</summary>
     public static void AppendDialogue(StringBuilder builder, RenderedSegment segment)
     {

@@ -150,6 +150,8 @@ public static class ResultDocumentComposer
         // 여는 줄 바로 뒤에 jump를 두면 갈래 본문이 그 아래 묻혀 실행되지 않는다.
         // 그래서 자기 체인의 다음 전환이 갈래를 닫는 순간에 내보낸다. 조건 갈래의 출구는
         // 안에 열린 선택 블록(W54)의 전환에는 흘러나오지 않는다 — 소유 체인이 다르다.
+        // 조건 갈래의 출구는 jump가 아니라 detour다 — 커스텀 씬을 재생하고 갈래로
+        // 돌아와 나머지 대본을 계속한다. 선택지 출구는 그대로 jump(이동)다.
         (RenderSourceReference Source, string Target, bool IsChoice)? pendingBranchJump = null;
 
         // W54: 조건 갈래 안 선택 블록 — 들여쓰기는 (조건 열림 ? 1 : 0) + (옵션 본문 ? 1 : 0).
@@ -182,7 +184,7 @@ public static class ResultDocumentComposer
                 if (options.IncludeExecutionJumps && pendingBranchJump is { } pending &&
                     pending.IsChoice == isChoiceTransition)
                 {
-                    AddBranchJump(segments, project, pending.Source, pending.Target);
+                    AddBranchExit(segments, project, pending.Source, pending.Target, pending.IsChoice);
                     pendingBranchJump = null;
                 }
                 else if (!isChoiceTransition)
@@ -190,7 +192,7 @@ public static class ResultDocumentComposer
                     // 조건 전환은 어떤 대기든 닫는다(깨진 구조의 안전망 — 잃지 않고 낸다).
                     if (options.IncludeExecutionJumps && pendingBranchJump is { } stale)
                     {
-                        AddBranchJump(segments, project, stale.Source, stale.Target);
+                        AddBranchExit(segments, project, stale.Source, stale.Target, stale.IsChoice);
                     }
 
                     pendingBranchJump = null;
@@ -379,7 +381,7 @@ public static class ResultDocumentComposer
         {
             // 선택지로 끝나는 노드의 마지막 옵션 출구가 여기로 온다 — 닫는 전환이 없어도
             // 출구를 조용히 버리지 않는다(순서: 옵션 본문 안에서 점프가 먼저, 닫힘은 그 뒤).
-            AddBranchJump(segments, project, lastPending.Source, lastPending.Target);
+            AddBranchExit(segments, project, lastPending.Source, lastPending.Target, lastPending.IsChoice);
         }
 
         if (choiceOpen && showDialogue)
@@ -472,15 +474,20 @@ public static class ResultDocumentComposer
         return tags;
     }
 
-    private static void AddBranchJump(
+    /// <summary>
+    /// 갈래 출구 하나. 선택지 옵션은 jump(그 씬으로 이동), 조건 갈래(IF)는 detour —
+    /// 커스텀 씬을 재생하고 갈래로 돌아와 나머지 대본을 계속한다.
+    /// </summary>
+    private static void AddBranchExit(
         List<RenderedSegment> segments,
         StoryProject? project,
         RenderSourceReference source,
-        string targetNodeId)
+        string targetNodeId,
+        bool isChoice)
     {
         segments.Add(new RenderedSegment(
             Id: $"branch:{source.LineId}:jump",
-            Kind: RenderedSegmentKind.BranchJump,
+            Kind: isChoice ? RenderedSegmentKind.BranchJump : RenderedSegmentKind.BranchDetour,
             Layer: DocumentLayer.ExecutionJumps,
             Source: source,
             IndentLevel: 1,

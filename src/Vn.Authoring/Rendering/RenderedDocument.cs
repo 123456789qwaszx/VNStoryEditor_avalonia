@@ -18,7 +18,15 @@ public enum RenderedSegmentKind
 
     /// <summary>선택 블록의 끝. 이 조각 자체는 아무 문구도 만들지 않을 수 있다.</summary>
     ChoiceEnd,
+
+    /// <summary>선택지 옵션의 출구. <c>&lt;&lt;jump&gt;&gt;</c> — 고르면 그 씬으로 이동한다.</summary>
     BranchJump,
+
+    /// <summary>
+    /// 조건 갈래(IF)의 커스텀 씬 출구. <c>&lt;&lt;detour&gt;&gt;</c> — 씬을 재생하고
+    /// 갈래로 <b>돌아와</b> 나머지 대본을 계속한다. jump면 갈래 뒤의 대사가 전부 죽는다.
+    /// </summary>
+    BranchDetour,
     DefaultJump,
     Warning,
     NodeFooter

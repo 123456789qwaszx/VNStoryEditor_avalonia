@@ -126,7 +126,7 @@ public class VerticalSliceTests
 
             Assert.Contains("<<camera closeup>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
             Assert.Contains($"<<if {favor.Expression}>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
-            Assert.Contains($"<<jump {ending.Id}>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
+            Assert.Contains($"<<detour {ending.Id}>>", outputs[OutputPresetId.RuntimeFull], StringComparison.Ordinal);
 
             // 대본집은 연출을 빼고, 연출표는 대사를 화자 없이 보여 준다.
             Assert.DoesNotContain("camera", outputs[OutputPresetId.ScenarioOnly], StringComparison.Ordinal);

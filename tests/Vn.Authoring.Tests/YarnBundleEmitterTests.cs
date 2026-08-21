@@ -71,14 +71,15 @@ public class YarnBundleEmitterTests
 
         YarnBundle bundle = Emit(fixture);
 
-        // 2026-08-18 — 레인이 없어져 jump 앞의 <<pres_end>>도 함께 사라졌다.
+        // 2026-08-18 — 레인이 없어져 출구 앞의 <<pres_end>>도 함께 사라졌다.
+        // 조건 갈래의 출구는 detour다 — 커스텀 씬을 재생하고 갈래로 돌아온다.
         int branchLine = bundle.StoryText.IndexOf("갈래 안 #line:", StringComparison.Ordinal);
-        int jump = bundle.StoryText.IndexOf("<<jump Story_A로_간다>>", StringComparison.Ordinal);
+        int detour = bundle.StoryText.IndexOf("<<detour Story_A로_간다>>", StringComparison.Ordinal);
         int endif = bundle.StoryText.IndexOf("<<endif>>", StringComparison.Ordinal);
 
-        Assert.True(branchLine >= 0 && jump > branchLine, "jump는 갈래 본문 뒤에 있어야 한다");
+        Assert.True(branchLine >= 0 && detour > branchLine, "detour는 갈래 본문 뒤에 있어야 한다");
         Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
-        Assert.True(endif > jump, "갈래 출구는 endif 앞, 갈래의 끝에 있어야 한다");
+        Assert.True(endif > detour, "갈래 출구는 endif 앞, 갈래의 끝에 있어야 한다");
 
         Assert.Contains("<<jump Story_기본으로_간다>>", bundle.StoryText, StringComparison.Ordinal);
     }

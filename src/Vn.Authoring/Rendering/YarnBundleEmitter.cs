@@ -214,6 +214,14 @@ public static class YarnBundleEmitter
                     story.Append('\n');
                     break;
 
+                case RenderedSegmentKind.BranchDetour:
+                    // 조건 갈래의 커스텀 씬 — 재생하고 갈래로 돌아온다.
+                    CloseStoryHeader();
+                    story.Append(indent);
+                    YarnSyntax.AppendDetour(story, JumpTargetOf(segment));
+                    story.Append('\n');
+                    break;
+
                 case RenderedSegmentKind.Warning:
                     problems.Add(new YarnBundleProblem(
                         segment.Text ?? "알 수 없는 경고",

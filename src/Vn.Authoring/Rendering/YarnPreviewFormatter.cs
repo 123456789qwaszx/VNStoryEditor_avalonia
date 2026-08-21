@@ -114,6 +114,12 @@ public static class YarnPreviewFormatter
                 builder.Append('\n');
                 break;
 
+            case RenderedSegmentKind.BranchDetour:
+                builder.Append(indent);
+                YarnSyntax.AppendDetour(builder, segment.TargetNodeId ?? "missing-target");
+                builder.Append('\n');
+                break;
+
             case RenderedSegmentKind.Warning:
                 builder.Append(indent)
                     .Append("// WARNING: ")

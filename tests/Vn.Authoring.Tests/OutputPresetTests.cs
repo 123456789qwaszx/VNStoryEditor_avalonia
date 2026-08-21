@@ -60,7 +60,7 @@ public class OutputPresetTests
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.ConditionBegin);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.PresentationCommand);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.DialogueLine);
-        Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.BranchJump);
+        Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.BranchDetour);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.DefaultJump);
         Assert.Equal(OutputPresetId.RuntimeFull, document.PresetId);
     }
@@ -78,7 +78,9 @@ public class OutputPresetTests
         Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.SetAssignment);
         Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.PresentationCommand);
         Assert.DoesNotContain(document.Segments, segment =>
-            segment.Kind is RenderedSegmentKind.BranchJump or RenderedSegmentKind.DefaultJump);
+            segment.Kind is RenderedSegmentKind.BranchJump
+                or RenderedSegmentKind.BranchDetour
+                or RenderedSegmentKind.DefaultJump);
 
         string text = DocumentPreviewFormatter.Format(document);
         Assert.Contains("[장면]", text, StringComparison.Ordinal);

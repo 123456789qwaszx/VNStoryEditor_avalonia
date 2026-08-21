@@ -430,7 +430,7 @@ public class ChoiceTests
     }
 
     [Fact]
-    public void 조건_안_선택지는_들여쓴_옵션으로_나오고_조건_출구는_선택_뒤에_점프한다()
+    public void 조건_안_선택지는_들여쓴_옵션으로_나오고_조건_출구는_선택_뒤에_detour한다()
     {
         ChoiceWorld world = BuildNestedChoiceWorld();
 
@@ -449,12 +449,12 @@ public class ChoiceTests
         // 타게 하려던 것이라, 레인이 없어지자 쓸 곳이 없다.
         Assert.DoesNotContain("__ch_", story, StringComparison.Ordinal);
 
-        // 조건 갈래 출구 점프는 선택 블록의 마지막 본문 뒤, endif 앞에서 나온다 —
-        // 선택 전환에 새어 나오면 선택지가 제시되기 전에 점프해 버린다.
+        // 조건 갈래 출구(detour)는 선택 블록의 마지막 본문 뒤, endif 앞에서 나온다 —
+        // 선택 전환에 새어 나오면 선택지가 제시되기 전에 떠나 버린다.
         int lastOptionBody = story.IndexOf("빈손으로 나왔다.", StringComparison.Ordinal);
-        int jump = story.IndexOf("<<jump Story_", StringComparison.Ordinal);
+        int detour = story.IndexOf("<<detour Story_", StringComparison.Ordinal);
         int endif = story.IndexOf("<<endif>>", StringComparison.Ordinal);
-        Assert.True(lastOptionBody >= 0 && lastOptionBody < jump && jump < endif, story);
+        Assert.True(lastOptionBody >= 0 && lastOptionBody < detour && detour < endif, story);
     }
 
     internal sealed record ChoiceWorld(
