@@ -15,7 +15,10 @@ namespace Ked.Presentation.Core
     // ─────────────────────────────────────────────────────────────────
     public static class DepthLevelLabels
     {
-        /// <summary>커브 설계 구간 [0,10]에 균등하게 얹은 눈금.</summary>
+        /// <summary>
+        /// 눈금. 커브 설계 구간은 [0,16]이고 라벨은 그중 [0,10]에 균등하게 얹혀 있다 —
+        /// close 위로 6레벨이 비어 있는 것은 의도다(더 붙는 클로즈업이 필요할 때 쓴다).
+        /// </summary>
         public const float Far = 0f;
         public const float Back = 2.5f;
         public const float Mid = 5f;

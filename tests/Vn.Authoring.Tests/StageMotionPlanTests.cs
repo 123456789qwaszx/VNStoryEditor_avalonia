@@ -248,6 +248,22 @@ public class StageMotionPlanTests
         Assert.NotEqual(farScale.From.LocalScale.X, middle, 3);
         Assert.NotEqual(farScale.To.LocalScale.X, middle, 3);
 
+        // 커브 설계 구간이 [0,16]으로 늘었다 (2026-08-21) — close(10) 위도 접힌다.
+        // 라벨 값은 그대로다: 늘린 것이 같은 기울기의 직선 연장이라서다.
+        StageMotionPlan closeUp = Plan(Command(
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "16"), ("duration", "10fr")))!;
+        MotionNodeTween closeUpScale = Assert.Single(
+            closeUp.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
+
+        StageMotionPlan atClose = Plan(Command(
+            "char_rig_depth.size", ("slot", "c1"), ("depth", "close"), ("duration", "10fr")))!;
+        MotionNodeTween atCloseScale = Assert.Single(
+            atClose.Tweens[0].Nodes, node => node.NodeKey.EndsWith("DepthScale", StringComparison.Ordinal));
+
+        Assert.True(
+            closeUpScale.To.LocalScale.X > atCloseScale.To.LocalScale.X,
+            "16은 close(10)보다 더 붙어야 한다");
+
         // 눈금도 수치도 아닌 토큰은 여전히 거부된다 — 조용히 삼키지 않는다.
         Assert.Null(Plan(Command(
             "char_rig_depth.size", ("slot", "c1"), ("depth", "헛토큰"), ("duration", "10fr"))));

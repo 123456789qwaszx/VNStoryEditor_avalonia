@@ -146,8 +146,11 @@ MonoBehaviour
 | front | −320 | 1.38 | 20 (Bust) |
 | close | 440 | 1.58 | 30 (Face) |
 
-> `level`은 `AnimationCurve` 기반이라 코어 DTO에 담지 않는다.
-> 레벨 수치 입력(커브 조회)은 폴드 미지원 — `Unhandled`로 남긴다.
+> `level`은 `AnimationCurve` 기반이고, 코어 DTO가 `m_Curve` 키 배열을 그대로 읽는다
+> (`m_PreInfinity`/`m_PostInfinity`는 읽지 않는다 — 런타임이 쓰지 않고 직접 외삽한다).
+> 레벨 수치 입력(커브 조회)도 접는다. 깊이의 진실은 `level` 커브 하나이고(설계 구간 [0,16]),
+> 프리셋 표(`presets`)는 더 이상 읽지 않는다 — 라벨 far·back·mid·front·close는 커브 위의
+> 눈금이다(코어 `DepthLevelLabels`: 0 · 2.5 · 5 · 7.5 · 10).
 
 ### `focus-tuning.json` — `CharacterFocusTuningDBSO`
 

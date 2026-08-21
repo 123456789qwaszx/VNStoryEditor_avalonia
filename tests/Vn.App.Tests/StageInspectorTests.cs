@@ -55,7 +55,7 @@ public sealed class StageInspectorTests
 
         Slider[] sliders = inspector.GetLogicalDescendants().OfType<Slider>().ToArray();
         Slider level = Assert.Single(sliders, slider => slider.Minimum == -10);
-        Assert.Equal(10, level.Maximum);
+        Assert.Equal(16, level.Maximum); // 커브 설계 구간 [0,16] (2026-08-21 확장)
         Assert.Equal(10, level.Value); // close = 눈금 10
 
         // 알 수 없는 토큰이면 가운데에 서고 원문을 보인다(폴드도 거부하는 값이다).
