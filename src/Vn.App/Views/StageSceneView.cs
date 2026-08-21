@@ -584,6 +584,14 @@ internal sealed class StageSceneView : UserControl
                         format: number => number.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
                         token: number => number.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)));
                 }
+                else if (string.Equals(parameter.Type, "depthPreset", StringComparison.Ordinal))
+                {
+                    // 뎁스는 작업대에서 <b>레벨 슬라이더</b>로 만진다 (2026-08-21 소유자:
+                    // "조작 콘솔에서는 나쁘진 않은데, 터미널 아래의 연출 편집기에서는
+                    // -10 ~ 10까지의 Level을 슬라이더로 직접 조절"). 프리셋 키(close·far…)는
+                    // 조작 콘솔과 인자 칩에 그대로 남는다 — 잃는 길은 없다.
+                    AddDepthLevelRows(host, context.PresentationNodeId, command, parameter, written);
+                }
                 else if (string.Equals(parameter.Type, "duration", StringComparison.Ordinal) &&
                          DurationToken.TryParseSeconds(written, out float seconds))
                 {
@@ -626,6 +634,56 @@ internal sealed class StageSceneView : UserControl
                         candidates));
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// 뎁스 레벨 슬라이더 (2026-08-21 소유자 지시) — 런타임은 <c>size</c>의 depth 자리에
+    /// <b>임의 실수 레벨</b>을 받아 커브로 푼다(설계 구간 0~10, 그 밖은 끝 키 기울기로
+    /// 외삽 — 그래서 음수도 뜻이 있다). 프리셋 키가 적혀 있으면 슬라이더는 가운데(5)에
+    /// 서고 무엇이 적혀 있는지 라벨이 말한다 — 끌기 전에는 아무것도 쓰지 않는다.
+    ///
+    /// ⚠ 프리뷰 폴드는 아직 레벨을 모른다(코어 DTO가 level 커브를 안 읽는다 —
+    /// "레벨 수치는 커브 폴드 미지원"). 그래서 레벨을 쓴 커맨드는 무대에 "반영 안 됨"으로
+    /// 선다. 재생·발행은 정상이다. 저쪽 코어가 커브 폴드를 열면 이 안내가 사라진다.
+    /// </summary>
+    private void AddDepthLevelRows(
+        StackPanel host,
+        string presentationNodeId,
+        PresentationResultCommand command,
+        PresentationCommandParameter parameter,
+        string written)
+    {
+        bool isLevel = double.TryParse(
+            written,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out double level);
+
+        host.Children.Add(BuildMotionSlider(
+            presentationNodeId,
+            command.CommandId,
+            label: "레벨",
+            argumentName: parameter.Name,
+            value: isLevel ? level : 5,
+            minimum: -10,
+            maximum: 10,
+            tick: 0.5,
+            format: value => isLevel || Math.Abs(value - 5) > 0.001
+                ? value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)
+                : $"({written})",
+            token: value => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)));
+
+        if (isLevel)
+        {
+            host.Children.Add(new TextBlock
+            {
+                Text = "레벨 수치는 런타임이 커브로 풀지만, 프리뷰 폴드는 아직 프리셋만 압니다 — 무대에 \"반영 안 됨\"으로 섭니다.",
+                FontSize = 10,
+                Opacity = 0.6,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 260
+            });
         }
     }
 

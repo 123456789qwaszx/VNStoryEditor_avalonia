@@ -1393,7 +1393,7 @@
           "name": "depth",
           "type": "depthPreset",
           "required": true,
-          "description": "숫자를 넣으면 연속 레벨값(0~10 커브 보간), 문자는 프리셋 키(far/back/mid/front/close 등)"
+          "description": "숫자를 넣으면 연속 레벨값(설계 구간 0~10 커브, 그 밖은 끝 키 기울기로 외삽되므로 음수도 유효하다 — 작업대 슬라이더는 -10~10), 문자는 프리셋 키(far/back/mid/front/close 등). ⚠ 프리뷰 폴드는 아직 프리셋만 안다(코어가 level 커브를 안 읽는다)."
         },
         {
           "name": "preserveFocus",
