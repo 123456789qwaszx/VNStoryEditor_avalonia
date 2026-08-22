@@ -2,6 +2,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Ked.Presentation.Core;
@@ -10,6 +11,7 @@ using Vn.Authoring.Assets;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
+using Vn.Authoring.Model;
 using Vn.Authoring.Results;
 
 namespace Vn.App.Views;
@@ -58,6 +60,42 @@ internal sealed class StageSceneView : UserControl
     private readonly Popup _consolePopup;
     private Point _consoleOpenAt;
     private Point? _consoleUserPosition;
+
+    /// <summary>
+    /// 열려 있는 조절창의 재구성 손잡이 (2026-08-22). 바깥(터미널에서 칩을 담는 길)이
+    /// <b>팝업을 닫지 않고</b> 내용만 새로 그리게 한다 — 소유자: "추가되는게 바로바로 보이도록".
+    /// </summary>
+    private Action? _consoleRebuild;
+
+    /// <summary>담기 모드가 켜지거나 꺼졌다 — 터미널이 ★ 표시를 켜고 꺼야 한다.</summary>
+    internal event Action? QuickEditModeChanged;
+
+    /// <summary>
+    /// 지금 터미널이 ★를 보여야 하는가. 조절창을 여는 길이 <see cref="_quickEditMode"/>를
+    /// 반드시 끄고(열림) 닫는 길이 반드시 끄므로(Closed) 이 플래그 하나로 충분하다 —
+    /// <c>IsOpen</c>을 함께 보면 같은 사실을 두 곳에서 세는 셈이 된다.
+    /// </summary>
+    internal bool IsQuickPinMode => _quickEditMode;
+
+    /// <summary>열려 있는 조절창을 그 자리에서 다시 그린다. 닫혀 있으면 아무 일도 없다.</summary>
+    internal void RefreshConsole() => _consoleRebuild?.Invoke();
+
+    /// <summary>
+    /// 담기 모드를 켜고 끄는 유일한 통로 — <b>바뀔 때만</b> 신호를 쏜다. 조절창을 열
+    /// 때마다 무조건 쏘면 터미널이 매번 헛되이 다시 그려지고, 그 재렌더가 조절창을 여는
+    /// 도중에 끼어든다.
+    /// </summary>
+    private void SetQuickEditMode(bool enabled)
+    {
+        if (_quickEditMode == enabled)
+        {
+            return;
+        }
+
+        _quickEditMode = enabled;
+        _quickExpandedIndex = null;
+        QuickEditModeChanged?.Invoke();
+    }
 
     /// <summary>직접 조작이 편집을 만들었다. 편집기 카드가 새 커맨드 행을 그려야 한다.</summary>
     internal event Action? ManipulationApplied;
@@ -237,9 +275,21 @@ internal sealed class StageSceneView : UserControl
             PlacementConstraintAdjustment =
                 Avalonia.Controls.Primitives.PopupPositioning.PopupPositionerConstraintAdjustment.SlideX |
                 Avalonia.Controls.Primitives.PopupPositioning.PopupPositionerConstraintAdjustment.SlideY,
-            IsLightDismissEnabled = true
+            // ⚠ 라이트 디스미스를 껐다 (2026-08-22 소유자: "열려있던 조작 콘솔은 닫히면
+            // 안되고"). 켜져 있으면 바깥 클릭 한 번이 곧 닫기라, 조절창을 띄워 놓고
+            // 터미널에서 커맨드를 담는 흐름 자체가 성립하지 않는다. 닫는 길은 헤더가
+            // 이미 광고하는 둘이다 — ✕ 단추와 조절창 안 우클릭.
+            IsLightDismissEnabled = false
         };
-        _consolePopup.Closed += (_, _) => _consolePopup.Child = null;
+        _consolePopup.Closed += (_, _) =>
+        {
+            _consolePopup.Child = null;
+            _consoleRebuild = null;
+
+            // 조절창이 닫히면 담기 모드도 끝난다 — 담을 곳이 안 보이는데 터미널만 활성으로
+            // 남아 있으면 눌러도 아무 데도 안 보이는 담기가 된다.
+            SetQuickEditMode(false);
+        };
 
         // 레터박스 여백은 검정 — 창 어디를 늘려도 무대 비율은 변하지 않는다.
         Content = new Panel
@@ -587,8 +637,7 @@ internal sealed class StageSceneView : UserControl
                         units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u";
 
                     host.Children.Add(BuildMotionSlider(
-                        context.PresentationNodeId,
-                        command.CommandId,
+                        CommandSink(context.PresentationNodeId, command.CommandId),
                         label: unitSigned ? parameter.Name : "거리",
                         argumentName: parameter.Name,
                         value: writtenUnits,
@@ -605,8 +654,7 @@ internal sealed class StageSceneView : UserControl
                         System.Globalization.CultureInfo.InvariantCulture, out double current);
 
                     host.Children.Add(BuildMotionSlider(
-                        context.PresentationNodeId,
-                        command.CommandId,
+                        CommandSink(context.PresentationNodeId, command.CommandId),
                         label: parameter.Name,
                         argumentName: parameter.Name,
                         value: current,
@@ -628,8 +676,7 @@ internal sealed class StageSceneView : UserControl
                          DurationToken.TryParseSeconds(written, out float seconds))
                 {
                     host.Children.Add(BuildMotionSlider(
-                        context.PresentationNodeId,
-                        command.CommandId,
+                        CommandSink(context.PresentationNodeId, command.CommandId),
                         label: "시간",
                         argumentName: parameter.Name,
                         value: seconds * DurationToken.FramesPerSecond,
@@ -677,8 +724,7 @@ internal sealed class StageSceneView : UserControl
                     // 후보는 제안이지 제약이 아니다 — 후보 밖 값(뎁스의 연속 레벨 숫자 등)은
                     // 선택 없음 + 현재 값 표시로 두고, 자유 입력은 기존 칩 텍스트 편집의 몫이다.
                     host.Children.Add(BuildTokenSelector(
-                        context.PresentationNodeId,
-                        command.CommandId,
+                        CommandSink(context.PresentationNodeId, command.CommandId),
                         parameter,
                         written,
                         candidates));
@@ -716,8 +762,7 @@ internal sealed class StageSceneView : UserControl
             TryLabelLevel(written, out level);
 
         host.Children.Add(BuildMotionSlider(
-            presentationNodeId,
-            command.CommandId,
+            CommandSink(presentationNodeId, command.CommandId),
             label: "뎁스",
             argumentName: parameter.Name,
             value: known ? level : DepthLevelLabels.Mid,
@@ -783,8 +828,7 @@ internal sealed class StageSceneView : UserControl
 
     /// <summary>프리셋 토큰 한 줄 — 고르면 그 인자만 바뀐다(같은 커맨드 인자 수정 통로).</summary>
     private Control BuildTokenSelector(
-        string presentationNodeId,
-        string commandId,
+        ArgumentSink write,
         PresentationCommandParameter parameter,
         string currentValue,
         IReadOnlyList<string> candidates)
@@ -813,17 +857,10 @@ internal sealed class StageSceneView : UserControl
 
             string selected = candidates[combo.SelectedIndex];
 
-            if (string.Equals(selected, currentValue, StringComparison.Ordinal))
+            if (!string.Equals(selected, currentValue, StringComparison.Ordinal))
             {
-                return;
+                write(parameter.Name, selected);
             }
-
-            UiGuard.Run(_session, "프리셋 선택", () =>
-            {
-                _session.Editor.SetPresentationCommandArgument(
-                    presentationNodeId, commandId, parameter.Name, selected);
-                ManipulationApplied?.Invoke();
-            });
         };
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
@@ -1654,8 +1691,7 @@ internal sealed class StageSceneView : UserControl
                 : cue.DeltaY;
 
             host.Children.Add(BuildMotionSlider(
-                context.PresentationNodeId,
-                cue.CommandId,
+                CommandSink(context.PresentationNodeId, cue.CommandId),
                 label: axis.Axis == PresentationMotionAxis.XAxis ? "가로" : "세로",
                 argumentName: axis.ParameterName,
                 value: perUnit > 0 ? pixels / perUnit : 0,
@@ -1669,8 +1705,7 @@ internal sealed class StageSceneView : UserControl
         if (motion.DurationParameterName is { } durationParameter)
         {
             host.Children.Add(BuildMotionSlider(
-                context.PresentationNodeId,
-                cue.CommandId,
+                CommandSink(context.PresentationNodeId, cue.CommandId),
                 label: "시간",
                 argumentName: durationParameter,
                 value: cue.DurationFrames,
@@ -1903,9 +1938,32 @@ internal sealed class StageSceneView : UserControl
     /// <summary>
     /// 값 하나짜리 슬라이더 줄. 끄는 동안은 라벨만 갱신하고, <b>손을 뗄 때 한 번</b> 저장한다.
     /// </summary>
+    /// <summary>
+    /// 인자 하나를 <b>어디에</b> 쓸 것인가 (2026-08-22) — 노드의 커맨드냐, [자주 쓰는]
+    /// 칩이냐. 수치 편집기가 대상의 정체를 모르게 하는 유일한 이음매다: 슬라이더·선택기
+    /// 한 벌이 두 곳을 섬긴다(사본 금지).
+    /// </summary>
+    private delegate void ArgumentSink(string argumentName, string value);
+
+    /// <summary>노드 커맨드에 쓰는 통로 — 예전 그대로 편집기를 지나고 화면을 다시 접는다.</summary>
+    private ArgumentSink CommandSink(string presentationNodeId, string commandId) =>
+        (argumentName, value) =>
+        {
+            if (_session is null)
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, "수치 조절", () =>
+            {
+                _session.Editor.SetPresentationCommandArgument(
+                    presentationNodeId, commandId, argumentName, value);
+                ManipulationApplied?.Invoke();
+            });
+        };
+
     private Control BuildMotionSlider(
-        string presentationNodeId,
-        string commandId,
+        ArgumentSink write,
         string label,
         string argumentName,
         double value,
@@ -1940,20 +1998,7 @@ internal sealed class StageSceneView : UserControl
         slider.ValueChanged += (_, args) => valueLabel.Text = format(args.NewValue);
 
         // 확정만 편집이다 — 끄는 도중의 중간값은 프로젝트에 닿지 않는다.
-        void Commit()
-        {
-            if (_session is null)
-            {
-                return;
-            }
-
-            UiGuard.Run(_session, "수치 조절", () =>
-            {
-                _session.Editor.SetPresentationCommandArgument(
-                    presentationNodeId, commandId, argumentName, token(slider.Value));
-                ManipulationApplied?.Invoke();
-            });
-        }
+        void Commit() => write(argumentName, token(slider.Value));
 
         slider.PointerCaptureLost += (_, _) => Commit();
         slider.KeyUp += (_, _) => Commit();
@@ -2105,14 +2150,39 @@ internal sealed class StageSceneView : UserControl
             }
         };
 
-        root.PointerPressed += (_, args) =>
-        {
-            if (args.GetCurrentPoint(root).Properties.IsRightButtonPressed)
+        // 우클릭 = 닫기 (헤더가 광고하는 두 길 중 하나).
+        //
+        // ⚠ <b>터널로 잡는다</b> (2026-08-22 소유자 보고: "우클릭 닫기 기능이 안돼").
+        // 버블로 달면 판 안쪽 컨트롤(탭 머리·탭 내용 컨테이너·글자 칸)이 먼저 삼켜서
+        // 판 대부분에서 우클릭이 여기까지 안 온다. 라이트 디스미스가 있던 시절에는
+        // 바깥 클릭이 닫아 줘서 이 구멍이 안 보였을 뿐이다 — 그 길을 막은 지금은
+        // <b>판 어디를 우클릭해도</b> 닫혀야 한다. 글자 칸의 기본 우클릭 메뉴를 잃지만,
+        // 이 판에서 우클릭의 뜻은 하나로 정해 두는 편이 낫다.
+        root.AddHandler(
+            InputElement.PointerPressedEvent,
+            (_, args) =>
             {
-                CloseConsole();
-                args.Handled = true;
-            }
-        };
+                if (args.GetCurrentPoint(root).Properties.IsRightButtonPressed)
+                {
+                    args.Handled = true;
+                    CloseConsole();
+                }
+            },
+            RoutingStrategies.Tunnel);
+
+        // ⚠ 열려 있으면 <b>먼저 닫는다</b> (2026-08-22 소유자 보고: "오직 자주쓰는
+        // 메뉴탭만 콘솔에 남은 이상한 상태"). 라이트 디스미스를 끈 뒤로 무대 클릭이
+        // 팝업을 닫지 않고 곧장 여기로 오므로 <b>열린 팝업의 Child를 갈아 끼우는</b> 길이
+        // 생겼는데, Avalonia는 그 교체를 온전히 반영하지 않아 옛 판과 새 판이 섞인다.
+        // 닫았다 여는 것이 유일하게 정의된 경로다(끌어 둔 자리는 _consoleUserPosition이 진다).
+        if (_consolePopup.IsOpen)
+        {
+            _consolePopup.IsOpen = false; // Closed가 Child·재구성 손잡이·담기 모드를 정리한다
+        }
+
+        // 칩 편집은 잠깐의 일이다 — 조절창을 다시 열면 평소 모드로 돌아간다.
+        SetQuickEditMode(false);
+        _consoleRebuild = Rebuild;
 
         // 끌어 둔 자리 우선, 처음이면 클릭한 지점.
         Point openAt = _consoleUserPosition ?? _consoleOpenAt;
@@ -2142,7 +2212,7 @@ internal sealed class StageSceneView : UserControl
         }
 
         _popoverSlotKey = slotKey; // 전역 선택도 이 슬롯을 따라간다
-        _popoverTabIndex = 2;      // 캐릭터 탭
+        _popoverTabIndex = 3;      // 캐릭터 탭 ([자주 쓰는]이 앞에 서며 하나 밀렸다)
         ShowStagePopover();
     }
 
@@ -2494,6 +2564,14 @@ internal sealed class StageSceneView : UserControl
         // ── 탭 — 적용 후 재구성돼도 보던 탭이 유지된다 ──
         var tabs = new TabControl { MinWidth = 270 };
 
+        // [자주 쓰는]이 맨 앞이자 기본 탭이다 (2026-08-22 소유자) — 나머지 네 탭이 "누가·
+        // 어디·어떤 표정"을 명사로 말하는 동안, 시간·리액션·카메라·화면은 126종 목록으로
+        // 나가야 했다. 그 넷을 칩 한 줄로 당겨 온 자리다.
+        tabs.Items.Add(new TabItem
+        {
+            Header = new TextBlock { Text = "★ 자주 쓰는", FontSize = 11 },
+            Content = BuildQuickTab(rebuild)
+        });
         tabs.Items.Add(new TabItem
         {
             Header = new TextBlock { Text = "배경", FontSize = 11 },
@@ -2529,7 +2607,7 @@ internal sealed class StageSceneView : UserControl
 
         if (visibilityRow is not null)
         {
-            visibilityRow.IsVisible = tabs.SelectedIndex != 0;
+            visibilityRow.IsVisible = tabs.SelectedIndex != BackgroundTabIndex;
             host.Children.Add(visibilityRow);
         }
 
@@ -2542,9 +2620,464 @@ internal sealed class StageSceneView : UserControl
 
             if (visibilityRow is not null)
             {
-                visibilityRow.IsVisible = tabs.SelectedIndex != 0;
+                visibilityRow.IsVisible = tabs.SelectedIndex != BackgroundTabIndex;
             }
         };
+    }
+
+    // ── [자주 쓰는] 탭 (2026-08-22) ─────────────────────────────────────────
+
+    /// <summary>배경 탭의 자리. 등장/퇴장 줄을 숨길 탭을 번호가 아니라 이름으로 가리킨다.</summary>
+    private const int BackgroundTabIndex = 1;
+
+    /// <summary>칩을 지울 수 있는 상태인가. 팝오버를 다시 열면 꺼진다 — 편집은 잠깐의 일이다.</summary>
+    private bool _quickEditMode;
+
+    /// <summary>
+    /// 검증용 손잡이 — 조절창 팝업을 띄우지 않고 [자주 쓰는] 판만 짓는다. 헤드리스에서는
+    /// <see cref="Popup"/>이 뜨지 않아 칩을 눌러 볼 길이 이것뿐이다.
+    /// </summary>
+    internal Control BuildQuickTabProbe(string? slotKey, Action? onApplied = null)
+    {
+        _popoverSlotKey = slotKey;
+        return BuildQuickTab(onApplied ?? (() => { }));
+    }
+
+    /// <summary>검증용 손잡이 — 칩 편집 모드를 켠다(평소에는 탭 안 [편집]이 켠다). 신호도 같이 쏜다.</summary>
+    internal void SetQuickEditModeProbe(bool enabled) => SetQuickEditMode(enabled);
+
+    /// <summary>검증용 손잡이 — 무대 빈 곳 클릭과 같은 길로 조절창을 열고 그 판을 돌려준다.</summary>
+    internal Control? OpenStageConsoleProbe()
+    {
+        ShowStagePopover();
+        return _consolePopup.Child;
+    }
+
+    /// <summary>조절창이 지금 떠 있는가.</summary>
+    internal bool IsStageConsoleOpen => _consolePopup.IsOpen;
+
+    /// <summary>
+    /// 검증용 손잡이 — 조절창 본문(슬롯 헤더 + 탭 + 등장/퇴장)을 팝업 없이 짓는다.
+    /// 탭 <b>순서</b>가 <see cref="BackgroundTabIndex"/>와 캐릭터 탭 번호(3)의 근거라
+    /// 눈이 아니라 테스트가 지킨다.
+    /// </summary>
+    internal Control BuildStagePopoverProbe()
+    {
+        var host = new StackPanel();
+        BuildStagePopover(host, () => { });
+        return host;
+    }
+
+    /// <summary>
+    /// 자주 쓰는 칩 판 — 누르면 <b>지금 고른 라인</b>에 그 커맨드가 붙는다. 대상 슬롯은
+    /// 칩이 아니라 위 콤보가 정한다(<see cref="StageQuickCommand"/> 주석).
+    ///
+    /// 같은 커맨드를 같은 대상에 다시 누르면 값만 바뀐다 — 조절창 전체를 관통하는 규칙
+    /// (<see cref="PresentationStageActions.Apply"/>)을 칩만 예외로 두지 않는다. 그래서
+    /// [흔들기] 뒤에 [끄덕임]은 gesture 두 개가 아니라 "이 라인의 몸짓은 끄덕임"이 된다.
+    /// </summary>
+    private Control BuildQuickTab(Action onApplied)
+    {
+        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0), MinWidth = 250 };
+
+        if (_session is null)
+        {
+            return panel;
+        }
+
+        PresentationCommandCatalog catalog = ManipulationCatalog;
+        IReadOnlyList<StageQuickCommand> chips = _session.Project.EffectiveQuickCommands;
+
+        // ── 머리 줄: 안내 + [편집] 토글 ──
+        var editToggle = new Button
+        {
+            Content = _quickEditMode ? "완료" : "편집",
+            FontSize = 10,
+            Padding = new Thickness(7, 2)
+        };
+        editToggle.Click += (_, _) =>
+        {
+            // 모드 신호가 먼저다(터미널 활성 표시) — 판 재구성은 그 뒤여야 둘이 같은
+            // 모드를 본다.
+            SetQuickEditMode(!_quickEditMode);
+            onApplied();
+        };
+
+        var headerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var headerText = new TextBlock
+        {
+            Text = _quickEditMode
+                ? "터미널의 커맨드를 클릭하면 담깁니다. ▸로 수치를 펴고, ✕로 뺍니다."
+                : "누르면 이 라인에 붙습니다.",
+            FontSize = 10,
+            Opacity = 0.6,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(headerText, 0);
+        Grid.SetColumn(editToggle, 1);
+        headerRow.Children.Add(headerText);
+        headerRow.Children.Add(editToggle);
+        panel.Children.Add(headerRow);
+
+        // 평소에는 칩 판(가로로 흐르는 단추), 편집 중에는 줄 목록(이름 칸 + ✕).
+        Panel pad = _quickEditMode
+            ? new StackPanel { Spacing = 3 }
+            : new WrapPanel { MaxWidth = 260 };
+        int shown = 0;
+
+        for (int index = 0; index < chips.Count; index++)
+        {
+            StageQuickCommand chip = chips[index];
+            PresentationCommandDefinition? definition = catalog.Find(chip.DefinitionId);
+
+            // 이 게임 정의에 없는 커맨드는 조용히 빠진다 — 눌러도 예외가 날 칩을 그리지 않는다.
+            if (definition is null)
+            {
+                continue;
+            }
+
+            pad.Children.Add(_quickEditMode
+                ? BuildQuickChipEditRow(chip, definition, index, onApplied)
+                : BuildQuickChip(chip, definition, onApplied));
+            shown++;
+        }
+
+        if (shown == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = chips.Count == 0
+                    ? "칩이 없습니다. [편집]을 누르고 터미널의 커맨드를 클릭해 담거나 [기본값 복원]을 누르세요."
+                    : "이 게임 정의에는 담긴 칩의 커맨드가 없습니다.",
+                FontSize = 10,
+                Opacity = 0.6,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
+            });
+        }
+        else
+        {
+            panel.Children.Add(pad);
+        }
+
+        if (_quickEditMode)
+        {
+            var reset = new Button
+            {
+                Content = "기본값 복원",
+                FontSize = 10,
+                Padding = new Thickness(7, 2),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                IsEnabled = _session.Project.QuickCommands is not null
+            };
+            reset.Click += (_, _) =>
+            {
+                UiGuard.Run(_session, "자주 쓰는 기본값 복원", () => _session.Editor.ResetQuickCommands());
+                onApplied();
+            };
+            panel.Children.Add(reset);
+        }
+
+        return panel;
+    }
+
+    /// <summary>지금 수치를 펼쳐 놓은 칩의 자리. 하나만 열린다 — 작업대와 같은 감각이다.</summary>
+    private int? _quickExpandedIndex;
+
+    /// <summary>
+    /// 편집 중의 칩 한 줄 — [▸ 펼치기][이름 칸][✕], 펼치면 그 아래 <b>수치 조절</b>이 선다
+    /// (2026-08-22 소유자: "개별 커맨드의 세부 수치를 조절할 수 있게 … 터미널 아래에서
+    /// 그랬던 것 처럼"). 슬라이더·선택기는 작업대와 <b>같은 함수</b>이고 쓰는 곳만 다르다
+    /// (<see cref="ArgumentSink"/>).
+    ///
+    /// 이름 칸이 있는 이유: 담기가 정의 이름을 자동으로 붙이므로(집는 순간 이름을 물으면
+    /// 흐름이 끊긴다) 같은 커맨드를 값만 달리해 담은 칩 둘이 같은 이름으로 선다.
+    /// 커밋은 Enter와 <b>초점 잃음</b> 둘 다 — 이름을 치다 터미널을 클릭하면 초점이 먼저
+    /// 빠지므로, 그 길로 들어온 이름도 살아남는다.
+    /// </summary>
+    private Control BuildQuickChipEditRow(
+        StageQuickCommand chip,
+        PresentationCommandDefinition definition,
+        int index,
+        Action onApplied)
+    {
+        bool expanded = _quickExpandedIndex == index;
+        bool adjustable = definition.Parameters.Any(IsAdjustableParameter);
+
+        var expand = new Button
+        {
+            Content = expanded ? "▾" : "▸",
+            FontSize = 10,
+            Padding = new Thickness(5, 2),
+            Margin = new Thickness(0, 0, 4, 0),
+            IsEnabled = adjustable,
+            Opacity = adjustable ? 1 : 0.35
+        };
+        ToolTip.SetTip(expand, adjustable
+            ? "이 칩의 수치를 펼칩니다."
+            : "이 커맨드에는 조절할 수치가 없습니다.");
+        expand.Click += (_, _) =>
+        {
+            _quickExpandedIndex = expanded ? null : index;
+            onApplied();
+        };
+
+        var name = new TextBox
+        {
+            Text = chip.DisplayName,
+            FontSize = 11,
+            MinHeight = 26,
+            Padding = new Thickness(6, 2)
+        };
+        ToolTip.SetTip(name, QuickChipTip(definition, chip.Arguments));
+
+        void Commit()
+        {
+            if (_session is null || string.Equals(name.Text, chip.DisplayName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, "칩 이름", () =>
+                _session.Editor.RenameQuickCommandAt(index, name.Text ?? string.Empty));
+        }
+
+        name.LostFocus += (_, _) => Commit();
+        name.KeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Enter)
+            {
+                args.Handled = true;
+                Commit();
+                onApplied();
+            }
+        };
+
+        var remove = new Button
+        {
+            Content = "✕",
+            FontSize = 10,
+            Padding = new Thickness(6, 2),
+            Margin = new Thickness(4, 0, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38))
+        };
+        ToolTip.SetTip(remove, $"'{chip.DisplayName}' 칩을 뺍니다.");
+        remove.Click += (_, _) =>
+        {
+            UiGuard.Run(_session, "자주 쓰는 칩 제거", () => _session!.Editor.RemoveQuickCommandAt(index));
+            onApplied();
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        Grid.SetColumn(expand, 0);
+        Grid.SetColumn(name, 1);
+        Grid.SetColumn(remove, 2);
+        row.Children.Add(expand);
+        row.Children.Add(name);
+        row.Children.Add(remove);
+
+        if (!expanded)
+        {
+            return row;
+        }
+
+        var body = new StackPanel { Spacing = 4, Margin = new Thickness(18, 4, 0, 6) };
+        AddQuickChipParameterRows(body, chip, definition, index);
+
+        return new StackPanel { Children = { row, body } };
+    }
+
+    /// <summary>
+    /// 칩의 수치 조절 줄 — 작업대(<see cref="AddParameterEditorRows"/>)와 <b>같은 위젯</b>을
+    /// 쓰되 쓰는 곳만 칩이다. 다른 점 둘:
+    ///
+    /// - <b>대상(slot/alias)은 안 만진다</b> — 작업대의 규칙 그대로("대상 교체는 조작이
+    ///   아니라 다른 커맨드다"). 칩의 대상을 바꾸려면 원하는 커맨드를 다시 담는다.
+    /// - <b>곡선 편집기는 안 연다</b> — 커스텀 곡선은 노드의 커맨드에 매인 자산이라
+    ///   칩이 소유할 수 없다. <c>ease</c>는 표준 이징 <b>선택기</b>로만 선다(후보 목록이
+    ///   곧 어휘다). <c>oscillation</c>은 후보가 없어 조용히 빠진다.
+    /// </summary>
+    private void AddQuickChipParameterRows(
+        StackPanel host,
+        StageQuickCommand chip,
+        PresentationCommandDefinition definition,
+        int index)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        void Write(string argumentName, string value)
+        {
+            UiGuard.Run(_session, "칩 수치 조절", () =>
+                _session.Editor.SetQuickCommandArgument(index, argumentName, value));
+        }
+
+        foreach (PresentationCommandParameter parameter in definition.Parameters)
+        {
+            if (ArgumentTokenCandidates.IsStageTargetType(parameter.Type))
+            {
+                continue;
+            }
+
+            string written = chip.Arguments.TryGetValue(parameter.Name, out string? value)
+                ? value
+                : parameter.Default ?? string.Empty;
+
+            if (UnitSliderKind(parameter) is { } unitSigned &&
+                parameter.Slider is { } unitSlider &&
+                UnitToken.TryParseUnits(written, out float writtenUnits))
+            {
+                string UnitLabel(double units) =>
+                    (unitSigned && units >= 0 ? "+" : string.Empty) +
+                    units.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "u";
+
+                host.Children.Add(BuildMotionSlider(
+                    Write,
+                    label: parameter.Name,
+                    argumentName: parameter.Name,
+                    value: writtenUnits,
+                    minimum: unitSlider.Minimum,
+                    maximum: unitSlider.Maximum,
+                    tick: unitSlider.Step,
+                    format: UnitLabel,
+                    token: UnitLabel));
+            }
+            else if (parameter.Slider is { } slider)
+            {
+                double.TryParse(
+                    written, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double current);
+
+                host.Children.Add(BuildMotionSlider(
+                    Write,
+                    label: parameter.Name,
+                    argumentName: parameter.Name,
+                    value: current,
+                    minimum: slider.Minimum,
+                    maximum: slider.Maximum,
+                    tick: slider.Step,
+                    format: number => number.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+                    token: number => number.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)));
+            }
+            else if (string.Equals(parameter.Type, "duration", StringComparison.Ordinal) &&
+                     DurationToken.TryParseSeconds(written, out float seconds))
+            {
+                host.Children.Add(BuildMotionSlider(
+                    Write,
+                    label: "시간",
+                    argumentName: parameter.Name,
+                    value: seconds * DurationToken.FramesPerSecond,
+                    minimum: 0,
+                    maximum: DurationSliderMax(seconds * DurationToken.FramesPerSecond),
+                    tick: 1,
+                    format: frames => frames <= 0 ? "0fr (즉시)" : $"{frames:0}fr",
+                    token: frames => $"{frames:0}fr"));
+            }
+            else if (ArgumentTokenCandidates.For(parameter.Type) is { Count: > 0 } candidates)
+            {
+                host.Children.Add(BuildTokenSelector(Write, parameter, written, candidates));
+            }
+        }
+
+        if (host.Children.Count == 0)
+        {
+            host.Children.Add(new TextBlock
+            {
+                Text = "조절할 수치가 없는 커맨드입니다.",
+                FontSize = 10,
+                Opacity = 0.55
+            });
+        }
+    }
+
+    /// <summary>칩 하나 — 누르면 지금 고른 라인에 붙는 단추.</summary>
+    private Control BuildQuickChip(
+        StageQuickCommand chip,
+        PresentationCommandDefinition definition,
+        Action onApplied)
+    {
+        IReadOnlyDictionary<string, string>? arguments = ResolveQuickArguments(chip, definition);
+
+        var button = new Button
+        {
+            Content = chip.DisplayName,
+            FontSize = 11,
+            Padding = new Thickness(9, 4),
+            Margin = new Thickness(0, 0, 4, 4),
+            // 대상 슬롯을 못 채웠다 = 무효한 커맨드가 된다. 회색으로 세우고 이유를 툴팁이 말한다.
+            IsEnabled = arguments is not null
+        };
+
+        ToolTip.SetTip(button, arguments is null
+            ? $"<<{definition.OutputCommandName}>> — 대상 슬롯이 없습니다. 위 [+]로 슬롯을 먼저 만드세요."
+            : QuickChipTip(definition, arguments));
+
+        button.Click += (_, _) =>
+        {
+            if (arguments is null)
+            {
+                return;
+            }
+
+            ApplyStageCommand(definition.OutputCommandName, arguments);
+            onApplied();
+        };
+
+        return button;
+    }
+
+    /// <summary>
+    /// 칩이 실제로 낼 인자 — 카탈로그 기본값 위에 <b>칩이 담아 둔 값을 얹는다</b>
+    /// (슬롯·duration 포함, 2026-08-22 소유자). 담긴 값이 언제나 이긴다.
+    ///
+    /// 조절창의 선택 슬롯이 들어가는 경우는 하나뿐이다: 커맨드가 대상을 요구하는데
+    /// <b>칩이 그 자리를 안 담았을 때</b>(기본 목록·손으로 지운 칩). 그것도 없으면 null —
+    /// 부르는 쪽이 칩을 회색으로 세운다.
+    /// </summary>
+    private IReadOnlyDictionary<string, string>? ResolveQuickArguments(
+        StageQuickCommand chip,
+        PresentationCommandDefinition definition)
+    {
+        var arguments = new Dictionary<string, string>(
+            definition.DefaultArgumentValues(), StringComparer.Ordinal);
+
+        foreach ((string key, string value) in chip.Arguments)
+        {
+            arguments[key] = value;
+        }
+
+        foreach (PresentationCommandParameter parameter in definition.Parameters)
+        {
+            if (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) ||
+                chip.Arguments.ContainsKey(parameter.Name))
+            {
+                continue;
+            }
+
+            if (_popoverSlotKey is not { } slotKey)
+            {
+                return null;
+            }
+
+            arguments[parameter.Name] = slotKey;
+        }
+
+        return arguments;
+    }
+
+    /// <summary>툴팁 = 이 칩이 낼 커맨드 그대로. 칩 이름이 무엇을 감추는지 숨기지 않는다.</summary>
+    private static string QuickChipTip(
+        PresentationCommandDefinition definition,
+        IReadOnlyDictionary<string, string> arguments)
+    {
+        IEnumerable<string> ordered = definition.Parameters
+            .Where(parameter => arguments.ContainsKey(parameter.Name))
+            .Select(parameter => arguments[parameter.Name]);
+
+        return $"<<{definition.OutputCommandName} {string.Join(' ', ordered)}>>".Replace(" >>", ">>");
     }
 
     /// <summary>배경 탭 — 탐색기와 같은 목록에서 고르면 bg_sprite/bg_spawn이 된다(기존 동작 그대로).</summary>

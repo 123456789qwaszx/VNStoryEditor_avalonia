@@ -104,7 +104,7 @@
                 </TabItem>
                 <!-- 무대 프리뷰 승격 (2026-08-20 소유자) — 우측 아래 조그만 패널이 아니라
                      그래프들과 같은 급의 판이다. 분리 창(창으로 열기)은 이 탭이 대체한다. -->
-                <TabItem Header="무대 프리뷰">
+                <TabItem x:Name="StageTabItem" Header="무대 프리뷰">
                     <views:MiniStagePreview x:Name="StagePreview" />
                 </TabItem>
             </TabControl>

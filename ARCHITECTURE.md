@@ -671,6 +671,9 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | 그래프 화면 | `App/Views/GraphEditorView.axaml{,.cs}` |
 | 대사 카드의 내용과 배치 | `App/Views/DialogueNodeEditor.axaml{,.cs}` |
 | 설정 노드 화면 | `App/Views/SetNodeEditor.axaml{,.cs}` |
+| 무대 조절창(탭·직접 조작) | `App/Views/StageSceneView.cs`의 `BuildStagePopover` — 탭 하나가 함수 하나(`BuildQuickTab`·`BuildBackgroundTab`·`BuildSlotTab`·`BuildCharacterTab`·`BuildAudioTab`) |
+| [★ 자주 쓰는] 기본 칩 목록 | `Model/StageQuickCommand.cs`의 `StageQuickCommands.Default` — 화면이 아니라 여기가 정한다 |
+| 수치 조절 위젯을 새 대상에 붙이기 | `App/Views/StageSceneView.cs`의 `ArgumentSink` — 슬라이더·선택기는 한 벌이고 "어디에 쓰나"만 갈아 끼운다 |
 | 열린 프로젝트·저장 여부·선택 | `App/Services/AuthoringSession.cs` |
 | 최근 프로젝트 기억 | `App/Services/AppSettingsService.cs` |
 | 시작 오류 로그 | `App/Services/StartupLog.cs` |

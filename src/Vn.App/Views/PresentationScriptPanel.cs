@@ -24,6 +24,7 @@ internal sealed class PresentationScriptPanel : UserControl
 {
     private readonly StackPanel _rows = new() { Spacing = 1 };
     private readonly ScrollViewer _scroll;
+    private readonly Border _frame;
     private Border? _selectedGroup;
     private string? _selectedCommandId;
 
@@ -79,6 +80,25 @@ internal sealed class PresentationScriptPanel : UserControl
     /// <summary>클립보드에 붙여넣을 커맨드가 있는가 — 메뉴 항목 활성의 근거. 호스트가 배선한다.</summary>
     public Func<bool>? HasClipboardCommand { get; set; }
 
+    /// <summary>
+    /// 행 우측 ★ 클릭 (2026-08-22) — 이 커맨드를 무대 조절창의 칩으로 담아 달라.
+    /// 이미 원하는 값으로 맞춰 놓은 커맨드를 그대로 집는 것이 칩을 만드는 가장 짧은 길이다.
+    /// </summary>
+    public event Action<PresentationResultCommand>? CommandPinRequested;
+
+    /// <summary>
+    /// 담기 모드 (2026-08-22 소유자: "편집을 누르면 터미널쪽에서 무언가 추가할 수 있다는
+    /// 표시가 되고, 그걸 실제로 클릭하면 자주쓰는 커맨드로 추가"). 조절창 [★ 자주 쓰는]
+    /// 탭의 [편집]이 켠다.
+    ///
+    /// ⚠ <b>행마다 글리프를 바꾸지 않는다</b> (같은 날 2차: "X를 ★로 바꾸는 건 최악의
+    /// 아이디어야 … 터미널 자체의 줄높이가 바뀌면서 꿈틀거리는게 조작감이 좋지 않아").
+    /// 글자가 달라지면 글리프 높이가 달라지고 그것이 곧 줄 높이다. 대신 <b>판 전체가
+    /// 활성 상태로 보이고</b>(테두리 + 바탕) <b>커맨드 행을 그냥 클릭하면 담긴다</b> —
+    /// 테두리 두께는 평소에도 자리를 잡고 있으므로 켜고 꺼도 아무것도 안 움직인다.
+    /// </summary>
+    public bool PinMode { get; set; }
+
     /// <summary>지금 노란 띠가 선 커맨드 — 작업대 표시 동기화용. 없으면 null.</summary>
     internal string? SelectedCommandId => _selectedCommandId;
 
@@ -103,14 +123,27 @@ internal sealed class PresentationScriptPanel : UserControl
             HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         };
 
-        Content = new Border
+        // 테두리는 <b>늘</b> 2px 자리를 잡는다 (2026-08-22) — 담기 모드가 색만 칠하므로
+        // 켜고 꺼도 안쪽 내용이 한 픽셀도 안 움직인다. 안쪽 여백은 그만큼 줄여 총합을 지킨다.
+        _frame = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(17, 19, 24)), // 터미널 감각의 어두운 판
+            Background = TerminalBackground, // 터미널 감각의 어두운 판
             CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(12, 10), // 빽빽함 완화 (2026-08-21 소유자: "여백도 너무 빽빽")
+            BorderThickness = new Thickness(2),
+            BorderBrush = Brushes.Transparent,
+            Padding = new Thickness(10, 8), // 빽빽함 완화 (2026-08-21 소유자: "여백도 너무 빽빽")
             Child = _scroll
         };
+
+        Content = _frame;
     }
+
+    private static readonly SolidColorBrush TerminalBackground = new(Color.FromRgb(17, 19, 24));
+
+    /// <summary>담기 모드의 바탕 — 같은 어둠에 노랑을 아주 조금 섞어 "켜져 있다"만 말한다.</summary>
+    private static readonly SolidColorBrush TerminalArmedBackground = new(Color.FromRgb(26, 24, 17));
+
+    private static readonly SolidColorBrush TerminalArmedBorder = new(Color.FromArgb(190, 250, 204, 21));
 
     public void Show(
         IReadOnlyList<PresentationScriptRow>? rows,
@@ -135,6 +168,10 @@ internal sealed class PresentationScriptPanel : UserControl
         _shownSelectedLineId = selectedLineId;
         _shownSetupSelected = setupSelected;
         _shownEditable = editable;
+
+        // 판 전체가 "켜져 있다"를 말한다 — 테두리 색과 바탕만 바뀌고 자리는 그대로다.
+        _frame.BorderBrush = PinMode ? TerminalArmedBorder : Brushes.Transparent;
+        _frame.Background = PinMode ? TerminalArmedBackground : TerminalBackground;
 
         // 선택 커맨드가 지금 선택된 구획 밖이면 걷는다 — 라인이 넘어갔는데(재생·이동)
         // 다른 라인의 커맨드가 Inspector에 남아 있으면 화면이 거짓말한다.
@@ -440,12 +477,15 @@ internal sealed class PresentationScriptPanel : UserControl
         // "특정 라인을 클릭했을 때만") — 선택된 구획에서만 <b>보이되</b>, 안 보일 때도
         // 자리는 그대로 잡는다. 넣었다 뺐다 하면 클릭할 때마다 줄 높이가 흔들린다
         // (같은 날: "간격이 계속 바뀌면서 레이아웃이 이동하는데 … 어지럽고 피로해").
+        //
+        // ⚠ 담기 모드에서도 이 글리프는 안 바뀐다 (2026-08-22 소유자) — ✕를 ★로 갈면
+        // 글리프 높이가 달라져 줄이 꿈틀거린다. 담는 동안에는 숨을 뿐이다.
         var remove = new TextBlock
         {
             Text = "✕",
             FontSize = 11,
-            Opacity = showRemove ? 0.35 : 0,
-            IsHitTestVisible = showRemove, // 안 보이면 클릭도 행 선택으로 흘려보낸다
+            Opacity = !PinMode && showRemove ? 0.35 : 0,
+            IsHitTestVisible = !PinMode && showRemove, // 안 보이면 클릭도 행 선택으로 흘려보낸다
             Foreground = Brushes.Gainsboro,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 2, 0),
@@ -458,6 +498,28 @@ internal sealed class PresentationScriptPanel : UserControl
         };
         DockPanel.SetDock(remove, Dock.Right);
         layout.Children.Insert(1, remove);
+
+        if (PinMode)
+        {
+            // 담기 모드 = 행 자체가 단추다 (2026-08-22 소유자: "그냥 터미널 자체가 무언가
+            // 활성화 된다는 느낌과 같이 특정 커맨드를 클릭했을 때 가져와지도록").
+            // 바탕과 커서만 바뀐다 — 자리를 차지하는 것은 아무것도 안 늘어난다.
+            host.Cursor = new Cursor(StandardCursorType.Hand);
+            host.Background = new SolidColorBrush(Color.FromArgb(28, 250, 204, 21));
+            ToolTip.SetTip(host, "클릭하면 [★ 자주 쓰는]에 담습니다 (슬롯·시간 그대로).");
+
+            host.PointerPressed += (_, args) =>
+            {
+                args.Handled = true;
+
+                if (args.GetCurrentPoint(host).Properties.IsLeftButtonPressed)
+                {
+                    CommandPinRequested?.Invoke(command);
+                }
+            };
+
+            return host;
+        }
 
         host.PointerPressed += (_, args) =>
         {
@@ -605,6 +667,11 @@ internal sealed class PresentationScriptPanel : UserControl
     /// <summary>선택 띠만 다시 칠한다 — 전체 재구성 없이.</summary>
     private void RefreshCommandSelection()
     {
+        if (PinMode)
+        {
+            return; // 담기 모드의 바탕은 "누를 수 있다"는 표시다 — 선택 띠가 덮으면 안 된다
+        }
+
         foreach ((Border host, PresentationScriptRow row, _, _) in _dropRows)
         {
             if (row.Kind != PresentationScriptRowKind.Command)
@@ -671,6 +738,9 @@ internal sealed class PresentationScriptPanel : UserControl
             duplicate.Click += (_, _) => CommandDuplicateRequested?.Invoke(command);
             menu.Items.Add(duplicate);
         }
+        // [★ 자주 쓰는 데 담기]는 여기 없다 (2026-08-22) — 우클릭에서 담으면 조절창이
+        // 닫힌 채라 담긴 결과가 화면 어디에도 안 보였다. 담기는 조절창 [편집]이 켜는
+        // 행 우측 ★ 하나다: 판을 띄워 놓고 담고, 담기는 즉시 그 판에 선다.
 
         var paste = new MenuItem
         {

@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     private const string BaseTitle = "VnTool";
 
     private readonly AuthoringSession _session = new();
+
+    /// <summary>검증용 손잡이 — 창이 쓰는 세션 하나. 테스트가 판을 짓고 선택을 옮긴다.</summary>
+    internal AuthoringSession SessionProbe => _session;
     private LiveOutputService? _liveOutput;
     private readonly DispatcherTimer _autoSaveTimer;
     private bool _restoredRecent;
@@ -75,7 +78,11 @@ public partial class MainWindow : Window
         // 프리뷰는 이 화면에서 필요 없는 정보"). 우측 열이 통째로 접혀 그래프가 그 폭을
         // 얻고, 상단의 Yarn/CSV 내보내기도 숨는다 — 챕터 툴바의 [내보내기](진행 JSON)와
         // 이름이 같아 한 화면에 "내보내기"가 둘 있으면 어느 쪽인지 헷갈린다.
-        MainTabs.SelectionChanged += (_, _) => ApplyTabChrome();
+        MainTabs.SelectionChanged += (_, _) =>
+        {
+            ApplyTabChrome();
+            EnterStageTab();
+        };
         // 챕터 그래프가 첫 탭이 된 뒤로는(2026-08-18) 시작 화면이 곧 접힌 상태다.
         // XAML의 기본값은 펼침이므로 여기서 한 번 맞춰 주지 않으면 첫 화면만 어긋난다 —
         // SelectionChanged는 이미 정해진 선택에는 오지 않는다.
@@ -108,24 +115,7 @@ public partial class MainWindow : Window
                 PresentationEditor.SelectStageLineById(lineId);
             }
         };
-        StagePreview.SceneChosen += dialogueNodeId =>
-        {
-            // 씬 선택 = 연출 채널 자동 확보 (2026-08-21 소유자 — "미리 다 해둔 다음에
-            // 무대 프리뷰측에서 뭘 할지 고르도록"). 발행·연결은 여기서 전부 자동이다.
-            PresentationChannelOutcome outcome = _session.Editor.EnsurePresentationChannel(
-                dialogueNodeId,
-                _session.Definition);
-
-            if (!outcome.Ready)
-            {
-                // 채널이 못 서도(대사 발행 불가 등) 씬 자체는 보여 준다 — 이유는 상태줄로.
-                _session.SetStatus(outcome.Problem ?? "연출 채널을 세울 수 없습니다.");
-                _session.Select(dialogueNodeId);
-                return;
-            }
-
-            _session.Select(outcome.Presentation!.Id);
-        };
+        StagePreview.SceneChosen += EnterPresentationChannel;
         // 작업대 = Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출 편집창이
         // 합쳐지는 게 맞겠네") — 선택 커맨드 하나의 편집 행(연출 편집기) + 수치 조절
         // (무대 뷰)을 연출 편집기가 한 판으로 조합해 프리뷰 탭에 공급한다. 연출 추가는
@@ -231,6 +221,54 @@ public partial class MainWindow : Window
     /// 내보내기가 접힌다. 생성자와 탭 전환이 같은 계산 하나를 부른다: 시작 화면만
     /// 따로 세우면 두 벌이 되고, 두 벌은 반드시 어긋난다.
     /// </summary>
+    /// <summary>
+    /// 씬 하나를 연출할 수 있는 상태로 만든다 (2026-08-21) — 대사 발행 → 연출 노드 →
+    /// 결과 연결 → 연출 발행까지 한 번에(멱등). 소유자: "미리 다 해둔 다음에 무대
+    /// 프리뷰측에서 뭘 할지 고르도록".
+    ///
+    /// 부르는 곳이 둘이다 — <b>씬 선택기</b>와 <b>무대 프리뷰 탭에 들어오는 것</b>.
+    /// 둘은 같은 뜻이라 같은 함수를 지난다(사본 금지).
+    /// </summary>
+    private void EnterPresentationChannel(string dialogueNodeId)
+    {
+        PresentationChannelOutcome outcome = _session.Editor.EnsurePresentationChannel(
+            dialogueNodeId,
+            _session.Definition);
+
+        if (!outcome.Ready)
+        {
+            // 채널이 못 서도(대사 발행 불가 등) 씬 자체는 보여 준다 — 이유는 상태줄로.
+            _session.SetStatus(outcome.Problem ?? "연출 채널을 세울 수 없습니다.");
+            _session.Select(dialogueNodeId);
+            return;
+        }
+
+        _session.Select(outcome.Presentation!.Id);
+    }
+
+    /// <summary>
+    /// 무대 프리뷰 탭으로 들어왔다 (2026-08-22 소유자 보고: "연출 그래프에서 특정
+    /// 에피소드노드를 클릭한채로 프리뷰에 들어올 시에는, 화면을 클릭해도 콘솔이 안 나옴").
+    ///
+    /// 원인은 화면이 아니라 <b>무엇을 보고 있는가</b>였다: 대사 노드가 선택돼 있으면
+    /// 프리뷰가 <b>공급된 발행 결과</b>를 그리고, 발행본은 불변이라 직접 조작이 잠긴다
+    /// (<c>DisabledReason</c>). 잠긴 화면에서는 무대를 눌러도 조절창이 열리지 않는다.
+    ///
+    /// 그래서 <b>탭에 들어오는 것을 씬 선택과 같은 뜻으로</b> 친다 — 연출의 입구는 이
+    /// 판이고, 여기 들어왔다는 것은 그 씬을 연출하겠다는 것이다. 이미 채널이 서 있으면
+    /// 멱등이라 아무 일도 안 일어난다.
+    /// </summary>
+    private void EnterStageTab()
+    {
+        if (!ReferenceEquals(MainTabs.SelectedItem, StageTabItem) ||
+            _session.SelectedNode is not DialogueNode dialogue)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "연출 채널", () => EnterPresentationChannel(dialogue.Id));
+    }
+
     private void ApplyTabChrome()
     {
         bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);

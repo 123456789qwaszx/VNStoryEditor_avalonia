@@ -254,6 +254,9 @@ public partial class MiniStagePreview : UserControl
     /// <summary>재생 진행 모델 (W31). 재생 컨트롤과 무대 클릭이 전부 이 하나를 본다.</summary>
     internal StagePlayback Playback { get; } = new();
 
+    /// <summary>무대 뷰 — 조절창의 주인. 검증이 담기 모드를 켜는 손잡이이기도 하다.</summary>
+    internal StageSceneView Scene => _scene;
+
     /// <summary>이전/다음·재생 자동 진행. delta(-1/+1)를 활성 편집기가 소화한다.</summary>
     internal event Action<int>? LineMoveRequested;
 
@@ -349,7 +352,11 @@ public partial class MiniStagePreview : UserControl
         _script.CommandCopyRequested += CopyScriptCommand;
         _script.CommandDuplicateRequested += ApplyScriptCommandDuplicate;
         _script.CommandPasteRequested += ApplyScriptCommandPaste;
+        _script.CommandPinRequested += PinQuickCommand;
         _script.HasClipboardCommand = () => _commandClipboard is not null;
+        // 담기 모드가 켜지고 꺼졌다 — 터미널의 ★를 다시 그린다. 조절창은 안 건드린다
+        // (Render는 캔버스와 터미널만 만지고 팝업은 제 자리에 남는다).
+        _scene.QuickEditModeChanged += Render;
         _scene.ManipulationApplied += () => ManipulationApplied?.Invoke();
         // 갈래 선택(W35)은 편집이 아니지만 다시 접어야 한다 — 같은 재렌더 경로를 탄다.
         _scene.BranchSelectionChanged += () => ManipulationApplied?.Invoke();
@@ -651,6 +658,64 @@ public partial class MiniStagePreview : UserControl
         _session?.SetStatus("커맨드를 복사했습니다 — 붙여넣기(Ctrl+V)로 원하는 라인에 답니다.");
     }
 
+    /// <summary>
+    /// 터미널 행 우측 ★ (2026-08-22 소유자) — 이 커맨드를 [★ 자주 쓰는] 칩으로 담는다.
+    ///
+    /// 세 가지가 이 함수의 요구다:
+    /// ① <b>인자를 통째로 복사한다</b> — 슬롯도 duration도 그대로("그대로 복사하도록 하는게
+    ///    포인트"). 도구가 무엇을 남길지 고르지 않는다.
+    /// ② <b>조절창을 닫지 않는다</b> — 담기는 <c>Content</c> 변경이라 셸이 화면을 다시
+    ///    짓지 않고(<c>ProjectRefreshPlanner</c>), 팝업의 라이트 디스미스도 꺼져 있다.
+    /// ③ <b>바로 보인다</b> — <c>RefreshConsole()</c>이 열린 판을 그 자리에서 다시 그린다.
+    ///
+    /// 이름은 묻지 않는다(흐름이 끊긴다). 정의 이름을 붙이되 <b>같은 이름이 이미 있으면
+    /// 번호를 단다</b> — 같은 커맨드를 값만 달리해 담는 것이 이 판의 정상 쓰임이라 이름이
+    /// 겹치는 것이 예외가 아니다. 고치는 자리는 조절창 [편집]의 이름 칸이다.
+    /// </summary>
+    private void PinQuickCommand(PresentationResultCommand command)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
+
+        if (catalog.Find(command.DefinitionId) is not { } definition)
+        {
+            _session.SetStatus("카탈로그에 없는 커맨드는 담을 수 없습니다.");
+            return;
+        }
+
+        string displayName = UniqueQuickName(definition.DisplayName);
+
+        UiGuard.Run(_session, "자주 쓰는 데 담기", () =>
+        {
+            _session.Editor.PinQuickCommand(new StageQuickCommand(
+                displayName,
+                definition.Id,
+                new Dictionary<string, string>(command.Arguments, StringComparer.Ordinal)));
+            _session.SetStatus($"'{displayName}' 칩을 담았습니다.");
+        });
+
+        _scene.RefreshConsole();
+    }
+
+    /// <summary>이미 있는 칩 이름과 안 겹치는 이름 — 겹치면 뒤에 번호를 단다.</summary>
+    private string UniqueQuickName(string baseName)
+    {
+        IReadOnlyList<StageQuickCommand> chips = _session!.Project.EffectiveQuickCommands;
+        string candidate = baseName;
+        int suffix = 2;
+
+        while (chips.Any(chip => string.Equals(chip.DisplayName, candidate, StringComparison.Ordinal)))
+        {
+            candidate = $"{baseName} {suffix++}";
+        }
+
+        return candidate;
+    }
+
     /// <summary>Ctrl+D / [복제] — 원본 바로 뒤에, 편집 통로 하나(undo 한 번)로.</summary>
     private void ApplyScriptCommandDuplicate(PresentationResultCommand command)
     {
@@ -722,6 +787,9 @@ public partial class MiniStagePreview : UserControl
         bool editable = request?.EditContext?.Editable == true;
         // Editable(라인 선택 필요)과 달리 Setup은 라인 없이도 편집 대상 — 잠금 사유만 본다.
         bool unlocked = request?.EditContext is { DisabledReason: null };
+        // 담기 모드의 주인은 조절창 하나다 (2026-08-22) — 여기서 매번 물어보므로 두 화면의
+        // 모드가 어긋날 자리가 없다(사본 금지).
+        _script.PinMode = _scene.IsQuickPinMode;
         _script.Show(request?.ScriptRows, request?.SelectedLineId, unlocked, _setupSelected);
         ScriptHost.IsVisible = _script.IsVisible;
 

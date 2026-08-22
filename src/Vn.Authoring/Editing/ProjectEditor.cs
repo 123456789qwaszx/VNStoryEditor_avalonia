@@ -993,6 +993,133 @@ public sealed partial class ProjectEditor
         }
     }
 
+    // ── 자주 쓰는 칩 (2026-08-22) ────────────────────────────────────────────
+
+    /// <summary>
+    /// 칩 하나를 [자주 쓰는] 목록 맨 뒤에 담는다. 목록에 처음 손대는 것이면
+    /// <b>기본 목록을 먼저 실체화한다</b> — 안 그러면 담는 순간 기본 열한 개가 사라진다.
+    /// 정의도 인자도 똑같은 칩이 이미 있으면 아무 일도 안 한다(같은 것을 두 번 담는 것은
+    /// 의도가 아니라 실수다). 담긴 자리를 돌려준다 — 이미 있었으면 그 자리다.
+    /// </summary>
+    public int PinQuickCommand(StageQuickCommand chip)
+    {
+        ArgumentNullException.ThrowIfNull(chip);
+
+        IReadOnlyList<StageQuickCommand> chips = Project.EffectiveQuickCommands;
+
+        for (int index = 0; index < chips.Count; index++)
+        {
+            if (string.Equals(chips[index].DefinitionId, chip.DefinitionId, StringComparison.Ordinal) &&
+                SameArguments(chips[index].Arguments, chip.Arguments))
+            {
+                return index;
+            }
+        }
+
+        Mutate(ProjectChangeKind.Content, () => MaterializeQuickCommands().Add(chip.Copy()));
+        return chips.Count;
+    }
+
+    /// <summary>칩 하나를 뺀다. 전부 빼면 <b>빈 목록</b>이 남는다 — 기본으로 되돌아가지 않는다.</summary>
+    public void RemoveQuickCommandAt(int index)
+    {
+        if (index < 0 || index >= Project.EffectiveQuickCommands.Count)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () => MaterializeQuickCommands().RemoveAt(index));
+    }
+
+    /// <summary>
+    /// 칩 이름만 고친다. 담기는 정의 이름을 자동으로 붙이므로(터미널에서 집는 순간 이름을
+    /// 물어보면 흐름이 끊긴다) <b>이름을 나중에 고칠 길</b>이 있어야 한다 — 같은 커맨드를
+    /// 값만 달리해 여럿 담는 것이 이 판의 정상 쓰임이라 이름이 유일한 구분이다.
+    /// </summary>
+    public void RenameQuickCommandAt(int index, string displayName)
+    {
+        IReadOnlyList<StageQuickCommand> chips = Project.EffectiveQuickCommands;
+
+        if (index < 0 || index >= chips.Count)
+        {
+            return;
+        }
+
+        string trimmed = displayName?.Trim() ?? string.Empty;
+
+        if (trimmed.Length == 0 || string.Equals(chips[index].DisplayName, trimmed, StringComparison.Ordinal))
+        {
+            return; // 빈 이름은 칩을 이름 없는 단추로 만든다 — 고치지 않은 것으로 친다
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            List<StageQuickCommand> materialized = MaterializeQuickCommands();
+            materialized[index] = materialized[index] with { DisplayName = trimmed };
+        });
+    }
+
+    /// <summary>
+    /// 칩이 담아 둔 인자 하나를 고친다 (2026-08-22 소유자: "편집시에 개별 커맨드의 세부
+    /// 수치를 조절할 수 있게 … 터미널 아래에서 그랬던 것 처럼"). 칩은 발행 결과가 아니라
+    /// 프로젝트의 값 한 벌이라 커맨드 인자 수정과 같은 통로를 못 쓴다 — 이것이 그 통로다.
+    /// </summary>
+    public void SetQuickCommandArgument(int index, string argumentName, string value)
+    {
+        if (index < 0 || index >= Project.EffectiveQuickCommands.Count ||
+            string.IsNullOrWhiteSpace(argumentName))
+        {
+            return;
+        }
+
+        if (Project.EffectiveQuickCommands[index].Arguments.TryGetValue(argumentName, out string? current) &&
+            string.Equals(current, value, StringComparison.Ordinal))
+        {
+            return; // 같은 값 = 편집이 아니다(undo 스택에 빈 단계를 쌓지 않는다)
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            List<StageQuickCommand> chips = MaterializeQuickCommands();
+            var arguments = new Dictionary<string, string>(chips[index].Arguments, StringComparer.Ordinal)
+            {
+                [argumentName] = value
+            };
+            chips[index] = chips[index] with { Arguments = arguments };
+        });
+    }
+
+    /// <summary>목록을 기본으로 돌린다 — 저장물에서 <c>quickCommands</c> 키가 아예 사라진다.</summary>
+    public void ResetQuickCommands()
+    {
+        if (Project.QuickCommands is null)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () => Project.QuickCommands = null);
+    }
+
+    /// <summary>
+    /// null(손대지 않음)을 기본 목록의 사본으로 바꾼다. <b>Mutate 안</b>에서만 부른다 —
+    /// 스냅샷이 먼저 찍혀야 되돌리기가 "손대지 않은 상태"로 정확히 돌아간다.
+    /// </summary>
+    private List<StageQuickCommand> MaterializeQuickCommands()
+    {
+        return Project.QuickCommands ??=
+            StageQuickCommands.Default.Select(chip => chip.Copy()).ToList();
+    }
+
+    private static bool SameArguments(
+        IReadOnlyDictionary<string, string> left,
+        IReadOnlyDictionary<string, string> right)
+    {
+        return left.Count == right.Count &&
+            left.All(pair =>
+                right.TryGetValue(pair.Key, out string? value) &&
+                string.Equals(value, pair.Value, StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// LineId 없는 노드 수준 Setup 커맨드를 목록 맨 뒤에 붙인다.
     /// 장면 준비(슬롯·캐스팅·배경 스폰·리셋)는 대사 줄이 아니라 노드에 속한다.

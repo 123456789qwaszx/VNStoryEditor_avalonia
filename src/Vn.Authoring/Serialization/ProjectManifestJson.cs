@@ -81,6 +81,13 @@ public static class ProjectManifestJson
                 project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
         }
 
+        // 자주 쓰는 칩 (2026-08-22) — 손대지 않은 프로젝트에는 <b>키 자체를 안 쓴다</b>.
+        // 빈 배열은 "사람이 다 지웠다"는 뜻이라 기본 목록으로 되돌아가면 안 된다.
+        if (WriteQuickCommands(project.QuickCommands) is { } quickCommands)
+        {
+            root["quickCommands"] = quickCommands;
+        }
+
         if (WriteExportFormats(project.ExportFormats) is { } exportFormats)
         {
             root["exportFormats"] = exportFormats;
@@ -263,6 +270,7 @@ public static class ProjectManifestJson
             (string?)root["startNode"],
             ReadAssetRoots(root["assetRoots"]),
             ReadRecentCommands(root["recentCommands"]),
+            ReadQuickCommands(root["quickCommands"]),
             ReadExportFormats(root["exportFormats"]),
             AssetRootSettings.NormalizePath((string?)root["outputPath"]),
             scripts,
@@ -387,6 +395,82 @@ public static class ProjectManifestJson
     /// 내보내기 curves.json 스키마와 같은 낱말이다 — 두 파일을 나란히 볼 사람이 같은 것을
     /// 다른 이름으로 읽지 않게. 이름이 빈 곡선은 파일에 안 쓴다.
     /// </summary>
+    /// <summary>
+    /// 자주 쓰는 칩 직렬화 — manifest와 undo 스냅샷 코덱이 같은 것을 쓴다.
+    /// <b>null(손대지 않음)이면 null</b>을 돌려 키를 안 쓰고, 빈 목록은 빈 배열로 남긴다.
+    /// </summary>
+    internal static JsonArray? WriteQuickCommands(IReadOnlyList<StageQuickCommand>? chips)
+    {
+        if (chips is null)
+        {
+            return null;
+        }
+
+        var array = new JsonArray();
+
+        foreach (StageQuickCommand chip in chips)
+        {
+            var args = new JsonObject();
+
+            // 인자 이름 순으로 — 결정적 출력이라야 저장할 때마다 diff가 안 생긴다.
+            foreach ((string key, string value) in chip.Arguments.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                args[key] = value;
+            }
+
+            array.Add(new JsonObject
+            {
+                ["name"] = chip.DisplayName,
+                ["command"] = chip.DefinitionId,
+                ["args"] = args
+            });
+        }
+
+        return array;
+    }
+
+    internal static List<StageQuickCommand>? ReadQuickCommands(JsonNode? node)
+    {
+        if (node is not JsonArray array)
+        {
+            return null; // 키가 없다 = 손대지 않았다 → 기본 목록
+        }
+
+        var chips = new List<StageQuickCommand>();
+
+        foreach (JsonNode? item in array)
+        {
+            if (item is not JsonObject chip)
+            {
+                throw new InvalidDataException("quickCommands 항목이 객체가 아닙니다.");
+            }
+
+            string definitionId = (string?)chip["command"] ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(definitionId))
+            {
+                continue; // 커맨드 없는 칩은 누를 것이 없다
+            }
+
+            var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (KeyValuePair<string, JsonNode?> pair in chip["args"]?.AsObject() ?? new JsonObject())
+            {
+                if ((string?)pair.Value is { } value)
+                {
+                    arguments[pair.Key] = value;
+                }
+            }
+
+            chips.Add(new StageQuickCommand(
+                (string?)chip["name"] ?? definitionId,
+                definitionId,
+                arguments));
+        }
+
+        return chips;
+    }
+
     internal static JsonArray? WriteEaseCurves(IReadOnlyList<EaseCurve> curves)
     {
         List<EaseCurve> named = curves
@@ -637,6 +721,7 @@ public sealed record ProjectManifest(
     string? StartNodeId,
     AssetRootSettings AssetRoots,
     IReadOnlyList<string> RecentCommandIds,
+    IReadOnlyList<StageQuickCommand>? QuickCommands,
     ExportFormatSelection ExportFormats,
     string? OutputPath,
     IReadOnlyList<ScriptFileReference> Scripts,

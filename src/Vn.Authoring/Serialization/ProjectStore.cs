@@ -154,6 +154,7 @@ public static class ProjectStore
             StartNodeId = manifest.StartNodeId,
             AssetRoots = manifest.AssetRoots.Clone(),
             RecentCommandIds = manifest.RecentCommandIds.ToList(),
+            QuickCommands = manifest.QuickCommands?.Select(chip => chip.Copy()).ToList(),
             ExportFormats = manifest.ExportFormats.Clone(),
             OutputPath = manifest.OutputPath
         };

@@ -356,6 +356,8 @@ game.definition.json` / `작가가 더한 화자`.
 | 에피소드 워크북 생성·개명 | `Chapters/EpisodeLibrary.cs` |
 | 모델을 바꾸는 유일한 통로 | `src/Vn.Authoring/Editing/ProjectEditor.cs` |
 | 연출 채널 자동화(발행·배선) | `Editing/ProjectEditor.Results.cs` (`EnsurePresentationChannel`) — 입구는 `src/Vn.App/Views/MiniStagePreview.axaml.cs`의 씬 선택기(`SceneCombo`) |
+| 무대 조절창(탭·칩·직접 조작) | `src/Vn.App/Views/StageSceneView.cs` (`BuildStagePopover`·`BuildQuickTab`·`BuildCharacterTab`·`ApplyStageCommand`) |
+| 자주 쓰는 칩의 기본 목록 | `src/Vn.Authoring/Model/StageQuickCommand.cs` (`StageQuickCommands.Default`) — 담기·빼기는 `ProjectEditor.PinQuickCommand`/`RemoveQuickCommandAt` |
 | 출구 포트 계산 | `src/Vn.Authoring/Flow/NodeConnections.cs` |
 
 전체 구조와 "이 기능은 어디" 표는 [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
@@ -562,6 +564,44 @@ game.definition.json` / `작가가 더한 화자`.
   불가침). 연출 노드는 배관으로 숨고 데이터·내보내기 짝은 그대로다 · 뒷정리로
   **[편집 자료] 현황판 삭제**(에셋 탐색기는 남는다)와 **연출 공급을 판에서 제거**
   (단추·필터 체크란·카드·간선 · 편집기 뷰 삭제 · 범위 해석은 불변)
+- **무대 조절창 [★ 자주 쓰는] 탭 (2026-08-22)** — 무대를 클릭해 열리는 조절창의 **맨 앞
+  탭이자 기본 탭**. 소유자: *"비개발자가 보기에 직접 연출을 추가하는 건 부담이 커 …
+  엄청 자주 쓰이고 유용한 것들을 … 핫키 느낌으로."* 네 탭이 덮는 것은 "누가·어디·어떤
+  표정"이고 **카메라만 어느 탭에도 없었다** — 그 바깥은 여태 터미널 우클릭의 **126종 ×
+  15탭**으로만 닿았다. **기본 칩은 샷 셋뿐**(`줌 인`·`카메라 이동`·`카메라 원위치` —
+  같은 날 소유자), 나머지는 사람이 담는다.
+  - **담기 = 탭 안 [편집] → 터미널의 커맨드 행 클릭**(`PresentationScriptPanel.PinMode`).
+    ⚠ **행마다 글리프를 갈지 않는다**(소유자: "X를 ★로 바꾸는 건 최악의 아이디어야") —
+    글리프가 달라지면 글리프 높이가 달라지고 그것이 곧 줄 높이라 터미널이 꿈틀거렸다.
+    대신 **판 전체가 활성으로 보인다**(테두리 색 + 바탕 + 행 띠 + 손 커서). 테두리는
+    **평소에도 2px 자리를 잡고 있어** 켜고 꺼도 한 픽셀도 안 움직인다
+  - ⚠ **조절창의 라이트 디스미스를 껐다** — 안 그러면 터미널을 클릭하는 순간 판이 닫혀
+    담기 흐름이 성립하지 않는다. **닫는 길은 ✕ 단추와 조절창 안 우클릭 둘**(헤더가 이미
+    광고하던 것). 담긴 칩은 `RefreshConsole()`이 판을 그 자리에서 다시 그려 즉시 보인다.
+    ⚠⚠ 그 대가로 **조절창을 열 때 열려 있으면 먼저 닫아야 한다** — 예전에는 바깥 클릭이
+    팝업을 먼저 닫고 삼켰지만 이제 무대 클릭이 곧장 와서 열린 팝업의 `Child`를 갈아 끼우고,
+    Avalonia는 그 교체를 온전히 반영하지 않는다(옛 판과 새 판이 섞인다).
+    ⚠⚠ **우클릭 닫기는 터널이어야 한다**(`RoutingStrategies.Tunnel`) — 버블이면 탭 머리·
+    내용 컨테이너·글자 칸이 먼저 삼켜 판 대부분에서 안 닫힌다. 원래부터 반쪽이었는데
+    라이트 디스미스가 가려 주고 있었다
+  - ⚠ **대사 노드로 이 탭에 들어오는 것 = 씬 선택** (`MainWindow.EnterStageTab`).
+    대사 노드가 선택돼 있으면 프리뷰가 **공급된 발행 결과**를 그리고 발행본은 불변이라
+    직접 조작이 잠긴다 — 잠긴 화면에서는 무대를 눌러도 조절창이 안 열려 막다른 길이었다.
+    이제 씬 선택기와 같은 함수(`EnterPresentationChannel`)를 지난다(멱등)
+  - ⚠ **인자를 통째로 담는다 — 슬롯도 duration도 그대로**(소유자: "그대로 복사하는게
+    포인트"). 선택 슬롯이 들어가는 것은 **칩이 그 자리를 안 담았을 때뿐**이고, 그것도
+    없으면 그 칩만 회색이다. 대가: 슬롯 이름이 다른 씬에서는 없는 슬롯을 가리킨다
+    (막지 않는다 — "반영 안 됨"이 짚는다)
+  - **[편집]의 칩은 [▸][이름 칸][✕]** — ▸를 펴면 **작업대와 같은 슬라이더·선택기**로
+    수치를 만진다. ⚠ 위젯은 한 벌이고 쓰는 곳만 다르다(`ArgumentSink` — 노드 커맨드는
+    `CommandSink`, 칩은 `SetQuickCommandArgument`). 칩에서 **대상 교체와 커스텀 곡선
+    편집은 안 된다**(전자는 작업대 규칙 그대로, 후자는 곡선이 노드 커맨드의 자산이라서)
+  - 이름은 안 묻는다(정의 이름 + 충돌 시 번호). **Enter와 초점 잃음 둘 다** 커밋한다 —
+    후자가 없으면 이름을 치다 터미널을 클릭한 순간 날아간다
+  - 재클릭은 값만 바뀐다 — `PresentationStageActions.Apply` 규칙을 칩도 그대로 탄다
+  - ⚠ **`QuickCommands`의 `null`(손대지 않음)과 빈 목록은 다르다** — 전자는 manifest에
+    키가 없고 코드 기본이 서고, 후자는 빈 채로 남는다. `screen_flash`·비네트는
+    `presetKey` 어휘를 몰라 뺐다(열린 항목)
 - **흔들리던 테스트 (2026-08-19)** — 어서션이 아니라 **프로세스가 죽고 있었다.** 닫지 않은
   파일 감시자가 타이머 스레드에서 없어진 디스패처에 `Post`를 했다. `DetachSession()` ·
   `OpenChapterViews`(테스트가 띄운 화면을 폴더 삭제 전에 닫는다) · `Fire()`의 두 번째 방벽
@@ -595,6 +635,7 @@ game.definition.json` / `작가가 더한 화자`.
 | **연출 커맨드 재정비 진행 중 (2026-08-20 재조정)** | **W64·W65 닫힘**(아래 §7 닫힌 것). 남은 순서: MoveBy 슬라이더 편집(W66) → ease(W67) → 계통 확장(W68+ — Move·Anchor·Place·ShotResponse·Depth). 계획 [`../work-orders/presentation-refresh-orders.md`](../work-orders/presentation-refresh-orders.md). 곡선 드래그 에디터([`motion-graph-orders.md`](../work-orders/motion-graph-orders.md) MG1–4)는 **보류** — 슬라이더가 아트 검증을 통과한 뒤 |
 | **폐지 커맨드가 남은 옛 프로젝트의 발행** | W65로 56종이 카탈로그에서 빠졌다. 그 커맨드가 남은 노드는 발행 텍스트가 `<<char_rig_acting.hop c1>>`처럼 **정의 Id 그대로** 나가 런타임이 거부한다. 프리뷰 뱃지는 "반영 안 됨"으로 짚지만 발행을 막지 않는다 — **차단이냐 경고냐**가 판단 대기(연출 쪽엔 검증기가 없어 차단하려면 기반부터 지어야 한다). 실데이터에는 연출 커맨드가 0이라 급하지 않다 |
 | **조건 삭제 기능** | 소유자가 **보류** 결정 (기록만) |
+| **`presetKey` 어휘** | `screen_flash`·`screen_vignette`·`char_visual`의 프리셋 이름을 툴이 모른다(`ArgumentTokenCandidates`에 후보 없음). 그래서 [★ 자주 쓰는] 기본 칩에서 플래시·비네트를 뺐다 — 한 번 눌러 유효한 커맨드가 안 나온다. 런타임 저장소에서 키를 확인하면 후보 표에 한 줄, 칩 두 개다 |
 
 **정리 대상 (급하지 않음)**
 
