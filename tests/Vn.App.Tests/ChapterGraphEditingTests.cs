@@ -257,10 +257,11 @@ public sealed class ChapterGraphEditingTests
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 대사 노드가 이미 서 있는 상황을 흉내낸다 (규약: 노드 이름 = 에피소드 Id).
-        string fileId = session.EnsureChapterBoard("ch05");
-        DialogueNode standing = session.Editor.AddDialogueNode(fileId, name: "new01");
-        standing.ExcelEpisodeId = "new01";
+        // ⚠ 대사 노드는 <b>동기화가 이미 세워 뒀다</b> (2026-08-22) — 예전에는 여기서
+        // 손으로 흉내내야 했다. 목록이 달라지면 재읽기가 동기화를 부르므로, 에피소드를
+        // 더한 그 자리에서 노드가 선다(그 전에는 엑셀 파일이 생겨 감시자가 울어야 했다).
+        Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.ExcelEpisodeId == "new01");
 
         view.SelectEpisode("new01");
         view.FindControl<TextBox>("IdBox")!.Text = "ep_renamed";
@@ -277,6 +278,32 @@ public sealed class ChapterGraphEditingTests
             node => node.Name == "ep_renamed" && node.ExcelEpisodeId == "ep_renamed");
         Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "new01");
+    });
+
+    /// <summary>
+    /// 2026-08-22 소유자 보고 — *"챕터그래프에서 에피소드를 추가했는데 그게 즉각적으로
+    /// 연출그래프에 반영이 안 돼. 노드를 더블클릭해서 엑셀을 열어서 엑셀파일을
+    /// 생성시켜야지 그제야 노드가 추가되는 버그."*
+    ///
+    /// 노드를 세우는 것은 동기화뿐인데 그것이 <b>대본 폴더가 바뀔 때만</b> 돌았다 —
+    /// 그래서 엑셀 파일이 새로 생겨 감시자가 우는 날에야 노드가 섰다. 이제 <b>에피소드
+    /// 목록이 달라지면</b> 폴더가 그대로여도 돈다.
+    /// </summary>
+    [Fact]
+    public void 에피소드를_더하면_그_자리에서_대사_노드가_선다() => HeadlessUi.Run(() =>
+    {
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.ExcelEpisodeId == "new01");
+
+        view.AddEpisodeFromToolbar();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); // QueueReload 한 차례
+
+        // 엑셀을 열지 않았는데도 노드가 서 있다 — 목록이 달라진 것이 곧 동기화의 이유다.
+        Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.ExcelEpisodeId == "new01");
     });
 
     [Fact]

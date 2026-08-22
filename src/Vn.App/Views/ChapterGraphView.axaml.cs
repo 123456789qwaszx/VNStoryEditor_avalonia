@@ -375,11 +375,51 @@ public partial class ChapterGraphView : UserControl
         // 그래서 <b>첫 에피소드가 영영 대본을 못 받았다</b>: 폴더는 대본이 생겨야 나고
         // 대본은 동기화가 만드는데, 그 동기화가 폴더를 기다린 것이다(서로를 기다리는 매듭).
         // 이제 동기화가 첫 대본을 만들고, 그 김에 감시도 붙는다.
-        if (episodesFolderChanged)
+        //
+        // ⚠ <b>에피소드 목록이 달라졌으면 폴더가 그대로여도 돈다</b> (2026-08-22 소유자
+        // 보고: "챕터그래프에서 에피소드를 추가했는데 연출그래프에 반영이 안 돼 …
+        // 더블클릭해서 엑셀을 열어야 그제야"). 노드를 세우는 것은 동기화뿐인데 그것이
+        // <b>폴더가 바뀔 때만</b> 돌았다 — 그래서 엑셀 파일이 생겨 감시자가 우는 날에야
+        // 노드가 섰다. 툴의 [＋ 에피소드]도, 엑셀에서 직접 더한 행도 같은 구멍이었다.
+        if (episodesFolderChanged || EpisodeSetChanged())
         {
             SyncEpisodes();
         }
     }
+
+    /// <summary>지난 동기화가 본 에피소드 목록의 지문 — 같은 목록이면 다시 돌지 않는다.</summary>
+    private string? _syncedEpisodeSignature;
+
+    /// <summary>
+    /// 고른 챕터의 에피소드 <b>목록</b>이 지난 동기화 이후 달라졌는가. 확인하면서 기록한다.
+    ///
+    /// ⚠ 재읽기마다 무조건 동기화하지 않는 이유: <see cref="SyncEpisodes"/>는 화자·조건
+    /// 어휘를 밀어 넣느라 <b>에피소드 워크북을 전부 열어 본다</b>. 저장 한 번마다 그 값을
+    /// 치르면 §성능 규칙("고정은 시간이 아니라 일의 횟수로 건다")이 무너진다. 값을 부르는
+    /// 것은 <b>달라진 목록</b>뿐이다 — 추가·삭제·개명이 곧 노드가 서고 지고 바뀌는 일이다.
+    /// </summary>
+    private bool EpisodeSetChanged()
+    {
+        ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+        string signature = MakeEpisodeSignature(entry);
+
+        if (string.Equals(signature, _syncedEpisodeSignature, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        _syncedEpisodeSignature = signature;
+        return true;
+    }
+
+    private string MakeEpisodeSignature(ChapterEntry? entry) =>
+        entry?.Model is null
+            ? $"{_selectedChapterId}:"
+            : $"{_selectedChapterId}:" + string.Join(
+                "|",
+                entry.Model.Episodes
+                    .Select(episode => episode.EpisodeId)
+                    .OrderBy(id => id, StringComparer.Ordinal));
 
     /// <summary>
     /// 엑셀 저장 → 뷰 즉시 갱신 (Gate A). 감시·디바운스는 <see cref="ChapterFolderWatcher"/>가
@@ -526,6 +566,9 @@ public partial class ChapterGraphView : UserControl
         }
 
         ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
+
+        // 이 목록으로 돌았다고 적어 둔다 — 뒤이은 재읽기가 같은 목록이면 다시 안 돈다.
+        _syncedEpisodeSignature = MakeEpisodeSignature(entry);
 
         if (entry?.Model is null ||
             EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId) is not { } folder)

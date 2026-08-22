@@ -359,6 +359,7 @@ game.definition.json` / `작가가 더한 화자`.
 | 챕터 그래프 화면·포트·편집 패널 | `src/Vn.App/Views/ChapterGraphView.axaml{,.cs}` (`DrawOptionPorts`·`PortY`·`ApplyEdgeFromPanel`·`RenameSelectedEpisode`) |
 | 그래프에 무엇이 그려지는가 | `src/Vn.Authoring/Graph/GraphProjectionBuilder.cs` — 화면이 아니라 **여기가 정한다** |
 | 엑셀 → 노드 동기화 | `src/Vn.Authoring/Chapters/EpisodeSyncService.cs` (`Sync`·`SupplyChapterConditionsToBoard`·`ConditionSupplyNodeName`) |
+| **동기화가 언제 도는가** | `ChapterGraphView.WatchAndReload` — 챕터 선택 · 대본 폴더 변경 · **에피소드 목록 변경**(`EpisodeSetChanged`, 2026-08-22). ⚠ 재읽기마다 돌리지 않는다: `SyncEpisodes`가 에피소드 워크북을 전부 열어 보므로 저장 한 번마다 그 값을 치르면 §성능 규칙이 무너진다 |
 | 챕터 워크북 읽기·쓰기 | `Chapters/ChapterWorkbookReader.cs` · `ChapterWorkbookWriter.cs` |
 | 구판 워크북 자동 이행 | `Chapters/ChapterWorkbookMigrator.cs` — 구→v5→v6→v7→v8→v9 한 번에, .bak. 앱 Reload가 챕터 폴더 전체에 돌린다 |
 | 대본 파일 자리·입양 | `Chapters/EpisodeLibrary.cs` (`FolderFor(project, chapterId)` = `episodes/{챕터}/` · `AdoptFlatWorkbook`) |
