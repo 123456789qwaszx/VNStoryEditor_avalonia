@@ -1725,50 +1725,6 @@ public sealed partial class ProjectEditor
         Mutate(ProjectChangeKind.PresentationContent, () => Project.EaseCurves.Remove(existing));
     }
 
-    /// <summary>
-    /// 작가가 더한 화자 목록을 통째로 정한다 (2026-08-17) — <b>`game.definition.json`에는
-    /// 쓰지 않는다</b>. 정의 파일은 기획자 전용이고, 이건 프로젝트(작가 소유)에 산다.
-    /// 이름이 빈 항목은 버린다 — 드롭다운에 빈 줄이 서면 고를 수도 없다.
-    /// </summary>
-    public void SetWriterSpeakers(IEnumerable<WriterSpeaker> speakers)
-    {
-        ArgumentNullException.ThrowIfNull(speakers);
-
-        // 이름이 빈 줄도 그대로 둔다 (2026-08-17 소유자 보고 — "화자 추가를 눌렀는데
-        // 아무 일도 안 일어나"). 여기서 걸러 내면 <b>방금 만든 빈 줄</b>이 첫 저장에
-        // 휩쓸려 사라진다: 화면에 줄이 서고, 아무 칸이나 건드리는 순간 그 줄이 없어졌다.
-        // 빈 줄은 "아직 안 쓴 자리"이지 잘못이 아니다 — 파일로 나갈 때만 턴다
-        // (<see cref="Serialization.ProjectManifestJson"/>).
-        List<WriterSpeaker> next = speakers
-            .Select(speaker => speaker.Clone())
-            .ToList();
-
-        bool same = Project.WriterSpeakers.Count == next.Count;
-
-        for (int index = 0; same && index < next.Count; index++)
-        {
-            same = string.Equals(Project.WriterSpeakers[index].Name, next[index].Name, StringComparison.Ordinal) &&
-                   string.Equals(Project.WriterSpeakers[index].CharacterId, next[index].CharacterId,
-                       StringComparison.Ordinal);
-        }
-
-        if (same)
-        {
-            return;
-        }
-
-        // <b>구조 변경이 아니다</b> (2026-08-17 소유자 보고 — "한 글자만 적어도 선택된 게
-        // 풀려버려서 글자를 쓸 수가 없네"). 화자 목록은 드롭다운의 재료일 뿐 노드도 간선도
-        // 아닌데 `Structure`로 알리고 있었고, 그러면 셸이 그래프와 <b>편집기까지</b> 다시
-        // 만든다 — 글자 하나마다 쓰던 칸이 교체돼 타이핑이 끊겼다.
-        // `Content`는 판도 편집기도 건드리지 않는다(대사 미리보기만 새로 읽는다).
-        Mutate(ProjectChangeKind.Content, () =>
-        {
-            Project.WriterSpeakers.Clear();
-            Project.WriterSpeakers.AddRange(next);
-        });
-    }
-
     public void SetAssignments(string setNodeId, IEnumerable<VariableAssignment> assignments)
     {
         if (Project.FindNode(setNodeId) is not SetNode setNode)

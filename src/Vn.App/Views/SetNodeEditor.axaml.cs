@@ -51,26 +51,11 @@ public partial class SetNodeEditor : UserControl
         };
 
         AddAssignmentButton.Click += (_, _) => AddAssignment();
-
-        // ⚠ 이 신호는 <b>글자 하나마다</b> 온다(아래 Commit이 TextChanged에도 걸려 있다).
-        // 듣는 쪽은 반드시 뜸을 들여야 한다 — 셸이 그렇게 한다.
-
-        AddSpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 추가", () =>
-        {
-            // 작가의 화자를 하나 더한다 (2026-08-17) — 정의 파일이 아니라 프로젝트에 산다.
-            // 빈 이름은 저장에서 걸러지므로 행만 즉시 보여 준다.
-            _session!.Project.WriterSpeakers.Add(new WriterSpeaker());
-
-            RebuildSpeakers();
-        });
     }
 
-    // 편집 중 목록을 따로 들고 있던 장치(_pendingSpeakers)는 폐지됐다 (2026-08-17) —
-    // 작가의 화자가 프로젝트에 살면서 편집 대상이 곧 저장 대상이 됐다. 정의 파일을
-    // 갈아 끼우던 시절의 "저장 전 행" 문제가 없다.
-
-    /// <summary>화자 행을 다시 만드는 중 — 사라지는 칸의 LostFocus가 낡은 위치로 커밋하지 못하게.</summary>
-    private bool _rebuildingSpeakers;
+    // 화자 편집 장치는 전부 폐지됐다 (2026-08-23 소유자) — 편집 중 목록(_pendingSpeakers,
+    // 2026-08-17 폐지)에 이어 재진입 빗장(_rebuildingSpeakers)까지 사라졌다. 고칠 수 없는
+    // 목록에는 "고치는 중"이라는 상태가 없다.
 
     internal void Attach(AuthoringSession session) => _session = session;
 
@@ -143,68 +128,39 @@ public partial class SetNodeEditor : UserControl
                 .ToList()
             : [];
 
-    // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
+    // ── 화자 (읽기 전용) ────────────────────────────────────────────────────
 
     /// <summary>
-    /// 작가 화자 목록이 바뀌었다 (2026-08-22 소유자: "엑셀 챕터에 반영이 안 되고 있는데
-    /// 자동으로 반영되도록") — 셸이 챕터 워크북의 `화자` 시트에 따라 적는다.
+    /// 화자 목록 — <b>읽는 자리다</b> (2026-08-23 소유자: "작가가 더한 화자라는 개념도
+    /// 없애는 게 맞을 것 같아 … 이런 캐릭터는 컨셉과 배경이 꼼꼼히 정해져야 하는데
+    /// 작가가 임의로 추가한다는 게 좋아보이진 않아서").
     ///
-    /// ⚠ <b>글자 하나마다 온다</b>(커밋이 TextChanged에도 걸려 있다 — W56). 듣는 쪽이
-    /// 뜸을 들이지 않으면 자판마다 엑셀 파일 N개를 두드린다.
-    /// </summary>
-    internal event Action? WriterSpeakersChanged;
-
-    /// <summary>
-    /// 화자 두 묶음 (2026-08-17 소유자) — <b>기획자 것은 회색 고정, 작가 것만 편집</b>.
-    /// 고정값이 함께 보여야 "이 이름은 이미 있다"를 알고, 표정은 어느 쪽이든 자유롭게 더한다
-    /// (표정의 주인은 에셋 폴더 규약이지 정의 파일이 아니다).
+    /// 이름·캐릭터키의 주인은 챕터 `화자` 시트와 `game.definition.json` 하나이고, 여기는
+    /// 그것을 회색으로 비춘다. 표정만 살아 있다 — 표정의 주인은 에셋 폴더 규약이라
+    /// 누구든 더할 수 있다.
     /// </summary>
     private void RebuildSpeakers()
     {
-        _rebuildingSpeakers = true;
+        SpeakerHost.Children.Clear();
 
-        try
+        List<SpeakerSpec> planner = PlannerSpeakers();
+
+        foreach (SpeakerSpec speaker in planner)
         {
-            SpeakerHost.Children.Clear();
-
-            List<SpeakerSpec> planner = PlannerSpeakers();
-            IReadOnlyList<WriterSpeaker> mine = _session?.Project.WriterSpeakers ?? [];
-
-            if (planner.Count > 0)
-            {
-                SpeakerHost.Children.Add(SpeakerSectionLabel(
-                    "기획자가 정한 화자 — 챕터 `화자` 시트와 game.definition.json. 여기서 고치지 않습니다"));
-
-                foreach (SpeakerSpec speaker in planner)
-                {
-                    SpeakerHost.Children.Add(BuildPlannerSpeakerRow(speaker));
-                }
-            }
-
-            SpeakerHost.Children.Add(SpeakerSectionLabel("작가가 더한 화자 — 프로젝트에 저장됩니다"));
-
-            for (int index = 0; index < mine.Count; index++)
-            {
-                SpeakerHost.Children.Add(BuildSpeakerRow(index));
-            }
-
-            if (mine.Count == 0)
-            {
-                SpeakerHost.Children.Add(new TextBlock
-                {
-                    Text = planner.Count > 0
-                        ? "없어도 됩니다 — 대본의 화자 칸은 자유 입력입니다."
-                        : "화자를 더하면 대사 노드에서 드롭다운으로 고를 수 있습니다. " +
-                          "안 더해도 화자 칸에 직접 적으면 됩니다.",
-                    FontSize = 11,
-                    Opacity = 0.6,
-                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
-                });
-            }
+            SpeakerHost.Children.Add(BuildPlannerSpeakerRow(speaker));
         }
-        finally
+
+        if (planner.Count == 0)
         {
-            _rebuildingSpeakers = false;
+            SpeakerHost.Children.Add(new TextBlock
+            {
+                Text = "등록된 화자가 없습니다 — 챕터 엑셀 `화자` 시트에 적으면 " +
+                       "여기와 대사 노드 드롭다운에 함께 섭니다. " +
+                       "안 적어도 화자 칸은 자유 입력이라 대본은 돕니다.",
+                FontSize = 11,
+                Opacity = 0.6,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap
+            });
         }
     }
 
@@ -253,15 +209,6 @@ public partial class SetNodeEditor : UserControl
         return speakers;
     }
 
-    private static TextBlock SpeakerSectionLabel(string text) => new()
-    {
-        Text = text,
-        FontSize = 10,
-        Opacity = 0.55,
-        Margin = new Thickness(0, 4, 0, 0),
-        TextWrapping = Avalonia.Media.TextWrapping.Wrap
-    };
-
     /// <summary>
     /// 기획자 화자 한 줄 — 회색 고정. 이름·캐릭터키는 잠기고 [표정]만 살아 있다.
     /// 고치려면 챕터 `화자` 시트나 정의 파일로 간다(값의 주인이 거기다).
@@ -309,126 +256,6 @@ public partial class SetNodeEditor : UserControl
         row.Children.Add(name);
         row.Children.Add(characterId);
         row.Children.Add(expressions);
-
-        return row;
-    }
-
-    /// <summary>작가가 더한 화자 한 줄 — 편집·삭제 가능. 저장은 프로젝트다(정의 파일 아님).</summary>
-    private Control BuildSpeakerRow(int index)
-    {
-        WriterSpeaker speaker = _session!.Project.WriterSpeakers[index];
-
-        var name = new TextBox
-        {
-            Text = speaker.Name,
-            PlaceholderText = "대본에 적히는 화자명",
-            FontSize = 12
-        };
-
-        var characterId = new TextBox
-        {
-            Text = speaker.CharacterId,
-            PlaceholderText = "초상화 characterId",
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12
-        };
-
-        // 저작 중 "이 표정이 필요하다"의 진입점 — 표정을 정의하고, 없으면 이미지를 골라
-        // 규약 경로로 복제해 즉시 등록한다.
-        var expressions = new Button { Content = "표정…", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
-        ToolTip.SetTip(
-            expressions,
-            "이 캐릭터의 표정을 확인하고, 없는 표정은 이미지를 골라 추가합니다. characterId가 있어야 누를 수 있습니다.");
-
-        // 활성 여부는 타이핑 즉시 따라온다. 행을 다시 만들 때까지 잠겨 있으면
-        // 방금 적은 characterId가 무시된 것처럼 보인다.
-        void SyncExpressionsEnabled() =>
-            expressions.IsEnabled = !string.IsNullOrWhiteSpace(characterId.Text);
-
-        SyncExpressionsEnabled();
-        characterId.TextChanged += (_, _) => SyncExpressionsEnabled();
-
-        expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
-            ShowExpressionsFlyout(expressions, (characterId.Text ?? string.Empty).Trim()));
-
-        void Commit()
-        {
-            // 행이 사라지는 중이면 이 위치는 이미 낡았다 — 엉뚱한 행을 덮어쓰지 않는다.
-            if (_building || _rebuildingSpeakers)
-            {
-                return;
-            }
-
-            UiGuard.Run(_session, "화자 저장", () =>
-            {
-                List<WriterSpeaker> editing = _session!.Project.WriterSpeakers
-                    .Select(item => item.Clone())
-                    .ToList();
-
-                if (index >= editing.Count)
-                {
-                    return;
-                }
-
-                editing[index].Name = (name.Text ?? string.Empty).Trim();
-                editing[index].CharacterId = (characterId.Text ?? string.Empty).Trim();
-
-                // 행을 다시 만들지 않는다. 다시 만들면 지금 쓰던 칸이 사라져
-                // 이름 → characterId 탭 이동이 끊긴다(입력이 씹히는 것처럼 보인다).
-                _session.Editor.SetWriterSpeakers(editing);
-                WriterSpeakersChanged?.Invoke();
-            });
-        }
-
-        void CommitOnEnter(object? sender, Avalonia.Input.KeyEventArgs args)
-        {
-            if (args.Key == Avalonia.Input.Key.Enter)
-            {
-                Commit();
-                args.Handled = true;
-            }
-        }
-
-        // 타이핑 즉시 커밋한다 (W56) — 그래프의 노드 카드는 포커스를 가져가지 않아,
-        // "이름 입력 → 곧장 노드 클릭" 흐름에서 LostFocus가 울리지 않고 저장이 새는
-        // 버그가 있었다. 변경 없음 검사가 있어 중복 저장은 걸러진다.
-        name.TextChanged += (_, _) => Commit();
-        characterId.TextChanged += (_, _) => Commit();
-        name.LostFocus += (_, _) => Commit();
-        characterId.LostFocus += (_, _) => Commit();
-        name.KeyDown += CommitOnEnter;
-        characterId.KeyDown += CommitOnEnter;
-
-        var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
-
-        remove.Click += (_, _) => UiGuard.Run(_session, "화자 삭제", () =>
-        {
-            List<WriterSpeaker> editing = _session!.Project.WriterSpeakers
-                .Select(item => item.Clone())
-                .ToList();
-
-            if (index >= editing.Count)
-            {
-                return;
-            }
-
-            editing.RemoveAt(index);
-            _session.Editor.SetWriterSpeakers(editing);
-            WriterSpeakersChanged?.Invoke();
-
-            // 행 개수가 바뀌었으니 여기서는 다시 그려야 한다.
-            RebuildSpeakers();
-        });
-
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto") };
-        Grid.SetColumn(name, 0);
-        Grid.SetColumn(characterId, 1);
-        Grid.SetColumn(expressions, 2);
-        Grid.SetColumn(remove, 3);
-        row.Children.Add(name);
-        row.Children.Add(characterId);
-        row.Children.Add(expressions);
-        row.Children.Add(remove);
 
         return row;
     }

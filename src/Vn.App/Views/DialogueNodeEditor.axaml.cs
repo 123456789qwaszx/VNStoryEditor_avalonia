@@ -1353,8 +1353,6 @@ public partial class DialogueNodeEditor : UserControl
             candidates.Where(item => item.Source == SpeakerSource.Chapter).Select(item => item.Name));
         Section("초상화 매핑 · game.definition.json",
             candidates.Where(item => item.Source == SpeakerSource.Definition).Select(item => item.Name));
-        Section("작가가 더한 화자",
-            candidates.Where(item => item.Source == SpeakerSource.Writer).Select(item => item.Name));
 
         flyout.ShowAt(anchor);
     }
@@ -1366,16 +1364,16 @@ public partial class DialogueNodeEditor : UserControl
         Chapter,
 
         /// <summary>기획자·연출: `game.definition.json`의 초상화 매핑.</summary>
-        Definition,
-
-        /// <summary>작가: 프로젝트의 `WriterSpeakers` (정의 파일에 넣지 않는다).</summary>
-        Writer
+        ///
+        /// ⚠ 셋째 구역이던 "작가가 더한 화자"는 2026-08-23에 폐지됐다 (소유자) —
+        /// 캐릭터는 컨셉·배경이 정해져야 하는 것이라 작가가 임의로 더할 자리가 아니다.
+        Definition
     }
 
     /// <summary>
-    /// 화자 후보 — 세 원천을 합치되 <b>출처를 남긴다</b> (2026-08-17 소유자). 같은 이름이
-    /// 여러 곳에 있으면 먼저 나온 하나로 센다(기획 → 정의 → 작가) — 목록에 같은 이름이
-    /// 두 번 서면 고르는 사람이 헷갈린다.
+    /// 화자 후보 — 두 원천을 합치되 <b>출처를 남긴다</b> (2026-08-17 소유자). 같은 이름이
+    /// 양쪽에 있으면 먼저 나온 하나로 센다(기획 → 정의) — 목록에 같은 이름이 두 번 서면
+    /// 고르는 사람이 헷갈린다.
     ///
     /// 여기 없는 이름도 화자 칸에 직접 적으면 그만이다 — 이 목록은 편의일 뿐이다.
     /// </summary>
@@ -1397,7 +1395,6 @@ public partial class DialogueNodeEditor : UserControl
 
         Add(_session!.ChapterSpeakerNames, SpeakerSource.Chapter);
         Add(_session.Definition.Speakers.Select(item => item.Name), SpeakerSource.Definition);
-        Add(_session.Project.WriterSpeakers.Select(item => item.Name), SpeakerSource.Writer);
 
         return candidates;
     }

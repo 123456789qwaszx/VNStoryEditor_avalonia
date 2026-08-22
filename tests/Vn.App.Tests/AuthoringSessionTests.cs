@@ -354,11 +354,15 @@ public class AuthoringSessionTests
         }
     }
 
+    /// <summary>
+    /// "작가가 더한 화자"는 2026-08-23에 폐지됐다 (소유자: 캐릭터는 컨셉·배경이 꼼꼼히
+    /// 정해져야 하는 것이라 작가가 임의로 더할 자리가 아니다). 더하는 화면도 고르는
+    /// 목록도 사라졌지만, <b>구판 프로젝트의 값은 조용히 날리지 않는다</b> — 이 저장소의
+    /// "구판 데이터는 지우지 않고 무시한다" 규칙이다.
+    /// </summary>
     [Fact]
-    public void 작가가_더한_화자는_정의_파일이_아니라_프로젝트에_저장된다()
+    public void 폐지된_작가_화자_데이터는_열고_저장해도_살아남는다()
     {
-        // 2026-08-17 소유자 — "game.definition은 기획자 전용이 되어야 하는데 현재는 시나리오
-        // 작가가 한 것까지 들어간다. 작가가 만든 건 json으로까지 저장될 필요 없다."
         string directory = TempDirectory();
 
         try
@@ -367,24 +371,17 @@ public class AuthoringSessionTests
             var session = new AuthoringSession();
             session.Save(path);
 
-            session.Editor.SetWriterSpeakers([
-                new WriterSpeaker { Name = "작가화자", CharacterId = string.Empty },
-                new WriterSpeaker { Name = string.Empty }  // 아직 안 쓴 자리
-            ]);
+            // 구판 프로젝트가 들고 있던 값 — 이제 아무 화면도 이걸 읽지 않는다.
+            session.Project.WriterSpeakers.Add(new WriterSpeaker { Name = "구판화자" });
             session.Save(path);
-
-            // 정의 파일은 손대지 않는다.
-            Assert.DoesNotContain(session.Definition.Speakers, speaker =>
-                string.Equals(speaker.Name, "작가화자", StringComparison.Ordinal));
-
-            // 이름 없는 줄도 <b>메모리에는</b> 남는다 (2026-08-17 소유자 보고 — 여기서
-            // 걸러 내면 [화자 추가]로 만든 줄이 첫 저장에 휩쓸려 사라진다).
-            Assert.Equal(2, session.Project.WriterSpeakers.Count);
-            Assert.Equal("작가화자", session.Project.WriterSpeakers[0].Name);
 
             var reopened = new AuthoringSession();
             reopened.Open(path);
-            Assert.Equal("작가화자", Assert.Single(reopened.Project.WriterSpeakers).Name);
+            Assert.Equal("구판화자", Assert.Single(reopened.Project.WriterSpeakers).Name);
+
+            // 정의 파일은 예나 지금이나 손대지 않는다 (2026-08-17 — 기획자 전용).
+            Assert.DoesNotContain(reopened.Definition.Speakers, speaker =>
+                string.Equals(speaker.Name, "구판화자", StringComparison.Ordinal));
         }
         finally
         {
