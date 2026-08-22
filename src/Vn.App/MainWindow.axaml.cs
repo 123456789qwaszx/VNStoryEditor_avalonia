@@ -173,7 +173,7 @@ public partial class MainWindow : Window
         _session.SelectionChanged += OnSelectionChanged;
         _session.FileGraphStateChanged += OnFileGraphStateChanged;
 
-        AddFileButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", ShowAddChapterFlyout);
+        ChapterGraph.ChapterAddButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", ShowAddChapterFlyout);
         NewButton.Click += OnNewClick;
         OpenButton.Click += OnOpenClick;
         SaveButton.Click += OnSaveClick;
@@ -272,11 +272,24 @@ public partial class MainWindow : Window
     private void ApplyTabChrome()
     {
         bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
+        bool stageMode = ReferenceEquals(MainTabs.SelectedItem, StageTabItem);
 
         RightColumn.IsVisible = !chapterMode;
         RightSplitter.IsVisible = !chapterMode;
-        CenterColumns.ColumnDefinitions[3].Width = new GridLength(chapterMode ? 0 : 6);
-        CenterColumns.ColumnDefinitions[4].Width = new GridLength(chapterMode ? 0 : 460);
+        CenterColumns.ColumnDefinitions[1].Width = new GridLength(chapterMode ? 0 : 6);
+        CenterColumns.ColumnDefinitions[2].Width = new GridLength(chapterMode ? 0 : 460);
+
+        // 무대 프리뷰 탭에서는 노드 편집기가 접힌다 (2026-08-22 소유자: "대사편집, 발행,
+        // preview를 무대 프리뷰에서는 보이지 않도록"). 그 화면의 연출은 터미널·작업대·
+        // 조절창이 다 지고, 대사 노드의 발행·평면 Preview는 여기서 볼 이유가 없다.
+        // ⚠ 에셋 탐색기는 남는다 — 배경·초상을 무대로 끌어다 놓는 유일한 출발지다.
+        EditorPanel.IsVisible = !stageMode;
+        RightRows.RowDefinitions[0].Height = new GridLength(stageMode ? 0 : 1, GridUnitType.Star);
+        RightRows.RowDefinitions[1].Height = stageMode
+            ? new GridLength(1, GridUnitType.Star)
+            : GridLength.Auto;
+        // 편집기가 빠진 자리를 탐색기가 채운다 — 접힌 위쪽에 빈 칸이 남지 않게.
+        AssetExplorer.MaxHeight = stageMode ? double.PositiveInfinity : 300;
 
         ExportButton.IsVisible = !chapterMode;
         CsvExportButton.IsVisible = !chapterMode;
@@ -438,7 +451,7 @@ public partial class MainWindow : Window
         });
         panel.Children.Add(create);
 
-        flyout.ShowAt(AddFileButton);
+        flyout.ShowAt(ChapterGraph.ChapterAddButton);
         name.Focus();
     }
 
@@ -450,7 +463,7 @@ public partial class MainWindow : Window
     private void RebuildFileList()
     {
         {
-            FileListPanel.Children.Clear();
+            ChapterGraph.ChapterListHost.Children.Clear();
 
             foreach (ChapterEntry entry in _chapters)
             {
@@ -522,12 +535,12 @@ public partial class MainWindow : Window
                         () => ChapterGraph.OpenChapterWorkbook(chapterId));
                 };
 
-                FileListPanel.Children.Add(row);
+                ChapterGraph.ChapterListHost.Children.Add(row);
             }
 
             if (_chapters.Count == 0)
             {
-                FileListPanel.Children.Add(new TextBlock
+                ChapterGraph.ChapterListHost.Children.Add(new TextBlock
                 {
                     Text = "챕터가 없습니다. ＋로 만들거나 chapters/ 폴더에 워크북을 넣으세요.",
                     Margin = new Thickness(6, 10),
@@ -1177,7 +1190,7 @@ public partial class MainWindow : Window
 
         ProjectNameText.Text = name;
         ProjectPathText.Text = _session.ProjectPath ?? "저장되지 않음";
-        ActiveFileSummaryText.Text = _session.ActiveFile is { } activeFile
+        ChapterGraph.ChapterSummaryText.Text = _session.ActiveFile is { } activeFile
             ? $"현재: {activeFile.Name}"
             : "현재 작업 파일 없음";
         StatusText.Text = _session.StatusMessage;

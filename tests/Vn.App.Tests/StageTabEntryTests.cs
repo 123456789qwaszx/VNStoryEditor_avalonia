@@ -26,7 +26,12 @@ public sealed class StageTabEntryTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         AuthoringSession session = window.SessionProbe;
-        StoryFile file = session.ActiveFile!;
+
+        // ⚠ <b>활성 판(챕터 보드)에 노드를 놓지 않는다.</b> 창을 띄우면 최근 프로젝트가
+        // 복원되고 챕터 감시자가 붙는데, 그 감시자가 부르는 에피소드 동기화는 워크북에
+        // 없는 대사 노드를 <b>솎아 낸다</b> — 부하에 따라 이 테스트가 흔들리던 원인이다.
+        // 동기화가 손대지 않는 제 판 하나를 만들어 그 위에서 본다.
+        StoryFile file = session.Editor.AddStoryFile("탭 진입 테스트 판");
 
         ScriptDocument script = session.Editor.AddScript("본문 대본");
         DialogueNode dialogue = session.Editor.AddDialogueNode(file.Id, name: "EP01", scriptId: script.Id);
@@ -58,7 +63,9 @@ public sealed class StageTabEntryTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(presentation.Id, ((PresentationNode)session.SelectedNode!).Id);
-        Assert.Single(session.Project.EnumerateNodes().OfType<PresentationNode>());
+        // 이 판에만 한정해 센다 — 복원된 최근 프로젝트의 다른 연출 노드를 함께 세면
+        // 이 컴퓨터의 상태가 테스트 결과를 정한다.
+        Assert.Single(session.Project.FindFile(file.Id)!.Nodes.OfType<PresentationNode>());
 
         window.Close();
     });

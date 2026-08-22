@@ -113,12 +113,56 @@
                  두 탭으로 나눈 이유: 조건은 챕터 전체에 걸린 표(선택과 무관)이고,
                  편집은 지금 고른 하나에 걸린다. 섞여 있으면 조건을 보려고 매번 스크롤해야 했다.
                  조건이 앞 탭이다 — 흐름을 잇기 전에 조건부터 정의하는 순서라서. -->
-            <Grid Grid.Column="2" RowDefinitions="Auto,*">
+            <Grid Grid.Column="2" x:Name="RightRows" RowDefinitions="200,6,Auto,*">
+                <!-- 챕터 목록이 여기로 이사했다 (2026-08-22 소유자) — 예전에는 창 맨 왼쪽에
+                     제 열 하나를 갖고 있었다. 챕터를 고르는 일과 그 챕터를 편집하는 일이
+                     한 기둥에 서고, 그래프는 그만큼 넓어진다. 목록이 차지하는 높이는
+                     아래 스플리터로 사람이 정한다.
+                     ⚠ 내용은 MainWindow가 짓는다(아래 세 손잡이) — 목록 클릭이 세션 전환·
+                     엑셀 열기와 얽혀 있어 뷰로 옮기면 배선이 두 벌이 된다. -->
+                <Border Grid.Row="0"
+                        BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                        BorderThickness="0,0,0,1">
+                    <Grid RowDefinitions="Auto,*">
+                        <Border Grid.Row="0"
+                                Padding="10,8"
+                                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                                BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="챕터" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="ChapterSummary"
+                                               FontSize="11"
+                                               Opacity="0.65"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        x:Name="AddChapterButton"
+                                        Content="＋"
+                                        FontSize="12"
+                                        Padding="7,2"
+                                        VerticalAlignment="Top"
+                                        ToolTip.Tip="새 챕터 — chapters/ 폴더에 규격 워크북을 만들고 판을 엽니다." />
+                            </Grid>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ChapterListPanel" Margin="8,8,8,10" Spacing="4" />
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <GridSplitter Grid.Row="1"
+                              ResizeDirection="Rows"
+                              Background="{DynamicResource ThemeBorderLowBrush}" />
+
                 <!-- 엑셀이 챕터 파일을 열고 있으면 툴의 모든 쓰기가 거부된다 (2026-08-16
                      실사례: 챕터 더블클릭으로 엑셀을 연 뒤 툴에서 고치려다 전부 막혔다).
                      누르기 전에 화면이 먼저 말한다 — 상태줄 한 줄은 묻힌다. -->
                 <Border x:Name="LockBanner"
-                        Grid.Row="0"
+                        Grid.Row="2"
                         IsVisible="False"
                         Background="#FDECEA"
                         BorderBrush="#E6B0AA"
@@ -130,7 +174,7 @@
                                TextWrapping="Wrap" />
                 </Border>
 
-            <TabControl Grid.Row="1" x:Name="RightTabs" Padding="0">
+            <TabControl Grid.Row="3" x:Name="RightTabs" Padding="0">
                 <!-- [챕터] — 판 전체에 걸린 표들. 조건은 여기서 편집하고(원천은 조건 시트),
                      스탯·픽스처는 어디에서도 값이 안 보이던 것들이라 읽기 전용으로 세운다.
                      에피소드·간선은 그래프가 이미 그리므로 여기 반복하지 않는다. -->

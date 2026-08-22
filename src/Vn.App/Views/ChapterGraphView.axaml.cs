@@ -127,6 +127,21 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     internal event Action<string>? ChapterSelected;
 
+    // ── 챕터 목록 자리 (2026-08-22 소유자 — 창 맨 왼쪽 열에서 이 기둥 위로 이사) ──────
+    //
+    // 자리만 이 뷰가 내주고 <b>내용은 셸(MainWindow)이 짓는다</b>. 목록의 클릭 하나가
+    // 세션 전환(EnsureChapterBoard)·엑셀 열기·우클릭 메뉴와 얽혀 있어 여기로 옮기면
+    // 같은 배선이 두 벌이 된다 — 그 사본이야말로 이 코드베이스가 가장 경계하는 것이다.
+
+    /// <summary>챕터 줄이 쌓이는 자리.</summary>
+    internal Panel ChapterListHost => ChapterListPanel;
+
+    /// <summary>[＋] 새 챕터 — 셸이 클릭을 받고 플라이아웃의 과녁으로도 쓴다.</summary>
+    internal Button ChapterAddButton => AddChapterButton;
+
+    /// <summary>머리글 아래 한 줄 — 지금 활성인 판의 요약.</summary>
+    internal TextBlock ChapterSummaryText => ChapterSummary;
+
     public ChapterGraphView()
     {
         InitializeComponent();
