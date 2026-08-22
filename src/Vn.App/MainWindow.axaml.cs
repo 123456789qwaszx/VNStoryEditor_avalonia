@@ -53,6 +53,13 @@ public partial class MainWindow : Window
 
     private LiveOutputService? _liveOutput;
     private readonly DispatcherTimer _autoSaveTimer;
+
+    /// <summary>
+    /// 작가 화자를 챕터 `화자` 시트에 옮겨 적기 전의 뜸 (2026-08-22 소유자: "자동으로
+    /// 반영되도록"). 자판 하나마다 신호가 오므로(W56) 그대로 받으면 글자마다 엑셀 파일
+    /// N개를 두드린다 — 손이 멎은 뒤 한 번만 쓴다.
+    /// </summary>
+    private readonly DispatcherTimer _writerSpeakerPushTimer;
     private bool _restoredRecent;
     /// <summary>왼쪽 챕터 목록의 데이터. 원천은 챕터 그래프 뷰의 읽기 하나다.</summary>
     private IReadOnlyList<ChapterEntry> _chapters = Array.Empty<ChapterEntry>();
@@ -234,6 +241,21 @@ public partial class MainWindow : Window
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         // 10분 자동 저장 (W49) — 저장 경로가 있고 바뀐 것이 있을 때만, 상태줄로 알린다.
+        _writerSpeakerPushTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+        _writerSpeakerPushTimer.Tick += (_, _) =>
+        {
+            _writerSpeakerPushTimer.Stop();
+            UiGuard.Run(_session, "화자 반영", PushWriterSpeakersToChapters);
+        };
+        SetEditor.WriterSpeakersChanged += () =>
+        {
+            // 뜸을 다시 잰다 — 마지막 자판에서 900ms가 지나야 파일에 손이 간다.
+            _writerSpeakerPushTimer.Stop();
+            _writerSpeakerPushTimer.Start();
+        };
+        // 창이 닫힌 뒤 뜸이 다 되면 죽은 세션에 쓰게 된다 — 타이머를 함께 끈다.
+        Closed += (_, _) => _writerSpeakerPushTimer.Stop();
+
         _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
         _autoSaveTimer.Tick += (_, _) => UiGuard.Run(_session, "자동 저장", () =>
         {
@@ -318,6 +340,50 @@ public partial class MainWindow : Window
         ExportButton.IsVisible = !chapterMode;
         CsvExportButton.IsVisible = !chapterMode;
         ExportFormatsButton.IsVisible = !chapterMode;
+    }
+
+    /// <summary>
+    /// 작가가 더한 화자를 <b>모든 챕터</b>의 `화자` 시트에 옮겨 적는다 (2026-08-22 소유자:
+    /// "모든 챕터가 공유하도록 하는 게 맞아 … 자동으로 반영되도록").
+    ///
+    /// 작가 화자는 프로젝트에 사는 <b>판 전체의 것</b>이라 어느 챕터에서 더해도 모든
+    /// 설정노드에 보인다 — 소유자 확인으로 그 공유가 규격이 됐다. 그런데 대사 워크북의
+    /// 화자 드롭다운은 <b>챕터 `화자` 시트</b>에서 오므로(v4의 유일한 예외 경로), 시트에
+    /// 적히지 않으면 엑셀에서는 그 이름을 고를 수 없었다.
+    ///
+    /// ⚠ <b>더하기만 한다.</b> 작가가 지운 이름을 시트에서도 지우지 않는다 — 그 시트의
+    /// 주인은 기획자이고, 같은 이름을 기획자가 따로 등록해 두었을 수 있다.
+    /// ⚠ <b>이미 있는 이름은 안 건드린다</b> — 판정은 지난 읽기의 모델(<c>_chapters</c>)로
+    /// 하므로 흔한 경우(바뀐 것 없음)에는 파일을 한 번도 열지 않는다.
+    /// </summary>
+    private void PushWriterSpeakersToChapters()
+    {
+        string[] names = _session.Project.WriterSpeakers
+            .Select(speaker => speaker.Name.Trim())
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (names.Length == 0 || _chapters.Count == 0)
+        {
+            return;
+        }
+
+        WriterSpeakerPush.Result push = WriterSpeakerPush.ToChapters(_chapters, names);
+
+        if (push.Blocked.Count > 0)
+        {
+            // 대개 엑셀이 그 챕터를 잡고 있다. 다음 편집에서 다시 시도되므로 막지 않는다.
+            _session.SetStatus(
+                $"화자를 못 적은 챕터가 있습니다: {string.Join(" · ", push.Blocked.Distinct())}");
+            return;
+        }
+
+        if (push.Written > 0)
+        {
+            _session.SetStatus($"작가 화자를 챕터 `화자` 시트에 {push.Written}줄 반영했습니다.");
+            ChapterGraph.RefreshFromDisk(); // 판·모델이 파일과 같은 말을 하게
+        }
     }
 
     /// <summary>

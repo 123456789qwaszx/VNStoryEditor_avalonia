@@ -52,6 +52,9 @@ public partial class SetNodeEditor : UserControl
 
         AddAssignmentButton.Click += (_, _) => AddAssignment();
 
+        // ⚠ 이 신호는 <b>글자 하나마다</b> 온다(아래 Commit이 TextChanged에도 걸려 있다).
+        // 듣는 쪽은 반드시 뜸을 들여야 한다 — 셸이 그렇게 한다.
+
         AddSpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 추가", () =>
         {
             // 작가의 화자를 하나 더한다 (2026-08-17) — 정의 파일이 아니라 프로젝트에 산다.
@@ -141,6 +144,15 @@ public partial class SetNodeEditor : UserControl
             : [];
 
     // ── 화자 등록 (X5) — 저장은 언제나 game.definition.json이다 (D-4) ─────
+
+    /// <summary>
+    /// 작가 화자 목록이 바뀌었다 (2026-08-22 소유자: "엑셀 챕터에 반영이 안 되고 있는데
+    /// 자동으로 반영되도록") — 셸이 챕터 워크북의 `화자` 시트에 따라 적는다.
+    ///
+    /// ⚠ <b>글자 하나마다 온다</b>(커밋이 TextChanged에도 걸려 있다 — W56). 듣는 쪽이
+    /// 뜸을 들이지 않으면 자판마다 엑셀 파일 N개를 두드린다.
+    /// </summary>
+    internal event Action? WriterSpeakersChanged;
 
     /// <summary>
     /// 화자 두 묶음 (2026-08-17 소유자) — <b>기획자 것은 회색 고정, 작가 것만 편집</b>.
@@ -364,6 +376,7 @@ public partial class SetNodeEditor : UserControl
                 // 행을 다시 만들지 않는다. 다시 만들면 지금 쓰던 칸이 사라져
                 // 이름 → characterId 탭 이동이 끊긴다(입력이 씹히는 것처럼 보인다).
                 _session.Editor.SetWriterSpeakers(editing);
+                WriterSpeakersChanged?.Invoke();
             });
         }
 
@@ -401,6 +414,7 @@ public partial class SetNodeEditor : UserControl
 
             editing.RemoveAt(index);
             _session.Editor.SetWriterSpeakers(editing);
+            WriterSpeakersChanged?.Invoke();
 
             // 행 개수가 바뀌었으니 여기서는 다시 그려야 한다.
             RebuildSpeakers();
