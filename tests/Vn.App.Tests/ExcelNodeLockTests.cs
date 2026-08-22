@@ -76,26 +76,22 @@ public sealed class ExcelNodeLockTests
         DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "곁가지");
         session.Editor.AddDialogueNode(fileId, name: "곁가지2");
 
-        // 엑셀노드(에피소드)의 출구 후보 — 자유 노드만 남고 엑셀노드는 빠진다.
+        // ⚠ [기본 출구] 편집 구역은 2026-08-22에 사라졌다 (소유자) — 같은 값을 판의
+        // 레일 칩이 편집하므로 창구를 하나로 줄였다. 후보 규칙은 갈래(detour) 출구가
+        // 그대로 물려받았고, 여기서 지키는 것은 그 규칙이다.
         editor.Show(excelNodeId);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.True(editor.FindControl<Grid>("DefaultExitControls")!.IsVisible);
-        var targets = (List<StoryNode>)editor.FindControl<ComboBox>("DefaultExitCombo")!.Tag!;
+        Assert.Null(editor.FindControl<Grid>("DefaultExitControls"));
+        Assert.Null(editor.FindControl<ComboBox>("DefaultExitCombo"));
+        Assert.Null(editor.FindControl<TextBlock>("DefaultExitSubtitle"));
+
+        // 갈래 출구의 후보 — 자유 노드만 남고 엑셀노드는 빠진다.
+        List<StoryNode> targets = editor.ExitTargetsProbe(free.Id);
 
         Assert.Contains(targets, target => target.Name == "곁가지2");
         Assert.DoesNotContain(targets, target =>
             target is DialogueNode { ExcelEpisodeId: not null });
-
-        // 커스텀(자유) 노드에는 출구 편집 줄 자체가 없다 (2026-08-21) — detour로
-        // 재생되고 호출한 갈래로 돌아가므로, 화면이 그 이유를 말한다.
-        editor.Show(free.Id);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.False(editor.FindControl<Grid>("DefaultExitControls")!.IsVisible);
-        var subtitle = editor.FindControl<TextBlock>("DefaultExitSubtitle")!;
-        Assert.Contains("detour", subtitle.Text);
-        Assert.False(editor.FindControl<TextBlock>("ExitHintText")!.IsVisible);
     });
 
     [Fact]

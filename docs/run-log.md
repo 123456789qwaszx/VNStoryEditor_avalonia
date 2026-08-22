@@ -6003,3 +6003,39 @@ AllDirectories`) 후 항목마다 컨트롤 생성 → 캐시가 비었으니 �
 **되돌리는 법** — `GraphEditorView.axaml`의 Row 1 열 셋을 풀고 `SideHost`를 지운 뒤,
 `BuildSidePanel`이 만드는 것을 `MainWindow.axaml`의 우측 열로 되돌린다(필드 넷은 XAML의
 `x:Name`으로 다시 생긴다). `ApplyTabChrome`의 접기 코드는 git 이력에 있다.
+
+---
+
+## 대사 편집기의 [기본 출구] 구역 삭제 (`(다음 커밋)`)
+
+**소유자 지시 (2026-08-22)** — *"연출그래프에서 특정 노드를 클릭했을 때 지금은 기본출구라는
+개념이 있는데, 이걸 이제는 연출그래프에서 만질 일이 없을 테니 그냥 없애도 될 것 같아."*
+
+**왜 없애도 되나 — 같은 값에 편집 창구가 둘이었다.** 판의 **레일 칩(`○ 진행`)**을 누르면
+자유 씬 배선 플라이아웃이 열리고, 그것이 이미 이 노드의 기본 출구를 편집한다
+(`GraphEditorView.ShowRailChip`). 편집기 아래쪽 구역은 같은 값을 향한 두 번째 문이었다 —
+한 값에 창구가 둘이면 어느 쪽이 최신인지 화면이 대답하지 못한다.
+커스텀 노드는 2026-08-21에 이미 출구를 잃었으므로, 남아 있던 것은 엑셀노드의 "끝에 자유
+씬 곁가지 붙이기" 하나였고 그것이 곧 칩이 하는 일이다.
+
+**한 일** — `DialogueNodeEditor`의 [기본 출구] Border와 그 코드
+(`BuildDefaultExit`·`OnDefaultExitToggled`·`OnDefaultExitSelected`, 컨트롤 넷)를 지웠다.
+[대사 편집] 탭은 이제 대사 카드 목록 하나다.
+
+**⚠ 지운 것은 편집 창구뿐이다 — 개념 자체는 살아 있다.**
+`DefaultExitTargetNodeId`·`EffectiveDefaultExit`·`ExitPortKind.Default` 포트·
+발행 점프·레일 칩·검증(`WarnExitsIntoExcelNodes`)은 **하나도 안 건드렸다.**
+출력이 바뀌지 않는다는 뜻이다. 개념을 데이터·출력에서까지 걷으려면 런타임 계약
+(§A2-1: jump로 나가는 것은 선택지 옵션 출구와 기본 출구)을 함께 봐야 하므로 따로 다룬다.
+
+**남긴 것** — `ExitTargets`(엑셀노드 제외 규칙)는 **갈래(detour) 출구 콤보**가 그대로 쓴다.
+에피소드 사이 흐름이 챕터 간선의 것이라는 2026-08-14 결정이 거기 살아 있다.
+
+**고정 갱신 1개**(`ExcelNodeLockTests.출구_후보에_엑셀노드가_없다`): 옛 컨트롤 넷이
+**없다**는 것과, 후보 규칙이 갈래 출구로 그대로 넘어갔다는 것을 함께 본다
+(`ExitTargetsProbe`).
+
+**전체 1469 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 756 · Vn.App 310).
+
+**되돌리는 법** — 그 커밋의 XAML 한 덩어리와 메서드 셋을 되살리고 생성자에 핸들러 두 줄,
+`Rebuild`에 `BuildDefaultExit(node)` 한 줄을 넣는다. 데이터는 그대로라 되살리면 즉시 돈다.

@@ -67,8 +67,6 @@ public partial class DialogueNodeEditor : UserControl
         ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
         ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
 
-        DefaultExitCheck.IsCheckedChanged += (_, _) => OnDefaultExitToggled();
-        DefaultExitCombo.SelectionChanged += (_, _) => OnDefaultExitSelected();
         EditorTabs.SelectionChanged += (_, _) => RefreshPreview();
 
         PreviewPresetCombo.ItemsSource = _outputPresets
@@ -363,7 +361,6 @@ public partial class DialogueNodeEditor : UserControl
             }
 
             AddOrphanCards(node, script);
-            BuildDefaultExit(node);
             BuildResults(node);
             RefreshExportState(node);
             ShowProblems(flow);
@@ -2265,7 +2262,14 @@ public partial class DialogueNodeEditor : UserControl
     // Publish()(수동 발행)는 2026-08-21에 사라졌다 — 무대 프리뷰에서 씬을 고르면
     // 채널이 자동으로 발행한다(ProjectEditor.EnsurePresentationChannel).
 
-    // ── 기본 출구 ───────────────────────────────────────────────────────────
+    // ── 출구 후보 ───────────────────────────────────────────────────────────
+    //
+    // ⚠ [기본 출구] 편집 구역은 2026-08-22에 사라졌다 (소유자: "연출그래프에서 만질 일이
+    // 없을 테니 그냥 없애도 될 것 같아") — 같은 값을 판의 레일 칩(`○ 진행`)이 이미
+    // 편집한다(`GraphEditorView.ShowRailChip`). 한 값에 편집 창구가 둘이면 어느 쪽이
+    // 최신인지 화면이 대답하지 못한다. <b>데이터·포트·출력은 그대로다</b> —
+    // `DefaultExitTargetNodeId`·`EffectiveDefaultExit`·발행 점프 모두 손대지 않았다.
+    // 남은 후보 계산은 갈래(detour) 출구가 쓴다.
 
     /// <summary>
     /// 출구 후보 — <b>엑셀노드는 뺀다</b> (소유자 결정 2026-08-14). 에피소드 사이의 흐름은
@@ -2273,85 +2277,15 @@ public partial class DialogueNodeEditor : UserControl
     /// 스탯 환산·cleared 기록)를 전부 지나친다. 같은 에피소드로의 "복귀"도 함정이다 —
     /// Yarn 점프는 노드 처음부터 다시 재생한다.
     /// </summary>
+    /// <summary>검증용 손잡이 — 갈래 출구 콤보가 받는 후보 그대로.</summary>
+    internal List<StoryNode> ExitTargetsProbe(string nodeId) =>
+        ExitTargets((DialogueNode)_session!.Project.FindNode(nodeId)!);
+
     private List<StoryNode> ExitTargets(DialogueNode node) => _session!.Project.EnumerateNodes()
         .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
         .Where(other => other is not PresentationNode)
         .Where(other => other is not DialogueNode { ExcelEpisodeId: not null })
         .ToList();
-
-    private void BuildDefaultExit(DialogueNode node)
-    {
-        // 커스텀(자유) 노드에는 출구가 없다 (2026-08-21 소유자) — detour로 재생되고
-        // 끝나면 호출한 갈래로 돌아간다. 편집 줄을 감추고 이유만 말한다.
-        bool custom = node.ExcelEpisodeId is null;
-        DefaultExitControls.IsVisible = !custom;
-
-        if (custom)
-        {
-            DefaultExitSubtitle.Text =
-                "커스텀 노드는 출구가 없습니다 — 갈래의 <<detour>>로 재생되고, 끝나면 " +
-                "호출한 곳으로 돌아갑니다. 다른 커스텀 씬은 조건 갈래로 이어 가세요.";
-            ExitHintText.IsVisible = false;
-            return;
-        }
-
-        DefaultExitSubtitle.Text = "모든 줄과 조건 갈래가 끝난 뒤 이동합니다.";
-
-        List<StoryNode> targets = ExitTargets(node);
-
-        DefaultExitCombo.ItemsSource = targets.Select(target => target.Name).ToList();
-        DefaultExitCombo.Tag = targets;
-
-        bool connected = node.DefaultExitTargetNodeId is not null;
-        DefaultExitCheck.IsChecked = connected;
-        DefaultExitCombo.IsEnabled = connected;
-
-        DefaultExitCombo.SelectedIndex = connected
-            ? targets.FindIndex(target => string.Equals(target.Id, node.DefaultExitTargetNodeId, StringComparison.Ordinal))
-            : -1;
-
-        // "출구가 없으면 무슨 일이 일어나는가"를 화면이 말한다 (소유자 보고 — 의미는 있는데
-        // 아는 방법이 없었다). 여기 오는 것은 엑셀노드뿐이다 — 커스텀 노드는 위에서 끝났다.
-        ExitHintText.IsVisible = !connected;
-        ExitHintText.Text =
-            "출구 없음 = 에피소드 종료. 다음 에피소드는 챕터 간선(기획자)이 정합니다. " +
-            "끝에 곁가지를 붙이려면 자유 노드를 대상으로 고르세요.";
-    }
-
-    private void OnDefaultExitToggled()
-    {
-        if (_building || _session is null || _nodeId is null)
-        {
-            return;
-        }
-
-        DefaultExitCombo.IsEnabled = DefaultExitCheck.IsChecked == true;
-        ExitHintText.IsVisible = DefaultExitCheck.IsChecked != true;
-
-        if (DefaultExitCheck.IsChecked != true)
-        {
-            _session.Editor.SetExitTarget(_nodeId, ExitPortKind.Default, null, null);
-        }
-    }
-
-    private void OnDefaultExitSelected()
-    {
-        if (_building ||
-            _session is null ||
-            _nodeId is null ||
-            DefaultExitCombo.Tag is not List<StoryNode> targets ||
-            DefaultExitCombo.SelectedIndex < 0 ||
-            DefaultExitCombo.SelectedIndex >= targets.Count)
-        {
-            return;
-        }
-
-        _session.Editor.SetExitTarget(
-            _nodeId,
-            ExitPortKind.Default,
-            null,
-            targets[DefaultExitCombo.SelectedIndex].Id);
-    }
 
     // ── 그 밖 ───────────────────────────────────────────────────────────────
 
