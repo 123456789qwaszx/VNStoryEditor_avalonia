@@ -44,6 +44,12 @@ public sealed class StageQuickTabTests
             new PointerPointProperties(RawInputModifiers.RightMouseButton, PointerUpdateKind.RightButtonPressed),
             KeyModifiers.None));
 
+    private static void RightRelease(Control target) => target.RaiseEvent(
+        new PointerReleasedEventArgs(
+            target, new Pointer(0, PointerType.Mouse, true), target, default, 0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.RightButtonReleased),
+            KeyModifiers.None, MouseButton.Right));
+
     /// <summary>대사 발행 + 연출 노드가 선 세션 하나 — 칩이 실제로 커맨드를 달 수 있는 최소 무대.</summary>
     private static (AuthoringSession Session, string NodeId, string LineId) Stage()
     {
@@ -266,10 +272,12 @@ public sealed class StageQuickTabTests
     });
 
     /// <summary>
-    /// 2026-08-22 소유자 보고 — "연출조작 콘솔에서 우클릭 닫기 기능이 안돼."
-    /// 버블 핸들러라 판 안쪽 컨트롤(탭 머리·내용 컨테이너·글자 칸)이 먼저 삼켰다.
-    /// 라이트 디스미스가 있던 시절에는 바깥 클릭이 닫아 줘서 구멍이 안 보였을 뿐이다.
-    /// 지금은 터널로 잡으므로 <b>판 어디를 우클릭해도</b> 닫힌다.
+    /// 2026-08-22 소유자 보고 — "우클릭 닫기가 안 된다"가 <b>두 번</b> 나왔다. 처음엔
+    /// 버블 핸들러라 판 안쪽 컨트롤(탭 머리·내용 컨테이너·글자 칸)이 먼저 삼켰고, 터널로
+    /// 옮긴 뒤에도 실기에서 안 닫혔다 — 헤드리스는 팝업이 창 안 오버레이로 서지만 실기
+    /// Windows에서는 별도 네이티브 팝업 창이라 입력 경로가 다르다. 그래서 한 경로에 걸지
+    /// 않는다: <b>누름 · 뗌 · ContextRequested</b> 셋이 각각 닫고, 무대 우클릭도 닫는다.
+    /// 여기서 지키는 것은 <b>삼키는 자식이 있어도 닫힌다</b>는 것이다.
     /// </summary>
     [Fact]
     public void 조절창_안쪽_어디를_우클릭해도_닫힌다() => HeadlessUi.Run(() =>
@@ -291,6 +299,44 @@ public sealed class StageQuickTabTests
         tabs.PointerPressed += (_, swallowed) => swallowed.Handled = true;
 
         RightClick(tabs);
+
+        Assert.False(view.IsStageConsoleOpen);
+
+        // 누름이 플랫폼에서 삼켜져도 뗌이 닫는다 — 실기에서 안 닫히던 것에 대한 보험이다.
+        TabControl reopened = view.OpenStageConsoleProbe()!
+            .GetLogicalDescendants().OfType<TabControl>().Single();
+        Assert.True(view.IsStageConsoleOpen);
+        RightRelease(reopened);
+        Assert.False(view.IsStageConsoleOpen);
+
+        // 맥락 메뉴 요청(우클릭의 정식 이름)도 같은 뜻이다.
+        TabControl third = view.OpenStageConsoleProbe()!
+            .GetLogicalDescendants().OfType<TabControl>().Single();
+        Assert.True(view.IsStageConsoleOpen);
+        third.RaiseEvent(new ContextRequestedEventArgs());
+        Assert.False(view.IsStageConsoleOpen);
+
+        window.Close();
+    });
+
+    /// <summary>
+    /// 무대 우클릭도 닫는다 (2026-08-22) — 라이트 디스미스를 끄면서 "바깥을 누르면
+    /// 닫힌다"는 손버릇이 갈 곳을 잃었다. 좌클릭은 여는 손짓이라 겹치면 안 되므로
+    /// 우클릭만 그 자리를 잇는다(무대 우클릭은 지금까지 아무 뜻도 없었다).
+    /// </summary>
+    [Fact]
+    public void 무대_우클릭도_열려_있는_조절창을_닫는다() => HeadlessUi.Run(() =>
+    {
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+        StageSceneView view = SceneOf(session, nodeId, lineId);
+        var window = new Window { Width = 900, Height = 700, Content = view };
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        view.OpenStageConsoleProbe();
+        Assert.True(view.IsStageConsoleOpen);
+
+        RightClick(view.GetLogicalDescendants().OfType<Canvas>().First());
 
         Assert.False(view.IsStageConsoleOpen);
 

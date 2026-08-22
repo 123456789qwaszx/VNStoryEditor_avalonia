@@ -306,7 +306,27 @@ internal sealed class StageSceneView : UserControl
         // 클릭·드롭 경로는 전부 UiGuard 아래다 — 예외는 무동작 + 상태줄이 된다(X1, 불변식 4).
         _canvas.PointerPressed += (_, args) =>
         {
-            if (args.Handled || !args.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed)
+            if (args.Handled)
+            {
+                return;
+            }
+
+            // 무대 우클릭 = 열려 있는 조절창 닫기 (2026-08-22). 라이트 디스미스를 끄면서
+            // "바깥을 누르면 닫힌다"는 손버릇이 갈 곳을 잃었다 — 우클릭만 그 자리를 잇는다
+            // (좌클릭은 여전히 조절창을 여는 손짓이라 겹치면 안 된다). 무대 우클릭은
+            // 지금까지 아무 뜻도 없었으므로 빼앗는 것이 없다.
+            if (args.GetCurrentPoint(_canvas).Properties.IsRightButtonPressed)
+            {
+                if (_consolePopup.IsOpen)
+                {
+                    CloseConsole();
+                    args.Handled = true;
+                }
+
+                return;
+            }
+
+            if (!args.GetCurrentPoint(_canvas).Properties.IsLeftButtonPressed)
             {
                 return;
             }
@@ -2150,25 +2170,7 @@ internal sealed class StageSceneView : UserControl
             }
         };
 
-        // 우클릭 = 닫기 (헤더가 광고하는 두 길 중 하나).
-        //
-        // ⚠ <b>터널로 잡는다</b> (2026-08-22 소유자 보고: "우클릭 닫기 기능이 안돼").
-        // 버블로 달면 판 안쪽 컨트롤(탭 머리·탭 내용 컨테이너·글자 칸)이 먼저 삼켜서
-        // 판 대부분에서 우클릭이 여기까지 안 온다. 라이트 디스미스가 있던 시절에는
-        // 바깥 클릭이 닫아 줘서 이 구멍이 안 보였을 뿐이다 — 그 길을 막은 지금은
-        // <b>판 어디를 우클릭해도</b> 닫혀야 한다. 글자 칸의 기본 우클릭 메뉴를 잃지만,
-        // 이 판에서 우클릭의 뜻은 하나로 정해 두는 편이 낫다.
-        root.AddHandler(
-            InputElement.PointerPressedEvent,
-            (_, args) =>
-            {
-                if (args.GetCurrentPoint(root).Properties.IsRightButtonPressed)
-                {
-                    args.Handled = true;
-                    CloseConsole();
-                }
-            },
-            RoutingStrategies.Tunnel);
+        AttachConsoleCloseGestures(root);
 
         // ⚠ 열려 있으면 <b>먼저 닫는다</b> (2026-08-22 소유자 보고: "오직 자주쓰는
         // 메뉴탭만 콘솔에 남은 이상한 상태"). 라이트 디스미스를 끈 뒤로 무대 클릭이
@@ -2198,6 +2200,55 @@ internal sealed class StageSceneView : UserControl
     {
         _consolePopup.IsOpen = false;
         _consolePopup.Child = null;
+    }
+
+    /// <summary>
+    /// 우클릭 = 닫기 (헤더가 광고하는 두 길 중 하나) — 세 갈래로 잡는다.
+    ///
+    /// ⚠ 2026-08-22에 소유자가 <b>두 번</b> "우클릭 닫기가 안 된다"고 보고했다. 처음엔
+    /// 버블 핸들러라 판 안쪽 컨트롤(탭 머리·내용 컨테이너·글자 칸)이 먼저 삼켰고, 터널로
+    /// 옮긴 뒤에도 실기에서 안 닫혔다. 헤드리스로는 재현되지 않는다(팝업이 창 안 오버레이로
+    /// 서지만 실기 Windows에서는 <b>별도 네이티브 팝업 창</b>이라 입력 경로가 다르다).
+    ///
+    /// 그래서 <b>한 경로에 걸지 않는다</b>. 셋 다 같은 뜻이고 닫기는 멱등이다:
+    /// ① 누름(터널·이미 처리된 것도) ② 뗌(누름이 플랫폼에서 삼켜지는 경우) ③
+    /// <see cref="Control.ContextRequestedEvent"/>(우클릭의 정식 이름 — 버튼 상태가 아니라
+    /// "여기서 맥락 메뉴를 원한다"는 뜻이라 누름·뗌을 어떻게 소비하든 온다).
+    ///
+    /// 대가로 판 안 글자 칸의 기본 우클릭 메뉴를 잃는다. 이 판에서 우클릭의 뜻은 하나로
+    /// 정해 두는 편이 낫다.
+    /// </summary>
+    private void AttachConsoleCloseGestures(Control root)
+    {
+        void CloseIfRight(PointerEventArgs args)
+        {
+            PointerPointProperties properties = args.GetCurrentPoint(root).Properties;
+
+            // 누름은 버튼 상태로, 뗌은 UpdateKind로 본다 — 뗀 뒤에는 눌린 버튼이 없다.
+            if (properties.IsRightButtonPressed ||
+                properties.PointerUpdateKind == PointerUpdateKind.RightButtonReleased)
+            {
+                args.Handled = true;
+                CloseConsole();
+            }
+        }
+
+        root.AddHandler(
+            InputElement.PointerPressedEvent,
+            (object? _, PointerPressedEventArgs args) => CloseIfRight(args),
+            RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+        root.AddHandler(
+            InputElement.PointerReleasedEvent,
+            (object? _, PointerReleasedEventArgs args) => CloseIfRight(args),
+            RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+        root.AddHandler(
+            Control.ContextRequestedEvent,
+            (_, args) =>
+            {
+                args.Handled = true;
+                CloseConsole();
+            },
+            RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     /// <summary>
