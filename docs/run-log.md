@@ -6142,3 +6142,37 @@ AllDirectories`) 후 항목마다 컨트롤 생성 → 캐시가 비었으니 �
 **되돌리는 법** — `MiniStagePreview.axaml`의 열 둘(스플리터·`ConsoleHost`)을 지우고
 `BuildDockedConsole` 호출을 뺀 뒤, `ShowStagePopover`(팝업 경유)와 무대 좌클릭 분기를
 그 커밋에서 되살린다.
+
+---
+
+## 프레임 타임라인 — 눈금·재생 추종·프레임 걸음 (`(다음 커밋)`)
+
+**소유자 지시 (2026-08-22)** — *"라인 재생 옆 슬라이더를 프레임별로 눈금을 매긴 다음,
+재생될 때 핸들이 현재 재생 중인 프레임에 맞춰지도록. 또 핸들도 지금처럼 부드럽게
+움직이는 대신 프레임 단위로 움직이도록."*
+
+**한 일 (셋)**
+
+- **눈금 한 칸 = 한 프레임** — `TickPlacement`를 켰다. ⚠ `TickFrequency`만 있고 **배치가
+  없으면 눈금이 그려지지 않는다**(값만 스냅될 뿐이다) — 이미 1이었는데 안 보이던 이유다.
+  `SmallChange`·`LargeChange`도 1로 맞췄다: 키보드·페이지 이동이 다른 걸음이면
+  손짓마다 결과가 달라진다.
+- **재생이 손잡이를 민다** (`SyncTimelineHandle`) — `SetTransitionProgress`가 무대를
+  옮길 때 손잡이도 **가장 가까운 프레임**으로 간다. null(정지 화면)이면 0프레임이다.
+  라벨도 `12/24fr`로 바뀌어 전체 길이가 함께 보인다.
+- ⚠ **프레임 사이에 못 선다** — `IsSnapToTickEnabled`만으로는 **끄는 동안** 값이 프레임
+  사이에 앉고 무대가 그 자리를 그대로 그려 손잡이가 미끄러진다. `ValueChanged`에서
+  정수로 못 박고 되돌아온 이벤트가 나머지를 하게 했다.
+
+**⚠ 되먹임 빗장** (`_syncingTimeline`) — 재생이 밀어 넣은 값의 `ValueChanged`는 거기서
+멈춘다. 안 그러면 손잡이가 무대에 진행도를 되받아 쳐서 **재생의 부드러운 보간이 프레임
+격자로 덮이고**, 두 값이 서로를 밀며 떤다. 사람이 끄는 값만 무대로 간다.
+
+**고정 3개 신설**(`StageTimelineTests`): 눈금·스냅·걸음이 전부 1프레임이고 **배치가
+None이 아니다** · 7.4는 7, 12.6은 13으로 앉는다 · 진행도 0.5가 12프레임을,
+null이 0프레임을 가리킨다.
+
+**전체 1472 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 756 · Vn.App 313).
+
+**되돌리는 법** — `BuildTimelineScrubber`에서 `TickPlacement`·`SmallChange`·`LargeChange`와
+`ValueChanged`의 반올림을 빼고, `SetTransitionProgress`의 `SyncTimelineHandle` 한 줄을 지운다.

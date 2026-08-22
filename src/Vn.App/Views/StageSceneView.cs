@@ -192,6 +192,8 @@ internal sealed class StageSceneView : UserControl
     {
         double lineSeconds = _request?.TransitionSeconds ?? 0;
 
+        SyncTimelineHandle(progress);
+
         if (progress is not { } t || t >= 1)
         {
             // null = 정지 화면 (W66 소유자 결정): 시간을 가진 커맨드의 슬롯은 이 라인이
@@ -604,6 +606,14 @@ internal sealed class StageSceneView : UserControl
     /// 않는다. 있다 없다 하면 재생 줄이 라인마다 다른 얼굴이 되고, 없는 날에는 이
     /// 도구가 있다는 사실 자체가 안 보인다.
     /// </summary>
+    // 타임라인 손잡이 (2026-08-22 소유자: "프레임별로 눈금을 매기고, 재생될 때 핸들이
+    // 현재 재생 중인 프레임에 맞춰지도록. 핸들도 프레임 단위로 움직이도록") —
+    // 재생이 슬라이더를 밀고, 슬라이더가 다시 재생을 밀지 않도록 빗장 하나를 둔다.
+    private Slider? _timelineScrub;
+    private TextBlock? _timelineLabel;
+    private double _timelineFrames = 1;
+    private bool _syncingTimeline;
+
     internal Control BuildTimelineScrubber()
     {
         double lineSeconds = _request?.TransitionSeconds ?? 0;
@@ -612,9 +622,9 @@ internal sealed class StageSceneView : UserControl
 
         var frameLabel = new TextBlock
         {
-            Text = "0fr",
+            Text = $"0/{frames:0}fr",
             FontSize = 11,
-            Width = 34,
+            Width = 52,
             TextAlignment = TextAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             // 색은 평범하게 (2026-08-21 소유자) — 노란 강조가 이 숫자를 실제보다
@@ -627,27 +637,92 @@ internal sealed class StageSceneView : UserControl
             Minimum = 0,
             Maximum = frames,
             Value = 0,
+            // 눈금 한 칸 = 한 프레임 (2026-08-22 소유자). 키보드·페이지 이동도 같은 걸음이라
+            // 어떤 손짓으로 움직여도 프레임 사이에 서는 일이 없다.
             TickFrequency = 1,
             IsSnapToTickEnabled = true,
+            TickPlacement = TickPlacement.Outside,
+            SmallChange = 1,
+            LargeChange = 1,
             MinWidth = 160,
             VerticalAlignment = VerticalAlignment.Center,
             IsEnabled = scrubbable
         };
         ToolTip.SetTip(scrub, scrubbable
-            ? "이 라인 배치의 내부 시간 — 끌면 그 프레임의 정지 화면이 선다."
+            ? "이 라인 배치의 내부 시간 — 눈금 한 칸이 한 프레임이다. 끌면 그 프레임의 정지 화면이 서고, 재생 중에는 지금 프레임을 가리킨다."
             : "이 라인에는 시간을 가진 연출이 없습니다.");
+
         scrub.ValueChanged += (_, args) =>
         {
-            frameLabel.Text = $"{args.NewValue:0}fr";
+            // ⚠ 프레임 단위로 못 박는다 — <c>IsSnapToTickEnabled</c>만으로는 끄는 동안
+            // 값이 프레임 사이에 서고, 그 자리를 무대가 그대로 그려 손잡이가 미끄러진다.
+            double snapped = Math.Round(args.NewValue);
+
+            if (Math.Abs(snapped - args.NewValue) > 0.0001)
+            {
+                scrub.Value = snapped;
+                return; // 되돌아온 ValueChanged가 나머지를 한다
+            }
+
+            frameLabel.Text = $"{snapped:0}/{frames:0}fr";
+
+            // 재생이 밀어 넣은 값이면 여기서 멈춘다 — 무대는 이미 그 진행도로 그려졌고,
+            // 되받아 치면 재생의 부드러운 보간이 프레임 격자로 덮인다.
+            if (_syncingTimeline)
+            {
+                return;
+            }
+
             // 0은 정지 화면(출발 자리)과 같다 — null이 아니라 0을 흘려도 보간이 같은 자리다.
-            SetTransitionProgress(args.NewValue / frames);
+            SetTransitionProgress(snapped / frames);
         };
+
+        _timelineScrub = scrub;
+        _timelineLabel = frameLabel;
+        _timelineFrames = frames;
 
         var layout = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
         DockPanel.SetDock(frameLabel, Dock.Right);
         layout.Children.Add(frameLabel);
         layout.Children.Add(scrub);
         return layout;
+    }
+
+    /// <summary>
+    /// 재생이 흘린 진행도를 손잡이에 옮긴다 (2026-08-22) — <b>가장 가까운 프레임</b>에
+    /// 선다. null(정지 화면)이면 0프레임이다. 빗장은 되먹임을 막는다: 이 쓰기가 부르는
+    /// <c>ValueChanged</c>가 다시 <see cref="SetTransitionProgress"/>를 부르면 재생의
+    /// 보간이 프레임 격자로 덮이고, 두 값이 서로를 밀며 떨린다.
+    /// </summary>
+    private void SyncTimelineHandle(double? progress)
+    {
+        if (_timelineScrub is not { } scrub)
+        {
+            return;
+        }
+
+        double frame = Math.Round(Math.Clamp(progress ?? 0, 0, 1) * _timelineFrames);
+
+        if (Math.Abs(scrub.Value - frame) < 0.0001)
+        {
+            return;
+        }
+
+        _syncingTimeline = true;
+
+        try
+        {
+            scrub.Value = frame;
+        }
+        finally
+        {
+            _syncingTimeline = false;
+        }
+
+        if (_timelineLabel is { } label)
+        {
+            label.Text = $"{frame:0}/{_timelineFrames:0}fr";
+        }
     }
 
     /// <summary>
