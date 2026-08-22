@@ -57,6 +57,41 @@ internal static class StagePlaybackControls
     }
 
     /// <summary>
+    /// 타임라인 바로 오른쪽 — 라인 넘기기 둘 (2026-08-22 소유자: "이전 라인으로 돌아가기
+    /// 버튼과 다음 Line으로 넘어가기 버튼 … 직관적으로 그쪽에서 특정 라인을 선택한
+    /// 속도를 조절하고 전체 재생을 하는게 편하겠거든").
+    ///
+    /// 예전에는 왼쪽 터미널이나 씬 선택기로만 라인을 옮길 수 있었다 — 속도를 맞추고
+    /// 재생하는 손이 판을 가로질러야 했다. 이제 <b>고르기·속도·재생이 한 줄</b>에 선다.
+    /// 이동은 자동 진행과 같은 통로(<see cref="StagePlayback.MoveBy"/>)를 지난다.
+    /// </summary>
+    public static Control BuildLineStep(StagePlayback playback)
+    {
+        var previous = new Button { Content = "◀ 이전", FontSize = 11, Padding = new Thickness(8, 3) };
+        var next = new Button { Content = "다음 ▶", FontSize = 11, Padding = new Thickness(8, 3) };
+
+        void Refresh()
+        {
+            // 끝에서는 회색 — 눌러도 아무 일이 없는 단추가 살아 있으면 라인이 안 넘어가는
+            // 것인지 기능이 고장 난 것인지 화면이 구분해 주지 못한다.
+            previous.IsEnabled = playback.CanMove(-1);
+            next.IsEnabled = playback.CanMove(1);
+
+            ToolTip.SetTip(previous, previous.IsEnabled
+                ? "이전 라인으로 — 재생 중이면 멈추고 옮깁니다."
+                : "첫 라인입니다.");
+            ToolTip.SetTip(next, next.IsEnabled
+                ? "다음 라인으로 — 재생 중이면 멈추고 옮깁니다."
+                : "마지막 라인입니다.");
+        }
+
+        previous.Click += (_, _) => playback.MoveBy(-1);
+        next.Click += (_, _) => playback.MoveBy(1);
+
+        return Row(playback, Refresh, previous, next);
+    }
+
+    /// <summary>
     /// 재생 줄 오른쪽 끝 — 진행 표시 · 노드 전체 재생 · 배속. 타임라인이 왼쪽 컨트롤과
     /// 이 묶음을 벌려 놓는다.
     /// </summary>

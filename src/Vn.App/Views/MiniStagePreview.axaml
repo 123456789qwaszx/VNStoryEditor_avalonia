@@ -80,7 +80,7 @@
                          진행), 오른쪽 끝은 가끔 쓰는 것(노드 전체 재생·배속). 타임라인이
                          가운데를 채우며 둘을 벌려 놓는다. -->
                     <Grid Grid.Row="1"
-                          ColumnDefinitions="Auto,16,*,16,Auto"
+                          ColumnDefinitions="Auto,16,*,10,Auto,14,Auto"
                           Height="34"
                           Margin="0,8,0,0">
                         <ContentControl Grid.Column="0"
@@ -89,7 +89,12 @@
                         <ContentControl Grid.Column="2"
                                         x:Name="TimelineHost"
                                         VerticalAlignment="Center" />
+                        <!-- 라인 넘기기는 타임라인에 붙는다 (2026-08-22 소유자) —
+                             고르기·속도·재생이 한 줄에 서야 손이 판을 안 가로지른다. -->
                         <ContentControl Grid.Column="4"
+                                        x:Name="LineStepHost"
+                                        VerticalAlignment="Center" />
+                        <ContentControl Grid.Column="6"
                                         x:Name="PlaybackTrailingHost"
                                         VerticalAlignment="Center" />
                     </Grid>

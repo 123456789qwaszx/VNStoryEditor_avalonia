@@ -449,5 +449,36 @@ internal sealed class StagePlayback
         StateChanged?.Invoke();
     }
 
+    /// <summary>그 방향으로 옮길 라인이 있는가 — 재생 줄의 [◀ 이전]·[다음 ▶]이 이걸 본다.</summary>
+    public bool CanMove(int delta) =>
+        LineCount > 0 &&
+        LineIndex >= 0 &&
+        LineIndex + delta >= 0 &&
+        LineIndex + delta < LineCount;
+
+    /// <summary>
+    /// 사람이 라인을 옮긴다 (2026-08-22 소유자 — 타임라인 오른쪽의 [◀ 이전]·[다음 ▶]).
+    /// 이동 자체는 자동 진행과 <b>같은 통로</b>(<see cref="MoveRequested"/>)를 지난다 —
+    /// 선택을 실제로 옮기는 것은 활성 편집기의 몫이라는 규칙이 그대로다.
+    ///
+    /// ⚠ <b>재생 중이면 먼저 멈춘다.</b> 자동 진행은 제가 부른 이동을 기다리는 중
+    /// (<c>_awaitingMove</c>)인데 거기에 사람의 이동이 끼어들면 둘이 같은 자리를 다투고,
+    /// 어느 쪽이 이겼는지 화면이 말하지 못한다.
+    /// </summary>
+    public void MoveBy(int delta)
+    {
+        if (!CanMove(delta))
+        {
+            return;
+        }
+
+        if (IsPlaying)
+        {
+            StopAtEnd();
+        }
+
+        MoveRequested?.Invoke(delta);
+    }
+
     public string ProgressLabel => CanPlay ? $"{LineIndex + 1}/{LineCount}" : "—";
 }
