@@ -140,6 +140,13 @@ public partial class GraphEditorView : UserControl
         Rebuild();
     }
 
+    /// <summary>
+    /// 우측 곁기둥의 내용을 셸이 물려준다 (2026-08-22) — 노드 편집기 묶음 + 에셋 탐색기.
+    /// 자리는 이 판의 것이고(쓰는 화면이 여기뿐이다) 배선은 셸의 것이다: 편집기들이
+    /// 세션·무대 프리뷰·발행과 얽혀 있어 이 뷰로 옮기면 그 배선이 두 벌이 된다.
+    /// </summary>
+    internal void SetSidePanel(Control content) => SideHost.Content = content;
+
     public GraphEditorView()
     {
         InitializeComponent();

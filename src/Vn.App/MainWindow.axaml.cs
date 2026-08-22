@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Vn.App.Services;
+using Vn.App.Views;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
@@ -30,6 +31,26 @@ public partial class MainWindow : Window
 
     /// <summary>검증용 손잡이 — 창이 쓰는 세션 하나. 테스트가 판을 짓고 선택을 옮긴다.</summary>
     internal AuthoringSession SessionProbe => _session;
+
+    // ── 연출 그래프의 곁기둥 (2026-08-22 소유자 — 창의 우측 열에서 그 판 안으로 이사) ──
+    //
+    // ⚠ XAML이 아니라 여기서 만든다. 자리는 연출 그래프의 것이지만(SetSidePanel) 배선은
+    // 셸의 것이다 — 이 편집기들은 세션·무대 프리뷰·발행·선택 전환과 얽혀 있어 뷰로
+    // 옮기면 그 배선이 두 벌이 된다. 이름을 XAML 시절 그대로 둔 것은 의도다: 참조하는
+    // 자리가 마흔 군데라 이름이 바뀌면 이사와 무관한 diff가 그만큼 생긴다.
+    private readonly DialogueNodeEditor DialogueEditor = new();
+    private readonly SetNodeEditor SetEditor = new();
+    private readonly PresentationNodeEditor PresentationEditor = new();
+    private readonly AssetExplorerView AssetExplorer = new() { MaxHeight = 300 };
+
+    private readonly TextBlock EmptyText = new()
+    {
+        Text = "노드를 선택하면 여기서 편집합니다.",
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+        Opacity = 0.5
+    };
+
     private LiveOutputService? _liveOutput;
     private readonly DispatcherTimer _autoSaveTimer;
     private bool _restoredRecent;
@@ -54,6 +75,9 @@ public partial class MainWindow : Window
         AudioPreview.Problem = message => _session.SetStatus(message);
         Closed += (_, _) => AudioPreview.StopAll();
 
+        // 곁기둥을 제 화면에 건다 — Attach보다 먼저여야 첫 그리기부터 자리가 서 있다.
+        Graph.SetSidePanel(BuildSidePanel());
+
         Graph.Attach(_session);
         // 왼쪽 챕터 목록의 원천은 챕터 그래프 뷰가 읽은 목록 하나다 — 두 곳이 따로 읽으면
         // 감시·재시도 규칙이 두 벌이 된다. Attach 전에 구독해야 첫 읽기부터 받는다.
@@ -74,18 +98,13 @@ public partial class MainWindow : Window
             _session.SelectFile(_session.EnsureChapterBoard(chapterId));
             RebuildFileList();
         });
-        // 챕터 그래프 탭에서는 연출 계층의 chrome을 접는다(소유자 보고 — "발행·무대
-        // 프리뷰는 이 화면에서 필요 없는 정보"). 우측 열이 통째로 접혀 그래프가 그 폭을
-        // 얻고, 상단의 Yarn/CSV 내보내기도 숨는다 — 챕터 툴바의 [내보내기](진행 JSON)와
-        // 이름이 같아 한 화면에 "내보내기"가 둘 있으면 어느 쪽인지 헷갈린다.
         MainTabs.SelectionChanged += (_, _) =>
         {
             ApplyTabChrome();
             EnterStageTab();
         };
-        // 챕터 그래프가 첫 탭이 된 뒤로는(2026-08-18) 시작 화면이 곧 접힌 상태다.
-        // XAML의 기본값은 펼침이므로 여기서 한 번 맞춰 주지 않으면 첫 화면만 어긋난다 —
-        // SelectionChanged는 이미 정해진 선택에는 오지 않는다.
+        // XAML 기본은 펼침이고 SelectionChanged는 이미 정해진 선택에 오지 않는다 —
+        // 여기서 한 번 맞춰 주지 않으면 첫 화면(챕터 그래프)만 어긋난다.
         ApplyTabChrome();
 
         ChapterGraph.Attach(_session);
@@ -269,31 +288,39 @@ public partial class MainWindow : Window
         UiGuard.Run(_session, "연출 채널", () => EnterPresentationChannel(dialogue.Id));
     }
 
+    /// <summary>
+    /// 탭마다 다른 상단 chrome. ⚠ <b>곁기둥을 접는 코드는 2026-08-22에 사라졌다</b> —
+    /// 챕터 목록과 노드 편집기·에셋 탐색기가 각자 쓰는 화면 안으로 들어가면서
+    /// "어느 탭에서 보이나"가 자리로 정해졌다. 여기 남은 것은 이름이 겹치는 단추들뿐이다:
+    /// 챕터 툴바의 [내보내기](진행 JSON)와 상단 Yarn/CSV 내보내기가 한 화면에 둘이면
+    /// 어느 쪽인지 헷갈린다.
+    /// </summary>
     private void ApplyTabChrome()
     {
         bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
-        bool stageMode = ReferenceEquals(MainTabs.SelectedItem, StageTabItem);
-
-        RightColumn.IsVisible = !chapterMode;
-        RightSplitter.IsVisible = !chapterMode;
-        CenterColumns.ColumnDefinitions[1].Width = new GridLength(chapterMode ? 0 : 6);
-        CenterColumns.ColumnDefinitions[2].Width = new GridLength(chapterMode ? 0 : 460);
-
-        // 무대 프리뷰 탭에서는 노드 편집기가 접힌다 (2026-08-22 소유자: "대사편집, 발행,
-        // preview를 무대 프리뷰에서는 보이지 않도록"). 그 화면의 연출은 터미널·작업대·
-        // 조절창이 다 지고, 대사 노드의 발행·평면 Preview는 여기서 볼 이유가 없다.
-        // ⚠ 에셋 탐색기는 남는다 — 배경·초상을 무대로 끌어다 놓는 유일한 출발지다.
-        EditorPanel.IsVisible = !stageMode;
-        RightRows.RowDefinitions[0].Height = new GridLength(stageMode ? 0 : 1, GridUnitType.Star);
-        RightRows.RowDefinitions[1].Height = stageMode
-            ? new GridLength(1, GridUnitType.Star)
-            : GridLength.Auto;
-        // 편집기가 빠진 자리를 탐색기가 채운다 — 접힌 위쪽에 빈 칸이 남지 않게.
-        AssetExplorer.MaxHeight = stageMode ? double.PositiveInfinity : 300;
 
         ExportButton.IsVisible = !chapterMode;
         CsvExportButton.IsVisible = !chapterMode;
         ExportFormatsButton.IsVisible = !chapterMode;
+    }
+
+    /// <summary>
+    /// 연출 그래프의 곁기둥 한 판 — 위는 노드 편집기 넷이 겹쳐 선 자리(선택 하나만
+    /// 보인다), 아래는 에셋 탐색기다. 탐색기는 제 머리에 접기 토글을 이미 갖고 있다.
+    /// </summary>
+    private Control BuildSidePanel()
+    {
+        var editors = new Panel
+        {
+            Children = { DialogueEditor, SetEditor, PresentationEditor, EmptyText }
+        };
+
+        var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        Grid.SetRow(editors, 0);
+        Grid.SetRow(AssetExplorer, 1);
+        grid.Children.Add(editors);
+        grid.Children.Add(AssetExplorer);
+        return grid;
     }
 
     /// <summary>

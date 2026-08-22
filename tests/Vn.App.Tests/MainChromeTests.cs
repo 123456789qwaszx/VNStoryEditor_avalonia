@@ -6,9 +6,10 @@ using Vn.App.Views;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// 화면과 chrome의 일치 — 챕터 그래프 탭에서는 연출 계층의 우측 열(노드 편집기·무대
-/// 프리뷰)과 상단 Yarn/CSV 내보내기가 접힌다. 다른 화면의 [발행]·[내보내기]가 남아 있으면
-/// "한 화면에 내보내기가 둘"이 된다(소유자 보고). 돌아오면 전부 복원된다.
+/// 화면과 소속의 일치 — <b>곁기둥은 제 화면 안에 산다</b>(2026-08-22): 챕터 목록은
+/// 챕터 그래프에, 노드 편집기·에셋 탐색기는 연출 그래프에. 창은 탭 하나만 들고,
+/// 무대 프리뷰는 창 전체를 쓴다. 탭마다 접었다 펴는 chrome은 이름이 겹치는
+/// 내보내기 단추들만 남았다(챕터 툴바의 [내보내기]와 한 화면에 둘이면 헷갈린다).
 ///
 /// 탭 순서·이름은 2026-08-18 팀장 미팅에서 정해졌다: **챕터 그래프가 첫 탭**이고 그다음이
 /// **연출 그래프**(옛 "시나리오 그래프")다. 왼쪽에서 오른쪽으로 밟으면 챕터가 완성된다.
@@ -30,6 +31,16 @@ public sealed class MainChromeTests
         window.Close();
     });
 
+    /// <summary>지금 화면에 <b>실제로 선</b> 컨트롤들 — 탭이 안 고른 판은 나무에 없다.</summary>
+    private static T[] Live<T>(MainWindow window) where T : Control =>
+        window.GetVisualDescendants().OfType<T>().ToArray();
+
+    private static void SelectTab(MainWindow window, int index)
+    {
+        window.FindControl<TabControl>("MainTabs")!.SelectedIndex = index;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
     [Fact]
     public void 시작하자마자_챕터_모드다() => HeadlessUi.Run(() =>
     {
@@ -40,48 +51,38 @@ public sealed class MainChromeTests
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.False(window.FindControl<Border>("RightColumn")!.IsVisible);
         Assert.False(window.FindControl<Button>("ExportButton")!.IsVisible);
-        Assert.Equal(0, window.FindControl<Grid>("CenterColumns")!.ColumnDefinitions[2].Width.Value);
+        Assert.Empty(Live<AssetExplorerView>(window));
 
         window.Close();
     });
 
     [Fact]
-    public void 챕터_탭에서는_우측_열과_연출_내보내기가_접힌다() => HeadlessUi.Run(() =>
+    public void 챕터_탭에서는_연출_내보내기가_접힌다() => HeadlessUi.Run(() =>
     {
+        // 챕터 툴바의 [내보내기](진행 JSON)와 이름이 같아, 한 화면에 "내보내기"가
+        // 둘이면 어느 쪽인지 헷갈린다 (소유자 보고).
         var window = new MainWindow();
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        var tabs = window.FindControl<TabControl>("MainTabs")!;
-        var right = window.FindControl<Border>("RightColumn")!;
         var export = window.FindControl<Button>("ExportButton")!;
-        var columns = window.FindControl<Grid>("CenterColumns")!;
 
-        tabs.SelectedIndex = 1; // 연출 그래프 — 전부 선다
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.True(right.IsVisible);
+        SelectTab(window, 1); // 연출 그래프
         Assert.True(export.IsVisible);
-        Assert.Equal(460, columns.ColumnDefinitions[2].Width.Value);
 
-        tabs.SelectedIndex = 0; // 챕터 그래프 — 다시 접힌다
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.False(right.IsVisible);
+        SelectTab(window, 0); // 챕터 그래프
         Assert.False(export.IsVisible);
-        Assert.Equal(0, columns.ColumnDefinitions[2].Width.Value);
 
         window.Close();
     });
 
     [Fact]
-    public void 편집_자료는_사라지고_에셋만_우측_열에_남는다() => HeadlessUi.Run(() =>
+    public void 편집_자료는_사라지고_에셋은_연출_그래프_안에_남는다() => HeadlessUi.Run(() =>
     {
         // 2026-08-21 소유자 — "이제 편집자료는 굳이 표시할 필요가 없는 것 같아".
         // 대본·발행 결과·연출 공급을 나열하던 현황판인데, 발행·배선이 자동이 된 뒤로는
-        // 볼 이유가 없다. 에셋 탐색기는 그 자리(우측 열 맨 아래)에 그대로 남는다.
+        // 볼 이유가 없다. 에셋 탐색기는 남되, 2026-08-22에 연출 그래프 안으로 이사했다.
         var window = new MainWindow();
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -89,8 +90,38 @@ public sealed class MainChromeTests
         Assert.Null(window.FindControl<ScrollViewer>("ResourceScroll"));
         Assert.Null(window.FindControl<ToggleButton>("ResourceCollapseToggle"));
 
-        var right = window.FindControl<Border>("RightColumn")!;
-        Assert.Contains(right, window.FindControl<AssetExplorerView>("AssetExplorer")!.GetVisualAncestors());
+        SelectTab(window, 1);
+        var graph = window.FindControl<GraphEditorView>("Graph")!;
+        Assert.Contains(graph, Assert.Single(Live<AssetExplorerView>(window)).GetVisualAncestors());
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 곁기둥은_연출_그래프_안에만_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-22 소유자 — 대사편집·발행·scriptPreview와 에셋 관리를 연출 그래프
+        // 안으로 넣어 "오직 연출그래프에서만" 보이게. 창은 탭 하나만 들고, 무대 프리뷰는
+        // 창 전체를 쓴다. 자리가 곧 소속이라 접었다 펴는 chrome 코드가 사라졌다.
+        var window = new MainWindow();
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        SelectTab(window, 0); // 챕터 그래프 — 없다
+        Assert.Empty(Live<DialogueNodeEditor>(window));
+        Assert.Empty(Live<AssetExplorerView>(window));
+
+        SelectTab(window, 1); // 연출 그래프 — 편집기 셋 + 탐색기가 선다
+        Assert.Single(Live<DialogueNodeEditor>(window));
+        Assert.Single(Live<SetNodeEditor>(window));
+        Assert.Single(Live<PresentationNodeEditor>(window));
+        Assert.Single(Live<AssetExplorerView>(window));
+
+        SelectTab(window, 2); // 무대 프리뷰 — 다시 없다
+        Assert.Empty(Live<DialogueNodeEditor>(window));
+        Assert.Empty(Live<PresentationNodeEditor>(window));
+        Assert.Empty(Live<AssetExplorerView>(window));
+        Assert.Single(Live<MiniStagePreview>(window));
 
         window.Close();
     });
@@ -99,14 +130,12 @@ public sealed class MainChromeTests
     public void 챕터_목록은_맨_왼쪽_열을_떠나_챕터_그래프_안으로_갔다() => HeadlessUi.Run(() =>
     {
         // 2026-08-22 소유자 — 챕터를 고르는 일과 그 챕터를 편집하는 일이 한 기둥에 선다.
-        // 창은 이제 [탭들 | 스플리터 | 우측 열] 셋뿐이고, 판은 그 240px만큼 넓어졌다.
+        // 창은 이제 탭 하나만 든다(곁기둥 둘이 제 화면 안으로 들어갔다).
         var window = new MainWindow();
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        var columns = window.FindControl<Grid>("CenterColumns")!;
-        Assert.Equal(3, columns.ColumnDefinitions.Count);
-        Assert.True(columns.ColumnDefinitions[0].Width.IsStar, "첫 열은 탭이 차지한다");
+        Assert.Null(window.FindControl<Grid>("CenterColumns"));
 
         // 옛 왼쪽 열의 이름들은 창에서 사라졌다 — 남아 있으면 두 자리에 같은 목록이 산다.
         Assert.Null(window.FindControl<StackPanel>("FileListPanel"));
@@ -151,40 +180,6 @@ public sealed class MainChromeTests
             grid.RowDefinitions[row + 1].Height.IsStar,
             "스플리터 아래는 별 행이어야 위아래로 다 끌린다");
         Assert.Equal(row + 2, grid.RowDefinitions.Count);
-
-        window.Close();
-    });
-
-    [Fact]
-    public void 무대_프리뷰_탭에서는_노드_편집기가_접히고_에셋만_남는다() => HeadlessUi.Run(() =>
-    {
-        // 2026-08-22 소유자 — "대사편집, 발행, preview를 무대 프리뷰에서는 보이지 않도록".
-        // ⚠ 에셋 탐색기는 남는다: 배경·초상을 무대로 끌어다 놓는 유일한 출발지다.
-        var window = new MainWindow();
-        window.Show();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        var tabs = window.FindControl<TabControl>("MainTabs")!;
-        var editors = window.FindControl<Panel>("EditorPanel")!;
-        var assets = window.FindControl<AssetExplorerView>("AssetExplorer")!;
-
-        tabs.SelectedIndex = 1; // 연출 그래프 — 편집기가 선다
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.True(editors.IsVisible);
-
-        tabs.SelectedIndex = 2; // 무대 프리뷰 — 편집기만 접힌다
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.False(editors.IsVisible);
-        Assert.True(assets.IsVisible);
-        Assert.True(window.FindControl<Border>("RightColumn")!.IsVisible);
-
-        // ⚠ 편집기의 IsVisible 자체는 안 건드린다 — 작업대·연출 추가 콘솔 공급이 그
-        // 플래그를 근거로 돌아가므로, 끄면 프리뷰의 편집이 함께 죽는다.
-        Assert.Equal(0, window.FindControl<Grid>("RightRows")!.RowDefinitions[0].Height.Value);
-
-        tabs.SelectedIndex = 1; // 돌아오면 복원된다
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.True(editors.IsVisible);
 
         window.Close();
     });

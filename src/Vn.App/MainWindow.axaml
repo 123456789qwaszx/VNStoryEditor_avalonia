@@ -44,78 +44,26 @@
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
         </Border>
 
-        <!-- 챕터 목록이 쓰던 맨 왼쪽 열은 2026-08-22에 사라졌다 (소유자) — 목록이
-             챕터 그래프의 오른쪽 기둥 위로 이사했다. 챕터를 고르는 일과 그 챕터를
-             편집하는 일이 한 자리에 서고, 판은 그 240px만큼 넓어진다.
-             ⚠ 그래서 챕터 목록은 이제 <b>챕터 그래프 탭에서만</b> 보인다. 탭 순서가
-             왼쪽에서 오른쪽으로 밟는 작업 순서라(2026-08-18) 챕터를 고르는 것은
-             첫 화면의 일이고, 연출 그래프에는 툴바의 챕터 드롭다운이 따로 있다. -->
-        <Grid x:Name="CenterColumns" ColumnDefinitions="*,6,460">
-            <!-- 탭 순서가 곧 작업 순서다 (2026-08-18 팀장 미팅) — 왼쪽에서 오른쪽으로
-                 하나씩 밟으면 챕터가 완성된다. ① 챕터 그래프에서 구조와 대사를 짜고,
-                 ② 연출 그래프에서 그 위에 연출을 얹는다.
-                 "시나리오 그래프"가 "연출 그래프"가 된 이유: 기획자가 사실상 시나리오
-                 작가여서 스토리는 챕터 그래프에서 끝난다. 이 판에 남는 일은 연출뿐이고,
-                 그래서 여기는 기능을 더 늘리지 않는다.
-                 두 화면은 데이터도 편집 경로도 공유하지 않는다 (G-1). -->
-            <TabControl Grid.Column="0" x:Name="MainTabs" Padding="0">
-                <TabItem x:Name="ChapterTabItem" Header="챕터 그래프">
-                    <views:ChapterGraphView x:Name="ChapterGraph" />
-                </TabItem>
-                <TabItem Header="연출 그래프">
-                    <views:GraphEditorView x:Name="Graph" />
-                </TabItem>
-                <!-- 무대 프리뷰 승격 (2026-08-20 소유자) — 우측 아래 조그만 패널이 아니라
-                     그래프들과 같은 급의 판이다. 분리 창(창으로 열기)은 이 탭이 대체한다. -->
-                <TabItem x:Name="StageTabItem" Header="무대 프리뷰">
-                    <views:MiniStagePreview x:Name="StagePreview" />
-                </TabItem>
-            </TabControl>
-
-            <GridSplitter Grid.Column="1"
-                          x:Name="RightSplitter"
-                          ResizeDirection="Columns"
-                          Background="{DynamicResource ThemeBorderLowBrush}" />
-
-            <!-- 연출 그래프의 우측 — 노드 편집기 + 무대 프리뷰, 그 아래 에셋 탐색기.
-                 챕터 그래프 탭에서는 열째로 접힌다(스플리터 포함): 그 화면의 편집·보고는
-                 전부 챕터 그래프 뷰 안에 있고, 여기 남겨 두면 다른 화면의 발행·프리뷰가
-                 소음이 된다(소유자 보고).
-                 ⚠ [편집 자료]는 2026-08-21에 사라졌다 (소유자: "이제 편집자료는 굳이
-                 표시할 필요가 없는 것 같아") — 대본·발행 결과·연출 공급의 읽기 전용
-                 현황판이었는데, 발행·배선이 자동이 된 뒤로는 볼 이유가 없다. -->
-            <Border Grid.Column="2"
-                    x:Name="RightColumn"
-                    BorderBrush="{DynamicResource ThemeBorderLowBrush}"
-                    BorderThickness="1,0,0,0">
-                <Grid x:Name="RightRows" RowDefinitions="*,Auto">
-                    <!-- 노드 편집기 묶음. ⚠ 무대 프리뷰 탭에서는 통째로 접힌다 (2026-08-22
-                         소유자: "대사편집, 발행, preview를 무대 프리뷰에서는 보이지 않도록") —
-                         그 화면에서 연출은 터미널·작업대·조절창이 다 진다. 접는 것은 이
-                         Panel 하나이고 <b>안쪽 편집기의 IsVisible은 안 건드린다</b>:
-                         작업대·연출 추가 콘솔 공급이 PresentationEditor.IsVisible을 근거로
-                         돌아가므로 그것을 끄면 프리뷰의 편집이 함께 죽는다. -->
-                    <Panel Grid.Row="0" x:Name="EditorPanel">
-                        <views:DialogueNodeEditor x:Name="DialogueEditor" />
-                        <views:SetNodeEditor x:Name="SetEditor" />
-                        <views:PresentationNodeEditor x:Name="PresentationEditor" />
-                        <TextBlock x:Name="EmptyText"
-                                   Text="노드를 선택하면 여기서 편집합니다."
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   Opacity="0.5" />
-                    </Panel>
-
-                    <!-- 무대 프리뷰는 2026-08-20에 중앙 탭으로 승격했다 — 여기 있던
-                         조그만 패널이 그 자리로 갔다. -->
-
-                    <!-- 에셋 탐색기는 제 머리에 접기 토글을 이미 갖고 있다 — 여기서는
-                         기본을 접힘으로만 돌린다(AssetExplorerView의 CollapseToggle). -->
-                    <views:AssetExplorerView Grid.Row="1"
-                                             x:Name="AssetExplorer"
-                                             MaxHeight="300" />
-                </Grid>
-            </Border>
-        </Grid>
+        <!-- 창은 이제 탭 하나뿐이다 (2026-08-22 소유자). 곁기둥 둘이 제 화면 안으로
+             들어갔다: <b>챕터 목록</b>은 챕터 그래프로, <b>노드 편집기 + 에셋 탐색기</b>는
+             연출 그래프로. 창이 들고 탭마다 접었다 펴던 시절에는 어느 화면의 것인지가
+             chrome 코드에만 적혀 있었고, 그래서 다른 화면의 발행·프리뷰가 소음으로 남았다.
+             이제 자리가 곧 소속이다 — 무대 프리뷰는 창 전체를 쓴다.
+             탭 순서가 곧 작업 순서다 (2026-08-18 팀장 미팅): ① 챕터 그래프에서 구조와
+             대사를 짜고, ② 연출 그래프에서 그 위에 연출을 얹고, ③ 무대에서 확인한다.
+             두 그래프는 데이터도 편집 경로도 공유하지 않는다 (G-1). -->
+        <TabControl x:Name="MainTabs" Padding="0">
+            <TabItem x:Name="ChapterTabItem" Header="챕터 그래프">
+                <views:ChapterGraphView x:Name="ChapterGraph" />
+            </TabItem>
+            <TabItem x:Name="GraphTabItem" Header="연출 그래프">
+                <views:GraphEditorView x:Name="Graph" />
+            </TabItem>
+            <!-- 무대 프리뷰 승격 (2026-08-20 소유자) — 우측 아래 조그만 패널이 아니라
+                 그래프들과 같은 급의 판이다. 분리 창(창으로 열기)은 이 탭이 대체한다. -->
+            <TabItem x:Name="StageTabItem" Header="무대 프리뷰">
+                <views:MiniStagePreview x:Name="StagePreview" />
+            </TabItem>
+        </TabControl>
     </DockPanel>
 </Window>
