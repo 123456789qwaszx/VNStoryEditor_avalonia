@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Vn.App.Services;
 using Vn.Authoring.Definition;
@@ -40,17 +41,15 @@ public partial class SetNodeEditor : UserControl
             }
         };
 
-        AddConditionButton.Click += (_, _) =>
-        {
-            if (_session is not null && _nodeId is not null)
-            {
-                // 이름은 빈칸으로 시작한다 (W47) — "새 조건"이 미리 채워져 있으면
-                // 지우는 일부터 시켜야 한다. 자리 안내는 PlaceholderText가 한다.
-                _session.Editor.AddCondition(_nodeId, string.Empty, string.Empty);
-            }
-        };
-
-        AddAssignmentButton.Click += (_, _) => AddAssignment();
+        // ⚠ 추가 단추가 종류별로 갈렸다 (2026-08-23 소유자: "조건 추가와 변수 추가할 시에
+        // 현재는 bool과 int 타입이 서로 오고가고 있는데 … 오히려 직관적이지 않아서 불편하다").
+        // 종류는 <b>태어날 때</b> 정해지고 그 뒤로 바뀌지 않는다 — 행이 모양을 갈아입지
+        // 않으므로 값 칸이 초기화되는 일도, "지금 이게 무슨 종류였지"도 없다.
+        // 잘못 만들었으면 지우고 다시 만든다(한 줄짜리 일이다).
+        AddItemConditionButton.Click += (_, _) => AddCondition(ability: false);
+        AddAbilityConditionButton.Click += (_, _) => AddCondition(ability: true);
+        AddItemButton.Click += (_, _) => AddAssignment(ability: false);
+        AddAbilityButton.Click += (_, _) => AddAssignment(ability: true);
     }
 
     // 화자 편집 장치는 전부 폐지됐다 (2026-08-23 소유자) — 편집 중 목록(_pendingSpeakers,
@@ -82,19 +81,8 @@ public partial class SetNodeEditor : UserControl
         {
             NameBox.Text = node.Name;
 
-            ConditionHost.Children.Clear();
-
-            foreach (ConditionDefinition condition in node.Conditions)
-            {
-                ConditionHost.Children.Add(BuildConditionRow(condition));
-            }
-
-            AssignmentHost.Children.Clear();
-
-            for (int index = 0; index < node.Assignments.Count; index++)
-            {
-                AssignmentHost.Children.Add(BuildAssignmentRow(node, index));
-            }
+            RebuildConditions(node);
+            RebuildAssignments(node);
 
             // 아이템은 개수로 세고(약초 3개), 능력은 있다/없다뿐이다(자물쇠따기).
             // 기획자 스탯은 아예 말하지 않는다 — 작가에게 노출되어서는 안 되는 자료다.
@@ -108,6 +96,182 @@ public partial class SetNodeEditor : UserControl
         {
             _building = false;
         }
+    }
+
+    // ── 표 (엑셀처럼) ───────────────────────────────────────────────────────
+    //
+    // 소유자 지시 (2026-08-23) — "index 순번과 구분을 엑셀처럼 가진채로 잘 정리되어서
+    // 가독성 좋게 보여야 한다." 줄이 그냥 쌓여 있으면 어느 칸이 무엇인지 매번 다시 읽어야
+    // 한다: 머리글이 그것을 한 번만 말하고, 순번이 "몇 개인지"와 "몇 번째인지"를 준다.
+    //
+    // ⚠ 머리글과 몸통은 <b>열 정의 문자열 하나</b>를 나눠 쓴다. 둘이 갈리면 칸이 어긋나고,
+    // 어긋난 표는 없는 것만 못하다.
+
+    // ⚠⚠ <b>열 정의 규칙 셋</b> — 어기면 화면이 조용히 어긋난다(오류도 경고도 없다).
+    //
+    // ① <b>`Auto` 열을 쓰지 않는다.</b> 머리글 격자에는 ✕ 단추가 없어 그 `Auto`가 0으로,
+    //    줄 격자에서는 32로 풀린다 — 그만큼 별(`*`) 열이 달라져 머리글과 몸통의 칸이 통째로
+    //    어긋난다. 별 하나 말고는 전부 픽셀이어야 언제나 같게 풀린다.
+    //
+    // ② <b>칸은 컨트롤의 최소 폭보다 넓어야 한다.</b> Avalonia는 칸을 넘는 컨트롤을 잘라내지
+    //    않는다 — Fluent의 `ComboBox`·`TextBox`는 최소 폭이 64px쯤이라, 52px 칸에 넣으면
+    //    이웃 위로 그려진다(2026-08-23 소유자 보고). 그래서 값 칸은 68 아래로 두지 않는다.
+    //
+    // ③ <b>이름 칸을 뺀 나머지의 합이 표마다 같아야 한다</b> (= <see cref="RestOfRow"/>).
+    //    이름이 유일한 별 열이므로, 나머지 합이 같으면 <b>탭을 옮겨도 첫 칸이 제자리에 선다</b>
+    //    (2026-08-23 소유자: "뒤쪽은 몰라도 첫번째칸이 어긋나면 가독성이 너무 심하게
+    //    훼손된다"). 열을 고칠 때는 이 합을 맞춰 놓고 고친다.
+
+    /// <summary>순번 + 이름 뒤의 모든 열을 더한 값. 표마다 이 값이 같아야 이름 칸이 맞는다.</summary>
+    private const double RestOfRow = 314;
+
+    private static readonly IBrush TableLine = new SolidColorBrush(Color.FromArgb(40, 128, 128, 128));
+    private static readonly IBrush TableHeaderFill = new SolidColorBrush(Color.FromArgb(22, 128, 128, 128));
+    private static readonly IBrush TableStripe = new SolidColorBrush(Color.FromArgb(12, 128, 128, 128));
+
+    /// <summary>칸들을 열 정의에 순서대로 앉힌다. 이름은 겹침 고정이 이 격자를 찾는 표식이다.</summary>
+    internal const string TableRowName = "TableRow";
+
+    private static Grid Cells(string columns, IReadOnlyList<Control> cells)
+    {
+        var grid = new Grid
+        {
+            Name = TableRowName,
+            ColumnDefinitions = new ColumnDefinitions(columns)
+        };
+
+        for (int index = 0; index < cells.Count; index++)
+        {
+            Grid.SetColumn(cells[index], index);
+            grid.Children.Add(cells[index]);
+        }
+
+        return grid;
+    }
+
+    private static TextBlock HeaderCell(string text) => new()
+    {
+        Text = text,
+        FontSize = 10,
+        FontWeight = FontWeight.SemiBold,
+        Opacity = 0.7,
+        VerticalAlignment = VerticalAlignment.Center
+    };
+
+    /// <summary>
+    /// 위 규칙 셋을 열 정의가 지키는지 본다 — 어기면 <b>그 자리에서</b> 터진다.
+    /// 주석으로만 적어 두면 다음 사람이 열 하나를 고치다 조용히 어긋뜨린다.
+    /// </summary>
+    private static void VerifyColumns(string columns)
+    {
+        string[] parts = columns.Split(',');
+        int stars = 0;
+        double fixedSum = 0;
+
+        foreach (string part in parts)
+        {
+            if (part.Contains('*', StringComparison.Ordinal))
+            {
+                stars++;
+                continue;
+            }
+
+            fixedSum += double.Parse(part, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (stars != 1)
+        {
+            throw new InvalidOperationException(
+                $"표의 열 정의 '{columns}'에 별(*) 열이 {stars}개다 — 이름 칸 하나여야 한다(규칙 ①·③).");
+        }
+
+        if (Math.Abs(fixedSum - RestOfRow) > 0.01)
+        {
+            throw new InvalidOperationException(
+                $"표의 열 정의 '{columns}'의 고정 열 합이 {fixedSum}다 — {RestOfRow}여야 " +
+                "탭을 옮겨도 이름 칸이 제자리에 선다(규칙 ③).");
+        }
+    }
+
+    /// <summary>순번 — 표 안에서만 뜻이 있는 번호다(저장되는 값이 아니다).</summary>
+    private static TextBlock IndexCell(int number) => new()
+    {
+        Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        FontSize = 10,
+        Opacity = 0.45,
+        VerticalAlignment = VerticalAlignment.Center,
+        TextAlignment = TextAlignment.Right,
+        Margin = new Thickness(0, 0, 6, 0)
+    };
+
+    /// <summary>
+    /// 표 하나 — 제목 · 머리글 · 줄들. <b>순번은 표가 붙인다</b>(1부터). 줄이 없으면
+    /// 머리글도 세우지 않는다: 빈 표는 "무엇이 없는지"만 크게 말할 뿐이다.
+    /// </summary>
+    private static Control BuildTable(
+        string title,
+        string columns,
+        IReadOnlyList<string> headers,
+        IReadOnlyList<IReadOnlyList<Control>> rows,
+        string emptyNote)
+    {
+        VerifyColumns(columns);
+
+        var stack = new StackPanel { Spacing = 0 };
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = rows.Count == 0 ? title : $"{title} ({rows.Count})",
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Margin = new Thickness(0, 0, 0, 4)
+        });
+
+        if (rows.Count == 0)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = emptyNote,
+                FontSize = 10,
+                Opacity = 0.5,
+                TextWrapping = TextWrapping.Wrap
+            });
+
+            return stack;
+        }
+
+        var body = new StackPanel { Spacing = 0 };
+
+        body.Children.Add(new Border
+        {
+            Background = TableHeaderFill,
+            BorderBrush = TableLine,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(4, 3),
+            Child = Cells(columns, [HeaderCell("#"), .. headers.Select(HeaderCell)])
+        });
+
+        for (int index = 0; index < rows.Count; index++)
+        {
+            body.Children.Add(new Border
+            {
+                Background = index % 2 == 1 ? TableStripe : Brushes.Transparent,
+                BorderBrush = TableLine,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(4, 2),
+                Child = Cells(columns, [IndexCell(index + 1), .. rows[index]])
+            });
+        }
+
+        stack.Children.Add(new Border
+        {
+            BorderBrush = TableLine,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3),
+            Child = body
+        });
+
+        return stack;
     }
 
     /// <summary>
@@ -139,29 +303,20 @@ public partial class SetNodeEditor : UserControl
     /// 하나이고, 여기는 그것을 회색으로 비춘다. 표정만 살아 있다 — 표정의 주인은 에셋 폴더
     /// 규약이라 누구든 더할 수 있다.
     /// </summary>
+    private const string SpeakerColumns = "26,*,232,56";
+
     private void RebuildSpeakers()
     {
         SpeakerHost.Children.Clear();
 
-        IReadOnlyList<SpeakerSpec> planner = PlannerSpeakers();
-
-        foreach (SpeakerSpec speaker in planner)
-        {
-            SpeakerHost.Children.Add(BuildPlannerSpeakerRow(speaker));
-        }
-
-        if (planner.Count == 0)
-        {
-            SpeakerHost.Children.Add(new TextBlock
-            {
-                Text = "등록된 화자가 없습니다 — 챕터 그래프의 [화자] 탭에서 더하면 " +
-                       "여기와 대사 노드 드롭다운에 함께 섭니다(모든 챕터가 같은 목록입니다). " +
-                       "안 적어도 화자 칸은 자유 입력이라 대본은 돕니다.",
-                FontSize = 11,
-                Opacity = 0.6,
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap
-            });
-        }
+        SpeakerHost.Children.Add(BuildTable(
+            "등록 화자",
+            SpeakerColumns,
+            ["이름", "캐릭터키", string.Empty],
+            PlannerSpeakers().Select(BuildPlannerSpeakerCells).ToList(),
+            "등록된 화자가 없습니다 — 챕터 그래프의 [화자] 탭에서 더하면 여기와 대사 노드 " +
+            "드롭다운에 함께 섭니다(모든 챕터가 같은 목록입니다). 안 적어도 화자 칸은 " +
+            "자유 입력이라 대본은 돕니다."));
     }
 
     /// <summary>
@@ -176,19 +331,20 @@ public partial class SetNodeEditor : UserControl
     /// 기획자 화자 한 줄 — 회색 고정. 이름·캐릭터키는 잠기고 [표정]만 살아 있다.
     /// 고치려면 챕터 그래프 [화자] 탭으로 간다(값의 주인이 거기다).
     /// </summary>
-    private Control BuildPlannerSpeakerRow(SpeakerSpec speaker)
+    private IReadOnlyList<Control> BuildPlannerSpeakerCells(SpeakerSpec speaker)
     {
         var name = new TextBox
         {
             Text = speaker.Name,
             FontSize = 12,
+            Margin = new Thickness(0, 0, 4, 0),
             IsEnabled = false
         };
 
         var characterId = new TextBox
         {
             Text = speaker.CharacterId,
-            Margin = new Thickness(6, 0, 0, 0),
+            Margin = new Thickness(0, 0, 4, 0),
             FontSize = 12,
             IsEnabled = false
         };
@@ -202,7 +358,6 @@ public partial class SetNodeEditor : UserControl
         {
             Content = "표정",
             FontSize = 11,
-            Margin = new Thickness(6, 0, 0, 0),
             IsEnabled = hasKey,
             [ToolTip.TipProperty] = hasKey
                 ? "표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
@@ -212,15 +367,7 @@ public partial class SetNodeEditor : UserControl
         expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
             ShowExpressionsFlyout(expressions, speaker.CharacterId));
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto,Auto"), Opacity = 0.55 };
-        Grid.SetColumn(name, 0);
-        Grid.SetColumn(characterId, 1);
-        Grid.SetColumn(expressions, 2);
-        row.Children.Add(name);
-        row.Children.Add(characterId);
-        row.Children.Add(expressions);
-
-        return row;
+        return [name, characterId, expressions];
     }
 
     // ── 표정 정의 + 스프라이트 복제 ─────────────────────────────────────────
@@ -264,7 +411,7 @@ public partial class SetNodeEditor : UserControl
                         string.Join(" ", variantGroup.Select(entry => entry.Key.EmotionKey)),
                     FontSize = 10,
                     Opacity = 0.7,
-                    TextWrapping = Avalonia.Media.TextWrapping.Wrap
+                    TextWrapping = TextWrapping.Wrap
                 });
             }
         }
@@ -283,7 +430,7 @@ public partial class SetNodeEditor : UserControl
             Text = "표정 추가 — 없는 번호를 적고 이미지를 고르면 규약 경로로 복제됩니다.",
             FontSize = 10,
             Opacity = 0.6,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap
         });
 
         var variantBox = new TextBox
@@ -333,7 +480,7 @@ public partial class SetNodeEditor : UserControl
         {
             FontSize = 10,
             Opacity = 0.75,
-            TextWrapping = Avalonia.Media.TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap
         };
         panel.Children.Add(statusText);
 
@@ -440,115 +587,189 @@ public partial class SetNodeEditor : UserControl
     /// <summary>비교 연산자 — 아이템(개수)에만 쓴다. 능력은 있다/없다뿐이라 부호가 없다.</summary>
     private static readonly string[] ConditionOperators = [">=", "<=", "==", ">", "<"];
 
+    private const string ConditionColumns = "26,*,112,72,72,32";
+    private const string RawConditionColumns = "26,*,256,32";
+
+
     /// <summary>
-    /// 조건 한 줄 — <b>대사노드의 Set과 같은 감각</b>으로 만든다 (2026-08-17 소유자):
-    /// 만든 아이템·능력을 고르고, 부호를 고르고, 수치를 적는다. 식을 손으로 쓰던 칸은
-    /// 없앴다 — 작가가 Yarn 문법을 알아야 할 이유가 없다.
+    /// 조건 표 셋 — <b>아이템 조건 · 능력 조건 · 직접 적은 식</b> (2026-08-23).
     ///
-    /// <b>능력에는 부호가 없다</b>(소유자 지시) — On/Off뿐이라 <c>&gt;=</c> 같은 것이 설 자리가
-    /// 없었다. 값은 토글이고 식은 <c>== true/false</c>로 고정된다.
+    /// 종류를 섞어 한 표에 두면 절반이 빈 칸이 된다(아이템에는 부호·값이, 능력에는 On/Off가
+    /// 있다). 갈라 두면 각 표가 자기 열만 갖고, 행이 태어난 뒤 <b>모양을 갈아입지 않는다</b> —
+    /// 소유자가 짚은 "bool과 int가 서로 오고가는" 불편의 뿌리가 그 갈아입음이었다.
     ///
-    /// 손으로 적어 둔 복합식(<c>and</c>·여러 항)은 <b>분해하지 않고 그대로 보여 준다</b> —
-    /// 읽기 전용 칸으로 남겨 두는 편이 조용히 뭉개는 것보다 낫다.
+    /// <b>직접 적은 식</b>은 칸으로 못 나누는 복합식(<c>and</c>·여러 항)이다. 조용히 뭉개지
+    /// 않고 읽기 전용으로 세워 둔다 — 어디서 왔는지 모를 조건이 목록에서 사라지는 것이
+    /// 가장 나쁘다.
     /// </summary>
-    private Control BuildConditionRow(ConditionDefinition condition)
+    private void RebuildConditions(SetNode node)
     {
-        var name = new TextBox { Text = condition.Name, PlaceholderText = "작가가 읽을 이름", FontSize = 12 };
+        ConditionHost.Children.Clear();
 
-        var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
+        List<VariableAssignment> items = node.Assignments
+            .Where(item => item.Variable.Length > 0)
+            .ToList();
+
+        var itemRows = new List<IReadOnlyList<Control>>();
+        var abilityRows = new List<IReadOnlyList<Control>>();
+        var rawRows = new List<IReadOnlyList<Control>>();
+
+        foreach (ConditionDefinition condition in node.Conditions)
+        {
+            bool decomposed = Vn.Authoring.Chapters.ConditionExpressionParser.TryDecomposeSingle(
+                (condition.Expression ?? string.Empty).Replace("$", string.Empty, StringComparison.Ordinal),
+                out string pickedName, out string pickedOperator, out string pickedValue);
+
+            if (!decomposed && (condition.Expression ?? string.Empty).Trim().Length > 0)
+            {
+                rawRows.Add(BuildRawConditionCells(condition));
+                continue;
+            }
+
+            // 종류는 가리키는 아이템·능력이 정한다. 그것이 사라졌으면 부호가 말해 준다
+            // (`== true`는 능력의 것이다) — 어느 쪽으로도 못 정하면 아이템으로 본다.
+            bool ability = items
+                    .FirstOrDefault(item =>
+                        string.Equals(item.Variable, pickedName, StringComparison.Ordinal))?.IsBool
+                ?? (pickedOperator is "true" or "false");
+
+            if (ability)
+            {
+                abilityRows.Add(BuildAbilityConditionCells(condition, pickedName, pickedOperator));
+            }
+            else
+            {
+                itemRows.Add(BuildItemConditionCells(condition, pickedName, pickedOperator, pickedValue));
+            }
+        }
+
+        ConditionHost.Children.Add(BuildTable(
+            "아이템 조건", ConditionColumns, ["이름", "아이템", "부호", "값"], itemRows,
+            "없습니다. [＋ 아이템 조건]으로 만듭니다 — 아이템이 하나는 있어야 합니다."));
+
+        ConditionHost.Children.Add(BuildTable(
+            "능력 조건", ConditionColumns, ["이름", "능력", "상태", ""], abilityRows,
+            "없습니다. [＋ 능력 조건]으로 만듭니다 — 능력이 하나는 있어야 합니다."));
+
+        // 없으면 아예 내놓지 않는다 — 대부분의 판에는 하나도 없는 표다.
+        if (rawRows.Count > 0)
+        {
+            ConditionHost.Children.Add(BuildTable(
+                "직접 적은 식 (읽기 전용)", RawConditionColumns, ["이름", "식"], rawRows,
+                string.Empty));
+        }
+
+        AddItemConditionButton.IsEnabled = items.Any(item => !item.IsBool);
+        AddAbilityConditionButton.IsEnabled = items.Any(item => item.IsBool);
+
+        ToolTip.SetTip(AddItemConditionButton, AddItemConditionButton.IsEnabled
+            ? "고른 아이템의 개수를 부호와 수치로 견줍니다."
+            : "[아이템·능력] 탭에서 아이템을 먼저 만드세요.");
+        ToolTip.SetTip(AddAbilityConditionButton, AddAbilityConditionButton.IsEnabled
+            ? "고른 능력이 있는지/없는지를 봅니다."
+            : "[아이템·능력] 탭에서 능력을 먼저 만드세요.");
+    }
+
+    /// <summary>조건 이름 칸 — 작가가 읽을 이름. 세 종류가 같은 것을 쓴다.</summary>
+    private static TextBox ConditionNameBox(ConditionDefinition condition, Action commit)
+    {
+        var name = new TextBox
+        {
+            Text = condition.Name,
+            PlaceholderText = "작가가 읽을 이름",
+            FontSize = 12,
+            MinWidth = 80,
+            Margin = new Thickness(0, 0, 4, 0)
+        };
+
+        name.LostFocus += (_, _) => commit();
+        return name;
+    }
+
+    private Button ConditionRemoveButton(ConditionDefinition condition)
+    {
+        var remove = new Button
+        {
+            Content = "✕",
+            FontSize = 10,
+            Margin = new Thickness(4, 0, 0, 0),
+            [ToolTip.TipProperty] = "이 조건을 지웁니다. 대사 노드에서 쓰고 있었다면 그 줄의 조건이 풀립니다."
+        };
+
         remove.Click += (_, _) => _session!.Editor.RemoveCondition(condition.Id);
+        return remove;
+    }
 
-        List<VariableAssignment> items = _session?.Project.FindNode(_nodeId) is SetNode owner
-            ? owner.Assignments.Where(item => item.Variable.Length > 0).ToList()
-            : [];
+    /// <summary>
+    /// 대상 드롭다운 — <b>그 종류의 이름만</b> 담는다. 여는 순간 다시 읽는다 (2026-08-23
+    /// 소유자: "아이템을 +추가를 한 뒤에 … 다른 노드에 갔다와야 하는게 불편해").
+    /// 아이템·능력 편집은 <c>Content</c> 변경이라 이 화면을 다시 만들지 않으므로(타이핑 중
+    /// 컨트롤 파괴 방지) 후보가 행을 만들 때의 것으로 굳어 있었다.
+    /// </summary>
+    private ComboBox ConditionTargetCombo(bool ability, string picked, Action commit)
+    {
+        List<string> Names() =>
+            _session?.Project.FindNode(_nodeId) is SetNode owner
+                ? owner.Assignments
+                    .Where(item => item.Variable.Length > 0 && item.IsBool == ability)
+                    .Select(item => item.Variable)
+                    .ToList()
+                : [];
 
-        // 식 → 세 칸. 못 나누면(복합식·수기 편집) 원문을 그대로 지킨다.
-        bool decomposed = Vn.Authoring.Chapters.ConditionExpressionParser.TryDecomposeSingle(
-            (condition.Expression ?? string.Empty).Replace("$", string.Empty, StringComparison.Ordinal),
-            out string pickedName, out string pickedOperator, out string pickedValue);
+        List<string> names = Names();
 
-        if (!decomposed && (condition.Expression ?? string.Empty).Trim().Length > 0)
+        var combo = new ComboBox
         {
-            var raw = new TextBox
-            {
-                Text = condition.Expression,
-                IsReadOnly = true,
-                Margin = new Thickness(6, 0, 0, 0),
-                FontSize = 11,
-                FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono,Consolas"),
-                [ToolTip.TipProperty] = "여러 항을 묶은 식이라 칸으로 나누지 않았습니다. " +
-                                        "고치려면 지우고 다시 만드세요."
-            };
-
-            var rawRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
-            Grid.SetColumn(name, 0);
-            Grid.SetColumn(raw, 1);
-            Grid.SetColumn(remove, 2);
-            rawRow.Children.Add(name);
-            rawRow.Children.Add(raw);
-            rawRow.Children.Add(remove);
-
-            name.LostFocus += (_, _) =>
-            {
-                if (!_building)
-                {
-                    _session!.Editor.UpdateCondition(
-                        condition.Id, name.Text ?? string.Empty, condition.Expression ?? string.Empty);
-                }
-            };
-
-            return rawRow;
-        }
-
-        var target = new ComboBox
-        {
-            ItemsSource = items.Select(item => item.Variable).ToList(),
-            SelectedItem = items.Any(item => item.Variable == pickedName) ? pickedName : null,
-            PlaceholderText = items.Count == 0 ? "아이템·능력을 먼저 더하세요" : "아이템·능력",
+            ItemsSource = names,
+            SelectedItem = names.Contains(picked, StringComparer.Ordinal) ? picked : null,
+            PlaceholderText = ability ? "능력" : "아이템",
             FontSize = 11,
-            Margin = new Thickness(6, 0, 0, 0),
-            MinWidth = 110
+            Margin = new Thickness(0, 0, 4, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
-        // 부호는 아이템일 때만. 능력은 == 고정이라 보여 줄 것이 없다.
-        var comparison = new ComboBox
+        combo.DropDownOpened += (_, _) =>
         {
-            ItemsSource = ConditionOperators,
-            SelectedItem = ConditionOperators.Contains(pickedOperator) ? pickedOperator : ">=",
-            FontSize = 11,
-            Margin = new Thickness(6, 0, 0, 0),
-            MinWidth = 60
+            List<string> fresh = Names();
+
+            // 목록이 그대로면 손대지 않는다 — 갈아 끼우면 선택이 풀렸다 붙으며 조건 식이
+            // 한 번 더 써진다.
+            if (combo.ItemsSource is IEnumerable<string> current &&
+                fresh.SequenceEqual(current, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            string? kept = combo.SelectedItem as string;
+            _building = true;
+
+            try
+            {
+                combo.ItemsSource = fresh;
+                combo.SelectedItem = kept is not null && fresh.Contains(kept, StringComparer.Ordinal)
+                    ? kept
+                    : null;
+            }
+            finally
+            {
+                _building = false;
+            }
         };
 
-        var value = new TextBox
-        {
-            Text = pickedValue,
-            PlaceholderText = "수치",
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            MinWidth = 60
-        };
+        combo.SelectionChanged += (_, _) => commit();
+        return combo;
+    }
 
-        // 능력의 값은 On/Off다 — 식은 `== true` / `== false`가 된다.
-        var toggle = new CheckBox
-        {
-            IsChecked = string.Equals(pickedOperator, "true", StringComparison.Ordinal),
-            Content = string.Equals(pickedOperator, "true", StringComparison.Ordinal) ? "On" : "Off",
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        bool IsAbility() => items.FirstOrDefault(item =>
-            string.Equals(item.Variable, target.SelectedItem as string, StringComparison.Ordinal))?.IsBool == true;
-
-        void ApplyKind()
-        {
-            bool ability = IsAbility();
-            comparison.IsVisible = !ability;
-            value.IsVisible = !ability;
-            toggle.IsVisible = ability;
-        }
+    private IReadOnlyList<Control> BuildItemConditionCells(
+        ConditionDefinition condition,
+        string pickedName,
+        string pickedOperator,
+        string pickedValue)
+    {
+        ComboBox target = null!;
+        ComboBox comparison = null!;
+        TextBox value = null!;
+        TextBox name = null!;
 
         void Commit()
         {
@@ -557,145 +778,191 @@ public partial class SetNodeEditor : UserControl
                 return;
             }
 
-            string expression = IsAbility()
-                ? $"${picked} == {(toggle.IsChecked == true ? "true" : "false")}"
-                : $"${picked} {comparison.SelectedItem as string ?? ">="} {(value.Text ?? string.Empty).Trim()}";
-
-            _session!.Editor.UpdateCondition(condition.Id, name.Text ?? string.Empty, expression);
+            _session!.Editor.UpdateCondition(
+                condition.Id,
+                name.Text ?? string.Empty,
+                $"${picked} {comparison.SelectedItem as string ?? ">="} {(value.Text ?? string.Empty).Trim()}");
         }
 
-        /// <summary>
-        /// 아이템·능력 후보를 <b>드롭다운을 열 때마다</b> 다시 읽는다 (2026-08-23 소유자:
-        /// "아이템을 +추가를 한 뒤에 능력을 적고나서 조건에 반영시키려면 다른 노드에
-        /// 갔다와야 하는게 불편해").
-        ///
-        /// 아이템·능력 편집은 <c>Content</c> 변경이라 이 화면을 다시 만들지 않는다
-        /// (<see cref="ProjectRefreshPlanner"/> — 타이핑 중에 컨트롤이 파괴되면 포커스가
-        /// 날아간다). 그 덕에 목록이 <b>행을 만들 때의 것으로 굳어</b> 있었고, 새 이름을
-        /// 보려면 노드를 떠났다 돌아오는 수밖에 없었다. 대사노드 화자 드롭다운이 포커스마다
-        /// 다시 읽는 것(W56)과 같은 처방이다.
-        /// </summary>
-        void RefreshTargets()
+        name = ConditionNameBox(condition, Commit);
+        target = ConditionTargetCombo(ability: false, pickedName, Commit);
+
+        comparison = new ComboBox
         {
-            if (_session?.Project.FindNode(_nodeId) is not SetNode owner)
-            {
-                return;
-            }
-
-            List<VariableAssignment> fresh = owner.Assignments
-                .Where(item => item.Variable.Length > 0)
-                .ToList();
-
-            bool sameNames = fresh
-                .Select(item => item.Variable)
-                .SequenceEqual(items.Select(item => item.Variable), StringComparer.Ordinal);
-
-            // 이름이 같아도 종류(아이템↔능력)는 다를 수 있다 — IsAbility가 최신을 보게 한다.
-            items.Clear();
-            items.AddRange(fresh);
-
-            if (sameNames)
-            {
-                // ItemsSource를 갈면 선택이 풀렸다 다시 붙으며 조건이 한 번 더 써진다.
-                // 목록이 그대로면 그 값을 치르지 않는다.
-                return;
-            }
-
-            string? picked = target.SelectedItem as string;
-
-            _building = true;
-
-            try
-            {
-                target.ItemsSource = fresh.Select(item => item.Variable).ToList();
-                target.SelectedItem =
-                    picked is not null &&
-                    fresh.Any(item => string.Equals(item.Variable, picked, StringComparison.Ordinal))
-                        ? picked
-                        : null;
-            }
-            finally
-            {
-                _building = false;
-            }
-
-            target.PlaceholderText = fresh.Count == 0 ? "아이템·능력을 먼저 더하세요" : "아이템·능력";
-            ApplyKind();
-        }
-
-        ApplyKind();
-
-        // 여는 순간이 곧 "지금 무엇이 있나"를 묻는 순간이다.
-        target.DropDownOpened += (_, _) => RefreshTargets();
-
-        name.LostFocus += (_, _) => Commit();
-        target.SelectionChanged += (_, _) =>
-        {
-            ApplyKind();
-            Commit();
+            ItemsSource = ConditionOperators,
+            SelectedItem = ConditionOperators.Contains(pickedOperator) ? pickedOperator : ">=",
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 4, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
         comparison.SelectionChanged += (_, _) => Commit();
+
+        value = new TextBox
+        {
+            Text = pickedValue,
+            PlaceholderText = "수치",
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 4, 0)
+        };
         value.LostFocus += (_, _) => Commit();
+
+        return [name, target, comparison, value, ConditionRemoveButton(condition)];
+    }
+
+    private IReadOnlyList<Control> BuildAbilityConditionCells(
+        ConditionDefinition condition,
+        string pickedName,
+        string pickedOperator)
+    {
+        ComboBox target = null!;
+        CheckBox toggle = null!;
+        TextBox name = null!;
+
+        void Commit()
+        {
+            if (_building || target.SelectedItem is not string picked || picked.Length == 0)
+            {
+                return;
+            }
+
+            _session!.Editor.UpdateCondition(
+                condition.Id,
+                name.Text ?? string.Empty,
+                $"${picked} == {(toggle.IsChecked == true ? "true" : "false")}");
+        }
+
+        name = ConditionNameBox(condition, Commit);
+        target = ConditionTargetCombo(ability: true, pickedName, Commit);
+
+        // 능력에는 부호가 없다 (소유자) — On/Off뿐이라 `>=` 같은 것이 설 자리가 없다.
+        toggle = new CheckBox
+        {
+            IsChecked = string.Equals(pickedOperator, "true", StringComparison.Ordinal),
+            Content = string.Equals(pickedOperator, "true", StringComparison.Ordinal) ? "On" : "Off",
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
         toggle.IsCheckedChanged += (_, _) =>
         {
             toggle.Content = toggle.IsChecked == true ? "On" : "Off";
             Commit();
         };
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto") };
-        Grid.SetColumn(name, 0);
-        Grid.SetColumn(target, 1);
-        Grid.SetColumn(comparison, 2);
-        Grid.SetColumn(value, 3);
-        Grid.SetColumn(toggle, 3);
-        Grid.SetColumn(remove, 4);
-        row.Children.Add(name);
-        row.Children.Add(target);
-        row.Children.Add(comparison);
-        row.Children.Add(value);
-        row.Children.Add(toggle);
-        row.Children.Add(remove);
+        // 아이템 조건과 <b>같은 열 정의</b>를 쓴다 — 두 표의 이름 칸이 어긋나면 눈이 매번
+        // 다시 맞춰야 한다 (2026-08-23 소유자: "둘이 동일하게"). 남는 칸은 빈 자리로 둔다.
+        return [name, target, toggle, new Panel(), ConditionRemoveButton(condition)];
+    }
 
-        return row;
+    private IReadOnlyList<Control> BuildRawConditionCells(ConditionDefinition condition)
+    {
+        TextBox name = null!;
+
+        name = ConditionNameBox(condition, () =>
+        {
+            if (!_building)
+            {
+                _session!.Editor.UpdateCondition(
+                    condition.Id, name.Text ?? string.Empty, condition.Expression ?? string.Empty);
+            }
+        });
+
+        var raw = new TextBox
+        {
+            Text = condition.Expression,
+            IsReadOnly = true,
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 4, 0),
+            FontFamily = new FontFamily("Cascadia Mono,Consolas"),
+            [ToolTip.TipProperty] = "여러 항을 묶은 식이라 칸으로 나누지 않았습니다. " +
+                                    "고치려면 지우고 다시 만드세요."
+        };
+
+        return [name, raw, ConditionRemoveButton(condition)];
     }
 
     /// <summary>
-    /// 종류 드롭다운 (2026-08-17 소유자: "시나리오 작가가 쓰는 건 변수라기보다는 아이템,
-    /// 혹은 능력이라고 하는 게 맞겠다").
+    /// 조건 하나를 <b>완성된 채로</b> 만든다 — 첫 아이템·능력을 가리키는 식으로 태어난다.
     ///
-    /// 저장되는 값은 예전 그대로 <c>float</c>/<c>bool</c>이다 — 바뀐 것은 <b>이름이 뜻을
-    /// 말하게 된 것</b>뿐이라 옛 프로젝트도 그대로 읽힌다. 숫자/플래그라는 자료형 이름은
-    /// 작가에게 아무것도 설명하지 못했다: 무엇을 담는 칸인지가 이제 종류에 적혀 있다.
+    /// 빈 식으로 태어나면 그 조건이 아이템의 것인지 능력의 것인지 <b>데이터가 말하지 못한다</b>
+    /// (<see cref="ConditionDefinition"/>은 이름과 식뿐이다). 그래서 종류별 단추가 각자 첫
+    /// 후보를 물려 준다 — 이름만 적으면 바로 쓸 수 있고, 대상은 드롭다운에서 바꾸면 된다.
     /// </summary>
-    private static readonly (string Type, string Label)[] VariableTypes =
-    [
-        (VariableAssignment.FloatType, "아이템 (개수)"),
-        (VariableAssignment.BoolType, "능력 (보유)")
-    ];
-
-    private Control BuildAssignmentRow(SetNode node, int index)
+    private void AddCondition(bool ability)
     {
-        VariableAssignment assignment = node.Assignments[index];
-
-        // 값보다 타입이 먼저다 — 무엇을 담는 변수인지부터 정한다.
-        var type = new ComboBox
+        if (_session?.Project.FindNode(_nodeId) is not SetNode node || _nodeId is null)
         {
-            ItemsSource = VariableTypes.Select(item => item.Label).ToList(),
-            SelectedIndex = Math.Max(
-                0,
-                Array.FindIndex(VariableTypes, item =>
-                    string.Equals(item.Type, assignment.Type, StringComparison.Ordinal))),
-            FontSize = 11,
-            MinWidth = 96,
-            VerticalAlignment = VerticalAlignment.Center
-        };
+            return;
+        }
 
+        VariableAssignment? first = node.Assignments
+            .FirstOrDefault(item => item.Variable.Length > 0 && item.IsBool == ability);
+
+        if (first is null)
+        {
+            return; // 단추가 이미 잠겨 있다 — 여기까지 오는 길은 우회 호출뿐이다.
+        }
+
+        // 이름은 빈칸으로 시작한다 (W47) — "새 조건"이 미리 채워져 있으면 지우는 일부터
+        // 시켜야 한다. 자리 안내는 PlaceholderText가 한다.
+        _session.Editor.AddCondition(
+            _nodeId,
+            string.Empty,
+            ability ? $"${first.Variable} == true" : $"${first.Variable} >= 1");
+    }
+
+    private const string AssignmentColumns = "26,*,96,80,80,32";
+
+
+    /// <summary>
+    /// 아이템 표와 능력 표 (2026-08-23). <b>둘은 다른 열을 갖는다</b> — 아이템은 개수라
+    /// 초기값·슬라이더 범위가 있고, 능력은 있다/없다뿐이라 On/Off 하나면 끝이다.
+    ///
+    /// ⚠ <b>종류 드롭다운이 사라졌다</b> (소유자: "bool과 int 타입이 서로 오고가고 있는데
+    /// 오히려 직관적이지 않아서 불편하다"). 종류는 <see cref="AddAssignment"/>가 정하고 그
+    /// 뒤로 안 바뀐다 — 행이 갈아입지 않으니 <b>안 쓰는 칸의 값이 새 종류로 넘어오는 사고</b>
+    /// (2026-08-17 소유자 보고: 능력→아이템에서 초기값이 `false`가 되던 것)도 구조적으로
+    /// 불가능해졌다. 종류를 잘못 골랐으면 지우고 다시 만든다.
+    ///
+    /// 저장되는 자료형은 예전 그대로 <c>float</c>/<c>bool</c>이라 옛 프로젝트도 읽힌다.
+    /// </summary>
+    private void RebuildAssignments(SetNode node)
+    {
+        AssignmentHost.Children.Clear();
+
+        var itemRows = new List<IReadOnlyList<Control>>();
+        var abilityRows = new List<IReadOnlyList<Control>>();
+
+        for (int index = 0; index < node.Assignments.Count; index++)
+        {
+            if (node.Assignments[index].IsBool)
+            {
+                abilityRows.Add(BuildAbilityCells(node, index));
+            }
+            else
+            {
+                itemRows.Add(BuildItemCells(node, index));
+            }
+        }
+
+        AssignmentHost.Children.Add(BuildTable(
+            "아이템 (개수)", AssignmentColumns, ["이름", "초기값", "최소", "최대"], itemRows,
+            "없습니다. [＋ 아이템]으로 만듭니다 — 약초 3개처럼 개수로 세는 것."));
+
+        AssignmentHost.Children.Add(BuildTable(
+            "능력 (보유)", AssignmentColumns, ["이름", "초기값", "", ""], abilityRows,
+            "없습니다. [＋ 능력]으로 만듭니다 — 자물쇠따기처럼 있다/없다뿐인 것."));
+    }
+
+    /// <summary>이름 칸 — 자동완성 후보는 포커스마다 다시 읽는다(다른 행에 방금 적은 이름).</summary>
+    private AutoCompleteBox AssignmentNameBox(VariableAssignment assignment, Action commit)
+    {
         var variable = new AutoCompleteBox
         {
             Text = assignment.Variable,
-            PlaceholderText = "아이템·능력 이름",
+            PlaceholderText = "이름",
             FontSize = 12,
-            Margin = new Thickness(6, 0, 0, 0),
+            MinWidth = 80,
+            Margin = new Thickness(0, 0, 4, 0),
             // A계층 스탯은 후보에서 뺀다 (2026-08-17 소유자) — 정의 파일의 variables는 두
             // 계층을 한 목록에 담고 있어서, 그대로 쓰면 작가가 trust에 set을 걸 수 있다.
             // 스탯이 변하는 자리는 간선뿐이므로 화면이 그 규칙을 지킨다.
@@ -704,72 +971,67 @@ public partial class SetNodeEditor : UserControl
             MinimumPrefixLength = 0
         };
 
-        // Bool 플래그의 값은 수치가 아니라 On/Off다 (X7). 저장 값은 Yarn 문법 그대로
-        // true/false 문자열이라 출력은 바뀌지 않는다.
-        bool isBool = assignment.IsBool;
+        variable.LostFocus += (_, _) => commit();
+        variable.GotFocus += (_, _) => variable.ItemsSource = WriterVariableNames();
 
-        var boolValue = new CheckBox
+        return variable;
+    }
+
+    private Button AssignmentRemoveButton(SetNode node, int index)
+    {
+        var remove = new Button
         {
-            IsChecked = string.Equals(assignment.Value, "true", StringComparison.OrdinalIgnoreCase),
-            Content = string.Equals(assignment.Value, "true", StringComparison.OrdinalIgnoreCase) ? "On" : "Off",
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            IsVisible = isBool,
-            VerticalAlignment = VerticalAlignment.Center
+            Content = "✕",
+            FontSize = 10,
+            Margin = new Thickness(4, 0, 0, 0),
+            [ToolTip.TipProperty] = "이 줄을 지웁니다. 이것을 쓰던 조건은 대상이 빈 채로 남습니다."
         };
 
-        var value = new TextBox
+        remove.Click += (_, _) =>
         {
-            Text = assignment.Value,
-            PlaceholderText = "초기값",
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 12,
-            IsVisible = !isBool
+            List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
+
+            if (index < next.Count)
+            {
+                next.RemoveAt(index);
+                _session!.Editor.SetAssignments(node.Id, next);
+            }
         };
 
-        // Set 편집 슬라이더의 변수별 범위 (X6). 비우면 기본 -5~+5다.
-        var sliderMin = new TextBox
-        {
-            Text = assignment.SliderMin?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            PlaceholderText = VariableAssignment.DefaultSliderMin.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Margin = new Thickness(6, 0, 0, 0),
-            FontSize = 11,
-            Width = 44
-        };
-        ToolTip.SetTip(sliderMin, "슬라이더 최솟값 — 편의 범위이며 직접 입력은 범위 밖도 됩니다.");
+        return remove;
+    }
 
-        var sliderMax = new TextBox
-        {
-            Text = assignment.SliderMax?.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            PlaceholderText = "+" + VariableAssignment.DefaultSliderMax.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Margin = new Thickness(2, 0, 0, 0),
-            FontSize = 11,
-            Width = 44
-        };
-        ToolTip.SetTip(sliderMax, "슬라이더 최댓값");
+    /// <summary>아이템의 초기값은 숫자다 — 숫자로 못 읽으면 0에서 시작한다.</summary>
+    private static string NumberOrZero(string? text)
+    {
+        string trimmed = (text ?? string.Empty).Trim();
 
-        /// <summary>아이템의 초기값은 숫자다 — 숫자로 못 읽으면 0에서 시작한다.</summary>
-        static string NumberOrZero(string? text)
-        {
-            string trimmed = (text ?? string.Empty).Trim();
+        return double.TryParse(
+            trimmed,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out _)
+            ? trimmed
+            : "0";
+    }
 
-            return double.TryParse(
-                trimmed,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out _)
-                ? trimmed
-                : "0";
-        }
+    private static double? ParseRange(string? text) =>
+        double.TryParse(
+            text,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out double parsed)
+            ? parsed
+            : null;
 
-        static double? ParseRange(string? text) =>
-            double.TryParse(
-                text,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double parsed)
-                ? parsed
-                : null;
+    private IReadOnlyList<Control> BuildItemCells(SetNode node, int index)
+    {
+        VariableAssignment assignment = node.Assignments[index];
+
+        AutoCompleteBox variable = null!;
+        TextBox value = null!;
+        TextBox sliderMin = null!;
+        TextBox sliderMax = null!;
 
         void Commit()
         {
@@ -778,21 +1040,18 @@ public partial class SetNodeEditor : UserControl
                 return;
             }
 
-            string nextType = VariableTypes[Math.Max(0, type.SelectedIndex)].Type;
-            bool nextIsBool = string.Equals(nextType, VariableAssignment.BoolType, StringComparison.Ordinal);
-
             List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
+
+            if (index >= next.Count)
+            {
+                return; // 그 사이 줄이 지워졌다 — 다음 그리기가 정본이다.
+            }
+
             next[index] = new VariableAssignment
             {
                 Variable = variable.Text ?? string.Empty,
-                // 값 공간이 종류마다 다르다 — 능력은 true/false, 아이템은 숫자다.
-                // 종류를 바꾸면 안 쓰는 쪽 칸의 값이 그대로 넘어와 아이템 초기값이
-                // `false`로 적히던 버그가 있었다 (2026-08-17 소유자 보고). 새 종류가
-                // 읽을 수 없는 값은 그 종류의 기본값으로 떨군다.
-                Value = nextIsBool
-                    ? (boolValue.IsChecked == true ? "true" : "false")
-                    : NumberOrZero(value.Text),
-                Type = nextType,
+                Value = NumberOrZero(value.Text),
+                Type = VariableAssignment.FloatType,
                 SliderMin = ParseRange(sliderMin.Text),
                 SliderMax = ParseRange(sliderMax.Text)
             };
@@ -800,68 +1059,102 @@ public partial class SetNodeEditor : UserControl
             _session!.Editor.SetAssignments(node.Id, next);
         }
 
-        type.SelectionChanged += (_, _) =>
+        variable = AssignmentNameBox(assignment, Commit);
+
+        value = new TextBox
         {
-            Commit();
-
-            // 타입 전환은 행의 모양이 바뀌는 일이다 (W47) — On/Off 토글·초기값 칸이 즉시
-            // 갈아끼워져야 하고, 조건 행의 편집 형태도 타입을 따른다. 콤보 이벤트 안에서
-            // 자기 자신을 지우지 않도록 다음 UI 턴에 다시 만든다.
-            if (!_building)
-            {
-                Avalonia.Threading.Dispatcher.UIThread.Post(Rebuild);
-            }
+            Text = assignment.Value,
+            PlaceholderText = "0",
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 4, 0)
         };
-        variable.LostFocus += (_, _) => Commit();
-
-        // 자동완성 후보도 포커스마다 다시 읽는다 (2026-08-23) — 조건 드롭다운과 같은 자리에
-        // 있던 같은 굳음이다: 방금 다른 행에 적은 이름이 이 칸의 후보에는 없었다.
-        variable.GotFocus += (_, _) => variable.ItemsSource = WriterVariableNames();
-
         value.LostFocus += (_, _) => Commit();
+
+        // Set 편집 슬라이더의 변수별 범위 (X6). 비우면 기본 -5~+5다.
+        sliderMin = new TextBox
+        {
+            Text = assignment.SliderMin?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            PlaceholderText = VariableAssignment.DefaultSliderMin.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 2, 0),
+            [ToolTip.TipProperty] = "슬라이더 최솟값 — 편의 범위이며 직접 입력은 범위 밖도 됩니다."
+        };
+        sliderMin.LostFocus += (_, _) => Commit();
+
+        sliderMax = new TextBox
+        {
+            Text = assignment.SliderMax?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            PlaceholderText = "+" + VariableAssignment.DefaultSliderMax.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
+            FontSize = 11,
+            Margin = new Thickness(0, 0, 4, 0),
+            [ToolTip.TipProperty] = "슬라이더 최댓값"
+        };
+        sliderMax.LostFocus += (_, _) => Commit();
+
+        return [variable, value, sliderMin, sliderMax, AssignmentRemoveButton(node, index)];
+    }
+
+    private IReadOnlyList<Control> BuildAbilityCells(SetNode node, int index)
+    {
+        VariableAssignment assignment = node.Assignments[index];
+
+        AutoCompleteBox variable = null!;
+        CheckBox boolValue = null!;
+
+        void Commit()
+        {
+            if (_building)
+            {
+                return;
+            }
+
+            List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
+
+            if (index >= next.Count)
+            {
+                return;
+            }
+
+            next[index] = new VariableAssignment
+            {
+                Variable = variable.Text ?? string.Empty,
+                // 저장 값은 Yarn 문법 그대로 true/false 문자열이라 출력이 바뀌지 않는다 (X7).
+                Value = boolValue.IsChecked == true ? "true" : "false",
+                Type = VariableAssignment.BoolType
+
+                // 슬라이더 범위는 능력에 뜻이 없다 — 담지 않는다.
+            };
+
+            _session!.Editor.SetAssignments(node.Id, next);
+        }
+
+        variable = AssignmentNameBox(assignment, Commit);
+
+        boolValue = new CheckBox
+        {
+            IsChecked = string.Equals(assignment.Value, "true", StringComparison.OrdinalIgnoreCase),
+            Content = string.Equals(assignment.Value, "true", StringComparison.OrdinalIgnoreCase) ? "On" : "Off",
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
         boolValue.IsCheckedChanged += (_, _) =>
         {
             boolValue.Content = boolValue.IsChecked == true ? "On" : "Off";
             Commit();
         };
-        sliderMin.LostFocus += (_, _) => Commit();
-        sliderMax.LostFocus += (_, _) => Commit();
 
-        var remove = new Button { Content = "✕", FontSize = 10, Margin = new Thickness(6, 0, 0, 0) };
-
-        remove.Click += (_, _) =>
-        {
-            List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
-            next.RemoveAt(index);
-            _session!.Editor.SetAssignments(node.Id, next);
-        };
-
-        // Bool 플래그에는 슬라이더 범위가 의미 없다.
-        sliderMin.IsVisible = !isBool;
-        sliderMax.IsVisible = !isBool;
-
-        var valueHost = new Panel();
-        valueHost.Children.Add(value);
-        valueHost.Children.Add(boolValue);
-
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,*,Auto,Auto,Auto") };
-        Grid.SetColumn(type, 0);
-        Grid.SetColumn(variable, 1);
-        Grid.SetColumn(valueHost, 2);
-        Grid.SetColumn(sliderMin, 3);
-        Grid.SetColumn(sliderMax, 4);
-        Grid.SetColumn(remove, 5);
-        row.Children.Add(type);
-        row.Children.Add(variable);
-        row.Children.Add(valueHost);
-        row.Children.Add(sliderMin);
-        row.Children.Add(sliderMax);
-        row.Children.Add(remove);
-
-        return row;
+        // 아이템 표와 같은 열 정의 — 이름 칸 길이가 두 표에서 같아야 한다 (소유자).
+        return [variable, boolValue, new Panel(), new Panel(), AssignmentRemoveButton(node, index)];
     }
 
-    private void AddAssignment()
+    /// <summary>
+    /// 아이템·능력 한 줄을 <b>그 종류로</b> 만든다 — 값 공간이 종류마다 달라서, 태어날 때
+    /// 그 종류의 기본값을 갖는다(아이템 0 · 능력 Off).
+    /// </summary>
+    private void AddAssignment(bool ability)
     {
         if (_session?.Project.FindNode(_nodeId) is not SetNode node)
         {
@@ -869,8 +1162,14 @@ public partial class SetNodeEditor : UserControl
         }
 
         List<VariableAssignment> next = node.Assignments.Select(item => item.Clone()).ToList();
-        next.Add(new VariableAssignment());
+
+        next.Add(new VariableAssignment
+        {
+            Variable = string.Empty,
+            Value = ability ? "false" : "0",
+            Type = ability ? VariableAssignment.BoolType : VariableAssignment.FloatType
+        });
+
         _session.Editor.SetAssignments(node.Id, next);
     }
-
 }

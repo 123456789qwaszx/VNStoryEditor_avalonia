@@ -9,52 +9,65 @@
             <TextBox x:Name="NameBox" FontWeight="SemiBold" PlaceholderText="설정 이름" />
         </Border>
 
-        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Margin="12" Spacing="14">
-                <StackPanel Spacing="6">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="조건" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" x:Name="AddConditionButton" Content="조건 추가" FontSize="11" />
-                    </Grid>
-                    <!-- 2026-08-17 소유자 — 식을 손으로 쓰지 않는다. 아이템·능력을 고르고
-                         부호를 고르고 수치를 적는다(대사 노드의 Set과 같은 감각). -->
-                    <TextBlock Text="아래 아이템·능력을 먼저 만들면 여기서 고를 수 있습니다. 여기서 만든 조건이 대사 노드의 조건 드롭다운에 나타납니다."
-                               FontSize="11"
-                               Opacity="0.65"
-                               TextWrapping="Wrap" />
-                    <StackPanel x:Name="ConditionHost" Spacing="6" />
-                </StackPanel>
+        <!-- 셋이 한 화면에 쌓여 있던 것을 탭으로 갈랐다 (2026-08-23 소유자) — 조건은 스크롤
+             한참 아래의 아이템·능력을 참조하는데, 둘이 같은 기둥에 있으면 하나를 보려고
+             다른 하나를 늘 지나쳐야 했다. 셋은 서로 다른 일이다: 조건은 쓰는 쪽,
+             아이템·능력은 만드는 쪽, 화자는 읽기만 하는 거울. -->
+        <TabControl Grid.Row="1" x:Name="SectionTabs" Padding="0">
+            <TabItem x:Name="ConditionTab" Header="조건" FontSize="12">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12" Spacing="8">
+                        <!-- 2026-08-17 소유자 — 식을 손으로 쓰지 않는다. 아이템·능력을 고르고
+                             부호를 고르고 수치를 적는다(대사 노드의 Set과 같은 감각).
+                             ⚠ 2026-08-23 — 추가 단추가 종류별로 갈렸다. 만든 뒤에 종류가
+                             오락가락하지 않는다: 행의 모양이 태어날 때 정해진다. -->
+                        <TextBlock Text="[아이템·능력] 탭에서 먼저 만들면 여기서 고를 수 있습니다. 여기서 만든 조건이 대사 노드의 조건 드롭다운에 나타납니다."
+                                   FontSize="11"
+                                   Opacity="0.65"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="AddItemConditionButton" Content="＋ 아이템 조건" FontSize="11" />
+                            <Button x:Name="AddAbilityConditionButton" Content="＋ 능력 조건" FontSize="11" />
+                        </StackPanel>
+                        <StackPanel x:Name="ConditionHost" Spacing="12" Margin="0,4,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                <StackPanel Spacing="6">
-                    <Grid ColumnDefinitions="*,Auto">
+            <TabItem x:Name="AssignmentTab" Header="아이템 · 능력" FontSize="12">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12" Spacing="8">
                         <!-- 2026-08-17 소유자 — 작가가 쓰는 건 "변수"가 아니라 아이템·능력이다.
                              아이템은 개수로 늘고 줄고, 능력은 있다/없다뿐이다. -->
-                        <TextBlock Grid.Column="0" Text="아이템 · 능력" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" x:Name="AddAssignmentButton" Content="＋ 추가" FontSize="11" />
-                    </Grid>
-                    <TextBlock x:Name="VariableHintText"
-                               FontSize="11"
-                               Opacity="0.65"
-                               TextWrapping="Wrap" />
-                    <StackPanel x:Name="AssignmentHost" Spacing="6" />
-                </StackPanel>
+                        <TextBlock x:Name="VariableHintText"
+                                   FontSize="11"
+                                   Opacity="0.65"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button x:Name="AddItemButton" Content="＋ 아이템" FontSize="11"
+                                    ToolTip.Tip="개수로 늘고 주는 것 — 약초 3개." />
+                            <Button x:Name="AddAbilityButton" Content="＋ 능력" FontSize="11"
+                                    ToolTip.Tip="있다/없다뿐인 것 — 자물쇠따기." />
+                        </StackPanel>
+                        <StackPanel x:Name="AssignmentHost" Spacing="12" Margin="0,4,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-                <StackPanel Spacing="6">
-                    <TextBlock Text="화자" FontWeight="SemiBold" />
-                    <!-- ⚠ [화자 추가]와 "작가가 더한 화자"는 2026-08-23에 폐지됐다
-                         (소유자: "이런 캐릭터는 컨셉과 배경이라던지 그런 게 꼼꼼히
-                         정해져야 하는데, 작가가 임의로 추가한다는 게 그렇게 좋아보이진
-                         않아서"). 화자의 주인은 기획자 하나다 — 여기는 읽는 자리다. -->
-                    <!-- 원천이 2026-08-23에 챕터 엑셀에서 툴 [화자] 탭으로 옮겨졌다 —
-                         안내도 그 자리를 가리켜야 한다(옛 문구는 없는 시트를 찾아가게 했다). -->
-                    <TextBlock Text="화자는 챕터 그래프의 [화자] 탭이 주인입니다 — 여기서는 고치지 않습니다. 모든 챕터가 같은 목록을 씁니다. 표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
-                               FontSize="11"
-                               Opacity="0.65"
-                               TextWrapping="Wrap" />
-                    <StackPanel x:Name="SpeakerHost" Spacing="6" />
-                </StackPanel>
-
-            </StackPanel>
-        </ScrollViewer>
+            <TabItem x:Name="SpeakerTab" Header="화자" FontSize="12">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="12" Spacing="8">
+                        <!-- ⚠ [화자 추가]와 "작가가 더한 화자"는 2026-08-23에 폐지됐고,
+                             같은 날 원천이 챕터 엑셀에서 툴 [화자] 탭으로 옮겨졌다.
+                             여기는 읽는 자리다. -->
+                        <TextBlock Text="화자는 챕터 그래프의 [화자] 탭이 주인입니다 — 여기서는 고치지 않습니다. 모든 챕터가 같은 목록을 씁니다. 표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
+                                   FontSize="11"
+                                   Opacity="0.65"
+                                   TextWrapping="Wrap" />
+                        <StackPanel x:Name="SpeakerHost" Spacing="12" Margin="0,4,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
     </Grid>
 </UserControl>
