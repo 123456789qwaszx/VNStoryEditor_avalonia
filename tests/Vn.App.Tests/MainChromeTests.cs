@@ -120,6 +120,41 @@ public sealed class MainChromeTests
         window.Close();
     });
 
+    /// <summary>
+    /// 2026-08-22 소유자 보고 — 챕터 목록 스플리터가 "위로만 움직이고 아래쪽으로는
+    /// 동작을 안 하는" 결함. 스플리터 <b>바로 아래가 잠금 배너(Auto)</b>였던 것이 정체다:
+    /// 아래로 끌려면 그 행을 줄여야 하는데 Auto는 이미 내용 높이라 줄 것이 없었고,
+    /// 위로 끌 때만 그 행이 늘며 움직였다. 배너와 탭을 안쪽 격자로 묶어 스플리터의
+    /// 상대를 <b>별(*) 행</b>으로 만들었다.
+    /// </summary>
+    [Fact]
+    public void 챕터_목록_스플리터_아래는_별_행이다() => HeadlessUi.Run(() =>
+    {
+        var window = new MainWindow();
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var chapterGraph = window.FindControl<ChapterGraphView>("ChapterGraph")!;
+        GridSplitter splitter = Assert.Single(
+            chapterGraph.GetVisualDescendants().OfType<GridSplitter>(),
+            item => item.ResizeDirection == GridResizeDirection.Rows);
+
+        var grid = (Grid)splitter.GetVisualParent()!;
+        int row = Grid.GetRow(splitter);
+
+        // 위: 사람이 끄는 절대 높이. 0까지 접히면 다시 잡을 손잡이가 없으므로 하한이 있다.
+        Assert.True(grid.RowDefinitions[row - 1].Height.IsAbsolute);
+        Assert.True(grid.RowDefinitions[row - 1].MinHeight > 0);
+
+        // 아래: ⚠ 여기가 Auto면 아래로 끌 때 줄일 것이 없어 스플리터가 한쪽으로만 움직인다.
+        Assert.True(
+            grid.RowDefinitions[row + 1].Height.IsStar,
+            "스플리터 아래는 별 행이어야 위아래로 다 끌린다");
+        Assert.Equal(row + 2, grid.RowDefinitions.Count);
+
+        window.Close();
+    });
+
     [Fact]
     public void 무대_프리뷰_탭에서는_노드_편집기가_접히고_에셋만_남는다() => HeadlessUi.Run(() =>
     {
