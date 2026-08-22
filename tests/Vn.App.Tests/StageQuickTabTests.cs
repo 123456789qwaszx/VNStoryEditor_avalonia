@@ -38,18 +38,6 @@ public sealed class StageQuickTabTests
             new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
             KeyModifiers.None));
 
-    private static void RightClick(Control target) => target.RaiseEvent(
-        new PointerPressedEventArgs(
-            target, new Pointer(0, PointerType.Mouse, true), target, default, 0,
-            new PointerPointProperties(RawInputModifiers.RightMouseButton, PointerUpdateKind.RightButtonPressed),
-            KeyModifiers.None));
-
-    private static void RightRelease(Control target) => target.RaiseEvent(
-        new PointerReleasedEventArgs(
-            target, new Pointer(0, PointerType.Mouse, true), target, default, 0,
-            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.RightButtonReleased),
-            KeyModifiers.None, MouseButton.Right));
-
     /// <summary>대사 발행 + 연출 노드가 선 세션 하나 — 칩이 실제로 커맨드를 달 수 있는 최소 무대.</summary>
     private static (AuthoringSession Session, string NodeId, string LineId) Stage()
     {
@@ -233,115 +221,6 @@ public sealed class StageQuickTabTests
         Assert.Equal("제자리 몸짓", pinned.DisplayName);
     });
 
-    /// <summary>
-    /// 2026-08-22 소유자 보고 — 담기 모드로 둔 채 무대를 다시 클릭하면 "오직 자주쓰는
-    /// 메뉴탭만 콘솔에 남은 이상한 상태"가 됐다.
-    ///
-    /// 원인은 라이트 디스미스를 끈 뒤 생긴 길이다: 무대 클릭이 팝업을 닫지 않고 곧장
-    /// 조절창 열기로 오면서 <b>열린 팝업의 Child를 갈아 끼웠다.</b> 지금은 먼저 닫고 연다.
-    /// (섞여 그려지는 것 자체는 Avalonia의 렌더 동작이라 여기서 볼 수 없다 — 여기서
-    /// 지키는 것은 그것을 막는 규칙이다: 다시 연 판은 <b>새 판</b>이고 탭이 온전하며
-    /// 담기 모드는 꺼진다.)
-    /// </summary>
-    [Fact]
-    public void 조절창을_다시_열면_새_판이_서고_담기_모드가_꺼진다() => HeadlessUi.Run(() =>
-    {
-        (AuthoringSession session, string nodeId, string lineId) = Stage();
-        StageSceneView view = SceneOf(session, nodeId, lineId);
-        var window = new Window { Width = 900, Height = 700, Content = view };
-        window.Show();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Control first = view.OpenStageConsoleProbe()!;
-        Assert.True(view.IsStageConsoleOpen);
-
-        view.SetQuickEditModeProbe(true);
-        Assert.True(view.IsQuickPinMode);
-
-        // 무대를 다시 클릭 = 조절창 다시 열기.
-        Control second = view.OpenStageConsoleProbe()!;
-
-        Assert.NotSame(first, second);
-        Assert.True(view.IsStageConsoleOpen);
-        Assert.False(view.IsQuickPinMode); // 새 판은 평소 모드다 — 터미널 활성 표시도 내려간다
-        Assert.Equal(
-            5,
-            second.GetLogicalDescendants().OfType<TabControl>().Single().Items.Count);
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// 2026-08-22 소유자 보고 — "우클릭 닫기가 안 된다"가 <b>두 번</b> 나왔다. 처음엔
-    /// 버블 핸들러라 판 안쪽 컨트롤(탭 머리·내용 컨테이너·글자 칸)이 먼저 삼켰고, 터널로
-    /// 옮긴 뒤에도 실기에서 안 닫혔다 — 헤드리스는 팝업이 창 안 오버레이로 서지만 실기
-    /// Windows에서는 별도 네이티브 팝업 창이라 입력 경로가 다르다. 그래서 한 경로에 걸지
-    /// 않는다: <b>누름 · 뗌 · ContextRequested</b> 셋이 각각 닫고, 무대 우클릭도 닫는다.
-    /// 여기서 지키는 것은 <b>삼키는 자식이 있어도 닫힌다</b>는 것이다.
-    /// </summary>
-    [Fact]
-    public void 조절창_안쪽_어디를_우클릭해도_닫힌다() => HeadlessUi.Run(() =>
-    {
-        (AuthoringSession session, string nodeId, string lineId) = Stage();
-        StageSceneView view = SceneOf(session, nodeId, lineId);
-        var window = new Window { Width = 900, Height = 700, Content = view };
-        window.Show();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Control console = view.OpenStageConsoleProbe()!;
-        Assert.True(view.IsStageConsoleOpen);
-
-        // 탭 안쪽 = 판 대부분을 차지하는 자리. 여기서 안 닫히면 기능이 없는 것과 같다.
-        TabControl tabs = console.GetLogicalDescendants().OfType<TabControl>().Single();
-
-        // ⚠ 결함의 정체를 그대로 세운다: 안쪽 컨트롤이 우클릭을 <b>먼저 삼킨다</b>.
-        // 버블 핸들러였다면 판까지 오지 못한다 — 터널이라야 삼킴보다 먼저 지난다.
-        tabs.PointerPressed += (_, swallowed) => swallowed.Handled = true;
-
-        RightClick(tabs);
-
-        Assert.False(view.IsStageConsoleOpen);
-
-        // 누름이 플랫폼에서 삼켜져도 뗌이 닫는다 — 실기에서 안 닫히던 것에 대한 보험이다.
-        TabControl reopened = view.OpenStageConsoleProbe()!
-            .GetLogicalDescendants().OfType<TabControl>().Single();
-        Assert.True(view.IsStageConsoleOpen);
-        RightRelease(reopened);
-        Assert.False(view.IsStageConsoleOpen);
-
-        // 맥락 메뉴 요청(우클릭의 정식 이름)도 같은 뜻이다.
-        TabControl third = view.OpenStageConsoleProbe()!
-            .GetLogicalDescendants().OfType<TabControl>().Single();
-        Assert.True(view.IsStageConsoleOpen);
-        third.RaiseEvent(new ContextRequestedEventArgs());
-        Assert.False(view.IsStageConsoleOpen);
-
-        window.Close();
-    });
-
-    /// <summary>
-    /// 무대 우클릭도 닫는다 (2026-08-22) — 라이트 디스미스를 끄면서 "바깥을 누르면
-    /// 닫힌다"는 손버릇이 갈 곳을 잃었다. 좌클릭은 여는 손짓이라 겹치면 안 되므로
-    /// 우클릭만 그 자리를 잇는다(무대 우클릭은 지금까지 아무 뜻도 없었다).
-    /// </summary>
-    [Fact]
-    public void 무대_우클릭도_열려_있는_조절창을_닫는다() => HeadlessUi.Run(() =>
-    {
-        (AuthoringSession session, string nodeId, string lineId) = Stage();
-        StageSceneView view = SceneOf(session, nodeId, lineId);
-        var window = new Window { Width = 900, Height = 700, Content = view };
-        window.Show();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        view.OpenStageConsoleProbe();
-        Assert.True(view.IsStageConsoleOpen);
-
-        RightClick(view.GetLogicalDescendants().OfType<Canvas>().First());
-
-        Assert.False(view.IsStageConsoleOpen);
-
-        window.Close();
-    });
 
     [Fact]
     public void 칩을_펴면_작업대와_같은_수치_조절이_선다() => HeadlessUi.Run(() =>

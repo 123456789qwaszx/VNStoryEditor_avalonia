@@ -37,7 +37,7 @@
                  작업대는 <b>비어 있어도 접지 않는다</b>(같은 날: 클릭마다 레이아웃이 움직이던
                  원인) — 사람이 스플리터로 정한 비율만이 이 높이를 바꾼다. -->
             <Grid Grid.Row="2"
-                  ColumnDefinitions="380,10,*"
+                  ColumnDefinitions="380,10,*,6,340"
                   Margin="0,8,0,0">
                 <Grid Grid.Column="0"
                       x:Name="LeftColumn"
@@ -94,6 +94,21 @@
                                         VerticalAlignment="Center" />
                     </Grid>
                 </Grid>
+
+                <GridSplitter Grid.Column="3"
+                              ResizeDirection="Columns"
+                              Background="{DynamicResource ThemeBorderLowBrush}" />
+
+                <!-- 조절창이 붙박이가 됐다 (2026-08-22 소유자: "화면을 클릭했을 때 나오는
+                     콘솔이 연출 프리뷰 오른쪽에 상시 표시되면 좋겠어. 챕터그래프와
+                     연출그래프에서처럼") — 무대 위를 덮던 팝업이 제 기둥을 얻었다.
+                     내용은 팝업 시절과 <b>같은 함수</b>가 짓는다(StageSceneView.
+                     BuildStagePopover) — 담는 그릇만 바뀌었다. -->
+                <Border Grid.Column="4"
+                        BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                        BorderThickness="1,0,0,0">
+                    <ContentControl x:Name="ConsoleHost" />
+                </Border>
             </Grid>
 
             <!-- 알림·경고 — 뜨는 것은 좋으나 무대를 밀지 않는다 (2026-08-21 소유자:

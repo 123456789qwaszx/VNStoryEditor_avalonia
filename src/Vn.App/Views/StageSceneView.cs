@@ -77,8 +77,67 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     internal bool IsQuickPinMode => _quickEditMode;
 
-    /// <summary>열려 있는 조절창을 그 자리에서 다시 그린다. 닫혀 있으면 아무 일도 없다.</summary>
+    /// <summary>조절창을 그 자리에서 다시 그린다.</summary>
     internal void RefreshConsole() => _consoleRebuild?.Invoke();
+
+    /// <summary>
+    /// 무대 조절창을 <b>붙박이 판</b>으로 짓는다 (2026-08-22 소유자: "화면을 클릭했을 때
+    /// 나오는 콘솔이 연출 프리뷰 오른쪽에 상시 표시되면 좋겠어 — 챕터그래프와
+    /// 연출그래프에서처럼").
+    ///
+    /// 내용은 팝업 시절과 <b>같은 함수</b>(<see cref="BuildStagePopover"/>)가 짓는다 —
+    /// 담는 그릇만 바뀌었다. 딸려 죽은 것: 끌기 손잡이·✕·우클릭 닫기·라이트 디스미스.
+    /// 닫히지 않는 판에는 닫는 손짓이 없다.
+    /// </summary>
+    internal Control BuildDockedConsole()
+    {
+        var content = new StackPanel { Spacing = 6, Margin = new Thickness(10, 8) };
+
+        void Rebuild()
+        {
+            content.Children.Clear();
+            UiGuard.Run(_session, "조절창 갱신", () =>
+            {
+                if (_session is null || _request is null)
+                {
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = "씬을 고르면 여기서 무대를 조작합니다.",
+                        FontSize = 11,
+                        Opacity = 0.55,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                    return;
+                }
+
+                // 잠긴 화면(공급된 발행본)에서는 누를 것이 없다 — 이유를 적고 만다.
+                // 예전에는 팝업이 아예 안 열려 이 상태를 말할 자리가 없었다.
+                if (!CanManipulate())
+                {
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = _request.EditContext?.DisabledReason
+                            ?? "라인을 고르면 무대를 조작할 수 있습니다.",
+                        FontSize = 11,
+                        Opacity = 0.6,
+                        TextWrapping = TextWrapping.Wrap
+                    });
+                    return;
+                }
+
+                BuildStagePopover(content, Rebuild);
+            });
+        }
+
+        _consoleRebuild = Rebuild;
+        Rebuild();
+
+        return new ScrollViewer
+        {
+            Content = content,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+        };
+    }
 
     /// <summary>
     /// 담기 모드를 켜고 끄는 유일한 통로 — <b>바뀔 때만</b> 신호를 쏜다. 조절창을 열
@@ -281,15 +340,9 @@ internal sealed class StageSceneView : UserControl
             // 이미 광고하는 둘이다 — ✕ 단추와 조절창 안 우클릭.
             IsLightDismissEnabled = false
         };
-        _consolePopup.Closed += (_, _) =>
-        {
-            _consolePopup.Child = null;
-            _consoleRebuild = null;
-
-            // 조절창이 닫히면 담기 모드도 끝난다 — 담을 곳이 안 보이는데 터미널만 활성으로
-            // 남아 있으면 눌러도 아무 데도 안 보이는 담기가 된다.
-            SetQuickEditMode(false);
-        };
+        // 무대 위에 잠깐 뜨는 판(값 시뮬 등)의 팝업이다 — 조절창은 2026-08-22에 오른쪽
+        // 붙박이 기둥으로 갔으므로 여기서 `_consoleRebuild`·담기 모드를 건드리지 않는다.
+        _consolePopup.Closed += (_, _) => _consolePopup.Child = null;
 
         // 레터박스 여백은 검정 — 창 어디를 늘려도 무대 비율은 변하지 않는다.
         Content = new Panel
@@ -338,12 +391,8 @@ internal sealed class StageSceneView : UserControl
                 return;
             }
 
-            if (CanManipulate())
-            {
-                _consoleOpenAt = args.GetPosition(this);
-                UiGuard.Run(_session, "무대 조절창", ShowStagePopover);
-                args.Handled = true;
-            }
+            // 빈 무대 좌클릭이 조절창을 열던 길은 2026-08-22에 사라졌다 — 판이 오른쪽에
+            // 늘 서 있으므로 열 것이 없다. 초상 클릭만 남는다(그 슬롯의 [캐릭터] 탭으로).
         };
 
         DragDrop.SetAllowDrop(this, true);
@@ -385,6 +434,7 @@ internal sealed class StageSceneView : UserControl
         if (request is null)
         {
             AddCenteredText(width, height, em, "라인을 선택하면 그 시점의 무대가 표시됩니다.");
+            _consoleRebuild?.Invoke(); // 판도 빈 안내로 돌아간다
             return;
         }
 
@@ -472,6 +522,11 @@ internal sealed class StageSceneView : UserControl
         RenderAudioCues(request, height, em);
         RenderMotionCues(request, layout, height, em);
         RenderStatsHud(request, width, em);
+
+        // 붙박이 조절창은 무대와 함께 간다 (2026-08-22) — 슬롯 목록·표정 썸네일·수치가
+        // 전부 이 라인의 것이라, 라인이 바뀌었는데 판이 옛 라인을 들고 있으면 거짓말이다.
+        // 팝업 시절에는 다시 열 때 새로 지어져 이 문제가 없었다.
+        _consoleRebuild?.Invoke();
     }
 
     /// <summary>
@@ -2172,19 +2227,18 @@ internal sealed class StageSceneView : UserControl
 
         AttachConsoleCloseGestures(root);
 
-        // ⚠ 열려 있으면 <b>먼저 닫는다</b> (2026-08-22 소유자 보고: "오직 자주쓰는
-        // 메뉴탭만 콘솔에 남은 이상한 상태"). 라이트 디스미스를 끈 뒤로 무대 클릭이
-        // 팝업을 닫지 않고 곧장 여기로 오므로 <b>열린 팝업의 Child를 갈아 끼우는</b> 길이
-        // 생겼는데, Avalonia는 그 교체를 온전히 반영하지 않아 옛 판과 새 판이 섞인다.
-        // 닫았다 여는 것이 유일하게 정의된 경로다(끌어 둔 자리는 _consoleUserPosition이 진다).
+        // ⚠ 열려 있으면 <b>먼저 닫는다</b>. 라이트 디스미스를 끈 뒤로 바깥 클릭이 팝업을
+        // 닫지 않고 곧장 여기로 오므로 <b>열린 팝업의 Child를 갈아 끼우는</b> 길이 생겼는데,
+        // Avalonia는 그 교체를 온전히 반영하지 않아 옛 판과 새 판이 섞인다(2026-08-22
+        // 소유자 보고). 닫았다 여는 것이 유일하게 정의된 경로다.
         if (_consolePopup.IsOpen)
         {
-            _consolePopup.IsOpen = false; // Closed가 Child·재구성 손잡이·담기 모드를 정리한다
+            _consolePopup.IsOpen = false;
         }
 
-        // 칩 편집은 잠깐의 일이다 — 조절창을 다시 열면 평소 모드로 돌아간다.
-        SetQuickEditMode(false);
-        _consoleRebuild = Rebuild;
+        // ⚠ 이 팝업은 <b>무대 조절창이 아니다</b> (2026-08-22 이후) — 조절창은 오른쪽
+        // 붙박이 기둥으로 갔고, 여기 남은 것은 값 시뮬처럼 무대 위에 잠깐 뜨는 판이다.
+        // 그래서 `_consoleRebuild`(붙박이 판의 손잡이)를 건드리지 않는다.
 
         // 끌어 둔 자리 우선, 처음이면 클릭한 지점.
         Point openAt = _consoleUserPosition ?? _consoleOpenAt;
@@ -2252,8 +2306,9 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 캐릭터(또는 빈 슬롯) 클릭 — 조절창을 그 슬롯의 [캐릭터] 탭으로 연다.
-    /// 별도 팝오버가 아니라 같은 조절창 하나다 (소유자 지시 2026-08-06 2차).
+    /// 캐릭터(또는 빈 슬롯) 클릭 — <b>오른쪽 조절창</b>을 그 슬롯의 [캐릭터] 탭으로 돌린다.
+    /// 별도 팝오버가 아니라 같은 조절창 하나다 (소유자 지시 2026-08-06 2차). 판이 붙박이가
+    /// 된 2026-08-22 이후로는 여는 것이 아니라 <b>가리키는 것</b>이 됐다.
     /// </summary>
     private void ShowCharacterPopover(string slotKey)
     {
@@ -2264,7 +2319,7 @@ internal sealed class StageSceneView : UserControl
 
         _popoverSlotKey = slotKey; // 전역 선택도 이 슬롯을 따라간다
         _popoverTabIndex = 3;      // 캐릭터 탭 ([자주 쓰는]이 앞에 서며 하나 밀렸다)
-        ShowStagePopover();
+        _consoleRebuild?.Invoke();
     }
 
     /// <summary>
@@ -2494,22 +2549,13 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 무대 빈 곳 클릭 조절창 — 전역 슬롯 헤더(추가 + 선택) 위에 배경/슬롯/캐릭터 세 탭.
-    /// 전부 정식 커맨드가 된다: 배경·위치·깊이·표시 상태는 선택된 라인의 바인딩에,
-    /// <b>슬롯 생성·위치(무대/레이어)·캐스팅은 노드 Setup에</b>(장면 준비는 라인이 아니라
-    /// 노드에 속한다). 프리뷰만 임시로 바꾸는 경로는 없다.
-    /// 적용해도 닫히지 않는다 — 우클릭이 닫는다.
+    /// 조절창 본문 — 전역 슬롯 헤더(추가 + 선택) 위에 [★ 자주 쓰는]·배경·슬롯·캐릭터·
+    /// 오디오 다섯 탭. 전부 정식 커맨드가 된다: 배경·위치·깊이·표시 상태는 선택된 라인의
+    /// 바인딩에, <b>슬롯 생성·위치(무대/레이어)·캐스팅은 노드 Setup에</b>(장면 준비는
+    /// 라인이 아니라 노드에 속한다). 프리뷰만 임시로 바꾸는 경로는 없다.
+    ///
+    /// 2026-08-22부터 <b>오른쪽 붙박이 기둥</b>이 이 판을 든다(<see cref="BuildDockedConsole"/>).
     /// </summary>
-    private void ShowStagePopover()
-    {
-        if (_session is null || _request is null)
-        {
-            return;
-        }
-
-        ShowManipulationFlyout(BuildStagePopover);
-    }
-
     private void BuildStagePopover(StackPanel host, Action rebuild)
     {
         if (_session is null || _request is null)
@@ -2517,7 +2563,6 @@ internal sealed class StageSceneView : UserControl
             return;
         }
 
-        host.MinWidth = 280;
 
         string[] slots = _request.State.Slots.Keys.OrderBy(key => key, StringComparer.Ordinal).ToArray();
 
@@ -2697,18 +2742,8 @@ internal sealed class StageSceneView : UserControl
     /// <summary>검증용 손잡이 — 칩 편집 모드를 켠다(평소에는 탭 안 [편집]이 켠다). 신호도 같이 쏜다.</summary>
     internal void SetQuickEditModeProbe(bool enabled) => SetQuickEditMode(enabled);
 
-    /// <summary>검증용 손잡이 — 무대 빈 곳 클릭과 같은 길로 조절창을 열고 그 판을 돌려준다.</summary>
-    internal Control? OpenStageConsoleProbe()
-    {
-        ShowStagePopover();
-        return _consolePopup.Child;
-    }
-
-    /// <summary>조절창이 지금 떠 있는가.</summary>
-    internal bool IsStageConsoleOpen => _consolePopup.IsOpen;
-
     /// <summary>
-    /// 검증용 손잡이 — 조절창 본문(슬롯 헤더 + 탭 + 등장/퇴장)을 팝업 없이 짓는다.
+    /// 검증용 손잡이 — 조절창 본문(슬롯 헤더 + 탭 + 등장/퇴장)을 짓는다.
     /// 탭 <b>순서</b>가 <see cref="BackgroundTabIndex"/>와 캐릭터 탭 번호(3)의 근거라
     /// 눈이 아니라 테스트가 지킨다.
     /// </summary>
@@ -2718,6 +2753,9 @@ internal sealed class StageSceneView : UserControl
         BuildStagePopover(host, () => { });
         return host;
     }
+
+    /// <summary>검증용 손잡이 — 초상 클릭과 같은 길로 조절창을 그 슬롯의 [캐릭터] 탭으로 돌린다.</summary>
+    internal void PointConsoleAtSlotProbe(string slotKey) => ShowCharacterPopover(slotKey);
 
     /// <summary>
     /// 자주 쓰는 칩 판 — 누르면 <b>지금 고른 라인</b>에 그 커맨드가 붙는다. 대상 슬롯은

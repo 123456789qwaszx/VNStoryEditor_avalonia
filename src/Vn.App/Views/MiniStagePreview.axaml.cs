@@ -352,6 +352,10 @@ public partial class MiniStagePreview : UserControl
         _script.CommandCopyRequested += CopyScriptCommand;
         _script.CommandDuplicateRequested += ApplyScriptCommandDuplicate;
         _script.CommandPasteRequested += ApplyScriptCommandPaste;
+        // 조절창이 무대 오른쪽 붙박이 기둥으로 왔다 (2026-08-22) — 무대 뷰가 짓고
+        // 여기가 자리를 준다. 이후 갱신은 무대가 다시 그릴 때마다 스스로 한다.
+        ConsoleHost.Content = _scene.BuildDockedConsole();
+
         _script.CommandPinRequested += PinQuickCommand;
         _script.HasClipboardCommand = () => _commandClipboard is not null;
         // 담기 모드가 켜지고 꺼졌다 — 터미널의 ★를 다시 그린다. 조절창은 안 건드린다
