@@ -55,20 +55,10 @@ internal sealed class AuthoringSession
     public IReadOnlySet<string> ChapterStatKeys { get; private set; } =
         new HashSet<string>(StringComparer.Ordinal);
 
-    /// <summary>
-    /// <b>A계층 등록 화자</b> — 챕터 `화자` 시트. 작가의 자유 씬 화자 후보에 정의 파일
-    /// speakers와 <b>함께</b> 서되 출처가 갈려 보인다(2026-08-17 소유자 결정).
-    /// </summary>
-    public IReadOnlyList<string> ChapterSpeakerNames { get; private set; } = [];
-
-    /// <summary>
-    /// 챕터 `화자` 시트의 <b>캐릭터키</b>(이름 → characterId). 그 칸을 채우면 초상화·표정이
-    /// 붙는다 — 2026-08-17 소유자 보고 전에는 이 값을 여기서 버려서, 시트에 적어도 툴은
-    /// 정의 파일만 보고 "characterId가 없다"고 했다. 빈 칸은 담지 않는다(아무 말도 안 한
-    /// 칸이라, 정의 파일 쪽 값이 있으면 그게 이긴다).
-    /// </summary>
-    public IReadOnlyDictionary<string, string> ChapterSpeakerCharacterIds { get; private set; } =
-        new Dictionary<string, string>(StringComparer.Ordinal);
+    // ⚠ `ChapterSpeakerNames`·`ChapterSpeakerCharacterIds`는 2026-08-23에 사라졌다
+    // (소유자: "엑셀 내 어떤 것에서도 화자를 사용하지 않는다 … 화자는 툴 내부에서 직접
+    // 정의해서 쓰는 게 맞는 것이였다"). 챕터 `화자` 시트가 폐지되면서 챕터에서 오는 화자
+    // 어휘라는 것 자체가 없어졌다 — 화자의 유일한 원천은 <see cref="Definition"/>이다.
 
     /// <summary>챕터 목록을 다시 읽을 때마다 A계층 어휘를 따라잡는다.</summary>
     public void SupplyChapterVocabulary(IReadOnlyList<ChapterEntry> entries)
@@ -80,25 +70,6 @@ internal sealed class AuthoringSession
             .SelectMany(entry => entry.Model!.Stats.Select(stat => stat.Key))
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .ToHashSet(StringComparer.Ordinal);
-
-        List<ChapterSpeaker> speakers = entries
-            .Where(entry => entry.Model is not null)
-            .SelectMany(entry => entry.Model!.Speakers)
-            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.Name))
-            .ToList();
-
-        ChapterSpeakerNames = speakers
-            .Select(speaker => speaker.Name)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToList();
-
-        // 같은 이름이 여러 챕터에 있으면 캐릭터키를 <b>적어 둔</b> 쪽이 이긴다.
-        ChapterSpeakerCharacterIds = speakers
-            .Where(speaker => !string.IsNullOrWhiteSpace(speaker.CharacterId))
-            .GroupBy(speaker => speaker.Name, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First().CharacterId!.Trim(),
-                StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -825,6 +796,32 @@ internal sealed class AuthoringSession
     // 작가가 한것까지 저기에 들어간다"). 작가가 더한 화자는 프로젝트에 산다
     // (`ProjectEditor.SetWriterSpeakers`). 정의 파일에 쓰는 창구는 아래 [등록] 하나뿐이고,
     // 그것도 기획자 화면(챕터 그래프의 검증 보고)에서만 불린다.
+
+    /// <summary>
+    /// 화자 목록을 <c>game.definition.json</c>에 통째로 쓴다 — 챕터 그래프 [화자] 탭 전용
+    /// (2026-08-23 소유자: "이 화자탭에서 화자 추가 삭제를 하는 것이 구조적으로 옳다.
+    /// 여기서 추가한 화자는 게임 project에 저장되며, 모든 챕터가 공유해서 쓴다").
+    ///
+    /// <b>통째로 쓰는 것이 규격이다</b> — 더하기만 하는 <see cref="RegisterVariables"/>와
+    /// 다르다. 탭에서 지운 이름이 파일에 남으면 목록이 화면과 갈리고, 그 순간부터 어느 쪽이
+    /// 진짜인지 아무도 모른다. 쓰고 나면 정의를 다시 읽어 드롭다운이 같은 목록을 본다.
+    ///
+    /// 초상화 매핑도 같은 배열이 진다(<c>characterId</c>) — 화자의 집이 하나라는 뜻이다.
+    /// </summary>
+    public bool SaveSpeakers(IReadOnlyList<SpeakerSpec> speakers)
+    {
+        ArgumentNullException.ThrowIfNull(speakers);
+
+        if (ProjectPath is null)
+        {
+            SetStatus("화자는 game.definition.json에 저장됩니다. 프로젝트를 먼저 저장해 주세요.");
+            return false;
+        }
+
+        GameDefinitionStore.SaveSpeakers(ProjectPath, speakers);
+        Definition = GameDefinition.LoadBeside(ProjectPath);
+        return true;
+    }
 
     /// <summary>
     /// 스탯 키를 <c>game.definition.json</c>의 variables에 더한다 — 검증 보고의 [등록] 단추 전용.

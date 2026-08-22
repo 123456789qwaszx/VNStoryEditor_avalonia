@@ -23,19 +23,18 @@ public sealed class ChapterVocabularyTests : IDisposable
     }
 
     [Fact]
-    public void 챕터_스탯과_등록_화자가_세션의_A계층_어휘가_된다()
+    public void 챕터_스탯이_세션의_A계층_어휘가_된다()
     {
+        // ⚠ 등록 화자는 여기서 빠졌다 (2026-08-23) — 챕터 `화자` 시트가 폐지되면서
+        // "챕터에서 오는 화자 어휘"라는 것 자체가 없어졌다. 화자의 원천은 정의 파일 하나다.
         Directory.CreateDirectory(_directory);
         ChapterWorkbookWriter.EnsureChapterWorkbook(
             _directory, "ch01", [("trust", "신뢰"), ("anger", "분노")]);
-        string path = Path.Combine(_directory, "ch01.xlsx");
-        ChapterWorkbookWriter.AddSpeaker(path, "라루", "laru", null);
 
         var session = new AuthoringSession();
         session.SupplyChapterVocabulary(ChapterLibrary.Load(_directory));
 
         Assert.Equal(["anger", "trust"], session.ChapterStatKeys.OrderBy(key => key, StringComparer.Ordinal));
-        Assert.Contains("라루", session.ChapterSpeakerNames);
     }
 
     [Fact]
@@ -62,6 +61,5 @@ public sealed class ChapterVocabularyTests : IDisposable
         session.SupplyChapterVocabulary([]);
 
         Assert.Empty(session.ChapterStatKeys);
-        Assert.Empty(session.ChapterSpeakerNames);
     }
 }

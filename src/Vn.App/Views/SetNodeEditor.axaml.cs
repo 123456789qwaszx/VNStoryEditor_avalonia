@@ -135,15 +135,15 @@ public partial class SetNodeEditor : UserControl
     /// 없애는 게 맞을 것 같아 … 이런 캐릭터는 컨셉과 배경이 꼼꼼히 정해져야 하는데
     /// 작가가 임의로 추가한다는 게 좋아보이진 않아서").
     ///
-    /// 이름·캐릭터키의 주인은 챕터 `화자` 시트와 `game.definition.json` 하나이고, 여기는
-    /// 그것을 회색으로 비춘다. 표정만 살아 있다 — 표정의 주인은 에셋 폴더 규약이라
-    /// 누구든 더할 수 있다.
+    /// 이름·캐릭터키의 주인은 <b>챕터 그래프의 [화자] 탭</b>(→ `game.definition.json`)
+    /// 하나이고, 여기는 그것을 회색으로 비춘다. 표정만 살아 있다 — 표정의 주인은 에셋 폴더
+    /// 규약이라 누구든 더할 수 있다.
     /// </summary>
     private void RebuildSpeakers()
     {
         SpeakerHost.Children.Clear();
 
-        List<SpeakerSpec> planner = PlannerSpeakers();
+        IReadOnlyList<SpeakerSpec> planner = PlannerSpeakers();
 
         foreach (SpeakerSpec speaker in planner)
         {
@@ -154,8 +154,8 @@ public partial class SetNodeEditor : UserControl
         {
             SpeakerHost.Children.Add(new TextBlock
             {
-                Text = "등록된 화자가 없습니다 — 챕터 엑셀 `화자` 시트에 적으면 " +
-                       "여기와 대사 노드 드롭다운에 함께 섭니다. " +
+                Text = "등록된 화자가 없습니다 — 챕터 그래프의 [화자] 탭에서 더하면 " +
+                       "여기와 대사 노드 드롭다운에 함께 섭니다(모든 챕터가 같은 목록입니다). " +
                        "안 적어도 화자 칸은 자유 입력이라 대본은 돕니다.",
                 FontSize = 11,
                 Opacity = 0.6,
@@ -165,53 +165,16 @@ public partial class SetNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 기획자가 정한 화자 — <b>챕터 `화자` 시트 + 정의 파일 speakers</b> (2026-08-17 소유자
-    /// 보고: "챕터엑셀에 화자목록이 있는데 반영이 안되네"). 등록의 주된 자리는 시트이므로
-    /// 시트가 먼저 서고, 같은 이름은 한 번만 센다. 캐릭터키는 정의 파일 쪽이 알고 있으면
-    /// 그걸 쓴다 — 초상화 매핑의 주인은 여전히 정의 파일이다.
+    /// 기획자가 정한 화자 — <b>`game.definition.json`의 speakers 하나</b> (2026-08-23).
+    ///
+    /// 챕터 `화자` 시트와 합쳐 보던 길은 시트가 폐지되면서 함께 사라졌다. 이름과 캐릭터키가
+    /// 같은 배열에 있으므로 "시트가 먼저냐 정의가 먼저냐"라는 물음도 없다 — 집이 하나다.
     /// </summary>
-    private List<SpeakerSpec> PlannerSpeakers()
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var speakers = new List<SpeakerSpec>();
-        IReadOnlyList<SpeakerSpec> defined = _session?.Definition.Speakers ?? [];
-
-        foreach (string name in _session?.ChapterSpeakerNames ?? [])
-        {
-            if (name.Length > 0 && seen.Add(name))
-            {
-                // 캐릭터키는 <b>시트에 적힌 것이 먼저</b>다 (2026-08-17 소유자 보고) —
-                // 그 칸이 존재하는 이유가 이것인데, 정의 파일이 늘 이기면 칸은 장식이
-                // 된다. 시트가 비어 있으면(아무 말도 안 한 칸) 정의 파일 쪽을 쓴다.
-                string? fromSheet =
-                    _session?.ChapterSpeakerCharacterIds.GetValueOrDefault(name);
-
-                speakers.Add(new SpeakerSpec
-                {
-                    Name = name,
-                    CharacterId = string.IsNullOrWhiteSpace(fromSheet)
-                        ? defined
-                            .FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal))
-                            ?.CharacterId ?? string.Empty
-                        : fromSheet
-                });
-            }
-        }
-
-        foreach (SpeakerSpec speaker in defined)
-        {
-            if (speaker.Name.Length > 0 && seen.Add(speaker.Name))
-            {
-                speakers.Add(speaker);
-            }
-        }
-
-        return speakers;
-    }
+    private IReadOnlyList<SpeakerSpec> PlannerSpeakers() => _session?.Definition.Speakers ?? [];
 
     /// <summary>
     /// 기획자 화자 한 줄 — 회색 고정. 이름·캐릭터키는 잠기고 [표정]만 살아 있다.
-    /// 고치려면 챕터 `화자` 시트나 정의 파일로 간다(값의 주인이 거기다).
+    /// 고치려면 챕터 그래프 [화자] 탭으로 간다(값의 주인이 거기다).
     /// </summary>
     private Control BuildPlannerSpeakerRow(SpeakerSpec speaker)
     {
@@ -244,7 +207,7 @@ public partial class SetNodeEditor : UserControl
             [ToolTip.TipProperty] = hasKey
                 ? "표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
                 : $"'{speaker.Name}'에 캐릭터키가 없어 표정을 붙일 대상이 없습니다. " +
-                  "챕터 엑셀 `화자` 시트의 `캐릭터키` 칸을 채우면 여기서 바로 열립니다."
+                  "챕터 그래프 [화자] 탭에서 `캐릭터키`를 채우면 여기서 바로 열립니다."
         };
         expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
             ShowExpressionsFlyout(expressions, speaker.CharacterId));
@@ -601,7 +564,69 @@ public partial class SetNodeEditor : UserControl
             _session!.Editor.UpdateCondition(condition.Id, name.Text ?? string.Empty, expression);
         }
 
+        /// <summary>
+        /// 아이템·능력 후보를 <b>드롭다운을 열 때마다</b> 다시 읽는다 (2026-08-23 소유자:
+        /// "아이템을 +추가를 한 뒤에 능력을 적고나서 조건에 반영시키려면 다른 노드에
+        /// 갔다와야 하는게 불편해").
+        ///
+        /// 아이템·능력 편집은 <c>Content</c> 변경이라 이 화면을 다시 만들지 않는다
+        /// (<see cref="ProjectRefreshPlanner"/> — 타이핑 중에 컨트롤이 파괴되면 포커스가
+        /// 날아간다). 그 덕에 목록이 <b>행을 만들 때의 것으로 굳어</b> 있었고, 새 이름을
+        /// 보려면 노드를 떠났다 돌아오는 수밖에 없었다. 대사노드 화자 드롭다운이 포커스마다
+        /// 다시 읽는 것(W56)과 같은 처방이다.
+        /// </summary>
+        void RefreshTargets()
+        {
+            if (_session?.Project.FindNode(_nodeId) is not SetNode owner)
+            {
+                return;
+            }
+
+            List<VariableAssignment> fresh = owner.Assignments
+                .Where(item => item.Variable.Length > 0)
+                .ToList();
+
+            bool sameNames = fresh
+                .Select(item => item.Variable)
+                .SequenceEqual(items.Select(item => item.Variable), StringComparer.Ordinal);
+
+            // 이름이 같아도 종류(아이템↔능력)는 다를 수 있다 — IsAbility가 최신을 보게 한다.
+            items.Clear();
+            items.AddRange(fresh);
+
+            if (sameNames)
+            {
+                // ItemsSource를 갈면 선택이 풀렸다 다시 붙으며 조건이 한 번 더 써진다.
+                // 목록이 그대로면 그 값을 치르지 않는다.
+                return;
+            }
+
+            string? picked = target.SelectedItem as string;
+
+            _building = true;
+
+            try
+            {
+                target.ItemsSource = fresh.Select(item => item.Variable).ToList();
+                target.SelectedItem =
+                    picked is not null &&
+                    fresh.Any(item => string.Equals(item.Variable, picked, StringComparison.Ordinal))
+                        ? picked
+                        : null;
+            }
+            finally
+            {
+                _building = false;
+            }
+
+            target.PlaceholderText = fresh.Count == 0 ? "아이템·능력을 먼저 더하세요" : "아이템·능력";
+            ApplyKind();
+        }
+
         ApplyKind();
+
+        // 여는 순간이 곧 "지금 무엇이 있나"를 묻는 순간이다.
+        target.DropDownOpened += (_, _) => RefreshTargets();
 
         name.LostFocus += (_, _) => Commit();
         target.SelectionChanged += (_, _) =>
@@ -788,6 +813,11 @@ public partial class SetNodeEditor : UserControl
             }
         };
         variable.LostFocus += (_, _) => Commit();
+
+        // 자동완성 후보도 포커스마다 다시 읽는다 (2026-08-23) — 조건 드롭다운과 같은 자리에
+        // 있던 같은 굳음이다: 방금 다른 행에 적은 이름이 이 칸의 후보에는 없었다.
+        variable.GotFocus += (_, _) => variable.ItemsSource = WriterVariableNames();
+
         value.LostFocus += (_, _) => Commit();
         boolValue.IsCheckedChanged += (_, _) =>
         {

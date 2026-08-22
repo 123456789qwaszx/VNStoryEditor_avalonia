@@ -160,16 +160,18 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     }
 
     [Fact]
-    public void 챕터_화자_시트에_등록된_공백_이름은_화자로_통과한다()
+    public void 등록된_공백_이름은_화자로_통과한다()
     {
-        // 2026-08-16 — 화자 등록의 창구가 챕터 `화자` 시트로 늘었다. 등록된 이름이면
-        // 공백이 있어도 게임 정의에 등록된 것과 똑같이: 경고가 없고, 화자로 파싱된다.
-        (ProjectEditor editor, string fileId, ChapterGraphModel bare) = BuildWorld();
+        // 등록된 이름이면 공백이 있어도 경고가 없고 화자로 파싱된다.
+        //
+        // ⚠ 2026-08-23 — 등록 창구가 <b>정의 파일 하나</b>가 됐다(챕터 `화자` 시트 폐지).
+        // 예전에는 챕터 시트도 창구여서 Sync가 둘을 메모리에서 합쳐 봤는데, 화자가 프로젝트의
+        // 것이 되면서 합칠 것이 사라졌다 — 등록부는 원래 하나여야 했던 자리다.
+        (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
 
-        var chapter = new ChapterGraphModel(
-            bare.ChapterId, bare.SourcePath, bare.Episodes, bare.Edges, bare.Conditions,
-            bare.Stats, bare.Fixtures, bare.Diagnostics,
-            [new ChapterSpeaker("늙은 상인", null, null, 2)], hasSpeakerSheet: true);
+        GameDefinition definition = GameDefinition.Parse("""
+            { "speakers": [ { "name": "늙은 상인", "characterId": "" } ] }
+            """)!;
 
         string workbook = Path.Combine(_directory, "ep_chapter_speaker.xlsx");
         WriteRows(workbook,
@@ -178,7 +180,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
             ["10", null, null, null, "늙은 상인", "어서 오게."]
         ]);
 
-        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, definition, fileId, workbook, chapter);
 
         Assert.DoesNotContain(report.Diagnostics, item =>
             item.Message.Contains("합쳐져 지문이 됩니다"));

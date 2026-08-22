@@ -4,12 +4,15 @@ using Vn.Authoring.Chapters;
 namespace Vn.Authoring.Tests.Chapters;
 
 /// <summary>
-/// 챕터 `화자` 시트 (2026-08-16 소유자 지시) — 기획자가 챕터에서 화자를 등록하면
-/// 에피소드 워크북의 화자 열(H)이 그 목록의 드롭다운을 받는다.
+/// 대본 워크북의 화자 드롭다운과, <b>폐지된 챕터 `화자` 시트</b>의 뒷정리.
 ///
-/// 계약의 핵심 셋: ① 시트가 없어도(구판) 챕터는 성립한다 ② 드롭다운 갱신은 원고
-/// 파일의 <b>숨김 목록 시트만</b> 만지고, 목록이 같으면 파일에 아예 손대지 않는다
-/// ③ 검증은 조언일 뿐 — 목록 밖 이름도 그대로 적을 수 있다.
+/// ⚠ 2026-08-23에 챕터 시트가 사라졌다 (소유자: "엑셀 내 어떤 것에서도 화자를 사용하지
+/// 않는다 … 애초부터 챕터엑셀에 화자가 들어갈 이유가 전혀없다"). 등록 자리는 툴의 [화자]
+/// 탭이고 값은 `game.definition.json`에 산다. 여기 남은 챕터 쪽 고정은 <b>만들지 않는다</b>와
+/// <b>구판 시트를 지운다</b> 둘뿐이다.
+///
+/// 대본 쪽 계약은 그대로다: ① 드롭다운 갱신은 원고 파일의 <b>숨김 목록 시트만</b> 만지고,
+/// 목록이 같으면 파일에 아예 손대지 않는다 ② 검증은 조언일 뿐 — 목록 밖 이름도 적을 수 있다.
 /// </summary>
 public sealed class ChapterSpeakerTests : IDisposable
 {
@@ -85,7 +88,7 @@ public sealed class ChapterSpeakerTests : IDisposable
         Assert.False(model.HasSpeakerSheet);
         Assert.Empty(model.Speakers);
 
-        // 구판 파일마다 "화자 시트가 없다"고 떠들지 않는다 — 앱이 조용히 만들어 준다.
+        // 시트가 없는 것이 이제 정상이다 (2026-08-23 폐지) — 진단으로 떠들지 않는다.
         Assert.DoesNotContain(model.Diagnostics, item =>
             item.Sheet == ChapterSheetNames.Speakers);
     }
@@ -108,49 +111,53 @@ public sealed class ChapterSpeakerTests : IDisposable
     }
 
     [Fact]
-    public void 새_챕터_워크북에_화자_시트가_생긴다()
+    public void 새_챕터_워크북에는_화자_시트가_없다()
     {
+        // 2026-08-23 — 챕터 엑셀의 어느 시트도 화자를 안 쓴다. 만들지 않는 것이 규격이다.
         Assert.True(ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch_new"));
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(
             Path.Combine(_directory, "ch_new.xlsx"));
 
-        Assert.True(model.HasSpeakerSheet);
+        Assert.False(model.HasSpeakerSheet);
         Assert.Empty(model.Speakers);
     }
 
     [Fact]
-    public void 구판_챕터에_화자_시트를_한_번만_만든다()
+    public void 구판_화자_시트를_지운다()
     {
-        string path = WriteChapter(); // 화자 시트 없음
-
-        (bool created, ChapterWriteResult result) = ChapterWorkbookWriter.EnsureSpeakerSheet(path);
-        Assert.True(created);
-        Assert.True(result.Written);
+        // 이행의 절반 — 나머지 절반(이름을 정의 파일로 옮기기)은 앱 계층이 진다.
+        // 여기서는 <b>지워졌는가</b>와 <b>원본이 .bak에 남는가</b>만 못 박는다.
+        string path = WriteChapter(["라루", "raru", null]);
         Assert.True(ChapterWorkbookReader.Read(path).HasSpeakerSheet);
 
-        // 두 번째 부름은 파일에 손대지 않는다 — 폴더 감시가 맴돌면 안 된다.
-        DateTime before = File.GetLastWriteTimeUtc(path);
-        (bool again, ChapterWriteResult second) = ChapterWorkbookWriter.EnsureSpeakerSheet(path);
+        (bool removed, ChapterWriteResult result) = ChapterWorkbookWriter.RemoveSpeakerSheet(path);
+        Assert.True(removed);
+        Assert.Null(result.Failure);
 
-        Assert.False(again);
-        Assert.True(second.Written || second.Failure is null);
-        Assert.Equal(before, File.GetLastWriteTimeUtc(path));
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+        Assert.False(model.HasSpeakerSheet);
+        Assert.Empty(model.Speakers);
+        Assert.True(File.Exists(path + ".bak"));
+
+        // 나머지 시트는 그대로다 — 지우는 것은 `화자` 하나뿐이다.
+        Assert.False(model.HasErrors);
+        Assert.Single(model.Episodes);
     }
 
     [Fact]
-    public void 툴의_화자_추가는_시트에_한_줄을_쓰고_중복을_거부한다()
+    public void 이미_없는_화자_시트에는_손대지_않는다()
     {
-        string path = WriteChapter(["라루", null, null]);
+        // 재읽기마다 불리는 자리다 — 없는 시트를 지우겠다고 파일을 다시 저장하면
+        // 폴더 감시가 맴돈다.
+        string path = WriteChapter(); // 화자 시트 없음
+        DateTime before = File.GetLastWriteTimeUtc(path);
 
-        Assert.True(ChapterWorkbookWriter.AddSpeaker(path, "윌로", "willo").Written);
+        (bool removed, ChapterWriteResult result) = ChapterWorkbookWriter.RemoveSpeakerSheet(path);
 
-        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        Assert.Equal(["라루", "윌로"], model.Speakers.Select(speaker => speaker.Name).ToArray());
-
-        ChapterWriteResult duplicate = ChapterWorkbookWriter.AddSpeaker(path, "라루");
-        Assert.False(duplicate.Written);
-        Assert.Contains("이미 있습니다", duplicate.Failure);
+        Assert.False(removed);
+        Assert.Null(result.Failure);
+        Assert.Equal(before, File.GetLastWriteTimeUtc(path));
     }
 
     // ── 에피소드 워크북 드롭다운 ────────────────────────────────────────────

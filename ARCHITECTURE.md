@@ -923,7 +923,8 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 | | 원본 | 도구가 쓰는가 |
 |---|---|---|
 | 대사 본문·화자 | `episodes/{챕터}/{Id}.xlsx` | **아니다** (없는 파일을 만들 때만) |
-| 에피소드 구조·간선·조건·스탯·화자 | `chapters/{Id}.xlsx` | 그렇다 — 셀에 즉시 |
+| 에피소드 구조·간선·조건·스탯 | `chapters/{Id}.xlsx` | 그렇다 — 셀에 즉시 |
+| 화자(캐스트) | `game.definition.json`의 speakers | 그렇다 — **툴 [화자] 탭이 유일한 창구**다 (2026-08-23). 챕터 엑셀의 어느 시트도 화자를 안 써서 `화자` 시트를 폐지했다. 프로젝트에 하나뿐이고 모든 챕터가 공유한다 |
 
 이 뒤집힘이 이 층의 설계를 거의 다 설명한다. 파일을 엑셀이 잡고 있으면 쓰기가 **거부**되고
 (`ChapterWorkbookWriter.IsLockedByAnotherApp`), 감시자가 저장을 잡아 다시 읽는다.

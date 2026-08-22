@@ -1249,6 +1249,12 @@ public partial class DialogueNodeEditor : UserControl
             speaker.GotFocus += (_, _) => speaker.ItemsSource = SpeakerNames();
 
             // ▾ = 등록 화자 전체 목록 (W40) — 자동완성은 타이핑해야 열리니 클릭 한 번 길을 따로 둔다.
+            //
+            // ⚠ 엑셀노드에서는 이 단추도 잠긴다 (2026-08-23 소유자 보고: "대사편집에서 화자가
+            // 선택가능하고, 실제 반영은 안되더라도 표기상으로 바꿔지는 것처럼 보이는데").
+            // 화자 칸은 이미 잠겨 있었지만 <b>▾는 살아 있어서</b>, 거기서 고른 이름이 잠긴
+            // 칸에 써졌다(프로그램이 넣는 값은 IsEnabled를 안 본다). 다음 동기화가 엑셀의
+            // 값으로 되돌리므로 <b>고쳐진 척하다 증발하는</b> 가장 나쁜 화면이었다.
             AutoCompleteBox speakerBox = speaker;
             var pick = new Button
             {
@@ -1257,9 +1263,12 @@ public partial class DialogueNodeEditor : UserControl
                 Padding = new Thickness(3, 0),
                 MinWidth = 16,
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Margin = new Thickness(1, 0, 0, 0)
+                Margin = new Thickness(1, 0, 0, 0),
+                IsEnabled = !_excelOwned
             };
-            ToolTip.SetTip(pick, "등록된 화자 목록에서 선택");
+            ToolTip.SetTip(pick, _excelOwned
+                ? "화자는 엑셀에서 고칩니다 — 챕터 그래프에서 노드를 더블클릭하면 열립니다."
+                : "등록된 화자 목록에서 선택");
             pick.Click += (_, _) => ShowSpeakerFlyout(pick, speakerBox);
 
             var speakerCell = new Grid
@@ -1292,13 +1301,19 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private void ShowSpeakerFlyout(Button anchor, AutoCompleteBox speaker)
     {
-        List<(string Name, SpeakerSource Source)> candidates = SpeakerCandidates();
+        // 단추가 이미 잠겨 있지만 가드를 여기에도 둔다 — 문이 둘이면 빗장도 둘이어야 한다.
+        if (BlockIfExcelOwned("화자"))
+        {
+            return;
+        }
+
+        List<string> candidates = SpeakerNames();
 
         if (candidates.Count == 0)
         {
             _session!.SetStatus(
-                "등록된 화자가 없습니다 — 챕터 엑셀의 `화자` 시트나 game.definition에 적으면 " +
-                "여기 목록에 옵니다. 그때까지는 화자 칸에 직접 입력하세요.");
+                "등록된 화자가 없습니다 — 챕터 그래프의 [화자] 탭에서 더하면 여기 목록에 옵니다. " +
+                "그때까지는 화자 칸에 직접 입력하세요.");
             return;
         }
 
@@ -1309,99 +1324,46 @@ public partial class DialogueNodeEditor : UserControl
             Placement = PlacementMode.Bottom
         };
 
-        // 출처를 갈라 세운다 (2026-08-17 소유자) — 같은 이름 목록이라도 어느 계층이
-        // 등록한 것인지가 보여야 한다. 챕터 등록이 위다(저작에서 먼저 정하는 쪽).
-        void Section(string title, IEnumerable<string> names)
+        // 머리글이 없다 (2026-08-23 소유자: "기획등록 화자라고 표시되는 것도 치워줘").
+        // 구역을 가르던 두 줄은 원천이 둘이던 시절의 것이고, 원천이 하나가 된 지금은
+        // 이름 목록 위에 붙는 상표일 뿐이었다.
+        foreach (string name in candidates)
         {
-            List<string> list = names.ToList();
-
-            if (list.Count == 0)
+            var item = new Button
             {
-                return;
-            }
-
-            panel.Children.Add(new TextBlock
+                Content = name,
+                FontSize = 11,
+                Padding = new Thickness(10, 4),
+                MinWidth = 140,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = Brushes.Transparent
+            };
+            item.Click += (_, _) =>
             {
-                Text = title,
-                FontSize = 10,
-                Opacity = 0.55,
-                Margin = new Thickness(10, 6, 10, 2)
-            });
-
-            foreach (string name in list)
-            {
-                var item = new Button
-                {
-                    Content = name,
-                    FontSize = 11,
-                    Padding = new Thickness(10, 4),
-                    MinWidth = 140,
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    HorizontalContentAlignment = HorizontalAlignment.Left,
-                    Background = Brushes.Transparent
-                };
-                item.Click += (_, _) =>
-                {
-                    speaker.Text = name;
-                    flyout.Hide();
-                };
-                panel.Children.Add(item);
-            }
+                speaker.Text = name;
+                flyout.Hide();
+            };
+            panel.Children.Add(item);
         }
-
-        Section("기획 등록 · 챕터 `화자` 시트",
-            candidates.Where(item => item.Source == SpeakerSource.Chapter).Select(item => item.Name));
-        Section("초상화 매핑 · game.definition.json",
-            candidates.Where(item => item.Source == SpeakerSource.Definition).Select(item => item.Name));
 
         flyout.ShowAt(anchor);
     }
 
-    /// <summary>화자 이름이 어디서 왔는가 — 목록에서 구역을 가르는 근거.</summary>
-    private enum SpeakerSource
-    {
-        /// <summary>기획자: 챕터 `화자` 시트.</summary>
-        Chapter,
-
-        /// <summary>기획자·연출: `game.definition.json`의 초상화 매핑.</summary>
-        ///
-        /// ⚠ 셋째 구역이던 "작가가 더한 화자"는 2026-08-23에 폐지됐다 (소유자) —
-        /// 캐릭터는 컨셉·배경이 정해져야 하는 것이라 작가가 임의로 더할 자리가 아니다.
-        Definition
-    }
-
     /// <summary>
-    /// 화자 후보 — 두 원천을 합치되 <b>출처를 남긴다</b> (2026-08-17 소유자). 같은 이름이
-    /// 양쪽에 있으면 먼저 나온 하나로 센다(기획 → 정의) — 목록에 같은 이름이 두 번 서면
-    /// 고르는 사람이 헷갈린다.
+    /// 화자 후보 — <b>`game.definition.json`의 speakers 하나</b>가 원천이다 (2026-08-23
+    /// 소유자: "화자는 툴 내부에서, 직접 정의해서 쓰는 게 맞는 것이였다"). 기획자가 챕터
+    /// 그래프의 [화자] 탭에서 적고, 모든 챕터가 같은 목록을 본다.
     ///
-    /// 여기 없는 이름도 화자 칸에 직접 적으면 그만이다 — 이 목록은 편의일 뿐이다.
+    /// 출처를 갈라 세우던 두 구역(챕터 `화자` 시트 / 정의 파일)은 시트가 폐지되며 하나가
+    /// 됐다. 여기 없는 이름도 화자 칸에 직접 적으면 그만이다 — 이 목록은 편의일 뿐이다.
     /// </summary>
-    private List<(string Name, SpeakerSource Source)> SpeakerCandidates()
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var candidates = new List<(string, SpeakerSource)>();
-
-        void Add(IEnumerable<string> names, SpeakerSource source)
-        {
-            foreach (string name in names)
-            {
-                if (name.Length > 0 && seen.Add(name))
-                {
-                    candidates.Add((name, source));
-                }
-            }
-        }
-
-        Add(_session!.ChapterSpeakerNames, SpeakerSource.Chapter);
-        Add(_session.Definition.Speakers.Select(item => item.Name), SpeakerSource.Definition);
-
-        return candidates;
-    }
-
-    /// <summary>자동완성용 평평한 이름 목록 — 타이핑에는 출처 구분이 방해된다.</summary>
     private List<string> SpeakerNames() =>
-        SpeakerCandidates().Select(item => item.Name).ToList();
+        _session?.Definition.Speakers
+            .Select(item => item.Name)
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
 
     // ── 태그 레일 ───────────────────────────────────────────────────────────
 
@@ -1676,10 +1638,32 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         // 출구는 선택·조건 갈래의 마지막 줄에서만 매달 수 있다.
+        //
+        // ⚠ 엑셀노드에서는 <b>어디로 가는지만</b> 말한다 (2026-08-23 소유자) — 잇고 떼는
+        // 자리는 연출 그래프 카드의 IF 갈래 포트 하나다. 레일(→ 분기 이후)과 여기가 같은
+        // `SetExitTarget`을 부르는 둘째·셋째 문이었다.
         if (resolved.Branch is { } branch && resolved.Index == branch.LastLineIndex)
         {
             Section("출구 (이 갈래 끝에서 점프)");
-            panel.Children.Add(BuildExitEditor(node, branch));
+
+            if (_excelOwned)
+            {
+                StoryNode? wired = _session!.Project.FindNode(branch.ExitTargetNodeId);
+
+                panel.Children.Add(new TextBlock
+                {
+                    Text = wired is null
+                        ? "달린 씬이 없습니다 — 연출 그래프 카드의 IF 갈래 포트에서 답니다."
+                        : $"'{wired.Name}' — 잇고 떼는 것은 연출 그래프 카드의 IF 갈래 포트에서 합니다.",
+                    FontSize = 10,
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+            else
+            {
+                panel.Children.Add(BuildExitEditor(node, branch));
+            }
         }
 
         // ▲▼✕ 행 버튼이 사라진 자리의 대체 진입점 — 행에서는 치웠지만 기능은 남긴다.
@@ -1727,20 +1711,39 @@ public partial class DialogueNodeEditor : UserControl
     /// <summary>
     /// 갈래 출구가 있는 줄 아래의 출구 레일. 표시만 하면 기능이 퇴보한다 —
     /// 누르면 출구 편집이 열린다.
+    ///
+    /// ⚠ <b>엑셀노드에서는 표시뿐이다</b> (2026-08-23 소유자: "이걸 클릭해서도 연결이 끊고
+    /// 이어지는 기능이 있는데, 이 기능도 엑셀노드에서는 사용이 안되게 막아줘"). 배선을 잇고
+    /// 떼는 자리는 <b>연출 그래프 카드의 IF 갈래 포트</b> 하나로 모은다 — 같은
+    /// <c>SetExitTarget</c>을 부르는 문이 둘이면 어느 쪽이 정본인지 화면이 말하지 못한다.
+    /// 어디로 가는지는 계속 보인다: 잠근 것은 고치는 길이지 정보가 아니다.
     /// </summary>
     private Control BuildExitRail(DialogueNode node, ConditionBranch branch)
     {
         StoryNode? target = _session!.Project.FindNode(branch.ExitTargetNodeId);
 
+        var caption = new TextBlock
+        {
+            Text = $"→ 분기 이후: {target?.Name ?? "(사라진 노드)"}",
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = BranchPalette.Accent(branch.PaletteIndex)
+        };
+
+        if (_excelOwned)
+        {
+            // 단추가 아니라 글이다 — 잠김이 모양으로 보인다(엑셀노드 태그 칩과 같은 규칙).
+            caption.Margin = new Thickness(94, 0, 0, 0);
+            caption.Opacity = 0.8;
+            ToolTip.SetTip(caption,
+                "이 갈래의 출구는 연출 그래프 카드의 IF 갈래 포트에서 잇고 뗍니다.");
+
+            return caption;
+        }
+
         var button = new Button
         {
-            Content = new TextBlock
-            {
-                Text = $"→ 분기 이후: {target?.Name ?? "(사라진 노드)"}",
-                FontSize = 10,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = BranchPalette.Accent(branch.PaletteIndex)
-            },
+            Content = caption,
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(2, 0),
@@ -1751,6 +1754,12 @@ public partial class DialogueNodeEditor : UserControl
 
         button.Click += (_, _) =>
         {
+            // 문이 둘이면 빗장도 둘이어야 한다 — 단추가 안 서더라도 여기서 다시 막는다.
+            if (BlockIfExcelOwned("갈래 출구 배선"))
+            {
+                return;
+            }
+
             var panel = new StackPanel { Spacing = 4, MinWidth = 240 };
             panel.Children.Add(new TextBlock
             {

@@ -547,27 +547,38 @@ public static class ChapterWorkbookWriter
         }
     }
 
-    // ── 화자 ────────────────────────────────────────────────────────────────
-
-    private static readonly string[] SpeakerHeaders = ["이름", "캐릭터키", "메모"];
+    // ── 화자 시트 폐지 (2026-08-23) ─────────────────────────────────────────
+    //
+    // 소유자: "챕터 엑셀을 눌러보면, 엑셀 내 어떤 것에서도 화자를 사용하지 않는다. 즉
+    // 애초부터 챕터엑셀에 화자가 들어갈 이유가 전혀없다."
+    //
+    // 사실 확인이 그대로였다 — `조건` 시트는 간선의 표시조건·해금조건이 실제로 가리키지만
+    // `화자`는 <b>어느 시트도, 검증도, 도달성 증명도, 내보내기도 안 본다.</b> 툴이 대본
+    // 드롭다운에 쓰려고 남의 파일에 얹어 둔 사전이었고, 그래서 챕터마다 따로 적어야 하는
+    // 값만 치렀다. 이제 화자는 <b>툴의 [화자] 탭</b>에서 `game.definition.json`에 적힌다.
+    //
+    // 여기 남은 것은 <b>지우는 길 하나</b>다. 만드는 길(EnsureSpeakerSheet)과 툴이 한 줄씩
+    // 더하던 길(AddSpeaker)은 함께 사라졌다 — 없는 규격에 쓰는 문은 두지 않는다.
 
     /// <summary>
-    /// `화자` 시트가 없으면 만든다(2026-08-16 이전 워크북의 마이그레이션). 있으면 파일에
-    /// 손대지 않고 false를 돌려준다 — 챕터 선택마다 불려도 쓰기는 한 번뿐이라 폴더 감시가
-    /// 맴돌지 않는다.
+    /// 구판 `화자` 시트를 지운다 — 이행이 이름을 정의 파일로 옮긴 <b>직후에만</b> 부른다.
+    ///
+    /// 있음/없음은 읽기로만 확인한다 — 없는 시트를 지우겠다고 파일을 다시 저장하면 폴더 감시가
+    /// 맴돈다(재읽기마다 불리는 자리다). 원본은 <c>.bak</c>으로 남긴다: 시트를 통째로 없애는
+    /// 유일한 자리라 되돌릴 곳이 있어야 한다.
+    ///
+    /// ⚠ 부르는 쪽이 순서를 지켜야 한다: <b>지우기가 성공한 뒤에</b> 정의 파일에 저장한다.
+    /// 반대로 하면 잠긴 워크북이 다음 재읽기에서 지운 이름을 되살린다.
     /// </summary>
-    /// <returns>실제로 만들었으면 (true, Ok). 이미 있으면 파일에 손대지 않고 (false, Ok). 실패면 사유.</returns>
-    public static (bool Created, ChapterWriteResult Result) EnsureSpeakerSheet(string path)
+    /// <returns>실제로 지웠으면 (true, Ok). 이미 없으면 파일에 손대지 않고 (false, Ok). 실패면 사유.</returns>
+    public static (bool Removed, ChapterWriteResult Result) RemoveSpeakerSheet(string path)
     {
-        // 있음/없음은 읽기로만 확인한다 — 이미 있는 워크북을 다시 저장하는 낭비(와 그로 인한
-        // 폴더 감시 재읽기)를 만들지 않는다. 호출자(리더)가 HasSpeakerSheet를 주는 경우에도
-        // 파일이 그 사이 바뀌었을 수 있으므로 여기서 한 번 더 본다.
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var probe = new XLWorkbook(stream);
 
-            if (probe.Worksheets.Any(sheet =>
+            if (!probe.Worksheets.Any(sheet =>
                     string.Equals(sheet.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal)))
             {
                 return (false, ChapterWriteResult.Ok);
@@ -581,38 +592,14 @@ public static class ChapterWorkbookWriter
 
         ChapterWriteResult result = Mutate(path, workbook =>
         {
-            if (workbook.Worksheets.Any(sheet =>
-                    string.Equals(sheet.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal)))
-            {
-                return; // 확인과 쓰기 사이에 누가 만들었다 — 그대로 둔다.
-            }
+            IXLWorksheet? sheet = workbook.Worksheets.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal));
 
-            AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
-        });
+            sheet?.Delete();
+        }, backup: true);
 
         return (result.Written, result);
     }
-
-    /// <summary>`화자` 시트에 이름 한 줄. 시트가 없으면(구판) 만들면서 더한다.</summary>
-    public static ChapterWriteResult AddSpeaker(
-        string path, string name, string? characterId = null, string? memo = null) =>
-        Mutate(path, workbook =>
-        {
-            IXLWorksheet sheet = workbook.Worksheets.FirstOrDefault(candidate =>
-                    string.Equals(candidate.Name, ChapterSheetNames.Speakers, StringComparison.Ordinal))
-                ?? AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
-
-            if (sheet.RowsUsed().Skip(1).Any(row =>
-                    string.Equals(row.Cell(1).GetString().Trim(), name.Trim(), StringComparison.Ordinal)))
-            {
-                throw new InvalidOperationException($"화자 '{name}'이 이미 있습니다.");
-            }
-
-            int row = NextRow(sheet);
-            sheet.Cell(row, 1).SetValue(name.Trim());
-            Set(sheet, row, 2, characterId);
-            Set(sheet, row, 3, memo);
-        });
 
     // ── 새 챕터 ─────────────────────────────────────────────────────────────
 
@@ -657,7 +644,9 @@ public static class ChapterWorkbookWriter
             ["스탯키", "표시명", "초기값", "최소", "최대", "타입"]);
         // 선택지 사전 (v9) — 챕터가 함께 쓰는 문구 목록. 간선이 여기서 골라 문구를 적는다.
         IXLWorksheet choiceSheet = CreateChoiceSheet(workbook);
-        AddSheetWithHeaders(workbook, ChapterSheetNames.Speakers, SpeakerHeaders);
+
+        // `화자` 시트는 여기서 사라졌다 (2026-08-23) — 챕터가 안 쓰는 사전이었다.
+        // 화자는 툴 [화자] 탭 → `game.definition.json`.
 
         ApplyChapterDropdowns(episodeSheet, edgeSheet, conditionSheet, statSheet, choiceSheet);
         ApplyChapterChrome(workbook);
@@ -841,9 +830,6 @@ public static class ChapterWorkbookWriter
 
         Chrome(workbook, ChapterSheetNames.Choices, "#1F4E79",
             [8, 52, 24], reference: [1], note: [3]);
-
-        Chrome(workbook, ChapterSheetNames.Speakers, "#1F4E79",
-            [16, 16, 24], reference: [2], note: [3]);
 
         Chrome(workbook, ChapterSheetNames.Fixtures, "#C55A11",
             [16, 8, 9, 9, 9, 40], body: "#FCE4D6", note: [6]);

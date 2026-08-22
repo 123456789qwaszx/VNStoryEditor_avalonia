@@ -155,6 +155,12 @@ public partial class ChapterGraphView : UserControl
         });
         OpenFolderButton.Click += (_, _) => UiGuard.Run(_session, "챕터 폴더 열기", OpenFolder);
 
+        // [화자] 탭 — 프로젝트 전체의 캐스트 (2026-08-23). 엔터로도 더한다: 이름을 여럿
+        // 적을 때 손이 마우스로 갔다 오지 않는다.
+        SpeakerAddButton.Click += (_, _) => UiGuard.Run(_session, "화자 추가", AddSpeaker);
+        SpeakerNameBox.KeyDown += (_, args) => CommitOnEnter(args, AddSpeaker);
+        SpeakerCharacterIdBox.KeyDown += (_, args) => CommitOnEnter(args, AddSpeaker);
+
         ChapterCombo.SelectionChanged += (_, _) =>
         {
             if (_updatingCombo)
@@ -593,9 +599,9 @@ public partial class ChapterGraphView : UserControl
         // 왼쪽 챕터 목록 클릭과 같은 규칙 하나를 쓴다.
         string fileId = _session.EnsureChapterBoard(entry.ChapterId);
 
-        // 챕터 `화자` 시트 → 에피소드 워크북 드롭다운 (2026-08-16). 멱등이다 —
-        // 목록이 안 바뀐 워크북에는 손대지 않으므로 매 동기화마다 불러도 안전하다.
-        PushSpeakersToEpisodes(folder, entry);
+        // 화자(프로젝트)·조건(챕터) 드롭다운을 대본 워크북에 (2026-08-16 → 2026-08-23).
+        // 지문이 같으면 파일을 하나도 열지 않으므로 매 동기화마다 불러도 값이 없다.
+        PushVocabularyToEpisodes();
 
         // v9에서 선택지 칸 따라잡기는 사라졌다 — 칸이라는 개념이 없다. 문구 사전은 사람이
         // 엑셀에서 적고, 길은 간선 시트가 곧 그것이다.
@@ -615,7 +621,7 @@ public partial class ChapterGraphView : UserControl
             created |= EpisodeLibrary.EnsureWorkbook(
                 folder,
                 episode.EpisodeId,
-                entry.Model.Speakers.Select(speaker => speaker.Name).ToList(),
+                ProjectSpeakerNames(),
                 entry.Model.Conditions.Select(condition => condition.Label).ToList());
         }
 
@@ -793,66 +799,370 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    /// <summary>
-    /// 챕터의 화자 등록을 에피소드 워크북들에 반영한다 (2026-08-16 소유자 지시).
-    ///
-    /// 두 가지를 한다: ① 구판 챕터 워크북에 `화자` 시트가 없으면 한 번 만들어 준다
-    /// (기획자가 등록할 자리부터 있어야 한다) ② 등록된 이름을 각 에피소드 워크북의 숨김
-    /// 목록 시트에 밀어 넣는다 — 대본의 화자 칸(E)·조건라벨 칸(D)이 그 목록의 드롭다운을 받는다.
-    /// 목록이 같은 워크북은 건드리지 않고, 잠긴 워크북은 건너뛰며 사유를 보고한다.
-    /// </summary>
-    private void PushSpeakersToEpisodes(string folder, ChapterEntry entry)
+    // ── [화자] 탭 = 프로젝트의 캐스트 (2026-08-23) ──────────────────────────
+    //
+    // 소유자: "챕터 엑셀을 눌러보면, 엑셀 내 어떤 것에서도 화자를 사용하지 않는다 … 화자는
+    // 툴 내부에서, 직접 정의해서 쓰는 게 맞는 것이였다." 확인해 보니 그대로였다 — `조건`
+    // 시트는 간선의 표시조건·해금조건이 실제로 가리키지만 `화자` 시트는 어느 시트도, 검증도,
+    // 도달성 증명도, 내보내기도 안 봤다. 툴이 대본 드롭다운에 쓰려고 남의 파일에 얹어 둔
+    // 사전이었고, 그래서 <b>챕터마다 따로 적어야 하는 값</b>만 치렀다.
+    //
+    // 이제 등록 창구는 이 탭 하나이고 값은 `game.definition.json`의 speakers에 산다
+    // (초상화 매핑과 같은 배열 — 화자의 집이 하나라는 뜻이다).
+
+    /// <summary>[화자] 탭을 지금 정의 파일의 목록으로 다시 그린다.</summary>
+    private void RebuildSpeakerTab()
     {
-        if (entry.Model is not { } model)
+        SpeakerListPanel.Children.Clear();
+
+        if (_session is null)
         {
             return;
         }
 
-        if (!model.HasSpeakerSheet)
-        {
-            (bool created, ChapterWriteResult ensure) = ChapterWorkbookWriter.EnsureSpeakerSheet(entry.Path);
+        IReadOnlyList<SpeakerSpec> speakers = _session.Definition.Speakers;
 
-            if (created)
+        if (speakers.Count == 0)
+        {
+            SpeakerListPanel.Children.Add(new TextBlock
             {
-                _session?.SetStatus(
-                    $"'{entry.ChapterId}'에 화자 시트를 만들었습니다 — 엑셀에서 이름을 등록하면 " +
-                    "대본의 화자 칸이 드롭다운이 됩니다.");
+                Text = "아직 없습니다. 위에 이름을 적고 [＋ 추가]를 누르면 모든 챕터의 대본에서 " +
+                       "그 화자를 고를 수 있습니다.",
+                FontSize = 10,
+                Opacity = 0.55,
+                TextWrapping = TextWrapping.Wrap
+            });
+            return;
+        }
+
+        for (int index = 0; index < speakers.Count; index++)
+        {
+            SpeakerListPanel.Children.Add(BuildSpeakerRow(index, speakers[index]));
+        }
+    }
+
+    /// <summary>
+    /// 화자 한 줄 — `[이름][캐릭터키][✕]`. 고치면 그 자리에서 정의 파일에 저장된다
+    /// ([적용] 없음 — 챕터 편집 탭과 같은 규칙, 2026-08-17 소유자).
+    /// </summary>
+    private Control BuildSpeakerRow(int index, SpeakerSpec speaker)
+    {
+        var name = new TextBox { Text = speaker.Name, FontSize = 12 };
+        var characterId = new TextBox
+        {
+            Text = speaker.CharacterId,
+            Margin = new Thickness(6, 0, 0, 0),
+            FontSize = 12,
+            PlaceholderText = "캐릭터키"
+        };
+
+        void Commit()
+        {
+            List<SpeakerSpec> edited = _session!.Definition.Speakers.ToList();
+
+            if (index >= edited.Count)
+            {
+                return; // 그 사이 목록이 바뀌었다 — 다음 그리기가 정본이다.
             }
-            else if (ensure.Failure is { } blocked)
+
+            string typed = (name.Text ?? string.Empty).Trim();
+
+            // 이름을 지워 빈칸으로 만드는 것은 삭제가 아니다 — 삭제는 ✕ 하나뿐이다.
+            // 빈 이름을 저장하면 목록에서 조용히 사라져 되돌릴 손잡이가 없어진다.
+            if (typed.Length == 0)
             {
-                _session?.SetStatus(blocked);
+                name.Text = edited[index].Name;
+                _session.SetStatus("이름은 비울 수 없습니다 — 지우려면 ✕를 누르세요.");
+                return;
+            }
+
+            edited[index] = new SpeakerSpec
+            {
+                Name = typed,
+                CharacterId = (characterId.Text ?? string.Empty).Trim()
+            };
+
+            SaveSpeakers(edited);
+        }
+
+        name.LostFocus += (_, _) => UiGuard.Run(_session, "화자 수정", Commit);
+        characterId.LostFocus += (_, _) => UiGuard.Run(_session, "화자 수정", Commit);
+        name.KeyDown += (_, args) => CommitOnEnter(args, Commit);
+        characterId.KeyDown += (_, args) => CommitOnEnter(args, Commit);
+
+        var remove = new Button
+        {
+            Content = "✕",
+            FontSize = 11,
+            Margin = new Thickness(6, 0, 0, 0),
+            [ToolTip.TipProperty] = $"'{speaker.Name}'를 목록에서 지웁니다. " +
+                                    "이미 대본에 적힌 이름은 그대로 남습니다(화자 칸은 자유 입력)."
+        };
+        remove.Click += (_, _) => UiGuard.Run(_session, "화자 삭제", () =>
+        {
+            List<SpeakerSpec> edited = _session!.Definition.Speakers.ToList();
+
+            if (index < edited.Count)
+            {
+                edited.RemoveAt(index);
+                SaveSpeakers(edited);
+            }
+        });
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        Grid.SetColumn(name, 0);
+        Grid.SetColumn(characterId, 1);
+        Grid.SetColumn(remove, 2);
+        row.Children.Add(name);
+        row.Children.Add(characterId);
+        row.Children.Add(remove);
+
+        return row;
+    }
+
+    private static void CommitOnEnter(Avalonia.Input.KeyEventArgs args, Action commit)
+    {
+        if (args.Key == Avalonia.Input.Key.Enter)
+        {
+            commit();
+            args.Handled = true;
+        }
+    }
+
+    /// <summary>폼의 한 줄을 목록 끝에 더한다. 같은 이름은 거절한다(목록이 신원이다).</summary>
+    private void AddSpeaker()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        string name = (SpeakerNameBox.Text ?? string.Empty).Trim();
+
+        if (name.Length == 0)
+        {
+            _session.SetStatus("화자 이름을 적어 주세요.");
+            return;
+        }
+
+        List<SpeakerSpec> edited = _session.Definition.Speakers.ToList();
+
+        if (edited.Any(item => string.Equals(item.Name, name, StringComparison.Ordinal)))
+        {
+            _session.SetStatus($"화자 '{name}'은 이미 있습니다.");
+            return;
+        }
+
+        edited.Add(new SpeakerSpec
+        {
+            Name = name,
+            CharacterId = (SpeakerCharacterIdBox.Text ?? string.Empty).Trim()
+        });
+
+        if (SaveSpeakers(edited))
+        {
+            SpeakerNameBox.Text = string.Empty;
+            SpeakerCharacterIdBox.Text = string.Empty;
+            SpeakerNameBox.Focus();
+            _session.SetStatus($"화자 '{name}'을 더했습니다 — 모든 챕터의 대본에서 고를 수 있습니다.");
+        }
+    }
+
+    /// <summary>
+    /// 목록을 정의 파일에 통째로 쓰고, 그 결과를 <b>대본 워크북까지</b> 밀어 넣는다.
+    ///
+    /// 여기서 미는 것이 중요하다 — 저장만 하면 툴 화면은 새 목록을 보는데 엑셀 드롭다운은
+    /// 옛 목록을 들고 있다. 그 어긋남이 2026-08-23 소유자 보고("엑셀에 화자가 동기화가 잘
+    /// 안되네")의 절반이었다.
+    /// </summary>
+    private bool SaveSpeakers(IReadOnlyList<SpeakerSpec> speakers)
+    {
+        if (_session is null || !_session.SaveSpeakers(speakers))
+        {
+            return false;
+        }
+
+        RebuildSpeakerTab();
+        PushVocabularyToEpisodes();
+        _diskFingerprint = DiskFingerprint(); // 우리가 쓴 저장이 감시자로 되돌아오지 않게
+
+        return true;
+    }
+
+    /// <summary>
+    /// 구판 챕터 워크북의 `화자` 시트를 정의 파일로 옮기고 시트를 지운다 (2026-08-23 이행).
+    ///
+    /// <b>순서가 규격이다</b>: 시트를 지우는 데 성공한 뒤에 정의 파일에 저장한다. 반대로 하면
+    /// 엑셀이 잡고 있어 못 지운 워크북이 다음 재읽기에서 <b>사람이 방금 지운 이름을 되살린다</b>.
+    /// 지우기가 막히면 이번엔 아무것도 안 하고 다음 기회를 기다린다(원본은 `.bak`에 남는다).
+    /// </summary>
+    private void ImportLegacySpeakerSheets()
+    {
+        if (_session?.ProjectPath is null)
+        {
+            return;
+        }
+
+        List<SpeakerSpec> merged = _session.Definition.Speakers.ToList();
+        bool changed = false;
+
+        foreach (ChapterEntry entry in _entries)
+        {
+            if (entry.Model is not { HasSpeakerSheet: true } model)
+            {
+                continue;
+            }
+
+            if (ChapterWorkbookWriter.RemoveSpeakerSheet(entry.Path).Result.Failure is not null)
+            {
+                continue; // 잠겨 있다 — 다음 재읽기가 다시 시도한다.
+            }
+
+            foreach (ChapterSpeaker speaker in model.Speakers)
+            {
+                string name = speaker.Name.Trim();
+
+                if (name.Length == 0 ||
+                    merged.Any(item => string.Equals(item.Name, name, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                merged.Add(new SpeakerSpec
+                {
+                    Name = name,
+                    CharacterId = speaker.CharacterId?.Trim() ?? string.Empty
+                });
+
+                changed = true;
             }
         }
 
-        List<string> names = model.Speakers.Select(speaker => speaker.Name).ToList();
-        List<string> labels = model.Conditions.Select(condition => condition.Label).ToList();
+        if (!changed)
+        {
+            return;
+        }
+
+        if (_session.SaveSpeakers(merged))
+        {
+            _session.SetStatus(
+                $"챕터 엑셀의 `화자` 시트를 프로젝트 화자 목록으로 옮겼습니다({merged.Count}명) — " +
+                "이제 [화자] 탭에서 편집합니다. 시트는 사라졌고 이전 상태는 .bak에 있습니다.");
+        }
+    }
+
+    /// <summary>지난 밀기가 본 어휘의 지문 — 같으면 워크북을 하나도 열지 않는다.</summary>
+    private string? _pushedVocabularySignature;
+
+    /// <summary>새 대본이 받을 화자 — 챕터를 가리지 않는 프로젝트 목록 하나다.</summary>
+    private List<string> ProjectSpeakerNames() =>
+        _session?.Definition.Speakers
+            .Select(speaker => speaker.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList() ?? [];
+
+    /// <summary>
+    /// 화자·조건 드롭다운을 <b>프로젝트의 모든 챕터</b>의 대본에 반영한다 (2026-08-23).
+    ///
+    /// 화자는 이제 프로젝트의 것이므로(→ [화자] 탭) 어느 챕터의 대본이든 <b>같은 이름
+    /// 목록</b>을 받는다. 예전에는 고른 챕터의 폴더에 그 챕터 시트의 화자만 밀어서, 앱을
+    /// 켜면 첫 챕터의 대본만 갱신됐다(2026-08-23 소유자 보고).
+    /// ⚠ <b>조건 라벨은 챕터의 것</b>이라 그 챕터 것만 간다 — `조건` 시트는 그 챕터 스탯에
+    /// 매인 이름이고, 화자와 달리 챕터가 실제로 쓴다(간선의 표시조건·해금조건).
+    ///
+    /// ⚠ <b>값이 큰 일이다</b> — 대본 워크북을 전부 열어 본다(§성능 규칙). 그래서 어휘의
+    /// 지문을 들고 있다가 <b>달라진 순간에만</b> 한 바퀴 돈다. 밀다가 실패한 워크북이 있으면
+    /// 지문을 적지 않는다: 엑셀이 잡고 있던 파일이 다음 기회를 얻어야 하고, 지문을 미리
+    /// 적으면 그 워크북만 영영 낡은 목록을 들고 남는다.
+    /// </summary>
+    private void PushVocabularyToEpisodes()
+    {
+        if (_session?.ProjectPath is null)
+        {
+            return;
+        }
+
+        List<string> names = _session.Definition.Speakers
+            .Select(speaker => speaker.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
+        string signature = MakeVocabularySignature(names);
+
+        if (string.Equals(signature, _pushedVocabularySignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         var failures = new List<string>();
         int changed = 0;
 
-        foreach (ChapterEpisode episode in model.Episodes)
+        foreach (ChapterEntry entry in _entries)
         {
-            EpisodeLibrary.VocabularyPush push =
-                EpisodeLibrary.PushVocabulary(folder, episode.EpisodeId, names, labels);
-
-            if (push.Changed)
+            if (entry.Model is not { } model ||
+                EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId) is not { } folder)
             {
-                changed++;
+                continue;
             }
-            else if (push.Failure is { } failure)
+
+            List<string> labels = model.Conditions.Select(condition => condition.Label).ToList();
+
+            foreach (ChapterEpisode episode in model.Episodes)
             {
-                failures.Add(failure);
+                EpisodeLibrary.VocabularyPush push =
+                    EpisodeLibrary.PushVocabulary(folder, episode.EpisodeId, names, labels);
+
+                if (push.Changed)
+                {
+                    changed++;
+                }
+                else if (push.Failure is { } failure)
+                {
+                    failures.Add(failure);
+                }
             }
         }
 
-        if (failures.Count > 0)
+        if (failures.Count == 0)
         {
-            _session?.SetStatus(failures[0] +
+            _pushedVocabularySignature = signature;
+        }
+        else
+        {
+            _session.SetStatus(failures[0] +
                 (failures.Count > 1 ? $" (외 {failures.Count - 1}건)" : string.Empty));
         }
-        else if (changed > 0)
+
+        if (changed > 0)
         {
-            _session?.SetStatus($"화자·조건 드롭다운을 에피소드 워크북 {changed}개에 반영했습니다.");
+            _session.SetStatus($"화자·조건 드롭다운을 대본 워크북 {changed}개에 반영했습니다.");
         }
+    }
+
+    /// <summary>
+    /// 어휘의 지문 — 프로젝트 화자 이름들과 챕터마다의 (조건 라벨 · 에피소드 목록).
+    /// 이 셋 중 하나라도 달라져야 워크북을 여는 값을 치른다.
+    /// </summary>
+    private string MakeVocabularySignature(IReadOnlyList<string> names)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.Append(string.Join("|", names)).Append('\n');
+
+        foreach (ChapterEntry entry in _entries)
+        {
+            builder.Append(entry.ChapterId).Append(':');
+
+            if (entry.Model is { } model)
+            {
+                builder.Append(string.Join("|", model.Conditions.Select(item => item.Label)));
+                builder.Append(':');
+                builder.Append(string.Join("|", model.Episodes.Select(item => item.EpisodeId)));
+            }
+
+            builder.Append('\n');
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>
@@ -922,7 +1232,7 @@ public partial class ChapterGraphView : UserControl
         if (EpisodeLibrary.EnsureWorkbook(
                 folder,
                 episodeId,
-                SelectedModel?.Speakers.Select(speaker => speaker.Name).ToList(),
+                ProjectSpeakerNames(),
                 SelectedModel?.Conditions.Select(condition => condition.Label).ToList()))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
@@ -991,6 +1301,15 @@ public partial class ChapterGraphView : UserControl
 
         ChapterCombo.SelectedItem = _selectedChapterId;
         _updatingCombo = false;
+
+        // 구판 `화자` 시트 → 프로젝트 화자 목록 (2026-08-23 이행). 옮길 것이 없으면 아무
+        // 파일도 안 만진다 — 시트가 남아 있는 워크북을 처음 만난 그 한 번뿐이다.
+        ImportLegacySpeakerSheets();
+
+        // 화자 목록이 바뀌는 순간은 [화자] 탭에서 저장한 순간이지만, 챕터가 늘거나 에피소드가
+        // 생겨도 밀 곳이 늘어난다 — 지문이 같으면 워크북을 하나도 열지 않으므로 여기서 판다.
+        PushVocabularyToEpisodes();
+        RebuildSpeakerTab();
 
         AutoExport();        // 진행 JSON은 사람 손을 기다리지 않는다 (2026-08-17)
         Validate();
@@ -3188,7 +3507,7 @@ public partial class ChapterGraphView : UserControl
                 EpisodeLibrary.EnsureWorkbook(
                     episodesFolder,
                     episodeId,
-                    model.Speakers.Select(speaker => speaker.Name).ToList(),
+                    ProjectSpeakerNames(),
                     model.Conditions.Select(condition => condition.Label).ToList()))
             {
                 StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));

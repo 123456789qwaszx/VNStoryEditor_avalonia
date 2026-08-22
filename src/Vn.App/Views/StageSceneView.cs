@@ -3383,8 +3383,7 @@ internal sealed class StageSceneView : UserControl
 
         string[] characters = CastingCandidates(
             library.PortraitEntries.Select(entry => entry.Key.CharacterId),
-            _session.Definition.Speakers.Select(speaker => speaker.CharacterId),
-            _session.ChapterSpeakerCharacterIds.Values);
+            _session.Definition.Speakers.Select(speaker => speaker.CharacterId));
 
         panel.Children.Add(new TextBlock
         {
@@ -3432,20 +3431,19 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 캐스팅에 고를 수 있는 캐릭터들 — 출처가 <b>셋</b>이다:
-    /// 초상화 폴더 · 정의 파일 speakers · <b>챕터 `화자` 시트의 캐릭터키</b>.
+    /// 캐스팅에 고를 수 있는 캐릭터들 — 출처가 <b>둘</b>이다:
+    /// 초상화 폴더 · 정의 파일 speakers의 캐릭터키.
     ///
-    /// 셋째가 빠져 있었다 (2026-08-17 소유자 보고: "기획자가 지정한 캐릭터도 안 보이고").
-    /// 기획자가 챕터 시트에만 적어 둔 캐릭터는 목록에 아예 나오지 않았다 — 초상화가 아직
-    /// 없어도 <b>이름은 정해진 것</b>이니 고를 수 있어야 한다(표정 단추와 같은 구멍이었다).
+    /// 초상화가 아직 없어도 <b>이름은 정해진 것</b>이니 고를 수 있어야 한다 (2026-08-17
+    /// 소유자 보고: "기획자가 지정한 캐릭터도 안 보이고" — 표정 단추와 같은 구멍이었다).
+    /// ⚠ 셋째 출처였던 <b>챕터 `화자` 시트</b>는 2026-08-23에 시트째 폐지됐다 — 기획자가
+    /// 적는 자리가 정의 파일 하나가 되어 둘째가 그것을 이미 담는다.
     /// </summary>
     internal static string[] CastingCandidates(
         IEnumerable<string> portraits,
-        IEnumerable<string?> defined,
-        IEnumerable<string> chapterSheet) =>
+        IEnumerable<string?> defined) =>
         portraits
             .Concat(defined.Where(id => !string.IsNullOrWhiteSpace(id)).Cast<string>())
-            .Concat(chapterSheet)
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)

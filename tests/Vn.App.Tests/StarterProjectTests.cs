@@ -146,8 +146,14 @@ internal static class StarterProject
 
         string chapter = Path.Combine(chapters, "ch01.xlsx");
 
-        ChapterWorkbookWriter.AddSpeaker(chapter, "윌로", "willo", "주인공");
-        ChapterWorkbookWriter.AddSpeaker(chapter, "라루", "laru", "동행");
+        // 화자는 챕터가 아니라 프로젝트의 것이다 (2026-08-23) — 툴 [화자] 탭이 쓰는
+        // 그 배열에 그대로 적는다.
+        GameDefinitionStore.SaveSpeakers(manifest,
+        [
+            new SpeakerSpec { Name = "윌로", CharacterId = "willo" },
+            new SpeakerSpec { Name = "라루", CharacterId = "laru" }
+        ]);
+
         ChapterWorkbookWriter.AddCondition(chapter, "신뢰높음", "trust >= 2", "라루를 믿기로 했다면");
 
         // ④ 에피소드 넷 — 갈라졌다 다시 만나는 최소 모양.

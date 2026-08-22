@@ -4,6 +4,7 @@ using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Serialization;
 
@@ -63,6 +64,69 @@ public sealed class ExcelNodeLockTests
                 text is "조건 종료" or "선택지 끝" or "신뢰높음")
             .ToList();
         Assert.Empty(tagButtons);
+    });
+
+    [Fact]
+    public void 엑셀노드는_화자_고르기_단추까지_잠긴다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 보고 (2026-08-23) — "대사편집에서 화자가 선택가능하고, 실제 반영은 안되더라도
+        // 표기상으로 바꿔지는 것처럼 보이는데." 화자 칸은 잠겨 있었지만 옆의 ▾가 살아 있어서,
+        // 거기서 고른 이름이 잠긴 칸에 써졌다(프로그램이 넣는 값은 IsEnabled를 안 본다).
+        (DialogueNodeEditor editor, AuthoringSession session, _) = ShowSyncedNode();
+        var host = editor.FindControl<StackPanel>("LineHost")!;
+
+        // 화자 칸과 ▾가 함께 잠긴다 — 문이 둘이면 빗장도 둘이어야 한다.
+        List<AutoCompleteBox> speakers = host.GetVisualDescendants().OfType<AutoCompleteBox>().ToList();
+        Assert.NotEmpty(speakers);
+        Assert.All(speakers, box => Assert.False(box.IsEnabled));
+
+        List<Button> picks = host.GetVisualDescendants().OfType<Button>()
+            .Where(button => button.Content as string == "▾")
+            .ToList();
+        Assert.NotEmpty(picks);
+        Assert.All(picks, button => Assert.False(button.IsEnabled));
+
+        // 우회 호출로도 목록이 열리지 않고, 화자 글자가 그대로다.
+        string before = speakers[0].Text ?? string.Empty;
+        picks[0].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before, speakers[0].Text ?? string.Empty);
+        Assert.Contains("엑셀에서 합니다", session.StatusMessage);
+    });
+
+    [Fact]
+    public void 엑셀노드의_분기_이후_레일은_표시뿐이다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 보고 (2026-08-23) — "그 아래 → 분기 이후, 이걸 클릭해서도 연결이 끊고
+        // 이어지는 기능이 있는데, 이 기능도 엑셀노드에서는 사용이 안되게 막아줘."
+        // 잇고 떼는 자리는 연출 그래프 카드의 IF 갈래 포트 하나로 모은다.
+        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
+
+        DialogueNode node = session.Project.FindDialogue(nodeId)!;
+        string fileId = session.Project.Files.Single(file => file.Nodes.Contains(node)).Id;
+        DialogueNode scene = session.Editor.AddDialogueNode(fileId, name: "곁가지씬");
+
+        // 갈래 하나에 실제로 씬을 매단다 — 레일은 출구가 있는 줄에만 선다.
+        DialogueFlow flow = ConditionFlowResolver.Resolve(node, session.Project, session.Definition);
+        ConditionBranch branch = flow.Branches.First(candidate => candidate.OpenLineId.Length > 0);
+        session.Editor.SetExitTarget(nodeId, ExitPortKind.Branch, branch.OpenLineId, scene.Id);
+
+        editor.Show(nodeId);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var host = editor.FindControl<StackPanel>("LineHost")!;
+
+        List<TextBlock> rails = host.GetVisualDescendants().OfType<TextBlock>()
+            .Where(block => block.Text?.StartsWith("→ 분기 이후", StringComparison.Ordinal) == true)
+            .ToList();
+
+        Assert.NotEmpty(rails);
+
+        // 글이지 단추가 아니다 — 잠김이 모양으로 보인다. 어디로 가는지는 계속 읽힌다.
+        Assert.All(rails, block =>
+            Assert.Null(block.FindAncestorOfType<Button>()));
+        Assert.Contains(rails, block => block.Text!.Contains("곁가지씬"));
     });
 
     [Fact]

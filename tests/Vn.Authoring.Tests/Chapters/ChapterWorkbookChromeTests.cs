@@ -40,7 +40,7 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
                  {
                      ChapterSheetNames.Episodes, ChapterSheetNames.Edges,
                      ChapterSheetNames.Conditions, ChapterSheetNames.Stats,
-                     ChapterSheetNames.Choices, ChapterSheetNames.Speakers
+                     ChapterSheetNames.Choices
                  })
         {
             IXLWorksheet sheet = workbook.Worksheet(name);
