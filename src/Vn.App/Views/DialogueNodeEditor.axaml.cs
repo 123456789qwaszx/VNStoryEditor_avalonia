@@ -616,6 +616,9 @@ public partial class DialogueNodeEditor : UserControl
         flyout.ShowAt(anchor, showAtPointer: true);
     }
 
+    /// <summary>바깥(프리뷰·detour 복귀)에서 라인을 짚는 문 — 선택 규칙은 같다.</summary>
+    internal void SelectStageLineById(string lineId) => SelectStageLine(lineId);
+
     private void SelectStageLine(string lineId)
     {
         if (string.Equals(_selectedLineId, lineId, StringComparison.Ordinal))
@@ -869,7 +872,8 @@ public partial class DialogueNodeEditor : UserControl
 
         if (next >= path.LineIds.Count)
         {
-            if (!TryEnterNextNode(path.ExitTargetNodeId))
+            // 경로가 갈래에서 끊긴 자리 — 노드 끝과 같은 길로 나간다(detour 복귀 포함).
+            if (!ExitAlongPath(path))
             {
                 StagePreview!.Playback.StopAtEnd();
             }
@@ -891,10 +895,18 @@ public partial class DialogueNodeEditor : UserControl
             line => node.BranchExits.TryGetValue(line.LineId, out string? exit) ? exit : null,
             node.EffectiveDefaultExit,
             SimulateBranches(node, script).Effective,
-            _selectedLineId);
+            _selectedLineId,
+            // 다녀온 detour는 없는 출구다 — 경로가 그 갈래를 지나 나머지 대본으로 잇는다.
+            StagePreview?.Playback.SpentExitsOf(_nodeId ?? string.Empty));
     }
 
-    /// <summary>문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.</summary>
+    /// <summary>
+    /// 문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.
+    ///
+    /// ⚠ <b>갈래 출구는 detour다</b> (계약 §A2-1, 2026-08-22): 나가기 전에 돌아올 자리를
+    /// 쌓고, 나갈 곳이 없는 노드 끝에서는 쌓아 둔 자리로 돌아간다. 기본 출구는 jump라
+    /// 그대로 나가고 끝이다. 규칙은 <see cref="DetourReturnPlayback"/> 하나다.
+    /// </summary>
     internal bool TryExitPlaybackNode()
     {
         if (_session?.Project.FindDialogue(_nodeId) is not { } node)
@@ -903,8 +915,12 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
-        return TryEnterNextNode(TracePlaybackPath(node, script).ExitTargetNodeId);
+        return ExitAlongPath(TracePlaybackPath(node, script));
     }
+
+    /// <summary>노드를 나가는 단 하나의 길 — 규칙은 <see cref="DetourReturnPlayback"/>이 진다.</summary>
+    private bool ExitAlongPath(PlaybackPath.Result path) =>
+        DetourReturnPlayback.Exit(_session, StagePreview, _nodeId, path, TryEnterNextNode);
 
     /// <summary>
     /// 실행 출구의 대사 노드로 재생을 넘긴다 (W39). 노드 선택이 바뀌면 편집기가 그 노드를

@@ -120,6 +120,58 @@ public sealed class StageTimelineTests
         window.Close();
     });
 
+    /// <summary>
+    /// detour 복귀 스택 (2026-08-22 소유자 보고: "detour로 중간에 다른 노드로 넘어가는 건
+    /// 구현이 되는데, 끝까지 재생한 뒤에 원래 노드로 돌아오지가 않네").
+    /// </summary>
+    [Fact]
+    public void detour는_돌아올_자리를_쌓고_꺼낼_때_다녀왔음을_표시한다()
+    {
+        var playback = new StagePlayback();
+
+        Assert.Null(playback.PopDetour());
+        Assert.Empty(playback.SpentExitsOf("nd_a"));
+
+        playback.PushDetour(new StagePlayback.DetourReturn("nd_a", "ln_a1", "ln_labelA"));
+        playback.PushDetour(new StagePlayback.DetourReturn("nd_b", "ln_b1", "ln_labelB"));
+
+        // 마지막에 쌓은 것부터 — 중첩 detour도 나간 순서의 역순으로 돌아온다.
+        Assert.Equal("nd_b", playback.PopDetour()!.Value.NodeId);
+        Assert.Contains("ln_labelB", playback.SpentExitsOf("nd_b"));
+
+        StagePlayback.DetourReturn outer = playback.PopDetour()!.Value;
+        Assert.Equal("nd_a", outer.NodeId);
+        Assert.Equal("ln_a1", outer.ResumeAfterLineId);
+
+        // ⚠ 다녀왔음 표시가 없으면 돌아온 경로가 같은 출구를 또 타 무한히 돈다.
+        Assert.Contains("ln_labelA", playback.SpentExitsOf("nd_a"));
+
+        Assert.Null(playback.PopDetour());
+    }
+
+    [Fact]
+    public void 새_전체_재생은_detour_이력을_안_물려받는다() => HeadlessUi.Run(() =>
+    {
+        var playback = new StagePlayback();
+        playback.OnRequest(0, 2, "첫 줄", isChoice: false, transitionSeconds: 0);
+
+        // 재생 도중 detour를 다녀왔다.
+        playback.Play();
+        playback.PushDetour(new StagePlayback.DetourReturn("nd_a", "ln_a1", "ln_labelA"));
+        playback.PopDetour();
+        Assert.Contains("ln_labelA", playback.SpentExitsOf("nd_a"));
+
+        // 일시정지에서 이어 붙는 재생은 이력을 지킨다 — 안 그러면 재개가 같은 detour를 또 탄다.
+        playback.Pause();
+        playback.Play();
+        Assert.Contains("ln_labelA", playback.SpentExitsOf("nd_a"));
+
+        // 멈춘 뒤 새로 트는 재생은 처음부터다(두 번째 재생에서 detour가 건너뛰어지면 안 된다).
+        playback.StopAtEnd();
+        playback.Play();
+        Assert.Empty(playback.SpentExitsOf("nd_a"));
+    });
+
     [Fact]
     public void 재생_중에_라인을_옮기면_재생이_멈춘다() => HeadlessUi.Run(() =>
     {

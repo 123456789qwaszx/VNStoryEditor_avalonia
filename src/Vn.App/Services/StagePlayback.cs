@@ -243,6 +243,9 @@ internal sealed class StagePlayback
     /// <summary>라인만 재생 중 — 다음 라인 문턱에서 멈춘다.</summary>
     private bool _lineOnly;
 
+    /// <summary>일시정지로 멈춘 상태인가 — 이어 붙는 재생과 새 재생을 가른다(detour 이력).</summary>
+    private bool _pausedMidRun;
+
     /// <summary>
     /// <b>현재 라인부터 끝까지</b> 재생한다 (2026-08-21 소유자 지시). 예전에는 마지막
     /// 라인에서 누르면 첫 라인으로 되감아 다시 틀었는데, 그 되감기는 [⏮] 버튼과 한 쌍의
@@ -256,6 +259,15 @@ internal sealed class StagePlayback
         }
 
         _lineOnly = false;
+
+        // 새 전체 재생은 detour 이력을 안 물려받는다 — 안 그러면 두 번째 재생에서
+        // 다녀온 detour가 통째로 건너뛰어진다. 일시정지에서 이어 붙는 재생은 예외다.
+        if (!_pausedMidRun)
+        {
+            ResetDetours();
+        }
+
+        _pausedMidRun = false;
 
         // 현재 라인의 타자를 처음부터 — 일시정지에서 돌아와도 같은 규칙이다.
         _typedCharacters = 0;
@@ -275,6 +287,10 @@ internal sealed class StagePlayback
 
     public void Pause()
     {
+        // 이어 붙일 재생이다 — 다음 Play()는 detour 이력을 지우지 않는다(돌아올 자리와
+        // "다녀왔음" 표시가 사라지면 재개가 같은 detour를 또 탄다).
+        _pausedMidRun = true;
+
         IsPlaying = false;
         _lineOnly = false;
         _transitionActive = false; // 일시정지 = 확정 상태(정지 프레임)로
@@ -441,12 +457,76 @@ internal sealed class StagePlayback
     /// </summary>
     public void StopAtEnd()
     {
+        // 이어 붙일 것이 없는 멈춤이다 — 다음 재생은 처음부터고, detour 이력도 새로 쌓는다.
+        _pausedMidRun = false;
         _awaitingMove = false;
         _transitionActive = false;
         IsPlaying = false;
         TransitionChanged?.Invoke();
         TypingProgress?.Invoke();
         StateChanged?.Invoke();
+    }
+
+    // ── detour 복귀 (2026-08-22 소유자 보고: "detour로 중간에 다른 노드로 넘어가는 건
+    //    구현이 되는데, 끝까지 재생한 뒤에 원래 노드로 돌아오지가 않네") ─────────────
+    //
+    // 계약(§A2-1)에서 조건 갈래의 커스텀 씬 출구는 <<jump>>가 아니라 <<detour>>다 —
+    // <b>씬을 재생하고 갈래로 돌아와 나머지 대본을 계속한다</b>. 프리뷰 재생은 나가는
+    // 절반만 하고 있었다. 돌아올 자리를 쌓아 두는 것이 이 스택이고, 스택이 비면 예전처럼
+    // 거기서 끝난다(기본 출구 = jump는 애초에 돌아오지 않는다).
+
+    /// <param name="NodeId">돌아갈 대사 노드.</param>
+    /// <param name="ResumeAfterLineId">그 노드에서 <b>이 줄 다음</b>부터 잇는다.</param>
+    /// <param name="ExitOwnerLineId">다녀온 detour를 소유한 줄 — 다시 타지 않도록 표시한다.</param>
+    public readonly record struct DetourReturn(
+        string NodeId,
+        string ResumeAfterLineId,
+        string ExitOwnerLineId);
+
+    private readonly List<DetourReturn> _detours = new();
+    private readonly Dictionary<string, HashSet<string>> _spentExits = new(StringComparer.Ordinal);
+
+    /// <summary>이 노드에서 이미 다녀온 detour의 소유 줄들 — 경로 계산이 이걸 넘긴다.</summary>
+    public IReadOnlySet<string> SpentExitsOf(string nodeId) =>
+        _spentExits.TryGetValue(nodeId, out HashSet<string>? spent)
+            ? spent
+            : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>detour로 나가기 직전 — 돌아올 자리를 쌓는다.</summary>
+    public void PushDetour(DetourReturn ret) => _detours.Add(ret);
+
+    /// <summary>
+    /// 나갈 곳이 없는 노드 끝에서 부른다 — 돌아갈 자리가 있으면 꺼내고, <b>그 detour를
+    /// 다녀온 것으로 표시한다</b>(같은 출구를 또 타면 나갔다 돌아오기를 무한히 돈다).
+    /// </summary>
+    public DetourReturn? PopDetour()
+    {
+        if (_detours.Count == 0)
+        {
+            return null;
+        }
+
+        DetourReturn ret = _detours[^1];
+        _detours.RemoveAt(_detours.Count - 1);
+
+        if (!_spentExits.TryGetValue(ret.NodeId, out HashSet<string>? spent))
+        {
+            spent = new HashSet<string>(StringComparer.Ordinal);
+            _spentExits[ret.NodeId] = spent;
+        }
+
+        spent.Add(ret.ExitOwnerLineId);
+        return ret;
+    }
+
+    /// <summary>
+    /// 재생을 처음부터 다시 시작한다 — 쌓인 복귀와 "다녀왔음" 표시를 버린다.
+    /// 이 청소가 없으면 두 번째 재생에서 detour가 통째로 건너뛰어진다.
+    /// </summary>
+    public void ResetDetours()
+    {
+        _detours.Clear();
+        _spentExits.Clear();
     }
 
     /// <summary>그 방향으로 옮길 라인이 있는가 — 재생 줄의 [◀ 이전]·[다음 ▶]이 이걸 본다.</summary>

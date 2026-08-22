@@ -387,7 +387,8 @@ public partial class PresentationNodeEditor : UserControl
 
         if (next >= path.LineIds.Count)
         {
-            if (!TryEnterNextNode(path.ExitTargetNodeId))
+            // 경로가 갈래에서 끊긴 자리 — 노드 끝과 같은 길로 나간다(detour 복귀 포함).
+            if (!ExitAlongPath(path))
             {
                 StagePreview!.Playback.StopAtEnd();
             }
@@ -409,10 +410,18 @@ public partial class PresentationNodeEditor : UserControl
             line => line.BranchExitTargetNodeId,
             dialogue.DefaultExitTargetNodeId,
             SimulateBranches(dialogue).Effective,
-            _selectedLineId);
+            _selectedLineId,
+            // 다녀온 detour는 없는 출구다 — 경로가 그 갈래를 지나 나머지 대본으로 잇는다.
+            StagePreview?.Playback.SpentExitsOf(_nodeId ?? string.Empty));
     }
 
-    /// <summary>문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.</summary>
+    /// <summary>
+    /// 문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.
+    ///
+    /// ⚠ <b>갈래 출구는 detour다</b> (계약 §A2-1, 2026-08-22 소유자 보고: 넘어가기는
+    /// 되는데 돌아오지 않는다). 나가기 전에 돌아올 자리를 쌓고, 나갈 곳이 없는 노드
+    /// 끝에서는 쌓아 둔 자리로 돌아간다. 기본 출구는 jump라 그대로 나가고 끝이다.
+    /// </summary>
     internal bool TryExitPlaybackNode()
     {
         if (_session?.Project.FindPresentation(_nodeId) is not { } presentation)
@@ -427,8 +436,12 @@ public partial class PresentationNodeEditor : UserControl
             return false;
         }
 
-        return TryEnterNextNode(TracePlaybackPath(dialogue).ExitTargetNodeId);
+        return ExitAlongPath(TracePlaybackPath(dialogue));
     }
+
+    /// <summary>노드를 나가는 단 하나의 길 — 규칙은 <see cref="DetourReturnPlayback"/>이 진다.</summary>
+    private bool ExitAlongPath(PlaybackPath.Result path) =>
+        DetourReturnPlayback.Exit(_session, StagePreview, _nodeId, path, TryEnterNextNode);
 
     /// <summary>
     /// 실행 출구의 대사 노드로 재생을 넘긴다 (W39). 노드 선택이 바뀌면 대사 편집기가

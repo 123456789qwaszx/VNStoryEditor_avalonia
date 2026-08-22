@@ -28,7 +28,8 @@ public class PlaybackPathTests
         IReadOnlyList<DialogueResultLine> lines,
         StageBranchSelection selection,
         string? defaultExit = "nd_default",
-        string? cursor = null)
+        string? cursor = null,
+        IReadOnlySet<string>? spent = null)
     {
         return PlaybackPath.Trace(
             lines,
@@ -37,7 +38,8 @@ public class PlaybackPathTests
             line => line.BranchExitTargetNodeId,
             defaultExit,
             selection,
-            cursor);
+            cursor,
+            spent);
     }
 
     /// <summary>선택 블록: 일반 → [라벨A(출구 nd_a), 대사A] [라벨B, 대사B] → EndChoice → 일반.</summary>
@@ -83,10 +85,35 @@ public class PlaybackPathTests
 
         PlaybackPath.Result path = Trace(ChoiceDocument(exitA: "nd_a"), selection);
 
-        // 사과 갈래의 마지막 라인까지가 경로 — 합류 대사(ln_end)는 실행되지 않는다.
+        // 사과 갈래의 마지막 라인까지가 경로 — 합류 대사(ln_end)는 아직 실행되지 않는다.
         Assert.Equal(["ln_0", "ln_labelA", "ln_a1"], path.LineIds);
         Assert.Equal("nd_a", path.ExitTargetNodeId);
         Assert.True(path.ExitViaBranch);
+
+        // 그 출구를 소유한 줄을 함께 말한다 — 돌아온 뒤 "다녀왔음"으로 표시할 열쇠다.
+        Assert.Equal("ln_labelA", path.ExitOwnerLineId);
+    }
+
+    /// <summary>
+    /// 계약 §A2-1에서 갈래 출구는 <c>&lt;&lt;detour&gt;&gt;</c>다 — 씬을 재생하고 <b>돌아와
+    /// 나머지 대본을 계속한다</b>. 다녀온 detour를 넘기면 경로가 그 갈래를 지나 이어진다
+    /// (2026-08-22 소유자 보고: 넘어가기는 되는데 돌아오지 않는다).
+    /// </summary>
+    [Fact]
+    public void 다녀온_detour는_없는_출구여서_경로가_나머지로_이어진다()
+    {
+        var selection = new StageBranchSelection();
+        selection.SelectChoice("ln_labelA", "ln_labelA");
+
+        PlaybackPath.Result path = Trace(
+            ChoiceDocument(exitA: "nd_a"),
+            selection,
+            spent: new HashSet<string>(StringComparer.Ordinal) { "ln_labelA" });
+
+        // 합류 대사까지 이어지고, 나가는 곳은 이제 기본 출구다.
+        Assert.Equal(["ln_0", "ln_labelA", "ln_a1", "ln_end"], path.LineIds);
+        Assert.Equal("nd_default", path.ExitTargetNodeId);
+        Assert.False(path.ExitViaBranch);
     }
 
     [Fact]

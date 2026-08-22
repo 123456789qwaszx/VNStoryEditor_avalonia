@@ -19,13 +19,27 @@ public static class PlaybackPath
 {
     /// <param name="LineIds">타는 라인의 LineId, 문서 순서. 갈래 출구를 타면 거기서 끊긴다.</param>
     /// <param name="ExitTargetNodeId">경로 끝에서 넘어갈 노드. null이면 재생은 여기서 멈춘다.</param>
-    /// <param name="ExitViaBranch">갈래 출구로 나가는가(false = 기본 출구 또는 출구 없음).</param>
+    /// <param name="ExitViaBranch">
+    /// 갈래 출구로 나가는가(false = 기본 출구 또는 출구 없음). ⚠ 갈래 출구는 계약상
+    /// <c>&lt;&lt;detour&gt;&gt;</c>다 — <b>재생하고 돌아온다</b>. 그래서 재생은 이 값이
+    /// true일 때 돌아올 자리를 기억해 둔다(2026-08-22).
+    /// </param>
+    /// <param name="ExitOwnerLineId">
+    /// 그 갈래 출구를 소유한(갈래를 여는) 줄. 돌아온 뒤 <b>같은 출구를 또 타지 않도록</b>
+    /// 이 Id를 <c>spentBranchExits</c>로 다시 넘긴다 — 안 그러면 나갔다 돌아오기를 무한히 돈다.
+    /// </param>
     public sealed record Result(
         IReadOnlyList<string> LineIds,
         string? ExitTargetNodeId,
-        bool ExitViaBranch);
+        bool ExitViaBranch,
+        string? ExitOwnerLineId = null);
 
     /// <param name="branchExitOf">갈래를 여는 줄이 소유한 출구. 그 외 라인에서는 null.</param>
+    /// <param name="spentBranchExits">
+    /// 이미 다녀온 detour의 소유 줄들 (2026-08-22). 여기 있는 줄의 출구는 <b>없는 것으로
+    /// 친다</b> — 경로가 그 갈래를 지나 <b>나머지 대본으로 이어진다</b>. 계약의 detour
+    /// 의미(씬을 재생하고 갈래로 돌아와 나머지를 계속한다)가 이 한 칸에 들어 있다.
+    /// </param>
     public static Result Trace<TLine>(
         IReadOnlyList<TLine> lines,
         Func<TLine, ConditionTransitionKind?> kindOf,
@@ -33,7 +47,8 @@ public static class PlaybackPath
         Func<TLine, string?> branchExitOf,
         string? defaultExitTargetNodeId,
         StageBranchSelection selection,
-        string? cursorLineId)
+        string? cursorLineId,
+        IReadOnlySet<string>? spentBranchExits = null)
     {
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(kindOf);
@@ -52,7 +67,7 @@ public static class PlaybackPath
             BranchFlow.BuildStructure(lines, kindOf, lineIdOf, lineIdOf);
 
         var lineIds = new List<string>();
-        (int Block, int Branch, string Target)? pendingExit = null;
+        (int Block, int Branch, string Target, string Owner)? pendingExit = null;
 
         for (int index = 0; index < lines.Count; index++)
         {
@@ -62,7 +77,7 @@ public static class PlaybackPath
             if (pendingExit is { } pending &&
                 !frames.Any(frame => frame.BlockIndex == pending.Block && frame.BranchIndex == pending.Branch))
             {
-                return new Result(lineIds, pending.Target, ExitViaBranch: true);
+                return new Result(lineIds, pending.Target, ExitViaBranch: true, pending.Owner);
             }
 
             BranchFlow.AnalyzedLine<TLine> line = analysis.Lines[index];
@@ -79,20 +94,22 @@ public static class PlaybackPath
             if (frames.Count > 0 &&
                 !line.Unresolved &&
                 line.Taken &&
-                branchExitOf(line.Source) is { } target)
+                branchExitOf(line.Source) is { } target &&
+                // 이미 다녀온 detour는 없는 출구다 — 경로가 그 갈래를 지나 이어진다.
+                spentBranchExits?.Contains(lineIdOf(line.Source)) != true)
             {
                 (int blockIndex, int branchIndex) = frames[^1];
 
                 if (analysis.Blocks[blockIndex].SelectedBranch == branchIndex)
                 {
-                    pendingExit = (blockIndex, branchIndex, target);
+                    pendingExit = (blockIndex, branchIndex, target, lineIdOf(line.Source));
                 }
             }
         }
 
         // 구조가 깨져 갈래가 닫히지 않았어도 출구를 조용히 버리지 않는다(합성기와 같은 규칙).
         return pendingExit is { } last
-            ? new Result(lineIds, last.Target, ExitViaBranch: true)
+            ? new Result(lineIds, last.Target, ExitViaBranch: true, last.Owner)
             : new Result(lineIds, defaultExitTargetNodeId, ExitViaBranch: false);
     }
 }

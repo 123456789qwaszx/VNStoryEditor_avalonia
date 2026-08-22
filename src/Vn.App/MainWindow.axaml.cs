@@ -134,6 +134,22 @@ public partial class MainWindow : Window
                 PresentationEditor.SelectStageLineById(lineId);
             }
         };
+        StagePreview.DetourResumeRequested += lineId =>
+        {
+            // detour 복귀 (2026-08-22) — 돌아간 노드의 편집기가 떠난 줄을 짚고 한 줄
+            // 나아간다. 다녀온 detour는 경로에서 빠져 있으므로(PopDetour가 표시했다)
+            // 그 한 걸음이 곧 "나머지 대본"의 첫 줄이다.
+            if (PresentationEditor.IsVisible)
+            {
+                PresentationEditor.SelectStageLineById(lineId);
+                PresentationEditor.MoveStageLine(1);
+            }
+            else if (DialogueEditor.IsVisible)
+            {
+                DialogueEditor.SelectStageLineById(lineId);
+                DialogueEditor.MoveStageLine(1);
+            }
+        };
         StagePreview.SceneChosen += EnterPresentationChannel;
         // 작업대 = Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출 편집창이
         // 합쳐지는 게 맞겠네") — 선택 커맨드 하나의 편집 행(연출 편집기) + 수치 조절

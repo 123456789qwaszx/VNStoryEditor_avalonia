@@ -6211,3 +6211,50 @@ Line으로 넘어가기 버튼을 추가해줘. 현재는 좌측의 터미널쪽
 
 **되돌리는 법** — XAML의 `LineStepHost` 열과 그 배선 한 줄, `BuildLineStep`,
 `StagePlayback.CanMove`/`MoveBy`를 지운다.
+
+---
+
+## detour가 돌아온다 — 재생에 복귀 스택 (`(다음 커밋)`)
+
+**소유자 보고 (2026-08-22)** — *"연출 편집기에서 보면 detour로 중간에 다른 노드로
+넘어가는 건 구현이 되는데, 그걸 끝까지 재생한 뒤에 원래 노드로 돌아오지가 않네."*
+
+**정체 — 재생이 detour를 jump로 알고 있었다.** 계약 §A2-1에서 조건 갈래의 커스텀 씬
+출구는 2026-08-21부터 `<<jump>>`가 아니라 **`<<detour>>`**다: 씬을 재생하고 갈래로
+**돌아와 나머지 대본을 계속한다**. `PlaybackPath`는 그 전 세계의 모양 그대로였다 —
+갈래 출구를 만나면 경로를 **끊고**(그 뒤 라인을 안 담고) 출구 노드를 내밀 뿐, 돌아올
+자리를 아무도 기억하지 않았다. 나가는 절반만 구현돼 있었던 셈이다.
+
+**한 일**
+
+- `PlaybackPath.Result`가 **`ExitOwnerLineId`**(그 출구를 소유한 갈래 여는 줄)를 함께 낸다.
+- `PlaybackPath.Trace`가 **`spentBranchExits`**를 받는다 — 여기 있는 줄의 출구는 **없는
+  것으로 친다**. 그러면 경로가 그 갈래를 지나 **나머지 대본으로 이어진다**. 계약의 detour
+  의미가 이 한 칸에 들어 있다.
+- `StagePlayback`에 **복귀 스택 + 다녀왔음 표시**(`PushDetour`·`PopDetour`·`SpentExitsOf`).
+  중첩 detour도 나간 순서의 역순으로 돌아온다. ⚠ **`PopDetour`가 표시를 남기지 않으면
+  돌아온 경로가 같은 출구를 또 타 무한히 돈다.**
+- 노드를 나가는 길이 **하나로 모였다**(`DetourReturnPlayback.Exit`) — 두 편집기가 같은
+  것을 부른다. 부르는 자리도 둘이다(노드 끝 도달 · 경로가 갈래에서 끊김): 둘이 다른
+  규칙을 쓰면 같은 detour가 한쪽에서만 돌아온다.
+- 돌아온 뒤 라인을 짚는 것은 셸이 라우팅한다(`MiniStagePreview.DetourResumeRequested`) —
+  **나가는 노드의 편집기와 돌아가는 노드의 편집기가 다를 수 있다**(연출 노드 ↔ 커스텀
+  대사 노드). 다음 줄을 직접 짚지 않고 편집기의 이동에 맡긴다: 다녀온 detour를 뺀 경로는
+  `Trace`가 다시 계산하므로 경로 셈이 두 벌이 되지 않는다.
+- ⚠ **새 재생은 이력을 안 물려받는다**(`Play`에서 `ResetDetours`) — 안 그러면 두 번째
+  재생에서 다녀온 detour가 통째로 건너뛰어진다. **일시정지에서 이어 붙는 재생은 예외**다
+  (`_pausedMidRun`): 재개가 이력을 잃으면 같은 detour를 또 탄다.
+
+**남은 것** — 복귀 지점은 "떠난 줄 다음"이다. 계약의 detour는 **갈래를 닫고** 그 뒤로
+가므로 같은 자리이지만, 갈래 안에서 <b>여러 줄이 남은 채</b> 나가는 구조(구판 데이터)는
+그 남은 줄을 건너뛴다 — 지금 규격에서는 갈래 출구가 갈래 끝에서만 서므로 실재하지 않는다.
+
+**고정 3개 신설**: `PlaybackPathTests` 하나(다녀온 detour는 없는 출구여서 경로가 나머지로
+이어지고 `ExitOwnerLineId`를 낸다) · `StageTimelineTests` 둘(스택이 역순으로 나오며 꺼낼 때
+표시를 남긴다 · 새 재생은 이력을 버리고 재개는 지킨다).
+
+**전체 1477 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 757 · Vn.App 317).
+
+**되돌리는 법** — `DetourReturnPlayback`을 지우고 두 편집기의 `ExitAlongPath`를
+`TryEnterNextNode(path.ExitTargetNodeId)`로 되돌린 뒤, `Trace`의 `spentBranchExits`와
+`StagePlayback`의 스택을 뺀다.

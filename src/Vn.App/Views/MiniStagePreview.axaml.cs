@@ -273,6 +273,16 @@ public partial class MiniStagePreview : UserControl
     internal event Action<string>? LineSelectRequested;
 
     /// <summary>
+    /// detour에서 돌아왔다 (2026-08-22) — <b>지금 활성인</b> 편집기가 그 줄을 고르고 한 줄
+    /// 나아간다. 셸이 라우팅하는 이유는 하나다: 나가는 노드의 편집기와 돌아가는 노드의
+    /// 편집기가 서로 다를 수 있다(연출 노드 ↔ 커스텀 대사 노드).
+    /// </summary>
+    internal event Action<string>? DetourResumeRequested;
+
+    /// <summary>편집기가 복귀를 확정한 뒤 부른다 — 선택은 이미 그 노드로 옮겨져 있다.</summary>
+    internal void RequestDetourResume(string lineId) => DetourResumeRequested?.Invoke(lineId);
+
+    /// <summary>
     /// 씬 선택기에서 대사 노드 하나를 골랐다 (2026-08-21) — MainWindow가 연출 채널을
     /// 확보하고(EnsurePresentationChannel) 그 채널을 연다. 값은 대사 노드 Id다.
     /// </summary>
