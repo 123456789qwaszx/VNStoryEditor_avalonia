@@ -19,16 +19,17 @@ public sealed class ExcelNodeLockTests
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
     [Fact]
-    public void 엑셀노드는_이름과_줄_추가가_잠기고_배너가_선다() => HeadlessUi.Run(() =>
+    public void 엑셀노드는_이름과_줄_추가가_잠긴다() => HeadlessUi.Run(() =>
     {
         (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
 
         Assert.True(editor.FindControl<TextBox>("NameBox")!.IsReadOnly);
         Assert.False(editor.FindControl<Button>("AddLineButton")!.IsEnabled);
 
-        // 배너 — 왜 잠겼고 어디서 고치는지가 화면에 있다.
+        // ⚠ 안내 띠는 2026-08-22에 사라졌다 (소유자) — 카드가 이미 잠겨 있고 손대려 하면
+        // 상태줄이 같은 말을 하므로, 목록 맨 위의 세 줄은 매번 되풀이되는 소음이었다.
         var host = editor.FindControl<StackPanel>("LineHost")!;
-        Assert.Contains(host.Children.OfType<Border>(), border =>
+        Assert.DoesNotContain(host.Children.OfType<Border>(), border =>
             (border.Child as TextBlock)?.Text?.Contains("엑셀노드") == true);
 
         // 줄 추가를 우회 호출해도 막힌다 — 대본 줄 수가 그대로다.

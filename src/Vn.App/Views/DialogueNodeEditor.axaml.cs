@@ -103,23 +103,9 @@ public partial class DialogueNodeEditor : UserControl
         return true;
     }
 
-    /// <summary>엑셀노드임을 목록 맨 위에서 말한다 — 읽기 전용의 이유와 갈 곳까지.</summary>
-    private static Border BuildExcelOwnedBanner(DialogueNode node) => new()
-    {
-        Background = new SolidColorBrush(Color.FromArgb(34, 61, 123, 217)),
-        CornerRadius = new CornerRadius(4),
-        Padding = new Thickness(8, 5),
-        Margin = new Thickness(0, 0, 0, 4),
-        Child = new TextBlock
-        {
-            Text = $"📄 엑셀노드 — 원본: 에피소드 '{node.ExcelEpisodeId}'. " +
-                   "본문·화자·줄 구성은 엑셀에서 고칩니다(챕터 그래프에서 더블클릭). " +
-                   "여기서는 연출과 출구만 편집합니다.",
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.9
-        }
-    };
+    // 엑셀노드 안내 띠("📄 엑셀노드 — 원본: 에피소드 …")는 2026-08-22에 사라졌다 (소유자).
+    // 대사 카드가 이미 잠겨 있고 손대려 하면 상태줄이 같은 말을 한다(BlockIfExcelOwned) —
+    // 목록 맨 위에 늘 서 있던 세 줄은 그 사실을 매번 다시 알리는 소음이었다.
 
     /// <summary>빈 공간의 줄 메뉴 (W49) — 여기서의 추가는 언제나 맨 아래, 삭제는 대상이 없어 잠긴다.</summary>
     private void ShowEmptyAreaFlyout()
@@ -261,11 +247,6 @@ public partial class DialogueNodeEditor : UserControl
                 flow.Lines.All(item => !string.Equals(item.Line.LineId, _selectedLineId, StringComparison.Ordinal)))
             {
                 _selectedLineId = flow.Lines.FirstOrDefault()?.Line.LineId;
-            }
-
-            if (_excelOwned)
-            {
-                LineHost.Children.Add(BuildExcelOwnedBanner(node));
             }
 
             if (flow.Lines.Count > 0)
@@ -999,10 +980,14 @@ public partial class DialogueNodeEditor : UserControl
     {
         ScriptDocument? current = _session!.Project.FindScript(node.ScriptId);
 
-        ScriptSummaryText.Text = current is null
-            ? "대본이 아직 없습니다. '줄 추가'를 누르면 전용 대본이 함께 만들어집니다."
+        // 머리글 오른쪽 한 줄에 든다 (2026-08-22) — 잘릴 수 있으므로 전문은 툴팁이 든다.
+        string summary = current is null
+            ? "대본 없음 — [줄 추가]로 만듭니다."
             : $"{current.ActiveLines.Count()}줄 · {current.PrimaryLocale}" +
               (current.SourcePath is null ? string.Empty : $" · {Path.GetFileName(current.SourcePath)}");
+
+        ScriptSummaryText.Text = summary;
+        ToolTip.SetTip(ScriptSummaryText, summary);
     }
 
     private void AddLine()

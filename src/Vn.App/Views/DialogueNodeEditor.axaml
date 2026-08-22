@@ -9,25 +9,29 @@
             <StackPanel Spacing="6">
                 <TextBox x:Name="NameBox" FontWeight="SemiBold" PlaceholderText="장면 이름" />
 
-                <!-- 대본은 노드와 함께 태어난다 (X4) — 선택·가져오기 진입점 없음. -->
-                <Grid ColumnDefinitions="*,Auto">
+                <!-- 대본은 노드와 함께 태어난다 (X4) — 선택·가져오기 진입점 없음.
+                     줄 수·로케일은 2026-08-22에 <b>이름 오른쪽</b>으로 올라왔다 (소유자) —
+                     제 줄을 차지할 만큼의 정보가 아니고, 머리글과 떨어져 있으면 무엇에 대한
+                     숫자인지 한 박자 늦게 읽힌다. -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
                     <TextBlock Grid.Column="0"
                                x:Name="ScriptSummaryTitleText"
                                Text="대본"
                                FontSize="11"
                                Opacity="0.7"
                                VerticalAlignment="Center" />
-                    <Button Grid.Column="1"
+                    <TextBlock Grid.Column="1"
+                               x:Name="ScriptSummaryText"
+                               Margin="8,0,6,0"
+                               FontSize="11"
+                               Opacity="0.65"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <Button Grid.Column="2"
                             x:Name="AddLineButton"
-                            Margin="6,0,0,0"
                             Content="줄 추가"
                             FontSize="11" />
                 </Grid>
-
-                <TextBlock x:Name="ScriptSummaryText"
-                           FontSize="11"
-                           Opacity="0.65"
-                           TextWrapping="Wrap" />
 
                 <TextBlock x:Name="ProblemText"
                            FontSize="11"
