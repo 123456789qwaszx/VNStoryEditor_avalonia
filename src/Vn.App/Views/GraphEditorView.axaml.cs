@@ -73,7 +73,6 @@ public partial class GraphEditorView : UserControl
     private Line? _connectingLine;
 
     private EdgeVisual? _selectedEdge;
-    private bool _updatingFilter;
 
     // ── 그래프 내비게이션 (W40) ────────────────────────────────────────────
     private const double MinZoom = 0.1;  // 큰 판(W41)에서도 전체 조망이 가능하게
@@ -122,24 +121,6 @@ public partial class GraphEditorView : UserControl
         ShowDialogue: FilterDialogueCheck.IsChecked == true,
         ShowSet: FilterSetCheck.IsChecked == true);
 
-    /// <summary>DialogueNode만 남기는 흐름 보기.</summary>
-    private void ApplyFlowOnlyFilter()
-    {
-        _updatingFilter = true;
-
-        try
-        {
-            FilterDialogueCheck.IsChecked = true;
-            FilterSetCheck.IsChecked = false;
-        }
-        finally
-        {
-            _updatingFilter = false;
-        }
-
-        Rebuild();
-    }
-
     /// <summary>
     /// 우측 곁기둥의 내용을 셸이 물려준다 (2026-08-22) — 노드 편집기 묶음 + 에셋 탐색기.
     /// 자리는 이 판의 것이고(쓰는 화면이 여기뿐이다) 배선은 셸의 것이다: 편집기들이
@@ -160,16 +141,10 @@ public partial class GraphEditorView : UserControl
 
         foreach (CheckBox check in new[] { FilterDialogueCheck, FilterSetCheck })
         {
-            check.IsCheckedChanged += (_, _) =>
-            {
-                if (!_updatingFilter)
-                {
-                    Rebuild();
-                }
-            };
+            // 체크 하나가 곧 다시 그리기다 — 코드가 체크를 대신 눌러 주던 [흐름만]이
+            // 사라지며(2026-08-22) 재진입을 막던 빗장도 함께 없어졌다.
+            check.IsCheckedChanged += (_, _) => Rebuild();
         }
-
-        FlowOnlyButton.Click += (_, _) => ApplyFlowOnlyFilter();
 
         GraphCanvas.PointerMoved += OnCanvasPointerMoved;
         GraphCanvas.PointerReleased += OnCanvasPointerReleased;
@@ -2184,13 +2159,9 @@ public partial class GraphEditorView : UserControl
         };
 
         GraphCanvas.Children.Add(_connectingLine);
-        HintText.Text = port.Kind switch
-        {
-            GraphOutputPortKind.Settings =>
-                "조건을 공급할 대사 노드 또는 접힌 파일의 대사 행 위에서 놓으세요.",
-            _ =>
-                "연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다."
-        };
+        // 공급 포트 안내는 2026-08-22에 사라졌다 — 끌 수 있는 포트가 실행 출구뿐이다.
+        HintText.Text =
+            "연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다.";
 
         args.Handled = true;
     }
@@ -2358,13 +2329,6 @@ public partial class GraphEditorView : UserControl
 
         GraphNodeHit? dropped = NodeAt(args.GetPosition(GraphCanvas));
 
-        if (port.Kind == GraphOutputPortKind.Settings)
-        {
-            HandleSupplyDrop(port, dropped);
-            return;
-        }
-
-
         string? target = dropped is null || string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal)
             ? null
             : dropped.NodeId;
@@ -2375,42 +2339,11 @@ public partial class GraphEditorView : UserControl
         }
     }
 
-    /// <summary>
-    /// 공급 포트를 놓았을 때. 2026-08-21 이후 이 판에 남은 공급자는 <b>설정노드</b>뿐이다
-    /// (연출·연출 공급 노드는 배관으로 숨었다).
-    /// 잘못된 대상은 상태 표시줄로 알리기만 한다 — 드래그 한 번에 툴이 죽으면 안 된다.
-    /// </summary>
-    private void HandleSupplyDrop(GraphOutputPortProjection port, GraphNodeHit? dropped)
-    {
-        if (_session is null ||
-            dropped is null ||
-            string.Equals(dropped.NodeId, port.NodeId, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        try
-        {
-            switch (_session.Project.FindNode(port.NodeId))
-            {
-                case SetNode when dropped.NodeKind == GraphNodeKind.Dialogue:
-                    _session.Editor.AddSettingsLink(port.NodeId, dropped.NodeId);
-                    _session.SetStatus("조건 공급을 연결했습니다.");
-                    break;
-
-                case SetNode:
-                    _session.SetStatus("조건 공급은 대사 노드에만 연결할 수 있습니다.");
-                    break;
-            }
-        }
-        catch (InvalidOperationException exception)
-        {
-            _session.SetStatus(exception.Message);
-        }
-    }
-
     // AttachLatestResult(발행 결과 끌어 연결)는 2026-08-21에 사라졌다 — 연출 채널이
     // 자동으로 최신 발행본을 고정한다(ProjectEditor.EnsurePresentationChannel).
+    // HandleSupplyDrop(조건 공급 끌어 연결)은 2026-08-22에 같은 길을 갔다 — 설정노드의
+    // "이 챕터에 공급 중" 포트가 사라지면서 놓을 포트 자체가 없어졌다(공급 범위가 판
+    // 전체라 이을 것이 없다). 링크 데이터와 AddSettingsLink는 그대로 산다.
 
     private GraphNodeHit? NodeAt(Point point)
     {

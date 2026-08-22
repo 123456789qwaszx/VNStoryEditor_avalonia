@@ -105,9 +105,12 @@ public class GraphProjectionTests
     }
 
     [Fact]
-    public void 펼쳐진_SetNode에는_Settings_공급_포트만_보인다()
+    public void 펼쳐진_SetNode에는_포트가_하나도_없다()
     {
-        // SetNode는 조건 공급자다 — 실행 출구 포트는 없다.
+        // SetNode는 조건 공급자다 — 실행 출구 포트가 애초에 없고, 남아 있던
+        // "이 챕터에 공급 중" 포트도 2026-08-22에 사라졌다 (소유자). 공급 범위가 판
+        // 전체가 된 2026-08-17 이후로 이을 곳이 없어 사실 표시로만 서 있었는데,
+        // 늘 켜진 포트는 "여기서 무언가를 이을 수 있다"는 거짓말이었다.
         var (project, fileA, _, setA, _, _) = BuildProject();
 
         GraphProjection projection = GraphProjectionBuilder.Build(
@@ -118,8 +121,7 @@ public class GraphProjectionTests
             .OfType<ExpandedNodeProjection>()
             .Single(item => item.NodeId == setA.Id);
 
-        GraphOutputPortProjection port = Assert.Single(node.OutputPorts);
-        Assert.Equal(GraphOutputPortKind.Settings, port.Kind);
+        Assert.Empty(node.OutputPorts);
     }
 
     [Fact]

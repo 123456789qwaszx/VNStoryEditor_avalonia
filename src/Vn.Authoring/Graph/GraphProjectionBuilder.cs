@@ -210,21 +210,11 @@ public static class GraphProjectionBuilder
                 exit))
             .ToList();
 
-        if (node is SetNode)
-        {
-            // 공급 범위가 판(챕터) 전체가 된 뒤로(2026-08-17) 이 포트는 이을 곳이 없다 —
-            // 같은 판에 서 있는 것만으로 이미 미치고 있다. 포트는 "이 판에 공급 중"이라는
-            // 사실 표시로만 남는다(늘 켜짐).
-            ports.Add(new GraphOutputPortProjection(
-                SettingsPortKey(node.Id),
-                GraphOutputPortKind.Settings,
-                node.Id,
-                "이 챕터에 공급 중",
-                -1,
-                true,
-                null));
-        }
-
+        // 설정노드의 "이 챕터에 공급 중" 포트는 2026-08-22에 사라졌다 (소유자) —
+        // 공급 범위가 판 전체가 된 2026-08-17 이후로 이을 곳이 없어 <b>사실 표시</b>로만
+        // 남아 있었다. 카드가 늘 켜진 포트를 달고 있으면 "여기서 무언가를 이을 수 있다"고
+        // 말하는 셈이라 오히려 거짓말이었다. 공급은 같은 판에 선 것으로 이미 성립한다.
+        //
         // 연출·연출 공급 노드의 포트와 대사 노드의 발행 결과 포트는 2026-08-21에 사라졌다 —
         // 발행·배선이 자동이 되면서(EnsurePresentationChannel) 그 카드들이 배관으로 숨었고,
         // 끌어서 잇던 포트들은 이을 주체가 없다.
@@ -373,7 +363,6 @@ public static class GraphProjectionBuilder
             : $"execution:{exit.NodeId}:branch:{exit.BranchOpenLineId}";
     }
 
-    private static string SettingsPortKey(string nodeId) => $"settings:{nodeId}";
 
     private sealed record RawConnection(
         string Key,
