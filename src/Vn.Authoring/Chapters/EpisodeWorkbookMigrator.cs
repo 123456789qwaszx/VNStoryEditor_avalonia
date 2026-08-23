@@ -42,6 +42,13 @@ public static class EpisodeWorkbookMigrator
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        // 내용이 그대로면 판정도 그대로다 (2026-08-24 성능). 대본은 챕터보다 수가 많아
+        // 이쪽이 더 컸다 — 실측 64개에 717ms였고 전부 "필요 없음"이었다.
+        if (WorkbookMigrationGate.IsKnownCurrent(path))
+        {
+            return MigrationResult.NotNeeded;
+        }
+
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -49,6 +56,7 @@ public static class EpisodeWorkbookMigrator
 
             if (FindLegacySheet(probe) is null)
             {
+                WorkbookMigrationGate.MarkCurrent(path);
                 return MigrationResult.NotNeeded;
             }
         }
@@ -76,6 +84,9 @@ public static class EpisodeWorkbookMigrator
             Rewrite(sheet, Reorder(Read(sheet)));
 
             workbook.SaveAs(path);
+
+            // 방금 쓴 그 내용으로 판정을 기록한다 — 이행 직후 한 번 더 파고들 이유가 없다.
+            WorkbookMigrationGate.MarkCurrent(path);
             return new MigrationResult(true, null);
         }
         catch (Exception exception)

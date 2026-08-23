@@ -330,6 +330,25 @@ public sealed partial class ProjectEditor
                     plan.Conflicts.Select(entry => "• " + (entry.Message ?? entry.LineId))));
         }
 
+        // 바꿀 것이 하나도 없으면 <b>손대지 않는다</b> (2026-08-24 성능).
+        //
+        // 예전에는 계획이 전부 "그대로"여도 아래 Mutate가 돌았다. Mutate 한 번은
+        // <b>프로젝트 전체를 되돌리기용으로 직렬화</b>하고 변경을 방송한다 — 그 방송이
+        // 열려 있는 편집 화면을 통째로 다시 만들어서, 감시자가 250ms 뒤 깨어날 때마다
+        // 사람이 <b>타이핑하던 칸이 파괴됐다.</b>
+        //
+        // 값도 작지 않다: 에피소드 동기화는 워크북 하나마다 이 길을 지나므로, 대본 64개
+        // 프로젝트에서 아무것도 안 바뀐 저장 한 번이 전체 직렬화를 64번 시킨다.
+        //
+        // ⚠ <b>동기화가 대본을 되돌리는 힘은 그대로다.</b> 여기서 거르는 것은 "결과가
+        // 이미 그 모습인 경우"뿐이다 — 노드가 워크북과 다르면 아래 항목들이 그것을
+        // Modified·Deleted로 들고 오고, 그러면 이 관문을 지나간다
+        // (`EpisodeLineEditorTests.노드만_고치면_다음_동기화가_지운다`가 그 힘을 붙든다).
+        if (ChangesNothing(script, plan))
+        {
+            return;
+        }
+
         Mutate(() =>
         {
             ScriptLocale locale = script.RequireLocale(plan.Locale);
@@ -380,6 +399,54 @@ public sealed partial class ProjectEditor
                 script.SourcePath = plan.SourcePath;
             }
         });
+    }
+
+    /// <summary>
+    /// 이 계획을 적용해도 <b>대본이 지금 모습 그대로인가</b> (2026-08-24 성능).
+    ///
+    /// ⛔ <b>여기서 틀리면 조용히 틀린다</b> — 반영이 안 됐는데 됐다고 넘어가면 "엑셀에서
+    /// 고쳤는데 툴이 그대로"가 된다. 그래서 <b>바꿀 것이 없음이 확실할 때만</b> 참이고,
+    /// 조금이라도 애매하면 거짓이다(그러면 평소대로 적용할 뿐 손해가 없다).
+    ///
+    /// 네 가지를 전부 만족해야 한다:
+    ///   ① 원본 글이 지난번 반영한 것과 같은 해시
+    ///   ② 모든 항목이 <c>Unchanged</c> — 하나라도 고침·끼움·지움이면 적용한다
+    ///   ③ 살아 있는 줄의 <b>목록과 순서</b>가 계획이 남길 것과 정확히 같다
+    ///      (은퇴한 줄이 되살아나야 하는 경우와 그 반대를 여기서 잡는다)
+    ///   ④ 원본 경로가 그대로
+    /// </summary>
+    private static bool ChangesNothing(ScriptDocument script, ScriptSyncPlan plan)
+    {
+        // ① 지난번 반영한 글과 한 글자라도 다르면 적용한다.
+        if (!string.Equals(script.SourceContentHash, plan.SourceContentHash, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // ② 고침·끼움·지움·이동이 하나라도 있으면 적용한다.
+        if (plan.Entries.Any(entry => entry.Kind != ScriptSyncKind.Unchanged))
+        {
+            return false;
+        }
+
+        // ④ 원본 경로가 새로 붙거나 바뀌면 그것도 기록해야 한다.
+        if (plan.SourcePath is not null &&
+            !string.Equals(script.SourcePath, plan.SourcePath, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // ③ 계획이 남길 줄들 — 순서까지 지금과 같아야 한다. 은퇴 상태도 함께 걸린다:
+        // 되살아나야 할 줄은 지금 살아 있는 목록에 없고, 은퇴해야 할 줄은 남아 있다.
+        List<string> next = plan.Entries
+            .Where(entry => entry.NewIndex is not null && entry.LineId is not null)
+            .OrderBy(entry => entry.NewIndex!.Value)
+            .Select(entry => entry.LineId!)
+            .ToList();
+
+        List<string> now = script.ActiveLines.Select(line => line.Id).ToList();
+
+        return next.SequenceEqual(now, StringComparer.Ordinal);
     }
 
     /// <summary>대본에 빈 줄 하나를 끼워 넣는다. 새 LineId를 발급한다.</summary>

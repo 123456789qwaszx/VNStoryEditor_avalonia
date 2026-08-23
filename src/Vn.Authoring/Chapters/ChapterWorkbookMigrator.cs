@@ -24,6 +24,14 @@ public static class ChapterWorkbookMigrator
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        // 내용이 그대로면 판정도 그대로다 (2026-08-24 성능) — 아래 프로브는 워크북을
+        // 통째로 파싱하는데, 앱이 다시 읽을 때마다 모든 챕터에 그 질문을 다시 했다.
+        // 실측으로 워크북 작업의 절반이 이 "필요 없음"이었다(`WorkbookMigrationGate`).
+        if (WorkbookMigrationGate.IsKnownCurrent(path))
+        {
+            return MigrationResult.NotNeeded;
+        }
+
         // 필요 여부는 읽기로만 판정한다 — 최신 파일을 다시 저장하는 낭비를 만들지 않는다.
         try
         {
@@ -32,6 +40,7 @@ public static class ChapterWorkbookMigrator
 
             if (!NeedsMigration(probe))
             {
+                WorkbookMigrationGate.MarkCurrent(path);
                 return MigrationResult.NotNeeded;
             }
         }
@@ -71,6 +80,9 @@ public static class ChapterWorkbookMigrator
             ChapterWorkbookWriter.ApplyChapterChrome(workbook);
 
             workbook.SaveAs(path);
+
+            // 방금 쓴 그 내용으로 판정을 기록한다 — 이행 직후 한 번 더 파고들 이유가 없다.
+            WorkbookMigrationGate.MarkCurrent(path);
             return new MigrationResult(true, null);
         }
         catch (Exception exception)

@@ -193,6 +193,93 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
     });
 
     [Fact]
+    public void 아무것도_안_바뀐_동기화는_다시_그리라고_방송하지_않는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 이 방송이 열려 있는 편집 화면을 통째로 다시 만든다 — 그 순간 사람이 타이핑
+        // 하던 칸이 파괴된다. 감시자는 250ms 뒤 아무 때나 깨어나므로 "가끔 글자가 씹힌다"로
+        // 나타난다.
+        //
+        // 근거가 `run.Applied > 0`이었는데 <b>틀린 눈금이었다</b> (2026-08-24):
+        // `Applied`는 "반영을 돌렸다"는 뜻이지 "뭔가 달라졌다"가 아니다. 같은 워크북을
+        // 두 번 돌려도 참이다(`EpisodeSyncServiceTests`가 이미 못 박아 둔 사실이다).
+        (ChapterGraphView view, AuthoringSession session, Window window) = Show();
+
+        // ⚠ <b>대본에 글이 있어야 이 자리에 닿는다.</b> 갓 만든 빈 워크북은 반영 자체가
+        // 안 돌아(NotYetWritten) Applied가 0이고, 그러면 옛 눈금으로도 방송이 없다 —
+        // 처음 쓴 이 테스트가 그래서 <b>고치기 전에도 통과했다.</b> 빈 판으로 재면
+        // 아무것도 안 재는 것이다.
+        view.SyncEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        WriteFirstLine(
+            EpisodeLibrary.FindExisting(
+                EpisodeLibrary.FolderFor(ManifestPath, "ch01")!, "ep0")!,
+            "라루", "이미 쓰여 있던 대사");
+
+        view.SyncEpisodes();   // 이 한 번은 진짜로 바뀐다 — 줄이 들어온다
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // ⚠ 그리고 <b>한 번 더 바뀐다</b>. 방금 그 반영이 LineId를 발급했고, 다음 평평화는
+        // 그 신원을 `#line:`으로 실어 내므로 원본 글 자체가 달라진다 — 값이 다르니 반영이
+        // 도는 것이 맞다. 새 줄이 들어올 때 한 번 치르는 값이고, 그 다음부터는 고정점이다.
+        view.SyncEpisodes();   // 신원이 자리를 잡는 한 번
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        int broadcasts = 0;
+        session.Changed += (_, _) => broadcasts++;
+
+        // 이제 디스크도 프로젝트도 그대로인 채 다시 돈다 — 감시자가 깨울 때마다의 모습이다.
+        for (int index = 0; index < 3; index++)
+        {
+            view.SyncEpisodes();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+
+        Assert.Equal(0, broadcasts);
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 대본이_실제로_바뀌면_다시_그리라고_방송한다() => HeadlessUi.Run(() =>
+    {
+        // 눈금이 반대로 굳으면 "엑셀에서 고쳤는데 툴이 그대로"가 된다 — 위 최적화가
+        // 삼켜서는 안 되는 것이 이것이다.
+        (ChapterGraphView view, AuthoringSession session, Window window) = Show();
+
+        view.SyncEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        int broadcasts = 0;
+        session.Changed += (_, _) => broadcasts++;
+
+        // 대본에 실제로 한 줄을 적는다 — 엑셀에서 작가가 쓴 것과 같은 자리다.
+        string workbook = EpisodeLibrary.FindExisting(
+            EpisodeLibrary.FolderFor(ManifestPath, "ch01")!, "ep0")!;
+
+        WriteFirstLine(workbook, "라루", "새로 쓴 대사");
+
+        view.SyncEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.True(broadcasts > 0, "대본이 바뀌었으면 열려 있는 화면이 따라와야 한다");
+
+        window.Close();
+    });
+
+    /// <summary>대본 워크북의 첫 데이터 행에 한 줄 적는다 — 작가가 엑셀에서 하는 일.</summary>
+    private static void WriteFirstLine(string path, string speaker, string text)
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook(path);
+        ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets.First();
+
+        sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
+        sheet.Cell(2, 6).SetValue(text);      // F · 내용
+
+        workbook.SaveAs(path);
+    }
+
+    [Fact]
     public void 손을_뗀_뷰는_더_이상_일하지_않는다() => HeadlessUi.Run(() =>
     {
         // 흔들리던 `ChapterGraphEditingTests`의 뿌리 (2026-08-18). 어셈블리 하나가

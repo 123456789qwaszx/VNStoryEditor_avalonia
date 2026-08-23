@@ -600,6 +600,9 @@ public partial class ChapterGraphView : UserControl
         // 이미 있는 워크북이 새 어휘를 받은 뒤에 읽혀야 한다(새로 만드는 것은 만들 때 받는다).
         PushVocabularyToEpisodes();
 
+        // 프로젝트가 실제로 바뀌었는지 재는 눈금 (2026-08-24 성능) — 아래 방송의 근거다.
+        long revisionBefore = _session.Editor.Revision;
+
         // 순서와 정책은 저작이 갖는다 (2026-08-23에 이 파일에서 나갔다). 여기 남은 것은
         // **결과를 화면에 옮기는 일**뿐이다 — 상태줄·감시자·다시 그리기.
         EpisodeSyncRun run = EpisodeSyncRunner.Run(
@@ -631,9 +634,16 @@ public partial class ChapterGraphView : UserControl
         Validate();
         Draw();
 
-        // 반영이 있었다면 열려 있는 편집 화면(줄 목록·그래프)을 다시 만들게 알린다 —
-        // 대사 수정은 "타이핑 보호" 경로로 전달되어 화면이 옛 줄을 그대로 들고 있었다(실사례).
-        if (run.Applied > 0)
+        // 무언가 <b>실제로 바뀌었으면</b> 열려 있는 편집 화면(줄 목록·그래프)을 다시
+        // 만들게 알린다 — 대사 수정은 "타이핑 보호" 경로로 전달되어 화면이 옛 줄을 그대로
+        // 들고 있었다(실사례).
+        //
+        // ⚠ 근거가 `run.Applied > 0`이었는데 <b>틀린 눈금이었다</b> (2026-08-24).
+        // `Applied`는 "반영을 돌렸다"는 뜻이지 "뭔가 달라졌다"가 아니다 — 같은 워크북을
+        // 두 번 돌려도 참이다(`EpisodeSyncServiceTests`가 그것을 못 박아 두었다).
+        // 그래서 아무것도 안 바뀐 동기화가 <b>매번</b> 전체 다시 그리기를 방송했고,
+        // 감시자가 250ms 뒤 깨어날 때마다 사람이 타이핑하던 칸이 파괴됐다.
+        if (_session.Editor.Revision != revisionBefore)
         {
             _session.NotifyExternalScriptChange();
         }

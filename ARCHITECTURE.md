@@ -157,7 +157,7 @@ tests/Ked.Presentation.Core.Tests  무대 상태 계산 (344)
 tests/Vn.Core.Tests             Yarn 분석과 골든 픽스처 (60)
 ```
 
-테스트 수는 2026-08-24 기준 **1541개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 810 · Vn.App 327).
+테스트 수는 2026-08-24 기준 **1552개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 819 · Vn.App 329).
 
 ### `Vn.Authoring/Chapters/ChapterExportService` — 화면에서 나온 정책 (2026-08-23)
 
@@ -981,6 +981,7 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 | `ChapterWorkbookMigrator.cs` | 구판 → 최신 규격 자동 이행 (`.bak`), 앱이 열 때 |
 | `EpisodeWorkbookReader.cs` · `EpisodeWorkbookMigrator.cs` | 대본 워크북(6열)의 같은 짝 |
 | `EpisodeWorkbookWriter.cs` | 대본 워크북에 쓰는 유일한 자리 — **화자(E)·내용(F) 두 칸뿐**이다 (2026-08-24). 행은 A열 인덱스로 찾고, 조건 블록 행은 거부한다 |
+| `WorkbookMigrationGate.cs` | 이행 프로브를 **내용 해시로 기억**한다 (2026-08-24 성능). 두 이행기가 "고칠 것 있나"를 워크북 통째 파싱으로 판정했는데 답은 거의 늘 "없음"이었고, 재읽기마다 그것을 다시 했다 — 실측 워크북 작업의 **절반**. 열쇠가 경로가 아니라 내용이라, 구판을 갖다 놓으면 다시 이행한다 |
 | `EpisodeLineEditor.cs` | 노드의 한 줄 → 어느 워크북 어느 인덱스인가(`Locate`), 그리고 되쓰기. ⛔ **쓰기가 성공한 뒤에만** 노드를 고친다 — 뒤집으면 다음 동기화가 사람의 글을 지운다 |
 | `EpisodeLibrary.cs` | 대본 파일의 자리(`episodes/{챕터}/`) · 생성 · 개명 · 입양 |
 | `ChapterLibrary.cs` | `chapters/` 폴더를 훑어 목록을 만든다 |

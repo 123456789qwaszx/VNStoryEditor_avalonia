@@ -162,6 +162,16 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
+        // ⚠ <b>실제로 무언가를 바꿔야 한다</b> (2026-08-24). 예전에는 그냥 SyncEpisodes를
+        // 한 번 더 부르면 됐다 — 아무것도 안 바뀌어도 방송이 나갔기 때문이다. 그 방송이
+        // 타이핑하던 칸을 파괴해서 지금은 <b>바뀐 때만</b> 나간다
+        // (`ChapterGraphWorkAmountTests.아무것도_안_바뀐_동기화는_다시_그리라고_방송하지_않는다`).
+        // 그래서 여기서도 작가가 시트에서 고친 것과 같은 일을 한다 — 이 테스트가 원래
+        // 지키려던 것이 바로 그 경우다("시트에서 대사를 고치면").
+        WriteFirstLine(
+            Path.Combine(project.EpisodesFolder, "main05.02.xlsx"),
+            "라루", "시트에서 고친 대사");
+
         var kinds = new List<ProjectChangeKind>();
         session.Changed += (_, args) => kinds.Add(args.Kind);
 
@@ -169,6 +179,19 @@ public sealed class ChapterGraphSyncViewTests
 
         Assert.Contains(ProjectChangeKind.Structure, kinds);
     });
+
+    /// <summary>대본 워크북의 첫 데이터 행에 한 줄 적는다 — 작가가 엑셀에서 하는 일.</summary>
+    private static void WriteFirstLine(string path, string speaker, string text)
+    {
+        using var workbook = new ClosedXML.Excel.XLWorkbook(path);
+        ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스");
+
+        sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
+        sheet.Cell(2, 6).SetValue(text);      // F · 내용
+
+        workbook.SaveAs(path);
+    }
 
     [Fact]
     public void 깨진_에피소드는_거부가_배지와_패널에_보인다() => HeadlessUi.Run(() =>

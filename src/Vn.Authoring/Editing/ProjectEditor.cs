@@ -1927,8 +1927,25 @@ public sealed partial class ProjectEditor
         Raise(kind);
     }
 
+    /// <summary>
+    /// 프로젝트가 <b>실제로 바뀐 횟수</b> (2026-08-24 성능). 두 시점의 값이 같으면 그
+    /// 사이에 아무 일도 없었다 — 무슨 일이 있었는지는 몰라도 <em>없었다</em>는 것은 안다.
+    ///
+    /// <b>왜 필요했나</b> — 에피소드 동기화는 워크북을 반영할 때마다 셸에 "다시 그려라"고
+    /// 알렸는데, 그 근거로 쓰던 <c>EpisodeSyncReport.Applied</c>는 <b>"반영을 돌렸다"</b>는
+    /// 뜻이지 <b>"뭔가 달라졌다"</b>는 뜻이 아니다(`EpisodeSyncServiceTests`의
+    /// `같은_워크북을_두_번_동기화하면_두_번째는_변경이_없다`가 그 사실을 이미 못 박아
+    /// 두었다 — 두 번째도 <c>Applied</c>가 참이다). 그래서 아무것도 안 바뀐 동기화가
+    /// 매번 전체 다시 그리기를 방송했고, 그 순간 사람이 <b>타이핑하던 칸이 파괴됐다.</b>
+    ///
+    /// 각 변경을 일일이 세는 대신 여기 하나를 둔다: 새 편집 명령이 생겨도 <c>Mutate</c>를
+    /// 지나는 한 저절로 세어진다. 빠뜨릴 수 있는 목록을 만들지 않는다.
+    /// </summary>
+    public long Revision { get; private set; }
+
     private void Raise(ProjectChangeKind kind)
     {
+        Revision++;
         Changed?.Invoke(this, new ProjectChangedEventArgs(kind));
     }
 
