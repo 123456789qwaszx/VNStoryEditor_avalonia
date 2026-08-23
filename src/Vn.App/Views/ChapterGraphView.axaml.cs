@@ -1527,7 +1527,13 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    /// <summary>포트에서 도착 카드로 — 같은 높이면 왼쪽 진입(▶), 위·아래면 가운데로 꺾어 진입.</summary>
+    /// <summary>
+    /// 포트에서 도착 카드로 <b>직선</b> 하나. 도착이 오른쪽이면 왼쪽 변으로, 왼쪽이면
+    /// 오른쪽 변으로 들어간다(▶ ◀).
+    ///
+    /// 구간이 하나뿐이라 <b>히트 선이 간선 전체를 덮는다</b> — 예전에는 첫 가로 구간
+    /// 위에서만 눌렸다.
+    /// </summary>
     private void DrawPortEdge(ChapterEdge edge, Point port, IReadOnlySet<(string, string)> pathEdges)
     {
         bool onPath = pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId));
@@ -1568,23 +1574,32 @@ public partial class ChapterGraphView : UserControl
         }
 
         var targetRect = new Rect(target.X, target.Y, CardWidth, CardHeight);
-        double y = port.Y;
 
-        if (y >= targetRect.Y && y <= targetRect.Bottom)
-        {
-            Segment(port.X, y, targetRect.X - 8, y);
-            AddEdgeArrow(targetRect.X - 7, y, stroke, pointRight: true);
-        }
-        else
-        {
-            double midX = (port.X + targetRect.X) / 2;
-            Segment(port.X, y, midX, y);
+        // ⚠ 직선이다 (2026-08-23 소유자 보고: "선이 완전히 겹치다보니 어디로 이어지는지
+        // 확인하기가 힘들어").
+        //
+        // 예전에는 직교 3구간(가로 → 세로 → 가로)으로 돌렸는데, 꺾이는 x가
+        // `(port.X + target.X) / 2`라 **같은 열로 가는 간선들이 세로 구간을 공유**했다.
+        // 도착도 언제나 카드 세로 중앙 한 점이라 마지막 가로 구간까지 겹쳤다. 결과적으로
+        // 한 에피소드에서 나가는 길이 여럿이면 화면에서 한 줄로 보였다.
+        //
+        // 직선은 그 문제가 원천적으로 없다: 포트마다 y가 다르고 도착마다 위치가 다르므로
+        // **기울기가 저절로 갈린다.** 겹치려면 두 간선의 출발과 도착이 모두 같아야 하는데,
+        // 그러면 포트가 달라 출발점이 이미 다르다.
+        bool targetIsRight = port.X <= targetRect.X;
 
-            double targetY = targetRect.Y + CardHeight / 2;
-            Segment(midX, y, midX, targetY);
-            Segment(midX, targetY, targetRect.X - 8, targetY);
-            AddEdgeArrow(targetRect.X - 7, targetY, stroke, pointRight: true);
-        }
+        double entryX = targetIsRight ? targetRect.X - 8 : targetRect.Right + 8;
+        double entryY = targetRect.Y + (CardHeight / 2);
+
+        Segment(port.X, port.Y, entryX, entryY);
+
+        // 화살촉은 진입하는 변에 둔다 — 뒤로 가는 길(도착이 왼쪽)이면 반대로 향한다.
+        AddEdgeArrow(
+            targetIsRight ? entryX + 1 : entryX - 1,
+            entryY,
+            stroke,
+            pointRight: targetIsRight,
+            pointLeft: !targetIsRight);
 
         RegisterEdgeLines(edge, segments, stroke, thickness);
 
@@ -1608,17 +1623,20 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Children.Add(hit);
     }
 
-    private void AddEdgeArrow(double x, double y, IBrush fill, bool pointRight, bool pointUp = false)
+    private void AddEdgeArrow(
+        double x, double y, IBrush fill, bool pointRight, bool pointUp = false, bool pointLeft = false)
     {
         var arrow = new Avalonia.Controls.Shapes.Polygon
         {
             Fill = fill,
             IsHitTestVisible = false,
-            Points = pointRight
-                ? [new Point(0, -4), new Point(7, 0), new Point(0, 4)]
-                : pointUp
-                    ? [new Point(-4, 0), new Point(0, -7), new Point(4, 0)]
-                    : [new Point(-4, 0), new Point(0, 7), new Point(4, 0)]
+            Points = pointLeft
+                ? [new Point(0, -4), new Point(-7, 0), new Point(0, 4)]
+                : pointRight
+                    ? [new Point(0, -4), new Point(7, 0), new Point(0, 4)]
+                    : pointUp
+                        ? [new Point(-4, 0), new Point(0, -7), new Point(4, 0)]
+                        : [new Point(-4, 0), new Point(0, 7), new Point(4, 0)]
         };
 
         Canvas.SetLeft(arrow, x);

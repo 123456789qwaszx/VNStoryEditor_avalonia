@@ -105,6 +105,52 @@ public sealed class ChapterGraphViewRenderTests
     });
 
     [Fact]
+    public void 선택지_간선은_꺾이지_않고_직선_하나로_간다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-23 소유자 보고 — "간선을 수직선으로 그어주다보니 … 선이 완전히 겹쳐
+        // 어디로 이어지는지 확인하기가 힘들어". 예전에는 포트 간선이 직교 3구간이었고
+        // 꺾이는 x가 출발·도착의 중간이라, 같은 열로 가는 길들이 세로 구간을 공유했다.
+        using var project = new TempProject(SamplePath);
+        (Canvas canvas, _) = Render(project);
+
+        foreach (string tag in new[]
+                 {
+                     "main05.02→branch05.02A [라루의 제안을 듣는다]",
+                     "main05.02→main05.03 [혼자 문을 연다]"
+                 })
+        {
+            Assert.Single(
+                canvas.Children.OfType<Line>().Where(line => (string?)line.Tag == tag),
+                line => line.StartPoint != line.EndPoint);
+        }
+    });
+
+    [Fact]
+    public void 한_에피소드에서_나가는_길들은_서로_다른_방향으로_뻗는다() => HeadlessUi.Run(() =>
+    {
+        // 이것이 소유자가 실제로 겪은 문제다. 겹치지 않는다는 말의 뜻은 "기울기가 다르다"이고,
+        // 직선이면 그것이 저절로 성립한다 — 포트마다 출발 y가 다르고 도착마다 자리가 다르다.
+        using var project = new TempProject(SamplePath);
+        (Canvas canvas, _) = Render(project);
+
+        (double Dx, double Dy)[] directions = canvas.Children.OfType<Line>()
+            .Where(line => (string?)line.Tag is { } tag && tag.StartsWith("main05.02→", StringComparison.Ordinal))
+            .Select(line => (
+                Dx: line.EndPoint.X - line.StartPoint.X,
+                Dy: line.EndPoint.Y - line.StartPoint.Y))
+            .ToArray();
+
+        Assert.Equal(2, directions.Length);
+
+        // 두 방향이 평행하면(외적 0) 화면에서 한 줄로 보인다 — 그것이 예전 모습이었다.
+        double cross = (directions[0].Dx * directions[1].Dy) - (directions[0].Dy * directions[1].Dx);
+
+        Assert.True(
+            Math.Abs(cross) > 1.0,
+            $"두 길이 같은 방향으로 뻗는다(외적 {cross:0.###}) — 화면에서 겹쳐 보인다");
+    });
+
+    [Fact]
     public void 도달_불가가_원인_조건과_함께_검증_보고에_선다() => HeadlessUi.Run(() =>
     {
         // 규칙 개정 — 도달성 증명(G7)이 뷰에 붙으면서, 견본 챕터의 실제 도달 불가가
