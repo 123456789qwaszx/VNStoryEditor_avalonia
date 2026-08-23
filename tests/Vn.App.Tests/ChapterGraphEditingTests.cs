@@ -151,8 +151,8 @@ public sealed class ChapterGraphEditingTests
 
         ChapterEdge edge = reread.Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
-        // 문구 없이 이으면 보이지 않는 기본이다 — 문구는 그 줄을 눌러 고른다.
-        Assert.True(edge.HasNoOptionLabel);
+        // v12 — 툴이 놓는 길에는 기본 문구가 들어간다. 문구는 그 줄을 눌러 고친다.
+        Assert.Equal("계속", edge.OptionLabel);
     });
 
     [Fact]
@@ -479,8 +479,9 @@ public sealed class ChapterGraphEditingTests
     [Fact]
     public void 선택지_포트가_카드_오른쪽에_뚫린다() => HeadlessUi.Run(() =>
     {
-        // v9 — 포트의 원천은 <b>문구가 붙은 나가는 간선</b>이다. 포트 하나 = 길 하나이고,
-        // 누르면 그 간선이 선택된다. 문구 없는 길(보이지 않는 기본)은 포트가 아니라 직행선.
+        // v12 (2026-08-24) — 포트의 원천은 <b>나가는 간선 전부</b>다. 포트 하나 = 길
+        // 하나이고, 누르면 그 간선이 선택된다. 예전에는 문구 없는 길("보이지 않는 기본")만
+        // 포트에서 빠져 카드 중앙 직행선으로 갔는데, 그 개념이 폐지됐다.
         using var project = new TempProject(SamplePath);
 
         // 셋째 길을 하나 더 낸다 — 문구는 간선의 `선택지` 칸에 그대로 적힌다.
@@ -505,7 +506,10 @@ public sealed class ChapterGraphEditingTests
                             block.Text == "혼자 문을 연다" || block.Text == "셋째 길")
             .ToList();
         Assert.Equal(3, labels.Count);
-        Assert.Equal(3, canvas.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Count(port => port.Width == 9));
+        // ⚠ 원의 수는 판 전체의 길 수다(v12 — 모든 길이 포트를 받는다). main05.02의 셋만
+        // 세던 옛 값(3)은 문구 없는 길이 포트에서 빠지던 시절의 것이다.
+        Assert.Equal(
+            6, canvas.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Count(port => port.Width == 9));
 
         // 포트 클릭 = 그 길 선택. 포트는 늘 간선이 있다(v9 — 포트가 곧 길이다).
         Press(labels.Single(block => block.Text!.StartsWith("라루의 제안을 듣는다")));

@@ -34,7 +34,8 @@ public sealed class ChapterEdgeLabelTests
         ChapterGraphModel created = ChapterWorkbookReader.Read(project.ChapterPath);
         ChapterEdge fresh = Assert.Single(created.Edges,
             edge => edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
-        Assert.True(fresh.HasNoOptionLabel); // 아직 문구가 없다 — 보이지 않는 기본
+        // v12 — 툴이 길을 놓으면 문구가 함께 들어간다. 빈 문구는 이제 오류다.
+        Assert.Equal("계속", fresh.OptionLabel);
 
         // 기획자가 엑셀에서 하듯 간선의 `선택지` 칸에 문구를 적는다 (v9 — 문구가 곧 값이다).
         using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
@@ -67,7 +68,7 @@ public sealed class ChapterEdgeLabelTests
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        view.SelectEdgeKey("new01", "new02");
+        view.SelectEdgeKey("new01", "new02", "계속");
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
 
         // 도착 쪽 고리를 누른다 (출발 → 화살표 → 도착 순).
@@ -112,7 +113,7 @@ public sealed class ChapterEdgeLabelTests
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        view.SelectEdgeKey("new01", "new02");
+        view.SelectEdgeKey("new01", "new02", "계속");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         view.FindControl<TextBox>("EdgeLockedMsgBox")!.Text = "아직 이르다";
 

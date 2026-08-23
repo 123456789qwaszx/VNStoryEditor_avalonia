@@ -43,7 +43,7 @@ public sealed class ChapterFixtureHighlightTests
 
         string[] trustPath = HighlightedEdges(view);
         Assert.Contains("main05.02→branch05.02A [라루의 제안을 듣는다]", trustPath);
-        Assert.Contains("branch05.02A→main05.03", trustPath);
+        Assert.Contains("branch05.02A→main05.03 [계속]", trustPath);
         Assert.DoesNotContain(trustPath, tag => tag.StartsWith("main05.02→main05.03"));
 
         // 끄면 하이라이트가 없다.

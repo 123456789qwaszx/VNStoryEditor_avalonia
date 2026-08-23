@@ -59,7 +59,7 @@ public sealed class StarterProjectTests : IDisposable
         // 분기 하나가 실제로 서 있다 — 문구 둘이 갈라졌다 다시 만난다.
         Assert.Equal(4, chapter.Episodes.Count);
         Assert.Equal(
-            ["라루를 믿는다", "혼자 간다"],
+            ["라루를 믿는다", "문을 연다", "문을 연다", "혼자 간다"],
             chapter.Edges.Where(edge => !edge.HasNoOptionLabel)
                 .Select(edge => edge.OptionLabel!)
                 .Order(StringComparer.Ordinal));
@@ -167,8 +167,9 @@ internal static class StarterProject
             chapter, "시작", "믿는길", optionLabel: "라루를 믿는다", statChanges: "trust +2");
         ChapterWorkbookWriter.AddEdge(
             chapter, "시작", "혼자길", optionLabel: "혼자 간다", statChanges: "fatigue +1");
-        ChapterWorkbookWriter.AddEdge(chapter, "믿는길", "끝");
-        ChapterWorkbookWriter.AddEdge(chapter, "혼자길", "끝");
+        // v12 — 문구 없는 길은 폐지됐다. 넘어가기만 하는 자리도 버튼 이름을 갖는다.
+        ChapterWorkbookWriter.AddEdge(chapter, "믿는길", "끝", optionLabel: "문을 연다");
+        ChapterWorkbookWriter.AddEdge(chapter, "혼자길", "끝", optionLabel: "문을 연다");
 
         // ⑥ 대본 — 툴이 만드는 것은 빈 규격 워크북까지다(v4). 대사는 사람이 쓰는 것이라
         //    여기서는 씨앗을 심는 손이 대신 쓴다.

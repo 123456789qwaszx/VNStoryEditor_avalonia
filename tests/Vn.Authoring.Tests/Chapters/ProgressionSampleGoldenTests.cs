@@ -69,18 +69,15 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
 
         Assert.Equal(["ch01_alone", "ch01_true"], endings);
 
-        // v11 §6 — 연출이 실린 실데이터가 저쪽에 없었다(`ked-progression` 요청 2번).
-        // 표본이 그것을 보여 주는 파일이 됐으므로, 그 사실도 함께 건다.
-        string[] via = document.RootElement
-            .GetProperty("Nodes")
-            .EnumerateArray()
-            .SelectMany(node => node.GetProperty("NextOptions").EnumerateArray())
-            .Select(option => option.GetProperty("ViaNodeId").GetString()!)
-            .Where(name => name.Length > 0)
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Equal(["엔딩 ch01_alone", "엔딩 ch01_true"], via);
+        // ⚠ v12 (2026-08-24) — 저작의 `연출` 칸이 폐지됐다. 계약의 `ViaNodeId`는 남아
+        // 있지만 이제 **언제나 빈 문자열**이다. 저쪽 DTO를 바꾸지 않는다 — 안 채울 뿐이다.
+        // 표본이 그 사실을 보여 주는 파일이므로 그것도 함께 건다.
+        Assert.All(
+            document.RootElement
+                .GetProperty("Nodes")
+                .EnumerateArray()
+                .SelectMany(node => node.GetProperty("NextOptions").EnumerateArray()),
+            option => Assert.Equal(string.Empty, option.GetProperty("ViaNodeId").GetString()));
     }
 
     /// <summary>
@@ -110,13 +107,13 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
             Sheet(workbook, ChapterSheetNames.Edges,
                 [
                     "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
-                    "잠금시 숨김", "잠금 안내문", "종류", "엔딩키", "연출"
+                    "잠금시 숨김", "잠금 안내문", "엔딩키"
                 ],
                 [
-                    ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, "FALSE", null, "선택지", null, null],
-                    ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, "FALSE", null, "선택지", null, null],
-                    ["믿는길", "좋은끝", null, null, null, null, "FALSE", null, "자동", "ch01_true", "엔딩 ch01_true"],
-                    ["혼자길", "쓸쓸한끝", null, null, null, null, "FALSE", null, "자동", "ch01_alone", "엔딩 ch01_alone"]
+                    ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, "FALSE", null, null],
+                    ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, "FALSE", null, null],
+                    ["믿는길", "좋은끝", null, "문을 연다", null, null, "FALSE", null, "ch01_true"],
+                    ["혼자길", "쓸쓸한끝", null, "문을 연다", null, null, "FALSE", null, "ch01_alone"]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Conditions,

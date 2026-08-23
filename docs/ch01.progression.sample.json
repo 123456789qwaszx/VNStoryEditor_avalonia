@@ -85,13 +85,13 @@
       "NextOptions": [
         {
           "TargetEpisodeId": "좋은끝",
-          "ChoiceLabel": "",
-          "Kind": "AutoAdvance",
+          "ChoiceLabel": "문을 연다",
+          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
           "LockedReasonText": "",
-          "ViaNodeId": "엔딩 ch01_true",
+          "ViaNodeId": "",
           "StatChanges": []
         }
       ],
@@ -115,13 +115,13 @@
       "NextOptions": [
         {
           "TargetEpisodeId": "쓸쓸한끝",
-          "ChoiceLabel": "",
-          "Kind": "AutoAdvance",
+          "ChoiceLabel": "문을 연다",
+          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
           "LockedReasonText": "",
-          "ViaNodeId": "엔딩 ch01_alone",
+          "ViaNodeId": "",
           "StatChanges": []
         }
       ],

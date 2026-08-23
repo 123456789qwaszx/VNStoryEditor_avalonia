@@ -77,7 +77,8 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         Assert.False(branch.HideWhenLocked);
         Assert.Equal("신뢰가 부족하다", branch.LockedMessage);
 
-        Assert.True(model.Edges.Single(edge => edge.FromEpisodeId == "main05.01").HasNoOptionLabel);
+        // v12 (2026-08-24) — 문구 없는 길이 폐지되면서 견본도 문구를 갖는다.
+        Assert.False(model.Edges.Single(edge => edge.FromEpisodeId == "main05.01").HasNoOptionLabel);
     }
 
     [Fact]
@@ -372,8 +373,8 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         ]),
         ("간선", [
             ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문",
-             "종류", "엔딩키", "연출"],
-            ["ep1", "ep2", null, null, null, null, "FALSE", null, "자동", null, null]
+             "엔딩키"],
+            ["ep1", "ep2", null, "계속", null, null, "FALSE", null, null]
         ]),
         ("조건", [
             ["라벨", "스탯", "연산자", "값", "설명"],

@@ -140,10 +140,13 @@ public sealed class ChapterGraphNavigationTests : IDisposable
         MiddlePress(scroll, new Point(300, 200));
         MiddleMove(scroll, new Point(250, 170));
 
-        // 왼쪽으로 끌면 판은 오른쪽으로 — 오프셋이 끈 만큼 는다. 세로는 챕터 판이
-        // 뷰포트보다 낮아(한 줄로 뻗는다) 갈 곳이 없으므로 0에 머문다.
+        // 왼쪽으로 끌면 판은 오른쪽으로 — 오프셋이 끈 만큼 는다.
         Assert.Equal(50, scroll.Offset.X, 1);
-        Assert.Equal(0, scroll.Offset.Y, 1);
+
+        // ⚠ 세로는 **끈 만큼(30) 다 가지 못하고 판의 끝에서 멈춘다.** v12 전에는 아예 0에
+        // 머물렀다(챕터 판이 한 줄로 뻗어 뷰포트보다 낮았다). 모든 길이 포트를 받으면서
+        // 카드가 포트 줄만큼 아래로 자랐고, 그만큼 갈 곳이 생겼다.
+        Assert.InRange(scroll.Offset.Y, 0, 30);
 
         // 단추를 떼면 더 움직여도 따라오지 않는다.
         MiddleRelease(scroll, new Point(250, 170));

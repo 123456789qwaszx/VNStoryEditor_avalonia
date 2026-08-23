@@ -406,31 +406,6 @@ public static class ChapterWorkbookWriter
             }
         });
 
-    /// <summary>
-    /// 간선의 `연출` 칸(K)에 노드 이름을 적어 넣는다 (v11).
-    ///
-    /// <b>툴이 짓고 툴이 적는다.</b> 기획자는 엔딩키만 적으면 되고, 동기화가 그 간선에
-    /// 연출 노드를 세운 뒤 이름을 여기 남긴다. 다음부터는 이 이름으로 같은 노드를 찾는다.
-    ///
-    /// 이름을 <b>이 행에</b> 두는 이유: 간선의 신원이 (출발, 도착, 문구)라, 배선을 프로젝트
-    /// 파일에만 두면 기획자가 문구를 고치는 순간 조용히 끊어진다.
-    /// </summary>
-    public static ChapterWriteResult SetEdgePresentation(
-        string path,
-        string fromEpisodeId,
-        string toEpisodeId,
-        string? matchOptionLabel,
-        string presentationNodeName) =>
-        Mutate(path, workbook =>
-        {
-            IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
-
-            IXLRow row = FindEdgeRow(sheet, fromEpisodeId, toEpisodeId, matchOptionLabel)
-                ?? throw new InvalidOperationException($"간선 {fromEpisodeId}→{toEpisodeId}이 없습니다.");
-
-            Set(sheet, row.RowNumber(), 11, presentationNodeName);
-        });
-
     private static IXLWorksheet RequireChoiceSheet(XLWorkbook workbook) =>
         workbook.Worksheets.FirstOrDefault(candidate =>
             candidate.Name == ChapterSheetNames.Choices)
@@ -634,9 +609,8 @@ public static class ChapterWorkbookWriter
             [
                 "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
                 "잠금시 숨김", "잠금 안내문",
-                // v11 (2026-08-18) — 뒤에 붙인다. 끼워 넣으면 뒤 열이 밀려 이행에서
-                // 셀을 잃을 위험을 산다.
-                "종류", "엔딩키", "연출"
+                // v12 (2026-08-24) — `종류`·`연출` 폐지. 엔딩키만 남는다.
+                "엔딩키"
             ]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);

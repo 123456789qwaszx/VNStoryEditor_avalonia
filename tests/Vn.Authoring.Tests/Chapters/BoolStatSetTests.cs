@@ -194,21 +194,15 @@ public sealed class BoolStatSetTests : IDisposable
     }
 
     [Fact]
-    public void 간선의_종류가_JSON에_실린다()
+    public void 모든_길이_선택지로_나간다()
     {
-        // v11 `종류` 열 — **누가 고르나**. 이 칸이 없으면 저쪽은 문구가 비었는지로
-        // 추론할 수밖에 없어서, 문구를 실수로 지운 것과 의도한 자동 진행이 데이터로
-        // 구별되지 않는다(D5).
+        // v12 (2026-08-24) — 저작에서 `종류` 칸이 폐지됐다. 문구 없이 넘어가는 길이
+        // 사라졌으므로 "누가 고르나"를 물을 것이 없다: 언제나 플레이어다.
         //
-        // ⚠ 저쪽 `EpisodeOptionDto`에 아직 이 칸이 없다 — 지금은 나가기만 하고 아무 일도
-        // 하지 않는다. 그래도 값의 주인은 저작이므로 여기서 붙들어 둔다.
-        //
-        // ⚠ 값은 **코어 enum의 멤버 이름 그대로**여야 한다 (2026-08-23 정정). 처음에
-        // `"Auto"`로 냈는데 코어는 `OptionKind.AutoAdvance`이고, 로더가 이름을 switch로
-        // 정확히 받으므로 칸이 서는 날 "알 수 없는 종류"가 됐을 값이다. 그래서 여기서도
-        // 글자를 손으로 적지 않고 코어 타입에서 가져온다 — 저쪽이 개명하면 이 줄이 깨진다.
+        // ⚠ 값은 **코어 enum의 멤버 이름 그대로**여야 한다. 글자를 손으로 적지 않고
+        // 코어 타입에서 가져온다 — 저쪽이 개명하면 이 줄이 깨진다.
         Assert.Equal(
-            nameof(Ked.Progression.OptionKind.AutoAdvance),
+            nameof(Ked.Progression.OptionKind.PlayerChoice),
             OnlyOptionKind(Read("trust +1")));
     }
 
@@ -252,15 +246,15 @@ public sealed class BoolStatSetTests : IDisposable
     /// <summary>ep1 → 끝 간선 하나에 그 스탯변화를 적은 챕터.</summary>
     private ChapterGraphModel Read(string statChange) =>
         Build(
-            [["ep1", "끝", statChange, null, null, null, "FALSE", null, "자동", null, null]],
+            [["ep1", "끝", statChange, "계속", null, null, "FALSE", null, null]],
             conditions: []);
 
     /// <summary>ep1 →(관문) 끝. 관문은 깃발이 켜져 있어야 열린다.</summary>
     private ChapterGraphModel ReadWithGate(string? statChange, string gateLabel) =>
         Build(
             [
-                ["ep1", "중간", statChange, "간다", null, null, "FALSE", null, "선택지", null, null],
-                ["중간", "끝", null, null, null, gateLabel, "FALSE", null, "자동", null, null]
+                ["ep1", "중간", statChange, "간다", null, null, "FALSE", null, null],
+                ["중간", "끝", null, "계속", null, gateLabel, "FALSE", null, null]
             ],
             conditions: [[gateLabel, "met", "true", null, null]],
             episodes: ["ep1", "중간", "끝"]);
@@ -283,7 +277,7 @@ public sealed class BoolStatSetTests : IDisposable
             Sheet(workbook, ChapterSheetNames.Edges,
                 [
                     "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
-                    "잠금시 숨김", "잠금 안내문", "종류", "엔딩키", "연출"
+                    "잠금시 숨김", "잠금 안내문", "엔딩키"
                 ],
                 edgeRows);
 

@@ -28,7 +28,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
 
         ChapterWorkbookWriter.AddEpisode(path, "ep1", title: "", 0, 0);
         ChapterWorkbookWriter.AddEpisode(path, "ep2", title: "", 1, 0);
-        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2");
+        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "계속");
         return path;
     }
 
@@ -69,7 +69,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
         // 커밋되므로 ep2에서 관문이 열려 있어야 한다 — 걷기가 증감을 반영한다는 증거.
         string path = BuildChapter();
         ChapterWorkbookWriter.AddEpisode(path, "ep3", title: "", 2, 0);
-        ChapterWorkbookWriter.AddEdge(path, "ep2", "ep3", conditionLabel: "신뢰높음");
+        ChapterWorkbookWriter.AddEdge(path, "ep2", "ep3", optionLabel: "계속", conditionLabel: "신뢰높음");
         ChapterWorkbookWriter.AddCondition(path, "신뢰높음", "trust >= 3");
         ChapterWorkbookWriter.UpdateEdge(path, "ep1", "ep2", statChanges: "trust +3");
 
@@ -91,7 +91,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
         // 같은 챕터를 증명기로 — 간선 +3이 없으면 ep3는 도달 불가였을 구조다.
         string path = BuildChapter();
         ChapterWorkbookWriter.AddEpisode(path, "ep3", title: "", 2, 0);
-        ChapterWorkbookWriter.AddEdge(path, "ep2", "ep3", conditionLabel: "신뢰높음");
+        ChapterWorkbookWriter.AddEdge(path, "ep2", "ep3", optionLabel: "계속", conditionLabel: "신뢰높음");
         ChapterWorkbookWriter.AddCondition(path, "신뢰높음", "trust >= 3");
         ChapterWorkbookWriter.UpdateEdge(path, "ep1", "ep2", statChanges: "trust +3");
 
@@ -106,11 +106,10 @@ public sealed class ChapterEdgeStatTests : IDisposable
     {
         // v9 (2026-08-17 소유자) — "선택지는 인덱스를 가져오는 게 아니라 그냥 깡으로 대사만."
         // 간선 D열에 문구가 그대로 들어가고, 신원은 (출발, 도착, 문구)다.
-        string path = BuildChapter(); // ep1→ep2, 문구 없음(보이지 않는 기본)
+        string path = BuildChapter(); // ep1→ep2, 문구 "계속" (v12 — 문구 없는 길은 폐지)
 
         ChapterGraphModel first = ChapterWorkbookReader.Read(path);
-        Assert.True(Assert.Single(first.Edges).HasNoOptionLabel);
-        Assert.Empty(first.ChoiceOptions); // 빈 문구는 사전에 오를 낱말이 아니다
+        Assert.Equal("계속", Assert.Single(first.Edges).OptionLabel);
 
         // 같은 도착으로 가는 길을 문구만 달리해 둘 더 낸다 — 흔한 패턴이고 허용된다.
         Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "믿는다").Written);
@@ -121,14 +120,15 @@ public sealed class ChapterEdgeStatTests : IDisposable
         Assert.False(model.HasErrors);
 
         // 쓴 문구는 사전에도 올라 다음번 드롭다운 재료가 된다.
-        Assert.Equal(["믿는다", "무시한다"], model.ChoiceOptions.Select(option => option.Text));
+        Assert.Equal(["계속", "믿는다", "무시한다"], model.ChoiceOptions.Select(option => option.Text));
 
         // 셋(출발·도착·문구)이 다 같은 길을 두 번 낼 수는 없다.
         Assert.False(ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "믿는다").Written);
 
         // 문구는 어느 에피소드에서든 다시 쓴다 — 사전은 챕터 전체의 것이다.
         Assert.True(ChapterWorkbookWriter.AddEdge(path, "ep2", "ep1", optionLabel: "믿는다").Written);
-        Assert.Equal(2, ChapterWorkbookReader.Read(path).ChoiceOptions.Count);
+        // v12 — 툴이 놓는 첫 길에 "계속"이 들어가므로 사전 낱말이 셋이다.
+        Assert.Equal(3, ChapterWorkbookReader.Read(path).ChoiceOptions.Count);
 
         // 길을 지워도 문구는 사전에 남는다(어휘집이지 배선이 아니다).
         Assert.True(ChapterWorkbookWriter.RemoveEdge(path, "ep1", "ep2", "무시한다").Written);
@@ -148,7 +148,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
             .SetEdgeRoute(path, "ep1", "ep2", "믿는다", "ep3", "의심한다").Written);
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        ChapterEdge moved = Assert.Single(model.Edges, edge => !edge.HasNoOptionLabel);
+        ChapterEdge moved = Assert.Single(model.Edges, edge => edge.ToEpisodeId == "ep3");
         Assert.Equal("ep3", moved.ToEpisodeId);
         Assert.Equal("의심한다", moved.OptionLabel);
     }

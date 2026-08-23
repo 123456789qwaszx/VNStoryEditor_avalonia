@@ -59,6 +59,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             Header(edges, "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문");
             edges.Cell(2, 1).SetValue("ep1");
             edges.Cell(2, 2).SetValue("ep2");
+            edges.Cell(2, 4).SetValue("계속");   // v12 — 문구 없는 길은 폐지됐다
             edges.Cell(2, 7).SetValue(true);       // 불리언 — 문자열 "TRUE"가 아니다 (v8: 잠금시 숨김 = G)
 
             IXLWorksheet conditions = workbook.AddWorksheet("조건");
@@ -126,7 +127,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
             ]),
             ("간선", [
                 ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문"],
-                ["ep1", "ep2", null, null, null, null, "FALSE", null]
+                ["ep1", "ep2", null, "계속", null, null, "FALSE", null]
             ]),
             ("조건", [
                 ["라벨", "스탯", "연산자", "값", "설명"],

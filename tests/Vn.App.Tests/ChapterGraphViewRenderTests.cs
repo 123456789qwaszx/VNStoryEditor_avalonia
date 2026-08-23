@@ -79,28 +79,32 @@ public sealed class ChapterGraphViewRenderTests
         // 표식은 라벨까지 담는다 (2026-08-15 — 간선 신원 = 출발·도착·라벨).
         Assert.Equal(
             [
-                "branch05.02A→main05.03",
-                "main05.01→main05.02",
+                "branch05.02A→main05.03 [계속]",
+                "main05.01→main05.02 [계속]",
                 "main05.02→branch05.02A [라루의 제안을 듣는다]",
                 "main05.02→main05.03 [혼자 문을 연다]",
-                "main05.03→main05.end"
+                "main05.03→main05.end [계속]"
             ],
             drawn);
     });
 
     [Fact]
-    public void 간선은_두_노드의_중심을_잇는다() => HeadlessUi.Run(() =>
+    public void 간선은_출발_카드의_포트에서_도착_카드의_변으로_간다() => HeadlessUi.Run(() =>
     {
+        // v12 (2026-08-24) — 나가는 길은 전부 포트에서 나간다. 예전에는 문구 없는 길만
+        // 카드 <b>중앙에서 중앙으로</b> 직행했는데, 그 개념이 폐지되면서 경로도 사라졌다.
         using var project = new TempProject(SamplePath);
         (Canvas canvas, _) = Render(project);
 
         IReadOnlyDictionary<string, (double X, double Y)> placed = Placements(canvas);
         Line edge = canvas.Children.OfType<Line>()
-            .Single(line => (string)line.Tag! == "main05.01→main05.02");
+            .Single(line => (string?)line.Tag == "main05.01→main05.02 [계속]");
 
-        Assert.Equal(placed["main05.01"].X + (CardWidth / 2), edge.StartPoint.X, 3);
-        Assert.Equal(placed["main05.01"].Y + (CardHeight / 2), edge.StartPoint.Y, 3);
-        Assert.Equal(placed["main05.02"].X + (CardWidth / 2), edge.EndPoint.X, 3);
+        // 출발: 카드 오른변 바깥의 포트.
+        Assert.Equal(placed["main05.01"].X + CardWidth + 5, edge.StartPoint.X, 3);
+
+        // 도착: 카드 왼변 바로 앞, 세로 가운데.
+        Assert.Equal(placed["main05.02"].X - 8, edge.EndPoint.X, 3);
         Assert.Equal(placed["main05.02"].Y + (CardHeight / 2), edge.EndPoint.Y, 3);
     });
 
@@ -168,7 +172,8 @@ public sealed class ChapterGraphViewRenderTests
         // 경고 4건 — 스탯 3개가 game.definition.json(기본값은 variables가 비어 있다)에
         // 없다는 것(`스탯` 시트가 "읽기전용 미러"라는 규격 그대로의 보고)과,
         // v11에서 견본의 엔딩 간선에 선 연출 노드가 아직 비어 있다는 것 하나다.
-        Assert.Contains("경고 4", (string)expander.Header!);
+        // v12 — 문구 없는 간선이 사라지면서 그 경고 하나가 빠졌다(견본이 문구를 갖는다).
+        Assert.Contains("경고 3", (string)expander.Header!);
 
         // 원인 조건까지 짚는다.
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
