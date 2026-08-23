@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Vn.App.Services;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
@@ -50,6 +51,33 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private bool _excelOwned;
 
+    /// <summary>
+    /// 이 노드의 대사 잠금을 사람이 <b>지금</b> 풀어 뒀는가 (2026-08-24 소유자: "때때로는
+    /// 이곳에서도 대사를 편집하는게 편하다").
+    ///
+    /// ⚠ <b>노드마다·매번 다시 잠긴다</b> (<see cref="Rebuild"/>에서 초기화). 열어 둔 것을
+    /// 잊고 다음 노드에서 무심코 고치는 길을 없애려는 것이다 — 원본은 여전히 엑셀이고,
+    /// 여는 것은 잠깐의 예외여야 한다.
+    ///
+    /// ⛔ 이 값은 <b>화면만</b> 연다. 열린 칸에서 고친 글은 노드가 아니라
+    /// <see cref="EpisodeLineEditor"/>를 지나 <b>엑셀 셀로</b> 나간다 — 노드만 고치면
+    /// 다음 동기화가 지운다(`EpisodeLineEditorTests.노드만_고치면_다음_동기화가_지운다`).
+    ///
+    /// ⚠ <b>깃발이 아니라 노드 Id를 든다.</b> 참·거짓으로 들면 다시 그릴 때마다 초기화할지
+    /// 말지를 매번 정해야 하고(Rebuild는 노드를 옮길 때도 칸을 고칠 때도 돈다), 한 번
+    /// 틀리면 <b>남의 노드가 열린 채로 뜬다</b>. Id로 들면 노드가 바뀌는 순간 저절로 닫힌다.
+    /// </summary>
+    private string? _excelUnlockedNodeId;
+
+    /// <summary>엑셀노드인데 사람이 이 노드의 잠금을 풀어 둔 상태.</summary>
+    private bool ExcelTextUnlocked =>
+        _excelOwned &&
+        _nodeId is not null &&
+        string.Equals(_excelUnlockedNodeId, _nodeId, StringComparison.Ordinal);
+
+    /// <summary>본문·화자를 지금 고칠 수 있는가 — 자유 노드는 늘, 엑셀노드는 풀었을 때만.</summary>
+    private bool TextEditable => !_excelOwned || ExcelTextUnlocked;
+
     /// <summary>갈래 시작 줄(라벨·조건) → 블록/갈래 (W36-a). 클릭하면 그 갈래가 선택으로 남는다.</summary>
     private readonly Dictionary<string, (BranchFlow.Block Block, int BranchIndex)> _branchStarts =
         new(StringComparer.Ordinal);
@@ -63,6 +91,26 @@ public partial class DialogueNodeEditor : UserControl
 
         NameBox.LostFocus += (_, _) => CommitName();
         AddLineButton.Click += (_, _) => AddLine();
+
+        // 잠금을 풀고 잠근다 — 카드를 다시 만들어야 칸의 읽기 전용이 따라온다.
+        ExcelTextLockToggle.IsCheckedChanged += (_, _) => UiGuard.Run(_session, "대사 잠금", () =>
+        {
+            if (_building)
+            {
+                return; // Rebuild가 모양을 맞추는 중이다 — 사람이 누른 것이 아니다.
+            }
+
+            _excelUnlockedNodeId = ExcelTextLockToggle.IsChecked == true ? _nodeId : null;
+
+            if (ExcelTextUnlocked)
+            {
+                _session?.SetStatus(
+                    "이 노드의 대사를 엽니다 — 고친 글은 에피소드 엑셀에 바로 써집니다. " +
+                    "줄을 더하고 지우는 것은 여전히 엑셀에서 합니다.");
+            }
+
+            Rebuild(); // 칸의 읽기 전용은 카드를 다시 만들어야 따라온다
+        });
         ApplyScenarioButton.Click += (_, _) => UiGuard.Run(_session, "텍스트 반영", ApplyScenario);
         ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
         ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
@@ -88,7 +136,102 @@ public partial class DialogueNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 엑셀노드의 본문 편집 시도를 막고, 어디서 고치는지 말한다. 참이면 호출자는 그냥 돌아간다.
+    /// 대사 잠금 토글의 모양 (2026-08-24). <b>엑셀노드에서만 보인다</b> — 자유 노드는 늘
+    /// 열려 있어 잠글 것이 없다.
+    ///
+    /// ⛔ <b>되쓸 자리를 못 찾으면 열리지 않는다.</b> 그 줄이 어느 워크북 어느 인덱스에서
+    /// 왔는지 모르면 고친 글이 갈 곳이 없고, 그러면 다음 동기화까지만 사는 거짓말이 된다.
+    /// 그래서 <see cref="EpisodeLineEditor.Locate"/>가 답을 못 내면 토글을 잠가 두고
+    /// <b>이유를 말한다</b> — 잠긴 채 아무 말도 없으면 "이 기능이 없다"로 읽힌다.
+    /// </summary>
+    private void RefreshExcelTextLockToggle(DialogueNode node)
+    {
+        ExcelTextLockToggle.IsVisible = _excelOwned;
+
+        if (!_excelOwned)
+        {
+            _excelUnlockedNodeId = null;
+            return;
+        }
+
+        // 줄 하나라도 되쓸 자리가 있으면 연다 — 첫 줄로 대표해서 묻는다.
+        bool writable = _session is { } session &&
+            FirstWritableLineTarget(session, node) is not null;
+
+        ExcelTextLockToggle.IsEnabled = writable;
+        ExcelTextLockToggle.IsChecked = ExcelTextUnlocked;
+        ExcelTextLockToggle.Content = ExcelTextUnlocked ? "✏ 대사 편집 중" : "🔒 대사 잠김";
+
+        ToolTip.SetTip(ExcelTextLockToggle, !writable
+            ? "이 노드의 대사를 되쓸 엑셀 자리를 찾지 못했습니다 — 프로젝트를 저장했는지, " +
+              "그 에피소드의 대본 파일이 있는지 확인해 주세요."
+            : ExcelTextUnlocked
+                ? "잠그면 다시 읽기 전용이 됩니다. 여는 동안 고친 글은 에피소드 엑셀 셀에 " +
+                  "바로 써집니다 — 화자와 내용만 열립니다."
+                : "이 대본의 원본은 에피소드 엑셀입니다. 풀면 화자·내용을 여기서도 고칠 수 " +
+                  "있고, 고친 값은 그 엑셀 셀에 바로 저장됩니다.\n" +
+                  "줄 추가·삭제·조건 블록은 엑셀에서 합니다.");
+    }
+
+    /// <summary>
+    /// 이 노드에서 되쓸 수 있는 줄이 하나라도 있는가 — 토글을 열지 말지의 근거다.
+    /// </summary>
+    private EpisodeLineTarget? FirstWritableLineTarget(AuthoringSession session, DialogueNode node)
+    {
+        foreach (string lineId in node.ExcelLineMap.Values)
+        {
+            if (EpisodeLineEditor.Locate(session.Project, session.ProjectPath, node, lineId)
+                is { } target)
+            {
+                return target;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 고친 화자·내용을 <b>엑셀 셀로 내보내고</b>, 성공했을 때만 노드도 맞춘다 (2026-08-24).
+    ///
+    /// ⛔ 순서가 곧 규칙이다. 노드를 먼저 고치면, 엑셀이 그 파일을 잡고 있어 쓰기가 거부된
+    /// 순간 화면과 파일이 다른 말을 하고 <b>다음 동기화가 사람이 방금 쓴 글을 지운다.</b>
+    /// </summary>
+    /// <returns>노드에도 반영해도 되는가.</returns>
+    private bool WriteLineToWorkbook(string lineId, string? speaker, string? text)
+    {
+        if (_session is not { } session ||
+            session.Project.FindDialogue(_nodeId) is not { } node)
+        {
+            return false;
+        }
+
+        if (EpisodeLineEditor.Locate(session.Project, session.ProjectPath, node, lineId)
+            is not { } target)
+        {
+            session.SetStatus(
+                "이 줄을 되쓸 엑셀 자리를 찾지 못했습니다 — 고친 글을 저장하지 않았습니다.");
+            return false;
+        }
+
+        ChapterWriteResult result = EpisodeLineEditor.Write(target, speaker, text);
+
+        if (!result.Written)
+        {
+            // 침묵 금지 (규율 1) — 안 써졌다는 사실이 반드시 사람에게 닿아야 한다.
+            session.SetStatus(result.Failure!);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 엑셀노드의 <b>구조</b> 편집 시도를 막고, 어디서 고치는지 말한다. 참이면 호출자는
+    /// 그냥 돌아간다.
+    ///
+    /// ⚠ <b>대사 잠금을 풀어도 이 문은 안 열린다</b> (2026-08-24). 풀리는 것은 화자·내용
+    /// 두 칸뿐이고, 줄을 더하고 지우고 옮기는 것·조건 블록은 엑셀 소유 그대로다 — 그쪽은
+    /// 인덱스 재배치가 얽혀 있어, 열면 표의 구조를 두 곳이 갖게 된다.
     /// </summary>
     private bool BlockIfExcelOwned(string what)
     {
@@ -100,6 +243,23 @@ public partial class DialogueNodeEditor : UserControl
         _session?.SetStatus(
             $"{what}은(는) 엑셀에서 합니다 — 이 대본의 원본은 에피소드 엑셀입니다. " +
             "챕터 그래프에서 노드를 더블클릭하면 열립니다.");
+        return true;
+    }
+
+    /// <summary>
+    /// 화자·내용 편집 시도를 막는다 — 묻는 것은 "엑셀노드인가"가 아니라 <b>"지금 잠겨
+    /// 있는가"</b>다 (2026-08-24). 잠금을 푼 엑셀노드에서는 통과시킨다.
+    /// </summary>
+    private bool BlockIfTextLocked(string what)
+    {
+        if (TextEditable)
+        {
+            return false;
+        }
+
+        _session?.SetStatus(
+            $"{what}은(는) 지금 읽기 전용입니다 — 이 대본의 원본은 에피소드 엑셀입니다. " +
+            "위 [🔒 대사 잠김]을 풀면 여기서도 고칠 수 있습니다.");
         return true;
     }
 
@@ -227,9 +387,16 @@ public partial class DialogueNodeEditor : UserControl
             NameBox.Text = node.Name;
             // 엑셀노드의 이름은 챕터 `대사엔트리`가 원천이다 — 여기서 바꾸면 다음 동기화가
             // 같은 이름의 노드를 못 찾아 빈 노드를 새로 만든다.
+            //
+            // ⚠ 이름은 <b>잠금을 풀어도 안 열린다.</b> 푼 것은 대사 두 칸(화자·내용)이지
+            // 노드의 신원이 아니다 — 이름은 챕터 워크북 소유라 되쓸 자리도 여기가 아니다.
             NameBox.IsReadOnly = _excelOwned;
+
+            // 줄 추가·텍스트 반영도 마찬가지다 — 표의 구조는 엑셀 소유 그대로다.
             AddLineButton.IsEnabled = !_excelOwned;
             ApplyScenarioButton.IsEnabled = !_excelOwned;
+
+            RefreshExcelTextLockToggle(node);
 
             BuildScriptSummary(node);
 
@@ -1184,16 +1351,18 @@ public partial class DialogueNodeEditor : UserControl
             Padding = new Thickness(6, 3),
             VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0, 0, 0),
-            // 엑셀노드의 본문은 읽기 전용 — 원본은 엑셀이고, 여기서 고친 글은 다음 동기화가 되돌린다.
-            IsReadOnly = _excelOwned,
+            // 엑셀노드의 본문은 기본이 읽기 전용 — 원본은 엑셀이다. 위 [🔒 대사 잠김]을
+            // 풀면 열리고, 그때 고친 글은 노드가 아니라 엑셀 셀로 나간다(2026-08-24).
+            IsReadOnly = !TextEditable,
             // 캐럿조차 안 선다 — 읽기 전용이어도 클릭이 먹으면 "열려 있는 것처럼 보인다"(실사용 보고).
-            IsHitTestVisible = !_excelOwned
+            IsHitTestVisible = TextEditable
         };
 
-        if (_excelOwned)
+        if (!TextEditable)
         {
             text.Opacity = 0.8;
-            ToolTip.SetTip(row, "본문은 엑셀에서 고칩니다 — 챕터 그래프에서 노드를 더블클릭하면 열립니다.");
+            ToolTip.SetTip(row, "본문은 엑셀에서 고칩니다 — 위 [🔒 대사 잠김]을 풀면 " +
+                "여기서도 고칠 수 있고, 고친 값은 그 엑셀 셀에 바로 저장됩니다.");
         }
 
         AutoCompleteBox? speaker = null;
@@ -1203,14 +1372,45 @@ public partial class DialogueNodeEditor : UserControl
         // 편집기가 내용 변경과 구조 변경을 구분해서 알리기 때문에 가능하다.
         void Commit()
         {
-            if (!_building && scriptId.Length > 0)
+            if (_building || scriptId.Length == 0)
             {
-                _session!.Editor.SetScriptLineText(
-                    scriptId,
-                    resolved.Line.LineId,
-                    speaker?.Text ?? resolved.Line.Speaker,
-                    text.Text ?? string.Empty,
-                    script.Locale);
+                return;
+            }
+
+            string nextSpeaker = speaker?.Text ?? resolved.Line.Speaker;
+            string nextText = text.Text ?? string.Empty;
+
+            // 엑셀노드는 <b>엑셀이 먼저다.</b> 셀에 못 쓰면 노드도 안 고친다 — 안 그러면
+            // 화면과 파일이 다른 말을 하고 다음 동기화가 사람의 글을 지운다.
+            if (_excelOwned &&
+                !WriteLineToWorkbook(resolved.Line.LineId, nextSpeaker, nextText))
+            {
+                return;
+            }
+
+            _session!.Editor.SetScriptLineText(
+                scriptId, resolved.Line.LineId, nextSpeaker, nextText, script.Locale);
+        }
+
+        // ⚠ 엑셀노드에서는 <b>초점을 잃을 때만</b> 낸다 (2026-08-24). 자판 하나마다 워크북을
+        // 열면 엑셀 파일을 쉼 없이 두드리고, 그 사이 들어온 파일 사건이 칸을 다시 채워
+        // 쓰던 글을 끊는다 — 챕터 그래프가 2026-08-17에 같은 자리에서 배운 것이다.
+        // 자유 노드의 대본은 프로젝트 안의 값이라 예전처럼 글자마다 낸다.
+        void Wire(Control field)
+        {
+            if (_excelOwned)
+            {
+                field.LostFocus += (_, _) => Commit();
+                return;
+            }
+
+            if (field is TextBox box)
+            {
+                box.TextChanged += (_, _) => Commit();
+            }
+            else if (field is AutoCompleteBox auto)
+            {
+                auto.TextChanged += (_, _) => Commit();
             }
         }
 
@@ -1240,9 +1440,9 @@ public partial class DialogueNodeEditor : UserControl
                 ItemsSource = SpeakerNames(),
                 FilterMode = AutoCompleteFilterMode.Contains,
                 MinimumPrefixLength = 0,
-                IsEnabled = !_excelOwned // 화자도 본문과 함께 엑셀 소유다
+                IsEnabled = TextEditable // 화자도 본문과 함께 엑셀 소유다 — 같이 열리고 닫힌다
             };
-            speaker.TextChanged += (_, _) => Commit();
+            Wire(speaker);
 
             // 후보는 포커스 때마다 다시 읽는다 (W56) — 방금 등록한 화자가 카드 재생성
             // 없이도 자동완성에 바로 나온다.
@@ -1264,12 +1464,12 @@ public partial class DialogueNodeEditor : UserControl
                 MinWidth = 16,
                 VerticalAlignment = VerticalAlignment.Stretch,
                 Margin = new Thickness(1, 0, 0, 0),
-                IsEnabled = !_excelOwned
+                IsEnabled = TextEditable
             };
-            ToolTip.SetTip(pick, _excelOwned
-                ? "화자는 엑셀에서 고칩니다 — 챕터 그래프에서 노드를 더블클릭하면 열립니다."
-                : "등록된 화자 목록에서 선택");
-            pick.Click += (_, _) => ShowSpeakerFlyout(pick, speakerBox);
+            ToolTip.SetTip(pick, TextEditable
+                ? "등록된 화자 목록에서 선택"
+                : "화자는 엑셀에서 고칩니다 — 위 [🔒 대사 잠김]을 풀면 여기서도 고를 수 있습니다.");
+            pick.Click += (_, _) => ShowSpeakerFlyout(pick, speakerBox, Commit);
 
             var speakerCell = new Grid
             {
@@ -1284,7 +1484,7 @@ public partial class DialogueNodeEditor : UserControl
             row.Children.Add(speakerCell);
         }
 
-        text.TextChanged += (_, _) => Commit();
+        Wire(text);
         Grid.SetColumn(text, 3);
         row.Children.Add(text);
 
@@ -1299,10 +1499,17 @@ public partial class DialogueNodeEditor : UserControl
     /// 등록 화자 드롭다운 (W40). 항목 클릭 = 그 이름이 화자 칸에 들어간다 —
     /// TextChanged가 대본에 반영하므로 자유 입력과 같은 길 하나를 쓴다.
     /// </summary>
-    private void ShowSpeakerFlyout(Button anchor, AutoCompleteBox speaker)
+    /// <param name="commit">
+    /// 고른 이름을 실제로 내는 손 (2026-08-24). <b>있어야 한다</b> — 엑셀노드에서는 칸이
+    /// 초점을 잃을 때만 저장하는데, ▾로 고르는 길에는 초점이 오간 적이 없어서 고른 이름이
+    /// 칸에만 앉아 있다가 다음 다시 그리기에 지워진다.
+    /// </param>
+    private void ShowSpeakerFlyout(Button anchor, AutoCompleteBox speaker, Action commit)
     {
         // 단추가 이미 잠겨 있지만 가드를 여기에도 둔다 — 문이 둘이면 빗장도 둘이어야 한다.
-        if (BlockIfExcelOwned("화자"))
+        // ⚠ 묻는 것은 "엑셀노드인가"가 아니라 <b>"지금 잠겨 있는가"</b>다 — 잠금을 푼
+        // 엑셀노드에서는 여기서도 골라야 한다(2026-08-24).
+        if (BlockIfTextLocked("화자"))
         {
             return;
         }
@@ -1343,6 +1550,7 @@ public partial class DialogueNodeEditor : UserControl
             {
                 speaker.Text = name;
                 flyout.Hide();
+                commit();
             };
             panel.Children.Add(item);
         }

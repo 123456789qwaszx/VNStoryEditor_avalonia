@@ -13,7 +13,7 @@
                      줄 수·로케일은 2026-08-22에 <b>이름 오른쪽</b>으로 올라왔다 (소유자) —
                      제 줄을 차지할 만큼의 정보가 아니고, 머리글과 떨어져 있으면 무엇에 대한
                      숫자인지 한 박자 늦게 읽힌다. -->
-                <Grid ColumnDefinitions="Auto,*,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <TextBlock Grid.Column="0"
                                x:Name="ScriptSummaryTitleText"
                                Text="대본"
@@ -27,7 +27,20 @@
                                Opacity="0.65"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
-                    <Button Grid.Column="2"
+                    <!-- 엑셀노드의 대사 잠금 (2026-08-24 소유자: "때때로는 이곳에서도 대사를
+                         편집하는게 편하다"). 엑셀노드에서만 보인다 — 자유 노드는 늘 열려 있어
+                         잠글 것이 없다.
+
+                         ⚠ 기본은 잠김이고 <b>노드를 옮기면 다시 잠긴다</b>. 열어 둔 채 잊고
+                         무심코 고치는 길을 막는다 — 이 대본의 원본은 여전히 엑셀이다.
+                         열면 고친 글이 그 자리에서 에피소드 워크북 셀로 나간다(G-2 v2와 같은
+                         규율). 그래야 다음 동기화가 되돌릴 것이 없다. -->
+                    <ToggleButton Grid.Column="2"
+                                  x:Name="ExcelTextLockToggle"
+                                  FontSize="11"
+                                  Margin="0,0,6,0"
+                                  IsVisible="False" />
+                    <Button Grid.Column="3"
                             x:Name="AddLineButton"
                             Content="줄 추가"
                             FontSize="11" />

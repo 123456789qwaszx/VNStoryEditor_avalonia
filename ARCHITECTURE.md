@@ -157,7 +157,7 @@ tests/Ked.Presentation.Core.Tests  무대 상태 계산 (344)
 tests/Vn.Core.Tests             Yarn 분석과 골든 픽스처 (60)
 ```
 
-테스트 수는 2026-08-24 기준 **1525개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 800 · Vn.App 321).
+테스트 수는 2026-08-24 기준 **1541개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 810 · Vn.App 327).
 
 ### `Vn.Authoring/Chapters/ChapterExportService` — 화면에서 나온 정책 (2026-08-23)
 
@@ -957,12 +957,18 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 
 | | 원본 | 도구가 쓰는가 |
 |---|---|---|
-| 대사 본문·화자 | `episodes/{챕터}/{Id}.xlsx` | **아니다** (없는 파일을 만들 때만) |
+| 대사 본문·화자 | `episodes/{챕터}/{Id}.xlsx` | 없는 파일을 만들 때, 그리고 **화자·내용 두 칸**(2026-08-24 — 연출 그래프에서 대사 잠금을 풀었을 때). 줄 구성·조건 블록은 여전히 아니다 |
 | 에피소드 구조·간선·조건·스탯 | `chapters/{Id}.xlsx` | 그렇다 — 셀에 즉시 |
 | 화자(캐스트) | `game.definition.json`의 speakers | 그렇다 — **툴 [화자] 탭이 유일한 창구**다 (2026-08-23). 챕터 엑셀의 어느 시트도 화자를 안 써서 `화자` 시트를 폐지했다. 프로젝트에 하나뿐이고 모든 챕터가 공유한다 |
 
 이 뒤집힘이 이 층의 설계를 거의 다 설명한다. 파일을 엑셀이 잡고 있으면 쓰기가 **거부**되고
 (`ChapterWorkbookWriter.IsLockedByAnotherApp`), 감시자가 저장을 잡아 다시 읽는다.
+
+⚠ **원본이 엑셀이면 "툴에서 고치게 해 달라"는 요청의 답은 잠금을 푸는 것이 아니다.**
+2026-08-24에 대사 본문이 그 시험을 받았다: 동기화가 매번 워크북 값으로 노드를 덮으므로,
+화면만 열면 사람의 글이 **다음 동기화에 증발한다.** 답은 늘 같다 — **고친 값을 그 셀로
+곧장 내보내고**, 쓰기가 성공했을 때만 화면 쪽 값을 남긴다. 챕터 워크북이 2026-08-12에
+통과한 길과 같다(G-2 v2).
 
 ### 10.2 파일 지도 — `Vn.Authoring/Chapters/`
 
@@ -974,6 +980,8 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 | `ChapterWorkbookWriter.cs` | 셀 쓰기 전부. 잠금 판정도 여기 |
 | `ChapterWorkbookMigrator.cs` | 구판 → 최신 규격 자동 이행 (`.bak`), 앱이 열 때 |
 | `EpisodeWorkbookReader.cs` · `EpisodeWorkbookMigrator.cs` | 대본 워크북(6열)의 같은 짝 |
+| `EpisodeWorkbookWriter.cs` | 대본 워크북에 쓰는 유일한 자리 — **화자(E)·내용(F) 두 칸뿐**이다 (2026-08-24). 행은 A열 인덱스로 찾고, 조건 블록 행은 거부한다 |
+| `EpisodeLineEditor.cs` | 노드의 한 줄 → 어느 워크북 어느 인덱스인가(`Locate`), 그리고 되쓰기. ⛔ **쓰기가 성공한 뒤에만** 노드를 고친다 — 뒤집으면 다음 동기화가 사람의 글을 지운다 |
 | `EpisodeLibrary.cs` | 대본 파일의 자리(`episodes/{챕터}/`) · 생성 · 개명 · 입양 |
 | `ChapterLibrary.cs` | `chapters/` 폴더를 훑어 목록을 만든다 |
 | `ChapterFolderWatcher.cs` | 저장 감지 + 디바운스 |

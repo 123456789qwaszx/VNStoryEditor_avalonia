@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 using Path = System.IO.Path;
 using Vn.App.Services;
@@ -92,7 +93,163 @@ public sealed class ExcelNodeLockTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Equal(before, speakers[0].Text ?? string.Empty);
-        Assert.Contains("엑셀에서 합니다", session.StatusMessage);
+
+        // 2026-08-24 — 말이 바뀌었다. 이제 잠금은 풀 수 있는 것이라, "엑셀에서 합니다"로
+        // 끝내면 <b>여기서는 못 한다</b>는 거짓말이 된다. 어디서 푸는지를 말한다.
+        Assert.Contains("읽기 전용", session.StatusMessage);
+        Assert.Contains("대사 잠김", session.StatusMessage);
+    });
+
+    // ── 잠금을 풀 수 있다 (2026-08-24 소유자) ───────────────────────────────
+
+    [Fact]
+    public void 자물쇠_토글은_엑셀노드에만_선다() => HeadlessUi.Run(() =>
+    {
+        // 자유 노드는 늘 열려 있어 잠글 것이 없다 — 단추가 있으면 "여기도 잠기나" 싶다.
+        (DialogueNodeEditor editor, AuthoringSession session, _) = ShowSyncedNode();
+
+        var toggle = editor.FindControl<ToggleButton>("ExcelTextLockToggle")!;
+
+        Assert.True(toggle.IsVisible);
+        Assert.True(toggle.IsEnabled, "되쓸 엑셀 자리를 찾았어야 열 수 있다");
+        Assert.False(toggle.IsChecked);
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬");
+
+        editor.Show(free.Id);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(toggle.IsVisible);
+    });
+
+    [Fact]
+    public void 풀면_본문과_화자가_열린다() => HeadlessUi.Run(() =>
+    {
+        (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
+
+        Unlock(editor);
+
+        var host = editor.FindControl<StackPanel>("LineHost")!;
+
+        List<TextBox> bodies = host.GetVisualDescendants().OfType<TextBox>()
+            .Where(box => box.FindAncestorOfType<AutoCompleteBox>() is null)
+            .ToList();
+
+        Assert.NotEmpty(bodies);
+        Assert.All(bodies, box => Assert.False(box.IsReadOnly));
+        Assert.All(bodies, box => Assert.True(box.IsHitTestVisible));
+
+        List<AutoCompleteBox> speakers =
+            host.GetVisualDescendants().OfType<AutoCompleteBox>().ToList();
+
+        Assert.NotEmpty(speakers);
+        Assert.All(speakers, box => Assert.True(box.IsEnabled));
+    });
+
+    [Fact]
+    public void 풀어도_줄_추가와_이름은_잠긴_채다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 푼 것은 화자·내용 두 칸뿐이다. 표의 구조와 노드의 신원은 엑셀 소유 그대로다 —
+        // 그쪽까지 열면 인덱스 재배치를 두 곳이 갖는다.
+        (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
+
+        Unlock(editor);
+
+        Assert.True(editor.FindControl<TextBox>("NameBox")!.IsReadOnly);
+        Assert.False(editor.FindControl<Button>("AddLineButton")!.IsEnabled);
+    });
+
+    [Fact]
+    public void 풀고_고친_대사가_엑셀_셀까지_간다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 이 기능의 전부다. 노드만 고치면 다음 동기화가 지운다
+        // (`EpisodeLineEditorTests.노드만_고치면_다음_동기화가_지운다`).
+        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
+
+        Unlock(editor);
+
+        var host = editor.FindControl<StackPanel>("LineHost")!;
+        TextBox body = host.GetVisualDescendants().OfType<TextBox>()
+            .First(box => box.FindAncestorOfType<AutoCompleteBox>() is null);
+
+        // 엑셀노드는 초점을 잃을 때 낸다 — 자판마다 워크북을 두드리지 않는다.
+        // ⚠ 초점을 진짜로 옮긴다: LostFocus는 FocusChangedEventArgs를 요구해서
+        // RaiseEvent로 흉내내면 캐스트에서 터진다(`ChapterEditGateTests`가 같은 것을 배웠다).
+        Type(editor, body, "연출 그래프에서 고친 대사");
+
+        DialogueNode node = session.Project.FindDialogue(nodeId)!;
+        string workbook = EpisodeLibrary.FindExisting(
+            EpisodeLibrary.FolderFor(session.ProjectPath, "ch05")!, "main05.02")!;
+
+        Assert.Contains(
+            EpisodeWorkbookReader.Read(workbook).Rows,
+            row => row.Text == "연출 그래프에서 고친 대사");
+
+        // 그리고 노드도 같은 말을 한다 — 둘이 어긋나면 다음 동기화가 사람의 글을 지운다.
+        Assert.Contains(
+            session.Project.FindScript(node.ScriptId)!.Locales
+                .Single(locale => locale.Locale == session.Project.FindScript(node.ScriptId)!.PrimaryLocale)
+                .Entries.Values,
+            line => line.Text == "연출 그래프에서 고친 대사");
+    });
+
+    [Fact]
+    public void 엑셀이_잡고_있으면_노드도_안_고친다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 순서가 곧 규칙이다. 셀에 못 썼는데 노드만 고치면 화면과 파일이 다른 말을 하고,
+        // 다음 동기화가 사람이 방금 쓴 글을 지운다.
+        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
+
+        Unlock(editor);
+
+        var host = editor.FindControl<StackPanel>("LineHost")!;
+        TextBox body = host.GetVisualDescendants().OfType<TextBox>()
+            .First(box => box.FindAncestorOfType<AutoCompleteBox>() is null);
+
+        DialogueNode node = session.Project.FindDialogue(nodeId)!;
+        string workbook = EpisodeLibrary.FindExisting(
+            EpisodeLibrary.FolderFor(session.ProjectPath, "ch05")!, "main05.02")!;
+
+        using (new FileStream(workbook, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Type(editor, body, "엑셀이 잡고 있는 동안 쓴 글");
+        }
+
+        // 침묵 금지 — 안 써졌다는 사실이 사람에게 닿는다.
+        Assert.Contains("엑셀이", session.StatusMessage);
+
+        // 노드는 그대로다.
+        Assert.DoesNotContain(
+            session.Project.FindScript(node.ScriptId)!.Locales
+                .SelectMany(locale => locale.Entries.Values),
+            line => line.Text == "엑셀이 잡고 있는 동안 쓴 글");
+    });
+
+    [Fact]
+    public void 다른_노드로_옮기면_다시_잠긴다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 열어 둔 것을 잊고 다음 노드에서 무심코 고치는 길을 없앤다 —
+        // 원본은 여전히 엑셀이고, 여는 것은 잠깐의 예외여야 한다.
+        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
+
+        Unlock(editor);
+
+        var toggle = editor.FindControl<ToggleButton>("ExcelTextLockToggle")!;
+        Assert.True(toggle.IsChecked);
+
+        string fileId = session.EnsureChapterBoard("ch05");
+        DialogueNode other = session.Editor.AddDialogueNode(fileId, name: "다른 씬");
+
+        editor.Show(other.Id);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 그리고 돌아와도 잠겨 있다.
+        editor.Show(nodeId);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(toggle.IsChecked);
+        Assert.Contains("잠김", toggle.Content as string);
     });
 
     [Fact]
@@ -329,6 +486,28 @@ public sealed class ExcelNodeLockTests
         Assert.DoesNotContain(warnings, warning => warning.Message.Contains("Story_ch05_02"));
     });
 
+    /// <summary>
+    /// 칸에 글을 치고 <b>초점을 진짜로 옮긴다</b> — 엑셀노드는 그때 낸다. 이름 칸으로
+    /// 옮기는 것은 그것이 늘 있고 읽기 전용이라 아무 일도 안 일으키기 때문이다.
+    /// </summary>
+    private static void Type(DialogueNodeEditor editor, TextBox box, string text)
+    {
+        box.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        box.Text = text;
+
+        editor.FindControl<TextBox>("NameBox")!.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>대사 잠금을 푼다 — 사람이 토글을 누르는 것과 같은 길이다.</summary>
+    private static void Unlock(DialogueNodeEditor editor)
+    {
+        editor.FindControl<ToggleButton>("ExcelTextLockToggle")!.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
     private static string EpisodesRoot(AuthoringSession session) =>
         EpisodeLibrary.FolderFor(session.ProjectPath)!;
 
@@ -344,8 +523,12 @@ public sealed class ExcelNodeLockTests
         string fileId = session.EnsureChapterBoard("ch05");
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(project.ChapterPath);
 
+        // ⚠ 대본은 <b>그 챕터의</b> 폴더에 산다 — episodes/{ChapterId}/{Id}.xlsx
+        // (2026-08-16). 예전 이 헬퍼는 구판 평면 자리(episodes/{Id}.xlsx)에 두었는데,
+        // 그러면 되쓰기가 그 줄의 엑셀 자리를 못 찾아 대사 잠금 토글이 열리지 않는다
+        // (2026-08-24에 그 토글을 만들며 드러났다).
         string workbook = Path.Combine(
-            Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes", "main05.02.xlsx");
+            Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes", "ch05", "main05.02.xlsx");
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
         File.Copy(SamplePath, workbook);
 
