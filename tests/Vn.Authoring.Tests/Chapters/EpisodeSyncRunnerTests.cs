@@ -116,35 +116,49 @@ public sealed class EpisodeSyncRunnerTests : IDisposable
     }
 
     [Fact]
-    public void 볼_워크북이_하나도_없었으면_상태줄에_아무_말도_하지_않는다()
+    public void 잘_돌아간_동기화는_상태줄에_아무_말도_하지_않는다()
     {
-        // 규칙은 "반영이 0이면 조용히"가 아니라 **"본 워크북이 0이면 조용히"**다.
-        // 에피소드가 없는 챕터를 고른 것뿐인데 상태줄이 말하면 그게 소음이다.
+        // 2026-08-24 소유자 — "동기화가 몇개 반영됬는지 표기할 필요는 없어. 그런 동기화
+        // 문구들은 굳이 표시가 안 되도록." 검증 보고에서 지운 것과 <b>같은 선</b>이다.
+        //
+        // 동기화는 사람이 시켜서 도는 일이 아니다(챕터를 고르거나 워크북이 저장될 때마다
+        // 저절로 돈다). 잘됐다고 매번 상태줄을 차지하면 사람이 방금 누른 것에 대한 답이
+        // 그 아래 깔린다.
+        //
+        // ⚠ 전에 이 자리는 <b>"본 워크북이 0이면 조용히"</b>였다 — 지금은 그보다 넓다.
         Assert.Null(EpisodeSyncRun.Nothing.StatusMessage);
         Assert.Null(new EpisodeSyncRun("sf_1", [], [], [], false).StatusMessage);
+
+        var applied = new EpisodeSyncRun(
+            "sf_1",
+            [Report(applied: true, rejections: 0), Report(applied: true, rejections: 0)],
+            [], [], false);
+
+        Assert.Equal(2, applied.Applied);
+        Assert.Null(applied.StatusMessage);
     }
 
     [Fact]
-    public void 워크북은_섰지만_아직_안_썼으면_0개로_말한다()
+    public void 워크북은_섰지만_아직_안_썼으면_조용하다()
     {
-        // ⚠ 갓 만든 워크북도 보고를 하나 낸다(NotYetWritten). 그래서 첫 동기화 직후
-        // 상태줄이 "에피소드 0개를 반영했습니다"라고 말한다 — 어색하지만 **지금 동작이고**,
-        // 화면에서 규칙을 꺼내는 이 작업이 동작을 바꾸지는 않는다.
-        //
-        // 바꾸고 싶다면 여기가 그 자리다: 이제 UI 없이 고칠 수 있고, 이 테스트가 갈린다.
+        // ⚠ 갓 만든 워크북도 보고를 하나 낸다(NotYetWritten). 예전에는 그래서 첫 동기화
+        // 직후 상태줄이 <b>"에피소드 0개를 반영했습니다"</b>라고 말했다 — 그 어색함을
+        // 옛 테스트가 "바꾸고 싶다면 여기가 그 자리다"라며 적어 두었고, 2026-08-24가
+        // 그 자리가 됐다.
         var editor = new ProjectEditor(new StoryProject());
 
         EpisodeSyncRun run = Run(editor, Chapter("ch01", "ep1"));
 
         Assert.Single(run.Reports);
         Assert.Equal(0, run.Applied);
-        Assert.Equal("에피소드 0개를 반영했습니다.", run.StatusMessage);
+        Assert.Null(run.StatusMessage);
     }
 
     [Fact]
-    public void 거부가_있으면_그_수를_함께_말한다()
+    public void 거부가_있으면_그_수를_말하고_보고를_가리킨다()
     {
-        // 반영 수만 말하면 "됐다"로 읽힌다 — 거부·경고가 있으면 아래 보고를 보라고 한다.
+        // ⛔ 침묵이 여기까지 오면 안 된다 — 조용한 무반영이 최악이다(G3-1).
+        // 그리고 <b>반영 수는 말하지 않는다</b>: 사람이 볼 곳은 아래 검증 보고다.
         var run = new EpisodeSyncRun(
             "sf_1",
             [Report(applied: true, rejections: 0), Report(applied: false, rejections: 2)],
@@ -152,7 +166,7 @@ public sealed class EpisodeSyncRunnerTests : IDisposable
 
         Assert.Equal(1, run.Applied);
         Assert.Equal(2, run.Rejected);
-        Assert.Contains("거부·경고 2건", run.StatusMessage);
+        Assert.Equal("동기화 거부·경고 2건 — 아래 검증 보고를 확인하세요.", run.StatusMessage);
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────

@@ -19,19 +19,35 @@ public sealed record EpisodeSyncRun(
 {
     public static EpisodeSyncRun Nothing { get; } = new(null, [], [], [], false);
 
+    /// <summary>
+    /// 반영을 돌린 워크북 수.
+    ///
+    /// ⛔ <b>"뭔가 달라졌다"의 눈금으로 쓰지 말 것.</b> <c>Applied</c>는 "반영을 돌렸다"는
+    /// 뜻이라 <b>같은 워크북을 두 번 돌려도 참이다</b>
+    /// (`EpisodeSyncServiceTests.같은_워크북을_두_번_동기화하면_두_번째는_변경이_없다`).
+    /// 셸이 이것으로 "다시 그려라"를 방송하다가, 아무것도 안 바뀐 동기화가 매번 열려 있는
+    /// 편집 화면을 파괴했다 (2026-08-24). 그 질문의 답은 <c>ProjectEditor.Revision</c>이다.
+    /// </summary>
     public int Applied => Reports.Count(report => report.Applied);
 
     public int Rejected => Reports.Sum(report => report.RejectionCount);
 
     /// <summary>
-    /// 반영 결과 한 줄. <b>반영할 것이 하나도 없었으면 null이다</b> —
-    /// "0개를 반영했습니다"는 소음이다.
+    /// 상태줄에 낼 한 줄. <b>짚을 것이 없으면 null이다</b> (2026-08-24 소유자: "동기화가
+    /// 몇개 반영됬는지 표기할 필요는 없어. 그런 동기화 문구들은 굳이 표시가 안 되도록").
+    ///
+    /// 동기화는 <b>사람이 시켜서 도는 일이 아니다</b> — 챕터를 고르거나 워크북이 저장될
+    /// 때마다 저절로 돈다. 그런 일이 잘됐다고 매번 상태줄을 차지하면, 정작 사람이 방금
+    /// 누른 것에 대한 답이 그 아래 깔린다(실제로 깔렸다 — 내보내기 결론이 동기화 문구에
+    /// 덮이던 자리가 이미 문서에 적혀 있다).
+    ///
+    /// ⛔ <b>거부·경고는 그대로 말한다.</b> 조용한 무반영이 최악이다(G3-1) — 여기까지
+    /// 침묵하면 작가는 자기 대사가 왜 안 나오는지 영영 모른다. 검증 보고와 같은 선이다
+    /// (`ChapterGraphView.HasSomethingToSay`).
     /// </summary>
-    public string? StatusMessage => Reports.Count == 0
+    public string? StatusMessage => Rejected == 0
         ? null
-        : Rejected == 0
-            ? $"에피소드 {Applied}개를 반영했습니다."
-            : $"에피소드 {Applied}개 반영 · 거부·경고 {Rejected}건 — 아래 검증 보고를 확인하세요.";
+        : $"동기화 거부·경고 {Rejected}건 — 아래 검증 보고를 확인하세요.";
 }
 
 /// <summary>

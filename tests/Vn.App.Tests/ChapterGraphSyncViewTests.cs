@@ -93,6 +93,25 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
+    public void 잘된_동기화는_상태줄에도_아무_말도_안_한다() => HeadlessUi.Run(() =>
+    {
+        // 검증 보고와 <b>같은 선</b>이다 (2026-08-24). 동기화는 사람이 시켜서 도는 일이
+        // 아니라 챕터를 고르거나 워크북이 저장될 때마다 저절로 도는데, 잘됐다고 매번
+        // 상태줄을 차지하면 사람이 방금 누른 것에 대한 답이 그 아래 깔린다.
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+        File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
+
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        session.SetStatus("사람이 방금 누른 것의 답");
+
+        view.SyncEpisodes();
+
+        Assert.Equal("사람이 방금 누른 것의 답", session.StatusMessage);
+    });
+
+    [Fact]
     public void 짚을_것이_있는_에피소드는_이름표와_함께_맨_위에_선다() => HeadlessUi.Run(() =>
     {
         // 잘된 것을 지웠다고 <b>짚을 것까지 지우면 안 된다.</b> 그리고 그 줄들은 여전히
