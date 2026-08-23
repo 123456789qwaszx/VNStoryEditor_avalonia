@@ -2,7 +2,7 @@ using Ked.Presentation.Core;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Results;
 
-namespace Vn.App.Services;
+namespace Vn.Authoring.Flow;
 
 /// <summary>
 /// 라인 전이 시간의 규약 (W33) — "이 라인으로 넘어가는 데 얼마나 걸리는가".
@@ -19,7 +19,7 @@ namespace Vn.App.Services;
 /// 시간을 가진 커맨드가 하나도 없으면 짧은 기본 전이를 쓴다 — 무엇도 안 변하는
 /// 라인이면 보간이 스스로 무행위가 된다.
 /// </summary>
-internal static class StageTransitions
+public static class StageTransitions
 {
     public const double DefaultSeconds = 0.35;
 

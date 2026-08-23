@@ -6,6 +6,8 @@ using Avalonia.Media;
 
 using Vn.App.Services;
 
+using Vn.Authoring.Flow;
+
 namespace Vn.App.Views;
 
 /// <summary>

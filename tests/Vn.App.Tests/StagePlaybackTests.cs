@@ -4,6 +4,8 @@ using Avalonia.LogicalTree;
 using Vn.App.Services;
 using Vn.App.Views;
 
+using Vn.Authoring.Flow;
+
 namespace Vn.App.Tests;
 
 /// <summary>

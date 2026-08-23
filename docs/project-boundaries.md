@@ -154,15 +154,20 @@ internal string EnsureChapterBoard(string chapterId)
 `Vn.Authoring`을 그대로 들고 가면 새 툴은 **저작·챕터·이미터·발행**을 얻는다.
 그런데 **못 들고 가는 것**이 이만큼 있다:
 
-| 못 들고 가는 것 | 줄 | 왜 아까운가 |
+| 못 들고 가던 것 | 줄 | 어디로 갔나 |
 |---|---|---|
-| 무대 재생 진행 모델 (`StagePlayback`) | 564 | 타자·여운·선택지 대기 — 게임 툴 공용 |
-| 무대 배치 계산 (`StageSceneComposer`) | 415 | 순수 함수라고 자기가 적어 뒀다 |
-| 전이 시간 규약 (`StageTransitions`) | 52 | 24fps 규약 — 코어와 짝 |
-| 에피소드 동기화 순서·정책 (`SyncEpisodes`) | 156 | 엑셀↔노드 반영은 이 제품군의 심장 |
-| 판 보장 (`EnsureChapterBoard`) | 12 | 순수 `ProjectEditor` 작업 |
+| 무대 재생 진행 모델 (`StagePlayback`) | 564 | ✅ `Vn.Authoring/Flow` |
+| 무대 배치 계산 (`StageSceneComposer`) | 415 | ✅ `Vn.Authoring/Flow` |
+| 전이 시간 규약 (`StageTransitions`) | 52 | ✅ `Vn.Authoring/Flow` |
+| 에피소드 동기화 순서·정책 (`SyncEpisodes`) | 156 | ✅ `Chapters/EpisodeSyncRunner` |
+| 판 보장 (`EnsureChapterBoard`) | 12 | ✅ `Editing/ProjectEditor` |
 
-합 **1,199줄** — 규모가 아니라 **종류**가 문제다. 전부 "다음 툴에서도 똑같이 필요한 것"이다.
+합 **1,199줄이었다 — 2026-08-23에 전부 넘어갔다.** 규모가 아니라 **종류**가 문제였다:
+전부 "다음 툴에서도 똑같이 필요한 것"이었다.
+
+**결과** — `Vn.App` 24,047 → **22,830줄**, `Vn.Authoring` 29,263 → **30,817줄**.
+그리고 460줄의 테스트가 45초 스위트에서 8초 스위트로 함께 넘어갔다(무대 배치 둘은
+UI를 하나도 안 쓰고 있었다).
 
 ### 4.3 2b가 실제로 바꾸는 것
 

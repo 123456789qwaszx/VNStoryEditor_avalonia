@@ -1,4 +1,4 @@
-namespace Vn.App.Services;
+namespace Vn.Authoring.Flow;
 
 /// <summary>
 /// 무대 재생의 진행 모델 (W31·W32) — 시간의 계산만 있고 타이머·UI가 없다(테스트 가능).
@@ -15,7 +15,7 @@ namespace Vn.App.Services;
 ///
 /// 재생 위치는 뷰 상태다 — 저장하지 않는다(원칙 E).
 /// </summary>
-internal sealed class StagePlayback
+public sealed class StagePlayback
 {
     /// <summary>타자 속도(문자/초) 기본값 — 툴 편의 설정(게임 사양이 아니다). 체감 속도는 배율이 조절한다.</summary>
     public const double CharactersPerSecond = 30;

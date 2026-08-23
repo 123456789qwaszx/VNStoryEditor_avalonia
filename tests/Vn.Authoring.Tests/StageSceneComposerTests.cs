@@ -1,8 +1,7 @@
-using Vn.App.Services;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
 
-namespace Vn.App.Tests;
+namespace Vn.Authoring.Tests;
 
 /// <summary>
 /// W18 무대 배치 계산. 기준 해상도 좌표계에서 boxKind별 레이아웃과 초상화 나열이

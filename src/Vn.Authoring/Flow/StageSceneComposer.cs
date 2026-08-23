@@ -2,22 +2,22 @@ using Ked.Presentation.Core;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Flow;
 
-namespace Vn.App.Services;
+namespace Vn.Authoring.Flow;
 
-internal sealed record StageRect(double X, double Y, double Width, double Height)
+public sealed record StageRect(double X, double Y, double Width, double Height)
 {
     public double Right => X + Width;
 
     public double Bottom => Y + Height;
 }
 
-internal sealed record StagePortraitPlacement(
+public sealed record StagePortraitPlacement(
     string SlotKey,
     MiniStageSlot Slot,
     StageRect Rect,
     bool IsSpeaker);
 
-internal enum StageDialogueBoxStyle
+public enum StageDialogueBoxStyle
 {
     /// <summary>하단 박스 + 이름표.</summary>
     Speaker,
@@ -33,7 +33,7 @@ internal enum StageDialogueBoxStyle
 /// 대사창 하나의 배치. <see cref="Approximated"/>가 참이면 원래 boxKind를 그대로
 /// 그리지 못해 Speaker 근사로 대신했다는 뜻 — 화면은 종류 뱃지를 함께 단다.
 /// </summary>
-internal sealed record StageDialogueBoxPlacement(
+public sealed record StageDialogueBoxPlacement(
     StageDialogueBoxStyle Style,
     string BoxKind,
     bool Approximated,
@@ -43,7 +43,7 @@ internal sealed record StageDialogueBoxPlacement(
     StageRect? TopBand,
     StageRect? BottomBand);
 
-internal sealed record StageSceneLayout(
+public sealed record StageSceneLayout(
     double Width,
     double Height,
     IReadOnlyList<StagePortraitPlacement> Portraits,
@@ -58,7 +58,7 @@ internal sealed record StageSceneLayout(
 /// 런타임 픽셀 재현은 2b의 일이고, 여기는 배치 결정만 있다(그리기는 StageSceneView).
 /// 도킹 패널과 프리뷰 창이 이 계산 하나를 같이 쓴다 — 사본 금지.
 /// </summary>
-internal static class StageSceneComposer
+public static class StageSceneComposer
 {
     public static StageSceneLayout Compose(
         MiniStageState state,

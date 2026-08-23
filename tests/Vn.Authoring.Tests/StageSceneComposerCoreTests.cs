@@ -1,9 +1,8 @@
 using Ked.Presentation.Core;
-using Vn.App.Services;
 using Vn.Authoring.Assets;
 using Vn.Authoring.Flow;
 
-namespace Vn.App.Tests;
+namespace Vn.Authoring.Tests;
 
 /// <summary>
 /// W25 — 코어 좌표 배치. 컴포저는 좌표를 계산하지 않는다(D-core-2): 코어가 접은 좌표를
@@ -12,10 +11,10 @@ namespace Vn.App.Tests;
 /// </summary>
 public class StageSceneComposerCoreTests
 {
-    // 실덤프 픽스처는 저장소에 한 벌만 둔다 — Vn.Authoring.Tests의 것을 그대로 읽는다.
+    // 실덤프 픽스처는 저장소에 한 벌만 둔다. 2026-08-23에 이 파일이 Vn.App.Tests에서
+    // 넘어오면서 그 한 벌이 같은 프로젝트 안이 됐다 — 건너가던 경로가 짧아졌다.
     private static readonly string FixtureDirectory = Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory, "..", "..", "..", "..",
-        "Vn.Authoring.Tests", "TuningFixtures", "ExportedTuning"));
+        AppContext.BaseDirectory, "..", "..", "..", "TuningFixtures", "ExportedTuning"));
 
     private const double Width = 1920;
     private const double Height = 1080;
