@@ -1,10 +1,12 @@
 # 구역 지도 — 다섯 프로젝트의 역할과 경계
 
-기준: 2026-08-23 실측 · 소스 61,797줄 · 테스트 1,510
+기준: **2026-08-23 · M1(셸에서 도메인 빼내기) 완료 시점** · 소스 62,252줄 · 테스트 1,523
 
 > [`three-repo-map.md`](three-repo-map.md)이 **저장소 셋**의 경계를 다룬다면, 이 문서는
-> **저장소 하나 안의 다섯 구역**을 다룬다. 2b 작업(에피소드 동기화를 화면 밖으로)이
-> 어느 선을 어떻게 옮기는 일인지가 §4에 있다.
+> **저장소 하나 안의 다섯 구역**을 다룬다. 어디로 가는지는
+> [`foundation-roadmap.md`](foundation-roadmap.md)에 있다.
+>
+> §3은 **M1 전에 잰 것**이고 §4가 그 결과다 — 무엇이 왜 새고 있었는지의 기록으로 남긴다.
 
 ---
 
@@ -23,8 +25,8 @@ Ked.Presentation.Core ──► Vn.Authoring ──► Vn.App
 
 | 구역 | 파일 | 줄 | 한 문장 |
 |---|---|---|---|
-| **`Vn.Authoring`** | 111 | 29,500 | **저작 도메인.** 프로젝트가 무엇이고 무엇으로 나가는가 |
-| **`Vn.App`** | 34 | 24,200 | **Avalonia 셸.** 사람이 만지는 자리 |
+| **`Vn.Authoring`** | 115 | 30,817 | **저작 도메인.** 프로젝트가 무엇이고 무엇으로 나가는가 |
+| **`Vn.App`** | 31 | 22,830 | **Avalonia 셸.** 사람이 만지는 자리 |
 | **`Ked.Presentation.Core`** | 39 | 4,876 | 무대 상태 계산. **런타임 저장소가 주인이고 여기는 사본** |
 | **`Vn.Core`** | 30 | 3,351 | Yarn 텍스트를 읽고 **진짜 컴파일러로** 컴파일한다 |
 | **`Vn.Cli`** | 1 | 260 | `Vn.Core`의 콘솔 얼굴 |
@@ -60,7 +62,7 @@ Ked.Presentation.Core ──► Vn.Authoring ──► Vn.App
 | 층 | 폴더 | 줄 | 무엇 |
 |---|---|---|---|
 | **원본** | `Model` · `Script` · `Serialization` · `Editing` | 9,144 | 프로젝트가 무엇인가 + **그것을 고치는 유일한 길**(`ProjectEditor` 2,851) |
-| **계산** | `Flow` · `Graph` | 4,872 | 원본에서 파생되는 답 — 조건 흐름·분기·무대 폴드·재생 경로 |
+| **계산** | `Flow` · `Graph` | 5,903 | 원본에서 파생되는 답 — 조건 흐름·분기·무대 폴드·재생 경로·**무대 재생**(M1에서 셸에서 왔다) |
 | **산출** | `Rendering` · `Results` | 4,838 | 밖으로 나가는 것 — yarn 이미터·발행·합성·매니페스트 |
 | **어휘·자산** | `Definition` · `Assets` | 2,236 | 커맨드 팔레트·초상·튜닝 |
 | **기획자 계층** | `Chapters` | **8,410** | 위 넷을 엑셀 위에서 다시 한 벌 — 가장 크고 가장 새것 |
@@ -72,11 +74,15 @@ Ked.Presentation.Core ──► Vn.Authoring ──► Vn.App
 
 | 폴더 | 파일 | 줄 | |
 |---|---|---|---|
-| `Views` | 16 | **19,234** | 코드비하인드. 상위 넷이 12,628줄(66%) |
-| `Services` | 15 | 3,370 | 세션·라이브 출력·오디오·재생 |
+| `Views` | 16 | **19,066** | 코드비하인드. 상위 넷이 12,456줄(65%) |
+| `Services` | 12 | 2,333 | 세션·라이브 출력·오디오·설정·OS 연결 |
 | 뿌리 | 3 | 1,431 | `MainWindow` 1,264 · 부트스트랩 |
 
 **아는 것**: Avalonia, 파일 대화상자, OS 연결, 오디오 장치.
+
+M1 뒤 `Services` 열둘은 **전부 셸의 것**이다 — 설정 파일 · OS 연결 · 대화상자 ·
+오디오 장치 · 디스패처 타이머 · 화면 갱신 계획 · 세션. 열린 질문 하나만 남았다
+(`YarnOutputVerification` — §4.4).
 
 ### 2.5 `Ked.Presentation.Core` — 사본
 
@@ -86,7 +92,7 @@ Ked.Presentation.Core ──► Vn.Authoring ──► Vn.App
 
 ---
 
-## 3. ⚠ 경계가 새는 자리 — 실측
+## 3. 경계가 새던 자리 — M1 전 실측 (기록)
 
 ### 3.1 `Vn.App/Services`의 절반이 화면을 모른다
 
@@ -97,7 +103,8 @@ Ked.Presentation.Core ──► Vn.Authoring ──► Vn.App
 | `StageTransitions` | 52 | **0** | *"라인 전이 시간의 **규약**"* |
 | `YarnOutputVerification` | 123 | **0** | (2026-08-23 신설 — 일부러 그렇게 지었다) |
 
-**셋이 스스로 "순수하다"고 적어 두고 셸에 산다.** 합쳐서 1,031줄이다.
+**셋이 스스로 "순수하다"고 적어 두고 셸에 살았다.** 합쳐서 1,031줄.
+→ ✅ 2026-08-23에 `Vn.Authoring/Flow`로 갔다(§4).
 
 반대로 셸의 것이 분명한 것들: `AppSettingsService`(최근 프로젝트) · `StartupLog` ·
 `SpreadsheetAssociation`(OS 연결) · `AssetRootPicker`(대화상자) · `ProjectRefreshPlanner`
@@ -129,30 +136,38 @@ internal string EnsureChapterBoard(string chapterId)
 }
 ```
 
-**세션 상태를 하나도 안 본다.** 순수한 `ProjectEditor` 작업인데 세션에 주차돼 있다.
-2b가 막히는 이유의 절반이 이것이다.
+**세션 상태를 하나도 안 봤다.** 순수한 `ProjectEditor` 작업인데 세션에 주차돼 있었고,
+그래서 도메인이 셸의 메서드를 불러야 했다 — 동기화를 꺼내지 못하던 이유의 절반이다.
+→ ✅ `ProjectEditor.EnsureChapterBoard`로 내려갔다. 세션에는 위임 한 줄만 남았다
+(호출부 스물여덟을 안 건드리려고).
 
 ### 3.4 `Views`가 코드베이스의 31%다
 
-19,234줄. `interface` 0 · `abstract class` 0 · `ViewModel` 0.
-`ChapterGraphView` 하나에 `internal` 33개 — 테스트가 뷰를 **뚫고** 들어간다는 뜻이다.
+19,066줄. `interface` 0 · `abstract class` 0 · `ViewModel` 0.
+
+⚠ 처음에 `ChapterGraphView`의 `internal` 33개를 *"테스트가 뷰를 뚫고 들어간다"*는
+증거로 읽었는데, **틀린 읽기였다.** M1 뒤에도 33개인데 하나씩 세어 보니 UI 조작 18 ·
+셸 접합 4 · 화면 손잡이 9 · 일부러 열어 둔 창 2로, 도메인 누수는 하나도 없다.
+`internal` 개수는 지표에서 폐기했다(`architecture-plan-2026-08-23.md`).
+
+남은 19,066줄은 **그리기와 편집 UI**다. 다음 툴은 자기 그래프를 자기 방식으로 그린다.
 
 ---
 
-## 4. 지금 작업(2b)의 목표
+## 4. M1이 한 것 — 셸에서 도메인 빼내기 (2026-08-23 완료)
 
-### 4.1 종전 프레이밍은 좁았다
+### 4.1 목표를 다시 잡았다
 
-*"`SyncEpisodes` 156줄을 옮긴다"* — 이건 수단이지 목표가 아니다. 실측이 더 정확한
-목표를 준다:
+처음 프레이밍은 *"`SyncEpisodes` 156줄을 옮긴다"*였는데, 그건 수단이지 목표가 아니었다.
+실측이 더 정확한 목표를 줬다:
 
 > # 🔒 **`Vn.App`에는 화면만 남긴다.**
 > **다음 게임 툴이 다시 쓸 것은 전부 `Vn.Authoring`에 있어야 한다.**
 
-### 4.2 그 기준으로 지금을 재면
+### 4.2 그 기준으로 재니 1,199줄이 셸에 있었다
 
 `Vn.Authoring`을 그대로 들고 가면 새 툴은 **저작·챕터·이미터·발행**을 얻는다.
-그런데 **못 들고 가는 것**이 이만큼 있다:
+그런데 **못 들고 가는 것**이 이만큼 있었다:
 
 | 못 들고 가던 것 | 줄 | 어디로 갔나 |
 |---|---|---|
@@ -169,42 +184,44 @@ internal string EnsureChapterBoard(string chapterId)
 그리고 460줄의 테스트가 45초 스위트에서 8초 스위트로 함께 넘어갔다(무대 배치 둘은
 UI를 하나도 안 쓰고 있었다).
 
-### 4.3 2b가 실제로 바꾸는 것
+### 4.3 어떻게 옮겼나 — 설계 판단 하나
+
+`SyncEpisodes`가 무는 것은 이랬다:
 
 ```
-지금   SyncEpisodes(뷰 156줄)
-         ├─ AuthoringSession 6:  Editor · Definition · ProjectPath
-         │                       SetStatus · EnsureChapterBoard · NotifyExternalScriptChange
-         └─ 뷰 사적 메서드 7:    AdoptFlatWorkbooks · PushVocabularyToEpisodes
-                                 ProjectSpeakerNames · StartWatchingEpisodes
-                                 SupplyEdgePresentations · Validate · Draw
+AuthoringSession 6:  Editor · Definition · ProjectPath
+                     SetStatus · EnsureChapterBoard · NotifyExternalScriptChange
+뷰 사적 메서드 7:    AdoptFlatWorkbooks · PushVocabularyToEpisodes · ProjectSpeakerNames
+                     StartWatchingEpisodes · SupplyEdgePresentations · Validate · Draw
 ```
 
-여섯 중 넷은 이미 도메인이거나 문자열이다. **진짜 셸의 것은 `SetStatus`와
-`NotifyExternalScriptChange` 둘뿐이고, 둘 다 _출력_ 이다.**
+여섯 중 넷은 이미 도메인이거나 값이었다(`EnsureChapterBoard`는 §3.3대로 내려갔다).
+**진짜 셸의 것은 `SetStatus`와 `NotifyExternalScriptChange` 둘뿐이고, 둘 다 _출력_ 이다.**
 
-→ 그래서 인터페이스를 만들지 않는다. **결과를 반환하고 셸이 말하게 한다.**
+→ 그래서 **인터페이스를 만들지 않았다.** 결과를 반환하고 셸이 말한다.
 (이 코드베이스의 `interface` 총 개수는 1이다 — 그 결을 지킨다.)
 
+```csharp
+EpisodeSyncRun run = EpisodeSyncRunner.Run(
+    editor, definition, projectPath, entry, allEntries);
+// 뷰: SetStatus · StartWatchingEpisodes · Validate · Draw · NotifyExternalScriptChange
 ```
-목표   EpisodeSyncRunner.Run(editor, definition, projectPath, chapter, fileId)
-         → EpisodeSyncRun { Reports, BoardWarnings, Migrations, Applied, Rejected }
-       뷰: 그 결과를 상태줄과 판에 그린다
-       ProjectEditor.EnsureChapterBoard(chapterId)   ← 세션에서 내려온다
-```
 
-### 4.4 완료 정의
+### 4.4 ⚠ 남은 열린 질문 — `YarnOutputVerification` (123줄)
 
-| | |
-|---|---|
-| `EpisodeSyncRunner`가 `Vn.Authoring/Chapters`에 있고 **Avalonia·세션을 모른다** | |
-| 그 규칙의 테스트가 `Vn.Authoring.Tests`에서 돈다 (7초 대, UI 없이) | |
-| `EnsureChapterBoard`가 `ProjectEditor`로 내려간다 | |
-| `ChapterGraphView`의 `internal`이 **33 → 20 이하** | |
-| 뷰는 `SetStatus`·`Draw`만 한다 — 순서를 정하지 않는다 | |
+Avalonia를 안 만지고, 다음 툴도 *"자기 산출물이 컴파일되는가"*는 물을 것이다. 그런데
+**Yarn은 "이 게임" 층**이고 `Vn.Authoring`은 일부러 Yarn 컴파일러를 모른다
+(그 선은 `Vn.App → Vn.Core` 참조로 한 번만, 출력 검증에 한해 넘었다).
 
-### 4.5 이번에 하지 않는 것
+**M1의 문제가 아니라 M4가 답할 질문**이라 여기 남긴다 —
+*무엇이 기계이고 무엇이 이 게임의 어휘인가*.
 
-`StagePlayback`·`StageSceneComposer`·`StageTransitions` 1,031줄의 이사는 **별건**이다.
-2b와 같은 병(화면이 아닌 것이 셸에 산다)이지만, 저 셋은 이미 순수해서 **옮기기만 하면**
-되고 위험이 낮다 — 반대로 `SyncEpisodes`는 경계를 새로 그어야 한다. 어려운 쪽을 먼저 한다.
+### 4.5 결과
+
+| | 전 | 후 |
+|---|---|---|
+| `Vn.App` | 24,047줄 | **22,830줄** |
+| `Vn.Authoring` | 29,263줄 | **30,817줄** |
+| `Vn.App/Services` | 15파일 | **12파일** (전부 셸의 것) |
+| 셸에 남은 "다음 툴이 다시 쓸 것" | 1,199줄 | **0** |
+| UI 없이 도는 무대 배치 테스트 | 45초 스위트 | **8초 스위트** (460줄 이사) |
