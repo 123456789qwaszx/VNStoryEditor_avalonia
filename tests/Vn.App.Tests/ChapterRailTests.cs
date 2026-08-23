@@ -380,7 +380,7 @@ public sealed class ChapterRailTests
 
         List<ChapterEdge> edgeList = edges
             .Select((edge, index) => new ChapterEdge(
-                edge.From, edge.To, edge.Label, null, false, null, index + 2)
+                edge.From, edge.To, edge.Label, null, null, index + 2)
             {
                 StatChanges = edge.Stats is null
                     ? []

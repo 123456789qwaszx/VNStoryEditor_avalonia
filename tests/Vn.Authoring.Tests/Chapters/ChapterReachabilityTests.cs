@@ -317,7 +317,7 @@ public sealed class ChapterReachabilityTests
         List<ChapterEdge> edgeList = edges
             .Select((edge, index) => new ChapterEdge(
                 edge.From, edge.To, null, edge.Condition,
-                HideWhenLocked: false, null, index + 2)
+                null, index + 2)
             {
                 StatChanges = edge.TrustDelta == 0
                     ? []

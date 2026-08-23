@@ -621,15 +621,18 @@ public sealed class ChapterGraphEditingTests
             (string)view.FindControl<ComboBox>("EdgeLabelEditBox")!.SelectedItem!);
         Assert.Equal("신뢰높음", view.FindControl<ComboBox>("EdgeConditionCombo")!.SelectedItem);
 
-        // 잠기면 숨김으로 바꾸고 안내문을 고쳐 적용 → 엑셀 셀로 간다.
-        view.FindControl<CheckBox>("EdgeHideCheck")!.IsChecked = true;
+        // 안내문을 고쳐 적용 → 엑셀 셀로 간다.
+        //
+        // ⛔ [해금 미달이면 숨김] 체크는 2026-08-24에 없앴다 (소유자) — 해금조건에 숨김을
+        //    더한 것은 그 식을 **표시조건**에 적은 것과 결과가 같다. 같은 말이 두 번 있었다.
+        Assert.Null(view.FindControl<CheckBox>("EdgeHideCheck"));
+
         view.FindControl<TextBox>("EdgeLockedMsgBox")!.Text = "신뢰를 더 쌓아야 한다";
         view.ApplyEdgeFromPanel();
 
         ChapterEdge edge = ChapterWorkbookReader.Read(project.ChapterPath).Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "branch05.02A");
 
-        Assert.True(edge.HideWhenLocked);
         Assert.Equal("신뢰를 더 쌓아야 한다", edge.LockedMessage);
         Assert.Equal("신뢰높음", edge.ConditionLabel);  // 안 바꾼 필드는 그대로
     });
@@ -676,77 +679,6 @@ public sealed class ChapterGraphEditingTests
         Press(labels.Single(block => block.Text == "셋째 길"));
         Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
     });
-
-    [Fact]
-    public void 위치_편집을_켜야_옮기는_단추가_선다() => HeadlessUi.Run(() =>
-    {
-        // 2026-08-24 소유자: "＋에피소드 옆에다가 위치 편집모드 체크를 두고, 체크한
-        // 상태에서만 위치를 옮기는 버튼이 선택한 에피소드 상하좌우로 생겨나면 좋겠어."
-        //
-        // ⚠ 모드가 있는 이유 — 화살표가 늘 떠 있으면 판이 흐름을 읽는 화면이 아니게 된다.
-        using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, _) = Show(project);
-
-        var canvas = view.FindControl<Canvas>("GraphCanvas")!;
-        var check = view.FindControl<CheckBox>("PlacementEditCheck")!;
-
-        Assert.False(check.IsChecked);   // 꺼져 있는 것이 기본이다
-
-        // 껐을 때는 노드를 골라도 단추가 없다.
-        view.SelectEpisode("main05.02");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.Empty(Handles(canvas));
-
-        // 켜면 선다.
-        check.IsChecked = true;
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        string[] handles = Handles(canvas);
-        Assert.Contains("▶", handles);   // 오른쪽 열로 — 언제나 갈 수 있다
-        Assert.DoesNotContain("◀", handles);   // 제자리라 왼쪽은 없다
-
-        // 선택을 풀면 다시 사라진다 — 단추는 <b>고른 하나</b>에만 붙는다.
-        view.SelectEpisode(null);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.Empty(Handles(canvas));
-    });
-
-    [Fact]
-    public void 오른쪽_단추가_그_에피소드를_한_열_옮긴다() => HeadlessUi.Run(() =>
-    {
-        // 눌렀을 때 <b>엑셀 셀까지</b> 가는지 — 화면만 바뀌면 다음 읽기에 되돌아간다.
-        using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, _) = Show(project);
-
-        view.FindControl<CheckBox>("PlacementEditCheck")!.IsChecked = true;
-        view.SelectEpisode("main05.02");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        var canvas = view.FindControl<Canvas>("GraphCanvas")!;
-        Button right = canvas.Children.OfType<Button>().Single(button => (string?)button.Content == "▶");
-
-        double before = Canvas.GetLeft(canvas.Children.OfType<Border>()
-            .Single(card => (string?)card.Tag == "main05.02"));
-
-        right.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        // 엑셀에 남았다.
-        Assert.Equal(1, ChapterWorkbookReader.Read(project.ChapterPath)
-            .FindEpisode("main05.02")!.ColumnNudge);
-
-        // 화면도 딱 한 열만큼 갔다 — 격자는 그대로다.
-        double after = Canvas.GetLeft(canvas.Children.OfType<Border>()
-            .Single(card => (string?)card.Tag == "main05.02"));
-
-        Assert.Equal(ChapterBranchPlanner.ColumnWidth, after - before);
-    });
-
-    /// <summary>판에 서 있는 자리 옮김 단추의 글자들.</summary>
-    private static string[] Handles(Canvas canvas) => canvas.Children.OfType<Button>()
-        .Select(button => (string?)button.Content ?? string.Empty)
-        .Where(glyph => glyph is "◀" or "▶" or "▲" or "▼")
-        .ToArray();
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 

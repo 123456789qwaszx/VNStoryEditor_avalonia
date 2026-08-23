@@ -265,14 +265,12 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
         Assert.True(ChapterWorkbookWriter.UpdateEdge(
             path, "main05.02", "main05.03",
             conditionLabel: "분노누적",
-            hideWhenLocked: true,
             lockedMessage: "아직은 화가 부족하다").Written);
 
         ChapterEdge edge = ChapterWorkbookReader.Read(path).Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.02" && candidate.ToEpisodeId == "main05.03");
 
         Assert.Equal("분노누적", edge.ConditionLabel);
-        Assert.True(edge.HideWhenLocked);
         Assert.Equal("아직은 화가 부족하다", edge.LockedMessage);
 
         // 빈 문자열 = 지우기. 조건을 떼면 일반 통행이 된다.

@@ -250,7 +250,7 @@ public sealed class ChapterReachabilityEquivalenceTests
                 edge.From, edge.To,
                 plainAdvance && index == edges.Count - 1 ? null : $"{edge.To}로",
                 edge.Condition,
-                HideWhenLocked: false, null, index + 2)
+                null, index + 2)
             {
                 StatChanges = edge.TrustDelta == 0
                     ? []

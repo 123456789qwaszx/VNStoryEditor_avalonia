@@ -948,10 +948,6 @@ public partial class GraphEditorView : UserControl
                     .Select(delta => $"{delta.Key} {(delta.Amount >= 0 ? "+" : "")}{delta.Amount}")), opacity: 0.85);
             }
 
-            if (edge.HideWhenLocked)
-            {
-                Row("잠기면 숨김", opacity: 0.7);
-            }
 
             if (!string.IsNullOrWhiteSpace(edge.LockedMessage))
             {

@@ -103,7 +103,7 @@ public sealed class ChapterWorkbookCellTypeTests : IDisposable
         Assert.Equal(170d, model.FindEpisode("ep2")!.Y);
 
         // 불리언 셀이 참/거짓으로 들어온다.
-        Assert.True(model.Edges[0].HideWhenLocked);
+        // (간선의 `잠금시 숨김`은 2026-08-24에 폐지됐다 — 픽스처의 `활성`이 그 자리를 대신한다.)
         Assert.False(model.Fixtures[0].IsActive);
 
         // 조건식이 그대로 파싱된다.

@@ -263,6 +263,12 @@ Option : { TargetEpisodeId, ChoiceLabel, Kind("PlayerChoice"|"AutoAdvance"), Vis
 않는다**(플레이어는 그런 선택지가 있었다는 것조차 모른다). `Option.Conditions` 미달 →
 **잠긴 채 보인다**(`LockedReasonText` 표시), 단 `HideWhenLocked`면 숨긴다.
 
+⛔ **`HideWhenLocked`는 이제 언제나 `false`로 나간다** (2026-08-24 소유자 — 저작에서
+`잠금시 숨김` 칸을 폐지했다). **표시조건과 해금조건이 이미 그 둘을 다 말하기 때문이다**:
+`해금조건 + 숨김`은 그 식을 `VisibleConditions`에 적은 것과 결과가 같아서, 같은 말이 두 번
+있었다. ⚠ **저쪽 DTO는 그대로 둔다** — 칸을 없애면 옛 진행 JSON이 안 읽힌다. 안 채울 뿐이고,
+읽는 쪽 규칙(`HideWhenLocked`면 숨긴다)도 그대로 두면 된다(`ViaNodeId`와 같은 결).
+
 **F5. 전이 규칙 3갈래** (v9). ① 고른 선택지 → `StatChanges` **원자적 1회 커밋**(clamp) 후
 `TargetEpisodeId`로 이동 ② 고를 수 있는 것이 없으면 **`ChoiceLabel`이 빈 Option**(보이지
 않는 기본 — 에피소드당 하나, **관문 금지**) ③ 그것도 없으면 **챕터 런 종료**.

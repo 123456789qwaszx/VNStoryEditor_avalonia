@@ -74,7 +74,7 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         ChapterEdge branch = model.Edges.Single(edge => edge.ToEpisodeId == "branch05.02A");
         Assert.Equal("라루의 제안을 듣는다", branch.OptionLabel);
         Assert.Equal("신뢰높음", branch.ConditionLabel);
-        Assert.False(branch.HideWhenLocked);
+
         Assert.Equal("신뢰가 부족하다", branch.LockedMessage);
 
         // v12 (2026-08-24) — 문구 없는 길이 폐지되면서 견본도 문구를 갖는다.
@@ -372,9 +372,8 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
             ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null]
         ]),
         ("간선", [
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문",
-             "엔딩키"],
-            ["ep1", "ep2", null, "계속", null, null, "FALSE", null, null]
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "엔딩키"],
+            ["ep1", "ep2", null, "계속", null, null, null, null]
         ]),
         ("조건", [
             ["라벨", "스탯", "연산자", "값", "설명"],

@@ -70,6 +70,7 @@ public static class ChapterWorkbookMigrator
             MigrateGatesToEdges(workbook);              // v8 — 표시·해금조건 → 간선
             MigrateChoiceSheetToDictionary(workbook);   // v9 — 칸 → 전역 문구 사전
             MigrateEndingKeysToEdges(workbook);         // v11 — 엔딩키가 에피소드 → 간선
+            DropHideWhenLocked(workbook);               // 2026-08-24 — `잠금시 숨김` 폐지
             MigrateConditions(workbook);
             MigrateStats(workbook);
             RemoveEmptyFixtures(workbook);
@@ -113,9 +114,14 @@ public static class ChapterWorkbookMigrator
                (Find(workbook, ChapterSheetNames.Stats) is not null &&
                 Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
                (fixtures is not null && fixtures.RowsUsed().Count() <= 1) ||
-               // v12 — 간선의 아홉째 칸이 `엔딩키`여야 한다(v11의 종류·연출은 폐지).
+               // 간선의 여덟째 칸이 `엔딩키`여야 한다 — v12에서 종류·연출이, 2026-08-24에
+               // `잠금시 숨김`이 빠지면서 아홉째 → 여덟째로 당겨졌다.
+               //
+               // ⚠ <b>이 숫자가 곧 "이행이 끝났다"의 정의다.</b> 열을 걷으면서 여기를 안
+               // 고치면 최신 파일도 늘 "이행 필요"가 되어 <b>열 때마다 다시 쓰고 `.bak`이
+               // 매번 갈린다</b> — 사람이 되돌릴 자리를 조용히 잃는다(테스트가 그것을 잡는다).
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
-                Header(workbook, ChapterSheetNames.Edges, 9) != "엔딩키") ||
+                Header(workbook, ChapterSheetNames.Edges, 8) != "엔딩키") ||
                Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키" ||
                // 겉모습이 안 입혀진 파일 (2026-08-18). 자동 필터 하나로 대표해 본다 —
                // 셋(고정·필터·너비)이 언제나 함께 들어가므로 하나가 없으면 셋 다 없다.
@@ -397,6 +403,30 @@ public static class ChapterWorkbookMigrator
                 row.Cell(4).SetValue("계속");
             }
         }
+    }
+
+    /// <summary>
+    /// <c>잠금시 숨김</c>(G) 열을 걷는다 (2026-08-24 소유자: "이미 표시조건과 해금조건이
+    /// 있다보니 기능적으로 제거하더라도 아무런 차이가 없어").
+    ///
+    /// 같은 말을 두 번 하는 칸이었다 — <b>해금조건 + 잠기면 숨김</b>은 그 식을
+    /// <b>표시조건</b>에 적은 것과 결과가 같다. 개념이 둘이면 작가가 어느 쪽으로 적었는지에
+    /// 따라 같은 이야기가 다르게 보인다.
+    ///
+    /// ⚠ <b>켜져 있던 값은 옮기지 않는다.</b> 옮기려면 그 해금조건을 표시조건 칸에 복사해야
+    /// 하는데, 표시조건에 이미 <b>다른</b> 식이 적혀 있으면 둘 중 하나를 버려야 한다 —
+    /// 사람이 쓴 관문을 툴이 임의로 고르는 자리다. 원본은 <c>.bak</c>에 그대로 있고,
+    /// 켜져 있던 행은 <b>잠긴 채 보이는</b> 상태가 된다(숨지 않을 뿐 이야기는 그대로다).
+    /// </summary>
+    private static void DropHideWhenLocked(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Edges) is not { } sheet ||
+            Header(workbook, ChapterSheetNames.Edges, 7) != "잠금시 숨김")
+        {
+            return;
+        }
+
+        sheet.Column(7).Delete();   // 잠금 안내문(H→G) · 엔딩키(I→H)가 한 칸씩 당겨진다
     }
 
     private static void MigrateEdges(XLWorkbook workbook)

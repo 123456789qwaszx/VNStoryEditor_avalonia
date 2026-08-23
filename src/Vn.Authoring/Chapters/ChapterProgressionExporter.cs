@@ -264,7 +264,11 @@ public static class ChapterProgressionExporter
                 Kind = nameof(Contract.OptionKind.PlayerChoice),
                 VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
-                HideWhenLocked = edge.HideWhenLocked,
+                // ⚠ v12+ (2026-08-24) — 저작의 `잠금시 숨김` 칸이 폐지됐다. 계약의 칸은
+                // 남아 있고 <b>언제나 false로 나간다</b>(저쪽 DTO를 바꾸지 않는다 — 안 채울
+                // 뿐이다. `ViaNodeId`와 같은 결). 숨기려는 조건은 이제 <b>표시조건</b>에
+                // 적는다 — `해금조건 + 잠기면 숨김`과 결과가 같고, 말이 한 번만 나온다.
+                HideWhenLocked = false,
                 LockedReasonText = edge.LockedMessage ?? string.Empty,
                 // ⚠ v12 (2026-08-24) — 저작의 `연출` 칸이 폐지됐다. 계약의 칸은 남아 있고
                 // 언제나 빈 문자열로 나간다(저쪽 DTO를 바꾸지 않는다 — 안 채울 뿐이다).

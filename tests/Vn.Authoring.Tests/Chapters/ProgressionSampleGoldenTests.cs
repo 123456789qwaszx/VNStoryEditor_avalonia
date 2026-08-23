@@ -106,14 +106,15 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
 
             Sheet(workbook, ChapterSheetNames.Edges,
                 [
+                    // `잠금시 숨김`은 2026-08-24에 폐지됐다 — 잠금 안내문·엔딩키가 한 칸씩 당겨진다.
                     "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
-                    "잠금시 숨김", "잠금 안내문", "엔딩키"
+                    "잠금 안내문", "엔딩키"
                 ],
                 [
-                    ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, "FALSE", null, null],
-                    ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, "FALSE", null, null],
-                    ["믿는길", "좋은끝", null, "문을 연다", null, null, "FALSE", null, "ch01_true"],
-                    ["혼자길", "쓸쓸한끝", null, "문을 연다", null, null, "FALSE", null, "ch01_alone"]
+                    ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, null, null],
+                    ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, null, null],
+                    ["믿는길", "좋은끝", null, "문을 연다", null, null, null, "ch01_true"],
+                    ["혼자길", "쓸쓸한끝", null, "문을 연다", null, null, null, "ch01_alone"]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Conditions,

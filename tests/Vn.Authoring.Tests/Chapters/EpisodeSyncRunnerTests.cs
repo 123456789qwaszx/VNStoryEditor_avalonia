@@ -187,7 +187,7 @@ public sealed class EpisodeSyncRunnerTests : IDisposable
 
         var edges = episodeIds
             .Zip(episodeIds.Skip(1), (from, to) =>
-                new ChapterEdge(from, to, null, null, HideWhenLocked: false, null, 2))
+                new ChapterEdge(from, to, null, null, null, 2))
             .ToList();
 
         var model = new ChapterGraphModel(

@@ -15,7 +15,7 @@ public sealed class ChapterBranchPlannerTests
 
     private static ChapterEdge Edge(string from, string to) =>
         new(from, to, OptionLabel: null, ConditionLabel: null,
-            HideWhenLocked: false, LockedMessage: null, SourceRow: 2);
+            LockedMessage: null, SourceRow: 2);
 
     private static ChapterGraphModel Model(
         IReadOnlyList<ChapterEpisode> episodes, IReadOnlyList<ChapterEdge> edges) =>
