@@ -1,3 +1,5 @@
+using Vn.Authoring.Model;
+
 namespace Vn.Authoring.Chapters;
 
 /// <param name="Reachability">도달성 증명 결과. 에피소드 워크북이 하나도 없어도 돈다(증감 0 가정).</param>
@@ -23,11 +25,21 @@ public static class ChapterValidator
     /// <b>그 챕터의</b> 대본 폴더 <c>episodes/{ChapterId}/</c> (2026-08-16 — 챕터별 격리).
     /// null이거나 없으면 워크북 검증은 건너뛴다.
     /// </param>
-    public static ChapterValidationResult Validate(ChapterGraphModel chapter, string? episodesFolder)
+    /// <param name="project">
+    /// 있으면 <b>`대사엔트리`가 실재하는 대사노드를 가리키는지</b>까지 본다
+    /// (2026-08-23 · <see cref="VerifyDialogueEntriesOnBoard"/>). null이면 그 검사를
+    /// 건너뛴다 — 판을 볼 수 없는 자리(콘솔·테스트)에서도 나머지 검증은 돌아야 한다.
+    /// </param>
+    public static ChapterValidationResult Validate(
+        ChapterGraphModel chapter,
+        string? episodesFolder,
+        StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(chapter);
 
         var diagnostics = new List<ChapterDiagnostic>(chapter.Diagnostics);
+
+        VerifyDialogueEntriesOnBoard(chapter, project, diagnostics);
 
         string[] labels = chapter.Conditions.Select(condition => condition.Label).ToArray();
         var conditionsByLabel = chapter.Conditions
@@ -75,6 +87,74 @@ public static class ChapterValidator
         ChapterReachabilityResult reachability = ChapterReachabilityProver.Prove(chapter);
 
         return new ChapterValidationResult(diagnostics, reachability);
+    }
+
+    /// <summary>
+    /// ⛔ <b>`대사엔트리`가 가리키는 대사노드가 그 챕터의 판에 실제로 있는가</b> (2026-08-23).
+    ///
+    /// 내보내기의 <c>DialogueEntryId</c>는 이 글자를 이미터 규칙에 통과시킨 것이고
+    /// (<c>Story_</c> + 정규화), yarn 타이틀도 <b>같은 노드 이름</b>에서 나온다. 그래서
+    /// 노드가 없으면 파일이 아예 안 나가고, 진행 JSON만 <b>없는 노드를 부른다</b> —
+    /// 로드·검증·도달성 증명은 전부 통과하고 재생만 안 된다. 2026-08-23에 유니티의
+    /// 사전 대조가 잡은 그 모양이다. <b>여기서 잡으면 유니티까지 안 간다.</b>
+    ///
+    /// ⚠ <b>안 연 챕터를 거부하지 않는다.</b> 에피소드 동기화는 <b>고른 챕터 하나만</b>
+    /// 돌고(<see cref="EpisodeSyncRunner"/>) 내보내기는 <b>전 챕터</b>를 돈다
+    /// (<see cref="ChapterExportService.ExportAll"/>). 그 비대칭 때문에, 판이 없거나
+    /// 판에 대사노드가 하나도 없는 챕터는 <b>아직 동기화 전</b>이지 잘못된 것이 아니다 —
+    /// 그때 거부하면 오늘 잘 나가던 챕터가 전부 막힌다.
+    ///
+    /// 판에 노드가 <b>하나라도</b> 있으면 그 챕터는 한 번은 동기화됐다는 뜻이고,
+    /// 그때부터 빠진 이름은 진짜 빠진 것이다.
+    /// </summary>
+    private static void VerifyDialogueEntriesOnBoard(
+        ChapterGraphModel chapter,
+        StoryProject? project,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        StoryFile? board = project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapter.ChapterId, StringComparison.Ordinal));
+
+        if (board is null)
+        {
+            return;   // 한 번도 안 연 챕터 — 판 자체가 없다.
+        }
+
+        var names = board.Nodes
+            .OfType<DialogueNode>()
+            .Select(node => node.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (names.Count == 0)
+        {
+            return;   // 판은 섰지만 아직 동기화 전이다.
+        }
+
+        foreach (ChapterEpisode episode in chapter.Episodes)
+        {
+            if (string.IsNullOrWhiteSpace(episode.DialogueEntry) ||
+                names.Contains(episode.DialogueEntry))
+            {
+                continue;
+            }
+
+            diagnostics.Add(new ChapterDiagnostic(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.DialogueEntryNodeMissing,
+                chapter.SourcePath,
+                ChapterSheetNames.Episodes,
+                episode.SourceRow,
+                "D",
+                $"'{episode.EpisodeId}'의 대사엔트리 '{episode.DialogueEntry}'에 해당하는 " +
+                $"대사노드가 '{chapter.ChapterId}' 판에 없습니다. 이대로 내보내면 진행 JSON이 " +
+                "존재하지 않는 대사 노드를 부르고, 로드는 통과하는데 재생만 안 됩니다. " +
+                "챕터 그래프에서 이 챕터를 한 번 고르면 동기화가 노드를 만듭니다."));
+        }
     }
 
     /// <summary>

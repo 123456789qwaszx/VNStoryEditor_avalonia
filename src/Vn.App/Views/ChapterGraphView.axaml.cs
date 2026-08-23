@@ -605,6 +605,15 @@ public partial class ChapterGraphView : UserControl
             StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session.ProjectPath));
         }
 
+        // ⚠ 반영이 판을 바꿨으면 **다시 내보낸다** (2026-08-23). `Reload()` 안의
+        // `AutoExport()`는 동기화보다 먼저 돌므로, 엑셀에서 방금 더한 에피소드의 대사노드는
+        // 그때 아직 없다 — 저작 관문(`DialogueEntryNodeMissing`)이 그것을 옳게 거부하고,
+        // 여기서 다시 내지 않으면 **노드가 선 뒤에도 거부가 남는다.**
+        //
+        // 되돌이는 없다: 감시자는 `chapters/`와 `episodes/`를 보고 내보내기는 `exported/`에
+        // 쓴다. 값도 잔잔하다 — 증명은 캐시가 받고, 글이 같은 파일은 다시 쓰지 않는다.
+        AutoExport();
+
         // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
         Validate();
         Draw();
@@ -1186,7 +1195,7 @@ public partial class ChapterGraphView : UserControl
     internal int ValidationComputeCount => _export.ValidationComputeCount;
 
     private ChapterValidationResult ValidationFor(ChapterEntry entry) =>
-        _export.ValidationFor(entry, _session?.ProjectPath);
+        _export.ValidationFor(entry, _session?.ProjectPath, _session?.Project);
     private void OpenFolder()
     {
         string? folder = ChapterLibrary.FolderFor(_session?.ProjectPath);
@@ -1309,7 +1318,7 @@ public partial class ChapterGraphView : UserControl
     /// 못 나간 사유는 어차피 그 보고에 이미 서 있는 오류들이다 — 결론을 그 옆에 둔다.
     /// </summary>
     private void AutoExport() =>
-        _exportRun = _export.ExportAll(_entries, _session?.ProjectPath);
+        _exportRun = _export.ExportAll(_entries, _session?.ProjectPath, _session?.Project);
 
     /// <summary>검증 보고 맨 위에 세울 내보내기 결론 — 못 나갔을 때만 있다.</summary>
     private string? ExportNotice() => _exportRun.Notice;

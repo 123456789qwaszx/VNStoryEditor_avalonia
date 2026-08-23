@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Vn.Authoring.Model;
 using System.Text;
 
 namespace Vn.Authoring.Chapters;
@@ -79,12 +80,21 @@ public sealed class ChapterExportService
     /// 화면은 갱신할 때마다 이것을 처음부터 다시 돌리고 있었다. 판을 한 번 다시 그리는
     /// 값이 6ms인데 그 옆에서 400ms를 태우고 있던 셈이다.
     /// </summary>
-    public ChapterValidationResult ValidationFor(ChapterEntry entry, string? projectPath)
+    /// <param name="project">
+    /// 있으면 <b>`대사엔트리`가 실재하는 대사노드를 가리키는지</b>까지 검증한다
+    /// (<see cref="ChapterValidator"/>). 판의 노드 이름들이 <b>지문에 함께 들어가므로</b>,
+    /// 동기화가 노드를 만든 순간 캐시가 깨지고 다시 증명한다 — 그러지 않으면 방금 만든
+    /// 노드를 모르는 옛 결론이 남아 "고쳤는데 계속 거부한다"가 된다.
+    /// </param>
+    public ChapterValidationResult ValidationFor(
+        ChapterEntry entry,
+        string? projectPath,
+        StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
 
         string? episodesFolder = EpisodeLibrary.FolderFor(projectPath, entry.ChapterId);
-        string fingerprint = Fingerprint(entry.Path, episodesFolder);
+        string fingerprint = Fingerprint(entry.Path, episodesFolder, BoardNames(project, entry.ChapterId));
 
         if (_cache.TryGetValue(entry.ChapterId, out var cached) &&
             string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
@@ -92,7 +102,8 @@ public sealed class ChapterExportService
             return cached.Result;
         }
 
-        ChapterValidationResult result = ChapterValidator.Validate(entry.Model!, episodesFolder);
+        ChapterValidationResult result =
+            ChapterValidator.Validate(entry.Model!, episodesFolder, project);
         ValidationComputeCount++;
         _cache[entry.ChapterId] = (fingerprint, result);
 
@@ -113,7 +124,10 @@ public sealed class ChapterExportService
     /// 그 비대칭이 저작 관문(`대사엔트리`가 대사노드와 맞는가)을 여기 걸지 못하는 이유다.
     /// 한 번도 안 연 챕터는 판에 노드가 없어서 전부 거부되기 때문이다.
     /// </summary>
-    public ChapterExportRun ExportAll(IReadOnlyList<ChapterEntry> entries, string? projectPath)
+    public ChapterExportRun ExportAll(
+        IReadOnlyList<ChapterEntry> entries,
+        string? projectPath,
+        StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
 
@@ -136,7 +150,7 @@ public sealed class ChapterExportService
             // 같은 결과다. 예전에는 내보내기가 안에서 또 증명해 같은 값을 두 번 치렀다.
             ChapterExportResult result = ChapterProgressionExporter.ExportValidated(
                 entry.Model,
-                ValidationFor(entry, projectPath));
+                ValidationFor(entry, projectPath, project));
 
             if (result.Refused)
             {
@@ -197,9 +211,33 @@ public sealed class ChapterExportService
     /// 읽지 못하는 파일은 이름만 남긴다 — 잠겨 있다가 풀리는 순간을 놓치지 않으려면
     /// 그 상태도 지문의 일부여야 한다.
     /// </summary>
-    private static string Fingerprint(string chapterWorkbook, string? episodesFolder)
+    /// <summary>
+    /// 그 챕터 판의 대사노드 이름들 — 정렬해서 지문에 넣는다. 판이 없으면 null이고,
+    /// 그것도 상태의 일부다(안 연 챕터 ↔ 연 챕터가 지문으로 갈린다).
+    /// </summary>
+    private static IReadOnlyList<string>? BoardNames(StoryProject? project, string chapterId)
+    {
+        StoryFile? board = project?.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+
+        return board?.Nodes
+            .OfType<DialogueNode>()
+            .Select(node => node.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static string Fingerprint(
+        string chapterWorkbook,
+        string? episodesFolder,
+        IReadOnlyList<string>? boardNames)
     {
         var builder = new StringBuilder();
+
+        // 판의 노드 이름이 지문의 일부다 (2026-08-23) — `대사엔트리` 검사가 이것을 보므로,
+        // 동기화가 노드를 만들어도 캐시가 안 깨지면 "고쳤는데 계속 거부한다"가 된다.
+        builder.Append("판|").Append(boardNames is null ? "없음" : string.Join(",", boardNames))
+               .Append('\n');
 
         void Append(string path)
         {

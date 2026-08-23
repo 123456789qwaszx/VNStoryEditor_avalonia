@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Editing;
+using Vn.Authoring.Model;
 
 namespace Vn.Authoring.Tests.Chapters;
 
@@ -193,6 +195,95 @@ public sealed class ChapterExportServiceTests : IDisposable
 
         Assert.Equal("ch01", document.RootElement.GetProperty("ChapterId").GetString());
         Assert.Equal("ep1", document.RootElement.GetProperty("StartEpisodeId").GetString());
+    }
+
+    // ── ⑧ 저작 관문 — `대사엔트리`가 실재하는 대사노드를 가리키나 ─────────────
+
+    [Fact]
+    public void 한_번도_안_연_챕터는_검사하지_않는다()
+    {
+        // ⚠ 이 관문이 오탐을 내면 오늘 잘 나가던 챕터가 전부 막힌다. 동기화는 **고른
+        // 챕터 하나만** 돌고 내보내기는 **전 챕터**를 도는 비대칭이 그 위험의 원천이다.
+        // 판 자체가 없으면 그 챕터는 아직 안 연 것이지 잘못된 것이 아니다.
+        var editor = new ProjectEditor(new StoryProject());
+
+        ChapterExportRun run = new ChapterExportService()
+            .ExportAll([Entry("ch01", Sound)], ProjectPath, editor.Project);
+
+        Assert.True(run.AllExported, string.Join(" / ", run.Refused));
+    }
+
+    [Fact]
+    public void 판은_섰지만_아직_동기화_전이면_검사하지_않는다()
+    {
+        // 챕터 목록을 클릭하면 판이 먼저 서고 노드는 동기화가 만든다. 그 사이가 있다.
+        var editor = new ProjectEditor(new StoryProject());
+        editor.EnsureChapterBoard("ch01");
+
+        ChapterExportRun run = new ChapterExportService()
+            .ExportAll([Entry("ch01", Sound)], ProjectPath, editor.Project);
+
+        Assert.True(run.AllExported, string.Join(" / ", run.Refused));
+    }
+
+    [Fact]
+    public void 판에_노드가_있는데_하나가_빠지면_거부한다()
+    {
+        // 노드가 하나라도 있으면 그 챕터는 한 번은 동기화됐다는 뜻이고, 그때부터 빠진
+        // 이름은 진짜 빠진 것이다 — 이대로 내보내면 진행 JSON이 없는 노드를 부르고
+        // 로드·검증·증명은 통과하는데 재생만 안 된다.
+        var editor = new ProjectEditor(new StoryProject());
+        string fileId = editor.EnsureChapterBoard("ch01");
+        editor.AddDialogueNode(fileId, name: "ep1");     // ep2는 없다
+
+        var service = new ChapterExportService();
+        ChapterExportRun run = service.ExportAll([Entry("ch01", Sound)], ProjectPath, editor.Project);
+
+        Assert.Equal(["ch01"], run.Refused);
+
+        ChapterDiagnostic problem = Assert.Single(
+            service.ValidationFor(Entry("ch01", Sound), ProjectPath, editor.Project).All,
+            item => item.Code == ChapterDiagnosticCode.DialogueEntryNodeMissing);
+
+        Assert.Equal(ChapterDiagnosticSeverity.Error, problem.Severity);
+        Assert.Contains("ep2", problem.Message);
+        Assert.Contains("이 챕터를 한 번 고르면", problem.Message);   // 고치는 법까지 말한다
+    }
+
+    [Fact]
+    public void 노드가_생기면_캐시가_깨져_다시_증명한다()
+    {
+        // ⛔ 이것이 없으면 **"고쳤는데 계속 거부한다"**가 된다. 지문이 파일만 보면 동기화가
+        // 노드를 만들어도 캐시가 옛 결론을 그대로 준다 — 캐시가 만드는 가장 나쁜 거짓말이
+        // 여기서 한 번 더 나올 자리다.
+        var editor = new ProjectEditor(new StoryProject());
+        string fileId = editor.EnsureChapterBoard("ch01");
+        editor.AddDialogueNode(fileId, name: "ep1");
+
+        var service = new ChapterExportService();
+        ChapterEntry entry = Entry("ch01", Sound);
+
+        Assert.Contains("ch01", service.ExportAll([entry], ProjectPath, editor.Project).Refused);
+
+        // 동기화가 빠진 노드를 만든다 — 디스크는 한 글자도 안 바뀌었다.
+        editor.AddDialogueNode(fileId, name: "ep2");
+
+        ChapterExportRun after = service.ExportAll([entry], ProjectPath, editor.Project);
+
+        Assert.True(after.AllExported, string.Join(" / ", after.Refused));
+        Assert.Equal(2, service.ValidationComputeCount);   // 파일이 그대로여도 다시 증명했다
+    }
+
+    [Fact]
+    public void 판을_안_넘기면_이_검사를_하지_않는다()
+    {
+        // 콘솔·테스트처럼 판을 볼 수 없는 자리에서도 나머지 검증은 그대로 돌아야 한다.
+        var editor = new ProjectEditor(new StoryProject());
+        editor.AddDialogueNode(editor.EnsureChapterBoard("ch01"), name: "ep1");
+
+        Assert.True(new ChapterExportService()
+            .ExportAll([Entry("ch01", Sound)], ProjectPath)
+            .AllExported);
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────

@@ -50,7 +50,13 @@ public enum ChapterDiagnosticCode
     EndingKeyConflict,
 
     /// <summary>v11 — 간선에 매달린 연출 노드가 아직 비어 있다(경고).</summary>
-    EdgePresentationEmpty
+    EdgePresentationEmpty,
+
+    /// <summary>
+    /// `대사엔트리`가 가리키는 대사노드가 <b>그 챕터의 판에 없다</b> (2026-08-23).
+    /// 이대로 내보내면 진행 JSON이 존재하지 않는 yarn 노드를 부른다.
+    /// </summary>
+    DialogueEntryNodeMissing
 }
 
 /// <summary>
