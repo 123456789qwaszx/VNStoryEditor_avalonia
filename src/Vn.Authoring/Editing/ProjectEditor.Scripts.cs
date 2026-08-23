@@ -157,63 +157,7 @@ public sealed partial class ProjectEditor
                 continue;
             }
 
-            var desired = new List<LineConditionTransition>(intents.Count);
-            bool refused = false;
-
-            foreach (ScenarioStructureIntent intent in intents)
-            {
-                switch (intent.Kind)
-                {
-                    case ConditionTransitionKind.EndIf:
-                        desired.Add(LineConditionTransition.EndIf());
-                        break;
-
-                    // 옵션 줄(->)이 파서를 지나 여기 온다 (G3-2). OptionId는 만들지 않는다 —
-                    // 텍스트에는 옵션의 안정 식별자가 없고, 있던 것은 아래 비교가 보존한다.
-                    case ConditionTransitionKind.BeginChoice:
-                        desired.Add(LineConditionTransition.BeginChoice());
-                        break;
-
-                    case ConditionTransitionKind.BeginNextOption:
-                        desired.Add(LineConditionTransition.BeginNextOption());
-                        break;
-
-                    case ConditionTransitionKind.EndChoice:
-                        desired.Add(LineConditionTransition.EndChoice());
-                        break;
-
-                    default:
-                    {
-                        AvailableCondition? condition = conditions.Conditions.FirstOrDefault(item =>
-                            string.Equals(item.Expression.Trim(), intent.Expression, StringComparison.Ordinal));
-
-                        if (condition is null)
-                        {
-                            // 비슷한 식을 추측해 잇지 않는다. 조건은 설정노드에서 먼저 만들어야 한다.
-                            problems.Add(
-                                $"<<{(intent.Kind == ConditionTransitionKind.BeginIf ? "if" : "elseif")} {intent.Expression}>> — " +
-                                "이 노드가 쓸 수 있는 조건 중에 같은 식이 없습니다. 전환은 반영하지 않았습니다.");
-
-                            // 한 줄의 전환은 <b>묶음</b>이다 — 하나를 못 세우면 나머지만 반영해
-                            // 짝이 어긋난 채로 두지 않는다.
-                            refused = true;
-                            break;
-                        }
-
-                        desired.Add(intent.Kind == ConditionTransitionKind.BeginIf
-                            ? LineConditionTransition.BeginIf(condition.Id)
-                            : LineConditionTransition.BeginElseIf(condition.Id));
-                        break;
-                    }
-                }
-
-                if (refused)
-                {
-                    break;
-                }
-            }
-
-            if (refused)
+            if (Translate(intents, conditions, problems) is not { } desired)
             {
                 continue;
             }
@@ -231,6 +175,107 @@ public sealed partial class ProjectEditor
                 SetLineTransitions(node.Id, lineId, desired);
             }
         }
+
+        ApplyTrailingTransitions(node, parsed, conditions, problems);
+    }
+
+    /// <summary>
+    /// 전환 뜻(텍스트) → 전환(모델). 못 세우는 것이 하나라도 있으면 <b>통째로</b> 물린다
+    /// (널) — 한 자리의 전환은 묶음이라, 하나를 빠뜨리고 나머지만 반영하면 짝이 어긋난다.
+    /// </summary>
+    private static List<LineConditionTransition>? Translate(
+        IReadOnlyList<ScenarioStructureIntent> intents,
+        AvailableConditionCatalog conditions,
+        List<string> problems)
+    {
+        var desired = new List<LineConditionTransition>(intents.Count);
+
+        foreach (ScenarioStructureIntent intent in intents)
+        {
+            switch (intent.Kind)
+            {
+                case ConditionTransitionKind.EndIf:
+                    desired.Add(LineConditionTransition.EndIf());
+                    break;
+
+                // 옵션 줄(->)이 파서를 지나 여기 온다 (G3-2). OptionId는 만들지 않는다 —
+                // 텍스트에는 옵션의 안정 식별자가 없고, 있던 것은 부르는 쪽 비교가 보존한다.
+                case ConditionTransitionKind.BeginChoice:
+                    desired.Add(LineConditionTransition.BeginChoice());
+                    break;
+
+                case ConditionTransitionKind.BeginNextOption:
+                    desired.Add(LineConditionTransition.BeginNextOption());
+                    break;
+
+                case ConditionTransitionKind.EndChoice:
+                    desired.Add(LineConditionTransition.EndChoice());
+                    break;
+
+                default:
+                {
+                    AvailableCondition? condition = conditions.Conditions.FirstOrDefault(item =>
+                        string.Equals(item.Expression.Trim(), intent.Expression, StringComparison.Ordinal));
+
+                    if (condition is null)
+                    {
+                        // 비슷한 식을 추측해 잇지 않는다. 조건은 설정노드에서 먼저 만들어야 한다.
+                        problems.Add(
+                            $"<<{(intent.Kind == ConditionTransitionKind.BeginIf ? "if" : "elseif")} {intent.Expression}>> — " +
+                            "이 노드가 쓸 수 있는 조건 중에 같은 식이 없습니다. 전환은 반영하지 않았습니다.");
+
+                        return null;
+                    }
+
+                    desired.Add(intent.Kind == ConditionTransitionKind.BeginIf
+                        ? LineConditionTransition.BeginIf(condition.Id)
+                        : LineConditionTransition.BeginElseIf(condition.Id));
+                    break;
+                }
+            }
+        }
+
+        return desired;
+    }
+
+    /// <summary>
+    /// 마지막 줄 <b>뒤에</b> 남은 전환을 노드에 얹는다 (2026-08-24) — 대사 없는 조건 블록이
+    /// 대본의 끝일 때 사는 자리다.
+    ///
+    /// ⚠ 텍스트에 꼬리가 없으면 <b>비운다</b>. 줄에 실린 전환과 달리 이쪽은 대본이 유일한
+    /// 원천이라, 안 지우면 지운 블록이 산출물에 계속 남는다.
+    /// </summary>
+    private void ApplyTrailingTransitions(
+        DialogueNode node,
+        ScenarioParseResult parsed,
+        AvailableConditionCatalog conditions,
+        List<string> problems)
+    {
+        List<LineConditionTransition>? desired = parsed.Trailing.Count == 0
+            ? []
+            : Translate(parsed.Trailing, conditions, problems);
+
+        if (desired is null)
+        {
+            return; // 못 세운 것이 있으면 지금 것을 그대로 둔다 — 위 Translate가 사유를 적었다.
+        }
+
+        bool same = node.TrailingTransitions.Count == desired.Count &&
+            node.TrailingTransitions.Zip(desired).All(pair =>
+                pair.First.Kind == pair.Second.Kind &&
+                string.Equals(pair.First.ConditionId, pair.Second.ConditionId, StringComparison.Ordinal));
+
+        if (same)
+        {
+            return;
+        }
+
+        Mutate(() =>
+        {
+            node.TrailingTransitions.Clear();
+            node.TrailingTransitions.AddRange(desired);
+            PruneBranchExits(node);
+        });
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Nodes;
+using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
 
@@ -205,6 +206,50 @@ internal static class StoryNodeJson
         }
 
         json["lines"] = lines;
+
+        // 마지막 줄 뒤의 전환 (2026-08-24) — 대사 없는 조건 블록이 대본의 끝에 있을 때.
+        // 줄이 아니라 노드에 붙으므로 `lines` 밖에 선다. 없으면 칸도 안 만든다.
+        if (node.TrailingTransitions.Count > 0)
+        {
+            var trailing = new JsonArray();
+
+            int opened = 0;
+
+            foreach (LineConditionTransition transition in node.TrailingTransitions)
+            {
+                var transitionJson = new JsonObject
+                {
+                    ["kind"] = DialogueResultJson.KindName(transition.Kind)
+                };
+
+                if (transition.ConditionId is not null)
+                {
+                    transitionJson["condition"] = transition.ConditionId;
+                }
+
+                if (transition.OptionId is not null)
+                {
+                    transitionJson["option"] = transition.OptionId;
+                }
+
+                // ⚠ 앵커를 <b>글자로 적어 둔다</b> — 규칙(몇 번째인가)이 나중에 바뀌어도
+                // 이미 매달린 출구가 제 갈래를 계속 찾는다. 읽는 쪽도 이 글자를 쓴다.
+                if (transition.OpensBranch)
+                {
+                    string anchor = BranchAnchor.ForTrailing(opened++);
+                    transitionJson["anchor"] = anchor;
+
+                    if (node.BranchExits.TryGetValue(anchor, out string? exit))
+                    {
+                        transitionJson["exit"] = exit;
+                    }
+                }
+
+                trailing.Add(transitionJson);
+            }
+
+            json["trailing"] = trailing;
+        }
 
         // 선택지별 자유 씬 배선 (v9) — 열쇠가 대본의 줄이 아니라 <b>문구</b>다. 그래서
         // 줄 항목 안이 아니라 노드에 따로 선다(대본이 바뀌어도 이 배선은 그대로다).
@@ -521,6 +566,29 @@ internal static class StoryNodeJson
             }
 
             node.LineExtensions.Add(extension);
+        }
+
+        foreach (JsonNode? item in json["trailing"]?.AsArray() ?? new JsonArray())
+        {
+            if (item is not JsonObject transitionJson)
+            {
+                continue;
+            }
+
+            var transition = new LineConditionTransition(
+                DialogueResultJson.ParseKind((string?)transitionJson["kind"]),
+                (string?)transitionJson["condition"],
+                (string?)transitionJson["option"]);
+
+            node.TrailingTransitions.Add(transition);
+
+            // 끝의 빈 갈래도 출구(detour)를 가질 수 있다 — 열쇠는 그 갈래의 앵커다.
+            if ((string?)transitionJson["exit"] is { } exit &&
+                (string?)transitionJson["anchor"] is { } anchor &&
+                transition.OpensBranch)
+            {
+                node.BranchExits[anchor] = exit;
+            }
         }
 
         if (json["choiceExits"] is JsonObject choiceExits)

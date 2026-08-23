@@ -78,8 +78,10 @@ public sealed class DialogueDraft
         IReadOnlyList<DialogueResultLine> lines,
         IReadOnlyList<DialogueResultAssignment> assignments,
         string? defaultExitTargetNodeId,
-        IReadOnlyList<PublishProblem> problems)
+        IReadOnlyList<PublishProblem> problems,
+        IReadOnlyList<DialogueResultTransition>? trailingTransitions = null)
     {
+        TrailingTransitions = trailingTransitions ?? Array.Empty<DialogueResultTransition>();
         SourceNodeId = sourceNodeId;
         SourceNodeName = sourceNodeName;
         SourceScriptId = sourceScriptId;
@@ -102,6 +104,9 @@ public sealed class DialogueDraft
     public string Locale { get; }
 
     public IReadOnlyList<DialogueResultLine> Lines { get; }
+
+    /// <summary>마지막 줄 뒤의 전환들 — 대사 없는 조건 블록이 대본의 끝일 때 (2026-08-24).</summary>
+    public IReadOnlyList<DialogueResultTransition> TrailingTransitions { get; }
 
     public IReadOnlyList<DialogueResultAssignment> Assignments { get; }
 
@@ -276,7 +281,14 @@ public static class DialoguePublisher
             assignments,
             // 커스텀 노드는 기본 출구 없이 발행된다 — detour의 복귀가 그 자리를 맡는다.
             node.EffectiveDefaultExit,
-            problems);
+            problems,
+            // 마지막 줄 뒤의 전환 (2026-08-24) — 대사 없는 조건 블록이 대본의 끝일 때.
+            // 줄에 실린 것과 <b>같은 얼리기</b>를 지난다: 조건 Id가 아니라 <b>식</b>이
+            // 결과에 굳어야 산출물이 자기 완결이 된다.
+            node.TrailingTransitions
+                .Select(transition => Freeze(transition, project, definition, available))
+                .OfType<DialogueResultTransition>()
+                .ToArray());
     }
 
     /// <summary>
@@ -326,7 +338,8 @@ public static class DialoguePublisher
             draft.Lines,
             draft.Assignments,
             draft.DefaultExitTargetNodeId,
-            publishedAt);
+            publishedAt,
+            draft.TrailingTransitions);
 
         results.Add(result);
         created = true;
@@ -353,7 +366,8 @@ public static class DialoguePublisher
             draft.Lines,
             draft.Assignments,
             draft.DefaultExitTargetNodeId,
-            now);
+            now,
+            draft.TrailingTransitions);
     }
 
     /// <summary>

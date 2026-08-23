@@ -74,8 +74,11 @@ public sealed record DialogueResultAssignment(string Variable, string Value);
 public sealed class DialogueResult
 {
     /// <summary>결과 본문의 구조가 바뀌면 올린다. 해시와 함께 호환성 판정에 쓰인다.</summary>
-    /// <remarks>v2: 줄에 SetOperations가 실린다. v3: 선택 전환(OptionId)이 실린다.</remarks>
-    public const int CurrentSchemaVersion = 3;
+    /// <remarks>
+    /// v2: 줄에 SetOperations가 실린다. v3: 선택 전환(OptionId)이 실린다.
+    /// v4: <see cref="TrailingTransitions"/> — 마지막 줄 뒤의 전환(대사 없는 조건 블록).
+    /// </remarks>
+    public const int CurrentSchemaVersion = 4;
 
     public DialogueResult(
         ResultIdentity identity,
@@ -87,8 +90,10 @@ public sealed class DialogueResult
         IReadOnlyList<DialogueResultLine> lines,
         IReadOnlyList<DialogueResultAssignment> assignments,
         string? defaultExitTargetNodeId,
-        DateTimeOffset publishedAt)
+        DateTimeOffset publishedAt,
+        IReadOnlyList<DialogueResultTransition>? trailingTransitions = null)
     {
+        TrailingTransitions = trailingTransitions ?? Array.Empty<DialogueResultTransition>();
         Identity = identity;
         SourceNodeId = sourceNodeId;
         SourceNodeName = sourceNodeName;
@@ -115,6 +120,15 @@ public sealed class DialogueResult
     public string Locale { get; }
 
     public IReadOnlyList<DialogueResultLine> Lines { get; }
+
+    /// <summary>
+    /// <b>마지막 줄 뒤의 전환들</b> (v4, 2026-08-24) — 대사 없는 조건 블록이 대본의 끝일 때.
+    ///
+    /// ⚠ <b>결과 문서에 실어야 한다.</b> 노드에서 그때그때 읽어 오면 결과가 자기 완결이
+    /// 아니게 되고, 무엇보다 <b>꼬리만 다른 두 노드가 같은 해시</b>를 갖는다 — 발행 비교가
+    /// 그 차이를 못 본다.
+    /// </summary>
+    public IReadOnlyList<DialogueResultTransition> TrailingTransitions { get; }
 
     public IReadOnlyList<DialogueResultAssignment> Assignments { get; }
 

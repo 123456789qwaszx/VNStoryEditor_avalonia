@@ -280,6 +280,20 @@ public sealed class DialogueNode : StoryNode
     public Dictionary<string, string> BranchExits { get; init; } = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// <b>마지막 줄 뒤에 남는 전환들</b> (2026-08-24 소유자 — 대사 없는 조건 블록).
+    ///
+    /// 전환은 늘 <em>다음</em> 대사 줄 앞에 실린다(<see cref="DialogueLineExtension"/>).
+    /// 그런데 대본이 조건 블록으로 끝나면 실을 줄이 없다 — 그리고 <b>대사 없는 블록이
+    /// 대본의 전부</b>일 수도 있다(조건이 서면 커스텀 씬으로 detour만 하는 에피소드).
+    /// 그 블록이 살 자리가 여기다.
+    ///
+    /// ⚠ 줄에 실린 전환과 <b>같은 종류의 목록</b>이고 순서도 같은 뜻이다 — 다른 것은
+    /// "어느 줄 앞"이 아니라 "모든 줄 뒤"라는 자리뿐이다. 그래서 흐름 해석은 줄을 다 돈
+    /// 뒤 이 목록을 같은 기계에 한 번 더 먹인다.
+    /// </summary>
+    public List<LineConditionTransition> TrailingTransitions { get; init; } = new();
+
+    /// <summary>
     /// <b>선택지 문구 → 그 선택지를 고른 뒤 거쳐 갈 자유 씬</b> (v9, 2026-08-17).
     ///
     /// v9에서 선택지의 주인은 챕터 `간선` 시트이고 대본에는 OPTION이 없다 — 그래서 작가의
@@ -329,6 +343,7 @@ public sealed class DialogueNode : StoryNode
             LineExtensions = LineExtensions.Select(item => item.Clone()).ToList(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
             BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal),
+            TrailingTransitions = [.. TrailingTransitions],
             ChoiceExits = new Dictionary<string, string>(ChoiceExits, StringComparer.Ordinal),
             ExcelLineMap = new Dictionary<int, string>(ExcelLineMap)
         };
