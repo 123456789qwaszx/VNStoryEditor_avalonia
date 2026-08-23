@@ -153,13 +153,9 @@ public partial class ChapterGraphView : UserControl
     {
         InitializeComponent();
 
-        // 챕터와 에피소드를 함께 따라잡는다 — 클라우드 동기화가 늦게 내려놓은 저장을
-        // 기다리지 않고 사람이 지금 가져올 수 있는 유일한 손잡이다.
-        ReloadButton.Click += (_, _) => UiGuard.Run(_session, "다시 읽기", () =>
-        {
-            Reload();
-            SyncEpisodes();
-        });
+        // ⛔ [다시 읽기] 단추는 2026-08-24에 없앴다 (소유자: 한 번도 안 썼다). 감시자가
+        // 붙은 뒤로 화면이 스스로 따라오므로 손잡이가 할 일이 남지 않았다. <see cref="Reload"/>
+        // 자체는 그대로다 — 부르는 곳이 사람 손에서 감시자와 챕터 전환으로 옮겨갔을 뿐이다.
         OpenFolderButton.Click += (_, _) => UiGuard.Run(_session, "챕터 폴더 열기", OpenFolder);
 
         // [화자] 탭 — 프로젝트 전체의 캐스트 (2026-08-23). 엔터로도 더한다: 이름을 여럿
@@ -183,18 +179,6 @@ public partial class ChapterGraphView : UserControl
             }
         };
 
-        // 픽스처 전환 → 경로 하이라이트가 바뀐다 (G6).
-        FixtureCombo.SelectionChanged += (_, _) =>
-        {
-            if (_updatingFixtureCombo)
-            {
-                return;
-            }
-
-            string? picked = FixtureCombo.SelectedItem as string;
-            _selectedFixture = picked == "(끄기)" ? null : picked;
-            Draw();
-        };
 
         // 편집 (G-2 v2) — 전부 엑셀 셀에 써지고, 저장 감시가 다시 읽어 화면이 따라온다.
         // 2026-08-16 소유자 — [개명]·[적용] 단추 폐지: Id는 Enter로 개명하고, 조건 콤보는
@@ -1449,8 +1433,6 @@ public partial class ChapterGraphView : UserControl
             ? CanvasMargin * 2
             : _placed.Values.Max(position => position.Y) + CardHeight + CanvasMargin;
 
-        RefreshFixtureCombo(model);
-        (IReadOnlySet<string> path, IReadOnlySet<(string, string)> pathEdges) = WalkSelectedFixture(model);
 
         // 에피소드별 보이는 선택지 = 문구가 붙은 나가는 간선들 (v9 — 길 하나가 곧 선택지
         // 하나). 포트 그리기와 간선 그리기가 같은 목록 하나를 본다.
@@ -1469,11 +1451,11 @@ public partial class ChapterGraphView : UserControl
         }
 
         // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
-        DrawEpisodeRails(model, pathEdges);
+        DrawEpisodeRails(model);
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
-            DrawEpisode(model, episode, onPath: path.Contains(episode.EpisodeId));
+            DrawEpisode(model, episode);
         }
 
         DrawDiagnostics(model);
@@ -1481,68 +1463,17 @@ public partial class ChapterGraphView : UserControl
         RefreshPropertyPanel(preserveTyping: true);
     }
 
-    // ── 픽스처 (G6) ─────────────────────────────────────────────────────────
-
-    private string? _selectedFixture;
-    private bool _fixtureInitialized;
-    private bool _updatingFixtureCombo;
-
-    private void RefreshFixtureCombo(ChapterGraphModel model)
-    {
-        var names = new List<string> { "(끄기)" };
-        names.AddRange(model.Fixtures.Select(fixture => fixture.Name));
-
-        _updatingFixtureCombo = true;
-        FixtureCombo.ItemsSource = names;
-
-        // 처음 한 번만 `활성` 픽스처를 기본으로 고른다 — 시트가 고른 것을 화면이 존중하되,
-        // 사람이 (끄기)를 골랐다면 그 선택이 이긴다.
-        if (!_fixtureInitialized)
-        {
-            _selectedFixture = model.Fixtures.FirstOrDefault(fixture => fixture.IsActive)?.Name;
-            _fixtureInitialized = true;
-        }
-
-        FixtureCombo.SelectedItem = _selectedFixture is not null && names.Contains(_selectedFixture)
-            ? _selectedFixture
-            : "(끄기)";
-        _updatingFixtureCombo = false;
-    }
-
-    /// <summary>선택된 픽스처로 한 판을 걸어 경로(노드·간선 집합)를 얻는다.</summary>
-    private (IReadOnlySet<string> Nodes, IReadOnlySet<(string, string)> Edges) WalkSelectedFixture(
-        ChapterGraphModel model)
-    {
-        var empty = (new HashSet<string>(StringComparer.Ordinal),
-            new HashSet<(string, string)>());
-
-        FixtureStopText.Text = string.Empty;
-
-        ChapterFixture? fixture = model.Fixtures.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, _selectedFixture, StringComparison.Ordinal));
-
-        if (fixture is null)
-        {
-            return empty;
-        }
-
-        FixtureWalkResult walk = ChapterFixtureWalker.Walk(model, fixture);
-
-        if (walk.StoppedBecause is not null)
-        {
-            FixtureStopText.Text = walk.StoppedBecause;
-        }
-
-        var nodes = walk.EpisodeIds.ToHashSet(StringComparer.Ordinal);
-        var edges = new HashSet<(string, string)>();
-
-        for (int index = 0; index + 1 < walk.EpisodeIds.Count; index++)
-        {
-            edges.Add((walk.EpisodeIds[index], walk.EpisodeIds[index + 1]));
-        }
-
-        return (nodes, edges);
-    }
+    // ⛔ 픽스처 (G6) — 2026-08-24에 화면에서 걷었다 (소유자: "꽤 오래 다뤘는데 단 한 번도
+    // 안 썼어"). 여기 있던 것: `_selectedFixture`·`RefreshFixtureCombo`·`WalkSelectedFixture`,
+    // 그리고 걸은 경로를 초록으로 칠하던 `onPath`/`pathEdges` 인자들.
+    //
+    // 콤보를 없애면 고를 길이 없고, 고를 수 없는 하이라이트는 켤 수도 끌 수도 없다 —
+    // 시트의 `활성` 픽스처만 남겨 두면 견본 챕터가 초록으로 켜진 채 <b>끄는 손잡이 없이</b>
+    // 서 있게 된다. 그래서 화면 쪽은 통째로 걷는 것이 옳다.
+    //
+    // ⚠ <b>엑셀의 `픽스처` 시트와 `ChapterFixtureWalker`는 안 지웠다</b> — 시트는 워크북
+    // 규격이라 지우면 남의 파일이 깨지고, 걷기는 저작 계층의 순수 함수다(제 테스트가 있다).
+    // 되살릴 때 필요한 것은 콤보 하나와 이 자리의 걷기 호출뿐이다.
 
     /// <summary>포트 줄 높이 — 카드가 선택지 수만큼 아래로 자란다.</summary>
     private const double PortRowHeight = 18;
@@ -1560,7 +1491,7 @@ public partial class ChapterGraphView : UserControl
     /// 자기 간선이 나간다(선택지는 많아야 3개). 아래로 줄기를 빼는 철도 흉내는 폐기.
     /// 선택지 없는 에피소드는 기존 중앙 직행선 그대로.
     /// </summary>
-    private void DrawEpisodeRails(ChapterGraphModel model, IReadOnlySet<(string, string)> pathEdges)
+    private void DrawEpisodeRails(ChapterGraphModel model)
     {
         foreach (ChapterEpisode episode in model.Episodes)
         {
@@ -1575,7 +1506,7 @@ public partial class ChapterGraphView : UserControl
                 // 자리를 못 잡은 카드 — 포트가 없으니 중앙 직행선으로라도 그린다.
                 foreach (ChapterEdge edge in edges)
                 {
-                    DrawDirectEdge(edge, pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
+                    DrawDirectEdge(edge);
                 }
 
                 continue;
@@ -1584,8 +1515,7 @@ public partial class ChapterGraphView : UserControl
             for (int index = 0; index < options.Count; index++)
             {
                 DrawPortEdge(options[index],
-                    new Point(position.X + CardWidth + 5, PortY(position.Y, index)),
-                    pathEdges);
+                    new Point(position.X + CardWidth + 5, PortY(position.Y, index)));
             }
         }
     }
@@ -1597,16 +1527,14 @@ public partial class ChapterGraphView : UserControl
     /// 구간이 하나뿐이라 <b>히트 선이 간선 전체를 덮는다</b> — 예전에는 첫 가로 구간
     /// 위에서만 눌렸다.
     /// </summary>
-    private void DrawPortEdge(ChapterEdge edge, Point port, IReadOnlySet<(string, string)> pathEdges)
+    private void DrawPortEdge(ChapterEdge edge, Point port)
     {
-        bool onPath = pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId));
-
-        IBrush stroke = onPath
-            ? new SolidColorBrush(Color.Parse("#3E9B57"))
-            : edge.ConditionLabel is null
-                ? new SolidColorBrush(Color.Parse("#8894A0"))
-                : new SolidColorBrush(Color.Parse("#C08A3E"));
-        double thickness = onPath ? 3.2 : 1.6;
+        // 색이 말하는 것은 하나뿐이다 — 관문이 걸렸나(주황) 아닌가(회색). 픽스처 경로를
+        // 초록으로 칠하던 갈래는 2026-08-24에 걷혔다.
+        IBrush stroke = edge.ConditionLabel is null
+            ? new SolidColorBrush(Color.Parse("#8894A0"))
+            : new SolidColorBrush(Color.Parse("#C08A3E"));
+        const double thickness = 1.6;
 
         var segments = new List<Line>();
 
@@ -1714,7 +1642,7 @@ public partial class ChapterGraphView : UserControl
         _lineBase[key] = (stroke, thickness);
     }
 
-    private void DrawDirectEdge(ChapterEdge edge, bool onPath)
+    private void DrawDirectEdge(ChapterEdge edge)
     {
         if (!_placed.TryGetValue(edge.FromEpisodeId, out (double X, double Y) fromPos) ||
             !_placed.TryGetValue(edge.ToEpisodeId, out (double X, double Y) toPos))
@@ -1742,12 +1670,6 @@ public partial class ChapterGraphView : UserControl
             line.StrokeDashArray = new AvaloniaList<double> { 4, 3 };
         }
 
-        if (onPath)
-        {
-            // 픽스처가 실제로 지나가는 간선 (G6). 굵고 초록이다.
-            line.Stroke = new SolidColorBrush(Color.Parse("#3E9B57"));
-            line.StrokeThickness = 3.2;
-        }
 
         // 간선의 정체를 시각 요소에 남긴다. 화면 없는 렌더 검증(Gate A)이 "무엇이 그려졌는지"를
         // 색·좌표로 역추론하지 않고 이름으로 확인할 수 있어야 한다.
@@ -1817,7 +1739,7 @@ public partial class ChapterGraphView : UserControl
         GraphCanvas.Children.Add(text);
     }
 
-    private void DrawEpisode(ChapterGraphModel model, ChapterEpisode episode, bool onPath)
+    private void DrawEpisode(ChapterGraphModel model, ChapterEpisode episode)
     {
         // 워크북의 오류든 도달 불가든 노드에는 같은 ⚠로 선다 — 기획자에게는 둘 다 "고칠 것"이다.
         bool hasError = model.EpisodeHasError(episode) || IsUnreachable(episode);
@@ -1936,18 +1858,6 @@ public partial class ChapterGraphView : UserControl
             card.BorderBrush = new SolidColorBrush(Color.Parse("#C08A3E"));
         }
 
-        if (onPath)
-        {
-            // 픽스처 경로 위의 노드 (G6). 간선과 같은 초록으로 묶인다. 오류 테두리보다는 뒤다 —
-            // 경로에 있어도 깨진 건 깨진 것이다.
-            if (!hasError)
-            {
-                card.BorderThickness = new Thickness(2.4);
-                card.BorderBrush = new SolidColorBrush(Color.Parse("#3E9B57"));
-            }
-
-            card.Background = new SolidColorBrush(Color.Parse("#F0EDF7EF"));
-        }
 
         // 클릭 = 선택(속성 패널) · 더블클릭 = 에피소드 엑셀 열기. 드래그는 없다(v3) —
         // 배치는 깊이 레이아웃이 소유하고, 흐름을 바꾸면 자리가 따라온다.
@@ -3064,13 +2974,14 @@ public partial class ChapterGraphView : UserControl
 
 
     /// <summary>
-    /// [챕터] 탭의 읽기 전용 표 둘 — 스탯·픽스처. 어디에서도 값이 안 보이던 것들이라
-    /// 여기 세운다(소유자 점검). 에피소드·간선은 그래프가 이미 그리므로 반복하지 않는다.
+    /// [챕터] 탭의 읽기 전용 스탯 표. 어디에서도 값이 안 보이던 것이라 여기 세운다
+    /// (소유자 점검). 에피소드·간선은 그래프가 이미 그리므로 반복하지 않는다.
+    ///
+    /// ⛔ 픽스처 표는 2026-08-24에 걷었다 (소유자 — 한 번도 안 썼다).
     /// </summary>
     private void RefreshChapterSheets(ChapterGraphModel? model)
     {
         StatListPanel.Children.Clear();
-        FixtureListPanel.Children.Clear();
 
         static SelectableTextBlock SheetLine(string text, bool dim = false) => new()
         {
@@ -3093,21 +3004,6 @@ public partial class ChapterGraphView : UserControl
             StatListPanel.Children.Add(SheetLine("스탯 시트가 비어 있습니다.", dim: true));
         }
 
-        foreach (ChapterFixture fixture in model?.Fixtures ?? Enumerable.Empty<ChapterFixture>())
-        {
-            string facts = string.Join(" · ", fixture.Stats
-                .Select(pair => $"{pair.Key} {pair.Value}")
-                .Concat(fixture.Choices.Select(choice => $"고정 {choice.From}→{choice.To}")));
-
-            FixtureListPanel.Children.Add(SheetLine(
-                $"{fixture.Name}{(fixture.IsActive ? " (활성)" : "")}" +
-                (facts.Length > 0 ? $" — {facts}" : string.Empty)));
-        }
-
-        if (FixtureListPanel.Children.Count == 0)
-        {
-            FixtureListPanel.Children.Add(SheetLine("픽스처 시트가 비어 있습니다.", dim: true));
-        }
     }
 
     private void RefreshConditionList(ChapterGraphModel? model)

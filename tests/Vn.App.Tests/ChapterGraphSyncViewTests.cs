@@ -181,20 +181,21 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 챕터_탭이_스탯과_픽스처를_읽기_전용으로_세운다() => HeadlessUi.Run(() =>
+    public void 챕터_탭이_스탯을_읽기_전용으로_세운다() => HeadlessUi.Run(() =>
     {
-        // 소유자 점검 — 스탯·픽스처는 어디에서도 값이 안 보이던 표들이다. [챕터] 탭이
-        // 조건(편집) 아래에 읽기 전용으로 세운다. 에피소드·간선은 그래프가 이미 그린다.
+        // 소유자 점검 — 스탯은 어디에서도 값이 안 보이던 표다. [챕터] 탭이 조건 아래에
+        // 읽기 전용으로 세운다. 에피소드·간선은 그래프가 이미 그린다.
+        //
+        // 2026-08-24 소유자 — 나란히 서 있던 픽스처 표는 걷었다("한 번도 안 썼어").
+        // 엑셀의 `픽스처` 시트는 그대로다: 화면만 없앴다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
         List<string> stats = view.FindControl<StackPanel>("StatListPanel")!
             .Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
-        List<string> fixtures = view.FindControl<StackPanel>("FixtureListPanel")!
-            .Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
 
         Assert.Contains(stats, text => text.Contains("trust") && text.Contains("초기"));
-        Assert.Contains(fixtures, text => text.Contains("신뢰 루트"));
+        Assert.Null(view.FindControl<StackPanel>("FixtureListPanel"));
     });
 
     [Fact]

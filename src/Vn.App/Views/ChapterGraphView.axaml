@@ -6,7 +6,11 @@
                 Padding="10,8"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+            <!-- ⛔ [다시 읽기]는 2026-08-24에 없앴다 (소유자: "꽤 오래 다뤘는데 단 한 번도
+                 안 썼어"). 안 쓴 이유가 있다 — **저절로 따라오기 때문이다.** 챕터 폴더와
+                 대본 폴더에 감시자가 붙어 있고, 저장이 내려앉으면 화면이 스스로 다시 읽는다.
+                 손잡이가 필요했던 시절은 감시자가 없던 시절이다. -->
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="챕터"
                            FontSize="11"
@@ -14,35 +18,23 @@
                            VerticalAlignment="Center"
                            Margin="0,0,6,0" />
                 <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" />
-                <Button Grid.Column="2" x:Name="ReloadButton" Content="다시 읽기" Margin="6,0,0,0" />
-                <Button Grid.Column="3" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
+                <Button Grid.Column="2" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
                 <!-- [내보내기] 단추는 없앴다 (2026-08-17 소유자: "필요 없어 보이는데").
                      작가의 Yarn이 LiveOutputService로 저절로 나가는데 챕터 진행 JSON만
                      사람 손을 기다리면, 누른 순간의 낡은 파일이 디스크에 남는다. 이제
                      다시 읽을 때마다 저절로 나간다 — G8의 거부 규칙은 그대로다. -->
-                <Button Grid.Column="5"
+                <Button Grid.Column="3"
                         x:Name="AddEpisodeButton"
                         Content="＋ 에피소드"
                         Margin="6,0,0,0"
                         ToolTip.Tip="선택된 에피소드의 다음으로 새 에피소드를 만들어 잇습니다. 선택이 없으면 홀로 섭니다. 이름은 우측 [이름] 칸에서 고치고 Enter." />
 
-                <StackPanel Grid.Column="6"
-                            Orientation="Horizontal"
-                            Margin="12,0,0,0"
-                            Spacing="6">
-                    <TextBlock Text="픽스처"
-                               FontSize="11"
-                               Opacity="0.6"
-                               VerticalAlignment="Center" />
-                    <!-- 재생루트 하이라이트 (G6). 2026-08-16 소유자 — 당장 안 쓰니 임시 숨김.
-                         코드·리더는 그대로다 — 되살릴 때 IsVisible만 돌리면 된다. -->
-                    <ComboBox x:Name="FixtureCombo" MinWidth="130" FontSize="11" IsVisible="False" />
-                    <TextBlock x:Name="FixtureStopText"
-                               FontSize="10"
-                               Opacity="0.7"
-                               Foreground="DarkGoldenrod"
-                               VerticalAlignment="Center" />
-                </StackPanel>
+                <!-- ⛔ 픽스처(재생루트 하이라이트, G6)는 2026-08-24에 화면에서 걷었다
+                     (소유자: 한 번도 안 썼다). 2026-08-16에 콤보를 이미 숨겨 뒀었고,
+                     여드레 동안 아무도 아쉬워하지 않았다 — 숨긴 채로 두는 것이 더 나쁘다.
+                     ⚠ **엑셀의 `픽스처` 시트와 `ChapterFixtureWalker`는 그대로 둔다** —
+                     워크북 규격이라 지우면 남의 시트가 깨진다. 화면만 없앴으므로
+                     되살리려면 콤보와 이 걷기 호출을 다시 세우면 된다. -->
 
                 <!-- 편집은 열려 있는 것이 기본이다 (2026-08-24 소유자) — 잠그는 것은
                      사람이 아니라 <b>엑셀이 그 파일을 열었다는 사실</b>이다. 예전에는
@@ -50,7 +42,7 @@
                      같은 사실을 두 곳에 적는 짓이었다: 진짜 잠금은 파일에 있고 체크는
                      그 그림자였다. 이제 표시는 위 배너 하나뿐이다.
                      그 오른쪽 끝이 파괴적 동작의 자리다 — 빨갛게, 편집이 열렸을 때만 보인다. -->
-                <StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="10">
+                <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="10">
                     <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 잠금이 풀릴 때
                          갑자기 튀어나오면 그 자리를 누르던 손이 삭제를 누른다(실사례).
                          평소엔 회색·비활성, 편집이 열려 있을 때만 빨갛게 살아난다. -->
@@ -189,52 +181,12 @@
                                TextWrapping="Wrap" />
                 </Border>
 
+            <!-- 탭 순서 = 손이 가는 순서다 (2026-08-24 소유자: "편집/화자/챕터가 되도록
+                 챕터를 가장 뒤에 보내"). [편집]은 고른 하나를 다루는 자리라 늘 첫째이고,
+                 [챕터]는 판 전체의 읽기 전용 표라 가장 뒤다.
+                 ⚠ 첫 화면은 `RightTabs.SelectedItem = EditTab`이 정한다 — 순서가 아니다.
+                 XAML의 첫 탭에 기대면 순서를 바꾸는 날 조용히 따라 바뀐다. -->
             <TabControl Grid.Row="1" x:Name="RightTabs" Padding="0">
-                <!-- [챕터] — 판 전체에 걸린 표들. 조건은 여기서 편집하고(원천은 조건 시트),
-                     스탯·픽스처는 어디에서도 값이 안 보이던 것들이라 읽기 전용으로 세운다.
-                     에피소드·간선은 그래프가 이미 그리므로 여기 반복하지 않는다. -->
-                <TabItem x:Name="ConditionTab" Header="챕터" FontSize="12">
-                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="ConditionSection" Margin="10" Spacing="4">
-                            <!-- 조건은 읽기 전용 표다 (2026-08-16 소유자 — 툴 편집 UI 제거).
-                                 편집은 챕터 엑셀의 `조건` 시트에서 — 스탯·연산자 드롭다운으로 조립한다. -->
-                            <TextBlock Text="조건 (라벨 ↔ 식)"
-                                       FontWeight="SemiBold"
-                                       FontSize="12" />
-                            <TextBlock Text="편집은 챕터 엑셀의 `조건` 시트에서 합니다 — 스탯과 연산자는 드롭다운, 값은 정수(bool은 true/false)입니다. 에피소드·간선은 여기 라벨만 부릅니다."
-                                       FontSize="10"
-                                       Opacity="0.55"
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,4" />
-                            <StackPanel x:Name="ConditionListPanel" Spacing="2" />
-
-                            <TextBlock Text="스탯"
-                                       FontWeight="SemiBold"
-                                       FontSize="12"
-                                       Margin="0,14,0,0" />
-                            <TextBlock Text="존재는 game.definition.json이, 값(초기·최소·최대)은 스탯 시트가 소유합니다. 여기서는 읽기만 합니다."
-                                       FontSize="10"
-                                       Opacity="0.55"
-                                       TextWrapping="Wrap" />
-                            <StackPanel x:Name="StatListPanel" Spacing="2" />
-
-                            <!-- 픽스처 — 2026-08-16 소유자 임시 제거. 되살릴 때 IsVisible만 돌린다. -->
-                            <StackPanel x:Name="FixtureSection" IsVisible="False">
-                                <TextBlock Text="픽스처"
-                                           FontWeight="SemiBold"
-                                           FontSize="12"
-                                           Margin="0,14,0,0" />
-                                <TextBlock Text="재생루트를 눈으로 보기 위한 테스트 데이터 — 내보내기에 섞이지 않습니다. 전환은 툴바의 픽스처 콤보입니다."
-                                           FontSize="10"
-                                           Opacity="0.55"
-                                           TextWrapping="Wrap" />
-                                <StackPanel x:Name="FixtureListPanel" Spacing="2" />
-                            </StackPanel>
-                        </StackPanel>
-                    </ScrollViewer>
-                </TabItem>
-
                 <TabItem x:Name="EditTab" Header="편집" FontSize="12">
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
@@ -487,7 +439,46 @@
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
+                <!-- [챕터] — 판 전체에 걸린 표들. 조건은 여기서 편집하고(원천은 조건 시트),
+                     스탯·픽스처는 어디에서도 값이 안 보이던 것들이라 읽기 전용으로 세운다.
+                     에피소드·간선은 그래프가 이미 그리므로 여기 반복하지 않는다. -->
+                <TabItem x:Name="ConditionTab" Header="챕터" FontSize="12">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ConditionSection" Margin="10" Spacing="4">
+                            <!-- 조건은 읽기 전용 표다 (2026-08-16 소유자 — 툴 편집 UI 제거).
+                                 편집은 챕터 엑셀의 `조건` 시트에서 — 스탯·연산자 드롭다운으로 조립한다. -->
+                            <TextBlock Text="조건 (라벨 ↔ 식)"
+                                       FontWeight="SemiBold"
+                                       FontSize="12" />
+                            <TextBlock Text="편집은 챕터 엑셀의 `조건` 시트에서 합니다 — 스탯과 연산자는 드롭다운, 값은 정수(bool은 true/false)입니다. 에피소드·간선은 여기 라벨만 부릅니다."
+                                       FontSize="10"
+                                       Opacity="0.55"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,4" />
+                            <StackPanel x:Name="ConditionListPanel" Spacing="2" />
 
+                            <TextBlock Text="스탯"
+                                       FontWeight="SemiBold"
+                                       FontSize="12"
+                                       Margin="0,14,0,0" />
+                            <!-- 조건 줄과 같은 문장이다 (2026-08-24 소유자: "편집은 챕터
+                                 엑셀의 '스탯' 시트에서 합니다. 로 바꿔줘") — 두 표가 같은
+                                 자리에 서 있으니 "어디서 고치나"의 대답도 같은 모양이어야
+                                 눈이 한 번에 읽는다. 소유가 둘로 갈린다는 사정은 남긴다. -->
+                            <TextBlock Text="편집은 챕터 엑셀의 `스탯` 시트에서 합니다 — 존재는 game.definition.json이, 값(초기·최소·최대)은 그 시트가 소유합니다."
+                                       FontSize="10"
+                                       Opacity="0.55"
+                                       TextWrapping="Wrap" />
+                            <StackPanel x:Name="StatListPanel" Spacing="2" />
+
+                            <!-- ⛔ 픽스처 목록은 2026-08-24에 걷었다 (소유자 — 한 번도 안
+                                 썼다). 2026-08-16부터 `IsVisible=False`로 숨어 있던 것을
+                                 이제 지운다: 툴바의 콤보가 없어져 "전환은 툴바의 픽스처
+                                 콤보입니다"가 가리킬 곳도 사라졌다. -->
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
             </TabControl>
                 </Grid>
             </Grid>

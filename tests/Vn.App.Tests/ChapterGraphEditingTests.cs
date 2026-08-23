@@ -460,6 +460,63 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 탭_순서는_편집_화자_챕터다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 "편집/화자/챕터가 되도록 챕터를 가장 뒤에 보내" — [편집]은
+        // 고른 하나를 다루는 자리라 첫째이고, [챕터]는 판 전체의 읽기 전용 표라 가장 뒤다.
+        //
+        // ⚠ 첫 화면은 순서가 아니라 `SelectedItem`이 정한다 — 아래 짝 테스트가 그것을
+        //    따로 붙든다. 둘을 한 테스트에 묶으면 순서를 바꾸는 날 무엇이 깨졌는지 흐려진다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        string[] headers = view.FindControl<TabControl>("RightTabs")!
+            .Items.OfType<TabItem>()
+            .Select(tab => (string)tab.Header!)
+            .ToArray();
+
+        Assert.Equal(["편집", "화자", "챕터"], headers);
+    });
+
+    [Fact]
+    public void 툴바에서_다시_읽기와_픽스처가_사라졌다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 "꽤 오래 다뤘는데, 단 한 번도 안 썼어."
+        //
+        // [다시 읽기]는 감시자가 선 뒤로 할 일이 없었고(화면이 스스로 따라온다), 픽스처
+        // 콤보는 2026-08-16부터 숨어 있기만 했다. ⚠ 엑셀의 `픽스처` 시트와
+        // `ChapterFixtureWalker`는 안 지웠다 — 워크북 규격이라 지우면 남의 파일이 깨진다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        Assert.Null(view.FindControl<Button>("ReloadButton"));
+        Assert.Null(view.FindControl<ComboBox>("FixtureCombo"));
+        Assert.Null(view.FindControl<TextBlock>("FixtureStopText"));
+
+        // 남아야 하는 이웃 — 지우다 같이 쓸려 나가면 여기서 걸린다.
+        Assert.NotNull(view.FindControl<Button>("OpenFolderButton"));
+        Assert.NotNull(view.FindControl<Button>("AddEpisodeButton"));
+        Assert.NotNull(view.FindControl<Button>("DeleteEpisodeButton"));
+    });
+
+    [Fact]
+    public void 스탯_안내는_조건과_같은_말투로_어디서_고치는지_말한다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 — "편집은 챕터 엑셀의 `스탯` 시트에서 합니다."로. 두 표가 같은
+        // 탭에 나란히 서 있으니 "어디서 고치나"의 대답도 같은 모양이어야 눈이 한 번에 읽는다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        List<string> lines = view.FindControl<StackPanel>("ConditionSection")!
+            .Children.OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .ToList();
+
+        Assert.Contains(lines, text => text.StartsWith("편집은 챕터 엑셀의 `조건` 시트에서 합니다", StringComparison.Ordinal));
+        Assert.Contains(lines, text => text.StartsWith("편집은 챕터 엑셀의 `스탯` 시트에서 합니다", StringComparison.Ordinal));
+    });
+
+    [Fact]
     public void 처음_보이는_탭은_편집이고_선택이_탭을_끌고_다니지_않는다() => HeadlessUi.Run(() =>
     {
         // 2026-08-16 소유자 — 처음 열었을 때 손이 가는 곳은 지금 고른 하나(편집)이지
