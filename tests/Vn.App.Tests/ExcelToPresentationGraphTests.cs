@@ -256,8 +256,8 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         /// <summary>진짜 감시자를 기다린다 — 조건이 참이 될 때까지.</summary>
         public void WaitFor(Func<bool> until)
         {
-            // 위 WaitForWatcher의 ⚠ 그대로 — 전체 스위트에서는 넉넉해야 한다.
-            for (int tick = 0; tick < 200; tick++)
+            // 아래 WaitForWatcher의 ⚠ 그대로 — 전체 스위트에서는 넉넉해야 한다.
+            for (int tick = 0; tick < 400; tick++)
             {
                 Thread.Sleep(100);
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -310,8 +310,17 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             // ⚠ 넉넉해야 한다. 감시자는 250ms 디바운스에 파일 사건을 기다리는데, 전체
             // 스위트가 함께 돌 때는 어셈블리 하나가 <b>디스패처를 나눠 쓰고</b> 디스크도
             // 붐빈다 — 6초로 뒀더니 혼자서는 늘 통과하면서 전체 실행에서 한 번 넘어졌다.
-            // 사슬이 끊기면 어차피 여기서 실패하므로, 기다림을 늘려도 잡는 힘은 그대로다.
-            for (int tick = 0; tick < 200; tick++)
+            // 20초로 올린 뒤에도 2026-08-24 전체 실행에서 <b>이 클래스 셋이 한꺼번에</b>
+            // 넘어졌다(혼자 돌리면 6/6이 9초, 그때 그 실행은 1분 5초 → 1분 52초로 늘어져
+            // 있었다). 그래서 40초다.
+            //
+            // ⚠ <b>왜 이 클래스가 유독 흔들리나</b> — `HeadlessUi`는 <b>세션 하나(=UI 스레드
+            // 하나)</b>를 모든 테스트가 나눠 쓰는데 xUnit은 <b>클래스를 병렬로</b> 돌린다.
+            // 게다가 이 기다림은 그 UI 스레드 위에서 `Thread.Sleep`을 한다. 진짜 감시자를
+            // 쓰는 것이 이 클래스의 값이므로(가짜로 바꾸면 사슬이 안 지켜진다) 기다림을
+            // 늘리는 쪽을 고른다 — 사슬이 끊기면 어차피 여기서 실패하니 <b>잡는 힘은
+            // 그대로</b>이고, 늘어난 시간은 <b>진짜 실패할 때만</b> 치른다.
+            for (int tick = 0; tick < 400; tick++)
             {
                 Thread.Sleep(100);
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
