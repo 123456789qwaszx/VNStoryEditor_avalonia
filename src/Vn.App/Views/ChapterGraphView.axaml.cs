@@ -524,50 +524,15 @@ public partial class ChapterGraphView : UserControl
     /// 파일을 읽어 해싱한다 — 쓴 시각은 초 단위로 뭉개지는 파일 시스템이 있어(FAT·일부 SMB)
     /// "고쳤는데 안 바뀐 것으로 보이는" 쪽으로 틀린다. 화면이 낡은 채로 남는 실패는 여기서
     /// 가장 비싸므로, 값을 치르고 내용을 본다. 읽기는 파싱·증명·그리기보다 한참 싸다.
+    ///
+    /// <b>규칙은 <see cref="WorkbookFolderFingerprint"/>가 갖는다</b> — 2026-08-24에 여기서
+    /// 나갔다. ⛔ 여기 있을 때 못 읽은 파일을 <c>'?'</c>라는 <em>상수</em>로 적고 있었고,
+    /// 그래서 엑셀이 쥐고 있는 동안의 저장이 전부 묻혔다(소유자 보고: "엑셀을 닫으니까
+    /// 그제서야 반영이 된다"). 화면 안에 있어서 화면 없이는 그 결함을 시험할 수 없었다.
     /// </summary>
-    private string DiskFingerprint()
-    {
-        var builder = new System.Text.StringBuilder();
-
-        void AppendFolder(string? folder)
-        {
-            if (folder is null || !Directory.Exists(folder))
-            {
-                builder.Append(folder ?? "-").Append("|없음\n");
-                return;
-            }
-
-            foreach (string path in Directory
-                         .EnumerateFiles(folder, "*.xls*", SearchOption.AllDirectories)
-                         .Where(file => !IoPath.GetFileName(file).StartsWith("~$", StringComparison.Ordinal))
-                         .OrderBy(file => file, StringComparer.OrdinalIgnoreCase))
-            {
-                builder.Append(path).Append('|');
-
-                try
-                {
-                    builder.Append(Convert.ToHexString(
-                        System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))));
-                }
-                catch (IOException)
-                {
-                    // 잠긴 파일은 "잠김"으로 남긴다 — 풀리는 순간이 곧 지문의 변화다.
-                    builder.Append('?');
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    builder.Append('?');
-                }
-
-                builder.Append('\n');
-            }
-        }
-
-        AppendFolder(ChapterLibrary.FolderFor(_session?.ProjectPath));
-        AppendFolder(EpisodeLibrary.FolderFor(_session?.ProjectPath));
-
-        return builder.ToString();
-    }
+    private string DiskFingerprint() => WorkbookFolderFingerprint.Of(
+        ChapterLibrary.FolderFor(_session?.ProjectPath),
+        EpisodeLibrary.FolderFor(_session?.ProjectPath));
 
     /// <summary>
     /// 선택된 챕터의 에피소드 워크북 전부를 대사노드로 반영한다.
