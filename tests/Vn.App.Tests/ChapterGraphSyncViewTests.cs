@@ -274,7 +274,7 @@ public sealed class ChapterGraphSyncViewTests
         // (소유자: "그것까지 꺼줘. 대신에 … 시각적인 이모티콘을 붙여놓기만 해").
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
         Assert.Contains("동기화 거부·경고", (string)expander.Header!);
-        Assert.Contains("🔴", (string)expander.Header!);
+        Assert.Contains("🟡", (string)expander.Header!);   // 경고 = 노랑
         Assert.False(expander.IsExpanded);
 
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
@@ -302,7 +302,7 @@ public sealed class ChapterGraphSyncViewTests
         // ⚠ 접힌 채로도 <b>머리글이 말한다</b> — 런타임으로 나갈 것이 안 나간 상태다.
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
         Assert.Contains("진행 JSON 미출력", (string)expander.Header!);
-        Assert.Contains("🟡", (string)expander.Header!);
+        Assert.Contains("🔴", (string)expander.Header!);   // 안 나간 것은 오류 급 = 빨강
         Assert.False(expander.IsExpanded);
 
         Assert.Contains(
