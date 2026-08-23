@@ -233,18 +233,14 @@ public static class ChapterWorkbookReader
             double y = Number(sheet, row, 6, path, episodeId, diagnostics);
 
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
-            int allowColumn = 0;
-
-            for (int column = 8; column <= 12; column++)
-            {
-                if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
-                {
-                    allowColumn = column;
-                    break;
-                }
-            }
-
+            int allowColumn = FindOptionalColumn(sheet, "도달불가 허용");
             bool allowUnreachable = allowColumn > 0 && Boolean(sheet, row, allowColumn, path, diagnostics);
+
+            // `열보정`도 같은 방식의 선택 열이다 (2026-08-24) — 없으면 0이라 옛 워크북이
+            // 이행 없이 그대로 읽힌다. 배치의 주인은 깊이 계산이고 이 값은 그 위의 보정이다.
+            int columnNudge = FindOptionalColumn(sheet, "열보정") is > 0 and var nudgeColumn
+                ? ReadNudge(sheet, row, nudgeColumn, episodeId, path, diagnostics)
+                : 0;
 
             episodes.Add(new ChapterEpisode(
                 episodeId,
@@ -258,10 +254,76 @@ public static class ChapterWorkbookReader
                 null,
                 Optional(sheet, row, 7),    // 메모 (v11에서 8 → 7)
                 row,
-                allowUnreachable));
+                allowUnreachable,
+                columnNudge));
         }
 
         return episodes;
+    }
+
+    /// <summary>
+    /// 머리글 이름으로 찾는 <b>선택 열</b> — 없으면 0. 규격이 자라도 옛 워크북이 이행 없이
+    /// 읽히는 자리다(`도달불가 허용`·`열보정`). 자리 번호가 아니라 <b>이름</b>이 계약이므로
+    /// 사람이 열을 하나 끼워 넣어도 따라간다.
+    /// </summary>
+    private static int FindOptionalColumn(IXLWorksheet sheet, string header)
+    {
+        for (int column = 8; column <= 14; column++)
+        {
+            if (string.Equals(Text(sheet, HeaderRow, column), header, StringComparison.Ordinal))
+            {
+                return column;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// `열보정` 한 칸. 빈칸은 0이고, 숫자가 아니거나 음수면 <b>0으로 물러나고 말한다</b> —
+    /// 배치는 화면일 뿐이라 여기서 막아 세울 이유가 없지만, 조용히 무시하면 "적었는데
+    /// 안 먹는다"가 된다.
+    ///
+    /// ⛔ 음수를 안 받는 이유는 취향이 아니다. 제 깊이보다 왼쪽에 서면 부모가 자기 오른쪽에
+    /// 놓여 <b>간선이 뒤로 꺾인다</b> — 깊이 배치를 고른 유일한 이유가 그것이다.
+    /// </summary>
+    private static int ReadNudge(
+        IXLWorksheet sheet, int row, int column, string episodeId,
+        string path, List<ChapterDiagnostic> diagnostics)
+    {
+        string raw = Text(sheet, row, column);
+
+        if (raw.Length == 0)
+        {
+            return 0;
+        }
+
+        if (!int.TryParse(raw, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture,
+                out int nudge))
+        {
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Warning,
+                ChapterDiagnosticCode.PositionNotNumeric,
+                path, sheet.Name, row, column,
+                $"'{episodeId}'의 열보정 '{raw}'이 정수가 아니라 0으로 읽었습니다 — " +
+                "제 깊이에서 몇 열 오른쪽으로 밀지 정하는 칸입니다."));
+
+            return 0;
+        }
+
+        if (nudge < 0)
+        {
+            diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Warning,
+                ChapterDiagnosticCode.PositionNotNumeric,
+                path, sheet.Name, row, column,
+                $"'{episodeId}'의 열보정 {nudge}는 음수라 0으로 읽었습니다 — 제 깊이보다 " +
+                "왼쪽에 서면 간선이 뒤로 꺾입니다. 오른쪽으로만 밀 수 있습니다."));
+
+            return 0;
+        }
+
+        return nudge;
     }
 
     // ── 간선 ────────────────────────────────────────────────────────────────

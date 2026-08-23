@@ -104,22 +104,110 @@ public static class ChapterBranchPlanner
     }
 
     /// <summary>
-    /// 화면 배치 전체 — 원점 (0,0) 기준. 열 = 깊이, 열 안 순서 = 시트 행 순서(사람이 정한
-    /// 유일한 순서). 간선이 없어 깊이가 없는 노드는 맨 아래 줄에 따로 세운다 — 이미 ⚠로
-    /// 보고되는 것을 겹쳐 숨기지 않는다.
+    /// 고른 에피소드에서 <b>지금 갈 수 있는 자리</b> 넷 (2026-08-24 소유자 — 위치 편집).
+    ///
+    /// 좌우는 <c>열보정</c>을 ±1 하는 것이고, 위아래는 <b>같은 열의 이웃과 시트 행을
+    /// 맞바꾸는</b> 것이다. 그래서 이 기록이 곧 화면의 단추 넷이다 — 갈 데가 없으면
+    /// 그 단추는 서지 않는다(눌러도 아무 일 없는 단추가 가장 나쁘다).
+    /// </summary>
+    /// <param name="Left">왼쪽으로 한 칸 — 보정이 0이면 없다(제자리보다 왼쪽은 금지).</param>
+    /// <param name="Right">오른쪽으로 한 칸 — 도달 가능한 노드면 언제나 있다.</param>
+    /// <param name="SwapUp">위와 자리 바꾸기 — 같은 열의 바로 위 에피소드 Id.</param>
+    /// <param name="SwapDown">아래와 자리 바꾸기 — 같은 열의 바로 아래 에피소드 Id.</param>
+    public sealed record ChapterMoves(
+        bool Left, bool Right, string? SwapUp, string? SwapDown)
+    {
+        /// <summary>갈 데가 없다 — 도달 불가(고아) 노드가 이렇다.</summary>
+        public static ChapterMoves None { get; } = new(false, false, null, null);
+
+        public bool Any => Left || Right || SwapUp is not null || SwapDown is not null;
+    }
+
+    /// <summary>
+    /// <see cref="ChapterMoves"/>를 센다.
+    ///
+    /// ⚠ 고아(간선이 없어 깊이가 없는 노드)는 <b>못 옮긴다</b>. 그것들은 판 아래 한 줄에
+    /// 따로 서 있고 그 줄은 배치가 아니라 <b>보고</b>다 — 도달 불가라고 이미 ⚠가 붙어 있는
+    /// 것을 옮겨 정돈하면 그 보고가 흐려진다. 잇는 것이 고치는 길이다.
+    /// </summary>
+    public static ChapterMoves Moves(ChapterGraphModel model, string episodeId)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (episodeId is null || model.FindEpisode(episodeId) is not { } episode)
+        {
+            return ChapterMoves.None;
+        }
+
+        IReadOnlyDictionary<string, int> columns = Columns(model);
+
+        if (!columns.TryGetValue(episodeId, out int column))
+        {
+            return ChapterMoves.None;
+        }
+
+        // 같은 열의 이웃 — 순서는 시트 행 순서다(model.Episodes가 그 순서다).
+        List<ChapterEpisode> lane = model.Episodes
+            .Where(candidate =>
+                columns.TryGetValue(candidate.EpisodeId, out int other) && other == column)
+            .ToList();
+
+        int slot = lane.FindIndex(candidate =>
+            string.Equals(candidate.EpisodeId, episodeId, StringComparison.Ordinal));
+
+        return new ChapterMoves(
+            Left: episode.ColumnNudge > 0,
+            Right: true,
+            SwapUp: slot > 0 ? lane[slot - 1].EpisodeId : null,
+            SwapDown: slot >= 0 && slot + 1 < lane.Count ? lane[slot + 1].EpisodeId : null);
+    }
+
+    /// <summary>
+    /// 각 에피소드가 <b>실제로 설 열</b> — 깊이 + <c>열보정</c> (2026-08-24). 도달 불가라
+    /// 깊이가 없는 노드는 사전에 없다.
+    ///
+    /// <b>배치의 주인은 여전히 깊이다.</b> 보정은 그 위에 얹는 한 칸짜리 덧셈이라, 격자는
+    /// 그대로 딱딱 맞고 흐름(간선)이 바뀌면 자리가 여전히 저절로 따라온다 — 사람이 옮겨
+    /// 둔 만큼만 옆으로 밀린 채로.
+    ///
+    /// ⛔ 보정은 <b>오른쪽으로만</b> 간다(리더가 음수를 0으로 읽는다). 제 깊이보다 왼쪽에
+    /// 서면 부모가 자기 오른쪽에 놓여 간선이 뒤로 꺾인다.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int> Columns(ChapterGraphModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        IReadOnlyDictionary<string, int> depths = Depths(model);
+        var columns = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (ChapterEpisode episode in model.Episodes)
+        {
+            if (depths.TryGetValue(episode.EpisodeId, out int depth))
+            {
+                columns[episode.EpisodeId] = depth + Math.Max(0, episode.ColumnNudge);
+            }
+        }
+
+        return columns;
+    }
+
+    /// <summary>
+    /// 화면 배치 전체 — 원점 (0,0) 기준. 열 = 깊이 + 열보정(<see cref="Columns"/>),
+    /// 열 안 순서 = 시트 행 순서(사람이 정한 유일한 순서). 간선이 없어 깊이가 없는 노드는
+    /// 맨 아래 줄에 따로 세운다 — 이미 ⚠로 보고되는 것을 겹쳐 숨기지 않는다.
     /// </summary>
     public static IReadOnlyDictionary<string, (double X, double Y)> Layout(ChapterGraphModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
-        IReadOnlyDictionary<string, int> depths = Depths(model);
+        IReadOnlyDictionary<string, int> columns = Columns(model);
         var positions = new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
 
         int deepestSlot = 0;
 
         foreach (IGrouping<int, ChapterEpisode> column in model.Episodes
-                     .Where(episode => depths.ContainsKey(episode.EpisodeId))
-                     .GroupBy(episode => depths[episode.EpisodeId]))
+                     .Where(episode => columns.ContainsKey(episode.EpisodeId))
+                     .GroupBy(episode => columns[episode.EpisodeId]))
         {
             int slot = 0;
 
@@ -136,7 +224,7 @@ public static class ChapterBranchPlanner
         double orphanY = (deepestSlot + 2) * RowHeight;
 
         foreach (ChapterEpisode episode in model.Episodes
-                     .Where(episode => !depths.ContainsKey(episode.EpisodeId)))
+                     .Where(episode => !columns.ContainsKey(episode.EpisodeId)))
         {
             positions[episode.EpisodeId] = (orphanColumn * ColumnWidth, orphanY);
             orphanColumn++;

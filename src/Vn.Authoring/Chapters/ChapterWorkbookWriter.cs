@@ -641,6 +641,116 @@ public static class ChapterWorkbookWriter
         return true;
     }
 
+    // ── 자리 옮기기 (2026-08-24 소유자) ─────────────────────────────────────
+    //
+    // 소유자: "지금처럼 딱딱 맞는걸 유지하되, 에피소드의 위치를 오른쪽 열로 옮기거나
+    // 아래쪽의 에피소드와 위치를 바꾸는 기능을 추가해줄래?"
+    //
+    // 배치의 주인은 여전히 `ChapterBranchPlanner`다 — 사람이 좌표를 쥐는 것이 아니라
+    // <b>배치가 읽는 두 값</b>을 고친다. 그래서 격자가 안 흐트러진다:
+    //
+    //   ← →  `열보정` 칸  — 제 깊이에서 몇 열 오른쪽인가
+    //   ↑ ↓  시트 행 순서 — 열 안의 순서가 곧 시트 행 순서이므로 <b>두 행을 맞바꾼다</b>
+    //
+    // ↑↓에 새 칸이 필요 없다는 것이 이 설계의 값이다. "열 안 순서 = 시트 행 순서"는
+    // 2026-08-12부터 있던 규칙이고, 위아래 옮기기는 그 규칙을 <b>쓰는</b> 것뿐이다.
+
+    /// <summary>
+    /// `열보정` 칸을 쓴다 — 없으면 머리글과 함께 만든다(선택 열이라 옛 워크북에는 없다).
+    /// </summary>
+    /// <param name="nudge">0 이상. 음수는 0으로 눕힌다 — 왼쪽으로 밀면 간선이 뒤로 꺾인다.</param>
+    public static ChapterWriteResult SetColumnNudge(string path, string episodeId, int nudge) =>
+        Mutate(path, workbook =>
+        {
+            (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
+            int column = EnsureNudgeColumn(sheet);
+
+            if (nudge <= 0)
+            {
+                // 0은 "보정 없음"이라 <b>빈칸</b>으로 둔다 — 0을 적어 두면 사람이 시트를
+                // 볼 때 무슨 뜻인지 한 번 더 생각하게 된다.
+                sheet.Cell(row, column).Clear(XLClearOptions.Contents);
+                return;
+            }
+
+            sheet.Cell(row, column).SetValue(nudge);
+        });
+
+    /// <summary>
+    /// `에피소드` 시트에서 두 행을 <b>통째로</b> 맞바꾼다 — 위아래 자리 바꾸기.
+    ///
+    /// ⚠ <b>쓰는 칸만 골라 옮기지 않는다.</b> 이 시트에는 선택 열(`도달불가 허용`·`열보정`)이
+    /// 있고 앞으로 더 늘 수 있어서, 아는 칸만 옮기면 모르는 칸이 제자리에 남아 두 에피소드의
+    /// 값이 섞인다. 그래서 <b>쓰인 폭 전체</b>를 옮긴다.
+    ///
+    /// ⚠ 행 번호는 신원이 아니다 — 간선도 조건도 EpisodeId로 서로를 부르므로, 행이 자리를
+    /// 바꿔도 이야기는 한 글자도 안 바뀐다. 바뀌는 것은 <b>화면의 위아래</b>뿐이다.
+    /// </summary>
+    public static ChapterWriteResult SwapEpisodeRows(string path, string oneId, string otherId) =>
+        Mutate(path, workbook =>
+        {
+            if (string.Equals(oneId, otherId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("같은 에피소드끼리는 자리를 바꿀 수 없습니다.");
+            }
+
+            (IXLWorksheet sheet, int oneRow) = RequireEpisodeRow(workbook, oneId);
+            int otherRow = FindRow(sheet, otherId)
+                ?? throw new InvalidOperationException($"에피소드 '{otherId}' 행이 없습니다.");
+
+            int width = Math.Max(
+                sheet.LastColumnUsed()?.ColumnNumber() ?? 1,
+                EpisodeColumnCount);
+
+            for (int column = 1; column <= width; column++)
+            {
+                string one = sheet.Cell(oneRow, column).GetString();
+                string other = sheet.Cell(otherRow, column).GetString();
+
+                Overwrite(sheet, oneRow, column, other);
+                Overwrite(sheet, otherRow, column, one);
+            }
+        });
+
+    /// <summary>머리글이 있는 칸 수 — 선택 열이 하나도 없어도 여기까지는 옮긴다.</summary>
+    private const int EpisodeColumnCount = 7;
+
+    /// <summary>`열보정` 열 번호. 없으면 쓰인 폭 다음 칸에 머리글과 함께 만든다.</summary>
+    private static int EnsureNudgeColumn(IXLWorksheet sheet)
+    {
+        const string header = "열보정";
+
+        for (int column = 1; column <= 14; column++)
+        {
+            if (string.Equals(sheet.Cell(1, column).GetString().Trim(), header, StringComparison.Ordinal))
+            {
+                return column;
+            }
+        }
+
+        int fresh = Math.Max(sheet.LastColumnUsed()?.ColumnNumber() ?? EpisodeColumnCount,
+            EpisodeColumnCount) + 1;
+
+        IXLCell cell = sheet.Cell(1, fresh);
+        cell.SetValue(header);
+        cell.Style.Font.SetBold(true);
+        cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
+
+        return fresh;
+    }
+
+    /// <summary>빈 값도 쓴다 — 맞바꾸기는 덮어쓰기라 <see cref="Set"/>의 "널이면 건너뛴다"가 틀린다.</summary>
+    private static void Overwrite(IXLWorksheet sheet, int row, int column, string value)
+    {
+        if (value.Length == 0)
+        {
+            sheet.Cell(row, column).Clear(XLClearOptions.Contents);
+            return;
+        }
+
+        sheet.Cell(row, column).SetValue(value);
+    }
+
     /// <summary>
     /// 챕터 개명 = 워크북 파일 이름 바꾸기. 시트 안에는 챕터 Id가 없으므로(파일 이름이 곧 Id)
     /// 이동 하나로 끝난다. 에피소드 워크북은 에피소드 Id로 이름 붙으므로 무관하다.

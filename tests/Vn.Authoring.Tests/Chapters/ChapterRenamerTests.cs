@@ -28,11 +28,10 @@ public sealed class ChapterRenamerTests : IDisposable
 
     public ChapterRenamerTests() => Directory.CreateDirectory(_root);
 
+    // ⛔ 정적 캐시를 지우지 않는다 — 나란히 도는 다른 클래스의 것까지 지운다. 열쇠가
+    // 내용 해시라 지울 이유도 없다(파일을 쓰면 저절로 빗나간다).
     public void Dispose()
     {
-        WorkbookParseCache.Clear();
-        WorkbookMigrationGate.Clear();
-
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);

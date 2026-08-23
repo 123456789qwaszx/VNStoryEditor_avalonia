@@ -11,6 +11,19 @@ namespace Vn.Authoring.Chapters;
 /// `도달불가 허용` 열(선택)이 켜져 있는가 (D3). 도달성 증명이 이 에피소드의 도달 불가를
 /// 오류가 아니라 알림으로 낮추되, 그 사실은 그래프에 표시된다 — 조용히 넘기지 않는다.
 /// </param>
+/// <param name="ColumnNudge">
+/// <b>이 노드를 자기 깊이에서 몇 열 오른쪽으로 밀어 둘 것인가</b> (2026-08-24 소유자:
+/// "에피소드의 위치를 오른쪽 열로 옮기거나"). 배치의 주인은 여전히 깊이 계산이고
+/// (<see cref="ChapterBranchPlanner.Layout"/>), 이 값은 그 위에 얹는 <b>보정</b>이다 —
+/// 그래서 격자는 그대로 딱딱 맞고, 흐름이 바뀌면 자리가 여전히 저절로 따라온다.
+///
+/// ⛔ <b>0보다 작을 수 없다.</b> 제 깊이보다 왼쪽으로 가면 부모가 자기 오른쪽에 서게 되어
+/// 간선이 <b>뒤로 꺾인다</b> — 이 그래프가 깊이 배치를 고른 유일한 이유가 그것이다.
+/// 그래서 오른쪽은 끝이 없고 왼쪽은 <b>제자리까지</b>다.
+///
+/// 원천은 `에피소드` 시트의 <b>선택 열</b> `열보정`이다(없으면 0). 머리글 이름으로 찾으므로
+/// 옛 워크북은 이행 없이 그대로 읽힌다 — `도달불가 허용`과 같은 방식이다.
+/// </param>
 public sealed record ChapterEpisode(
     string EpisodeId,
     string Title,
@@ -22,7 +35,8 @@ public sealed record ChapterEpisode(
     string? EndingKey,
     string? Memo,
     int SourceRow,
-    bool AllowUnreachable = false)
+    bool AllowUnreachable = false,
+    int ColumnNudge = 0)
 {
     // v9 (2026-08-17 소유자) — `선택지수` 열 폐지. 칸이라는 개념이 사라졌으니 셀 것도
     // 없다: 이 에피소드에서 나가는 간선 하나가 곧 선택지 하나다.

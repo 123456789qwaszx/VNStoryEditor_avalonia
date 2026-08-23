@@ -243,6 +243,12 @@ public partial class ChapterGraphView : UserControl
             DialogueToggle.Content = open ? "▾  대사" : "▸  대사";
         };
 
+        // 위치 편집 — 켜고 끌 때 판을 다시 그린다(단추가 서고 사라진다).
+        // 기본은 꺼짐이다: 자리를 다듬는 것은 가끔 하는 일이고, 화살표가 늘 떠 있으면
+        // 흐름을 읽는 화면이 아니게 된다.
+        PlacementEditCheck.IsCheckedChanged += (_, _) =>
+            UiGuard.Run(_session, "위치 편집", RefreshPlacementHandles);
+
         // 펼친 채로 시작한다 (2026-08-24 소유자: "대사 미리보기는, 펼쳐둔 걸 디폴트로").
         // ⚠ XAML에서 IsChecked를 켜지 않는다 — 그러면 위 핸들러가 붙기 <b>전에</b> 켜져
         // 글자와 본문이 접힌 모양 그대로 남는다. 여기서 켜야 셋이 한 번에 맞는다.
@@ -1380,6 +1386,7 @@ public partial class ChapterGraphView : UserControl
         CanvasDrawCount++;
 
         GraphCanvas.Children.Clear();
+        _placementHandles.Clear();   // 판이 비었으니 손에 든 목록도 비운다
         DiagnosticsPanel.Children.Clear();
         _cardById.Clear();
         _cardBase.Clear();
@@ -1461,6 +1468,176 @@ public partial class ChapterGraphView : UserControl
         DrawDiagnostics(model);
         ApplySelectionVisuals();
         RefreshPropertyPanel(preserveTyping: true);
+    }
+
+    // ── 위치 편집 (2026-08-24 소유자) ───────────────────────────────────────
+    //
+    // 소유자: "지금처럼 딱딱 맞는걸 유지하되, 에피소드의 위치를 오른쪽 열로 옮기거나
+    // 아래쪽의 에피소드와 위치를 바꾸는 기능을 추가해줄래?"
+    //
+    // ⚠ <b>좌표를 쥐여 주지 않는다.</b> 드래그를 되살리면 배치의 주인이 둘이 되고(v3가
+    // 드래그를 없앤 이유가 그것이다), 흐름을 고칠 때마다 사람이 손으로 맞춘 자리가
+    // 어긋난다. 대신 <b>배치가 읽는 두 값</b>을 고친다:
+    //
+    //   ← →  `열보정`     — 제 깊이에서 몇 열 오른쪽인가
+    //   ↑ ↓  시트 행 순서 — 열 안 순서가 곧 시트 행 순서이므로 두 행을 맞바꾼다
+    //
+    // 그래서 격자는 한 픽셀도 안 흐트러지고, 간선을 고치면 자리는 여전히 저절로 따라온다 —
+    // 사람이 옮겨 둔 만큼만 옆으로 밀린 채로.
+
+    /// <summary>옮기는 단추 한 변의 크기. 카드(190×74) 옆에 붙어도 안 가리는 크기다.</summary>
+    private const double HandleSize = 26;
+
+    /// <summary>지금 판에 서 있는 옮김 단추들 — 걷을 때 이 목록으로 걷는다.</summary>
+    private readonly List<Control> _placementHandles = [];
+
+    /// <summary>
+    /// 옮김 단추를 다시 세운다 — <b>선택이 바뀔 때마다</b>.
+    ///
+    /// ⚠ 판 전체를 다시 그리지 않는다. 선택은 사람이 가장 자주 하는 일이고, 이 판은
+    /// 카드·간선·포트·진단을 전부 다시 만드는 자리다 — 고르기만 했는데 그걸 치르면
+    /// 클릭 하나가 무거워진다(그래서 <see cref="ApplySelectionVisuals"/>가 따로 있다).
+    /// 단추는 <b>선택의 일부</b>이므로 그 옆에 붙는다.
+    /// </summary>
+    private void RefreshPlacementHandles()
+    {
+        foreach (Control handle in _placementHandles)
+        {
+            GraphCanvas.Children.Remove(handle);
+        }
+
+        _placementHandles.Clear();
+
+        if (SelectedModel is { } model)
+        {
+            DrawPlacementHandles(model);
+        }
+    }
+
+    /// <summary>
+    /// 고른 에피소드 상하좌우에 옮기는 단추를 세운다 — <b>위치 편집이 켜져 있을 때만</b>.
+    ///
+    /// 갈 데가 없는 방향은 <b>단추를 안 세운다</b>(<see cref="ChapterBranchPlanner.Moves"/>).
+    /// 눌러도 아무 일 없는 단추는 "고장 났나"로 읽힌다 — 없는 것이 낫다.
+    /// </summary>
+    private void DrawPlacementHandles(ChapterGraphModel model)
+    {
+        if (PlacementEditCheck.IsChecked != true ||
+            _selectedEpisodeId is not { } episodeId ||
+            !ToolEditable ||
+            !_placed.TryGetValue(episodeId, out (double X, double Y) position))
+        {
+            return;
+        }
+
+        ChapterBranchPlanner.ChapterMoves moves = ChapterBranchPlanner.Moves(model, episodeId);
+
+        if (!moves.Any)
+        {
+            return;
+        }
+
+        double midY = position.Y + (CardHeight / 2) - (HandleSize / 2);
+        double midX = position.X + (CardWidth / 2) - (HandleSize / 2);
+
+        if (moves.Left)
+        {
+            Handle("◀", position.X - HandleSize - 6, midY,
+                "왼쪽 열로 — 제자리(깊이)까지만 갑니다",
+                () => Nudge(episodeId, -1));
+        }
+
+        if (moves.Right)
+        {
+            Handle("▶", position.X + CardWidth + 6, midY,
+                "오른쪽 열로 한 칸",
+                () => Nudge(episodeId, +1));
+        }
+
+        if (moves.SwapUp is { } up)
+        {
+            Handle("▲", midX, position.Y - HandleSize - 6,
+                $"위의 '{up}'와 자리 바꾸기",
+                () => Swap(episodeId, up));
+        }
+
+        if (moves.SwapDown is { } down)
+        {
+            Handle("▼", midX, position.Y + CardHeight + 6,
+                $"아래의 '{down}'와 자리 바꾸기",
+                () => Swap(episodeId, down));
+        }
+
+        void Handle(string glyph, double x, double y, string tip, Action move)
+        {
+            var button = new Button
+            {
+                Content = glyph,
+                FontSize = 11,
+                Width = HandleSize,
+                Height = HandleSize,
+                Padding = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.Parse("#3D7BD9")),
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(3),
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+            };
+
+            ToolTip.SetTip(button, tip);
+
+            // ⚠ 누름을 소비한다 — 안 그러면 판까지 흘러가 선택이 풀리고, 방금 옮긴 노드가
+            // 손에서 빠져나간다(연달아 두 칸 옮기는 것이 가장 흔한 손놀림이다).
+            button.AddHandler(PointerPressedEvent, (_, e) => e.Handled = true,
+                Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+            button.Click += (_, e) =>
+            {
+                e.Handled = true;
+                UiGuard.Run(_session, "에피소드 자리 옮기기", move);
+            };
+
+            Canvas.SetLeft(button, x);
+            Canvas.SetTop(button, y);
+            GraphCanvas.Children.Add(button);
+            _placementHandles.Add(button);
+        }
+    }
+
+    /// <summary>열보정을 ±1 한다. 0 아래로는 안 내려간다 — 리더도 같은 선을 긋는다.</summary>
+    private void Nudge(string episodeId, int delta)
+    {
+        if (SelectedChapterPath is not { } path ||
+            SelectedModel?.FindEpisode(episodeId) is not { } episode)
+        {
+            return;
+        }
+
+        int next = Math.Max(0, episode.ColumnNudge + delta);
+
+        if (next == episode.ColumnNudge)
+        {
+            return;
+        }
+
+        Report(ChapterWorkbookWriter.SetColumnNudge(path, episodeId, next),
+            next == 0
+                ? $"'{episodeId}'를 제자리(깊이)로 되돌렸습니다."
+                : $"'{episodeId}'를 {next}열 오른쪽에 두었습니다.");
+    }
+
+    /// <summary>같은 열의 이웃과 시트 행을 맞바꾼다 — 열 안 순서가 곧 시트 행 순서다.</summary>
+    private void Swap(string episodeId, string otherId)
+    {
+        if (SelectedChapterPath is not { } path)
+        {
+            return;
+        }
+
+        Report(ChapterWorkbookWriter.SwapEpisodeRows(path, episodeId, otherId),
+            $"'{episodeId}'와 '{otherId}'의 자리를 바꿨습니다.");
     }
 
     // ⛔ 픽스처 (G6) — 2026-08-24에 화면에서 걷었다 (소유자: "꽤 오래 다뤘는데 단 한 번도
@@ -2112,9 +2289,14 @@ public partial class ChapterGraphView : UserControl
         RefreshPropertyPanel();
     }
 
-    /// <summary>모든 카드·간선을 기본 모습으로 되돌리고 선택된 것만 파랗게 강조한다.</summary>
+    /// <summary>
+    /// 모든 카드·간선을 기본 모습으로 되돌리고 선택된 것만 파랗게 강조한다.
+    /// 옮김 단추도 여기서 따라온다 — 그것도 <b>선택의 모습</b>이기 때문이다.
+    /// </summary>
     private void ApplySelectionVisuals()
     {
+        RefreshPlacementHandles();
+
         foreach ((string id, Border card) in _cardById)
         {
             (IBrush? brush, Thickness thickness) = _cardBase[id];
