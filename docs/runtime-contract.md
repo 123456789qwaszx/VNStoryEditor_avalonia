@@ -213,7 +213,7 @@ Node   : { EpisodeId, Title, IndexText, Kind("Main"|"Attachment"), DialogueEntry
            VisibleConditions[], UnlockConditions[], NextOptions[], Attachments[],
            IsChapterEndingCandidate, EndingKey, DesignerNote, Position{X,Y} }
 
-Option : { TargetEpisodeId, ChoiceLabel, Kind("Choice"|"Auto"), VisibleConditions[],
+Option : { TargetEpisodeId, ChoiceLabel, Kind("PlayerChoice"|"AutoAdvance"), VisibleConditions[],
            Conditions[], HideWhenLocked, LockedReasonText, ViaNodeId,
            StatChanges[{Key, Amount, Op("Add"|"Set")}] }
 
@@ -308,7 +308,7 @@ bool 어휘 준수. 그래서 전이기와 도달성 증명은 "허공으로 가
 규격: [`work-orders/bool-stat-orders.md`](work-orders/bool-stat-orders.md).
 
 **G-7. `Option.Kind` 내보내기 — 이쪽 완료, 저쪽 칸 대기 (2026-08-23).**
-간선의 `종류` 열이 `NextOptions[].Kind`(`"Choice"`/`"Auto"`)로 나간다.
+간선의 `종류` 열이 `NextOptions[].Kind`로 나간다 — 값은 **코어 `OptionKind`의 멤버 이름 그대로** `"PlayerChoice"`·`"AutoAdvance"`다(⚠ 2026-08-23 정정: 처음에 저작 낱말을 따라 `"Choice"`·`"Auto"`로 냈는데 코어 로더는 멤버 이름을 switch로 정확히 받는다. 코어를 참조하자마자 `nameof`로 바꿔 컴파일러가 지키게 했다).
 ⚠ **저쪽 `EpisodeOptionDto`에 아직 이 칸이 없다** — 호스트 역직렬화기가 모르는 속성을
 조용히 버리므로 **지금은 나가기만 하고 아무 일도 하지 않는다.** 코어는 여전히 `ChoiceLabel`이
 비었는지로 자동 진행을 추론하고(D5) 그 경고를 낸다. 저쪽이 칸 하나만 세우면 **문구 없는

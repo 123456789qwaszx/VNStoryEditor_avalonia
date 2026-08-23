@@ -2,6 +2,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Vn.Authoring.Rendering;
 
+// 계약 이름의 정본은 코어의 enum이다 (2026-08-23 · 로드맵 T2). 별칭을 두는 이유는
+// 이름이 겹치기 때문이다 — 이쪽에도 `StatChangeKind`가 있다(저작 문법용).
+using Contract = Ked.Progression;
+
 namespace Vn.Authoring.Chapters;
 
 /// <summary>내보내기 결과. 거부됐으면 JSON이 없고 사유가 전부 담긴다 (Gate C 3번).</summary>
@@ -101,7 +105,9 @@ public static class ChapterProgressionExporter
     {
         Key = stat.Key,
         DisplayName = stat.DisplayName,
-        Type = stat.Type == ChapterStatType.Bool ? "Bool" : "Number",
+        Type = stat.Type == ChapterStatType.Bool
+            ? nameof(Contract.StatType.Bool)
+            : nameof(Contract.StatType.Number),
         Initial = stat.Initial,
         Minimum = stat.Minimum,
         Maximum = stat.Maximum
@@ -113,8 +119,8 @@ public static class ChapterProgressionExporter
         Title = episode.Title,
         IndexText = episode.Index,
         Kind = string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase)
-            ? "Attachment"
-            : "Main",
+            ? nameof(Contract.EpisodeKind.Attachment)
+            : nameof(Contract.EpisodeKind.Main),
         // ⚠ 이미터의 이름 규칙을 통과시킨다 (2026-08-23) — 런타임은 이 글자로 YarnProject에서
         // 노드를 찾는다. 그냥 실으면 진행 JSON은 `new01`, yarn은 `Story_new01`이 되어
         // 로드·검증·증명이 전부 통과하는데 재생만 안 된다. 규칙은 접두 하나가 아니라
@@ -135,7 +141,13 @@ public static class ChapterProgressionExporter
             {
                 TargetEpisodeId = edge.ToEpisodeId,
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
-                Kind = edge.Kind == EdgeKind.Auto ? "Auto" : "Choice",
+                // ⚠ 2026-08-23 정정 — 처음에 `"Choice"`/`"Auto"`로 냈는데 **코어의 이름이
+                // 아니다**(`OptionKind.PlayerChoice`/`AutoAdvance`). 코어 로더는 enum 멤버
+                // 이름을 switch로 정확히 받으므로 그대로 뒀으면 칸이 서는 날 "알 수 없는
+                // 종류"가 됐다. 코어를 물자마자 컴파일러가 잡아 준 자리다.
+                Kind = edge.Kind == EdgeKind.Auto
+                    ? nameof(Contract.OptionKind.AutoAdvance)
+                    : nameof(Contract.OptionKind.PlayerChoice),
                 VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 HideWhenLocked = edge.HideWhenLocked,
@@ -149,7 +161,9 @@ public static class ChapterProgressionExporter
                     {
                         Key = delta.Key,
                         Amount = delta.Amount,
-                        Op = delta.IsSet ? "Set" : "Add"
+                        Op = delta.IsSet
+                            ? nameof(Contract.StatChangeKind.Set)
+                            : nameof(Contract.StatChangeKind.Add)
                     })
                     .ToList()
             })
@@ -180,20 +194,23 @@ public static class ChapterProgressionExporter
         }
 
         return condition.Parsed.Select(term => term.Kind == ConditionTermKind.EpisodeCleared
-            ? new ConditionJson { Kind = "EpisodeCleared", Key = term.Key, Op = "Exists" }
+            ? new ConditionJson
+            {
+                Kind = nameof(Contract.ConditionKind.EpisodeCleared),
+                Key = term.Key,
+                Op = nameof(Contract.ComparisonOp.Exists)
+            }
             : new ConditionJson
             {
-                Kind = "Stat",
+                Kind = nameof(Contract.ConditionKind.Stat),
                 Key = term.Key,
                 Op = term.Comparison switch
                 {
-                    ConditionComparison.AtLeast => "GreaterOrEqual",
-                    ConditionComparison.AtMost => "LessOrEqual",
-                    // 2026-08-16 소유자 개방 — 런타임 수입기(Gate D)가 아직 없으므로 이름을
-                    // 계약서에 함께 추가해야 한다(run-log 참조).
-                    ConditionComparison.Above => "GreaterThan",
-                    ConditionComparison.Below => "LessThan",
-                    _ => "Equal"
+                    ConditionComparison.AtLeast => nameof(Contract.ComparisonOp.GreaterOrEqual),
+                    ConditionComparison.AtMost => nameof(Contract.ComparisonOp.LessOrEqual),
+                    ConditionComparison.Above => nameof(Contract.ComparisonOp.GreaterThan),
+                    ConditionComparison.Below => nameof(Contract.ComparisonOp.LessThan),
+                    _ => nameof(Contract.ComparisonOp.Equal)
                 },
                 IntValue = term.Value
             }).ToList();
@@ -224,8 +241,8 @@ public static class ChapterProgressionExporter
         public string Key { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
 
-        /// <summary><c>"Number"</c> 또는 <c>"Bool"</c> — 이쪽 <c>Int</c>가 저쪽 <c>Number</c>다.</summary>
-        public string Type { get; set; } = "Number";
+        /// <summary><c>Number</c> 또는 <c>Bool</c> — 이쪽 <c>Int</c>가 저쪽 <c>Number</c>다.</summary>
+        public string Type { get; set; } = nameof(Contract.StatType.Number);
 
         public int Initial { get; set; }
         public int Minimum { get; set; }
@@ -237,7 +254,7 @@ public static class ChapterProgressionExporter
         public string EpisodeId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string IndexText { get; set; } = string.Empty;
-        public string Kind { get; set; } = "Main";
+        public string Kind { get; set; } = nameof(Contract.EpisodeKind.Main);
         public string DialogueEntryId { get; set; } = string.Empty;
         public List<ConditionJson> VisibleConditions { get; set; } = new();
         public List<ConditionJson> UnlockConditions { get; set; } = new();
@@ -257,7 +274,9 @@ public static class ChapterProgressionExporter
         public string ChoiceLabel { get; set; } = string.Empty;
 
         /// <summary>
-        /// 이 길을 <b>누가 고르나</b> — <c>"Choice"</c>(플레이어) 또는 <c>"Auto"</c>(자동 진행).
+        /// 이 길을 <b>누가 고르나</b> — <c>PlayerChoice</c> 또는 <c>AutoAdvance</c>
+        /// (⚠ 코어 <see cref="Contract.OptionKind"/>의 멤버 이름 그대로다. 저작 쪽 낱말인
+        /// "선택지/자동"이나 <c>EdgeKind</c>의 <c>Choice/Auto</c>와 <b>다르다</b>).
         /// 저작의 `간선` 시트 `종류`(I) 열이 원천이다.
         ///
         /// <b>왜 싣는가</b> — 이 칸이 없으면 저쪽은 <c>ChoiceLabel</c>이 비었는지로 추론할
@@ -270,7 +289,7 @@ public static class ChapterProgressionExporter
         /// 이유는 이 값의 주인이 저작이고, 저쪽이 칸을 세우는 날 이쪽을 다시 안 열어도
         /// 되게 하기 위해서다.
         /// </summary>
-        public string Kind { get; set; } = "Choice";
+        public string Kind { get; set; } = nameof(Contract.OptionKind.PlayerChoice);
 
         /// <summary>
         /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16). 에피소드 노드의

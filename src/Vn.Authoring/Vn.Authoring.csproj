@@ -13,6 +13,12 @@
   <ItemGroup>
     <!-- 런타임에서 복사 반입한 연출 코어 (H-4). 무대 상태 계산은 이 한 벌만 쓴다 (H-2). -->
     <ProjectReference Include="..\Ked.Presentation.Core\Ked.Presentation.Core.csproj" />
+
+    <!-- 진행 규칙 코어 (2026-08-23 반입 · 로드맵 T1). 툴과 런타임이 **같은 static 함수**로
+         판정하게 하려고 있는 것이다 — 조건 평가·전이·도달성 증명이 양쪽에 각자 있으면
+         갈리고, 실제로 갈렸었다(계약서 §G7). 아직 이쪽 코드가 부르는 자리는 없다;
+         T2에서 계약 이름부터 이 타입들로 옮긴다. -->
+    <ProjectReference Include="..\Ked.Progression\Ked.Progression.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- 기본 연출 카탈로그. docs의 검증본이 유일한 원본이고, 여기서는 내장 리소스로 링크만 한다. -->

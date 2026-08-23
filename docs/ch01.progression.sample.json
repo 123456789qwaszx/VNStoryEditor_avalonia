@@ -33,7 +33,7 @@
         {
           "TargetEpisodeId": "믿는길",
           "ChoiceLabel": "라루를 믿는다",
-          "Kind": "Choice",
+          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -50,7 +50,7 @@
         {
           "TargetEpisodeId": "혼자길",
           "ChoiceLabel": "혼자 간다",
-          "Kind": "Choice",
+          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -86,7 +86,7 @@
         {
           "TargetEpisodeId": "좋은끝",
           "ChoiceLabel": "",
-          "Kind": "Auto",
+          "Kind": "AutoAdvance",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -116,7 +116,7 @@
         {
           "TargetEpisodeId": "쓸쓸한끝",
           "ChoiceLabel": "",
-          "Kind": "Auto",
+          "Kind": "AutoAdvance",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,

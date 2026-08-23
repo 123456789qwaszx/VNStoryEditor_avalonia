@@ -30,7 +30,7 @@
 |---|---|
 | **깃발이 나가기 시작했다** | 그쪽 `0.2.0`의 `StatChangeDto.Op`를 받아 `BoolSetNotCarried` 거부를 지웠다. `StatChanges`가 `Op`를 함께 싣는다 — `"Set"`/`"Add"`. **`"Add"`도 비우지 않고 명시**한다 |
 | **⚠ `DialogueEntryId`의 모양이 바뀌었다** | `대사엔트리`가 **글자 그대로 안 나간다.** `"Story_" + SanitizeNodeName(이름)`을 통과한다(`장면 1` → `Story_장면_1`). 코어는 이 값을 문자열로만 다루므로 **그쪽 코드는 안 바뀐다** — 다만 픽스처를 다시 뜨면 값이 달라진다(§0-2) |
-| **`Option.Kind`가 나가기 시작했다** | `"Choice"`/`"Auto"`. 그쪽 `EpisodeOptionDto`에 칸이 없어 지금은 버려진다 — §6-1 |
+| **`Option.Kind`가 나가기 시작했다** | ⚠ **2026-08-23 정정**: `"PlayerChoice"`/`"AutoAdvance"`다(그쪽 `OptionKind` 멤버 이름). 3차에서 `"Choice"`/`"Auto"`라고 적었는데 **틀렸다** — §6-1 |
 
 ### 0-2. ⚠ 그쪽 픽스처 하나가 지금 갈려 있다
 
@@ -192,8 +192,8 @@ Assert.Equal("fade_trust", Option("ep1").GetProperty("ViaNodeId").GetString());
 이쪽은 **이미 내고 있다**(2026-08-23). 간선의 `종류` 열이 그대로 나간다:
 
 ```json
-{ "TargetEpisodeId": "믿는길", "ChoiceLabel": "라루를 믿는다", "Kind": "Choice", ... }
-{ "TargetEpisodeId": "좋은끝", "ChoiceLabel": "",             "Kind": "Auto",   ... }
+{ "TargetEpisodeId": "믿는길", "ChoiceLabel": "라루를 믿는다", "Kind": "PlayerChoice", ... }
+{ "TargetEpisodeId": "좋은끝", "ChoiceLabel": "",             "Kind": "AutoAdvance", ... }
 ```
 
 그런데 `EpisodeOptionDto`에 그 칸이 없어 호스트 역직렬화기가 **조용히 버린다.** 그래서
@@ -208,7 +208,7 @@ Assert.Equal("fade_trust", Option("ep1").GetProperty("ViaNodeId").GetString());
 데이터로 구별되지 않는 둘 — **문구를 실수로 지운 `Choice`**와 **의도한 `Auto`** — 이
 갈린다. 어긋나면 오류로 잡는 것이 `ChapterGraphModel.cs:92`의 주석이 원하던 그것이다.
 
-⚠ 비어 있음은 지금대로 `"Choice"`로 읽어야 한다 — 이 칸이 서기 전에 나간 JSON이 그대로
+⚠ 비어 있음은 `OptionKind.PlayerChoice`로 읽어야 한다 — 이 칸이 서기 전에 나간 JSON이 그대로
 실려야 한다(`Op`에 쓴 것과 같은 규칙).
 
 

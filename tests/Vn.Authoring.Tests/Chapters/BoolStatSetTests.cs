@@ -200,9 +200,16 @@ public sealed class BoolStatSetTests : IDisposable
         // 추론할 수밖에 없어서, 문구를 실수로 지운 것과 의도한 자동 진행이 데이터로
         // 구별되지 않는다(D5).
         //
-        // ⚠ 저쪽 `EpisodeOptionDto`에 아직 이 칸이 없다(0.2.0) — 지금은 나가기만 하고
-        // 아무 일도 하지 않는다. 그래도 값의 주인은 저작이므로 여기서 붙들어 둔다.
-        Assert.Equal("Auto", OnlyOptionKind(Read("trust +1")));
+        // ⚠ 저쪽 `EpisodeOptionDto`에 아직 이 칸이 없다 — 지금은 나가기만 하고 아무 일도
+        // 하지 않는다. 그래도 값의 주인은 저작이므로 여기서 붙들어 둔다.
+        //
+        // ⚠ 값은 **코어 enum의 멤버 이름 그대로**여야 한다 (2026-08-23 정정). 처음에
+        // `"Auto"`로 냈는데 코어는 `OptionKind.AutoAdvance`이고, 로더가 이름을 switch로
+        // 정확히 받으므로 칸이 서는 날 "알 수 없는 종류"가 됐을 값이다. 그래서 여기서도
+        // 글자를 손으로 적지 않고 코어 타입에서 가져온다 — 저쪽이 개명하면 이 줄이 깨진다.
+        Assert.Equal(
+            nameof(Ked.Progression.OptionKind.AutoAdvance),
+            OnlyOptionKind(Read("trust +1")));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
