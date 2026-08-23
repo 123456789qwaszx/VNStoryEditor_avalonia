@@ -27,28 +27,84 @@ internal sealed class YarnCompilerAdapter
                     0));
         }
 
+        string[] sourceFiles;
+        int languageVersion;
+
         try
         {
             Project project =
                 Project.LoadFromFile(fullProjectPath);
 
-            string[] sourceFiles = project.SourceFiles
+            sourceFiles = project.SourceFiles
                 .Select(Path.GetFullPath)
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
 
-            if (sourceFiles.Length == 0)
-            {
-                return Failure(
-                    new VnDiagnostic(
-                        VnDiagnosticCodes.YarnProjectHasNoSource,
-                        DiagnosticSeverity.Error,
-                        ".yarnproject에 포함된 Yarn 소스 파일이 없습니다.",
-                        fullProjectPath,
-                        0,
-                        0));
-            }
+            languageVersion = project.FileVersion;
+        }
+        catch (Exception exception)
+        {
+            return Failure(Unexpected(exception, fullProjectPath));
+        }
 
+        if (sourceFiles.Length == 0)
+        {
+            return Failure(
+                new VnDiagnostic(
+                    VnDiagnosticCodes.YarnProjectHasNoSource,
+                    DiagnosticSeverity.Error,
+                    ".yarnproject에 포함된 Yarn 소스 파일이 없습니다.",
+                    fullProjectPath,
+                    0,
+                    0));
+        }
+
+        return CompileFiles(sourceFiles, schema, languageVersion, fullProjectPath);
+    }
+
+    /// <summary>
+    /// <b><c>.yarnproject</c> 없이</b> 파일 목록을 바로 컴파일한다.
+    ///
+    /// 여는 이유 — 이미터가 <b>방금 쓴 산출물</b>을 그 자리에서 검증하려면 소스 파일이
+    /// 이미 손에 있는데, 종전에는 그것을 다시 찾게 하려고 <c>.yarnproject</c>를 하나
+    /// 만들어 줘야 했다. 그 파일을 산출 폴더에 두면 유니티가 읽는 폴더가 오염되고
+    /// 고아 스캔에도 걸린다. 검증 때문에 산출물이 달라지면 검증이 아니다.
+    ///
+    /// 프로젝트 파일을 읽는 <see cref="Compile"/>도 파일 목록을 푼 뒤 여기로 들어온다 —
+    /// 컴파일 규칙의 사본을 만들지 않는다.
+    /// </summary>
+    /// <param name="languageVersion">
+    /// <c>.yarnproject</c>의 <c>projectFileVersion</c>에 해당한다. 목록만 받을 때는
+    /// 그것을 말해 줄 파일이 없으므로 <see cref="DefaultLanguageVersion"/>을 쓴다.
+    /// </param>
+    /// <param name="originLabel">진단이 가리킬 자리. 없으면 첫 소스 파일의 폴더다.</param>
+    public YarnCompileOutput CompileFiles(
+        IReadOnlyList<string> sourceFilesIn,
+        GameSchema schema,
+        int languageVersion = DefaultLanguageVersion,
+        string? originLabel = null)
+    {
+        if (sourceFilesIn is null || sourceFilesIn.Count == 0)
+        {
+            return Failure(
+                new VnDiagnostic(
+                    VnDiagnosticCodes.YarnProjectHasNoSource,
+                    DiagnosticSeverity.Error,
+                    "컴파일할 Yarn 소스 파일이 없습니다.",
+                    originLabel ?? string.Empty,
+                    0,
+                    0));
+        }
+
+        string[] sourceFiles = sourceFilesIn
+            .Select(Path.GetFullPath)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        string origin = originLabel ?? Path.GetDirectoryName(sourceFiles[0]) ?? string.Empty;
+
+        try
+        {
             var compilationJob =
                 CompilationJob.CreateFromFiles(sourceFiles);
 
@@ -56,7 +112,7 @@ internal sealed class YarnCompilerAdapter
                 CompilationJob.Type.FullCompilation;
 
             compilationJob.LanguageVersion =
-                project.FileVersion;
+                languageVersion;
 
             compilationJob.Declarations =
                 CreateSchemaDeclarations(schema);
@@ -65,7 +121,7 @@ internal sealed class YarnCompilerAdapter
                 Compiler.Compile(compilationJob);
 
             IReadOnlyList<VnDiagnostic> diagnostics =
-                MapDiagnostics(result, fullProjectPath);
+                MapDiagnostics(result, origin);
 
             IReadOnlyList<StoryNode> nodes =
                 ExtractNodes(result);
@@ -86,17 +142,27 @@ internal sealed class YarnCompilerAdapter
         }
         catch (Exception exception)
         {
-            return Failure(
-                new VnDiagnostic(
-                    VnDiagnosticCodes.YarnUnexpectedFailure,
-                    DiagnosticSeverity.Error,
-                    $"Yarn 프로젝트 처리 중 예상하지 못한 오류가 발생했습니다. " +
-                    $"[{exception.GetType().Name}] {exception.Message}",
-                    fullProjectPath,
-                    0,
-                    0));
+            return Failure(Unexpected(exception, origin));
         }
     }
+
+    /// <summary>
+    /// <c>.yarnproject</c>가 말해 주지 않을 때 쓰는 Yarn 언어 판(= <c>projectFileVersion</c>).
+    /// 지금 무는 컴파일러는 <c>YarnSpinner.Compiler 3.2.1</c>이고 그 판이 3이다.
+    /// 컴파일러를 올리다 이 값이 낡으면 문법 오류가 아니라 <b>판이 달라 나는 오류</b>가
+    /// 나므로, 올릴 때 여기를 같이 본다.
+    /// </summary>
+    public const int DefaultLanguageVersion = 3;
+
+    private static VnDiagnostic Unexpected(Exception exception, string origin) =>
+        new(
+            VnDiagnosticCodes.YarnUnexpectedFailure,
+            DiagnosticSeverity.Error,
+            $"Yarn 프로젝트 처리 중 예상하지 못한 오류가 발생했습니다. " +
+            $"[{exception.GetType().Name}] {exception.Message}",
+            origin,
+            0,
+            0);
 
     /// <summary>
     /// Yarn 진단을 우리 모델로 옮긴다.

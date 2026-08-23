@@ -22,8 +22,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 저작 도메인만 참조한다. Yarn 분석(Vn.Core)은 가져오기 도구의 것이지 편집기의 것이 아니다. -->
     <ProjectReference Include="..\Vn.Authoring\Vn.Authoring.csproj" />
+
+    <!-- Yarn 분석 (2026-08-23 소유자 결정 — ARCHITECTURE.md §161의 "두 세계가 갈라져
+         있다"를 여기서 의도적으로 넘는다).
+
+         그 분리가 지키려던 것은 "저작 도메인이 Yarn 컴파일러에 묶이지 않는다"이고,
+         그것은 그대로다 — Vn.Authoring은 여전히 Vn.Core를 모른다. 여기서 쓰는 자리는
+         도메인이 아니라 **출력 검증**이다: 이미터가 방금 쓴 산출물이 실제로 컴파일되는지
+         셸이 확인하고 그 사유를 사람에게 보인다.
+
+         왜 필요한가 — 이 검사는 테스트에만 꽂혀 있었다. 프로덕션 경로에서 컴파일러를
+         부르는 자리가 0건이라, 툴이 컴파일 안 되는 yarn을 써도 유니티까지 아무도 몰랐다.
+         2026-08-23의 이름 갈림과 같은 모양이다: 감지기는 있는데 정작 중요한 경로에 없다. -->
+    <ProjectReference Include="..\Vn.Core\Vn.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

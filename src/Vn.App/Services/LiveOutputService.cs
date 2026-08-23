@@ -29,6 +29,12 @@ internal sealed class LiveOutputService
     /// </summary>
     public OrphanOutputScan Orphans { get; private set; } = OrphanOutputScan.Empty;
 
+    /// <summary>
+    /// 직전 쓰기의 산출물 컴파일 판정 (2026-08-23). 상태줄은 실패만 말하므로, 화면이
+    /// "몇 개를 검사해서 통과했나"를 보이고 싶으면 이 값을 읽는다.
+    /// </summary>
+    public YarnOutputVerdict LastVerdict { get; private set; } = YarnOutputVerdict.Skipped;
+
     public LiveOutputService(AuthoringSession session)
     {
         _session = session;
@@ -116,11 +122,21 @@ internal sealed class LiveOutputService
                 OutputManifest.Record(directory, written);
             }
 
+            // 방금 쓴 것이 실제로 컴파일되는가 (2026-08-23). 여기가 아니면 아무도 안 본다 —
+            // 종전에는 이 검사가 테스트에만 있어서, 컴파일 안 되는 대본이 유니티까지 갔다.
+            // ⚠ 실패해도 쓰기를 되돌리지 않는다. 자세한 이유는 YarnOutputVerification 참조.
+            LastVerdict = YarnOutputVerification.Verify(written);
+
             var parts = new List<string>();
 
             if (blocked.Count > 0)
             {
                 parts.Add($"라이브 출력에서 제외된 노드: {string.Join(" / ", blocked)}");
+            }
+
+            if (YarnOutputVerification.ReportOf(LastVerdict) is { } compileReport)
+            {
+                parts.Add(compileReport);
             }
 
             if (OrphanReport(Orphans) is { } orphanReport)

@@ -34,6 +34,57 @@ public sealed class VnProjectAnalyzer
                 fullProjectPath,
                 schema);
 
+        return Report(fullProjectPath, fullSchemaPath, schemaResult, schema, yarnOutput);
+    }
+
+    /// <summary>
+    /// <b><c>.yarnproject</c> 없이</b> 파일 목록을 분석한다.
+    ///
+    /// 이미터가 방금 쓴 산출물을 그 자리에서 검증하는 길이다 — 검증하려고 산출 폴더에
+    /// 프로젝트 파일을 만들어 두면, 유니티가 읽는 폴더가 달라지고 고아 스캔에도 걸린다.
+    /// <b>검증 때문에 산출물이 달라지면 그것은 검증이 아니다.</b>
+    ///
+    /// <paramref name="schemaPath"/>가 <c>null</c>이면 <b>어휘 검사를 하지 않는다</b>(빈
+    /// 스키마) — 문법과 전역 라인 ID 유일성만 본다. 저작 도구는 커맨드 어휘를
+    /// <c>game.definition.json</c>으로 이미 저작 시점에 검사하므로, 그 둘을 한 어휘로
+    /// 합치기 전까지는 여기서 다시 묻지 않는다.
+    /// </summary>
+    public AnalysisReport AnalyzeFiles(
+        IReadOnlyList<string> sourceFiles,
+        string? schemaPath = null,
+        string? originLabel = null)
+    {
+        string fullSchemaPath =
+            schemaPath is null ? string.Empty : Path.GetFullPath(schemaPath);
+
+        GameSchemaLoadResult schemaResult =
+            schemaPath is null
+                ? new GameSchemaLoadResult(null, Array.Empty<VnDiagnostic>())
+                : GameSchemaLoader.Load(fullSchemaPath);
+
+        GameSchema schema = schemaResult.Schema ?? GameSchema.Empty;
+
+        YarnCompileOutput yarnOutput =
+            _compiler.CompileFiles(
+                sourceFiles,
+                schema,
+                originLabel: originLabel);
+
+        return Report(
+            originLabel ?? string.Empty, fullSchemaPath, schemaResult, schema, yarnOutput);
+    }
+
+    /// <summary>두 입구가 공유하는 뒷부분 — 진단을 모으고 정렬한다.</summary>
+    private static AnalysisReport Report(
+        string projectPath,
+        string schemaPath,
+        GameSchemaLoadResult schemaResult,
+        GameSchema schema,
+        YarnCompileOutput yarnOutput)
+    {
+        string fullProjectPath = projectPath;
+        string fullSchemaPath = schemaPath;
+
         IReadOnlyList<VnDiagnostic> customDiagnostics =
             schemaResult.Schema is null
                 ? Array.Empty<VnDiagnostic>()

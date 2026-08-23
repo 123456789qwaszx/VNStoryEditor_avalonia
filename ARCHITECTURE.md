@@ -143,22 +143,43 @@ Vn.Authoring ── 저작 도메인. 공식 원본. 화면도 파일 대화상�
    ▲            (Script·Model·Results·Flow·Graph·Editing·Rendering + Chapters — §10)
    └── Vn.App    Avalonia 저작 화면
 
-Vn.Core   ── Yarn 읽기·분석 엔진. 저작 경로에 관여하지 않는다.
+Vn.Core   ── Yarn 읽기·분석 엔진. 저작 도메인에는 관여하지 않는다.
    ▲
-   └── Vn.Cli    Yarn 검증 콘솔
+   ├── Vn.Cli    Yarn 검증 콘솔
+   └── Vn.App    산출물 컴파일 검증 (2026-08-23 — 아래)
 
 Ked.Presentation.Core ── 무대 상태 계산. 런타임 저장소에서 소스째 복사해 온 한 벌이다
                          (architecture-decisions H-4 — 이쪽에서 고치거나 솎지 않는다).
 
-tests/Vn.Authoring.Tests        대본·동기화·조건 흐름·발행·합성·출력·저장·챕터 (643)
-tests/Vn.App.Tests              앱 서비스·화면 — 세션·갱신 범위·챕터 화면·일의 양 (238)
-tests/Ked.Presentation.Core.Tests  무대 상태 계산 (220)
+tests/Vn.Authoring.Tests        대본·동기화·조건 흐름·발행·합성·출력·저장·챕터 (760)
+tests/Vn.App.Tests              앱 서비스·화면 — 세션·갱신 범위·챕터 화면·일의 양·산출물 검증 (336)
+tests/Ked.Presentation.Core.Tests  무대 상태 계산 (344)
 tests/Vn.Core.Tests             Yarn 분석과 골든 픽스처 (60)
 ```
 
-테스트 수는 2026-08-23 기준 **1490개**다(Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 760 · Vn.App 327).
+테스트 수는 2026-08-23 기준 **1500개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 760 · Vn.App 336).
 
-**`Vn.App`은 `Vn.Core`를 참조하지 않는다.** 두 세계가 갈라져 있다.
+### ⚠ `Vn.App` → `Vn.Core` — 2026-08-23에 이었다
+
+이 문서는 오래 *"`Vn.App`은 `Vn.Core`를 참조하지 않는다. 두 세계가 갈라져 있다"*고
+적어 두었다. **소유자 결정으로 그 선을 넘었다.** 무엇이 바뀌고 무엇이 안 바뀌었는지:
+
+| | |
+|---|---|
+| **바뀐 것** | 셸이 이미터 산출물을 **진짜 Yarn 컴파일러로 컴파일해 본다** (`Services/YarnOutputVerification`) |
+| **안 바뀐 것** | **`Vn.Authoring`은 여전히 `Vn.Core`를 모른다.** 저작 도메인이 컴파일러에 묶이지 않는다는 원래 목적은 그대로다 |
+
+**왜 넘었나** — 이 검사는 **테스트에만** 꽂혀 있었다. 프로덕션 경로에서 컴파일러를 부르는
+자리가 **0건**이라, 툴이 컴파일 안 되는 대본을 써도 유니티까지 아무도 몰랐다.
+2026-08-23의 이름 갈림과 정확히 같은 모양이다 — **감지기는 있는데 정작 중요한 경로에 없다.**
+
+**무엇을 보나** — 문법과 **전역 LineId 유일성**(계약서 C4)까지다. 어휘(미등록 커맨드)는
+보지 않는다: 그 사전이 `game.definition.json`과 `game.schema.json` 둘로 갈려 있어, 여기서
+한쪽을 고르면 **세 번째 판정 기준**이 생긴다. 둘을 한 어휘로 합치는 것은 별건이다.
+
+**규율 둘** — ① 검증이 산출물을 바꾸지 않는다(그래서 `.yarnproject`를 만들지 않고
+`VnProjectAnalyzer.AnalyzeFiles`로 파일 목록을 바로 건다) ② 실패해도 쓰기를 막지 않는다
+(고치는 중이 곧 산출물 없음이 되면 저작을 막는다).
 
 ### 3.1 `Vn.Authoring/Script` — 화자와 대사는 여기에만 있다
 
