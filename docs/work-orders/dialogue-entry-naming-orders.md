@@ -129,16 +129,30 @@ public static string StoryNodeTitleOf(string? nodeName)
 이 저장소의 견본 챕터는 `대사엔트리` 칸에 접두를 **사람이 직접 적어 둔** 상태다.
 §4 가운데 줄의 그 방식이 견본에 이미 들어와 있다.
 
-| 자리 | 값 |
-|---|---|
-| `ChapterExportAndFixtureTests.cs:62` | `Story_ch05_01` |
-| `ChapterSchemaV5Tests.cs:378` | `Story_ep1` |
-| `ChapterWorkbookWriterTests.cs:117` | `Story_ch05_02` |
-| `ChapterGraphSyncViewTests.cs:197` | 대사노드 이름이 `Story_ch05_01` |
-
 `EpisodeSyncService.NodeNameFor`(`:263`)가 `대사엔트리`를 **노드 이름 그대로** 쓰므로
 견본의 yarn 타이틀은 지금 `Story_Story_ch05_01`이다. **견본도 이미 갈려 있다 — `new01`과
 반대 방향으로.** §0의 증거가 한쪽 방향만 보여 준 것은 그 챕터가 새로 만든 것이어서다.
+
+#### ⚠ 범위 — 세 자리가 아니라 세 저장소다
+
+원천은 테스트 코드가 아니라 **엑셀 견본**이고, 거기서 파생된 값이 저장소 경계를 넘어가 있다.
+
+| 자리 | 무엇 | 규모 |
+|---|---|---|
+| `docs/chapter-graph-sample.xlsx` | **원천.** `대사엔트리` 칸에 `Story_ch05_01` … | 견본 워크북 |
+| `tests/**` | 위에서 파생된 기대값 | **10파일 25곳** |
+| `ked-progression` `Tests/Fixtures/chapter-sample-export.json` | 이 견본을 내보낸 결과 (`DialogueEntryId: "Story_ch05_01"`) | 견본을 고치면 **다시 내보내 갱신** |
+
+```
+Vn.App.Tests/          ChapterGraphSyncViewTests · ExcelNodeLockTests
+Vn.Authoring.Tests/    ChapterExportAndFixture · ChapterFolderWatcher · ChapterSchemaV5
+                       ChapterWorkbookCellType · ChapterWorkbookReader · ChapterWorkbookWriter
+                       EdgeKindAndEnding · EpisodeSyncService
+```
+
+**이 숫자를 먼저 아는 것이 중요하다.** 세 곳만 고치고 테스트를 돌리면 나머지 22곳이 한꺼번에
+터지고, 그 순간 *"가드를 하나 넣으면 다 통과하는데"*라는 유혹이 정확히 아래 ⛔ 지점에서 온다.
+25곳은 **기계적 치환**이다 — 판단이 필요한 자리가 아니다.
 
 **그래서 ①②를 그대로 적용하면 그 테스트가 `Story_Story_ch05_01`을 낸다. 그것이 옳다.**
 양쪽이 같은 `대사엔트리`에서 같은 규칙을 통과하므로 사전 대조는 지나간다.
@@ -146,7 +160,8 @@ public static string StoryNodeTitleOf(string? nodeName)
 ⛔ **이 값을 보고 "이미 `Story_`로 시작하면 붙이지 않는다"는 가드를 넣지 말 것.**
 그 가드는 (ㄱ) 진짜로 `Story_`로 시작하는 이름을 영영 못 쓰게 만들고, (ㄴ) 규칙의 둘째
 사본을 만들어 §3.1의 목적을 정확히 되돌린다. 고칠 것은 코드가 아니라 **견본 데이터**다 —
-접두를 지워 `ch05_01`로 되돌리면 견본이 `new01`과 같은 모양이 된다.
+`docs/chapter-graph-sample.xlsx`의 접두를 지워 `ch05_01`로 되돌리면 견본이 `new01`과 같은
+모양이 되고, 파생된 25곳과 코어 픽스처가 따라온다.
 
 ### 3.4 ⚠ `ViaNodeId`도 같은 자리다 — §5 먼저 읽을 것
 
@@ -257,9 +272,12 @@ Tuning/PortraitDimensionsDto.cs — 변형 키 정규화
 
 | | 무엇 | 자리 | 상태 |
 |---|---|---|---|
-| **①** | `StoryNodeTitleOf` 하나 열고 `:135`·`:789`도 그걸 부르게 | `YarnBundleEmitter.cs` | ⛔ 부탁 |
+| **①** | `StoryNodeTitleOf` 하나 열고 `:135`·`:276`·`:789`도 그걸 부르게 | `YarnBundleEmitter.cs` | ⛔ 부탁 |
 | **②** | `DialogueEntryId`가 ①을 통과하게 | `ChapterProgressionExporter.cs:168` | ⛔ 부탁 |
-| **③** | 골든 테스트 갱신 + 공백 이름 케이스 | `ChapterExportAndFixtureTests.cs:62` | ⛔ 부탁 |
+| **③** | **견본에서 `Story_` 접두를 지운다** — 원천 하나 | `docs/chapter-graph-sample.xlsx` | ⛔ 부탁 · §3.3 |
+| **③-a** | 파생 기대값 갱신 (기계적 치환) | `tests/**` **10파일 25곳** | ⛔ 부탁 |
+| **③-b** | 견본을 다시 내보내 코어 픽스처 갱신 | `ked-progression` `chapter-sample-export.json` | ⛔ 저장소 경계 넘음 |
+| **③-c** | 공백 든 이름 케이스 추가 | `ChapterExportAndFixtureTests.cs:62` | ⛔ 부탁 |
 | **④** | `BoolSetNotCarried` 삭제 + `StatChangeJson.Op` | `ChapterProgressionExporter.cs:57`·`:89` | ✅ 계약 준비 완료 |
 | **⑤** | `NextOptionJson.Kind` | 같은 파일 | ✅ 저작 모델 준비 완료 |
 | **⑥** | `PortraitDimensionsDto` 동기화 | `src/Ked.Presentation.Core/` | ℹ️ 별건, 알림 |
