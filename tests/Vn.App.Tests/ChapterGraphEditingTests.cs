@@ -1,5 +1,6 @@
 ﻿using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.VisualTree;
 using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -43,10 +44,11 @@ public sealed class ChapterGraphEditingTests
         Assert.Equal("지쳐있음", reread.VisibleConditionLabel);
         Assert.Equal("신뢰높음", reread.ConditionLabel); // 안 바꾼 값은 그대로
 
-        // 에피소드 패널은 읽기 전용 정보만 남는다.
+        // 에피소드를 고르면 그 패널로 넘어간다 — 간선 패널은 닫힌다.
         view.SelectEpisode("branch05.02A");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.Contains("대사엔트리", view.FindControl<TextBlock>("EpisodeFactsText")!.Text!);
+        Assert.True(view.FindControl<StackPanel>("PropertyPanel")!.IsVisible);
+        Assert.False(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
     });
 
     [Fact]
@@ -157,19 +159,60 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 이름_칸은_개명_자리임을_스스로_말한다() => HeadlessUi.Run(() =>
+    public void 열려_있을_때는_이름_칸이_아무_말도_안_한다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-24 소유자 "이름을 바꾸는 게 가능하도록 해줘" — 기능은 처음부터 있었는데
-        // 칸이 읽기 전용 표시처럼 보여 아무도 개명 자리인 줄 몰랐다. 비활성일 때 아무 말도
-        // 없으면 "이 기능이 없다"로 읽힌다.
+        // 2026-08-24 소유자 "이런 쓸모없는 설명들을 제거해줘" — 하루 전 이 자리에 붙였던
+        // "이름 — 고치고 Enter"를 걷었다. 개명 자리인 줄 알리는 몫은 툴팁이 진다.
+        //
+        // ⛔ 안내를 지우면서 <b>잠금 사유까지</b> 지우지 않는다 — 아래 짝 테스트가 그 반쪽을
+        //    붙든다. 기본값은 말할 것이 없고, 사람이 안 한 잠금은 말해 줘야 한다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
         view.SelectEpisode("main05.01");
 
         TextBlock hint = view.FindControl<TextBlock>("IdBoxHint")!;
 
-        Assert.Contains("Enter", hint.Text);
+        Assert.False(hint.IsVisible);
         Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+
+        // 툴팁은 남는다 — 물을 때만 뜨고 자리를 안 먹는다.
+        var tip = ToolTip.GetTip(view.FindControl<TextBox>("IdBox")!) as string;
+        Assert.Contains("Enter", tip!);
+    });
+
+    [Fact]
+    public void 상시_안내들이_편집_패널에서_사라졌다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 — 머리글 "에피소드", 읽기 전용 값 줄(`대사엔트리: … · 엑셀 N행`),
+        // "길 하나 = 선택지 하나…" 셋을 걷었다. 고칠 수도 없는 글이 상시로 자리를 먹었다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.SelectEpisode("main05.01");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Null(view.FindControl<TextBlock>("EpisodeFactsText"));
+
+        string[] gone =
+        [
+            "에피소드",
+            "길 하나 = 선택지 하나",
+            "대사엔트리"
+        ];
+
+        List<string> standing = view.FindControl<StackPanel>("PropertyPanel")!
+            .GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Where(block => block.IsVisible)
+            .Select(block => block.Text ?? string.Empty)
+            .ToList();
+
+        foreach (string phrase in gone)
+        {
+            Assert.DoesNotContain(standing, text => text.Contains(phrase, StringComparison.Ordinal));
+        }
+
+        // 남아야 하는 것 — 선택지 머리글은 표의 이름표라 안내가 아니다.
+        Assert.Contains(standing, text => text.Contains("선택지", StringComparison.Ordinal));
     });
 
     [Fact]
@@ -181,7 +224,10 @@ public sealed class ChapterGraphEditingTests
         (ChapterGraphView view, _) = Show(project, locked: true);
         view.SelectEpisode("main05.01");
 
-        Assert.Contains("엑셀", view.FindControl<TextBlock>("IdBoxHint")!.Text);
+        TextBlock hint = view.FindControl<TextBlock>("IdBoxHint")!;
+
+        Assert.True(hint.IsVisible);
+        Assert.Contains("엑셀", hint.Text);
         Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
     });
 
@@ -442,10 +488,14 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 대사는_선택지_아래에_접혀_있다() => HeadlessUi.Run(() =>
+    public void 대사는_선택지_아래에_펼쳐져_있다() => HeadlessUi.Run(() =>
     {
         // 2026-08-16 소유자 — 별도 탭이던 대사를 편집 탭의 선택지 아래로 합쳤다
         // ("에피소드 노드의 정보량이 부족하다"). 접었다 펼 수 있다.
+        //
+        // 2026-08-24 소유자 "대사 미리보기는, 펼쳐둔 걸 디폴트로 보이도록 해줘" — 시작이
+        // 뒤집혔다. ⚠ 삼각형·본문·체크 셋이 <b>함께</b> 맞아야 한다. XAML에서 체크만 켜면
+        // 핸들러가 붙기 전이라 삼각형이 ▸로 남는다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
@@ -453,16 +503,21 @@ public sealed class ChapterGraphEditingTests
         Assert.Null(view.FindControl<Expander>("DialogueExpander")); // 탭 속 상자도 사라졌다
 
         var toggle = view.FindControl<ToggleButton>("DialogueToggle")!;
-        Assert.False(toggle.IsChecked); // 접힌 채로 시작한다
+        Assert.True(toggle.IsChecked);              // 펼친 채로 시작한다
+        Assert.Equal("▾  대사", toggle.Content);    // 삼각형도 같이 뒤집혔다
 
         view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 펼치면 그 에피소드의 대사 안내가 서 있다.
-        toggle.IsChecked = true;
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        // 고르자마자 그 에피소드의 대사가 서 있다 — 펼치는 손이 필요 없다.
         Assert.True(view.FindControl<SelectableTextBlock>("DialoguePreviewText")!.IsVisible);
         Assert.False(string.IsNullOrEmpty(view.FindControl<TextBlock>("DialoguePreviewHeader")!.Text));
+
+        // 접는 길도 그대로다.
+        toggle.IsChecked = false;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(view.FindControl<SelectableTextBlock>("DialoguePreviewText")!.IsVisible);
+        Assert.Equal("▸  대사", toggle.Content);
     });
 
     [Fact]
@@ -484,14 +539,14 @@ public sealed class ChapterGraphEditingTests
         var text = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
         Assert.Contains("윌로: 첫 줄", text.Text!);
 
-        // 접기 토글 하나가 제목이자 스위치다 — 접힌 채로 시작한다.
+        // 접기 토글 하나가 제목이자 스위치다 — 펼친 채로 시작한다(2026-08-24).
         var toggle = view.FindControl<ToggleButton>("DialogueToggle")!;
-        Assert.False(toggle.IsChecked);
-        Assert.False(text.IsVisible);
-
-        toggle.IsChecked = true;
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(toggle.IsChecked);
         Assert.True(text.IsVisible);
+
+        toggle.IsChecked = false;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(text.IsVisible);
     });
 
     [Fact]

@@ -250,14 +250,19 @@ public partial class ChapterGraphView : UserControl
         CopyDiagnosticsButton.Click += async (_, _) =>
             await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
 
-        // 대사 접기 — 토글이 곧 제목이다(상자 없이). 접힌 채로 시작하고,
-        // 삼각형이 "여기 더 있다"를 말한다(▸ 접힘 · ▾ 펼침).
+        // 대사 접기 — 토글이 곧 제목이다(상자 없이). 삼각형이 상태를 말한다
+        // (▸ 접힘 · ▾ 펼침).
         DialogueToggle.IsCheckedChanged += (_, _) =>
         {
             bool open = DialogueToggle.IsChecked == true;
             DialoguePreviewText.IsVisible = open;
             DialogueToggle.Content = open ? "▾  대사" : "▸  대사";
         };
+
+        // 펼친 채로 시작한다 (2026-08-24 소유자: "대사 미리보기는, 펼쳐둔 걸 디폴트로").
+        // ⚠ XAML에서 IsChecked를 켜지 않는다 — 그러면 위 핸들러가 붙기 <b>전에</b> 켜져
+        // 글자와 본문이 접힌 모양 그대로 남는다. 여기서 켜야 셋이 한 번에 맞는다.
+        DialogueToggle.IsChecked = true;
 
         // 처음 보이는 탭은 [편집]이다 (2026-08-16 소유자) — 손이 가는 곳은 지금 고른
         // 하나이지 챕터 전체 표가 아니다. 그 뒤로는 사람이 고른 탭이 그대로 유지된다.
@@ -2305,9 +2310,6 @@ public partial class ChapterGraphView : UserControl
                 IdBox.Text = episode.EpisodeId;
             }
 
-            // 엑셀이 소유한 값들 — 읽기 전용으로 세워 둔다. 확인하러 엑셀을 열지 않아도 되고,
-            // 고치려면 엑셀을 연다는 것이 한눈에 보인다.
-            EpisodeFactsText.Text = EpisodeFacts(episode);
 
             SetItems(EdgeTargetCombo,
                 model.Episodes
@@ -2472,8 +2474,12 @@ public partial class ChapterGraphView : UserControl
 
         // 잠겨 있으면 **그 자리에서** 이유를 말한다 (2026-08-24). 비활성 칸이 아무 말도
         // 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
+        //
+        // ⚠ 열려 있을 때는 <b>아무 말도 안 한다</b>(같은 날 소유자 — 상시 안내 제거).
+        // 잠금은 사람이 안 한 일이라 말해 줘야 하지만, 열린 것은 기본값이라 말할 것이 없다.
+        IdBoxHint.IsVisible = !editable;
         IdBoxHint.Text = editable
-            ? "이름 — 고치고 Enter"
+            ? string.Empty
             : "이름 — 엑셀이 이 챕터를 열고 있어 잠겼습니다";
         VisibleCombo.IsEnabled = editable;
         UnlockCombo.IsEnabled = editable;
@@ -2616,21 +2622,6 @@ public partial class ChapterGraphView : UserControl
     /// 엑셀이 소유한 값들을 한 덩어리로. 비어 있는 것은 줄에 세우지 않는다 —
     /// "(없음)"만 늘어놓으면 읽을거리가 아니라 소음이 된다.
     /// </summary>
-    private static string EpisodeFacts(ChapterEpisode episode)
-    {
-        // 제목·표시/해금·엔딩키·메모는 위의 편집 칸이 맡는다(2026-08-15 복원) —
-        // 여기는 편집 칸이 없는 나머지 값만.
-        var facts = new List<string> { $"대사엔트리: {episode.DialogueEntry}" };
-
-        if (!string.IsNullOrWhiteSpace(episode.Kind))
-        {
-            facts.Add($"종류: {episode.Kind}");
-        }
-
-        facts.Add($"엑셀 {episode.SourceRow}행");
-
-        return string.Join(" · ", facts);
-    }
 
     /// <summary>목록을 갈되 고른 값은 지킨다(그 값이 새 목록에 남아 있다면).</summary>
     private static void SetItems(ComboBox combo, IReadOnlyList<string> items, string? selected)

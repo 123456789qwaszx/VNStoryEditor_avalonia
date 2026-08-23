@@ -246,16 +246,19 @@
                                TextWrapping="Wrap" />
 
                     <StackPanel x:Name="PropertyPanel" Spacing="6" IsVisible="False">
-                        <TextBlock Text="에피소드" FontWeight="SemiBold" FontSize="12" />
-
                         <!-- 개명 = Id를 고치고 Enter (2026-08-16 — 단추 대신 자동 반영).
                              제목·엔딩키·메모 칸은 소유자 지시로 뺐다 — 그 값들은 엑셀에서.
 
-                             ⚠ 2026-08-24 소유자 보고 "이름을 바꾸는 게 가능하도록 해줘" —
-                             기능은 처음부터 있었는데 **머리글이 그냥 '에피소드'이고 칸이
-                             읽기 전용 표시처럼 보여** 아무도 개명 자리인 줄 몰랐다.
-                             기능을 더한 것이 아니라 이름표를 붙였다. -->
-                        <TextBlock x:Name="IdBoxHint" Text="이름 — 고치고 Enter" FontSize="10" Opacity="0.6" />
+                             ⚠ 머리글('에피소드')과 상시 안내('이름 — 고치고 Enter')는
+                             2026-08-24에 뺐다 (소유자: "이런 쓸모없는 설명들을 제거해줘").
+                             하루 전 그 안내를 붙인 이유는 개명 자리인 줄 아무도 몰라서였는데,
+                             그 몫은 이제 **툴팁**이 진다 — 상시로 자리를 먹지 않는다.
+
+                             ⛔ 아래 칸은 잠겼을 때만 뜬다. 비활성 칸이 아무 말도 없으면
+                             "이 기능이 없다"로 읽힌다(실제로 그렇게 읽혔다) — 그건 설명이
+                             아니라 **상태 보고**라 남긴다. -->
+                        <TextBlock x:Name="IdBoxHint" FontSize="10" Opacity="0.6"
+                                   IsVisible="False" TextWrapping="Wrap" />
                         <TextBox x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId"
                                  ToolTip.Tip="이름을 고치고 Enter를 누르면 개명됩니다 — 간선·픽스처·대본 파일·대사 노드가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
 
@@ -264,12 +267,10 @@
                         <ComboBox x:Name="VisibleCombo" IsVisible="False" />
                         <ComboBox x:Name="UnlockCombo" IsVisible="False" />
 
-                        <!-- 읽기 전용 값(대사엔트리·종류 등) — 고치는 곳은 엑셀. -->
-                        <TextBlock x:Name="EpisodeFactsText"
-                                   FontSize="10"
-                                   Opacity="0.6"
-                                   TextWrapping="Wrap"
-                                   Margin="0,2,0,0" />
+                        <!-- ⛔ 읽기 전용 값 줄(`대사엔트리: … · 종류: … · 엑셀 N행`)은
+                             2026-08-24에 뺐다 (소유자). 세 값 전부 엑셀이 소유하고 엑셀에서
+                             보이며, 노드 더블클릭이 그 시트를 연다 — 여기 다시 적는 것은
+                             고칠 수도 없는 글이 상시로 자리를 먹는 것이었다. -->
 
                         <!-- 선택지 — 이 에피소드에서 나가는 길들 (v9). 길 하나 = 선택지 하나.
                              [＋]로 길을 하나 열고, 줄을 클릭하면 그 줄 바로 아래에서 문구와
@@ -281,8 +282,8 @@
                                     FontSize="11" Padding="7,1"
                                     ToolTip.Tip="선택지를 하나 엽니다 — 문구와 도착을 골라 잇습니다. 문구는 챕터 엑셀 `선택지` 시트에서 만듭니다." />
                         </Grid>
-                        <TextBlock Text="길 하나 = 선택지 하나. 문구는 챕터의 사전에서 고르고, 어느 에피소드에서든 같은 문구를 씁니다. 문구가 없는 길은 보이지 않는 기본입니다."
-                                   FontSize="10" Opacity="0.55" TextWrapping="Wrap" />
+                        <!-- ⛔ "길 하나 = 선택지 하나…" 상시 안내는 2026-08-24에 뺐다
+                             (소유자). 같은 말이 [＋] 단추 툴팁에 있고, 그쪽은 물을 때만 뜬다. -->
                         <StackPanel x:Name="EdgeListPanel" Spacing="3">
                             <!-- 잇기 폼 — 코드가 목록 안에서 자리를 옮긴다(클릭한 줄 바로 아래).
                                  문구 드롭다운은 <b>챕터 전체의 사전</b>이다 (v9, 2026-08-17
