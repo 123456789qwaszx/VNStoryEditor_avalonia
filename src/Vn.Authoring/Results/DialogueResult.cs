@@ -51,12 +51,21 @@ public sealed record DialogueResultSetOperation(
 /// 나중에 SetNode에서 조건을 지워도 이미 발행한 결과는 그대로 재현되어야 한다.
 /// </summary>
 /// <param name="OptionId">옵션 라벨 전환에만 있다. 순서 안정성 경고(계약서 C3)의 기준이다.</param>
+/// <param name="ExitTargetNodeId">
+/// 이 전환이 <b>여는</b> 갈래의 출구 (v4, 2026-08-24) — 조건 갈래면 detour, 옵션이면 jump.
+///
+/// ⚠ 줄에도 <see cref="DialogueResultLine.BranchExitTargetNodeId"/>가 있지만 그것은
+/// <b>줄당 하나</b>다. 줄 없는 갈래(대본 끝의 빈 블록)에는 실을 줄 자체가 없어서, 출구가
+/// <b>전환에</b> 붙어야 결과 문서가 자기 완결이 된다. 줄에 실린 쪽은 그대로 두었다 —
+/// 옛 결과 파일이 그 칸으로 읽히기 때문이다.
+/// </param>
 public sealed record DialogueResultTransition(
     ConditionTransitionKind Kind,
     string? ConditionId,
     string? ConditionName,
     string? Expression,
-    string? OptionId = null);
+    string? OptionId = null,
+    string? ExitTargetNodeId = null);
 
 /// <summary>발행 시점에 연결되어 있던 SetNode의 변수 값.</summary>
 public sealed record DialogueResultAssignment(string Variable, string Value);
@@ -74,8 +83,11 @@ public sealed record DialogueResultAssignment(string Variable, string Value);
 public sealed class DialogueResult
 {
     /// <summary>결과 본문의 구조가 바뀌면 올린다. 해시와 함께 호환성 판정에 쓰인다.</summary>
-    /// <remarks>v2: 줄에 SetOperations가 실린다. v3: 선택 전환(OptionId)이 실린다.</remarks>
-    public const int CurrentSchemaVersion = 3;
+    /// <remarks>
+    /// v2: 줄에 SetOperations가 실린다. v3: 선택 전환(OptionId)이 실린다.
+    /// v4: <see cref="TrailingTransitions"/> — 마지막 줄 뒤의 전환(대사 없는 조건 블록).
+    /// </remarks>
+    public const int CurrentSchemaVersion = 4;
 
     public DialogueResult(
         ResultIdentity identity,
@@ -87,8 +99,10 @@ public sealed class DialogueResult
         IReadOnlyList<DialogueResultLine> lines,
         IReadOnlyList<DialogueResultAssignment> assignments,
         string? defaultExitTargetNodeId,
-        DateTimeOffset publishedAt)
+        DateTimeOffset publishedAt,
+        IReadOnlyList<DialogueResultTransition>? trailingTransitions = null)
     {
+        TrailingTransitions = trailingTransitions ?? Array.Empty<DialogueResultTransition>();
         Identity = identity;
         SourceNodeId = sourceNodeId;
         SourceNodeName = sourceNodeName;
@@ -115,6 +129,15 @@ public sealed class DialogueResult
     public string Locale { get; }
 
     public IReadOnlyList<DialogueResultLine> Lines { get; }
+
+    /// <summary>
+    /// <b>마지막 줄 뒤의 전환들</b> (v4, 2026-08-24) — 대사 없는 조건 블록이 대본의 끝일 때.
+    ///
+    /// ⚠ <b>결과 문서에 실어야 한다.</b> 노드에서 그때그때 읽어 오면 결과가 자기 완결이
+    /// 아니게 되고, 무엇보다 <b>꼬리만 다른 두 노드가 같은 해시</b>를 갖는다 — 발행 비교가
+    /// 그 차이를 못 본다.
+    /// </summary>
+    public IReadOnlyList<DialogueResultTransition> TrailingTransitions { get; }
 
     public IReadOnlyList<DialogueResultAssignment> Assignments { get; }
 

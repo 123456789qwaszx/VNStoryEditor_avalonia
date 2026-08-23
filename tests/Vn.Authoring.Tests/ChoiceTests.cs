@@ -181,7 +181,7 @@ public class ChoiceTests
     // ── 발행 ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void 발행_결과에_OptionId가_얼어붙고_스키마는_v3이다()
+    public void 발행_결과에_OptionId가_얼어붙고_스키마는_지금_판이다()
     {
         var sample = new Sample();
         string label = sample.Line("라벨", LineConditionTransition.BeginChoice());
@@ -191,7 +191,10 @@ public class ChoiceTests
 
         DialogueResult result = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
 
-        Assert.Equal(3, result.Identity.SchemaVersion);
+        // ⚠ 숫자를 손으로 적지 않는다 — 규격이 오를 때마다 이 줄이 걸리는데, 여기서
+        //    보려는 것은 <b>발행이 지금 판으로 찍히는가</b>이지 그 숫자가 몇인가가 아니다.
+        //    (v3: 선택 전환 · v4: 꼬리 전환 — 이력은 `DialogueResult`에 적혀 있다.)
+        Assert.Equal(DialogueResult.CurrentSchemaVersion, result.Identity.SchemaVersion);
         Assert.Equal(optionId, result.FindLine(label)!.Transition!.OptionId);
 
         // 결과 저장 왕복에서도 유지된다.

@@ -27,11 +27,27 @@ public sealed record ScenarioLine(
         Transitions.Count > 0 ? Transitions[0] : null;
 }
 
+/// <param name="TrailingTransitions">
+/// <b>마지막 대사 줄 뒤에 남은 전환들</b> (2026-08-24).
+///
+/// 전환은 늘 <em>다음</em> 대사 줄에 실리는데, 대본이 조건 블록으로 끝나면 실을 줄이 없다.
+/// 예전에는 <b>닫는</b> 전환만 눈감아 주고(산출 쪽이 문서 끝에서 닫으므로) <b>여는</b>
+/// 전환은 오류로 세웠다. 그래서 <b>대사 없는 조건 블록이 대본의 마지막</b>이면 통째로
+/// 거부됐다 — 소유자가 겪은 그 자리다.
+///
+/// 이제 <b>끝에서 짝이 맞는 열고-닫기</b>는 여기 담아 나른다. 짝이 안 맞는 여는 전환은
+/// 여전히 오류다(열 대상도 닫을 자리도 없다).
+/// </param>
 public sealed record ScenarioParseResult(
     IReadOnlyList<ScenarioLine> Lines,
-    IReadOnlyList<string> UnparsedLines)
+    IReadOnlyList<string> UnparsedLines,
+    IReadOnlyList<ScenarioStructureIntent>? TrailingTransitions = null)
 {
     public bool HasUnparsed => UnparsedLines.Count > 0;
+
+    /// <summary>마지막 줄 뒤의 전환들. 없으면 빈 목록이다.</summary>
+    public IReadOnlyList<ScenarioStructureIntent> Trailing =>
+        TrailingTransitions ?? Array.Empty<ScenarioStructureIntent>();
 }
 
 /// <summary>
@@ -133,15 +149,62 @@ public static class ScenarioTextParser
 
         // 끝에 남은 <b>닫는</b> 전환은 잘못이 아니다 (2026-08-17 소유자 보고) — 조건
         // 블록이 에피소드의 마지막이면 닫힘을 실어 나를 다음 줄이 없는 것이 정상이고,
-        // 산출 쪽(ResultDocumentComposer)이 문서 끝에서 그 블록을 닫는다. 반대로 <b>여는</b>
-        // 전환이 남았다면 열 대상이 없다는 뜻이라 그대로 말한다.
-        foreach (ScenarioStructureIntent left in pending.Where(item =>
-            item.Kind is not (ConditionTransitionKind.EndIf or ConditionTransitionKind.EndChoice)))
+        // 산출 쪽(ResultDocumentComposer)이 문서 끝에서 그 블록을 닫는다.
+        //
+        // 2026-08-24에 <b>여는</b> 전환도 조건부로 받는다: 끝에서 <b>짝이 맞으면</b>
+        // 그것은 <b>대사 없는 조건 블록</b>이고(소유자: "굳이 대사를 붙이지 않아도 되도록"),
+        // 열 대상이 없는 것이 아니라 <b>담을 것이 없는</b> 것이다. 짝이 안 맞는 여는
+        // 전환만 예전대로 말한다 — 그건 진짜로 붙을 곳이 없다.
+        foreach (ScenarioStructureIntent left in Unbalanced(pending))
         {
             unparsed.Add($"<<{Describe(left)}>> — 뒤따르는 대사 줄이 없어 붙일 곳이 없습니다.");
         }
 
-        return new ScenarioParseResult(lines, unparsed);
+        return new ScenarioParseResult(lines, unparsed, pending.Count > 0 ? [.. pending] : null);
+    }
+
+    /// <summary>
+    /// 끝에 남은 전환 중 <b>짝이 없는 여는 전환</b>들. 열고 닫기가 맞아떨어지면 그것은
+    /// 대사 없는 블록이므로 잘못이 아니다.
+    ///
+    /// 깊이를 세는 것으로 충분하다 — 이 목록은 <b>한 자리</b>에 몰린 전환들이라 순서가 곧
+    /// 일어나는 순서이고, 조건과 선택이 섞여도 각자 제 짝만 본다.
+    /// </summary>
+    private static List<ScenarioStructureIntent> Unbalanced(List<ScenarioStructureIntent> pending)
+    {
+        var open = new List<ScenarioStructureIntent>();
+
+        foreach (ScenarioStructureIntent intent in pending)
+        {
+            switch (intent.Kind)
+            {
+                case ConditionTransitionKind.BeginIf:
+                case ConditionTransitionKind.BeginChoice:
+                    open.Add(intent);
+                    break;
+
+                // elseif·다음 옵션은 열려 있는 것의 갈래를 바꿀 뿐 깊이를 안 바꾼다.
+                case ConditionTransitionKind.BeginElseIf:
+                case ConditionTransitionKind.BeginNextOption:
+                    if (open.Count == 0)
+                    {
+                        open.Add(intent);
+                    }
+
+                    break;
+
+                case ConditionTransitionKind.EndIf:
+                case ConditionTransitionKind.EndChoice:
+                    if (open.Count > 0)
+                    {
+                        open.RemoveAt(open.Count - 1);
+                    }
+
+                    break;
+            }
+        }
+
+        return open;
     }
 
     private const string OptionMarker = "->";

@@ -82,9 +82,18 @@ public static class ConditionFlowResolver
         BranchBuilder? choiceActive = null;
         int chainIndex = -1;
 
-        for (int index = 0; index < script.Lines.Count; index++)
+        // ⚠ 줄들을 돈 <b>뒤에 한 번 더</b> 돈다 — 마지막이 <b>꼬리</b>다(줄 없는 자리).
+        // 대사 없는 조건 블록이 대본의 끝에 있으면 전환을 실을 줄이 없어서, 그 전환들은
+        // 노드의 `TrailingTransitions`에 산다. 같은 기계에 먹여야 갈래가 같은 뜻이 된다 —
+        // 여기서 갈라 따로 세면 그때부터 두 벌이 어긋나기 시작한다.
+        for (int index = 0; index <= script.Lines.Count; index++)
         {
-            DialogueLine line = script.Lines[index];
+            bool tail = index == script.Lines.Count;
+            DialogueLine? line = tail ? null : script.Lines[index];
+
+            IReadOnlyList<LineConditionTransition> transitions =
+                tail ? node.TrailingTransitions : line!.Transitions;
+
             BranchBuilder? active = choiceActive ?? conditionActive;
             BranchBuilder? preceding = active;
             int precedingDepth = (conditionActive is null ? 0 : 1) + (choiceActive is null ? 0 : 1);
@@ -98,7 +107,7 @@ public static class ConditionFlowResolver
             // `EndIf`가 <b>같은 줄</b>(블록 다음 대사 줄)에 함께 실리는데, 둘째인 `EndIf`가
             // 버려져 <b>갈래가 안 닫혔다</b> — 뒤따르는 대사가 전부 그 조건 안으로 빨려
             // 들어갔다. "조건을 건 다음에 대사를 붙여야 한다"의 정체다.
-            foreach (LineConditionTransition transition in line.Transitions)
+            foreach (LineConditionTransition transition in transitions)
             {
                 active = choiceActive ?? conditionActive;
                 if (choiceActive is not null && !transition.IsChoiceKind)
@@ -113,7 +122,8 @@ public static class ConditionFlowResolver
                         // 그 밖의 조건 전환(elseif 등)은 여전히 중첩 위반 — 선택을 먼저 닫아야 한다.
                         problems.Add(new FlowProblem(
                             FlowProblemKind.MixedChain,
-                            line.LineId,
+                            line?.LineId,
+
                             "선택 블록이 닫히기 전에 조건 전환이 나왔습니다. 선택지 끝을 먼저 넣으세요."));
                         choiceActive = null;
                     }
@@ -140,7 +150,8 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.BeginIf:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.NestedCondition,
-                            line.LineId,
+                            line?.LineId,
+
                             "조건 안에서 새 조건을 열었습니다. 조건 중첩은 지원하지 않아 같은 깊이의 다른 갈래로 다룹니다."));
                         conditionActive = Open(
                             line,
@@ -158,7 +169,8 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.BeginElseIf when conditionActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.ElseIfWithoutIf,
-                            line.LineId,
+                            line?.LineId,
+
                             "열린 조건이 없는데 elseif가 있습니다. 새 조건을 여는 것으로 다룹니다."));
                         chainIndex++;
                         conditionActive = Open(
@@ -191,7 +203,8 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.EndIf when conditionActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.EndIfWithoutIf,
-                            line.LineId,
+                            line?.LineId,
+
                             "열린 조건이 없는데 조건 종료가 있습니다. 무시합니다."));
                         break;
 
@@ -209,7 +222,8 @@ public static class ConditionFlowResolver
                         // 선택 블록 안에서 다시 블록을 열었다. 다음 옵션으로 다루되 알린다.
                         problems.Add(new FlowProblem(
                             FlowProblemKind.NestedCondition,
-                            line.LineId,
+                            line?.LineId,
+
                             "선택 블록 안에서 새 선택 블록을 열었습니다. 같은 블록의 다음 옵션으로 다룹니다."));
                         choiceActive = OpenOption(
                             line,
@@ -223,7 +237,8 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.BeginNextOption when choiceActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.OptionWithoutChoice,
-                            line.LineId,
+                            line?.LineId,
+
                             "열린 선택 블록이 없는데 다음 옵션이 있습니다. 새 블록을 여는 것으로 다룹니다."));
                         chainIndex++;
                         choiceActive = OpenOption(line, transition, chainIndex, 0, index, builders);
@@ -242,7 +257,8 @@ public static class ConditionFlowResolver
                     case ConditionTransitionKind.EndChoice when choiceActive is null:
                         problems.Add(new FlowProblem(
                             FlowProblemKind.OptionWithoutChoice,
-                            line.LineId,
+                            line?.LineId,
+
                             "열린 선택 블록이 없는데 선택 종료가 있습니다. 무시합니다."));
                         break;
 
@@ -251,6 +267,12 @@ public static class ConditionFlowResolver
                         choiceActive = null;
                         break;
                 }
+            }
+
+            if (tail)
+            {
+                // 꼬리에는 덮을 줄이 없다 — 갈래를 열고 닫기만 한다.
+                continue;
             }
 
             conditionActive?.Extend(index); // 바깥 조건 갈래는 안의 선택지 줄까지 덮는다
@@ -291,7 +313,7 @@ public static class ConditionFlowResolver
     }
 
     private static BranchBuilder Open(
-        DialogueLine line,
+        DialogueLine? line,
         LineConditionTransition transition,
         int chainIndex,
         int branchIndexInChain,
@@ -315,14 +337,16 @@ public static class ConditionFlowResolver
             {
                 problems.Add(new FlowProblem(
                     FlowProblemKind.UnknownCondition,
-                    line.LineId,
+                    line?.LineId,
+
                     "이 줄이 가리키는 조건 정의를 찾을 수 없습니다. 조건이 삭제되었을 수 있습니다."));
             }
             else
             {
                 problems.Add(new FlowProblem(
                     FlowProblemKind.UnavailableCondition,
-                    line.LineId,
+                    line?.LineId,
+
                     // 2026-08-17 — 범위가 판(챕터)이 됐다. "연결된 SetNode"는 더 이상 규칙이
                     // 아니므로 문구도 그 사실을 말한다: 다른 챕터에 있으면 여기서는 못 쓴다.
                     $"조건 '{known.DisplayName}'은 이 챕터의 설정노드에도 게임 전역 조건에도 " +
@@ -354,27 +378,26 @@ public static class ConditionFlowResolver
     /// <see cref="DialogueNode.BranchExits"/>가 그 글자로 출구를 붙들고 있다 — 접미를
     /// 붙이면 이미 매달린 출구가 전부 고아가 된다. 둘째부터가 새 땅이다.
     /// </summary>
-    private static string AnchorFor(DialogueLine line, List<BranchBuilder> builders)
+    private static string AnchorFor(DialogueLine? line, List<BranchBuilder> builders)
     {
+        // 줄이 없는 갈래(대본 끝의 빈 블록)는 제 뿌리에서 센다.
+        string root = line?.LineId ?? BranchAnchor.TrailingRoot;
+
         int taken = builders.Count(builder =>
-            builder.OpenLineId == line.LineId ||
-            builder.OpenLineId.StartsWith(line.LineId + AnchorSeparator, StringComparison.Ordinal));
+            builder.OpenLineId == root ||
+            builder.OpenLineId.StartsWith(root + BranchAnchor.Separator, StringComparison.Ordinal));
 
-        return taken == 0 ? line.LineId : $"{line.LineId}{AnchorSeparator}{taken}";
+        return line is null
+            ? BranchAnchor.ForTrailing(taken)
+            : BranchAnchor.ForLine(root, taken);
     }
-
-    /// <summary>
-    /// 한 줄이 연 갈래들을 가르는 글자. LineId에 안 쓰이는 글자여야 한다
-    /// (<c>Identifier</c>가 내는 Id는 영숫자와 밑줄뿐이다).
-    /// </summary>
-    private const char AnchorSeparator = '#';
 
     /// <summary>
     /// 옵션 갈래를 연다. 조건과 달리 카탈로그 검증이 없다 — 옵션의 정체성은
     /// 밖에서 공급되는 것이 아니라 이 줄이 소유하는 OptionId다.
     /// </summary>
     private static BranchBuilder OpenOption(
-        DialogueLine line,
+        DialogueLine? line,
         LineConditionTransition transition,
         int chainIndex,
         int branchIndexInChain,

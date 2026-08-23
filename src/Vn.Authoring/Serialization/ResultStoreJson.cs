@@ -23,7 +23,8 @@ internal static class DialogueResultJson
             draft.Locale,
             draft.Lines,
             draft.Assignments,
-            draft.DefaultExitTargetNodeId);
+            draft.DefaultExitTargetNodeId,
+            draft.TrailingTransitions);
     }
 
     public static JsonObject WriteBody(DialogueResult result)
@@ -36,7 +37,8 @@ internal static class DialogueResultJson
             result.Locale,
             result.Lines,
             result.Assignments,
-            result.DefaultExitTargetNodeId);
+            result.DefaultExitTargetNodeId,
+            result.TrailingTransitions);
     }
 
     public static JsonObject Write(DialogueResult result)
@@ -101,7 +103,11 @@ internal static class DialogueResultJson
             lines,
             assignments,
             (string?)json["defaultExit"],
-            ReadTimestamp(json["publishedAt"]));
+            ReadTimestamp(json["publishedAt"]),
+            (json["trailing"]?.AsArray() ?? [])
+                .Select(item => ReadTransition(item as JsonObject))
+                .OfType<DialogueResultTransition>()
+                .ToArray());
     }
 
     private static JsonObject WriteBody(
@@ -112,7 +118,8 @@ internal static class DialogueResultJson
         string locale,
         IReadOnlyList<DialogueResultLine> lines,
         IReadOnlyList<DialogueResultAssignment> assignments,
-        string? defaultExitTargetNodeId)
+        string? defaultExitTargetNodeId,
+        IReadOnlyList<DialogueResultTransition>? trailingTransitions = null)
     {
         var lineArray = new JsonArray();
 
@@ -134,29 +141,7 @@ internal static class DialogueResultJson
 
             if (line.Transition is { } transition)
             {
-                var conditionJson = new JsonObject { ["kind"] = KindName(transition.Kind) };
-
-                if (transition.ConditionId is not null)
-                {
-                    conditionJson["condition"] = transition.ConditionId;
-                }
-
-                if (transition.ConditionName is not null)
-                {
-                    conditionJson["name"] = transition.ConditionName;
-                }
-
-                if (transition.Expression is not null)
-                {
-                    conditionJson["expression"] = transition.Expression;
-                }
-
-                if (transition.OptionId is not null)
-                {
-                    conditionJson["option"] = transition.OptionId;
-                }
-
-                item["condition"] = conditionJson;
+                item["condition"] = WriteTransition(transition);
             }
 
             if (line.BranchExitTargetNodeId is not null)
@@ -215,6 +200,21 @@ internal static class DialogueResultJson
 
         json["lines"] = lineArray;
 
+        // 마지막 줄 뒤의 전환 (v4) — 대사 없는 조건 블록이 대본의 끝일 때.
+        // ⚠ 이 칸이 <b>해시에 들어간다</b>(WriteBody가 곧 해시의 입력이다) — 꼬리만 다른
+        // 두 노드가 같은 결과로 보이면 발행 비교가 그 차이를 못 본다.
+        if (trailingTransitions is { Count: > 0 })
+        {
+            var trailingArray = new JsonArray();
+
+            foreach (DialogueResultTransition transition in trailingTransitions)
+            {
+                trailingArray.Add(WriteTransition(transition));
+            }
+
+            json["trailing"] = trailingArray;
+        }
+
         if (assignmentArray.Count > 0)
         {
             json["assignments"] = assignmentArray;
@@ -258,7 +258,42 @@ internal static class DialogueResultJson
             (string?)json["condition"],
             (string?)json["name"],
             (string?)json["expression"],
-            (string?)json["option"]);
+            (string?)json["option"],
+            (string?)json["exit"]);
+    }
+
+    /// <summary>전환 하나를 JSON으로 — 줄에 실린 것과 꼬리의 것이 <b>같은 모양</b>이다.</summary>
+    private static JsonObject WriteTransition(DialogueResultTransition transition)
+    {
+        var json = new JsonObject { ["kind"] = KindName(transition.Kind) };
+
+        if (transition.ConditionId is not null)
+        {
+            json["condition"] = transition.ConditionId;
+        }
+
+        if (transition.ConditionName is not null)
+        {
+            json["name"] = transition.ConditionName;
+        }
+
+        if (transition.Expression is not null)
+        {
+            json["expression"] = transition.Expression;
+        }
+
+        if (transition.OptionId is not null)
+        {
+            json["option"] = transition.OptionId;
+        }
+
+        // 줄 없는 갈래의 출구 (v4) — 실을 줄이 없어 전환에 붙는다.
+        if (transition.ExitTargetNodeId is not null)
+        {
+            json["exit"] = transition.ExitTargetNodeId;
+        }
+
+        return json;
     }
 
     internal static string KindName(ConditionTransitionKind kind) => kind switch

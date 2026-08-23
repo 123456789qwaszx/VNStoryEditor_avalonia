@@ -1956,12 +1956,41 @@ public sealed partial class ProjectEditor
     /// 대본에서 사라진 줄의 출구는 여기서 지우지 않는다. 그것은 <b>고아</b>이지 쓰레기가 아니다.
     /// 대본을 되돌리면 살아나야 하고, 그때까지는 진단으로 보인다.
     /// </summary>
+    /// <summary>
+    /// 주인 없는 출구를 버린다 — 갈래가 사라졌으면 거기 매달린 배선도 갈 곳이 없다.
+    ///
+    /// ⚠ <b>신원을 흐름 해석과 같은 규칙으로 짓는다</b>(<see cref="Flow.BranchAnchor"/>).
+    /// 예전에는 여기가 <c>extension.Transition</c>(첫 전환) 하나만 보고 <b>맨 줄 Id</b>만
+    /// 살렸다. 그래서 (ㄱ) 첫 전환이 여는 것이 아닌 줄의 출구가 통째로 지워졌고,
+    /// (ㄴ) 한 줄이 갈래를 여럿 열 때 둘째부터의 출구가 매달자마자 사라졌다.
+    /// </summary>
     private static void PruneBranchExits(DialogueNode node)
     {
-        HashSet<string> opening = node.LineExtensions
-            .Where(extension => extension.Transition?.OpensBranch == true)
-            .Select(extension => extension.LineId)
-            .ToHashSet(StringComparer.Ordinal);
+        var opening = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (DialogueLineExtension extension in node.LineExtensions)
+        {
+            int ordinal = 0;
+
+            foreach (LineConditionTransition transition in extension.Transitions)
+            {
+                if (transition.OpensBranch)
+                {
+                    opening.Add(Flow.BranchAnchor.ForLine(extension.LineId, ordinal++));
+                }
+            }
+        }
+
+        // 대본 끝의 줄 없는 갈래들 (2026-08-24).
+        int trailing = 0;
+
+        foreach (LineConditionTransition transition in node.TrailingTransitions)
+        {
+            if (transition.OpensBranch)
+            {
+                opening.Add(Flow.BranchAnchor.ForTrailing(trailing++));
+            }
+        }
 
         foreach (string key in node.BranchExits.Keys.Where(key => !opening.Contains(key)).ToList())
         {

@@ -78,8 +78,10 @@ public sealed class DialogueDraft
         IReadOnlyList<DialogueResultLine> lines,
         IReadOnlyList<DialogueResultAssignment> assignments,
         string? defaultExitTargetNodeId,
-        IReadOnlyList<PublishProblem> problems)
+        IReadOnlyList<PublishProblem> problems,
+        IReadOnlyList<DialogueResultTransition>? trailingTransitions = null)
     {
+        TrailingTransitions = trailingTransitions ?? Array.Empty<DialogueResultTransition>();
         SourceNodeId = sourceNodeId;
         SourceNodeName = sourceNodeName;
         SourceScriptId = sourceScriptId;
@@ -102,6 +104,9 @@ public sealed class DialogueDraft
     public string Locale { get; }
 
     public IReadOnlyList<DialogueResultLine> Lines { get; }
+
+    /// <summary>마지막 줄 뒤의 전환들 — 대사 없는 조건 블록이 대본의 끝일 때 (2026-08-24).</summary>
+    public IReadOnlyList<DialogueResultTransition> TrailingTransitions { get; }
 
     public IReadOnlyList<DialogueResultAssignment> Assignments { get; }
 
@@ -276,7 +281,11 @@ public static class DialoguePublisher
             assignments,
             // 커스텀 노드는 기본 출구 없이 발행된다 — detour의 복귀가 그 자리를 맡는다.
             node.EffectiveDefaultExit,
-            problems);
+            problems,
+            // 마지막 줄 뒤의 전환 (2026-08-24) — 대사 없는 조건 블록이 대본의 끝일 때.
+            // 줄에 실린 것과 <b>같은 얼리기</b>를 지난다: 조건 Id가 아니라 <b>식</b>이
+            // 결과에 굳어야 산출물이 자기 완결이 된다.
+            FreezeTrailing(node, project, definition, available));
     }
 
     /// <summary>
@@ -326,7 +335,8 @@ public static class DialoguePublisher
             draft.Lines,
             draft.Assignments,
             draft.DefaultExitTargetNodeId,
-            publishedAt);
+            publishedAt,
+            draft.TrailingTransitions);
 
         results.Add(result);
         created = true;
@@ -353,7 +363,8 @@ public static class DialoguePublisher
             draft.Lines,
             draft.Assignments,
             draft.DefaultExitTargetNodeId,
-            now);
+            now,
+            draft.TrailingTransitions);
     }
 
     /// <summary>
@@ -434,6 +445,43 @@ public static class DialoguePublisher
         }
 
         return blocks;
+    }
+
+    /// <summary>
+    /// 대본 끝의 줄 없는 갈래들을 얼린다 (2026-08-24) — 전환과 <b>그 갈래의 출구</b>를 함께.
+    ///
+    /// 출구가 전환에 붙는 이유: 실을 줄이 없다. 앵커는 흐름 해석과 같은 규칙으로 짓는다
+    /// (<see cref="Flow.BranchAnchor"/>) — 두 곳이 다르게 세면 매단 detour가 사라진다.
+    /// </summary>
+    private static IReadOnlyList<DialogueResultTransition> FreezeTrailing(
+        DialogueNode node,
+        StoryProject project,
+        GameDefinition? definition,
+        AvailableConditionCatalog available)
+    {
+        var frozen = new List<DialogueResultTransition>(node.TrailingTransitions.Count);
+        int opened = 0;
+
+        foreach (LineConditionTransition transition in node.TrailingTransitions)
+        {
+            if (Freeze(transition, project, definition, available) is not { } item)
+            {
+                continue;
+            }
+
+            if (!transition.OpensBranch)
+            {
+                frozen.Add(item);
+                continue;
+            }
+
+            node.BranchExits.TryGetValue(
+                Flow.BranchAnchor.ForTrailing(opened++), out string? exit);
+
+            frozen.Add(item with { ExitTargetNodeId = exit });
+        }
+
+        return frozen;
     }
 
     private static DialogueResultTransition? Freeze(
