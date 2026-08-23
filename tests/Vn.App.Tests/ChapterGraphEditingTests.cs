@@ -26,7 +26,6 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -57,7 +56,6 @@ public sealed class ChapterGraphEditingTests
         // 눌러 연 패널에서도 문구를 고르고, [적용] 한 번에 관문과 함께 저장된다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -92,7 +90,6 @@ public sealed class ChapterGraphEditingTests
         // 다른 에피소드의 드롭다운에서도 사라진다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEpisode("branch05.02A");
         view.DeleteSelectedEpisode();
@@ -105,33 +102,44 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 엑셀에서만_편집이_기본이라_툴_편집_창구가_닫혀_있다() => HeadlessUi.Run(() =>
+    public void 엑셀이_잡고_있으면_툴_편집_창구가_닫힌다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-16 소유자 — 기본 동작: 모든 데이터는 엑셀에서 만지고 툴은 보여준다.
+        // 2026-08-24 소유자 — "엑셀이 켜지면 자동으로 잠기면서 편집이 불가능하게 막는게
+        // 좋겠어." 예전에는 체크 하나가 문지기였고 기본이 켬이었다. 이제 문을 잠그는 것은
+        // 사람이 아니라 <b>엑셀이 그 파일을 잡았다는 사실</b>이다.
         using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, _) = Show(project);
-
-        Assert.True(view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked);
+        (ChapterGraphView view, _) = Show(project, locked: true);
 
         view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
+        Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
         Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
         Assert.False(view.FindControl<ComboBox>("VisibleCombo")!.IsEnabled);
         Assert.False(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
         Assert.False(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
         // 삭제 단추는 늘 같은 자리에 있고 상태만 바뀐다 (2026-08-16 소유자 보고) —
-        // 체크를 푸는 순간 튀어나오면 그 자리를 누르던 손이 삭제를 누른다.
+        // 잠금이 풀리는 순간 튀어나오면 그 자리를 누르던 손이 삭제를 누른다.
         var delete = view.FindControl<Button>("DeleteEpisodeButton")!;
         Assert.True(delete.IsVisible);
         Assert.False(delete.IsEnabled);
+    });
 
-        // 체크를 풀면 열린다.
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+    [Fact]
+    public void 엑셀이_안_잡고_있으면_편집이_열려_있다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 이것이 2026-08-24에 뒤집힌 기본값이다 — 전에는 닫힌 채로 시작했다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
+        Assert.False(view.FindControl<Border>("LockBanner")!.IsVisible);
         Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
         Assert.True(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
+
+        var delete = view.FindControl<Button>("DeleteEpisodeButton")!;
         Assert.True(delete.IsVisible);
         Assert.True(delete.IsEnabled);
     });
@@ -160,14 +168,21 @@ public sealed class ChapterGraphEditingTests
 
         TextBlock hint = view.FindControl<TextBlock>("IdBoxHint")!;
 
-        // 기본은 엑셀 전용 — 왜 못 고치는지를 그 자리에서 말한다.
-        Assert.Contains("엑셀에서만 편집", hint.Text);
-
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
         Assert.Contains("Enter", hint.Text);
         Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+    });
+
+    [Fact]
+    public void 잠겼을_때는_이름_칸이_왜_잠겼는지_말한다() => HeadlessUi.Run(() =>
+    {
+        // 비활성 칸이 아무 말도 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
+        // ⛔ "엑셀에서만 편집 체크를 푸세요"로는 돌아가지 않는다: 풀 체크가 없다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project, locked: true);
+        view.SelectEpisode("main05.01");
+
+        Assert.Contains("엑셀", view.FindControl<TextBlock>("IdBoxHint")!.Text);
+        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
     });
 
     [Fact]
@@ -175,7 +190,6 @@ public sealed class ChapterGraphEditingTests
     {
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEpisode("main05.01");
         view.FindControl<ComboBox>("EdgeTargetCombo")!.SelectedItem = "main05.end";
@@ -196,7 +210,6 @@ public sealed class ChapterGraphEditingTests
         // 견본의 사전에는 main05.02가 쓰는 문구 둘이 있고, main05.01에서도 그것을 고른다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEpisode("main05.01");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -231,7 +244,6 @@ public sealed class ChapterGraphEditingTests
     {
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -555,12 +567,17 @@ public sealed class ChapterGraphEditingTests
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 
-    private static (ChapterGraphView View, AuthoringSession Session) Show(TempProject project)
+    /// <param name="locked">
+    /// 엑셀이 그 챕터를 잡고 있는가 (2026-08-24). 진짜 잠긴 파일은 <b>쓸 수도 없어서</b>
+    /// 실제 잠금으로는 편집 규칙을 검증할 수 없다 — 그래서 손을 갈아 끼운다.
+    /// </param>
+    private static (ChapterGraphView View, AuthoringSession Session) Show(
+        TempProject project, bool locked = false)
     {
         var session = new AuthoringSession();
         session.Open(project.ManifestPath);
 
-        var view = new ChapterGraphView();
+        var view = new ChapterGraphView { LockProbe = _ => locked };
         var window = new Window { Width = 1400, Height = 800, Content = view };
         window.Show();
         view.Attach(session);

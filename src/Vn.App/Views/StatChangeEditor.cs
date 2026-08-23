@@ -48,7 +48,7 @@ internal sealed class StatChangeEditor : StackPanel
     /// </summary>
     public event EventHandler? Changed;
 
-    /// <summary>읽기 전용(엑셀에서만 편집)이면 드롭다운·단추가 잠긴다.</summary>
+    /// <summary>읽기 전용(엑셀이 그 챕터를 잡고 있음)이면 드롭다운·단추가 잠긴다.</summary>
     public bool Editable { get; set; } = true;
 
     /// <summary>이 챕터의 스탯 목록과 지금 값으로 편집기를 채운다.</summary>

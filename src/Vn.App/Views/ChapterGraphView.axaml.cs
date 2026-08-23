@@ -110,6 +110,13 @@ public partial class ChapterGraphView : UserControl
         _selectedEdgeKey = null;
         HideEdgeForm();
 
+        // 잠금도 이전 챕터의 것이 아니다 (2026-08-24) — 엑셀이 A를 잡고 있을 때 B로
+        // 옮기면 B는 잠기지 않은 채로 보여야 한다. ⚠ 그 물음을 여기 두지 않는다:
+        // 바로 아래 Draw()의 마지막 줄이 이미 묻는다
+        // (RefreshPropertyPanel → ApplyEditability → RefreshLockBanner). 한 줄 더 두면
+        // 같은 물음이 두 곳에 산다. 대신 규칙을 테스트가 붙든다
+        // (`ChapterEditGateTests.다른_챕터로_옮기면_그_챕터의_잠금을_다시_묻는다`) —
+        // Draw()의 그 줄이 사라지면 여기가 아니라 그 테스트가 먼저 말한다.
         Validate();
         Draw();
 
@@ -191,7 +198,7 @@ public partial class ChapterGraphView : UserControl
 
         // 편집 (G-2 v2) — 전부 엑셀 셀에 써지고, 저장 감시가 다시 읽어 화면이 따라온다.
         // 2026-08-16 소유자 — [개명]·[적용] 단추 폐지: Id는 Enter로 개명하고, 조건 콤보는
-        // 고르는 순간 저장된다. 기본은 읽기 전용(엑셀에서만 편집)이라 체크를 풀어야 열린다.
+        // 고르는 순간 저장된다. 편집은 늘 열려 있고, 엑셀이 그 파일을 잡은 동안만 닫힌다.
         IdBox.KeyDown += (_, e) =>
         {
             if (e.Key == Avalonia.Input.Key.Enter)
@@ -240,11 +247,6 @@ public partial class ChapterGraphView : UserControl
             }
         };
         _edgeStats.Changed += (_, _) => AutoSaveEdge();
-        ExcelOnlyCheck.IsCheckedChanged += (_, _) => UiGuard.Run(_session, "편집 모드 전환", () =>
-        {
-            ApplyEditability();
-            RefreshPropertyPanel(preserveTyping: true);
-        });
         CopyDiagnosticsButton.Click += async (_, _) =>
             await UiGuard.RunAsync(_session, "보고 복사", CopyDiagnosticsAsync);
 
@@ -445,7 +447,18 @@ public partial class ChapterGraphView : UserControl
         _watcher = new ChapterFolderWatcher(
             folder,
             () => Dispatcher.UIThread.Post(
-                () => UiGuard.Run(_session, "챕터 워크북 반영", ReloadIfDiskChanged)));
+                () => UiGuard.Run(_session, "챕터 워크북 반영", ReloadIfDiskChanged)),
+            debounce: null,
+            // 엑셀이 이 챕터를 <b>열거나 닫는</b> 순간 (2026-08-24). 저장이 아니므로 다시
+            // 읽지 않는다 — 내용은 그대로다. 바뀐 것은 <b>툴이 쓸 수 있는가</b>뿐이라
+            // 잠금만 다시 묻는다. 이 알림이 없으면 툴은 쓰기가 거부되고 나서야 알았다.
+            //
+            // ⚠ 이 알림이 <b>유일한 길은 아니다.</b> 엑셀이 잠금 파일을 지우는 것과 파일
+            // 핸들을 놓는 것 사이에 틈이 있으면(디바운스 250ms로도 못 덮는 경우) 여기서
+            // 물은 답이 아직 "잠김"일 수 있다. 그래도 갇히지 않는다: 그리기·패널 갱신이
+            // 모두 RefreshLockBanner를 지나므로 다음 클릭 한 번이면 풀린다.
+            onLockChanged: () => Dispatcher.UIThread.Post(
+                () => UiGuard.Run(_session, "엑셀 잠금 확인", RefreshLockState)));
     }
 
     /// <summary>
@@ -1151,7 +1164,7 @@ public partial class ChapterGraphView : UserControl
         AutoExport();        // 진행 JSON은 사람 손을 기다리지 않는다 (2026-08-17)
         Validate();
         Draw();              // 못 나갔으면 그 결론이 검증 보고 맨 위에 선다
-        RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
+        RefreshLockState(); // 엑셀을 열거나 닫으면 그 사실이 여기로 온다
 
         // 방금 본 디스크를 지문으로 남긴다 — 감시자가 깨울 때 이것과 견준다(IfDiskChanged).
         // 이행(.bak)이 위에서 파일을 만졌을 수도 있으므로 읽기가 끝난 지금 찍는다.
@@ -2272,24 +2285,39 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    // ── 편집 모드 (2026-08-16 소유자) ───────────────────────────────────────
-    // 기본 = 엑셀에서만 편집(툴 읽기 전용). 우측 위 체크를 풀어야 툴 편집이 열린다.
+    // ── 편집 모드 ───────────────────────────────────────────────────────────
+    //
+    // 2026-08-16~08-23: 우측 위 [엑셀에서만 편집] 체크(기본 켬)가 문지기였다.
+    // 2026-08-24 소유자 — "저걸 툴사용자가 체크하는 게 아니라, 엑셀이 켜지면 자동으로
+    // 잠기면서 편집이 불가능하게 막는게 좋겠어."
+    //
+    // 그래서 체크를 없앴다. 문을 잠그는 것은 <b>사실 하나</b>다: 엑셀이 이 챕터 파일을
+    // 잡고 있는가. 체크는 그 사실의 사본이었고, 사본이라 어긋날 수 있었다 — 체크가
+    // 풀려 있는데 엑셀이 열려 있으면 툴은 "편집 가능"인 척하다 쓰기에서 거부됐다.
+    // 이제 사실은 한 곳에만 산다.
 
     /// <summary>콤보·목록을 프로그램이 채우는 중 — 자동 저장 억제.</summary>
     private bool _fillingPanel;
 
-    private bool ToolEditable => ExcelOnlyCheck.IsChecked != true;
-
     /// <summary>
-    /// 엑셀이 이 챕터를 열고 있으면 배너로 말한다 (2026-08-16 실사례) — 그 상태에서는
-    /// 툴의 모든 쓰기가 거부되므로, 누르고 나서가 아니라 <b>누르기 전에</b> 보여야 한다.
+    /// 엑셀이 이 챕터를 잡고 있는가. <b>이 한 칸이 편집 가능 여부의 전부다</b> —
+    /// 사람이 돌릴 스위치는 없다. 답의 주인은 파일이고 이 칸은 마지막으로 물어본 답이다.
     /// </summary>
+    private bool _excelHoldsChapter;
+
+    private bool ToolEditable => !_excelHoldsChapter;
+
     /// <summary>
     /// 엑셀이 잡고 있는지 묻는 손. 진짜 잠긴 파일은 <b>쓸 수도 없어서</b>, "잠기기 직전에
     /// 낸다"를 실제 잠금으로는 검증할 수 없다 — 검증이 이 손을 갈아끼운다.
     /// </summary>
     internal Func<string?, bool> LockProbe { get; set; } = ChapterWorkbookWriter.IsLockedByAnotherApp;
 
+    /// <summary>
+    /// 엑셀이 이 챕터를 열고 있으면 배너로 말한다 (2026-08-16 실사례) — 그 상태에서는
+    /// 툴의 모든 쓰기가 거부되므로, 누르고 나서가 아니라 <b>누르기 전에</b> 보여야 한다.
+    /// 2026-08-24부터는 <b>말하는 데서 그치지 않는다</b>: 이 답이 곧 편집 가능 여부다.
+    /// </summary>
     private void RefreshLockBanner()
     {
         bool locked = LockProbe(SelectedChapterPath);
@@ -2303,29 +2331,47 @@ public partial class ChapterGraphView : UserControl
         ApplyLockGate(locked);
     }
 
-    /// <summary>툴이 잠금 때문에 편집을 닫았는가 — 풀리면 스위치를 그대로 돌려준다.</summary>
-    private bool _lockForcedExcelOnly;
+    /// <summary>
+    /// 잠금을 다시 묻고, <b>답이 바뀌었으면 패널까지 그 답에 맞춘다</b>.
+    ///
+    /// <see cref="RefreshLockBanner"/>와 나눠 둔 이유가 있다: 저쪽은
+    /// <see cref="ApplyEditability"/>가 값을 읽기 <em>직전에</em> 부르는 자리라 되짚어
+    /// 부르면 스스로를 다시 부른다. 밖에서 들어오는 길(다시 읽기·쓰기 결과·감시자)은
+    /// 이쪽으로 온다 — 그때는 화면 전체가 따라와야 한다.
+    /// </summary>
+    private void RefreshLockState()
+    {
+        bool before = _excelHoldsChapter;
 
-    /// <summary>잠금 반영이 자기 자신을 다시 부르지 않게 하는 빗장.</summary>
-    private bool _applyingLockGate;
+        RefreshLockBanner();
+
+        if (_excelHoldsChapter != before)
+        {
+            RefreshPropertyPanel(preserveTyping: true);
+        }
+    }
 
     /// <summary>
-    /// 엑셀이 이 챕터를 잡고 있는 동안에는 <b>체크를 풀 수 없다</b> (2026-08-17 소유자:
-    /// "엑셀이 열려있으면 그냥 체크 안되게 해버려"). 전에는 풀 수는 있는데 누르는 족족
-    /// 거부됐다 — 열 수 없는 문을 흔들게 두는 셈이었다.
+    /// 잠금 상태를 <b>받아 적는다</b>. 이 메서드는 판단하지 않는다 — 판단은
+    /// <see cref="LockProbe"/>가 파일에 물어 이미 끝냈고, 여기서는 그 답이 <em>바뀌었을 때</em>
+    /// 해야 할 일만 한다.
     ///
-    /// 편집 중에 엑셀이 열리면 <b>아직 단추를 안 누른 값을 먼저 내고</b> 잠근다(소유자:
+    /// 편집 중에 엑셀이 열리면 <b>아직 단추를 안 누른 값을 먼저 낸다</b> (2026-08-17 소유자:
     /// "하는 중에 엑셀이 열리면 현재까지된걸 저장한 뒤에 잠그고"). 엑셀이 먼저 파일을
-    /// 잡았으면 그 쓰기는 거부되지만, 값은 패널에 그대로 남는다 — 엑셀을 닫고 [적용]하면
+    /// 잡았으면 그 쓰기는 거부되지만, 값은 패널에 그대로 남는다 — 엑셀을 닫고 다시 고르면
     /// 된다. 낡은 값을 나중에 몰래 밀어 넣지는 않는다: 그 사이 엑셀에서 고쳤을 수 있고,
     /// 그러면 사람이 방금 한 편집을 툴이 덮는다.
     ///
-    /// 잠금이 풀리면 <b>툴이 가져간 스위치를 돌려준다</b> — 스스로 켠 것만 되돌린다.
-    /// 사람이 직접 켜 둔 [엑셀에서만 편집]은 건드리지 않는다.
+    /// ⚠ <b>바뀔 때만 움직인다.</b> 이 자리는 다시 그리기·쓰기·감시자 알림마다 불리므로,
+    /// 매번 상태줄에 말하면 "엑셀이 닫혔습니다"가 끝없이 흐른다.
     /// </summary>
     private void ApplyLockGate(bool locked)
     {
-        if (_applyingLockGate)
+        // ⛔ 이 빗장을 빼면 <b>스택이 넘친다</b> — 지운 적이 있고 그 자리에서 확인했다
+        // (2026-08-24). 길은 이렇다: 여기서 부르는 FlushPendingEdits가 워크북을 쓰고,
+        // 쓰기 결과는 Report로 가고, Report는 "거부됐다면 대개 엑셀이 잡은 것"이라며
+        // 잠금을 다시 묻는다 — 그래서 여기로 돌아온다. 값이 아직 안 바뀐 채로.
+        if (_applyingLockGate || locked == _excelHoldsChapter)
         {
             return;
         }
@@ -2336,31 +2382,24 @@ public partial class ChapterGraphView : UserControl
         {
             if (locked)
             {
-                if (ToolEditable)
-                {
-                    FlushPendingEdits();
-                    _lockForcedExcelOnly = true;
-                    ExcelOnlyCheck.IsChecked = true;
-                }
-
-                ExcelOnlyCheck.IsEnabled = false;
+                // 순서가 곧 규칙이다 — 잠갔다고 적기 <b>전에</b> 내야 그 쓰기가 열린
+                // 문으로 나간다. 뒤집으면 툴이 자기 관문에 스스로 막힌다.
+                FlushPendingEdits();
+                _excelHoldsChapter = true;
                 return;
             }
 
-            ExcelOnlyCheck.IsEnabled = true;
-
-            if (_lockForcedExcelOnly)
-            {
-                _lockForcedExcelOnly = false;
-                ExcelOnlyCheck.IsChecked = false;
-                _session?.SetStatus("엑셀이 닫혔습니다 — 툴 편집을 다시 열었습니다.");
-            }
+            _excelHoldsChapter = false;
+            _session?.SetStatus("엑셀이 닫혔습니다 — 툴 편집이 다시 열렸습니다.");
         }
         finally
         {
             _applyingLockGate = false;
         }
     }
+
+    /// <summary>잠금 반영이 자기 자신을 다시 부르지 않게 하는 빗장 — 위 ⛔ 참조.</summary>
+    private bool _applyingLockGate;
 
     /// <summary>
     /// 열려 있는 폼의 값을 낸다 — 잠기기 직전의 마지막 저장. 개명(IdBox)은 일부러 빼둔다:
@@ -2382,7 +2421,8 @@ public partial class ChapterGraphView : UserControl
 
     private void ApplyEditability()
     {
-        RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
+        // ⚠ 여기서는 배너 쪽만 부른다 — RefreshLockState는 되짚어 이 메서드를 부른다.
+        RefreshLockBanner();
 
         bool editable = ToolEditable;
 
@@ -2392,7 +2432,7 @@ public partial class ChapterGraphView : UserControl
         // 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
         IdBoxHint.Text = editable
             ? "이름 — 고치고 Enter"
-            : "이름 — 고치려면 위 [엑셀에서만 편집] 체크를 푸세요";
+            : "이름 — 엑셀이 이 챕터를 열고 있어 잠겼습니다";
         VisibleCombo.IsEnabled = editable;
         UnlockCombo.IsEnabled = editable;
         AddNextEdgeButton.IsVisible = editable;
@@ -2867,7 +2907,7 @@ public partial class ChapterGraphView : UserControl
 
     /// <summary>
     /// 간선 패널에서 그 끝의 에피소드로 건너뛰는 고리. 누르면 그 에피소드가 선택되어
-    /// 속성 패널(Id [개명]·제목)이 열린다 — 간선을 보다가 에피소드 이름을 고치려 할 때
+    /// 속성 패널(Id [이름] 칸·제목)이 열린다 — 간선을 보다가 에피소드 이름을 고치려 할 때
     /// 노드를 다시 찾아 클릭하지 않아도 된다.
     /// </summary>
     private Control EpisodeLink(ChapterGraphModel model, string episodeId)
@@ -3180,7 +3220,7 @@ public partial class ChapterGraphView : UserControl
     /// [＋ 에피소드] — 에피소드가 선택돼 있으면 <b>그 자식으로</b> 만들어 간선까지 잇는다
     /// (자리 = 부모 깊이 + 1 열, v3 소유자 지시). 선택이 없으면 홀로 선 노드다.
     /// Id는 자동 발명하지 않되 빈 워크북을 부를 수는 없으니, 겹치지 않는 자리표시 Id를 주고
-    /// 사람이 패널에서 [개명]으로 정하게 한다.
+    /// 사람이 패널의 [이름] 칸에서 고쳐 정하게 한다(Enter로 확정).
     /// </summary>
     internal void AddEpisodeFromToolbar()
     {
@@ -3250,7 +3290,7 @@ public partial class ChapterGraphView : UserControl
         _session?.SetStatus(result.Written ? success : result.Failure!);
 
         // 거부됐다면 대개 엑셀이 잡고 있어서다 — 그 사실을 배너로도 세운다(상태줄은 묻힌다).
-        RefreshLockBanner(); // 엑셀을 닫으면 파일 사건이 여기로 오고 배너가 걷힌다
+        RefreshLockState(); // 엑셀을 열거나 닫으면 그 사실이 여기로 온다
 
         // 방금 우리가 워크북을 바꿨다 — 판을 다시 읽어야 화면이 파일과 같은 말을 한다.
         //

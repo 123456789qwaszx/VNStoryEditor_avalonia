@@ -26,7 +26,6 @@ public sealed class ChapterStatEditingTests
     {
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(project.ChapterPath);
         ChapterEdge target = model.Edges.First(edge => edge.FromEpisodeId == "main05.02");
@@ -67,7 +66,6 @@ public sealed class ChapterStatEditingTests
         // 두 번 쓰면 그 사이에 엑셀이 파일을 잡을 수 있고, 반쪽만 적힌 길이 남는다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         ChapterStat stat = ChapterWorkbookReader.Read(project.ChapterPath).Stats[0];
 
@@ -97,7 +95,6 @@ public sealed class ChapterStatEditingTests
     {
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         ChapterStat stat = ChapterWorkbookReader.Read(project.ChapterPath).Stats[0];
 
@@ -126,7 +123,6 @@ public sealed class ChapterStatEditingTests
         // 소유자의 두 요청이 만나는 자리다 — 여기서 수치를 적으면 저기 카드에 폭이 뜬다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(project.ChapterPath);
         ChapterStat stat = model.Stats[0];

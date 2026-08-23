@@ -87,11 +87,54 @@ public sealed class ChapterFolderWatcherTests : IDisposable
         using var watcher = new ChapterFolderWatcher(
             _folder, () => Interlocked.Increment(ref notifications), Debounce);
 
-        // 엑셀이 파일을 열면 ~$ 잠금 파일이 생긴다. 그건 저장이 아니다.
+        // 엑셀이 파일을 열면 ~$ 잠금 파일이 생긴다. 그건 저장이 아니다 — 내용은 그대로다.
         File.WriteAllText(Path.Combine(_folder, "~$ch05.xlsx"), "lock");
 
         Thread.Sleep(Debounce + Debounce + Debounce);
         Assert.Equal(0, Volatile.Read(ref notifications));
+    }
+
+    [Fact]
+    public void 엑셀이_파일을_열면_잠금_알림이_온다()
+    {
+        // 2026-08-24 — 예전에는 이 사건을 <b>그냥 버렸다.</b> 그래서 툴은 엑셀이 파일을
+        // 잡은 것을 쓰기가 거부되고 나서야 알았다. 편집을 사람이 아니라 잠금이 여닫게 된
+        // 지금은 이 알림이 없으면 잠금이 <b>영영 안 걸린다</b>: 엑셀이 파일을 여는 것은
+        // 저장이 아니라 다른 어떤 알림도 오지 않는다.
+        WriteChapter("ch05.xlsx", episodeTitle: "처음");
+
+        using var locks = new CountdownEvent(1);
+        int saves = 0;
+
+        using var watcher = new ChapterFolderWatcher(
+            _folder,
+            () => Interlocked.Increment(ref saves),
+            Debounce,
+            onLockChanged: () => Signal(locks));
+
+        File.WriteAllText(Path.Combine(_folder, "~$ch05.xlsx"), "lock");
+
+        Assert.True(locks.Wait(Patience), "엑셀이 파일을 열었는데 잠금 알림이 오지 않았다");
+        Assert.Equal(0, Volatile.Read(ref saves));   // 저장 쪽으로는 새지 않는다
+    }
+
+    [Fact]
+    public void 엑셀이_파일을_닫아도_잠금_알림이_온다()
+    {
+        // 잠기는 것만 알면 툴은 영영 잠긴 채로 남는다. ⚠ 알림의 뜻은 "잠겼다"가 아니라
+        // <b>"다시 물어보라"</b>다 — 답은 파일에 물어서 낸다.
+        WriteChapter("ch05.xlsx", episodeTitle: "처음");
+
+        string lockFile = Path.Combine(_folder, "~$ch05.xlsx");
+        File.WriteAllText(lockFile, "lock");
+
+        using var locks = new CountdownEvent(1);
+        using var watcher = new ChapterFolderWatcher(
+            _folder, () => { }, Debounce, onLockChanged: () => Signal(locks));
+
+        File.Delete(lockFile);
+
+        Assert.True(locks.Wait(Patience), "엑셀이 파일을 닫았는데 잠금 알림이 오지 않았다");
     }
 
     [Fact]

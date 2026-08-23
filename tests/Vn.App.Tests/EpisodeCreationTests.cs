@@ -64,7 +64,7 @@ public sealed class EpisodeCreationTests : IDisposable
     public void 엑셀에서_직접_더한_행에도_대본이_생긴다() => HeadlessUi.Run(() =>
     {
         // 툴의 [＋ 에피소드]는 원래도 만들고 있었다 — 빠진 것은 <b>엑셀에서 직접 행을 더한</b>
-        // 경우다. 그게 기본 작업 방식(엑셀에서만 편집)이라 대부분이 그 길로 들어온다.
+        // 경우다. 원본이 엑셀이라 대부분이 그 길로 들어온다.
         ChapterWorkbookWriter.AddEpisode(ChapterPath, "손으로적은화", title: string.Empty, 0, 0);
 
         var session = new AuthoringSession();

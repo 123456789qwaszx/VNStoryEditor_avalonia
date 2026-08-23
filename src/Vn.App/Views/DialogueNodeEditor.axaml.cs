@@ -2314,7 +2314,7 @@ public partial class DialogueNodeEditor : UserControl
     {
         if (_excelOwned)
         {
-            return; // 이름의 원천은 챕터 `대사엔트리` — 개명은 챕터 그래프의 [개명]으로.
+            return; // 이름의 원천은 챕터 `대사엔트리` — 개명은 챕터 그래프의 [이름] 칸에서.
         }
 
         if (!_building && _session is not null && _nodeId is not null)

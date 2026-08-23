@@ -10,29 +10,38 @@ using Vn.Authoring.Serialization;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// 편집 스위치와 자동 저장 (2026-08-17 소유자) — ① "엑셀이 열려있으면 그냥 체크 안되게
-/// 해버려. 하는 중에 엑셀이 열리면 현재까지된걸 저장한 뒤에 잠그고" ② "간선을 편집할 때
-/// 굳이 적용을 누르지 않아도 바로 변화가 반영되도록".
+/// <b>무엇이 편집을 잠그나</b>, 그리고 자동 저장.
+///
+/// 2026-08-17 소유자 — ① "엑셀이 열려있으면 그냥 체크 안되게 해버려. 하는 중에 엑셀이
+/// 열리면 현재까지된걸 저장한 뒤에 잠그고" ② "간선을 편집할 때 굳이 적용을 누르지 않아도
+/// 바로 변화가 반영되도록".
+///
+/// 2026-08-24 소유자 — "저걸 툴사용자가 체크하는 게 아니라, 엑셀이 켜지면 자동으로
+/// 잠기면서 편집이 불가능하게 막는게 좋겠어." 그래서 [엑셀에서만 편집] 체크가 사라졌다.
+/// ①의 요구는 그대로 남고 <b>더 단순해졌다</b>: 풀 수 없는 체크를 두는 대신 체크를 없앴다.
 /// </summary>
 public sealed class ChapterEditGateTests
 {
     private static string SamplePath => Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
-    // ── 엑셀이 잡고 있으면 편집 스위치가 잠긴다 ────────────────────────────
+    // ── 엑셀이 잡고 있는 동안만 잠긴다 ─────────────────────────────────────
 
     [Fact]
-    public void 엑셀이_열고_있으면_체크를_풀_수_없다() => HeadlessUi.Run(() =>
+    public void 엑셀이_열고_있으면_편집이_잠긴다() => HeadlessUi.Run(() =>
     {
-        // 전에는 풀 수는 있는데 누르는 족족 거부됐다 — 열 수 없는 문을 흔들게 두는 셈이었다.
+        // ⛔ 이 잠금을 풀 수 있는 스위치는 화면에 없다. 예전에는 있었고, 풀어도 누르는
+        // 족족 거부됐다 — 열 수 없는 문을 흔들게 두는 셈이었다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: true);
 
-        var check = view.FindControl<CheckBox>("ExcelOnlyCheck")!;
-
-        Assert.False(check.IsEnabled);
-        Assert.True(check.IsChecked);
         Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+        Assert.False(view.FindControl<Button>("AddEpisodeButton")!.IsEnabled);
     });
 
     [Fact]
@@ -40,9 +49,6 @@ public sealed class ChapterEditGateTests
     {
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: false);
-
-        var check = view.FindControl<CheckBox>("ExcelOnlyCheck")!;
-        check.IsChecked = false;
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -61,45 +67,91 @@ public sealed class ChapterEditGateTests
         Assert.Equal("신뢰가 부족하다", reread.LockedMessage);
 
         // 그리고 잠겼다.
-        Assert.False(check.IsEnabled);
-        Assert.True(check.IsChecked);
+        Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
+        Assert.False(view.FindControl<Button>("AddEpisodeButton")!.IsEnabled);
     });
 
     [Fact]
-    public void 엑셀이_닫히면_툴이_가져간_스위치를_돌려준다() => HeadlessUi.Run(() =>
+    public void 엑셀이_닫히면_저절로_다시_열린다() => HeadlessUi.Run(() =>
     {
+        // 예전에는 "툴이 스스로 켠 체크만 되돌린다"는 단서가 붙었다 — 사람이 켜 둔 값을
+        // 툴이 돌려놓으면 안 됐기 때문이다. 사람이 켤 것이 없어진 지금은 단서도 없다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: false);
 
-        var check = view.FindControl<CheckBox>("ExcelOnlyCheck")!;
-        check.IsChecked = false;
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         view.LockProbe = _ => true;
         view.RefreshFromDisk();
-        Assert.True(check.IsChecked);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
 
         view.LockProbe = _ => false;
         view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.False(check.IsChecked);   // 스스로 켠 것만 되돌린다
-        Assert.True(check.IsEnabled);
+        Assert.False(view.FindControl<Border>("LockBanner")!.IsVisible);
+        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
     });
 
     [Fact]
-    public void 사람이_켜_둔_체크는_엑셀이_닫혀도_그대로다() => HeadlessUi.Run(() =>
+    public void 잠금이_그대로면_상태줄에_같은_말을_되풀이하지_않는다() => HeadlessUi.Run(() =>
     {
-        // 툴이 만지지 않은 스위치를 툴이 돌려놓으면 안 된다.
+        // 이 자리는 다시 그리기·쓰기 결과·감시자 알림마다 불린다. 매번 말하면
+        // "엑셀이 닫혔습니다"가 끝없이 흐른다 — 잠금이 <b>움직였을 때만</b> 말한다.
         using var project = new TempProject();
-        (ChapterGraphView view, _) = Show(project, locked: true);
+        (ChapterGraphView view, AuthoringSession session) = Show(project, locked: false);
 
-        var check = view.FindControl<CheckBox>("ExcelOnlyCheck")!;
-        Assert.True(check.IsChecked);
+        session.SetStatus("조용한 상태줄");
 
-        view.LockProbe = _ => false;
         view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.True(check.IsChecked);
-        Assert.True(check.IsEnabled);
+        Assert.Equal("조용한 상태줄", session.StatusMessage);
+    });
+
+    [Fact]
+    public void 다른_챕터로_옮기면_그_챕터의_잠금을_다시_묻는다() => HeadlessUi.Run(() =>
+    {
+        // 엑셀이 ch05를 잡고 있어도 ch06은 남의 일이다. 다시 묻지 않으면 <b>ch06이 잠긴
+        // 채로</b> 보인다 — 편집을 사람이 아니라 잠금이 여닫게 된 뒤로는 그것이 곧
+        // "ch06을 못 고친다"가 된다.
+        //
+        // ⚠ 이 규칙을 지고 있는 것은 <b>Draw()의 마지막 줄</b>이다
+        // (RefreshPropertyPanel → ApplyEditability → RefreshLockBanner). SelectChapter에
+        // 물음을 한 줄 더 두려다 <b>이 테스트가 그대로 통과해서</b> 되물렀다 — 이미 묻고
+        // 있었다. 같은 물음을 두 곳에 두는 대신 여기서 붙든다: 그 줄이 사라지면 이 테스트가
+        // 먼저 말한다.
+        using var project = new TempProject(secondChapter: true);
+
+        var session = new AuthoringSession();
+        session.Open(project.ManifestPath);
+
+        var view = new ChapterGraphView
+        {
+            LockProbe = path => Path.GetFileName(path ?? string.Empty) == "ch05.xlsx"
+        };
+
+        var window = new Window { Width = 1400, Height = 800, Content = view };
+        window.Show();
+        view.Attach(session);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        view.SelectChapter("ch05");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
+
+        view.SelectChapter("ch06");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.False(view.FindControl<Border>("LockBanner")!.IsVisible);
+
+        view.SelectEpisode("main05.02");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+
+        window.Close();
     });
 
     // ── 간선 패널은 고치는 순간 저장된다 ───────────────────────────────────
@@ -109,7 +161,6 @@ public sealed class ChapterEditGateTests
     {
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: false);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -127,7 +178,6 @@ public sealed class ChapterEditGateTests
         // 저장을 부르면 간선을 못 찾아 조건이 조용히 안 써졌다(이 테스트가 잡았다).
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: false);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -151,7 +201,6 @@ public sealed class ChapterEditGateTests
         // 칸을 다시 채워 쓰던 글을 끊는다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: false);
-        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -174,11 +223,13 @@ public sealed class ChapterEditGateTests
     });
 
     [Fact]
-    public void 읽기_전용이면_고쳐도_안_써진다() => HeadlessUi.Run(() =>
+    public void 잠겨_있으면_고쳐도_안_써진다() => HeadlessUi.Run(() =>
     {
-        // [엑셀에서만 편집]이 켜져 있으면 자동 저장도 울리지 않는다.
+        // 자동 저장은 잠금 위에서 돈다 — 잠긴 동안에는 아예 울리지 않는다. 화면이 막는
+        // 것만으로는 모자란다: 콤보를 코드로 건드리는 길이 남아 있고, 그 길로 쓰기가
+        // 나가면 엑셀이 방금 고친 셀을 툴이 덮는다.
         using var project = new TempProject();
-        (ChapterGraphView view, _) = Show(project, locked: false);
+        (ChapterGraphView view, _) = Show(project, locked: true);
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -212,13 +263,23 @@ public sealed class ChapterEditGateTests
     {
         private readonly string _directory;
 
-        public TempProject()
+        /// <param name="secondChapter">
+        /// 같은 내용의 ch06을 하나 더 둔다 — 챕터를 옮길 때 잠금이 따라오는지 보는 용도다.
+        /// </param>
+        public TempProject(bool secondChapter = false)
         {
             _directory = Path.Combine(
                 Path.GetTempPath(), "vn-edit-gate", Guid.NewGuid().ToString("N"));
 
             Directory.CreateDirectory(Path.Combine(_directory, ChapterLibrary.FolderName));
             File.Copy(SamplePath, ChapterPath);
+
+            if (secondChapter)
+            {
+                File.Copy(
+                    SamplePath,
+                    Path.Combine(_directory, ChapterLibrary.FolderName, "ch06.xlsx"));
+            }
 
             ManifestPath = Path.Combine(_directory, "project" + ProjectManifestJson.FileExtension);
             var project = new StoryProject { Title = "편집 스위치 검증" };

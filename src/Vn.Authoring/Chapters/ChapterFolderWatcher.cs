@@ -11,6 +11,12 @@ namespace Vn.Authoring.Chapters;
 ///
 /// <b>알림은 워커 스레드에서 온다.</b> UI가 쓰려면 스스로 UI 스레드로 옮겨야 한다 —
 /// 이 클래스는 화면을 모른다.
+///
+/// <b>알림은 둘이다</b> (2026-08-24) — <em>저장</em>과 <em>잠금</em>. 엑셀이 워크북을 열면
+/// 곁에 <c>~$이름.xlsx</c>를 만들고 닫을 때 지운다. 그것은 저장이 아니라서 저장 알림에
+/// 섞으면 안 되지만(내용은 한 글자도 안 바뀐다), <b>그 순간 툴은 그 파일에 아무것도 못 쓴다.</b>
+/// 예전에는 그 사건을 그냥 버렸고, 그래서 툴은 엑셀이 잡은 것을 <b>쓰기가 거부되고 나서야</b>
+/// 알았다. 이제 따로 알린다.
 /// </summary>
 public sealed class ChapterFolderWatcher : IDisposable
 {
@@ -19,14 +25,26 @@ public sealed class ChapterFolderWatcher : IDisposable
 
     private readonly FileSystemWatcher _watcher;
     private readonly Timer _debounce;
+    private readonly Timer _lockDebounce;
     private readonly TimeSpan _delay;
     private readonly Action _onChanged;
+    private readonly Action? _onLockChanged;
     private readonly Lock _gate = new();
 
     private bool _disposed;
 
     /// <param name="onChanged">디바운스가 끝난 뒤 한 번 호출된다. 워커 스레드에서 온다.</param>
-    public ChapterFolderWatcher(string folder, Action onChanged, TimeSpan? debounce = null)
+    /// <param name="onLockChanged">
+    /// 엑셀의 잠금 파일(<c>~$…</c>)이 생기거나 사라졌을 때. <b>"잠겼다"가 아니라 "잠금이
+    /// 움직였으니 다시 물어보라"</b>는 뜻이다 — 잠금 파일은 <em>증거</em>일 뿐이고 답은
+    /// <see cref="ChapterWorkbookWriter.IsLockedByAnotherApp"/>가 낸다. 한 사실의 주인은
+    /// 한 곳뿐이라야 하고, 그 자리는 파일 자신이다.
+    /// </param>
+    public ChapterFolderWatcher(
+        string folder,
+        Action onChanged,
+        TimeSpan? debounce = null,
+        Action? onLockChanged = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentNullException.ThrowIfNull(onChanged);
@@ -38,8 +56,14 @@ public sealed class ChapterFolderWatcher : IDisposable
 
         Folder = folder;
         _onChanged = onChanged;
+        _onLockChanged = onLockChanged;
         _delay = debounce ?? DefaultDebounce;
         _debounce = new Timer(_ => Fire(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+        // 잠금은 <b>따로</b> 센다. 한 타이머를 같이 쓰면 엑셀을 여는 순간(잠금)이 그 직전의
+        // 저장 알림을 밀어내거나 그 반대가 된다 — 둘은 다른 사건이고 다른 답을 부른다.
+        _lockDebounce = new Timer(
+            _ => FireLock(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
         // *.xls*로 넓게 듣는다 — 구글 시트가 .xlsx를 저장하며 .xlsm으로 개명하는 실사례가
         // 있어(매크로 없이 선언만 그렇게 쓴다), .xlsx만 들으면 그 저장을 놓친다.
@@ -63,16 +87,21 @@ public sealed class ChapterFolderWatcher : IDisposable
 
     private void OnTouched(object sender, FileSystemEventArgs e)
     {
-        // 엑셀이 저장 중에 열어 둔 잠금 파일(~$…)은 저장 사건이 아니다.
-        if (Path.GetFileName(e.Name ?? string.Empty).StartsWith("~$", StringComparison.Ordinal))
-        {
-            return;
-        }
+        // 엑셀의 잠금 파일(~$…)은 저장 사건이 아니다 — 내용은 한 글자도 안 바뀌었다.
+        // 대신 <b>잠금이 움직였다</b>는 뜻이라 그쪽 길로 보낸다.
+        bool lockFile =
+            Path.GetFileName(e.Name ?? string.Empty).StartsWith("~$", StringComparison.Ordinal);
 
         lock (_gate)
         {
             if (_disposed)
             {
+                return;
+            }
+
+            if (lockFile)
+            {
+                _lockDebounce.Change(_delay, Timeout.InfiniteTimeSpan);
                 return;
             }
 
@@ -110,6 +139,31 @@ public sealed class ChapterFolderWatcher : IDisposable
         }
     }
 
+    /// <summary>잠금 알림 — <see cref="Fire"/>와 같은 이유로 같은 방벽을 두른다.</summary>
+    private void FireLock()
+    {
+        Action? notify;
+
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            notify = _onLockChanged;
+        }
+
+        try
+        {
+            notify?.Invoke();
+        }
+        catch (Exception)
+        {
+            // 위 Fire의 주석 그대로다.
+        }
+    }
+
     public void Dispose()
     {
         lock (_gate)
@@ -128,6 +182,7 @@ public sealed class ChapterFolderWatcher : IDisposable
         _watcher.Deleted -= OnTouched;
         _watcher.Renamed -= OnTouched;
         _watcher.Dispose();
+        _lockDebounce.Dispose();
         _debounce.Dispose();
     }
 }
