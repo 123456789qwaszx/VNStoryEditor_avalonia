@@ -84,9 +84,9 @@ public static class ChapterFixtureWalker
     {
         if (!fixedChoices.TryGetValue(current, out string? target))
         {
-            // 고정 선택이 없어도 분기 없는 일반 진행이 하나뿐이면 그걸 탄다.
-            List<ChapterEdge> plain = passable.Where(edge => edge.IsPlainAdvance).ToList();
-            return plain.Count == 1 ? plain[0] : null;
+            // 고정 선택이 없어도 갈 수 있는 길이 하나뿐이면 그걸 탄다 (v12) — 예전에는
+            // "문구 없는 길"만 그렇게 봤는데, 문구 없는 길이라는 개념이 사라졌다.
+            return passable.Count == 1 ? passable[0] : null;
         }
 
         return passable.FirstOrDefault(edge =>

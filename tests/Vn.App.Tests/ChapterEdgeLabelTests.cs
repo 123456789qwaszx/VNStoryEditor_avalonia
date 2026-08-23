@@ -34,7 +34,7 @@ public sealed class ChapterEdgeLabelTests
         ChapterGraphModel created = ChapterWorkbookReader.Read(project.ChapterPath);
         ChapterEdge fresh = Assert.Single(created.Edges,
             edge => edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
-        Assert.True(fresh.IsPlainAdvance); // 아직 문구가 없다 — 보이지 않는 기본
+        Assert.True(fresh.HasNoOptionLabel); // 아직 문구가 없다 — 보이지 않는 기본
 
         // 기획자가 엑셀에서 하듯 간선의 `선택지` 칸에 문구를 적는다 (v9 — 문구가 곧 값이다).
         using (var workbook = new ClosedXML.Excel.XLWorkbook(project.ChapterPath))
@@ -48,7 +48,7 @@ public sealed class ChapterEdgeLabelTests
             edge.FromEpisodeId == "new01" && edge.ToEpisodeId == "new02");
 
         Assert.Equal("왼쪽 길로 간다", saved.OptionLabel);
-        Assert.False(saved.IsPlainAdvance);
+        Assert.False(saved.HasNoOptionLabel);
     });
 
     [Fact]

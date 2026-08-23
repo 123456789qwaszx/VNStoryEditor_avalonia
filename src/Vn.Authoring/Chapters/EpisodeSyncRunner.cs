@@ -15,10 +15,9 @@ public sealed record EpisodeSyncRun(
     IReadOnlyList<EpisodeSyncReport> Reports,
     IReadOnlyList<ChapterDiagnostic> BoardWarnings,
     IReadOnlyList<string> Notices,
-    IReadOnlyList<EpisodeSyncService.EdgePresentationLink> PresentationLinks,
     bool WorkbooksCreated)
 {
-    public static EpisodeSyncRun Nothing { get; } = new(null, [], [], [], [], false);
+    public static EpisodeSyncRun Nothing { get; } = new(null, [], [], [], false);
 
     public int Applied => Reports.Count(report => report.Applied);
 
@@ -145,19 +144,13 @@ public static class EpisodeSyncRunner
         // 드롭다운에서 A 계층 라벨을 바로 고른다. 멱등이라 매번 불러도 안전하다.
         EpisodeSyncService.SupplyChapterConditionsToBoard(editor, definition, fileId, model);
 
-        // v11 — 간선에 매달린 연출 노드를 세운다. 툴이 이름을 지었으면 워크북에 되쓴다.
-        IReadOnlyList<EpisodeSyncService.EdgePresentationLink> links =
-            SupplyEdgePresentations(editor, entry, model, fileId);
-
         // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
+        // (v12에서 "빈 연출" 경고가 빠졌다 — `연출` 칸 자체가 폐지됐다.)
         var warnings = new List<ChapterDiagnostic>();
         warnings.AddRange(EpisodeSyncService.WarnFreeNodeStatWrites(editor, fileId, model));
         warnings.AddRange(EpisodeSyncService.WarnExitsIntoExcelNodes(editor, fileId, model));
-        // v11 — 자리는 섰는데 아직 안 채운 연출. 오류가 아니라 "남은 일" 목록이다.
-        warnings.AddRange(
-            EpisodeSyncService.WarnEmptyEdgePresentations(editor, fileId, model, links));
 
-        return new EpisodeSyncRun(fileId, reports, warnings, notices, links, created);
+        return new EpisodeSyncRun(fileId, reports, warnings, notices, created);
     }
 
     /// <summary>새 대본이 받을 화자 — 챕터를 가리지 않는 프로젝트 목록 하나다.</summary>
@@ -215,45 +208,5 @@ public static class EpisodeSyncRunner
                 $"대본 {adopted}개를 episodes/{entry.ChapterId}/ 로 옮겼습니다 — " +
                 "챕터마다 같은 이름을 따로 쓸 수 있습니다.");
         }
-    }
-
-    /// <summary>
-    /// 간선의 연출 노드를 세우고, <b>툴이 지은 이름만</b> 워크북에 되쓴다 (v11).
-    ///
-    /// 기획자는 엔딩키만 적으면 된다 — 이름 짓기와 노드 세우기는 툴의 일이다. 사람이
-    /// `연출` 칸에 직접 적은 이름은 그대로 둔다(그것이 이미 정본이다).
-    ///
-    /// 엑셀이 그 파일을 잡고 있으면 쓰기가 거부되는데, 그때는 <b>조용히 넘긴다</b> —
-    /// 노드는 이미 판에 섰고, 이름은 다음 동기화가 다시 적으려 한다. 붉은 배너가 이미
-    /// 잠금을 말하고 있으므로 여기서 같은 말을 한 번 더 할 이유가 없다.
-    /// </summary>
-    private static IReadOnlyList<EpisodeSyncService.EdgePresentationLink> SupplyEdgePresentations(
-        ProjectEditor editor,
-        ChapterEntry entry,
-        ChapterGraphModel model,
-        string fileId)
-    {
-        IReadOnlyList<EpisodeSyncService.EdgePresentationLink> links =
-            EpisodeSyncService.SupplyEdgePresentations(editor, fileId, model);
-
-        foreach (EpisodeSyncService.EdgePresentationLink link in links.Where(item => item.NeedsWriteBack))
-        {
-            try
-            {
-                ChapterWorkbookWriter.SetEdgePresentation(
-                    entry.Path,
-                    link.FromEpisodeId,
-                    link.ToEpisodeId,
-                    link.MatchOptionLabel,
-                    link.NodeName);
-            }
-            catch (InvalidOperationException)
-            {
-                // 읽은 뒤 쓰기 전에 사람이 그 행을 지웠다. 다음 읽기가 정본이므로
-                // 여기서 붙잡지 않는다 — 노드는 이미 섰고, 안 쓰이면 자유 노드로 남는다.
-            }
-        }
-
-        return links;
     }
 }

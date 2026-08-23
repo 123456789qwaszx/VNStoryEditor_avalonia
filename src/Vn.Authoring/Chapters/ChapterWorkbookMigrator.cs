@@ -101,9 +101,9 @@ public static class ChapterWorkbookMigrator
                (Find(workbook, ChapterSheetNames.Stats) is not null &&
                 Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
                (fixtures is not null && fixtures.RowsUsed().Count() <= 1) ||
-               // v11 — 간선의 종류·엔딩키·연출. 에피소드에 엔딩키가 남아 있어도 이행 대상이다.
+               // v12 — 간선의 아홉째 칸이 `엔딩키`여야 한다(v11의 종류·연출은 폐지).
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
-                Header(workbook, ChapterSheetNames.Edges, 9) != "종류") ||
+                Header(workbook, ChapterSheetNames.Edges, 9) != "엔딩키") ||
                Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키" ||
                // 겉모습이 안 입혀진 파일 (2026-08-18). 자동 필터 하나로 대표해 본다 —
                // 셋(고정·필터·너비)이 언제나 함께 들어가므로 하나가 없으면 셋 다 없다.
@@ -313,7 +313,7 @@ public static class ChapterWorkbookMigrator
             return;
         }
 
-        EnsureEdgeColumnsV11(edges);
+        EnsureEdgeColumnsV12(edges);
 
         // 에피소드 시트에 엔딩키 열이 남아 있을 때만 옮긴다 — 두 번 돌아도 안전하다.
         if (!string.Equals(episodes.Cell(1, 7).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
@@ -350,29 +350,40 @@ public static class ChapterWorkbookMigrator
     }
 
     /// <summary>
-    /// v11의 세 열(`종류`·`엔딩키`·`연출`)을 뒤에 붙인다. 이미 있으면 손대지 않는다.
-    /// `종류`는 <b>문구를 보고</b> 채운다 — 구판에서는 문구가 곧 그 뜻이었다.
+    /// 간선 시트를 <b>v12 아홉 칸</b>으로 맞춘다 (2026-08-24).
+    ///
+    /// v11은 뒤에 셋(`종류`·`엔딩키`·`연출`)을 달았는데, 소유자 결정으로 `종류`와 `연출`이
+    /// 폐지됐다 — 모든 길이 선택지이므로 종류를 물을 것이 없고, 간선에 매다는 연출은
+    /// 개념째 접었다. 남는 것은 `엔딩키` 하나이고 자리가 I(9)로 당겨진다.
+    ///
+    /// <b>뒤에서부터 지운다</b> — 앞을 먼저 지우면 뒤 열이 밀려 엉뚱한 칸을 삭제한다.
     /// </summary>
-    private static void EnsureEdgeColumnsV11(IXLWorksheet edges)
+    private static void EnsureEdgeColumnsV12(IXLWorksheet edges)
     {
-        if (string.Equals(edges.Cell(1, 9).GetString().Trim(), "종류", StringComparison.Ordinal))
+        if (string.Equals(edges.Cell(1, 11).GetString().Trim(), "연출", StringComparison.Ordinal))
         {
-            return;
+            edges.Column(11).Delete();
         }
 
-        edges.Cell(1, 9).SetValue("종류");
-        edges.Cell(1, 10).SetValue("엔딩키");
-        edges.Cell(1, 11).SetValue("연출");
+        if (string.Equals(edges.Cell(1, 9).GetString().Trim(), "종류", StringComparison.Ordinal))
+        {
+            edges.Column(9).Delete();   // 엔딩키가 10 → 9로 당겨진다
+        }
 
+        if (!string.Equals(edges.Cell(1, 9).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
+        {
+            edges.Cell(1, 9).SetValue("엔딩키");
+        }
+
+        // v12 — 문구 없는 길("보이지 않는 기본")이 폐지됐다. 빈 칸을 그대로 두면 열자마자
+        // 오류 더미가 되므로 넘어가기 버튼의 이름을 넣어 준다. 기획자가 고치면 된다.
         foreach (IXLRow row in edges.RowsUsed().Skip(1))
         {
-            if (row.Cell(1).GetString().Trim().Length == 0)
+            if (row.Cell(1).GetString().Trim().Length > 0 &&
+                row.Cell(4).GetString().Trim().Length == 0)
             {
-                continue;
+                row.Cell(4).SetValue("계속");
             }
-
-            row.Cell(9).SetValue(
-                row.Cell(4).GetString().Trim().Length == 0 ? "자동" : "선택지");
         }
     }
 

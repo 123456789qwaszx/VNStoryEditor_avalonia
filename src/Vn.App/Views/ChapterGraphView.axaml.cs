@@ -1217,6 +1217,12 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>런타임 수입물이 나가는 자리. 에셋과 같은 규약 폴더 방식이다 — 매니페스트 없음.</summary>
+    /// <summary>
+    /// 툴이 길을 놓을 때 넣어 주는 문구 (v12). 빈 문구는 오류이므로 무언가는 있어야 하고,
+    /// 기획자가 바로 고쳐 쓸 수 있는 가장 짧은 말이다.
+    /// </summary>
+    internal const string DefaultOptionLabel = "계속";
+
     /// <summary>진행 JSON 폴더 이름. 정본은 <see cref="ChapterExportService"/>에 있다.</summary>
     public const string ExportFolderName = ChapterExportService.ExportFolderName;
 
@@ -1392,10 +1398,13 @@ public partial class ChapterGraphView : UserControl
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
+            // v12 (2026-08-24) — **나가는 길은 전부 포트를 받는다.** 예전에는 문구 없는
+            // 간선("보이지 않는 기본")을 걸러 내고 카드 중앙에서 직행선으로 그렸는데,
+            // 그 개념이 폐지됐다. 문구가 비어 있으면 그것은 종류가 아니라 **고칠 것**이고,
+            // 판에서 그 자리를 보여 줘야 기획자가 고친다.
             _optionsByEpisode[episode.EpisodeId] = model.Edges
                 .Where(edge =>
-                    string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
-                    !edge.IsPlainAdvance)
+                    string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
                 .ToList();
         }
 
@@ -1501,9 +1510,9 @@ public partial class ChapterGraphView : UserControl
 
             List<ChapterEdge> options = _optionsByEpisode.GetValueOrDefault(episode.EpisodeId) ?? [];
 
-            if (options.Count == 0 || !_placed.TryGetValue(episode.EpisodeId, out (double X, double Y) position))
+            if (!_placed.TryGetValue(episode.EpisodeId, out (double X, double Y) position))
             {
-                // 보이는 선택지 없음 — 진행(보이지 않는 기본)은 중앙 직행선 그대로.
+                // 자리를 못 잡은 카드 — 포트가 없으니 중앙 직행선으로라도 그린다.
                 foreach (ChapterEdge edge in edges)
                 {
                     DrawDirectEdge(edge, pathEdges.Contains((edge.FromEpisodeId, edge.ToEpisodeId)));
@@ -1517,12 +1526,6 @@ public partial class ChapterGraphView : UserControl
                 DrawPortEdge(options[index],
                     new Point(position.X + CardWidth + 5, PortY(position.Y, index)),
                     pathEdges);
-            }
-
-            // 문구 없는 간선(보이지 않는 기본)은 직행선 — 실재는 숨기지 않는다.
-            foreach (ChapterEdge stray in edges.Where(edge => edge.IsPlainAdvance))
-            {
-                DrawDirectEdge(stray, pathEdges.Contains((stray.FromEpisodeId, stray.ToEpisodeId)));
             }
         }
     }
@@ -1724,7 +1727,6 @@ public partial class ChapterGraphView : UserControl
             edge.OptionLabel,
             edge.ConditionLabel is null ? null : $"[{edge.ConditionLabel}]",
             edge.IsEnding ? $"⏹ {edge.EndingKey}" : null,
-            string.IsNullOrWhiteSpace(edge.PresentationNodeName) ? null : "🎬"
         }.Where(part => !string.IsNullOrEmpty(part)));
 
         if (label.Length == 0)
@@ -1914,14 +1916,17 @@ public partial class ChapterGraphView : UserControl
         for (int index = 0; index < options.Count; index++)
         {
             ChapterEdge wired = options[index];
-            string option = wired.OptionLabel ?? string.Empty;
+
+            // v12 — 문구가 비면 그것은 길의 종류가 아니라 **고칠 것**이다. 판에서
+            // 그 자리를 짚어 주지 않으면 기획자는 엑셀의 빈 칸을 못 찾는다.
+            string option = wired.HasNoOptionLabel ? "⚠ 문구 없음" : wired.OptionLabel!;
             double portY = PortY(y, index);
 
             var label = new TextBlock
             {
                 Text = wired.ConditionLabel is { } gate ? $"{option} [{gate}]" : option,
                 FontSize = 10,
-                Foreground = new SolidColorBrush(Color.Parse("#C06A14")),
+                Foreground = new SolidColorBrush(Color.Parse(wired.HasNoOptionLabel ? "#C0392B" : "#C06A14")),
                 MaxWidth = CardWidth - 24,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Background = Brushes.Transparent,
@@ -2605,7 +2610,7 @@ public partial class ChapterGraphView : UserControl
             EdgeTargetCombo.SelectedItem = edge?.ToEpisodeId;
             EdgeLabelBox.SelectedItem = edge is null
                 ? null
-                : edge.IsPlainAdvance ? PlainAdvanceItem : edge.OptionLabel;
+                : edge.HasNoOptionLabel ? PlainAdvanceItem : edge.OptionLabel;
 
             // 스탯변화도 여기서 만진다 (2026-08-17) — 새 길이면 빈 목록에서 시작한다.
             _formStats.Editable = ToolEditable;
@@ -2738,7 +2743,7 @@ public partial class ChapterGraphView : UserControl
         // 순번 — 화면에 뜨는 차례다(간선 시트의 행 순서). 신원이 아니라 자리 표시다.
         row.Children.Add(new Border
         {
-            Background = new SolidColorBrush(Color.Parse(edge.IsPlainAdvance ? "#22808080" : "#22C06A14")),
+            Background = new SolidColorBrush(Color.Parse(edge.HasNoOptionLabel ? "#22808080" : "#22C06A14")),
             CornerRadius = new CornerRadius(3),
             Padding = new Thickness(5, 1),
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
@@ -2751,14 +2756,14 @@ public partial class ChapterGraphView : UserControl
             }
         });
 
-        string label = edge.IsPlainAdvance ? "(기본 · 보이지 않음)" : edge.OptionLabel!;
+        string label = edge.HasNoOptionLabel ? "(기본 · 보이지 않음)" : edge.OptionLabel!;
         string condition = edge.ConditionLabel is { } gate ? $"  [{gate}]" : string.Empty;
 
         var text = new TextBlock
         {
             Text = $"{label}   → {edge.ToEpisodeId}{condition}",
             FontSize = 11,
-            Opacity = edge.IsPlainAdvance ? 0.7 : 1,
+            Opacity = edge.HasNoOptionLabel ? 0.7 : 1,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             // 배경 없는 TextBlock은 글자 획 위만 클릭된다 — 행 전체가 눌리게 깔아 둔다.
@@ -2841,7 +2846,7 @@ public partial class ChapterGraphView : UserControl
         // 폼과 같은 규칙 하나를 쓴다(사본 금지): 안 고른 것과 "문구 없음"은 같은 뜻이다.
         SetItems(EdgeLabelEditBox, ChoiceLabelItems(model),
             fill
-                ? edge.IsPlainAdvance ? PlainAdvanceItem : edge.OptionLabel
+                ? edge.HasNoOptionLabel ? PlainAdvanceItem : edge.OptionLabel
                 : EdgeLabelEditBox.SelectedItem as string);
 
         var labels = new List<string> { "(없음)" };
@@ -3141,8 +3146,9 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        Report(ChapterWorkbookWriter.AddEdge(path, from, to),
-            $"간선 {from}→{to}을 더했습니다 — 선택지 문구는 그 줄을 눌러 고릅니다.");
+        // v12 — 문구 없이 길을 놓지 않는다.
+        Report(ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: DefaultOptionLabel),
+            $"간선 {from}→{to}을 '{DefaultOptionLabel}'로 더했습니다 — 문구는 그 줄을 눌러 고칩니다.");
     }
 
     internal void DeleteSelectedEpisode()
@@ -3185,14 +3191,22 @@ public partial class ChapterGraphView : UserControl
         }
 
         string episodeId = $"new{number:D2}";
-        string? parent = _selectedEpisodeId is { } id && model.FindEpisode(id) is not null ? id : null;
+
+        // ⭐ v12 (2026-08-24 소유자) — **에피소드를 더하면 간선이 함께 선다.** 고른 것이
+        // 없으면 마지막 에피소드에서 잇는다: 떨어진 섬을 만들지 않는다(도달성 증명이 곧바로
+        // 오류로 짚을 자리이기도 하다). 챕터가 비어 있을 때만 간선 없이 첫 카드가 선다.
+        string? parent = _selectedEpisodeId is { } id && model.FindEpisode(id) is not null
+            ? id
+            : model.Episodes.Count > 0 ? model.Episodes[^1].EpisodeId : null;
 
         ChapterWriteResult result;
 
         if (parent is not null)
         {
             (double x, double y) = ChapterBranchPlanner.SuggestPlacement(model, parent);
-            result = ChapterWorkbookWriter.AddNextEpisode(path, parent, episodeId, title: string.Empty, x, y);
+            // 문구를 함께 준다 — v12에서 모든 길은 선택지이고, 빈 문구는 오류다.
+            result = ChapterWorkbookWriter.AddNextEpisode(
+                path, parent, episodeId, title: string.Empty, x, y, optionLabel: DefaultOptionLabel);
         }
         else
         {
@@ -3250,7 +3264,7 @@ public partial class ChapterGraphView : UserControl
     /// <summary>간선 하나를 가리키는 표식. 화면 검증이 이 이름으로 간선을 찾는다.</summary>
     internal static string EdgeTag(ChapterEdge edge) =>
         $"{edge.FromEpisodeId}→{edge.ToEpisodeId}" +
-        (edge.IsPlainAdvance ? string.Empty : $" [{edge.OptionLabel}]");
+        (edge.HasNoOptionLabel ? string.Empty : $" [{edge.OptionLabel}]");
 
     /// <summary>그 에피소드로 들어오는 길 가운데 관문이 걸린 것들 (v8 — 관문은 길의 것).</summary>
     private static List<ChapterEdge> GatedIncoming(ChapterGraphModel model, ChapterEpisode episode) =>

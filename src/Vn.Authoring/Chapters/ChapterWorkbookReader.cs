@@ -39,10 +39,15 @@ public static class ChapterWorkbookReader
     // v11 (2026-08-18) — 뒤에 셋을 붙였다. 읽는 순서로는 `종류`가 `선택지` 옆에 오는 편이
     // 좋지만, 끼워 넣으면 뒤 열이 전부 밀려 이행에서 셀을 잃을 위험을 산다. 자리보다
     // 안전을 골랐다.
+    // v12 (2026-08-24 소유자) — `종류`·`연출` 폐지. 남은 아홉 칸이 전부다.
+    //
+    // `종류`는 문구 없는 길("보이지 않는 기본")이 사라지면서 뜻을 잃었다 — 모든 길이
+    // 선택지이므로 물을 것이 없다. `연출`은 간선에 매다는 대사 없는 연출인데, 소유자
+    // 판단으로 개념째 접었다. 엔딩키가 J → I로 당겨진다.
     private static readonly string[] EdgeHeaders =
     [
         "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금시 숨김", "잠금 안내문",
-        "종류", "엔딩키", "연출"
+        "엔딩키"
     ];
 
     private static readonly string[] ConditionHeaders = ["라벨", "스탯", "연산자", "값", "설명"];
@@ -303,22 +308,28 @@ public static class ChapterWorkbookReader
                     problem.Message));
             }
 
-            // 선택지 (D열, v9) — 문구 그 자체다. 비면 보이지 않는 기본(자동 진행).
-            // `선택지` 시트는 고르기 편하라고 있는 사전일 뿐이라 대조하지 않는다.
+            // 선택지 (D열, v9) — 문구 그 자체다. `선택지` 시트는 고르기 편하라고 있는
+            // 사전일 뿐이라 대조하지 않는다.
+            //
+            // ⛔ **문구는 반드시 있다** (2026-08-24 소유자 결정). 예전에는 비면 "보이지 않는
+            // 기본"(선택지 없이 자동으로 넘어가는 길)이었는데, 그 개념을 폐지했다 —
+            // *"실제 효과는 없고 제작의 복잡성만 높인다."* 이제 **에피소드 사이를 넘는
+            // 길은 언제나 선택지 하나**다.
             string? optionLabel = Optional(sheet, row, 4);
 
-            // 종류 (I열, v11) — 누가 고르나. 빈칸은 문구를 보고 정한다(구판 호환):
-            // 이행기가 채우지 못한 파일도 예전과 같이 읽혀야 한다.
-            EdgeKind kind = ReadEdgeKind(
-                sheet, row, optionLabel, path, diagnostics, out bool kindDeclared);
-
-            if (kindDeclared)
+            if (string.IsNullOrWhiteSpace(optionLabel))
             {
-                VerifyKindMatchesLabel(kind, optionLabel, path, sheet.Name, row, diagnostics);
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticCode.OptionLabelBlank,
+                    path, sheet.Name, row, 4,
+                    $"'{from}'→'{to}' 길에 선택지 문구가 없습니다. 문구 없이 넘어가는 길은 " +
+                    "폐지됐습니다(2026-08-24) — 플레이어에게 보일 문구를 적으세요. " +
+                    "넘어가기만 하면 되는 자리라면 '계속' 같은 한 낱말이면 됩니다."));
             }
 
-            // 엔딩키 (J열, v11) — 있으면 이 길이 챕터를 끝낸다.
-            string? endingKey = Optional(sheet, row, 10);
+            // 엔딩키 (I열, v12) — 있으면 이 길이 챕터를 끝낸다.
+            string? endingKey = Optional(sheet, row, 9);
 
             edges.Add(new ChapterEdge(
                 from,
@@ -329,9 +340,7 @@ public static class ChapterWorkbookReader
                 Optional(sheet, row, 8),
                 row)
             {
-                Kind = kind,
                 EndingKey = endingKey,
-                PresentationNodeName = Optional(sheet, row, 11),
                 StatChanges = deltas.Deltas,
                 VisibleConditionLabel = visibleLabel
             });
@@ -354,7 +363,7 @@ public static class ChapterWorkbookReader
         // 같은 에피소드에서 같은 문구가 서로 다른 곳으로 간다 — 플레이어에게는 같은 버튼
         // 둘이라 어느 쪽인지 고를 수 없다. 문구는 자유롭게 재사용하되 한 화면 안에서는 겹치면 안 된다.
         foreach (IGrouping<(string, string), ChapterEdge> collided in edges
-                     .Where(edge => !edge.IsPlainAdvance)
+                     .Where(edge => !string.IsNullOrWhiteSpace(edge.OptionLabel))
                      .GroupBy(edge => (edge.FromEpisodeId, edge.OptionLabel!))
                      .Where(group => group.Count() > 1))
         {
@@ -371,82 +380,6 @@ public static class ChapterWorkbookReader
         return edges;
     }
 
-    /// <summary>
-    /// `종류` 칸을 읽는다 (v11). 빈칸은 <b>문구를 보고</b> 정한다 — 이행기가 채우지 못한
-    /// 파일도 예전과 같이 읽혀야 한다. 모르는 낱말은 조용히 고치지 않고 짚는다.
-    /// </summary>
-    private static EdgeKind ReadEdgeKind(
-        IXLWorksheet sheet,
-        int row,
-        string? optionLabel,
-        string path,
-        List<ChapterDiagnostic> diagnostics,
-        out bool declared)
-    {
-        string raw = Text(sheet, row, 9).Trim();
-        declared = raw.Length > 0;
-
-        if (!declared)
-        {
-            return string.IsNullOrWhiteSpace(optionLabel) ? EdgeKind.Auto : EdgeKind.Choice;
-        }
-
-        if (string.Equals(raw, "선택지", StringComparison.Ordinal))
-        {
-            return EdgeKind.Choice;
-        }
-
-        if (string.Equals(raw, "자동", StringComparison.Ordinal))
-        {
-            return EdgeKind.Auto;
-        }
-
-        diagnostics.Add(Cell(
-            ChapterDiagnosticSeverity.Error,
-            ChapterDiagnosticCode.EdgeKindUnknown,
-            path, sheet.Name, row, 9,
-            $"'{raw}'는 모르는 종류입니다 — `선택지` 또는 `자동`이어야 합니다."));
-
-        declared = false;
-        return string.IsNullOrWhiteSpace(optionLabel) ? EdgeKind.Auto : EdgeKind.Choice;
-    }
-
-    /// <summary>
-    /// `종류`와 `선택지` 문구가 같은 말을 하는지 (v11 — `ked-progression` D5).
-    ///
-    /// 이 검사가 있기 전에는 <b>문구를 실수로 지운 것</b>이 <b>의도한 자동 진행</b>과
-    /// 구별되지 않았다. 종류를 명시로 받고 둘을 대조하면, 지운 실수가 오류로 선다.
-    /// </summary>
-    private static void VerifyKindMatchesLabel(
-        EdgeKind kind,
-        string? optionLabel,
-        string path,
-        string sheetName,
-        int row,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        bool hasLabel = !string.IsNullOrWhiteSpace(optionLabel);
-
-        if (kind == EdgeKind.Choice && !hasLabel)
-        {
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.EdgeKindMismatch,
-                path, sheetName, row, 4,
-                "종류가 `선택지`인데 문구가 비었습니다 — 문구를 적거나 종류를 `자동`으로 바꿔 주세요."));
-            return;
-        }
-
-        if (kind == EdgeKind.Auto && hasLabel)
-        {
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.EdgeKindMismatch,
-                path, sheetName, row, 9,
-                $"종류가 `자동`인데 문구('{optionLabel}')가 있습니다 — " +
-                "문구를 지우거나 종류를 `선택지`로 바꿔 주세요."));
-        }
-    }
 
     /// <summary>
     /// ⚠ <b>같은 도착으로 들어오는 간선들의 엔딩키는 같아야 한다</b> (v11).

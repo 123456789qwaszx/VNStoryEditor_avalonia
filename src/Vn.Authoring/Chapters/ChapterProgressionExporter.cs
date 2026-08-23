@@ -259,21 +259,16 @@ public static class ChapterProgressionExporter
             {
                 TargetEpisodeId = edge.ToEpisodeId,
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
-                // ⚠ 2026-08-23 정정 — 처음에 `"Choice"`/`"Auto"`로 냈는데 **코어의 이름이
-                // 아니다**(`OptionKind.PlayerChoice`/`AutoAdvance`). 코어 로더는 enum 멤버
-                // 이름을 switch로 정확히 받으므로 그대로 뒀으면 칸이 서는 날 "알 수 없는
-                // 종류"가 됐다. 코어를 물자마자 컴파일러가 잡아 준 자리다.
-                Kind = edge.Kind == EdgeKind.Auto
-                    ? nameof(Contract.OptionKind.AutoAdvance)
-                    : nameof(Contract.OptionKind.PlayerChoice),
+                // v12 (2026-08-24) — 저작에 `종류` 칸이 사라졌다. 모든 길이 선택지이므로
+                // 물을 것이 없다. 값은 코어 enum 멤버 이름 그대로다.
+                Kind = nameof(Contract.OptionKind.PlayerChoice),
                 VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 HideWhenLocked = edge.HideWhenLocked,
                 LockedReasonText = edge.LockedMessage ?? string.Empty,
-                // v11 §6 — 저작의 `연출` 칸이 계약에서는 `ViaNodeId`다. 이름이 갈리는
-                // 자리라 내보내기 테스트가 <b>글자 그대로</b> 붙들고 있다: 키를 틀리면
-                // 저쪽 역직렬화기가 모르는 속성을 조용히 버려 연출만 사라진다.
-                ViaNodeId = edge.PresentationNodeName ?? string.Empty,
+                // ⚠ v12 (2026-08-24) — 저작의 `연출` 칸이 폐지됐다. 계약의 칸은 남아 있고
+                // 언제나 빈 문자열로 나간다(저쪽 DTO를 바꾸지 않는다 — 안 채울 뿐이다).
+                ViaNodeId = string.Empty,
                 StatChanges = edge.StatChanges
                     .Select(delta => new StatChangeJson
                     {

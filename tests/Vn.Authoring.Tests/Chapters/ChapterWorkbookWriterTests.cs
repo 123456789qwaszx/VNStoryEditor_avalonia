@@ -234,7 +234,7 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
             edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_b" &&
             edge.OptionLabel == "B를 고른다");
         Assert.Contains(reread.Edges, edge =>
-            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_a" && edge.IsPlainAdvance);
+            edge.FromEpisodeId == "main05.end" && edge.ToEpisodeId == "ep_a" && edge.HasNoOptionLabel);
 
         // 준 문구는 사전에 올랐다 — 다음번 드롭다운 재료다.
         Assert.Contains(reread.ChoiceOptions, option => option.Text == "B를 고른다");

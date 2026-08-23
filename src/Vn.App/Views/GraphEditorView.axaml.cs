@@ -478,7 +478,7 @@ public partial class GraphEditorView : UserControl
             branches.Add((edge, PortFor(source, edge, optionPorts, defaultPort), target));
         }
 
-        foreach (ChapterEdge edge in edges.Where(edge => !edge.IsPlainAdvance))
+        foreach (ChapterEdge edge in edges.Where(edge => !edge.HasNoOptionLabel))
         {
             AddEdgeBranch(edge);
         }
@@ -492,7 +492,7 @@ public partial class GraphEditorView : UserControl
             branches.Add((null, orphan, null));
         }
 
-        foreach (ChapterEdge edge in edges.Where(edge => edge.IsPlainAdvance))
+        foreach (ChapterEdge edge in edges.Where(edge => edge.HasNoOptionLabel))
         {
             AddEdgeBranch(edge);
         }
@@ -524,7 +524,7 @@ public partial class GraphEditorView : UserControl
                 }
 
                 list.Add((source.ExcelEpisodeId ?? source.Name,
-                    edge.IsPlainAdvance ? "(진행)" : edge.OptionLabel!));
+                    edge.HasNoOptionLabel ? "(진행)" : edge.OptionLabel!));
             }
 
             branchY += RailBranchGap;
@@ -607,7 +607,7 @@ public partial class GraphEditorView : UserControl
         IReadOnlyList<ExitPort> optionPorts,
         ExitPort? defaultPort)
     {
-        if (edge.IsPlainAdvance)
+        if (edge.HasNoOptionLabel)
         {
             return defaultPort;
         }
@@ -643,7 +643,7 @@ public partial class GraphEditorView : UserControl
     {
         double cursorX = trunkX;
 
-        string chipText = edge is { IsPlainAdvance: true } || (edge is null && port?.Kind == ExitPortKind.Default)
+        string chipText = edge is { HasNoOptionLabel: true } || (edge is null && port?.Kind == ExitPortKind.Default)
             ? "○ 진행"
             : $"● {edge?.OptionLabel ?? port?.ChoiceText}";
 

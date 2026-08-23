@@ -43,25 +43,6 @@ public sealed record ChapterEpisode(
 /// <b>해금조건</b> — 이 선택지를 고를 수 있으려면 (v8에서 열 이름이 `조건`→`해금조건`).
 /// 미달이면 잠긴 채 보이고, <see cref="HideWhenLocked"/>가 켜져 있으면 숨는다.
 /// </param>
-/// <summary>
-/// 간선의 `종류` (v11, 2026-08-18) — <b>누가 고르나.</b>
-///
-/// 이것은 <b>도착이 어디냐</b>(에피소드 / 엔딩)와 <b>다른 축</b>이다. 넷이 전부 실재한다:
-/// 선택지→에피소드("믿는다" → 다음 화) · 자동→에피소드(말없이 페이드) ·
-/// 선택지→엔딩("이대로 떠난다" → 챕터 끝) · 자동→엔딩(마지막 화가 끝나면 자동으로).
-/// 하나의 enum으로 뭉치면 아래 둘 중 하나가 표현 불가가 된다.
-///
-/// ⚠ `에피소드` 시트의 `종류`(Main/Attachment)와는 다른 것이다.
-/// </summary>
-public enum EdgeKind
-{
-    /// <summary>플레이어가 고른다. `선택지` 문구가 있어야 한다.</summary>
-    Choice,
-
-    /// <summary>자동으로 탄다 — 버튼이 없다. `선택지` 문구가 비어 있어야 한다.</summary>
-    Auto
-}
-
 public sealed record ChapterEdge(
     string FromEpisodeId,
     string ToEpisodeId,
@@ -78,6 +59,18 @@ public sealed record ChapterEdge(
     /// </summary>
     public string? VisibleConditionLabel { get; init; }
 
+    /// <summary>
+    /// 문구가 아직 없다 — <b>v12(2026-08-24)부터 규격 위반</b>이고 리더가 오류로 짚는다.
+    ///
+    /// 예전 이름은 <c>IsPlainAdvance</c>였고 "보이지 않는 기본"(문구 없이 자동으로 넘어가는
+    /// 길)이라는 <b>정당한 종류</b>를 뜻했다. 그 개념이 폐지됐으므로 이름도 바꾼다 —
+    /// 이제 이것이 참이면 <b>고칠 것이 있다는 뜻</b>이지 길의 종류가 아니다.
+    ///
+    /// 모델이 이 상태를 담는 이유: 리더는 오류가 있어도 모델을 만든다(그래야 화면이
+    /// 무엇이 잘못됐는지 짚어 준다). 담지 않으면 기획자는 빈 칸을 볼 수 없다.
+    /// </summary>
+    public bool HasNoOptionLabel => string.IsNullOrWhiteSpace(OptionLabel);
+
     /// <summary>표시·해금 중 하나라도 걸려 있으면 관문 있는 길이다 — 그래프가 색으로 알린다.</summary>
     public bool HasGate =>
         !string.IsNullOrWhiteSpace(VisibleConditionLabel) ||
@@ -86,17 +79,6 @@ public sealed record ChapterEdge(
     // OptionLabel = `선택지` 열(D)의 값 그대로다 (v9). 파생도 참조도 아니다 —
     // 문구를 고쳐도 배선이 안 깨지는 대신, 같은 문구를 어느 에피소드에서든 쓸 수 있다.
 
-    /// <summary>문구가 비면 참 — 보이지 않는 기본(버튼 없이 자동 진행)이다.</summary>
-    public bool IsPlainAdvance => string.IsNullOrWhiteSpace(OptionLabel);
-
-    /// <summary>
-    /// `종류` 열 (v11) — <b>누가 고르나.</b> 빈칸은 <see cref="EdgeKind.Choice"/>와 같다.
-    ///
-    /// 지금까지는 <see cref="IsPlainAdvance"/>(문구가 비었나)가 이 일을 대신했는데,
-    /// 그러면 <b>문구를 실수로 지운 것</b>과 <b>의도한 자동 진행</b>이 데이터로 구별되지
-    /// 않는다(`ked-progression` D5). 이 열이 그것을 명시로 만든다 — 둘이 어긋나면 오류다.
-    /// </summary>
-    public EdgeKind Kind { get; init; } = EdgeKind.Choice;
 
     /// <summary>
     /// `엔딩키` 열 (v11) — 있으면 <b>이 길이 챕터를 끝낸다.</b> 유니티가 이 키를 보고
@@ -114,18 +96,6 @@ public sealed record ChapterEdge(
     /// <summary>있으면 이 길을 타는 순간 챕터 런이 끝난다.</summary>
     public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
 
-    /// <summary>
-    /// `연출` 열 (v11) — 이 길을 탈 때 재생할 <b>대사 없는 연출</b> 노드의 이름.
-    /// 비면 없다. 트랜지션 연출(에피소드 사이)과 엔딩 연출이 <b>같은 칸</b>을 쓴다 —
-    /// 둘은 "길을 탈 때 연출 하나를 재생한다"는 같은 기능이다.
-    ///
-    /// 여기 적히는 것은 <b>연출 그래프의 노드 이름</b>이고, 내보내기가 그것을 계약의
-    /// <c>Option.ViaNodeId</c>(Yarn 노드 이름)로 옮긴다.
-    ///
-    /// 이름을 <b>이 행에</b> 적는 이유: 간선의 신원이 (출발, 도착, 문구)라, 배선을 프로젝트
-    /// 파일에만 두면 기획자가 문구를 고치는 순간 조용히 끊어진다.
-    /// </summary>
-    public string? PresentationNodeName { get; init; }
 
     /// <summary>
     /// `스탯변화` 열 (2026-08-14) — 이 간선을 타는 순간 1회 커밋되는 증감. 스탯이 변하는

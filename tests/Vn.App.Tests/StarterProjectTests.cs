@@ -60,7 +60,7 @@ public sealed class StarterProjectTests : IDisposable
         Assert.Equal(4, chapter.Episodes.Count);
         Assert.Equal(
             ["라루를 믿는다", "혼자 간다"],
-            chapter.Edges.Where(edge => !edge.IsPlainAdvance)
+            chapter.Edges.Where(edge => !edge.HasNoOptionLabel)
                 .Select(edge => edge.OptionLabel!)
                 .Order(StringComparer.Ordinal));
 

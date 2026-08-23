@@ -303,8 +303,8 @@ public sealed class ChapterSchemaV5Tests : IDisposable
 
         // 문구는 간선의 D열 값 그대로다 — 파생도 참조도 아니다.
         Assert.Equal("왼쪽으로",
-            model.Edges.Single(edge => edge.FromEpisodeId == "ep1" && !edge.IsPlainAdvance).OptionLabel);
-        Assert.True(model.Edges.Count(edge => edge.IsPlainAdvance) == 1);
+            model.Edges.Single(edge => edge.FromEpisodeId == "ep1" && !edge.HasNoOptionLabel).OptionLabel);
+        Assert.True(model.Edges.Count(edge => edge.HasNoOptionLabel) == 1);
 
         // 사전은 챕터 전체의 것이다 — 안 쓰는 낱말이 있어도, 같은 낱말을 여러 길이 써도 좋다.
         Assert.Equal(["왼쪽으로", "오른쪽으로"], model.ChoiceOptions.Select(option => option.Text));

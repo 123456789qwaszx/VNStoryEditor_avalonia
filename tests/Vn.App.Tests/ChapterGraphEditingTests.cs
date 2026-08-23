@@ -152,7 +152,7 @@ public sealed class ChapterGraphEditingTests
         ChapterEdge edge = reread.Edges.Single(candidate =>
             candidate.FromEpisodeId == "main05.01" && candidate.ToEpisodeId == "main05.end");
         // 문구 없이 이으면 보이지 않는 기본이다 — 문구는 그 줄을 눌러 고른다.
-        Assert.True(edge.IsPlainAdvance);
+        Assert.True(edge.HasNoOptionLabel);
     });
 
     [Fact]

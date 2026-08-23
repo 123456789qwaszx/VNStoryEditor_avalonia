@@ -121,7 +121,7 @@ public sealed class EpisodeSyncRunnerTests : IDisposable
         // 규칙은 "반영이 0이면 조용히"가 아니라 **"본 워크북이 0이면 조용히"**다.
         // 에피소드가 없는 챕터를 고른 것뿐인데 상태줄이 말하면 그게 소음이다.
         Assert.Null(EpisodeSyncRun.Nothing.StatusMessage);
-        Assert.Null(new EpisodeSyncRun("sf_1", [], [], [], [], false).StatusMessage);
+        Assert.Null(new EpisodeSyncRun("sf_1", [], [], [], false).StatusMessage);
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public sealed class EpisodeSyncRunnerTests : IDisposable
         var run = new EpisodeSyncRun(
             "sf_1",
             [Report(applied: true, rejections: 0), Report(applied: false, rejections: 2)],
-            [], [], [], false);
+            [], [], false);
 
         Assert.Equal(1, run.Applied);
         Assert.Equal(2, run.Rejected);

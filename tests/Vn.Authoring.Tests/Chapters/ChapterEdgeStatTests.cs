@@ -109,7 +109,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
         string path = BuildChapter(); // ep1→ep2, 문구 없음(보이지 않는 기본)
 
         ChapterGraphModel first = ChapterWorkbookReader.Read(path);
-        Assert.True(Assert.Single(first.Edges).IsPlainAdvance);
+        Assert.True(Assert.Single(first.Edges).HasNoOptionLabel);
         Assert.Empty(first.ChoiceOptions); // 빈 문구는 사전에 오를 낱말이 아니다
 
         // 같은 도착으로 가는 길을 문구만 달리해 둘 더 낸다 — 흔한 패턴이고 허용된다.
@@ -148,7 +148,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
             .SetEdgeRoute(path, "ep1", "ep2", "믿는다", "ep3", "의심한다").Written);
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        ChapterEdge moved = Assert.Single(model.Edges, edge => !edge.IsPlainAdvance);
+        ChapterEdge moved = Assert.Single(model.Edges, edge => !edge.HasNoOptionLabel);
         Assert.Equal("ep3", moved.ToEpisodeId);
         Assert.Equal("의심한다", moved.OptionLabel);
     }

@@ -77,7 +77,7 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         Assert.False(branch.HideWhenLocked);
         Assert.Equal("신뢰가 부족하다", branch.LockedMessage);
 
-        Assert.True(model.Edges.Single(edge => edge.FromEpisodeId == "main05.01").IsPlainAdvance);
+        Assert.True(model.Edges.Single(edge => edge.FromEpisodeId == "main05.01").HasNoOptionLabel);
     }
 
     [Fact]

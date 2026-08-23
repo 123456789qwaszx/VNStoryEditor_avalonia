@@ -45,7 +45,6 @@ public static class ChapterValidator
         var conditionsByLabel = chapter.Conditions
             .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
 
-        VerifyPlainAdvances(chapter, diagnostics);
 
         foreach (ChapterEpisode episode in chapter.Episodes)
         {
@@ -157,41 +156,4 @@ public static class ChapterValidator
         }
     }
 
-    /// <summary>
-    /// 보이지 않는 기본의 구조 검증 (v9 — 칸이 사라졌으니 셀 것도 없다). 남은 규칙은 하나:
-    /// <b>문구 없는 간선(자동 진행)은 에피소드당 하나뿐이고, 그 길에는 관문이 없어야 한다.</b>
-    /// 어떤 선택지도 고를 수 없을 때 빠지는 방어장치라, 그것마저 조건이 걸리면 갇힌다.
-    ///
-    /// 선택지 사전(`선택지` 시트)은 검증하지 않는다 — 배선이 아니라 어휘집이라, 안 쓰는
-    /// 낱말이 남아 있는 것은 잘못이 아니다.
-    /// </summary>
-    private static void VerifyPlainAdvances(ChapterGraphModel chapter, List<ChapterDiagnostic> diagnostics)
-    {
-        foreach (IGrouping<string, ChapterEdge> group in chapter.Edges
-                     .Where(edge => edge.IsPlainAdvance)
-                     .GroupBy(edge => edge.FromEpisodeId, StringComparer.Ordinal))
-        {
-            foreach (ChapterEdge extra in group.Skip(1))
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Edges, extra.SourceRow, "D",
-                    $"'{group.Key}'에 문구 없는 간선이 여럿입니다 — 보이지 않는 기본은 " +
-                    "에피소드당 하나뿐입니다. 선택지 문구를 적으면 보이는 선택지가 됩니다."));
-            }
-
-            ChapterEdge fallback = group.First();
-
-            if (fallback.HasGate)
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.OptionEdgeMismatch,
-                    chapter.SourcePath, ChapterSheetNames.Edges, fallback.SourceRow, "E",
-                    $"보이지 않는 기본({fallback.FromEpisodeId}→{fallback.ToEpisodeId})에 관문이 " +
-                    "걸려 있습니다 — 어떤 선택지도 안 될 때 빠지는 자리라 조건이 없어야 합니다."));
-            }
-        }
-    }
 }
