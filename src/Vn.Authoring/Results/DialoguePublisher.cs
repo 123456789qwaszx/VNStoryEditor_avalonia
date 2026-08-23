@@ -285,10 +285,7 @@ public static class DialoguePublisher
             // 마지막 줄 뒤의 전환 (2026-08-24) — 대사 없는 조건 블록이 대본의 끝일 때.
             // 줄에 실린 것과 <b>같은 얼리기</b>를 지난다: 조건 Id가 아니라 <b>식</b>이
             // 결과에 굳어야 산출물이 자기 완결이 된다.
-            node.TrailingTransitions
-                .Select(transition => Freeze(transition, project, definition, available))
-                .OfType<DialogueResultTransition>()
-                .ToArray());
+            FreezeTrailing(node, project, definition, available));
     }
 
     /// <summary>
@@ -448,6 +445,43 @@ public static class DialoguePublisher
         }
 
         return blocks;
+    }
+
+    /// <summary>
+    /// 대본 끝의 줄 없는 갈래들을 얼린다 (2026-08-24) — 전환과 <b>그 갈래의 출구</b>를 함께.
+    ///
+    /// 출구가 전환에 붙는 이유: 실을 줄이 없다. 앵커는 흐름 해석과 같은 규칙으로 짓는다
+    /// (<see cref="Flow.BranchAnchor"/>) — 두 곳이 다르게 세면 매단 detour가 사라진다.
+    /// </summary>
+    private static IReadOnlyList<DialogueResultTransition> FreezeTrailing(
+        DialogueNode node,
+        StoryProject project,
+        GameDefinition? definition,
+        AvailableConditionCatalog available)
+    {
+        var frozen = new List<DialogueResultTransition>(node.TrailingTransitions.Count);
+        int opened = 0;
+
+        foreach (LineConditionTransition transition in node.TrailingTransitions)
+        {
+            if (Freeze(transition, project, definition, available) is not { } item)
+            {
+                continue;
+            }
+
+            if (!transition.OpensBranch)
+            {
+                frozen.Add(item);
+                continue;
+            }
+
+            node.BranchExits.TryGetValue(
+                Flow.BranchAnchor.ForTrailing(opened++), out string? exit);
+
+            frozen.Add(item with { ExitTargetNodeId = exit });
+        }
+
+        return frozen;
     }
 
     private static DialogueResultTransition? Freeze(

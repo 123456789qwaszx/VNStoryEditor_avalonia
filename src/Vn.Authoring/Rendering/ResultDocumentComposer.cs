@@ -161,19 +161,38 @@ public static class ResultDocumentComposer
         int conditionDepth = 0;
         bool choiceOpen = false;
 
-        foreach (DialogueResultLine line in dialogue.Lines)
+        // ⚠ 줄들을 돈 <b>뒤에 한 번 더</b> 돈다 — 마지막이 <b>꼬리</b>다(줄 없는 자리).
+        // 대사 없는 조건 블록이 대본의 끝이면 전환을 실을 줄이 없어서, 그 전환들은 결과의
+        // `TrailingTransitions`에 산다. 여기서 <b>베끼지 않고 같은 루프로</b> 지나야 한다:
+        // 전환→세그먼트 규칙(깊이·들여쓰기·대기 중 출구·암묵 ChoiceEnd)이 한 벌이어야
+        // 두 자리가 갈리지 않는다. 흐름 해석도 같은 수를 쓴다.
+        for (int lineIndex = 0; lineIndex <= dialogue.Lines.Count; lineIndex++)
         {
+            bool tail = lineIndex == dialogue.Lines.Count;
+            DialogueResultLine? line = tail ? null : dialogue.Lines[lineIndex];
+
+            IReadOnlyList<DialogueResultTransition> transitions =
+                tail ? dialogue.TrailingTransitions : line!.Transitions;
+
+            if (tail && transitions.Count == 0)
+            {
+                break; // 꼬리가 없으면 한 바퀴도 돌 것이 없다.
+            }
+
             var lineSource = new RenderSourceReference(
                 NodeId: dialogue.SourceNodeId,
-                LineId: line.LineId,
-                ConditionId: line.Transition?.ConditionId,
+                LineId: line?.LineId,
+                ConditionId: (tail ? transitions.FirstOrDefault() : line!.Transition)?.ConditionId,
                 DialogueResultId: dialogue.Identity.ResultId);
+
+            // 세그먼트 Id의 뿌리 — 줄이 없으면 노드의 꼬리다.
+            string source = line?.LineId ?? $"{dialogue.SourceNodeId}:trailing";
 
             bool isOptionLabel = false;
 
             // 한 줄 앞에 전환이 여럿 몰릴 수 있다 (2026-08-17) — Yarn에 전환만 있는 줄이
             // 없어서 겹쳐 닫기·연달아 열기가 전부 다음 대사 줄 앞에 쌓인다. 순서대로 재생한다.
-            foreach (DialogueResultTransition transition in line.Transitions)
+            foreach (DialogueResultTransition transition in transitions)
             {
                 bool isChoiceTransition = transition.Kind is ConditionTransitionKind.BeginChoice
                     or ConditionTransitionKind.BeginNextOption
@@ -216,25 +235,26 @@ public static class ResultDocumentComposer
                             choiceOptionIndex++;
                         }
 
-                        if (showDialogue)
+                        // ⚠ 옵션 라벨은 <b>그 줄 자체가 버튼</b>이라 꼬리에는 있을 수 없다.
+                        if (showDialogue && line is { } optionLine)
                         {
                             // 라벨 라인은 일반 대사가 아니라 버튼이다. 본문 줄 수를 세는
                             // 규칙(계약서 B)에서 빠지도록 별도 종류로 낸다.
                             segments.Add(new RenderedSegment(
-                                Id: $"choice:{line.LineId}",
+                                Id: $"choice:{source}",
                                 Kind: RenderedSegmentKind.ChoiceOption,
                                 Layer: DocumentLayer.Dialogue,
                                 Source: lineSource,
                                 IndentLevel: conditionDepth, // 라벨은 감싼 조건 깊이 (W54)
-                                Text: options.IncludeDialogueText ? line.Text : null,
+                                Text: options.IncludeDialogueText ? optionLine.Text : null,
                                 LocalizedText: options.IncludeLocalizedDialogue
-                                    ? localization?.GetLocalizedText(line.LineId)
+                                    ? localization?.GetLocalizedText(optionLine.LineId)
                                     : null,
-                                Speaker: options.IncludeSpeaker ? line.CharacterName : null,
+                                Speaker: options.IncludeSpeaker ? optionLine.CharacterName : null,
                                 OptionId: transition.OptionId,
                                 ChoiceBlockOrdinal: choiceBlockOrdinal,
                                 ChoiceOptionIndex: choiceOptionIndex,
-                                Tags: BuildEffectTags(line.Sets)));
+                                Tags: BuildEffectTags(optionLine.Sets)));
                         }
 
                         break;
@@ -246,7 +266,7 @@ public static class ResultDocumentComposer
                         if (showDialogue)
                         {
                             segments.Add(new RenderedSegment(
-                                Id: $"choice:{line.LineId}:end",
+                                Id: $"choice:{source}:end",
                                 Kind: RenderedSegmentKind.ChoiceEnd,
                                 Layer: DocumentLayer.Dialogue,
                                 Source: lineSource,
@@ -261,7 +281,7 @@ public static class ResultDocumentComposer
                         if (choiceOpen && showDialogue)
                         {
                             segments.Add(new RenderedSegment(
-                                Id: $"choice:{line.LineId}:implicit-end",
+                                Id: $"choice:{source}:implicit-end",
                                 Kind: RenderedSegmentKind.ChoiceEnd,
                                 Layer: DocumentLayer.Dialogue,
                                 Source: lineSource,
@@ -293,14 +313,38 @@ public static class ResultDocumentComposer
 
                         if (options.IncludeConditions)
                         {
-                            AddTransition(segments, line, transition, lineSource, markerIndent);
+                            AddTransition(segments, source, transition, lineSource, markerIndent);
                         }
 
                         break;
                 }
+
+                // 줄 없는 갈래의 출구 (2026-08-24) — 실을 줄이 없어 <b>전환에</b> 실려 온다.
+                // 줄에 매달린 출구는 아래(줄 단위)에서 대기시키므로 여기서 겹치지 않는다:
+                // 이 칸은 꼬리 전환에만 채워진다.
+                //
+                // ⚠ 여는 전환에서 대기시켜야 <b>닫는 전환이 흘려보낸다</b> — 그래야
+                // `<<if>>` → `<<detour>>` → `<<endif>>` 순서가 나온다. 여는 자리에 바로
+                // 내면 갈래 본문보다 앞서 뛴다(같은 이유로 줄 쪽도 대기시킨다).
+                if (transition.ExitTargetNodeId is { } trailingTarget)
+                {
+                    pendingBranchJump = (
+                        lineSource,
+                        trailingTarget,
+                        transition.Kind is ConditionTransitionKind.BeginChoice
+                            or ConditionTransitionKind.BeginNextOption);
+                }
             }
 
             int indent = options.IncludeConditions || isOptionLabel ? depth : 0;
+
+            // 꼬리에는 대사도 연출도 없다 — 갈래를 열고 닫기만 한다. 출구는 전환에
+            // 실려 왔으므로 위 루프가 이미 대기시켰다.
+            // (`tail`이 아니라 `line`으로 묻는다 — 그래야 아래가 널 아님으로 좁혀진다.)
+            if (line is null)
+            {
+                continue;
+            }
 
             if (options.IncludeSetAssignments)
             {
@@ -497,7 +541,7 @@ public static class ResultDocumentComposer
 
     private static void AddTransition(
         List<RenderedSegment> segments,
-        DialogueResultLine line,
+        string idRoot,
         DialogueResultTransition transition,
         RenderSourceReference source,
         int indentLevel = 0)
@@ -505,7 +549,7 @@ public static class ResultDocumentComposer
         if (transition.Kind == ConditionTransitionKind.EndIf)
         {
             segments.Add(new RenderedSegment(
-                Id: $"condition:{line.LineId}:end",
+                Id: $"condition:{idRoot}:end",
                 Kind: RenderedSegmentKind.ConditionEnd,
                 Layer: DocumentLayer.Conditions,
                 Source: source,
@@ -518,7 +562,7 @@ public static class ResultDocumentComposer
             : transition.ConditionId ?? string.Empty;
 
         segments.Add(new RenderedSegment(
-            Id: $"condition:{line.LineId}:open",
+            Id: $"condition:{idRoot}:open",
             Kind: transition.Kind == ConditionTransitionKind.BeginIf
                 ? RenderedSegmentKind.ConditionBegin
                 : RenderedSegmentKind.ConditionElseIf,

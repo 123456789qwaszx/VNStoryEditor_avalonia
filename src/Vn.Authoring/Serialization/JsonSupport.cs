@@ -258,7 +258,23 @@ internal static class JsonSupport
 
         foreach (string openLineId in node.BranchExits.Keys)
         {
-            if (!lineIds.Contains(openLineId))
+            // 줄 없는 갈래(대본 끝의 빈 블록)는 줄 항목이 있을 수 없다 — 그 자리에 사는
+            // 것은 `TrailingTransitions`다 (2026-08-24, `Flow.BranchAnchor`).
+            if (Flow.BranchAnchor.IsTrailing(openLineId))
+            {
+                if (!node.TrailingTransitions.Any(transition => transition.OpensBranch))
+                {
+                    throw new InvalidDataException(
+                        $"DialogueNode '{node.Id}'의 조건 출구가 없는 꼬리 갈래 '{openLineId}'에 매달려 있습니다.");
+                }
+
+                continue;
+            }
+
+            // 한 줄이 갈래를 여럿 열면 신원에 `#n`이 붙는다 — 뿌리로 되돌려 본다.
+            string root = openLineId.Split(Flow.BranchAnchor.Separator)[0];
+
+            if (!lineIds.Contains(root))
             {
                 throw new InvalidDataException(
                     $"DialogueNode '{node.Id}'의 조건 출구가 항목 없는 LineId '{openLineId}'에 매달려 있습니다.");
