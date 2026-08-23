@@ -3393,13 +3393,13 @@ public partial class ChapterGraphView : UserControl
             ? $"검증 보고 — 오류 없음 (알림 {all.Count}건)"
             : $"검증 보고 — 오류 {errors} · 경고 {warnings}";
 
-        int synced = _syncReports.Count(report => !report.NotYetWritten);
-
-        if (synced > 0)
+        // ⚠ "동기화 N건 반영"은 <b>더 이상 적지 않는다</b> (2026-08-24 소유자: "동기화가
+        // 몇개 반영됬는지 표기할 필요는 없어"). 여기는 <em>검증 보고</em>이고, 잘된 일의
+        // 개수는 검증할 것이 아니다 — 문제만 적힌 목록이라야 문제가 눈에 띈다.
+        // 거부·경고는 그대로 든다: 조용한 무반영이 최악이다(G3-1).
+        if (rejected > 0)
         {
-            header += rejected == 0
-                ? $" · 동기화 {synced}건 반영"
-                : $" · 동기화 거부·경고 {rejected}건";
+            header += $" · 동기화 거부·경고 {rejected}건";
         }
 
         string? exportNotice = ExportNotice();
@@ -3428,7 +3428,10 @@ public partial class ChapterGraphView : UserControl
                 "'경로를 찾지 못했다'입니다.", Brushes.DarkGoldenrod, dim: false, bold: true));
         }
 
-        if (all.Count == 0 && _syncReports.Count == 0)
+        // ⚠ 세는 것은 <b>말할 것이 있는</b> 보고뿐이다 (2026-08-24). 예전에는 보고가
+        // 하나라도 있으면 여기를 지나쳤는데, 이제 대부분의 보고가 아무 줄도 내지 않으므로
+        // 그대로 두면 <b>텅 빈 상자</b>가 선다("보고할 것이 없습니다"조차 없이).
+        if (all.Count == 0 && !_syncReports.Any(HasSomethingToSay))
         {
             DiagnosticsPanel.Children.Add(new TextBlock
             {
@@ -3549,16 +3552,12 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private void DrawSyncReports()
     {
-        foreach (EpisodeSyncReport report in _syncReports)
+        foreach (EpisodeSyncReport report in _syncReports.Where(HasSomethingToSay))
         {
-            // 아직 대사를 안 쓴 워크북은 아예 말하지 않는다 — 잘못한 것이 없다.
-            if (report.NotYetWritten)
-            {
-                continue;
-            }
-
+            // 반영된 것에는 <b>제목만 적고 넘어가지 않는다</b> — 아래에 짚을 것이 있어서
+            // 여기 왔으므로, 그 줄들이 어느 에피소드의 것인지 이름표가 필요하다.
             string summary = report.Applied
-                ? $"에피소드 {report.EpisodeId} — 반영됨"
+                ? $"에피소드 {report.EpisodeId}"
                 : $"에피소드 {report.EpisodeId} — 반영 거부";
 
             DiagnosticsPanel.Children.Add(DiagnosticLine(
@@ -3586,13 +3585,35 @@ public partial class ChapterGraphView : UserControl
                     $"  {pruned.Describe()}", Brushes.DarkGoldenrod, dim: false));
             }
 
-            if (report.IssuedLineIds.Count > 0)
-            {
-                DiagnosticsPanel.Children.Add(DiagnosticLine(
-                    $"  새 줄 {report.IssuedLineIds.Count}개에 LineId를 발급했습니다 (프로젝트에 기록 — 워크북은 건드리지 않음).",
-                    null, dim: true));
-            }
         }
+    }
+
+    /// <summary>
+    /// 이 보고가 <b>검증 보고에 낄 자격이 있는가</b> (2026-08-24 소유자: "동기화가 몇개
+    /// 반영됬는지 표기할 필요는 없어. 그런 동기화 문구들은 굳이 표시가 안 되도록").
+    ///
+    /// 가르는 선은 <b>문제인가 아닌가</b>다. 잘된 일의 개수는 검증할 것이 아니고, 그것이
+    /// 목록을 채우면 정작 봐야 할 줄이 그 사이에 묻힌다 — 이 상자의 존재 이유가 그
+    /// 반대다("숫자는 2개라는데 볼 방법이 없어").
+    ///
+    /// ⛔ <b>거부는 언제나 남는다.</b> 조용한 무반영이 최악이다(G3-1) — 여기서 거부까지
+    /// 걸러 내면 작가는 자기 대사가 왜 안 나오는지 영영 모른다.
+    ///
+    /// 함께 사라진 것: <c>새 줄 N개에 LineId를 발급했습니다</c>. 문제가 아니라 툴이 제
+    /// 장부를 적었다는 말이고, 새 줄을 쓸 때마다 떴다.
+    /// </summary>
+    private static bool HasSomethingToSay(EpisodeSyncReport report)
+    {
+        // 아직 대사를 안 쓴 워크북은 아예 말하지 않는다 — 잘못한 것이 없다.
+        if (report.NotYetWritten)
+        {
+            return false;
+        }
+
+        return !report.Applied ||
+            report.Problems.Count > 0 ||
+            report.Pruned.Count > 0 ||
+            report.Diagnostics.Any(item => item.Severity != ChapterDiagnosticSeverity.Info);
     }
 
     // SelectableTextBlock — [보고 복사]가 전체를 들고 가고, 드래그는 한 줄만 집어 간다.

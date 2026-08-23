@@ -42,7 +42,7 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 에피소드_동기화가_대사노드와_보고_패널로_이어진다() => HeadlessUi.Run(() =>
+    public void 에피소드_동기화가_대사노드로_이어진다() => HeadlessUi.Run(() =>
     {
         using var project = new TempProject(SamplePath);
 
@@ -57,21 +57,65 @@ public sealed class ChapterGraphSyncViewTests
         // 대사노드가 챕터의 대사엔트리 이름으로 생겼다.
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "Story_ch05_02");
+    });
 
-        // 배지(머리글)와 패널에 동기화 결과가 보인다.
+    [Fact]
+    public void 잘된_동기화는_검증_보고에_아무_말도_안_한다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 — "동기화가 몇개 반영됬는지 표기할 필요는 없어. 그런 동기화
+        // 문구들은 굳이 표시가 안 되도록." 여기는 <b>검증</b> 보고이고, 잘된 일의 개수는
+        // 검증할 것이 아니다 — 그것이 목록을 채우면 정작 봐야 할 줄이 그 사이에 묻힌다.
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+        File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
+
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SyncEpisodes();
+
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
-        Assert.Contains("동기화 1건 반영", (string)expander.Header!);
+        Assert.DoesNotContain("반영", (string)expander.Header!);
 
-        var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
-        Assert.Contains(panel.Children.OfType<TextBlock>(),
-            block => block.Text?.Contains("에피소드 main05.02 — 반영됨") == true);
-
-        // 동기화 보고가 목록 맨 위다 — 사람이 방금 한 행동의 결과를 알림 더미 아래
-        // 스크롤 밖에 묻지 않는다(실사례: "숫자는 2개라는데 볼 방법이 없어").
-        List<string> texts = panel.Children.OfType<TextBlock>()
+        List<string> texts = view.FindControl<StackPanel>("DiagnosticsPanel")!
+            .Children.OfType<TextBlock>()
             .Select(block => block.Text ?? string.Empty)
             .ToList();
-        int syncIndex = texts.FindIndex(text => text.Contains("반영됨"));
+
+        // ⚠ 동기화 보고의 이름표는 <b>정확히</b> "에피소드 {Id}"다. 부분일치로 재면
+        // 진단 줄이 파일 경로에 그 이름을 달고 있어 헛물을 켠다 — 처음 쓴 판이 그래서
+        // 필터를 꺼도 통과했다.
+        Assert.DoesNotContain(texts, text => text.Trim() == "에피소드 main05.02");
+        Assert.DoesNotContain(texts, text => text.Contains("반영됨"));
+        Assert.DoesNotContain(texts, text => text.Contains("LineId를 발급"));
+
+        // ⛔ 거부는 이 침묵에 휩쓸리지 않는다 — 조용한 무반영이 최악이다(G3-1).
+        // 그쪽은 `깨진_에피소드는_거부가_배지와_패널에_보인다`가 지킨다.
+    });
+
+    [Fact]
+    public void 짚을_것이_있는_에피소드는_이름표와_함께_맨_위에_선다() => HeadlessUi.Run(() =>
+    {
+        // 잘된 것을 지웠다고 <b>짚을 것까지 지우면 안 된다.</b> 그리고 그 줄들은 여전히
+        // 목록 맨 위다 — 사람이 방금 한 행동의 결과를 알림 더미 아래 스크롤 밖에 묻지
+        // 않는다(실사례: "숫자는 2개라는데 볼 방법이 없어").
+        using var project = new TempProject(SamplePath);
+        Directory.CreateDirectory(project.EpisodesFolder);
+
+        EpisodeLibrary.EnsureWorkbook(project.EpisodesFolder, "main05.01");
+        BreakWorkbook(Path.Combine(project.EpisodesFolder, "main05.01.xlsx"));
+
+        (ChapterGraphView view, _) = Show(project);
+
+        view.SyncEpisodes();
+
+        List<string> texts = view.FindControl<StackPanel>("DiagnosticsPanel")!
+            .Children.OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty)
+            .ToList();
+
+        int syncIndex = texts.FindIndex(text => text.Contains("에피소드 main05.01"));
+        Assert.True(syncIndex >= 0, "짚을 것이 있으면 어느 에피소드인지 이름표가 있어야 한다");
+
         int firstDiagnosticIndex = texts.FindIndex(text => text.Contains(".xlsx ·"));
         Assert.True(firstDiagnosticIndex < 0 || syncIndex < firstDiagnosticIndex,
             $"동기화 줄({syncIndex})이 진단({firstDiagnosticIndex})보다 아래에 있습니다.");
