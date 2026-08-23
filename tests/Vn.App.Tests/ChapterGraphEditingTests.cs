@@ -137,6 +137,40 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 편집_폼은_도착을_먼저_묻는다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 — 길을 놓을 때 사람이 먼저 정하는 것은 "어디로 가나"다.
+        // 예전에는 (선택지) → (도착) 순이었다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        Assert.Equal(0, Grid.GetColumn(view.FindControl<ComboBox>("EdgeTargetCombo")!));
+        Assert.Equal(2, Grid.GetColumn(view.FindControl<ComboBox>("EdgeLabelBox")!));
+    });
+
+    [Fact]
+    public void 이름_칸은_개명_자리임을_스스로_말한다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 "이름을 바꾸는 게 가능하도록 해줘" — 기능은 처음부터 있었는데
+        // 칸이 읽기 전용 표시처럼 보여 아무도 개명 자리인 줄 몰랐다. 비활성일 때 아무 말도
+        // 없으면 "이 기능이 없다"로 읽힌다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+        view.SelectEpisode("main05.01");
+
+        TextBlock hint = view.FindControl<TextBlock>("IdBoxHint")!;
+
+        // 기본은 엑셀 전용 — 왜 못 고치는지를 그 자리에서 말한다.
+        Assert.Contains("엑셀에서만 편집", hint.Text);
+
+        view.FindControl<CheckBox>("ExcelOnlyCheck")!.IsChecked = false;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Contains("Enter", hint.Text);
+        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+    });
+
+    [Fact]
     public void 패널에서_간선을_더한다() => HeadlessUi.Run(() =>
     {
         using var project = new TempProject(SamplePath);

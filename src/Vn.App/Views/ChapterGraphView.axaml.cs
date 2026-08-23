@@ -2387,6 +2387,12 @@ public partial class ChapterGraphView : UserControl
         bool editable = ToolEditable;
 
         IdBox.IsEnabled = editable;
+
+        // 잠겨 있으면 **그 자리에서** 이유를 말한다 (2026-08-24). 비활성 칸이 아무 말도
+        // 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
+        IdBoxHint.Text = editable
+            ? "이름 — 고치고 Enter"
+            : "이름 — 고치려면 위 [엑셀에서만 편집] 체크를 푸세요";
         VisibleCombo.IsEnabled = editable;
         UnlockCombo.IsEnabled = editable;
         AddNextEdgeButton.IsVisible = editable;
