@@ -194,8 +194,11 @@ Yarn 암묵 ID로 충분하다.
 **대상이 바뀌었다.** 옛 §G는 유니티의 `ChapterEpisodeProgressionSO`를 겨눴는데 그 타입은
 런타임에서 사라졌다. 지금 수입 대상은 **`ked-progression` 패키지의 순수 C# 타입**이다.
 
-저장소: `C:\Users\river\Documents\GitHub\ked-progression` · 모델 테스트 52 통과(2026-08-17).
-**로더(`ProgressionLoader`)와 DTO는 아직 없다** — 그것이 Gate D의 현재 위치다.
+저장소: `C:\Users\river\Documents\GitHub\ked-progression` · **`0.2.0` 태그(2026-08-23) · 테스트 144 통과.**
+
+**Gate D는 닫혔다 (2026-08-23).** 로더(`ProgressionLoader`)·DTO·전이기·세이브가 전부 서 있고,
+유니티가 UPM 패키지로 물어(`git URL #0.2.0` 고정) 실제로 몰아 봤다 — 게이트 H1·H2·H4 통과.
+이 문서의 옛 "아직 없다" 줄은 2026-08-17 기준이었다.
 
 ## F. 타입 대응 — JSON ↔ 모델
 
@@ -210,8 +213,9 @@ Node   : { EpisodeId, Title, IndexText, Kind("Main"|"Attachment"), DialogueEntry
            VisibleConditions[], UnlockConditions[], NextOptions[], Attachments[],
            IsChapterEndingCandidate, EndingKey, DesignerNote, Position{X,Y} }
 
-Option : { TargetEpisodeId, ChoiceLabel, VisibleConditions[], Conditions[],
-           HideWhenLocked, LockedReasonText, StatChanges[{Key, Amount}] }
+Option : { TargetEpisodeId, ChoiceLabel, Kind("Choice"|"Auto"), VisibleConditions[],
+           Conditions[], HideWhenLocked, LockedReasonText, ViaNodeId,
+           StatChanges[{Key, Amount, Op("Add"|"Set")}] }
 
 조건   : { Kind("Stat"|"EpisodeCleared"), Key, Op, IntValue }
 ```
@@ -296,21 +300,65 @@ bool 어휘 준수. 그래서 전이기와 도달성 증명은 "허공으로 가
 낸다. ⚠ 저작 이름(`PresentationNodeName`)과 계약 이름이 갈리는 자리라 **키 이름을 글자
 그대로** 붙드는 테스트를 걸었다 — 틀리면 역직렬화기가 조용히 버려 오류 없이 연출만 사라진다.
 
-**G-6. 깃발(bool 스탯) 지정 — 저작 완료, 계약 대기 (2026-08-19).**
-`met_willow true`가 저작에서 되고 증명도 그것을 본다. 계약의 `StatChange`에 '정하기'를
-실을 칸(`Op`)이 없어 **깃발을 쓰는 챕터는 내보내기가 거부된다.** 칸이 서면
-`ChapterProgressionExporter.BoolSetNotCarried` 한 함수만 지운다.
+**G-6. 깃발(bool 스탯) 지정 — ✅ 2026-08-23 완료.** `ked-progression` `0.2.0`에
+`StatChangeDto.Op`가 서서 `BoolSetNotCarried` 거부를 지웠다. `StatChanges`의 각 항목이
+`Op`를 함께 싣는다 — `"Set"`은 깃발 지정(값은 0/1), `"Add"`는 정수 증감.
+⚠ **`"Add"`를 비우지 않고 명시한다**: 저쪽은 빈 문자열도 더하기로 읽지만(구 JSON 호환),
+적어 두면 "아무도 안 정한 것"과 "더하기로 정한 것"이 JSON에서 구별된다.
 규격: [`work-orders/bool-stat-orders.md`](work-orders/bool-stat-orders.md).
+
+**G-7. `Option.Kind` 내보내기 — 이쪽 완료, 저쪽 칸 대기 (2026-08-23).**
+간선의 `종류` 열이 `NextOptions[].Kind`(`"Choice"`/`"Auto"`)로 나간다.
+⚠ **저쪽 `EpisodeOptionDto`에 아직 이 칸이 없다** — 호스트 역직렬화기가 모르는 속성을
+조용히 버리므로 **지금은 나가기만 하고 아무 일도 하지 않는다.** 코어는 여전히 `ChoiceLabel`이
+비었는지로 자동 진행을 추론하고(D5) 그 경고를 낸다. 저쪽이 칸 하나만 세우면 **문구 없는
+`Choice`가 오류로 잡힌다** — 이쪽은 더 할 일이 없다.
+
+**G-8. `DialogueEntryId` 이름 규칙 — ✅ 2026-08-23 완료.** ⚠ **`대사엔트리`가 적힌 글자
+그대로 나가지 않는다.** `YarnBundleEmitter.StoryNodeTitleOf`를 통과한다:
+
+```
+DialogueEntryId = "Story_" + SanitizeNodeName(대사엔트리)
+                             └ 영숫자·밑줄이 아닌 글자를 전부 '_'로  (`장면 1` → `Story_장면_1`)
+```
+
+1부의 yarn 타이틀과 **한 글자도 달라선 안 된다** — 런타임이 이 글자로 `YarnProject`에서
+노드를 찾는다. 2026-08-23까지 이 자리만 규칙 밖에 있어서 진행 JSON은 `new01`, yarn은
+`Story_new01`로 갈렸다(로드·검증·증명은 전부 통과하고 재생만 안 됐다. 호스트의
+`ProgressionContentPreflight`가 잡았다). **바깥에서 `"Story_" + 이름`으로 흉내 내지 말 것** —
+규칙은 두 단계이고 주인은 이미터 하나다.
+규격: [`work-orders/dialogue-entry-naming-orders.md`](work-orders/dialogue-entry-naming-orders.md).
 
 **G-3. 커맨드 카탈로그 재검증 — ✅ 2026-08-18 완료.** 죽은 22개를 걷어 **179항목**으로 맞췄다(등록 178 + 동적 별칭 `<N>fr`). `docs/game.definition.json`은 문서가 아니라 **내장 리소스로 링크된 실물 팔레트**다 — 낡은 항목은 곧 작가가 고를 수 있는 unknown command다.
 
 **G-4. `Ked.Presentation.Core` — 패키지화를 기다린다 (소유자 방침, 2026-08-18).** 소스째
-복사하는 지금 방식은 이미 벌어져 있지만(아래), **최종적으로 패키지로 가져오기로 했으므로
-재복사하지 않는다.** 그때까지 무대 프리뷰는 런타임과 다른 그림을 그릴 수 있다. 우리 `src/Ked.Presentation.Core`와
-런타임 `Assets/Ked.Presentation.Core`를 비교하면 여러 파일이 다르고, **런타임에만 있는
-파일이 7개**다(`StageReducer.{Placement,Portrait,Shot,Show,Slot,Staging}.cs` ·
-`PortraitSizingReduction.cs`). architecture-decisions **H-4**의 "소스째 복사해 온 한 벌"이
-낡았다 — 다시 들여와야 무대 프리뷰가 런타임과 같은 그림을 그린다.
+복사하는 지금 방식은 **최종적으로 패키지로 가져오기로 했으므로 재복사로 때우지 않는다.**
+
+**실측 갱신 (2026-08-23)** — 줄바꿈을 무시하고 파일 단위로 대조한 결과:
+
+| | |
+|---|---|
+| 같음 | **38 파일** |
+| **실질 갈림** | **1 파일** — `Tuning/PortraitDimensionsDto.cs` |
+| 저쪽에만 | `Tests/EditMode/` 24 파일 — **테스트는 안 옮긴다.** 정상 |
+
+이 문서가 적어 두었던 *"런타임에만 있는 파일 7개"*(`StageReducer.{Placement,Portrait,Shot,Show,Slot,Staging}.cs`·
+`PortraitSizingReduction.cs`)는 **낡았다 — 일곱 다 넘어와 있다.**
+
+갈린 하나가 무는 자리:
+
+```
+이쪽   변형 키 정규화 = 마지막 글자만    'school' → 'l',  'casual' → 'l'
+저쪽   변형 키 정규화 = 문자열 전체      'school' ≠ 'casual'   (런타임 38fef522, 2026-08-21)
+```
+
+`school`과 `casual`이 **툴에서만 같은 키가 된다** — 미리보기가 엉뚱한 초상 치수를 집고
+게임은 올바른 것을 집는데 **오류는 하나도 안 난다.** 소비자는 `Flow/CoreStageFold.cs` ·
+`Flow/MotionInspection.cs` · `Flow/StageMotionPlan.cs` · `Views/MiniStagePreview.axaml.cs`.
+
+⚠ **재복사는 해결이 아니다.** 이 사본이 갈리는 것은 사건이 아니라 구조다 — `ked-progression`은
+같은 문제를 **UPM 패키지 + 태그 고정**으로 끝냈고(`#0.2.0`, 2026-08-23) 그 절차가 이미
+검증됐다. 같은 수를 여기 한 번 더 두는 것이 답이다.
 
 ## H. 소유자가 정해야 하는 것
 
