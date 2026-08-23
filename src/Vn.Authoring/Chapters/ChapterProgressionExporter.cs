@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Vn.Authoring.Rendering;
 
 namespace Vn.Authoring.Chapters;
 
@@ -54,13 +55,6 @@ public static class ChapterProgressionExporter
             return new ChapterExportResult(null, validation);
         }
 
-        if (BoolSetNotCarried(chapter) is { } notCarried)
-        {
-            return new ChapterExportResult(
-                null,
-                validation with { Diagnostics = [.. validation.Diagnostics, notCarried] });
-        }
-
         var payload = new ChapterJson
         {
             ChapterId = chapter.ChapterId,
@@ -71,50 +65,6 @@ public static class ChapterProgressionExporter
         };
 
         return new ChapterExportResult(JsonSerializer.Serialize(payload, Options), validation);
-    }
-
-    /// <summary>
-    /// 깃발 지정(`met_willow true`)이 있는데 계약이 아직 그것을 실을 수 없으면 그 사유
-    /// (2026-08-19). 실을 수 있게 되면 이 함수와 그 호출 한 줄만 지운다.
-    ///
-    /// <b>왜 조용히 빼고 내지 않는가</b> — `StatChangeDto`에는 `Key`·`Amount`뿐이라 지정을
-    /// 표현할 칸이 없다. 빼고 내면 JSON은 멀쩡해 보이는데 <b>게임 로직이 달라진다</b>:
-    /// 깃발이 영원히 안 켜지고, 그 깃발을 보던 관문이 영원히 잠기며, 저쪽 도달성 증명이
-    /// 이쪽과 다른 답을 낸다. 그리고 그 어긋남은 JSON에 도착한 뒤에는 <b>아무도 볼 수
-    /// 없다</b> — 엔딩키 충돌을 저작 쪽에서 막기로 한 것과 정확히 같은 이유다.
-    ///
-    /// 값 하나를 잃는 것보다 파일이 안 나가는 편이 싸다. 사유가 화면에 서므로 기획자는
-    /// 무엇이 막고 있는지 안다.
-    /// </summary>
-    private static ChapterDiagnostic? BoolSetNotCarried(ChapterGraphModel chapter)
-    {
-        ChapterEdge? edge = chapter.Edges
-            .FirstOrDefault(candidate => candidate.StatChanges.Any(delta => delta.IsSet));
-
-        if (edge is null)
-        {
-            return null;
-        }
-
-        string keys = string.Join(
-            ", ",
-            chapter.Edges
-                .SelectMany(candidate => candidate.StatChanges)
-                .Where(delta => delta.IsSet)
-                .Select(delta => delta.Key)
-                .Distinct(StringComparer.Ordinal));
-
-        return new ChapterDiagnostic(
-            ChapterDiagnosticSeverity.Error,
-            ChapterDiagnosticCode.StatValueNotInteger,
-            chapter.ChapterId,
-            ChapterSheetNames.Edges,
-            edge.SourceRow,
-            "C",
-            $"깃발을 켜는 간선이 있어 아직 내보낼 수 없습니다({keys}) — 진행 계약의 " +
-            "`StatChange`가 '정하기'를 실을 칸을 아직 갖고 있지 않습니다. " +
-            "빼고 내보내면 깃발이 영원히 안 켜진 채로 게임이 돌아갑니다. " +
-            "`docs/work-orders/bool-stat-orders.md` 참조.");
     }
 
     /// <summary>
@@ -165,7 +115,12 @@ public static class ChapterProgressionExporter
         Kind = string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase)
             ? "Attachment"
             : "Main",
-        DialogueEntryId = episode.DialogueEntry,
+        // ⚠ 이미터의 이름 규칙을 통과시킨다 (2026-08-23) — 런타임은 이 글자로 YarnProject에서
+        // 노드를 찾는다. 그냥 실으면 진행 JSON은 `new01`, yarn은 `Story_new01`이 되어
+        // 로드·검증·증명이 전부 통과하는데 재생만 안 된다. 규칙은 접두 하나가 아니라
+        // `Story_` + SanitizeNodeName 두 단계이므로 여기서 손으로 이으면 공백 든 이름에서
+        // 또 갈린다 — 규칙의 주인은 이미터 하나다.
+        DialogueEntryId = YarnBundleEmitter.StoryNodeTitleOf(episode.DialogueEntry),
         // v8 — 관문은 에피소드가 아니라 그 길(간선)이 갖는다. 노드의 두 필드는 스키마
         // 1:1을 위해 남기되 비어 나간다(⚠ 런타임 수입기가 NextOption 쪽을 읽어야 한다).
         VisibleConditions = [],
@@ -180,6 +135,7 @@ public static class ChapterProgressionExporter
             {
                 TargetEpisodeId = edge.ToEpisodeId,
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
+                Kind = edge.Kind == EdgeKind.Auto ? "Auto" : "Choice",
                 VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 HideWhenLocked = edge.HideWhenLocked,
@@ -189,7 +145,12 @@ public static class ChapterProgressionExporter
                 // 저쪽 역직렬화기가 모르는 속성을 조용히 버려 연출만 사라진다.
                 ViaNodeId = edge.PresentationNodeName ?? string.Empty,
                 StatChanges = edge.StatChanges
-                    .Select(delta => new StatChangeJson { Key = delta.Key, Amount = delta.Amount })
+                    .Select(delta => new StatChangeJson
+                    {
+                        Key = delta.Key,
+                        Amount = delta.Amount,
+                        Op = delta.IsSet ? "Set" : "Add"
+                    })
                     .ToList()
             })
             .ToList(),
@@ -296,6 +257,22 @@ public static class ChapterProgressionExporter
         public string ChoiceLabel { get; set; } = string.Empty;
 
         /// <summary>
+        /// 이 길을 <b>누가 고르나</b> — <c>"Choice"</c>(플레이어) 또는 <c>"Auto"</c>(자동 진행).
+        /// 저작의 `간선` 시트 `종류`(I) 열이 원천이다.
+        ///
+        /// <b>왜 싣는가</b> — 이 칸이 없으면 저쪽은 <c>ChoiceLabel</c>이 비었는지로 추론할
+        /// 수밖에 없고, 그러면 <b>문구를 실수로 지운 것</b>과 <b>의도한 자동 진행</b>이
+        /// 데이터로 구별되지 않는다(`ked-progression` D5 — 그쪽이 지금 그 경고를 낸다).
+        ///
+        /// ⚠ <b>저쪽 <c>EpisodeOptionDto</c>에 아직 이 칸이 없다</b>(2026-08-23 실측 · `0.2.0`).
+        /// 호스트의 역직렬화기가 모르는 속성을 조용히 버리므로 <b>지금은 무해하지만 아무
+        /// 일도 하지 않는다</b> — D5 경고는 저쪽이 칸을 세울 때까지 그대로 뜬다. 미리 내는
+        /// 이유는 이 값의 주인이 저작이고, 저쪽이 칸을 세우는 날 이쪽을 다시 안 열어도
+        /// 되게 하기 위해서다.
+        /// </summary>
+        public string Kind { get; set; } = "Choice";
+
+        /// <summary>
         /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16). 에피소드 노드의
         /// `VisibleConditions`가 하던 일이 길 단위로 내려왔다. ⚠ 런타임 계약에 아직 없는
         /// 필드다 — Gate D에서 수입기와 함께 확정할 것.
@@ -330,7 +307,23 @@ public static class ChapterProgressionExporter
     private sealed class StatChangeJson
     {
         public string Key { get; set; } = string.Empty;
+
+        /// <summary><c>Op</c>가 <c>"Set"</c>이면 <b>정할 값</b>, 그 외에는 증감량이다.</summary>
         public int Amount { get; set; }
+
+        /// <summary>
+        /// 더하기인가 정하기인가 (2026-08-23 — `ked-progression` `0.2.0`의 `StatChangeDto.Op`).
+        /// <c>"Add"</c> = <c>trust +2</c> · <c>"Set"</c> = <c>met_willow true</c>.
+        ///
+        /// 이 칸이 저쪽에 서기 전까지는 깃발을 쓰는 챕터의 내보내기를 통째로 거부하고 있었다
+        /// (`BoolSetNotCarried`, 2026-08-19~2026-08-23) — 빼고 내면 깃발이 영원히 안 켜진 채로
+        /// 게임이 돌아가기 때문이다. 칸이 섰으므로 그 거부는 지웠다.
+        ///
+        /// <c>"Add"</c>를 <b>비우지 않고 명시</b>한다. 저쪽은 빈 문자열도 더하기로 읽지만
+        /// (구 JSON 호환), 적어 두면 이 값을 아무도 안 정한 것과 더하기로 정한 것이 JSON에서
+        /// 구별된다 — 규율 1(침묵 금지)의 이 층 판이다.
+        /// </summary>
+        public string Op { get; set; } = "Add";
     }
 
     private sealed class ConditionJson

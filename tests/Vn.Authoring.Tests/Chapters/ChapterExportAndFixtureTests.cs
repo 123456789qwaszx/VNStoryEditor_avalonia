@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Rendering;
 
 namespace Vn.Authoring.Tests.Chapters;
 
@@ -59,7 +60,16 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.Equal("main05.01", start.GetProperty("EpisodeId").GetString());
         Assert.Equal("닫힌 문 앞에서", start.GetProperty("Title").GetString());
         Assert.Equal("Main", start.GetProperty("Kind").GetString());
-        Assert.Equal("Story_ch05_01", start.GetProperty("DialogueEntryId").GetString());
+        // ⚠ 견본 워크북의 `대사엔트리`가 `Story_ch05_01`이다 — 이름 규칙이 어디에도 없던
+        // 시절 사람이 접두를 손으로 적어 둔 것이다(§4 가운데 줄의 그 방식). 이미터를
+        // 통과하면 접두가 한 번 더 붙고, **그 값이 맞다**: 이미터가 그 노드에 붙이는 yarn
+        // 타이틀도 `Story_Story_ch05_01`이라 둘이 같고, 그래야 재생된다.
+        //
+        // ⛔ 이 값을 보고 "이미 Story_로 시작하면 안 붙인다"는 가드를 넣지 말 것. 규칙의
+        // 둘째 사본이 생겨 이 수정의 목적을 되돌리고, 진짜로 Story_로 시작하는 이름을
+        // 영영 못 쓰게 된다. 고칠 것이 있다면 코드가 아니라 견본 데이터다
+        // (`docs/work-orders/dialogue-entry-naming-orders.md` §3.3).
+        Assert.Equal("Story_Story_ch05_01", start.GetProperty("DialogueEntryId").GetString());
         Assert.Equal(0, start.GetProperty("Position").GetProperty("X").GetDouble());
 
         // 간선 → NextOptions. 도착지·라벨·잠금 문구가 그대로 실린다.
@@ -191,6 +201,49 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.DoesNotContain(validation.Diagnostics, item => item.Message.Contains("간선이 없습니다"));
         Assert.DoesNotContain(validation.Diagnostics, item =>
             item.Sheet == ChapterSheetNames.Choices && item.Message.Contains("999"));
+    }
+
+    [Fact]
+    public void 대사엔트리가_이미터의_이름_규칙을_그대로_지난다()
+    {
+        // 2026-08-23 — 진행 JSON은 `new01`이라 하고 yarn은 `Story_new01`이라 했다. 로드·
+        // 검증·도달성 증명이 전부 통과하는데 **재생만** 안 됐다. 호스트의 사전 대조가
+        // 잡았고, 뿌리는 `Story_` 조립이 이미터 안에서 세 자리로 흩어져 있는데 내보내기가
+        // 그 셋 중 어디에도 안 끼어 있던 것이었다.
+        //
+        // 규칙은 접두 하나가 아니라 두 단계다 — `Story_` + SanitizeNodeName. 그래서 공백이
+        // 든 이름을 케이스로 든다: 접두만 붙이는 구현은 `new01`에서는 멀쩡해 보이고
+        // `장면 1`에서 비로소 갈린다.
+        var chapter = new ChapterGraphModel(
+            "naming",
+            string.Empty,
+            [
+                new ChapterEpisode("ep1", "첫 화", "", "Main", "장면 1", 0, 0, null, null, 2),
+                new ChapterEpisode("ep2", "둘째", "", "Main", "new01", 200, 0, null, null, 3)
+            ],
+            [new ChapterEdge("ep1", "ep2", null, null, HideWhenLocked: false, null, 2)],
+            [],
+            [new ChapterStat("trust", "신뢰", Initial: 0, Minimum: 0, Maximum: 5, SourceRow: 2)],
+            [],
+            []);
+
+        ChapterExportResult result =
+            ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        Assert.False(result.Refused,
+            string.Join(" / ", result.Validation.All.Select(item => item.Message)));
+
+        using JsonDocument document = JsonDocument.Parse(result.Json!);
+        JsonElement nodes = document.RootElement.GetProperty("Nodes");
+
+        // 공백이 밑줄로 — 접두만 붙였다면 `Story_장면 1`이 되어 저쪽이 노드를 못 찾는다.
+        Assert.Equal("Story_장면_1", nodes[0].GetProperty("DialogueEntryId").GetString());
+        Assert.Equal("Story_new01", nodes[1].GetProperty("DialogueEntryId").GetString());
+
+        // 그리고 이 값의 주인은 이미터다 — 내보내기가 글자를 다시 조립하지 않는다.
+        // 이미터가 규칙을 바꾸는 날 이 단언이 저절로 따라간다.
+        Assert.Equal(
+            YarnBundleEmitter.StoryNodeTitleOf("장면 1"),
+            nodes[0].GetProperty("DialogueEntryId").GetString());
     }
 
     // ── G6 — 픽스처 경로 ────────────────────────────────────────────────────

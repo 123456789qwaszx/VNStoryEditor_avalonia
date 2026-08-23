@@ -12,6 +12,26 @@ namespace Vn.Authoring.Tests;
 public class YarnBundleEmitterTests
 {
     [Fact]
+    public void Story_타이틀은_접두와_정규화_두_단계다()
+    {
+        // ⚠ 이 규칙이 접두 하나인 줄 알면 고쳐도 또 갈린다 (2026-08-23). yarn 타이틀은
+        // `Story_` + SanitizeNodeName이고, 진행 내보내기의 DialogueEntryId가 이것과
+        // 같은 글자여야 런타임이 YarnProject에서 노드를 찾는다.
+        //
+        // `new01`처럼 얌전한 이름만 보면 두 단계인 것이 안 드러난다 — 그래서 공백·점·
+        // 하이픈을 케이스로 든다. 접두만 붙이는 구현은 여기서 넘어진다.
+        Assert.Equal("Story_new01", YarnBundleEmitter.StoryNodeTitleOf("new01"));
+        Assert.Equal("Story_장면_1", YarnBundleEmitter.StoryNodeTitleOf("장면 1"));
+        Assert.Equal("Story_a_b_c", YarnBundleEmitter.StoryNodeTitleOf("a.b-c"));
+
+        // 이름이 없으면 번들 이름 규칙이 정한 대체 이름을 그대로 쓴다 — 여기서 따로
+        // 판단하지 않는다(규칙 사본 금지).
+        Assert.Equal(
+            YarnBundleEmitter.StoryTitleOf(YarnBundleEmitter.BundleNameOf(null, "n7")),
+            YarnBundleEmitter.StoryNodeTitleOf(null, "n7"));
+    }
+
+    [Fact]
     public void 대본은_Story_텍스트_하나로_조립된다()
     {
         BundleFixture fixture = BuildFixture();

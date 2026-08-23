@@ -26,13 +26,14 @@
       "Title": "복도",
       "IndexText": "",
       "Kind": "Main",
-      "DialogueEntryId": "시작",
+      "DialogueEntryId": "Story_시작",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [
         {
           "TargetEpisodeId": "믿는길",
           "ChoiceLabel": "라루를 믿는다",
+          "Kind": "Choice",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -41,13 +42,15 @@
           "StatChanges": [
             {
               "Key": "trust",
-              "Amount": 2
+              "Amount": 2,
+              "Op": "Add"
             }
           ]
         },
         {
           "TargetEpisodeId": "혼자길",
           "ChoiceLabel": "혼자 간다",
+          "Kind": "Choice",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -56,7 +59,8 @@
           "StatChanges": [
             {
               "Key": "fatigue",
-              "Amount": 1
+              "Amount": 1,
+              "Op": "Add"
             }
           ]
         }
@@ -75,13 +79,14 @@
       "Title": "라루를 믿는다",
       "IndexText": "",
       "Kind": "Main",
-      "DialogueEntryId": "믿는길",
+      "DialogueEntryId": "Story_믿는길",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [
         {
           "TargetEpisodeId": "좋은끝",
           "ChoiceLabel": "",
+          "Kind": "Auto",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -104,13 +109,14 @@
       "Title": "혼자 간다",
       "IndexText": "",
       "Kind": "Main",
-      "DialogueEntryId": "혼자길",
+      "DialogueEntryId": "Story_혼자길",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [
         {
           "TargetEpisodeId": "쓸쓸한끝",
           "ChoiceLabel": "",
+          "Kind": "Auto",
           "VisibleConditions": [],
           "Conditions": [],
           "HideWhenLocked": false,
@@ -133,7 +139,7 @@
       "Title": "함께 문을 연다",
       "IndexText": "",
       "Kind": "Main",
-      "DialogueEntryId": "좋은끝",
+      "DialogueEntryId": "Story_좋은끝",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
@@ -151,7 +157,7 @@
       "Title": "혼자 문을 연다",
       "IndexText": "",
       "Kind": "Main",
-      "DialogueEntryId": "쓸쓸한끝",
+      "DialogueEntryId": "Story_쓸쓸한끝",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],

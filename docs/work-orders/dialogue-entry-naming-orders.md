@@ -272,13 +272,65 @@ Tuning/PortraitDimensionsDto.cs — 변형 키 정규화
 
 | | 무엇 | 자리 | 상태 |
 |---|---|---|---|
-| **①** | `StoryNodeTitleOf` 하나 열고 `:135`·`:276`·`:789`도 그걸 부르게 | `YarnBundleEmitter.cs` | ⛔ 부탁 |
-| **②** | `DialogueEntryId`가 ①을 통과하게 | `ChapterProgressionExporter.cs:168` | ⛔ 부탁 |
-| **③** | **견본에서 `Story_` 접두를 지운다** — 원천 하나 | `docs/chapter-graph-sample.xlsx` | ⛔ 부탁 · §3.3 |
-| **③-a** | 파생 기대값 갱신 (기계적 치환) | `tests/**` **10파일 25곳** | ⛔ 부탁 |
-| **③-b** | 견본을 다시 내보내 코어 픽스처 갱신 | `ked-progression` `chapter-sample-export.json` | ⛔ 저장소 경계 넘음 |
-| **③-c** | 공백 든 이름 케이스 추가 | `ChapterExportAndFixtureTests.cs:62` | ⛔ 부탁 |
-| **④** | `BoolSetNotCarried` 삭제 + `StatChangeJson.Op` | `ChapterProgressionExporter.cs:57`·`:89` | ✅ 계약 준비 완료 |
-| **⑤** | `NextOptionJson.Kind` | 같은 파일 | ✅ 저작 모델 준비 완료 |
+| **①** | `StoryTitleOf`·`StoryNodeTitleOf`를 열고 타이틀 짓는 두 자리가 그걸 부른다 | `YarnBundleEmitter.cs:135`·`:789` | ✅ **완료 2026-08-23** |
+| **②** | `DialogueEntryId`가 ①을 통과한다 | `ChapterProgressionExporter.cs:168` | ✅ **완료** |
+| **③** | **견본에서 `Story_` 접두를 지운다** — 원천 하나 | `docs/chapter-graph-sample.xlsx` | ⚠ **안 했다 — §9** |
+| **③-a** | 파생 기대값 갱신 (기계적 치환) | `tests/**` **11파일 34곳** | ⏸ ③에 딸림 |
+| **③-b** | 견본을 다시 내보내 코어 픽스처 갱신 | `ked-progression` `chapter-ch01-sample.json` | ⚠ **지금 갈려 있다 — §9** |
+| **③-c** | 공백 든 이름 케이스 추가 | `ChapterExportAndFixtureTests` · `YarnBundleEmitterTests` | ✅ **완료** |
+| **④** | `BoolSetNotCarried` 삭제 + `StatChangeJson.Op` | `ChapterProgressionExporter.cs` | ✅ **완료** |
+| **⑤** | `NextOptionJson.Kind` | 같은 파일 | ✅ 이쪽 완료 · ⛔ **저쪽 칸 대기** |
 | **⑥** | `PortraitDimensionsDto` 동기화 | `src/Ked.Presentation.Core/` | ℹ️ 별건, 알림 |
 | **⑦** | `ViaNodeId` 이름 규칙 | — | ⏸ 연출 노드 방출 방식 확인 후 |
+| **⑧** | 저작 관문 — `대사엔트리`가 대사노드와 안 맞으면 안 내보낸다 | `ChapterValidator` | ⏸ **보류 — §9** |
+
+테스트 **1490 통과, 실패 0** (Ked.Presentation.Core 343 · Vn.Core 60 · Vn.Authoring 760 · Vn.App 327).
+
+---
+
+## 9. 반영하며 갈린 판단 셋 — 2026-08-23
+
+### 9.1 ③ 견본 접두 — **지우지 않고 파생값을 맞췄다**
+
+견본의 `대사엔트리`는 여전히 `Story_ch05_01`이고, 내보내기는 이제 `Story_Story_ch05_01`을
+낸다. **그 값이 맞다** — 이미터가 그 노드에 붙이는 yarn 타이틀도 같은 글자라 사전 대조가
+지나간다. `ChapterExportAndFixtureTests`에 그 이유와 **⛔ 중복 접두 가드 금지**를 주석으로
+박아 뒀다.
+
+⚠ **더 나은 끝 모양은 ③이다** — 견본이 `ch05_01`이면 실제 기획자가 치는 모양(`new01`)과
+같아진다. 안 한 이유는 규모다: 견본 xlsx(바이너리) + `tests/**` 11파일 34곳 + 코어 픽스처
+하나가 한 덩어리로 움직여야 하는데, **막고 있던 것은 ①②였고 그건 닫혔다.** ③은 미루어도
+아무것도 안 막는다.
+
+### 9.2 ③-b 코어 픽스처가 지금 갈려 있다
+
+`docs/ch01.progression.sample.json`을 다시 구웠다(골든). 그 파일의 **사본**이
+`ked-progression/Tests/Fixtures/chapter-ch01-sample.json`인데 **안 따라갔다**:
+
+```
+이쪽 골든   "DialogueEntryId": "Story_시작"    + "Op" + "Kind"
+저쪽 픽스처 "DialogueEntryId": "시작"          (칸 둘 없음)
+```
+
+저쪽 테스트는 `EpisodeId`만 붙들고 `DialogueEntryId`는 안 보므로 **깨지지는 않는다.** 다만
+"남에게 건넨 표본이 낡는 것은 계약서가 낡는 것과 같은 무게다"(골든 테스트 주석)에 그대로
+걸리는 자리다 — 파일 하나 복사면 끝이고, **저장소 경계를 넘으므로 소유자 판단으로 남긴다.**
+
+### 9.3 ⑧ 저작 관문 — 지금 걸면 안 연 챕터가 전부 거부된다
+
+`대사엔트리`가 프로젝트의 대사노드와 안 맞으면 내보내기를 막자는 안(§3 논의)은 **지금
+구조에서 오탐을 낸다**:
+
+```
+SyncEpisodes()   고른 챕터 하나만 노드를 만든다   ChapterGraphView.axaml.cs:565
+AutoExport()     전 챕터를 내보낸다               같은 파일 :1571
+```
+
+한 번도 안 연 챕터는 노드가 없으므로 관문이 하드면 **오늘 잘 나가던 챕터가 전부 거부된다.**
+그리고 `ValidationFor`의 캐시 지문(`Fingerprint(entry.Path, episodesFolder)`)이 프로젝트
+노드를 안 보므로 동기화가 노드를 만들어도 캐시가 안 깨진다.
+
+바르게 하려면 "그 챕터의 판이 있고 그 판에 노드가 있을 때만 검사"로 좁히고 캐시 지문에
+노드 목록을 넣어야 한다 — 별건이다. **①이 닫힌 지금은 급하지 않다**: 양쪽이 같은 함수
+하나를 지나므로 *이름을 다르게 짓는* 어긋남은 구조적으로 불가능해졌고, 남는 것은
+*노드가 아예 없는* 경우인데 그건 호스트 사전 대조가 잡는다.

@@ -132,7 +132,7 @@ public static class YarnBundleEmitter
         ValidateEaseCurveReferences(presentation, project, definition, problems);
 
         // ── 헤더 ────────────────────────────────────────────────────────────
-        story.Append("title: Story_").Append(name).Append("\n---\n");
+        story.Append("title: ").Append(StoryTitleOf(name)).Append("\n---\n");
 
         // Story 서두: 변수 초기화(set) → 노드 셋업 커맨드.
         // 헤더가 닫히는 시점은 첫 본문 Segment를 만났을 때다.
@@ -263,6 +263,28 @@ public static class YarnBundleEmitter
 
         return YarnSyntax.SanitizeNodeName(source);
     }
+
+    /// <summary>
+    /// 번들 이름 하나가 가질 Story 타이틀. <b><c>Story_</c> 조립은 여기 한 곳이다</b> —
+    /// 이 문자열을 손으로 잇는 자리를 새로 만들지 않는다.
+    /// </summary>
+    public static string StoryTitleOf(string bundleName) => StoryPrefix + bundleName;
+
+    /// <summary>
+    /// 이 이미터가 <b>그 이름의 노드에 붙일 Story 타이틀</b>. 이름 → 번들 이름 → 타이틀
+    /// 두 단계를 한 번에 통과한다.
+    ///
+    /// ⚠ <b>규칙은 접두 하나가 아니다</b> — <c>Story_</c> 앞에
+    /// <see cref="YarnSyntax.SanitizeNodeName"/>가 있다(`장면 1` → `Story_장면_1`). 그래서
+    /// 바깥에서 <c>"Story_" + 이름</c>으로 흉내 내면 공백·점·하이픈이 든 이름에서 갈린다.
+    ///
+    /// <b>진행 내보내기의 <c>DialogueEntryId</c>가 이 함수를 지나야 한다</b> — 런타임은 이
+    /// 글자로 <c>YarnProject</c>에서 노드를 찾는다. 2026-08-23에 그 자리만 이 규칙 밖에
+    /// 있어서 진행 JSON은 `new01`, yarn은 `Story_new01`로 갈렸다
+    /// (`docs/work-orders/dialogue-entry-naming-orders.md`).
+    /// </summary>
+    public static string StoryNodeTitleOf(string? nodeName, string? nodeId = null) =>
+        StoryTitleOf(BundleNameOf(nodeName, nodeId));
 
     /// <summary>번들 이름 하나가 만들 파일 이름.</summary>
     public static string FileNameOf(string prefix, string bundleName) => $"{prefix}{bundleName}.yarn";
@@ -785,7 +807,7 @@ public static class YarnBundleEmitter
     private static string JumpTargetOf(RenderedSegment segment)
     {
         // 타이틀은 세이브 키이자 에피소드 진입 키다 (C2). 대상 노드의 이름에서
-        // 이 이미터가 만들 타이틀(Story_이름)을 그대로 재현한다 — 규칙은 BundleNameOf 하나다.
-        return StoryPrefix + BundleNameOf(segment.TargetNodeName, segment.TargetNodeId);
+        // 이 이미터가 만들 타이틀(Story_이름)을 그대로 재현한다 — 규칙은 StoryNodeTitleOf 하나다.
+        return StoryNodeTitleOf(segment.TargetNodeName, segment.TargetNodeId);
     }
 }

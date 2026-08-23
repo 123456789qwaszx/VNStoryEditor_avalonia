@@ -162,18 +162,20 @@ public sealed class BoolStatSetTests : IDisposable
     // ── 내보내기 ────────────────────────────────────────────────────────────
 
     [Fact]
-    public void 계약이_못_싣는_동안에는_내보내기가_거부한다()
+    public void 깃발을_켜고_끄는_간선이_Op_Set으로_나간다()
     {
-        // 조용히 빼고 내면 JSON은 멀쩡해 보이는데 게임 로직이 달라진다 — 깃발이 영원히
-        // 안 켜지고, 그 어긋남은 JSON에 도착한 뒤에는 아무도 볼 수 없다.
-        ChapterGraphModel model = Read("met true");
+        // 2026-08-19 ~ 08-23 — 계약의 `StatChange`에 '정하기'를 실을 칸이 없어서, 깃발을
+        // 쓰는 챕터는 내보내기를 **통째로 거부**했다(`BoolSetNotCarried`). 조용히 빼고
+        // 내면 깃발이 영원히 안 켜지고 그 깃발을 보던 관문이 영원히 잠기는데, JSON에
+        // 도착한 뒤에는 아무도 그것을 볼 수 없기 때문이다.
+        //
+        // `ked-progression` **0.2.0**에 `StatChangeDto.Op`가 섰다 — 그래서 거부를 지우고
+        // 그 자리를 이 테스트가 이어받는다. 거부가 사라진 것보다 **값이 제대로 실리는
+        // 것**이 계약이다.
+        Assert.Equal(("Set", 1), OnlyStatChange(Read("met true")));
 
-        ChapterExportResult result = ChapterProgressionExporter.Export(model, episodesFolder: null);
-
-        Assert.True(result.Refused);
-        Assert.Contains(
-            result.Validation.All,
-            item => item.Message.Contains("깃발을 켜는 간선", StringComparison.Ordinal));
+        // 끄는 쪽도 같은 길로 나간다 — 0이 '안 바꿈'이 아니라 '거짓으로 정함'이다.
+        Assert.Equal(("Set", 0), OnlyStatChange(Read("met false")));
     }
 
     [Fact]
@@ -184,12 +186,61 @@ public sealed class BoolStatSetTests : IDisposable
 
         Assert.False(
             ChapterProgressionExporter.Export(model, episodesFolder: null).Refused);
+
+        // ⚠ 정수 증감은 `Add`를 **비우지 않고 명시**한다 — 저쪽은 빈 문자열도 더하기로
+        // 읽지만(구 JSON 호환), 적어 두면 "아무도 안 정한 것"과 "더하기로 정한 것"이
+        // JSON에서 구별된다.
+        Assert.Equal("Add", OnlyStatChange(model).Op);
+    }
+
+    [Fact]
+    public void 간선의_종류가_JSON에_실린다()
+    {
+        // v11 `종류` 열 — **누가 고르나**. 이 칸이 없으면 저쪽은 문구가 비었는지로
+        // 추론할 수밖에 없어서, 문구를 실수로 지운 것과 의도한 자동 진행이 데이터로
+        // 구별되지 않는다(D5).
+        //
+        // ⚠ 저쪽 `EpisodeOptionDto`에 아직 이 칸이 없다(0.2.0) — 지금은 나가기만 하고
+        // 아무 일도 하지 않는다. 그래도 값의 주인은 저작이므로 여기서 붙들어 둔다.
+        Assert.Equal("Auto", OnlyOptionKind(Read("trust +1")));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static IEnumerable<ChapterDiagnostic> Errors(ChapterGraphModel model) =>
         model.Diagnostics.Where(item => item.Severity == ChapterDiagnosticSeverity.Error);
+
+    /// <summary>내보내고 첫 간선 첫 스탯변화의 (Op, Amount).</summary>
+    private static (string Op, int Amount) OnlyStatChange(ChapterGraphModel model)
+    {
+        using System.Text.Json.JsonDocument document = Exported(model);
+        System.Text.Json.JsonElement change = document.RootElement
+            .GetProperty("Nodes")[0].GetProperty("NextOptions")[0]
+            .GetProperty("StatChanges")[0];
+
+        return (change.GetProperty("Op").GetString()!, change.GetProperty("Amount").GetInt32());
+    }
+
+    /// <summary>내보내고 첫 간선의 `Kind`.</summary>
+    private static string OnlyOptionKind(ChapterGraphModel model)
+    {
+        using System.Text.Json.JsonDocument document = Exported(model);
+
+        return document.RootElement
+            .GetProperty("Nodes")[0].GetProperty("NextOptions")[0]
+            .GetProperty("Kind").GetString()!;
+    }
+
+    /// <summary>내보내기 — 거부되면 사유를 그대로 들고 넘어진다.</summary>
+    private static System.Text.Json.JsonDocument Exported(ChapterGraphModel model)
+    {
+        ChapterExportResult result = ChapterProgressionExporter.Export(model, episodesFolder: null);
+
+        Assert.False(result.Refused,
+            string.Join(" / ", result.Validation.All.Select(item => item.Message)));
+
+        return System.Text.Json.JsonDocument.Parse(result.Json!);
+    }
 
     /// <summary>ep1 → 끝 간선 하나에 그 스탯변화를 적은 챕터.</summary>
     private ChapterGraphModel Read(string statChange) =>
