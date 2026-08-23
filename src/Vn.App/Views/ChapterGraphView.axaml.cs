@@ -565,6 +565,7 @@ public partial class ChapterGraphView : UserControl
     internal void SyncEpisodes()
     {
         _syncReports.Clear();
+        _boardWarnings.Clear();
 
         if (_session is null)
         {
@@ -576,227 +577,53 @@ public partial class ChapterGraphView : UserControl
         // 이 목록으로 돌았다고 적어 둔다 — 뒤이은 재읽기가 같은 목록이면 다시 안 돈다.
         _syncedEpisodeSignature = MakeEpisodeSignature(entry);
 
-        if (entry?.Model is null ||
-            EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId) is not { } folder)
+        if (entry is null)
         {
             return;
         }
 
-        // 구판 평면 원고(episodes/{Id}.xlsx)를 이 챕터 폴더로 입양한다 (2026-08-16).
-        // 주인이 여럿이면 옮기지 않고 사유를 말한다 — 남의 챕터 원고를 가져오지 않는다.
-        AdoptFlatWorkbooks(entry);
-
-        // 폴더가 없다고 여기서 멈추지 않는다 (2026-08-17) — 에피소드가 하나라도 있으면
-        // 대본을 만들어 줄 참이고, 그 첫 파일이 폴더를 만든다. 예전에는 여기서 되돌아가서
-        // <b>첫 에피소드가 영영 대본을 못 받았다</b>(폴더는 대본이 생겨야 나고, 대본은
-        // 폴더가 있어야 만들었다 — 서로를 기다리는 매듭).
-        if (!Directory.Exists(folder) && entry.Model.Episodes.Count == 0)
-        {
-            return;
-        }
-
-        // 새 노드가 들어갈 판 = 그 챕터의 판 (챕터=판 1:1, G-1 v2). 없으면 만든다 —
-        // 왼쪽 챕터 목록 클릭과 같은 규칙 하나를 쓴다.
-        string fileId = _session.EnsureChapterBoard(entry.ChapterId);
-
-        // 화자(프로젝트)·조건(챕터) 드롭다운을 대본 워크북에 (2026-08-16 → 2026-08-23).
-        // 지문이 같으면 파일을 하나도 열지 않으므로 매 동기화마다 불러도 값이 없다.
+        // 화자·조건 드롭다운을 대본 워크북에 (2026-08-16 → 2026-08-23). 지문이 같으면
+        // 파일을 하나도 열지 않으므로 매 동기화마다 불러도 값이 없다. ⚠ 반영보다 **앞**이다 —
+        // 이미 있는 워크북이 새 어휘를 받은 뒤에 읽혀야 한다(새로 만드는 것은 만들 때 받는다).
         PushVocabularyToEpisodes();
 
-        // v9에서 선택지 칸 따라잡기는 사라졌다 — 칸이라는 개념이 없다. 문구 사전은 사람이
-        // 엑셀에서 적고, 길은 간선 시트가 곧 그것이다.
+        // 순서와 정책은 저작이 갖는다 (2026-08-23에 이 파일에서 나갔다). 여기 남은 것은
+        // **결과를 화면에 옮기는 일**뿐이다 — 상태줄·감시자·다시 그리기.
+        EpisodeSyncRun run = EpisodeSyncRunner.Run(
+            _session.Editor, _session.Definition, _session.ProjectPath, entry, _entries);
 
-        // 대본이 없는 에피소드에는 여기서 만들어 준다 (2026-08-17 소유자 보고 — "챕터
-        // 그래프에서 ＋에피소드를 만들더라도 엑셀이 생성이 안돼. 그 에피소드 노드를
-        // 더블클릭 해야 엑셀이 생기는데, 그냥 처음부터 만드는게 맞을 것 같고").
-        //
-        // 툴의 [＋ 에피소드]는 이미 만들고 있었지만 <b>엑셀에서 직접 행을 더한 경우</b>가
-        // 남아 있었다 — 그게 기본 작업 방식(엑셀에서만 편집)이라 대부분이 그 길이다.
-        // 여기서 보장하면 어느 길로 들어와도 같다. 없는 파일을 만드는 것뿐이라
-        // 단일 writer 원칙과 충돌하지 않는다(있으면 손대지 않는다).
-        bool created = false;
+        _syncReports.AddRange(run.Reports);
+        _boardWarnings.AddRange(run.BoardWarnings);
 
-        foreach (ChapterEpisode episode in entry.Model.Episodes)
+        foreach (string notice in run.Notices)
         {
-            created |= EpisodeLibrary.EnsureWorkbook(
-                folder,
-                episode.EpisodeId,
-                ProjectSpeakerNames(),
-                entry.Model.Conditions.Select(condition => condition.Label).ToList());
+            _session.SetStatus(notice);
         }
 
-        if (created)
+        if (run.WorkbooksCreated)
         {
             StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session.ProjectPath));
         }
-
-        foreach (ChapterEpisode episode in entry.Model.Episodes)
-        {
-            if (EpisodeLibrary.FindExisting(folder, episode.EpisodeId) is not { } path)
-            {
-                continue;
-            }
-
-            // 구판 9열 대본을 v10 블록 규격으로 (2026-08-17). 필요 없는 파일에는 손대지
-            // 않으므로 매 동기화마다 불려도 쓰기는 구판을 처음 만난 그 한 번뿐이다.
-            EpisodeWorkbookMigrator.MigrationResult migration =
-                EpisodeWorkbookMigrator.Migrate(path);
-
-            if (migration.Migrated)
-            {
-                _session.SetStatus(
-                    $"'{IoPath.GetFileName(path)}'를 새 대본 규격(IF~END 블록)으로 이행했습니다" +
-                    "(이전 상태는 .bak). 엑셀이 열려 있었다면 닫았다 다시 열어 주세요.");
-            }
-            else if (migration.Failure is { } failure)
-            {
-                _session.SetStatus(failure);
-            }
-
-            _syncReports.Add(EpisodeSyncService.Sync(
-                _session.Editor,
-                _session.Definition,
-                fileId,
-                path,
-                entry.Model));
-        }
-
-        // 챕터 조건을 판의 모든 대사 노드(자유 노드 포함)에 공급한다 — 작가가 조건
-        // 드롭다운에서 A 계층 라벨을 바로 고른다. 멱등이라 매번 불러도 안전하다.
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
-            _session.Editor, _session.Definition, fileId, entry.Model);
-
-        // v11 — 간선에 매달린 연출 노드를 세운다. 툴이 이름을 지었으면 워크북에 되쓴다.
-        IReadOnlyList<EpisodeSyncService.EdgePresentationLink> presentationLinks =
-            SupplyEdgePresentations(entry, fileId);
-
-        // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
-        _boardWarnings.Clear();
-        _boardWarnings.AddRange(
-            EpisodeSyncService.WarnFreeNodeStatWrites(_session.Editor, fileId, entry.Model));
-        _boardWarnings.AddRange(
-            EpisodeSyncService.WarnExitsIntoExcelNodes(_session.Editor, fileId, entry.Model));
-        // v11 — 자리는 섰는데 아직 안 채운 연출. 오류가 아니라 "남은 일" 목록이다.
-        _boardWarnings.AddRange(
-            EpisodeSyncService.WarnEmptyEdgePresentations(
-                _session.Editor, fileId, entry.Model, presentationLinks));
 
         // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
         Validate();
         Draw();
 
-        int rejected = _syncReports.Sum(report => report.RejectionCount);
-        int applied = _syncReports.Count(report => report.Applied);
-
         // 반영이 있었다면 열려 있는 편집 화면(줄 목록·그래프)을 다시 만들게 알린다 —
         // 대사 수정은 "타이핑 보호" 경로로 전달되어 화면이 옛 줄을 그대로 들고 있었다(실사례).
-        if (applied > 0)
+        if (run.Applied > 0)
         {
             _session.NotifyExternalScriptChange();
         }
 
-        // 반영할 것이 하나도 없었다면 조용히 있는다 — "0개를 반영했습니다"는 소음이다.
-        if (_syncReports.Count > 0)
+        if (run.StatusMessage is { } message)
         {
-            _session.SetStatus(rejected == 0
-                ? $"에피소드 {applied}개를 반영했습니다."
-                : $"에피소드 {applied}개 반영 · 거부·경고 {rejected}건 — 아래 검증 보고를 확인하세요.");
+            _session.SetStatus(message);
         }
 
         // 동기화는 쓴다 — 첫 대본 워크북, v11의 `연출` 칸. 그 저장이 250ms 뒤 감시자로
         // 되돌아오는데, 화면은 이미 맞춰졌다. 여기서 지문을 찍어 그 되돌이를 끊는다.
         _diskFingerprint = DiskFingerprint();
-    }
-
-    /// <summary>
-    /// 간선의 연출 노드를 세우고, <b>툴이 지은 이름만</b> 워크북에 되쓴다 (v11).
-    ///
-    /// 기획자는 엔딩키만 적으면 된다 — 이름 짓기와 노드 세우기는 툴의 일이다. 사람이
-    /// `연출` 칸에 직접 적은 이름은 그대로 둔다(그것이 이미 정본이다).
-    ///
-    /// 엑셀이 그 파일을 잡고 있으면 쓰기가 거부되는데, 그때는 <b>조용히 넘긴다</b> —
-    /// 노드는 이미 판에 섰고, 이름은 다음 동기화가 다시 적으려 한다. 붉은 배너가 이미
-    /// 잠금을 말하고 있으므로 여기서 같은 말을 한 번 더 할 이유가 없다.
-    /// </summary>
-    private IReadOnlyList<EpisodeSyncService.EdgePresentationLink> SupplyEdgePresentations(
-        ChapterEntry entry,
-        string fileId)
-    {
-        if (_session is null || entry.Model is null)
-        {
-            return [];
-        }
-
-        IReadOnlyList<EpisodeSyncService.EdgePresentationLink> links =
-            EpisodeSyncService.SupplyEdgePresentations(_session.Editor, fileId, entry.Model);
-
-        foreach (EpisodeSyncService.EdgePresentationLink link in links.Where(item => item.NeedsWriteBack))
-        {
-            try
-            {
-                ChapterWorkbookWriter.SetEdgePresentation(
-                    entry.Path,
-                    link.FromEpisodeId,
-                    link.ToEpisodeId,
-                    link.MatchOptionLabel,
-                    link.NodeName);
-            }
-            catch (InvalidOperationException)
-            {
-                // 읽은 뒤 쓰기 전에 사람이 그 행을 지웠다. 다음 읽기가 정본이므로
-                // 여기서 붙잡지 않는다 — 노드는 이미 섰고, 안 쓰이면 자유 노드로 남는다.
-            }
-        }
-
-        return links;
-    }
-
-    /// <summary>
-    /// 구판 평면 대본(<c>episodes/{Id}.xlsx</c>)을 그 챕터 폴더로 옮긴다 (2026-08-16).
-    /// EpisodeId를 여러 챕터가 쓰고 있으면 어느 원고인지 알 수 없으므로 손대지 않고 말한다.
-    /// </summary>
-    private void AdoptFlatWorkbooks(ChapterEntry entry)
-    {
-        if (entry.Model is not { } model ||
-            EpisodeLibrary.FolderFor(_session?.ProjectPath) is not { } root ||
-            !Directory.Exists(root))
-        {
-            return;
-        }
-
-        var problems = new List<string>();
-        int adopted = 0;
-
-        foreach (ChapterEpisode episode in model.Episodes)
-        {
-            // 그 이름을 쓰는 챕터 수 — 하나여야 주인이 분명하다.
-            int claimants = _entries.Count(candidate =>
-                candidate.Model?.FindEpisode(episode.EpisodeId) is not null);
-
-            EpisodeLibrary.FlatAdoption adoption = EpisodeLibrary.AdoptFlatWorkbook(
-                root, entry.ChapterId, episode.EpisodeId, claimants);
-
-            if (adoption.Adopted)
-            {
-                adopted++;
-            }
-            else if (adoption.Problem is { } problem)
-            {
-                problems.Add(problem);
-            }
-        }
-
-        if (problems.Count > 0)
-        {
-            _session?.SetStatus(problems[0] +
-                (problems.Count > 1 ? $" (외 {problems.Count - 1}건)" : string.Empty));
-        }
-        else if (adopted > 0)
-        {
-            _session?.SetStatus(
-                $"대본 {adopted}개를 episodes/{entry.ChapterId}/ 로 옮겼습니다 — " +
-                "챕터마다 같은 이름을 따로 쓸 수 있습니다.");
-        }
     }
 
     // ── [화자] 탭 = 프로젝트의 캐스트 (2026-08-23) ──────────────────────────
@@ -1054,12 +881,13 @@ public partial class ChapterGraphView : UserControl
     /// <summary>지난 밀기가 본 어휘의 지문 — 같으면 워크북을 하나도 열지 않는다.</summary>
     private string? _pushedVocabularySignature;
 
-    /// <summary>새 대본이 받을 화자 — 챕터를 가리지 않는 프로젝트 목록 하나다.</summary>
+    /// <summary>
+    /// 새 대본이 받을 화자 — 챕터를 가리지 않는 프로젝트 목록 하나다.
+    /// 규칙은 <see cref="EpisodeSyncRunner.SpeakerNames"/>가 갖는다(동기화가 새 워크북을
+    /// 만들 때 쓰는 것과 <b>같은 목록</b>이어야 한다).
+    /// </summary>
     private List<string> ProjectSpeakerNames() =>
-        _session?.Definition.Speakers
-            .Select(speaker => speaker.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToList() ?? [];
+        _session is null ? [] : EpisodeSyncRunner.SpeakerNames(_session.Definition);
 
     /// <summary>
     /// 화자·조건 드롭다운을 <b>프로젝트의 모든 챕터</b>의 대본에 반영한다 (2026-08-23).

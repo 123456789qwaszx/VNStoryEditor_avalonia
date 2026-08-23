@@ -863,18 +863,12 @@ internal sealed class AuthoringSession
     /// 챕터의 판이고, 없으면 만든다. 왼쪽 챕터 목록 클릭과 에피소드 동기화가 같은 이 규칙
     /// 하나를 쓴다 — 두 곳이 갈리면 노드가 엉뚱한 판에 생긴다.
     /// </summary>
-    internal string EnsureChapterBoard(string chapterId)
-    {
-        StoryFile? board = Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
-
-        board ??= Editor.AddStoryFile(chapterId);
-
-        // 챕터마다 설정 노드 하나가 상시로 선다 (2026-08-17 소유자) — 작가가 만들고 지우는
-        // 것이 아니라 챕터에 딸린 자리다.
-        Editor.EnsureChapterSettingsNode(board.Id);
-        return board.Id;
-    }
+    /// <summary>
+    /// 그 챕터의 판을 보장한다. <b>규칙은 <see cref="ProjectEditor.EnsureChapterBoard"/>가
+    /// 갖는다</b> (2026-08-23에 내려갔다 — 세션 상태를 하나도 안 보는 순수 편집 작업이었다).
+    /// 여기 남은 것은 부르는 자리 스물여덟을 안 건드리기 위한 이름 하나뿐이다.
+    /// </summary>
+    internal string EnsureChapterBoard(string chapterId) => Editor.EnsureChapterBoard(chapterId);
 
     internal void SelectFile(string? fileId)
     {

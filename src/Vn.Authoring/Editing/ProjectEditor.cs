@@ -1658,6 +1658,33 @@ public sealed partial class ProjectEditor
     public static string ChapterSettingsNodeName(string chapterId) => $"{chapterId} 설정";
 
     /// <summary>
+    /// 그 챕터의 <b>판</b>을 보장한다 — 없으면 만들고, 설정 노드까지 세워 돌려준다
+    /// (챕터 = 판 1:1, G-1 v2).
+    ///
+    /// <b>왜 여기 있나 (2026-08-23)</b> — 이 함수는 오래 `AuthoringSession`에 살았는데,
+    /// <b>세션 상태를 하나도 안 본다.</b> 열려 있는 파일도, 선택도, 저장 여부도 안 묻고
+    /// <see cref="Project"/>와 자기 자신만 쓴다. 세션에 주차돼 있던 순수한 편집 작업이라,
+    /// 에피소드 동기화를 화면 밖으로 꺼내려던 시도가 여기서 막혔다 — 도메인이 셸의
+    /// 메서드를 불러야 했기 때문이다.
+    ///
+    /// 왼쪽 챕터 목록 클릭과 에피소드 동기화가 <b>같은 규칙 하나</b>를 쓴다.
+    /// </summary>
+    /// <returns>그 챕터 판의 파일 Id. 이미 있으면 그대로다.</returns>
+    public string EnsureChapterBoard(string chapterId)
+    {
+        StoryFile? board = Project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+
+        board ??= AddStoryFile(chapterId);
+
+        // 챕터마다 설정 노드 하나가 상시로 선다 (2026-08-17 소유자) — 작가가 만들고 지우는
+        // 것이 아니라 챕터에 딸린 자리다.
+        EnsureChapterSettingsNode(board.Id);
+
+        return board.Id;
+    }
+
+    /// <summary>
     /// 커스텀 이징 곡선 하나를 넣거나 고친다 (W67 후속) — 같은 이름이 있으면 키를
     /// 교체한다. 검증은 저작이 1차 방어다: 이름·키 규칙 위반은 예외로 막는다
     /// (런타임 로더는 같은 위반을 경고 로그 + 무시로 물러선다 — 조용한 어긋남을

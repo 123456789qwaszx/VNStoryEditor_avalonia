@@ -104,7 +104,8 @@
 1  ②-A  내보내기에 yarn 문법 컴파일   ✅ 완료 — Vn.App → Vn.Core, 검증 9테스트
    │
 2a ①    증명·내보내기를 꺼냈다        ✅ 완료 — ChapterExportService · 규칙 테스트 10개 93ms
-2b ①    에피소드 동기화를 꺼낸다      ← 남았다. AuthoringSession을 물고 있어 별도 판단 필요
+2b ①    에피소드 동기화를 꺼냈다      ✅ 완료 — EpisodeSyncRunner + ProjectEditor.EnsureChapterBoard
+2c ①    무대 재생 셋 (1,031줄)        ← 다음. 이미 순수해서 이사만 하면 된다
    │
 3  ⑧    저작 관문 (대사엔트리 ↔ 노드)  ← 2 없이는 오탐을 낸다
    │
@@ -158,7 +159,23 @@
 | **0** | `PortraitDimensionsDto.cs`가 저쪽과 **바이트 일치**(줄바꿈 제외) · `school`≠`casual` 테스트 하나 추가 · 1,490 + α 통과 |
 | **1** | 챕터를 저장하면 이미터 출력이 실제로 컴파일되고, 실패하면 **기존 진단 패널에 사유가 선다** · 통과 시 아무 말 없음 · 컴파일 실패는 내보내기를 **막지 않는다**(경고) — 막을지는 실측 뒤 결정 |
 | **2a** ✅ | `AutoExport`·`ValidationFor`·지문·거부 장부가 `ChapterExportService`(`Vn.Authoring`)에 있고 뷰는 **언제 부르나**만 정한다 · 규칙 테스트 10개가 **93ms**에 돈다(같은 규칙을 덮던 UI 스위트는 41초) · 뷰 3,835 → 3,684줄 |
-| **2b** | `SyncEpisodes`(156줄)가 `Vn.Authoring`으로 · `ChapterGraphView`의 `internal`이 33 → 20 이하 |
+| **2b** ✅ | `SyncEpisodes` 147줄 → `EpisodeSyncRunner` · `EnsureChapterBoard` → `ProjectEditor` · 순서 테스트 9 + 판 테스트 4가 **UI 없이** 돈다 · 뷰 3,684 → 3,512줄 |
+
+### ⚠ `internal` 개수는 나쁜 지표였다 — 폐기한다 (2026-08-23)
+
+2단계의 완료 정의에 *"`ChapterGraphView`의 `internal`이 33 → 20 이하"*를 넣었는데,
+**틀린 지표다.** 2b 뒤에도 33개인데 하나씩 세어 보니 도메인 누수가 아니었다:
+
+| 무엇 | 개수 | |
+|---|---|---|
+| UI 조작 (`AddEpisodeFromToolbar` · `SubmitEdgeForm` · `DeleteSelectedEdge` …) | 18 | 테스트가 사람 대신 누른다. **정당하다** |
+| 셸 접합 (`OpenWorkbookFile` · `LockProbe` · `RevealInFolder` · `WorkbookHandlerProbe`) | 4 | 가짜를 끼우는 자리. **정당하다** |
+| 화면 손잡이 (`ChapterListHost` · `Attach` · `EntriesReloaded` …) | 9 | 셸이 배선한다. **정당하다** |
+| 일의 양 창 (`CanvasDrawCount` · `ValidationComputeCount`) | 2 | 일부러 열어 둔 것 |
+
+→ **바른 지표는 "뷰에 남은 것 중 다음 툴이 다시 쓸 것이 있나"다.** 그 기준으로 재면
+`ChapterGraphView`에 남은 3,512줄은 **그리기와 편집 UI**이고, 다음 툴은 자기 그래프를
+자기 방식으로 그린다. 여기는 정리됐다.
 | **3** | 판이 있고 그 판에 노드가 있는 챕터에서만 검사 · 안 연 챕터는 종전대로 나간다 · 캐시 지문에 노드 목록 포함 · 오탐 0을 테스트가 고정 |
 | **4** | 저쪽이 패키지로 떼고 이쪽이 태그로 문다 · 손복사 경로 삭제 |
 
