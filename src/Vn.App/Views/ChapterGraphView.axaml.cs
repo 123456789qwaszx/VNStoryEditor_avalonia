@@ -3370,10 +3370,24 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
+    /// 머리글의 오류 표식 (2026-08-24 소유자: <b>"오류는 노란색"</b>).
+    ///
+    /// ⚠ 흔한 관례와 <b>반대다</b> — 보통 오류가 빨강이고 경고가 노랑이다. 소유자가
+    /// 그렇게 지정했고, 되돌리려면 이 두 줄만 맞바꾸면 된다.
+    ///
+    /// 색을 <b>이모지로</b> 내는 이유: 머리글이 문자열 하나라 글자마다 색을 줄 자리가
+    /// 없다. 표식을 글에 심으면 그 한 줄이 색을 갖는다.
+    /// </summary>
+    private const string ErrorMark = "🟡";
+
+    /// <summary>머리글의 경고 표식 (소유자: <b>"경고는 붉은 색"</b>). 위 ⚠ 참조.</summary>
+    private const string WarningMark = "🔴";
+
+    /// <summary>
     /// 에피소드 동기화 보고를 먼저, 그 뒤에 오류·경고·정보를 심각도 순으로. 동기화는 사람이
     /// 방금 한 행동의 결과인데 목록 끝에 두면 알림 더미에 묻혀 스크롤 밖으로 나간다(실사례 —
     /// "숫자는 2개라는데 볼 방법이 없어"). 각 줄이 파일·시트·행·열을 그대로 말하고,
-    /// 머리글의 배지가 거부 건수를 든다(G5).
+    /// 머리글의 표식이 오류·경고를 든다.
     /// </summary>
     private void DrawDiagnostics(ChapterGraphModel model)
     {
@@ -3389,9 +3403,19 @@ public partial class ChapterGraphView : UserControl
         int warnings = all.Count(item => item.Severity == ChapterDiagnosticSeverity.Warning);
         int rejected = _syncReports.Sum(report => report.RejectionCount);
 
-        string header = errors + warnings == 0
-            ? $"검증 보고 — 오류 없음 (알림 {all.Count}건)"
-            : $"검증 보고 — 오류 {errors} · 경고 {warnings}";
+        string? exportNotice = ExportNotice();
+
+        var header = new System.Text.StringBuilder("검증 보고");
+
+        if (errors > 0)
+        {
+            header.Append($" · {ErrorMark} 오류 {errors}");
+        }
+
+        if (warnings > 0)
+        {
+            header.Append($" · {WarningMark} 경고 {warnings}");
+        }
 
         // ⚠ "동기화 N건 반영"은 <b>더 이상 적지 않는다</b> (2026-08-24 소유자: "동기화가
         // 몇개 반영됬는지 표기할 필요는 없어"). 여기는 <em>검증 보고</em>이고, 잘된 일의
@@ -3399,19 +3423,32 @@ public partial class ChapterGraphView : UserControl
         // 거부·경고는 그대로 든다: 조용한 무반영이 최악이다(G3-1).
         if (rejected > 0)
         {
-            header += $" · 동기화 거부·경고 {rejected}건";
+            header.Append($" · {WarningMark} 동기화 거부·경고 {rejected}건");
         }
-
-        string? exportNotice = ExportNotice();
 
         if (exportNotice is not null)
         {
             // 접혀 있어도 보여야 한다 — 런타임으로 나갈 것이 안 나간 상태다.
-            header += " · 진행 JSON 미출력";
+            header.Append($" · {ErrorMark} 진행 JSON 미출력");
         }
 
-        DiagnosticsExpander.Header = header;
-        DiagnosticsExpander.IsExpanded = errors > 0 || rejected > 0 || exportNotice is not null;
+        if (header.Length == "검증 보고".Length)
+        {
+            header.Append($" — 오류 없음 (알림 {all.Count}건)");
+        }
+
+        DiagnosticsExpander.Header = header.ToString();
+
+        // ⛔ <b>저절로 펼치지 않는다</b> (2026-08-24 소유자: "오류가 있으면 검증 보고가
+        // 저절로 펼쳐지는 규칙이 있는데, 그것까지 꺼줘. 대신에 … 시각적인 이모티콘을
+        // 붙여놓기만 해").
+        //
+        // 예전에는 여기서 <c>IsExpanded</c>를 <b>양방향으로</b> 밀었다 — 오류가 있으면
+        // 열고, 없으면 닫았다. 그래서 사람이 접어 둔 것을 다시 열고, 펼쳐 둔 것을 다시
+        // 닫았다. 다시 그리기는 저장할 때마다 도니까 그 싸움이 계속됐다.
+        // 이제 그 칸은 <b>사람만 만진다.</b> 알릴 것은 머리글의 표식이 든다.
+        //
+        // ⚠ 그래서 표식이 <b>유일한 알림 창구</b>다. 여기서 표식을 빼면 오류가 조용해진다.
 
         // 내보내기 결론이 맨 위다 — 아래 오류들이 그 사유이므로 결론과 근거가 붙어 선다.
         if (exportNotice is not null)

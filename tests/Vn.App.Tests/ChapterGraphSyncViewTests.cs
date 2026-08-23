@@ -270,9 +270,12 @@ public sealed class ChapterGraphSyncViewTests
 
         view.SyncEpisodes();
 
+        // ⚠ 2026-08-24 — <b>저절로 펼치지 않는다</b>. 알림은 머리글의 표식이 든다
+        // (소유자: "그것까지 꺼줘. 대신에 … 시각적인 이모티콘을 붙여놓기만 해").
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
         Assert.Contains("동기화 거부·경고", (string)expander.Header!);
-        Assert.True(expander.IsExpanded);
+        Assert.Contains("🔴", (string)expander.Header!);
+        Assert.False(expander.IsExpanded);
 
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
         Assert.Contains(panel.Children.OfType<TextBlock>(),
@@ -296,9 +299,11 @@ public sealed class ChapterGraphSyncViewTests
         Assert.False(Directory.Exists(project.ExportFolder));
 
         // 사유는 상태줄이 아니라 검증 보고에 선다 — 상태줄은 동기화 보고가 곧 덮는다.
+        // ⚠ 접힌 채로도 <b>머리글이 말한다</b> — 런타임으로 나갈 것이 안 나간 상태다.
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
         Assert.Contains("진행 JSON 미출력", (string)expander.Header!);
-        Assert.True(expander.IsExpanded);
+        Assert.Contains("🟡", (string)expander.Header!);
+        Assert.False(expander.IsExpanded);
 
         Assert.Contains(
             view.FindControl<StackPanel>("DiagnosticsPanel")!.Children.OfType<TextBlock>(),
