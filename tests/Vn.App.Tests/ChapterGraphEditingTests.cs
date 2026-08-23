@@ -638,7 +638,7 @@ public sealed class ChapterGraphEditingTests
 
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
+        string[] headers = ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {

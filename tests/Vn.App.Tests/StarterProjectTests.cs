@@ -247,7 +247,7 @@ internal static class StarterProject
         대본의 드롭다운은 툴이 챕터를 읽을 때 따라온다.
         """;
 
-    /// <summary>대본 행을 채운다 — v10 6열(인덱스·LineId·유형·조건라벨·화자·내용).</summary>
+    /// <summary>대본 행을 채운다 — v13 6열(인덱스·유형·LineId·조건라벨·화자·내용).</summary>
     private static void WriteScript(
         string folder,
         string episodeId,
@@ -265,7 +265,7 @@ internal static class StarterProject
             (int index, string kind, string label, string speaker, string text) = rows[offset];
 
             sheet.Cell(number, 1).SetValue(index);
-            Set(sheet, number, 3, kind);
+            Set(sheet, number, 2, kind);   // v13 — 유형이 앞이다
             Set(sheet, number, 4, label);
             Set(sheet, number, 5, speaker);
             Set(sheet, number, 6, text);

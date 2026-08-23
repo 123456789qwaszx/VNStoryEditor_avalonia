@@ -83,7 +83,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
 
         ChapterDiagnostic problem = SingleError(rows, "닫히지 않았습니다");
 
-        Assert.Equal("C", problem.Column);
+        Assert.Equal("B", problem.Column);
         Assert.Contains("어디까지가 조건 안인지", problem.Message);
     }
 
@@ -91,11 +91,11 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     public void 짝_없는_ENDIF는_오류다()
     {
         var rows = Baseline();
-        rows[2] = ["20", null, "ENDIF", null, null, null];  // 열린 IF가 없는 자리
+        rows[2] = ["20", "ENDIF", null, null, null, null];  // 열린 IF가 없는 자리
 
         ChapterDiagnostic problem = SingleError(rows, "닫을 IF가 없는");
 
-        Assert.Equal("C", problem.Column);
+        Assert.Equal("B", problem.Column);
     }
 
     [Fact]
@@ -116,9 +116,9 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
         // 구판 규칙 5(중첩 금지)의 폐지를 고정한다. 작가 판의 줄이 전환 여럿을 담게
         // 아래층을 고쳐서 열렸다 — 겹쳐 닫는 <<endif>>들이 한 줄 앞에 몰려도 된다.
         var rows = Baseline();
-        rows[5] = ["50", null, "IF", "지쳐있음", null, null];   // 첫 ENDIF 자리에 IF
+        rows[5] = ["50", "IF", null, "지쳐있음", null, null];   // 첫 ENDIF 자리에 IF
         // 이제 IF가 셋(30·50·60)이라 닫는 줄도 셋이어야 한다.
-        rows = [.. rows, ["100", null, "ENDIF", null, null, null], ["110", null, "ENDIF", null, null, null]];
+        rows = [.. rows, ["100", "ENDIF", null, null, null, null], ["110", "ENDIF", null, null, null, null]];
 
         Assert.Empty(Read(rows).Errors);
     }
@@ -127,11 +127,11 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     public void ELSEIF는_열린_IF가_있어야_한다()
     {
         var rows = Baseline();
-        rows[1] = ["10", null, "ELSEIF", "신뢰높음", null, null];
+        rows[1] = ["10", "ELSEIF", null, "신뢰높음", null, null];
 
         ChapterDiagnostic problem = SingleError(rows, "열린 IF가 없는 ELSEIF");
 
-        Assert.Equal("C", problem.Column);
+        Assert.Equal("B", problem.Column);
     }
 
     [Fact]
@@ -146,16 +146,22 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
         Assert.Contains("무엇을 가르는지", problem.Message);
     }
 
-    [Fact]
-    public void ENDIF에_대사를_적으면_오류다()
+    [Theory]
+    [InlineData(3, "IF")]
+    [InlineData(5, "ENDIF")]
+    public void 블록_행에_대사를_적으면_오류다(int row, string kind)
     {
+        // 2026-08-24 소유자 — "화자와 내용을 … If,ElseIf,EndIf일 경우 안 적게 막아줘."
+        // ⚠ 예전에는 ENDIF만 막았다. IF·ELSEIF에 적은 글은 평평화가 안 보므로 <b>조용히
+        // 버려졌고</b>, 작가에게는 "썼는데 안 나온다"로 나타났다.
         var rows = Baseline();
-        rows[5][4] = "윌로";
-        rows[5][5] = "여기 붙이면 어느 쪽인가";
+        rows[row][4] = "윌로";
+        rows[row][5] = "여기 붙이면 어느 쪽인가";
 
-        ChapterDiagnostic problem = SingleError(rows, "블록을 닫기만 합니다");
+        ChapterDiagnostic problem = SingleError(rows, "블록의 흐름만 그립니다");
 
         Assert.Equal("F", problem.Column);
+        Assert.Contains(kind, problem.Message);
     }
 
     // ── §3.2 구조 ───────────────────────────────────────────────────────────
@@ -164,11 +170,11 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     public void IF_행이_LineId를_가지면_오류다()
     {
         var rows = Baseline();
-        rows[3][1] = "ln_9999";
+        rows[3][2] = "ln_9999";
 
         ChapterDiagnostic problem = SingleError(rows, "라인이 아니므로");
 
-        Assert.Equal("B", problem.Column);
+        Assert.Equal("C", problem.Column);
         Assert.Contains("IF 행", problem.Message);
     }
 
@@ -200,7 +206,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     {
         // 2026-08-17 소유자 — 드롭다운에서 고를 수 있어야 한다. 빈칸도 그대로 대사다.
         var rows = Baseline();
-        rows[1][2] = "대사";
+        rows[1][1] = "대사";
 
         EpisodeWorkbookModel model = Read(rows);
 
@@ -213,7 +219,7 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     {
         // 정본은 ENDIF지만 사람이 END를 치는 것도 흔하다 — 뜻이 하나뿐이라 받아도 안전하다.
         var rows = Baseline();
-        rows[5][2] = "END";
+        rows[5][1] = "END";
 
         Assert.Empty(Read(rows).Errors);
     }
@@ -223,11 +229,11 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     {
         // v9에서 선택지의 주인이 챕터 시트로 갔다 — 대본에 남은 낱말은 옮기다 만 흔적이다.
         var rows = Baseline();
-        rows[1][2] = "OPTION";
+        rows[1][1] = "OPTION";
 
         ChapterDiagnostic problem = SingleError(rows, "폐지됐습니다");
 
-        Assert.Equal("C", problem.Column);
+        Assert.Equal("B", problem.Column);
         Assert.Contains("`선택지` 시트", problem.Message);
         Assert.Contains("`간선` 시트", problem.Message);
     }
@@ -342,15 +348,15 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
     /// <summary>견본과 같은 모양의 최소 에피소드(중첩 포함). 각 테스트는 한 칸만 망가뜨린다.</summary>
     private static string?[][] Baseline() =>
     [
-        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-        ["10", "ln_0001", null, null, "윌로", "첫 줄"],
-        ["20", "ln_0002", null, null, "라루", "둘째 줄"],
-        ["30", null, "IF", "신뢰높음", null, null],
-        ["40", "ln_0003", null, null, "윌로", "첫 블록 안"],
-        ["50", null, "ENDIF", null, null, null],
-        ["60", null, "IF", "지쳐있음", null, null],
-        ["70", "ln_0004", null, null, "라루", "둘째 블록 안"],
-        ["80", null, "ENDIF", null, null, null],
-        ["90", "ln_0005", null, null, "윌로", "끝 줄"]
+        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+        ["10", null, "ln_0001", null, "윌로", "첫 줄"],
+        ["20", null, "ln_0002", null, "라루", "둘째 줄"],
+        ["30", "IF", null, "신뢰높음", null, null],
+        ["40", null, "ln_0003", null, "윌로", "첫 블록 안"],
+        ["50", "ENDIF", null, null, null, null],
+        ["60", "IF", null, "지쳐있음", null, null],
+        ["70", null, "ln_0004", null, "라루", "둘째 블록 안"],
+        ["80", "ENDIF", null, null, null, null],
+        ["90", null, "ln_0005", null, "윌로", "끝 줄"]
     ];
 }

@@ -19,9 +19,11 @@ namespace Vn.App.Tests;
 /// (감시자·동기화·반영), 창을 세우고 탭을 오가며 <em>사람이 하는 순서 그대로</em> 밟는
 /// 것은 없었다. 그래서 신고를 받고도 어디가 끊겼는지 코드만 읽어서는 답이 안 나왔다.
 ///
-/// 여기 넷은 그 신고를 쫓아 만든 것이고, <b>넷 다 통과한다</b> — 즉 이 경로들은 멀쩡하다.
-/// 신고가 다시 들어오면 <b>여기 없는 조건</b>을 찾아야 한다: 다른 챕터가 선택된 상태,
-/// 엑셀이 저장하는 <em>도중</em>의 지문, 툴을 껐다 켠 뒤 등.
+/// ⚠ <b>처음 만든 넷은 전부 통과했다</b>(감시자·탭 오가기·엑셀이 붙든 채·구조 변경).
+/// 전부 <em>한 챕터짜리</em>였기 때문이다 — 챕터를 둘로 놓고서야 결함이 드러났다
+/// (`지금_안_고른_챕터의_대본도_반영된다`). 통과하는 재현은 <b>재현이 아니라 범위의
+/// 증언</b>이라는 것을 여기 남긴다: 다음에도 "안 된다"는 신고를 받으면, 통과하는 경로를
+/// 늘리는 것이 곧 남은 경우를 좁히는 일이다.
 /// </summary>
 public sealed class ExcelToPresentationGraphTests : IDisposable
 {
@@ -253,7 +255,8 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         /// <summary>진짜 감시자를 기다린다 — 조건이 참이 될 때까지.</summary>
         public void WaitFor(Func<bool> until)
         {
-            for (int tick = 0; tick < 60; tick++)
+            // 위 WaitForWatcher의 ⚠ 그대로 — 전체 스위트에서는 넉넉해야 한다.
+            for (int tick = 0; tick < 200; tick++)
             {
                 Thread.Sleep(100);
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -303,7 +306,11 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
 
         public void WaitForWatcher(Func<string, bool> until)
         {
-            for (int tick = 0; tick < 60; tick++)
+            // ⚠ 넉넉해야 한다. 감시자는 250ms 디바운스에 파일 사건을 기다리는데, 전체
+            // 스위트가 함께 돌 때는 어셈블리 하나가 <b>디스패처를 나눠 쓰고</b> 디스크도
+            // 붐빈다 — 6초로 뒀더니 혼자서는 늘 통과하면서 전체 실행에서 한 번 넘어졌다.
+            // 사슬이 끊기면 어차피 여기서 실패하므로, 기다림을 늘려도 잡는 힘은 그대로다.
+            for (int tick = 0; tick < 200; tick++)
             {
                 Thread.Sleep(100);
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();

@@ -4,8 +4,11 @@ using ClosedXML.Excel;
 namespace Vn.Authoring.Chapters;
 
 /// <summary>
-/// 구판 대본 워크북(9열 — 인덱스·LineId·유형·태그·조건라벨·IN·OUT·화자·내용)을
-/// v10(6열 — 인덱스·LineId·유형·조건라벨·화자·내용)으로 한 번에 이행한다.
+/// 옛 대본 워크북을 지금 규격(v13 — 인덱스·<b>유형</b>·LineId·조건라벨·화자·내용)으로 옮긴다.
+///
+/// 두 길이 있다:
+///   ① <b>구판 9열</b>(인덱스·LineId·유형·태그·조건라벨·IN·OUT·화자·내용) — 통째로 다시 깐다.
+///   ② <b>v10~v12의 6열</b>(LineId가 유형보다 앞) — <b>두 열만 맞바꾼다</b>(2026-08-24).
 ///
 /// <b>구간을 제자리로 옮긴다.</b> 구판은 <c>IF</c>의 <c>IN</c>이 표 아래쪽 어딘가의 구간
 /// (<c>INPUT</c>…<c>OUT</c>)을 가리켰다. 이행은 그 구간의 행들을 <c>IF</c> 바로 아래로
@@ -33,8 +36,21 @@ public static class EpisodeWorkbookMigrator
     private static readonly string[] LegacyHeaders =
         ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
 
+    /// <summary>지금 규격 (v13, 2026-08-24) — <b>유형이 LineId보다 앞</b>.</summary>
     private static readonly string[] Headers =
+        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+
+    /// <summary>
+    /// v10~v12의 6열 — 같은 여섯 칸인데 <b>LineId가 유형보다 앞</b>이었다.
+    /// 2026-08-24에 순서가 뒤집혔고(소유자), 그 파일들은 두 열만 맞바꾸면 된다.
+    /// </summary>
+    private static readonly string[] HeadersV10 =
         ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
+
+    private const int ColumnIndex = 1;
+    private const int ColumnKind = 2;
+    private const int ColumnLineId = 3;
+    private const int ColumnText = 6;
 
     private const int TemplateRows = 500;
 
@@ -54,7 +70,7 @@ public static class EpisodeWorkbookMigrator
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var probe = new XLWorkbook(stream);
 
-            if (FindLegacySheet(probe) is null)
+            if (FindLegacySheet(probe) is null && FindV10Sheet(probe) is null)
             {
                 WorkbookMigrationGate.MarkCurrent(path);
                 return MigrationResult.NotNeeded;
@@ -79,9 +95,17 @@ public static class EpisodeWorkbookMigrator
             memory.Position = 0;
 
             using var workbook = new XLWorkbook(memory);
-            IXLWorksheet sheet = FindLegacySheet(workbook)!;
 
-            Rewrite(sheet, Reorder(Read(sheet)));
+            // 구판 9열은 통째로 다시 깐다. v10 6열은 <b>두 열만 맞바꾸면</b> 되므로
+            // 행을 건드리지 않는다 — 옮길 이유가 없는 것을 옮기면 그만큼 틀릴 자리가 는다.
+            if (FindLegacySheet(workbook) is { } legacy)
+            {
+                Rewrite(legacy, Reorder(Read(legacy)));
+            }
+            else
+            {
+                SwapKindAndLineId(FindV10Sheet(workbook)!);
+            }
 
             workbook.SaveAs(path);
 
@@ -98,10 +122,61 @@ public static class EpisodeWorkbookMigrator
     }
 
     private static IXLWorksheet? FindLegacySheet(XLWorkbook workbook) =>
+        FindByHeaders(workbook, LegacyHeaders);
+
+    private static IXLWorksheet? FindV10Sheet(XLWorkbook workbook) =>
+        FindByHeaders(workbook, HeadersV10);
+
+    private static IXLWorksheet? FindByHeaders(XLWorkbook workbook, string[] headers) =>
         workbook.Worksheets.FirstOrDefault(sheet =>
-            LegacyHeaders.Select((header, offset) =>
+            headers.Select((header, offset) =>
                 string.Equals(Text(sheet, 1, offset + 1), header, StringComparison.Ordinal))
                 .All(matches => matches));
+
+    /// <summary>
+    /// v10 → v13 — <b>유형과 LineId 두 열만 맞바꾼다</b> (2026-08-24).
+    ///
+    /// 행은 건드리지 않는다. 인덱스가 줄의 신원이고 프로젝트의 <c>ExcelLineMap</c>이 그
+    /// 번호로 연출을 붙들고 있으므로, 옮길 이유가 없는 것을 옮기면 그만큼 틀릴 자리가 는다.
+    ///
+    /// ⚠ 서식도 함께 간다 — 회색 배경은 <b>LineId를 따라</b> C열로. 그 회색이 "여기는
+    /// 유물이니 손대지 마세요"라는 표시라서, 열만 옮기고 색을 두면 유형 칸이 유물처럼 보인다.
+    /// 드롭다운·빗장은 다음 어휘 밀기가 새 자리에 다시 건다(`EpisodeLibrary.PushVocabulary`).
+    /// </summary>
+    private static void SwapKindAndLineId(IXLWorksheet sheet)
+    {
+        int last = sheet.LastRowUsed()?.RowNumber() ?? 1;
+
+        for (int row = 1; row <= Math.Max(last, TemplateRows); row++)
+        {
+            string lineId = Text(sheet, row, ColumnKind);       // 옛 B열 = LineId
+            string kind = Text(sheet, row, ColumnLineId);       // 옛 C열 = 유형
+
+            // ⚠ <b>덮어쓰기가 아니라 맞바꾸기다</b> — 빈 값도 써야 한다. `Set`은 빈 값을
+            // 건너뛰므로(새로 깔 때는 그게 맞다) 여기서 쓰면 옛 값이 그 자리에 남는다:
+            // 대사 행은 유형이 비어 있어서 B에 LineId가 <b>그대로 남고</b> C에도 같은 값이
+            // 복사됐다. 견본 워크북에서 실제로 그렇게 났다.
+            Overwrite(sheet, row, ColumnKind, kind);
+            Overwrite(sheet, row, ColumnLineId, lineId);
+        }
+
+        // 머리글은 굵게·회색으로 다시 — 위 루프가 글자만 옮겼다.
+        for (int column = 1; column <= Headers.Length; column++)
+        {
+            IXLCell cell = sheet.Cell(1, column);
+            cell.SetValue(Headers[column - 1]);
+            cell.Style.Font.SetBold(true);
+            cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
+        }
+
+        // 옛 자리(B)의 회색을 걷고 새 자리(C)에 입힌다.
+        sheet.Column(ColumnKind).Style.Fill.SetBackgroundColor(XLColor.NoColor);
+        sheet.Column(ColumnLineId).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
+
+        // 낡은 자리의 검증을 턴다 — 새 자리의 것은 어휘 밀기가 건다.
+        sheet.DataValidations.Delete(validation => validation.Ranges.Any(range =>
+            range.RangeAddress.FirstAddress.ColumnNumber is ColumnKind or ColumnLineId));
+    }
 
     // ── 읽기 ────────────────────────────────────────────────────────────────
 
@@ -266,11 +341,11 @@ public static class EpisodeWorkbookMigrator
             int number = offset + 2;
 
             sheet.Cell(number, 1).SetValue(row.Index);
-            Set(sheet, number, 2, row.LineId);
-            Set(sheet, number, 3, row.Kind);
+            Set(sheet, number, ColumnKind, row.Kind);       // v13 — 유형이 앞이다
+            Set(sheet, number, ColumnLineId, row.LineId);
             Set(sheet, number, 4, row.ConditionLabel);
             Set(sheet, number, 5, row.Speaker);
-            Set(sheet, number, 6, row.Text);
+            Set(sheet, number, ColumnText, row.Text);
         }
 
         // 남은 자리에 번호를 다시 깔아 둔다 — 새 템플릿과 같은 손맛(그 옆 칸만 채우면 된다).
@@ -282,22 +357,39 @@ public static class EpisodeWorkbookMigrator
             next += 10;
         }
 
-        sheet.Column(2).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
-        sheet.Column(6).Width = 50;
+        sheet.Column(ColumnLineId).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
+        sheet.Column(ColumnText).Width = 50;
 
-        sheet.Range(2, 3, TemplateRows, 3).CreateDataValidation().List("\"대사,IF,ELSEIF,ENDIF\"", true);
+        sheet.Range(2, ColumnKind, TemplateRows, ColumnKind)
+            .CreateDataValidation().List("\"대사,IF,ELSEIF,ENDIF\"", true);
 
         // 화자·조건라벨 드롭다운은 열 자리가 바뀌었다(H→E, 신설 D). 이행 뒤 첫 동기화에서
         // EpisodeLibrary.PushVocabulary가 새 자리에 다시 건다 — 여기서는 낡은 검증만 턴다.
         // (Clear가 이미 지웠으므로 할 일은 없고, 이 주석이 그 사실을 대신 말한다.)
     }
 
+    /// <summary>값이 있을 때만 적는다 — 새 표를 깔 때의 손이다(빈칸은 안 건드린다).</summary>
     private static void Set(IXLWorksheet sheet, int row, int column, string value)
     {
         if (value.Length > 0)
         {
             sheet.Cell(row, column).SetValue(value);
         }
+    }
+
+    /// <summary>
+    /// 빈 값도 <b>그대로 적는다</b> — 자리를 맞바꿀 때의 손이다.
+    /// <see cref="Set"/>을 쓰면 빈 쪽이 옛 값을 남겨 두 칸이 같아진다.
+    /// </summary>
+    private static void Overwrite(IXLWorksheet sheet, int row, int column, string value)
+    {
+        if (value.Length == 0)
+        {
+            sheet.Cell(row, column).Clear(XLClearOptions.Contents);
+            return;
+        }
+
+        sheet.Cell(row, column).SetValue(value);
     }
 
     private static string Text(IXLWorksheet sheet, int row, int column)

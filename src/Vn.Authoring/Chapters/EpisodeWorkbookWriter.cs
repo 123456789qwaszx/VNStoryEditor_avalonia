@@ -29,10 +29,10 @@ public static class EpisodeWorkbookWriter
     // 리더와 같은 6열 (v10). ⚠ 이 배열은 <see cref="EpisodeWorkbookReader"/>의 것과 같아야
     // 한다 — 시트를 찾는 근거가 머리글이라, 한쪽만 바뀌면 여기서 시트를 못 찾는다.
     private static readonly string[] Headers =
-        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
+        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
 
     private const int ColumnIndex = 1;
-    private const int ColumnKind = 3;
+    private const int ColumnKind = 2;
     private const int ColumnSpeaker = 5;
     private const int ColumnText = 6;
 

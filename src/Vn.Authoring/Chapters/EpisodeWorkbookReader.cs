@@ -17,14 +17,16 @@ public static class EpisodeWorkbookReader
 {
     private const int HeaderRow = 1;
 
-    // 6열 (v10, 2026-08-17 소유자 결정 — 태그·IN·OUT 폐지, 조건은 IF~END 블록).
-    // 구판 9열 파일은 이행기가 이 모양으로 옮긴다.
+    // 6열 (v13, 2026-08-24 소유자 — <b>유형이 LineId보다 앞</b>). 왼쪽에서 오른쪽으로
+    // 읽으면 "몇 번째 줄인가 → 무슨 줄인가 → (대사면) 그 줄의 신원"이다: 무슨 줄인지가
+    // 나머지를 전부 좌우하므로 먼저 온다. LineId는 사람이 안 쓰는 유물이라 뒤로 밀린다.
+    // v10 파일(LineId가 먼저)은 이행기가 이 모양으로 옮긴다.
     private static readonly string[] Headers =
-        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
+        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
 
     private const int ColumnIndex = 1;
-    private const int ColumnLineId = 2;
-    private const int ColumnKind = 3;
+    private const int ColumnKind = 2;
+    private const int ColumnLineId = 3;
     private const int ColumnConditionLabel = 4;
     private const int ColumnSpeaker = 5;
     private const int ColumnText = 6;
@@ -219,16 +221,22 @@ public static class EpisodeWorkbookReader
                     "라벨↔식의 원천은 그 시트입니다(G-7)."));
             }
 
-            // END는 닫기만 한다 — 조건라벨은 위에서 이미 걸렸고, 화자·내용은 여기서 막는다.
-            if (kind == EpisodeRowKind.End &&
+            // 블록 행(IF·ELSEIF·ENDIF)은 <b>흐름만</b> 그린다 — 화자·내용을 여기서 막는다
+            // (2026-08-24 소유자: "화자와 내용을 … If,ElseIf,EndIf일 경우 안 적게 막아줘").
+            //
+            // ⚠ 예전에는 ENDIF만 막았다. IF·ELSEIF에 적은 글은 그때 <b>조용히 버려졌다</b> —
+            // 평평화가 블록 행의 화자·내용을 안 보기 때문이다. 작가에게는 "썼는데 안 나온다"로
+            // 나타난다(같은 모양의 사고가 이 표에서 여러 번 났다).
+            if (kind is not EpisodeRowKind.Dialogue &&
                 (Cell(sheet, row, ColumnSpeaker).Length > 0 || Cell(sheet, row, ColumnText).Length > 0))
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.ColumnHeaderUnexpected,
                     path, sheet.Name, row, ColumnText,
-                    "ENDIF 행은 블록을 닫기만 합니다 — 화자·내용을 적으면 그 대사가 어느 쪽에 " +
-                    "속하는지 모호해집니다. 대사는 ENDIF 위나 아래의 자기 행에 적습니다."));
+                    $"{Word(kind)} 행은 블록의 흐름만 그립니다 — 화자·내용을 적으면 그 대사가 " +
+                    "어느 쪽에 속하는지 모호해지고, 산출에는 실리지 않습니다. " +
+                    "대사는 그 위나 아래의 자기 행에 적습니다."));
             }
 
             var parsed = new EpisodeRow(

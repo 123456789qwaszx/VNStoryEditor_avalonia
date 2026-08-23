@@ -246,15 +246,15 @@ public sealed class EpisodeFlattenerTests : IDisposable
     /// <summary>블록 둘이 나란히 있고 그 뒤에 대사가 오는 최소 표 (견본과 같은 모양).</summary>
     private static string?[][] Baseline() =>
     [
-        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-        ["10", "ln_0001", null, null, "윌로", "첫 줄"],
-        ["20", "ln_0002", null, null, "라루", "둘째 줄"],
-        ["30", null, "IF", "신뢰높음", null, null],
-        ["40", "ln_0003", null, null, "윌로", "첫 블록 안"],
-        ["50", null, "ENDIF", null, null, null],
-        ["60", null, "IF", "지쳐있음", null, null],
-        ["70", "ln_0004", null, null, "라루", "둘째 블록 안"],
-        ["80", null, "ENDIF", null, null, null],
-        ["90", "ln_0005", null, null, "윌로", "끝 줄"]
+        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+        ["10", null, "ln_0001", null, "윌로", "첫 줄"],
+        ["20", null, "ln_0002", null, "라루", "둘째 줄"],
+        ["30", "IF", null, "신뢰높음", null, null],
+        ["40", null, "ln_0003", null, "윌로", "첫 블록 안"],
+        ["50", "ENDIF", null, null, null, null],
+        ["60", "IF", null, "지쳐있음", null, null],
+        ["70", null, "ln_0004", null, "라루", "둘째 블록 안"],
+        ["80", "ENDIF", null, null, null, null],
+        ["90", null, "ln_0005", null, "윌로", "끝 줄"]
     ];
 }

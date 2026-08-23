@@ -186,9 +186,9 @@ public sealed class NewProjectNoiseTests : IDisposable
             var sheet = workbook.Worksheets.First();
             // 대사 → 조건 블록 → (템플릿이 깔아 둔 빈 행 수백 개)
             sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");   // 10
-            sheet.Cell(3, 3).SetValue("IF"); sheet.Cell(3, 4).SetValue("신뢰높음");  // 20
+            sheet.Cell(3, 2).SetValue("IF"); sheet.Cell(3, 4).SetValue("신뢰높음");  // 20
             sheet.Cell(4, 5).SetValue("라루"); sheet.Cell(4, 6).SetValue("조건 안"); // 30
-            sheet.Cell(5, 3).SetValue("ENDIF");                                      // 40
+            sheet.Cell(5, 2).SetValue("ENDIF");                                      // 40
             workbook.Save();
         }
 

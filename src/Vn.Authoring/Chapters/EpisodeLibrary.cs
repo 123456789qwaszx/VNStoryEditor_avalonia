@@ -279,8 +279,9 @@ public static class EpisodeLibrary
         // 어차피 머리글로 시트를 찾으므로 이름은 아무래도 좋다 — 그러면 안 낡는 이름이 낫다.
         IXLWorksheet sheet = workbook.AddWorksheet("대본");
 
-        // 6열 (v10, 2026-08-17) — 태그·IN·OUT 폐지. 조건은 IF~END 블록이 감싼다.
-        string[] headers = ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
+        // 6열 (v13, 2026-08-24) — <b>유형이 LineId보다 앞</b>이다. 왼쪽에서 오른쪽으로
+        // "몇 번째 줄인가 → 무슨 줄인가 → (대사면) 그 신원"으로 읽힌다.
+        string[] headers = ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
@@ -290,16 +291,14 @@ public static class EpisodeLibrary
             cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
         }
 
-        // 유형은 규격의 낱말만 받는다 — 오타가 검증기까지 가기 전에 엑셀이 막는다.
-        // `대사`가 목록에 있어야 셀을 지우는 대신 고를 수 있다 (2026-08-17 소유자).
-        sheet.Range(2, 3, TemplateRows, 3).CreateDataValidation()
-            .List(KindList, true);
+        // 유형 드롭다운과 블록 행 빗장은 ApplyVocabulary가 함께 건다 (v13) —
+        // 옛 파일에도 같은 손이 닿아야 해서 한 자리에 모았다.
 
-        // 시트 보호는 걸지 않는다 (v4). 보호의 유일한 이유였던 B열(LineId)을 툴이 더는
+        // 시트 보호는 걸지 않는다 (v4). 보호의 유일한 이유였던 LineId 열을 툴이 더는
         // 쓰지 않는다 — 행 신원은 프로젝트의 ExcelLineMap이 갖는다. 보호가 없으면 구글
-        // 시트 같은 외부 편집기가 재저장할 때 깨질 것도 하나 줄어든다. B열은 유물로 남아
-        // 회색 배경만 유지한다(과거 파일과 열 배치가 같아야 규격 문서가 하나로 통한다).
-        sheet.Column(2).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
+        // 시트 같은 외부 편집기가 재저장할 때 깨질 것도 하나 줄어든다. 그 열은 유물로 남아
+        // 회색 배경만 유지한다 (v13에서 B→C).
+        sheet.Column(LineIdColumn).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
 
         // 인덱스를 미리 다 깔아 준다 (10·20·30 방식, G-5). 작가는 번호를 신경 쓰지 않고
         // 그 옆 칸(화자·내용)만 채우면 된다 — 인덱스 없는 행은 표의 일부가 아니라서,
@@ -333,9 +332,11 @@ public static class EpisodeLibrary
     /// <summary>조건 라벨 목록을 담는 숨김 시트 (2026-08-17).</summary>
     public const string ConditionListSheetName = "조건목록";
 
-    private const int KindColumn = 3;         // C열 — §3.2의 유형
+    private const int KindColumn = 2;         // B열 — §3.2의 유형 (v13에서 C→B)
+    private const int LineIdColumn = 3;       // C열 — 유물. 사람도 툴도 안 쓴다 (v13에서 B→C)
     private const int ConditionColumn = 4;    // D열 — §3.2의 조건라벨 (v10)
     private const int SpeakerColumn = 5;      // E열 — §3.2의 화자 (v10에서 H→E)
+    private const int TextColumn = 6;         // F열 — §3.2의 내용
     private const int ListRows = 200;         // 드롭다운이 가리키는 범위. 이보다 많으면 나눌 일이다.
 
     /// <summary>
@@ -389,13 +390,66 @@ public static class EpisodeLibrary
         sheet.Range(2, KindColumn, TemplateRows, KindColumn)
             .CreateDataValidation()
             .List(KindList, inCellDropdown: true);
+
+        BlockRowGuard(sheet, LineIdColumn,
+            "이 행은 IF·ELSEIF·ENDIF입니다 — 라인이 아니라서 LineId를 가질 수 없습니다.");
+
+        BlockRowGuard(sheet, TextColumn,
+            "이 행은 IF·ELSEIF·ENDIF입니다 — 블록의 흐름만 그립니다. " +
+            "대사는 그 위나 아래의 자기 행에 적어 주세요.");
     }
 
+    /// <summary>
+    /// <b>블록 행에는 못 적게</b> 엑셀이 먼저 막는다 (2026-08-24 소유자: "If,ElseIf,EndIf일
+    /// 경우 LineId가 생성되면 안돼 … 화자와 내용도 안 적게 막아줘").
+    ///
+    /// 유형(B열)이 IF·ELSEIF·ENDIF면 그 행의 이 칸은 비어 있어야 한다. 빈칸은 언제나
+    /// 통과한다(<c>IgnoreBlanks</c>) — 막는 것은 <em>적는 것</em>뿐이다.
+    ///
+    /// ⚠ <b>화자(E열)에는 못 건다.</b> 엑셀은 한 칸에 검증을 하나만 허용하는데 그 열은
+    /// 이미 화자 드롭다운이 쓰고 있다. 화자는 리더가 오류로 짚는다 — 그쪽이 더 센 빗장이다
+    /// (붙여넣기로도 못 빠져나간다). 여기 검증은 <b>실수를 손에서 막는</b> 앞잡이일 뿐이고,
+    /// 규칙의 주인은 언제나 리더다.
+    /// </summary>
+    private static void BlockRowGuard(IXLWorksheet sheet, int column, string message)
+    {
+        sheet.DataValidations.Delete(validation => validation.Ranges.Any(range =>
+            range.RangeAddress.FirstAddress.ColumnNumber == column));
+
+        IXLDataValidation guard = sheet
+            .Range(2, column, TemplateRows, column)
+            .CreateDataValidation();
+
+        // 유형이 비었거나 `대사`일 때만 적을 수 있다. 행 번호는 상대참조라 엑셀이 행마다 민다.
+        guard.Custom($"=OR(${KindLetter}2=\"\",${KindLetter}2=\"대사\")");
+        guard.IgnoreBlanks = true;
+        guard.ErrorStyle = XLErrorStyle.Stop;
+        guard.ErrorTitle = "블록 행입니다";
+        guard.ErrorMessage = message;
+        guard.ShowErrorMessage = true;
+    }
+
+    /// <summary>수식에 쓰는 유형 열의 글자 — 열이 옮겨 가면 여기도 따라온다.</summary>
+    private static string KindLetter => XLHelper.GetColumnLetterFromNumber(KindColumn);
+
+    /// <summary>
+    /// 유형 드롭다운과 <b>블록 행 빗장</b>이 규격대로 걸려 있는가. 하나라도 없으면 옛
+    /// 파일이므로 <see cref="ApplyVocabulary"/>가 다시 건다 — v4의 예외(숨김 시트와 검증
+    /// 정의)에 든다.
+    /// </summary>
     private static bool KindListMatches(IXLWorksheet sheet) =>
         sheet.DataValidations.Any(validation =>
             validation.Ranges.Any(range =>
                 range.RangeAddress.FirstAddress.ColumnNumber == KindColumn) &&
-            string.Equals(validation.Value, KindList, StringComparison.Ordinal));
+            string.Equals(validation.Value, KindList, StringComparison.Ordinal)) &&
+        HasBlockRowGuard(sheet, LineIdColumn) &&
+        HasBlockRowGuard(sheet, TextColumn);
+
+    private static bool HasBlockRowGuard(IXLWorksheet sheet, int column) =>
+        sheet.DataValidations.Any(validation =>
+            validation.Ranges.Any(range =>
+                range.RangeAddress.FirstAddress.ColumnNumber == column) &&
+            validation.AllowedValues == XLAllowedValues.Custom);
 
     private static void ApplyList(
         XLWorkbook workbook, IXLWorksheet scriptSheet, Vocabulary vocabulary, IReadOnlyList<string> values)

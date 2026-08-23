@@ -124,8 +124,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 시트에서 하듯 둘째 줄의 대사만 고친다 (B열은 아무도 안 쓴다).
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-            ["10", "ln_0001", null, null, "라루", "첫 줄"],
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+            ["10", null, "ln_0001", null, "라루", "첫 줄"],
             ["20", null, null, null, "윌로", "고친 둘째 줄"]
         ]);
 
@@ -148,7 +148,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "ep_space.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
             ["10", null, null, null, "3시 13에 고쳤는데", "3시 10분으로 되있네"]
         ]);
 
@@ -176,7 +176,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "ep_chapter_speaker.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
             ["10", null, null, null, "늙은 상인", "어서 오게."]
         ]);
 
@@ -223,9 +223,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "broken.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-            ["10", "ln_0001", null, null, "라루", "첫 줄"],
-            ["30", null, "IF", "신뢰높음", null, null]
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+            ["10", null, "ln_0001", null, "라루", "첫 줄"],
+            ["30", "IF", null, "신뢰높음", null, null]
         ]);
 
         int nodesBefore = editor.Project.EnumerateNodes().Count();
@@ -268,8 +268,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 그 행을 워크북에서 지운다.
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-            ["10", "ln_0001", null, null, "라루", "첫 줄"]
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+            ["10", null, "ln_0001", null, "라루", "첫 줄"]
         ]);
 
         EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -295,12 +295,12 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "main05.02.xlsx");
         WriteRows(workbook,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-            ["10", "ln_0001", null, null, "윌로", "복도는 조용했다."],
-            ["30", null, "IF", "신뢰높음", null, null],
-            ["40", "ln_0100", null, null, "윌로", "어머니가 같은 말을 했었다."],
-            ["50", null, "ENDIF", null, null, null],
-            ["60", "ln_0003", null, null, "라루", "왜 그런 표정이야?"]
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+            ["10", null, "ln_0001", null, "윌로", "복도는 조용했다."],
+            ["30", "IF", null, "신뢰높음", null, null],
+            ["40", null, "ln_0100", null, "윌로", "어머니가 같은 말을 했었다."],
+            ["50", "ENDIF", null, null, null, null],
+            ["60", null, "ln_0003", null, "라루", "왜 그런 표정이야?"]
         ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -473,9 +473,11 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         using var workbook = new XLWorkbook(stream);
         IXLWorksheet sheet = workbook.Worksheets.First();
 
-        // §3.2의 9열 머리글 (2026-08-14 개정 — 스탯변화·메모 폐지)이 그대로 있고,
+        // v13 머리글 (2026-08-24 — <b>유형이 LineId보다 앞</b>)이 그대로 있고,
         // 리더가 이 워크북을 읽을 수 있다.
         Assert.Equal("인덱스", sheet.Cell(1, 1).GetString());
+        Assert.Equal("유형", sheet.Cell(1, 2).GetString());
+        Assert.Equal("LineId", sheet.Cell(1, 3).GetString());
         Assert.Equal("내용", sheet.Cell(1, 6).GetString());
         Assert.Equal(string.Empty, sheet.Cell(1, 7).GetString());
         Assert.Equal(10, sheet.Cell(2, 1).GetDouble());
@@ -484,8 +486,13 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 외부 편집기(구글 시트)가 재저장할 때 깨질 것도 하나 줄었다.
         Assert.False(sheet.Protection.IsProtected);
 
-        // 유형 드롭다운이 걸려 있다 (화자·조건라벨은 목록을 받았을 때만 선다).
-        Assert.Single(sheet.DataValidations);
+        // 유형 드롭다운 하나 + 블록 행 빗장 둘 (2026-08-24) — LineId·내용에 건다.
+        // 화자·조건라벨 드롭다운은 목록을 받았을 때만 선다.
+        Assert.Equal(3, sheet.DataValidations.Count());
+
+        // 빗장은 "유형이 비었거나 대사일 때만"이다 — 블록 행에는 못 적는다.
+        Assert.Equal(2, sheet.DataValidations
+            .Count(validation => validation.AllowedValues == XLAllowedValues.Custom));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -517,9 +524,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string path = Path.Combine(_directory, fileName);
         WriteRows(path,
         [
-            ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"],
-            ["10", "ln_0001", null, null, "라루", "첫 줄"],
-            ["20", lineIdForSecondRow, null, null, "윌로", "둘째 줄"]
+            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
+            ["10", null, "ln_0001", null, "라루", "첫 줄"],
+            ["20", null, lineIdForSecondRow, null, "윌로", "둘째 줄"]
         ]);
 
         return path;

@@ -419,7 +419,7 @@ public sealed class ChapterGraphSyncViewTests
         using var workbook = new ClosedXML.Excel.XLWorkbook(memory);
         ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets.First();
         sheet.Cell(2, 1).SetValue(10);
-        sheet.Cell(2, 3).SetValue("IF");
+        sheet.Cell(2, 2).SetValue("IF");
         sheet.Cell(2, 5).SetValue("신뢰높음");
         sheet.Cell(2, 6).SetValue(900);   // 없는 구간을 가리킨다
         workbook.SaveAs(path);
