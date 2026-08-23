@@ -1,4 +1,4 @@
-title: Story_choices_ep
+title: choices_ep
 ---
 
 숲 입구에 도착했다. #line:ln_004
@@ -16,10 +16,10 @@ title: Story_choices_ep
 
 -> 바로 돌아간다 #line:ln_010
     돌아가는 길. #line:ln_011
-    <<jump Story_A로_간다>>
+    <<jump A로_간다>>
 -> 조금 더 머문다 #line:ln_012
     조금 더 머물렀다. #line:ln_013
 끝. #line:ln_014
 
-<<jump Story_기본으로_간다>>
+<<jump 기본으로_간다>>
 ===

@@ -6609,3 +6609,36 @@ ux와 가시성을 높힐 차례다. … 저 셋을 탭 단위로 분리하는 �
 바꾸면 뜻 없이 흔들린다).
 
 **전체 1487 통과, 실패 0** (Core 343 · Vn.Core 60 · Vn.Authoring 757 · Vn.App 327).
+
+---
+
+## `Story_` 접두 폐지 — 붙는 자리가 없으면 중복도 없다 (`(다음 커밋)`)
+
+소유자: *"`Story_` 이것도 제거해 주십시오. 런타임 측에서도 이제 필터를 없애겠습니다."*
+
+**접두가 두 번 붙고 있었다.** 기획자가 `대사엔트리` 칸에 이미 `Story_ch05_01`이라 적는데
+이미터가 또 붙여, 견본 챕터 여섯 줄 **전부** `Story_Story_ch05_01`로 나갔다(탐침으로 확인).
+2026-08-23의 `dialogue-entry-naming-orders` §9.1이 "그 값이 맞다"고 감수하고 파생 기대값
+34곳을 그 모양으로 맞춰 둔 자리다 — 양쪽이 같은 함수를 지나니 재생은 됐다. **틀린 것은
+값이 아니라 규칙이었다.**
+
+`YarnBundleEmitter.StoryPrefix = ""` 한 줄이다. 문(`StoryNodeTitleOf`)은 그대로 둔다 —
+접두가 빠져도 **정규화가 남아** 규칙은 여전히 두 단계다(`장면 1` → `장면_1`). 그래서
+그 위에 서 있던 것들이 전부 따라왔다: 진행 JSON의 `DialogueEntryId`, yarn 타이틀,
+파일 이름, 사전 대조. 견본은 한 글자도 안 고쳤는데 중복이 사라졌다(③·③-a·③-b 소멸).
+
+**파일 이름이 `{대사엔트리}.yarn`이 되면서 새 사고 자리가 하나 생겼다** — `대사엔트리`를
+`declarations`로 지으면 선언 파일을 덮는다. 접두가 있을 때는 구조적으로 불가능했던 일이다.
+`WriteBundles`가 **쓰기 전에** 거부한다: 반쯤 쓰고 나서 알아차리면 선언이 이미 없다.
+
+⚠ **이름으로 산출물을 고르던 길을 전부 끊었다.** `OutputManifest.LooksLikeOutput`은
+`Story_`를 **유산 모양**으로만 남긴다(낡은 폴더에 그 파일들이 실재한다 — 고아 청소가
+못 알아보면 영영 남는다). 새로 쓴 것의 주인은 이름이 아니라 `.vntool-output.json`이다.
+런타임 쪽 `Story_*` 임포트 필터도 같은 이유로 걷어 달라고 회신했다
+([`work-orders/chapter-scope-variables-orders.md`](work-orders/chapter-scope-variables-orders.md) §9).
+
+골든 둘을 `golden_ep.yarn`·`choices_ep.yarn`으로 개명해 다시 구웠고,
+`docs/ch01.progression.sample.json`도 다시 냈다(`"DialogueEntryId": "시작"` — 코어 픽스처와
+도로 같아졌다).
+
+**전체 1592 통과, 실패 0** (Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 846 · Vn.App 342).

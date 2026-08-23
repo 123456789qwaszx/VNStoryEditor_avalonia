@@ -201,7 +201,16 @@ public static class OutputManifest
             return false;
         }
 
-        return fileName.StartsWith(YarnBundleEmitter.StoryPrefix, StringComparison.Ordinal)
+        // ⚠ 여기 접두 셋은 <b>옛 이름</b>이다 (2026-08-24에 `Story_` 접두가 폐지됐다).
+        // 그래도 남겨 둔다: 그날 이전에 쓴 폴더에는 `Story_*.yarn`이 그대로 있고, 그것을
+        // 고아로 알아보는 유일한 단서가 이 이름이다.
+        //
+        // ⛔ <b>이제 이 판정은 "우리 것"의 증명이 아니다.</b> 새 파일 이름은 대사엔트리를
+        // 따르므로 무엇이든 될 수 있다. 우리 것의 증명은 <b>기록
+        // (`.vntool-output.json`)</b>이고, 위 <see cref="Scan"/>이 그것을 먼저 본다.
+        // 기록에 없고 이름도 옛 모양이 아니면 <b>모른다고 답한다</b> — 못 지운 고아는
+        // 다음 쓰기에서 덮이지만, 남의 파일을 지우면 되돌릴 수 없다.
+        return fileName.StartsWith("Story_", StringComparison.Ordinal)
             || fileName.StartsWith(YarnBundleEmitter.SetPrefix, StringComparison.Ordinal)
             || fileName.StartsWith(YarnBundleEmitter.PresPrefix, StringComparison.Ordinal);
     }

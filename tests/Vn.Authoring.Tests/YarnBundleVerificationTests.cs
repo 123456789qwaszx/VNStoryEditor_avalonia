@@ -24,7 +24,7 @@ public class YarnBundleVerificationTests
         Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Golden"));
 
     [Theory]
-    [InlineData("Story_golden_ep.yarn")]
+    [InlineData("golden_ep.yarn")]
     [InlineData("declarations.yarn")]
     public void 골든_대본과_글자_하나까지_같다(string fileName)
     {
@@ -123,7 +123,7 @@ public class YarnBundleVerificationTests
 
             // 2026-08-18 — 대본 하나다. 레인 사본 노드(Set/Pres)는 나오지 않는다.
             string[] titles = report.Nodes.Select(node => node.Title).ToArray();
-            Assert.Contains("Story_golden_ep", titles);
+            Assert.Contains("golden_ep", titles);
             Assert.DoesNotContain("Set_golden_ep", titles);
             Assert.DoesNotContain("Pres_golden_ep", titles);
         }
@@ -195,7 +195,7 @@ public class YarnBundleVerificationTests
     // ── 선택지 번들 (W8) ────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("Story_choices_ep.yarn")]
+    [InlineData("choices_ep.yarn")]
     public void 선택지_골든과_글자_하나까지_같다(string fileName)
     {
         YarnBundle bundle = EmitChoicesBundle(ChoiceTests.BuildChoiceWorld());

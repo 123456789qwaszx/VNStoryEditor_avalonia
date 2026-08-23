@@ -69,7 +69,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         // 둘째 사본이 생겨 이 수정의 목적을 되돌리고, 진짜로 Story_로 시작하는 이름을
         // 영영 못 쓰게 된다. 고칠 것이 있다면 코드가 아니라 견본 데이터다
         // (`docs/work-orders/dialogue-entry-naming-orders.md` §3.3).
-        Assert.Equal("Story_Story_ch05_01", start.GetProperty("DialogueEntryId").GetString());
+        Assert.Equal("Story_ch05_01", start.GetProperty("DialogueEntryId").GetString());   // 접두 폐지 — 대사엔트리 그대로
         Assert.Equal(0, start.GetProperty("Position").GetProperty("X").GetDouble());
 
         // 간선 → NextOptions. 도착지·라벨·잠금 문구가 그대로 실린다.
@@ -235,9 +235,10 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         using JsonDocument document = JsonDocument.Parse(result.Json!);
         JsonElement nodes = document.RootElement.GetProperty("Nodes");
 
-        // 공백이 밑줄로 — 접두만 붙였다면 `Story_장면 1`이 되어 저쪽이 노드를 못 찾는다.
-        Assert.Equal("Story_장면_1", nodes[0].GetProperty("DialogueEntryId").GetString());
-        Assert.Equal("Story_new01", nodes[1].GetProperty("DialogueEntryId").GetString());
+        // 공백이 밑줄로 — 정규화를 안 지나면 `장면 1`이 되어 저쪽이 노드를 못 찾는다.
+        // ⛔ `Story_` 접두는 2026-08-24에 폐지됐다 — 타이틀은 곧 대사엔트리다.
+        Assert.Equal("장면_1", nodes[0].GetProperty("DialogueEntryId").GetString());
+        Assert.Equal("new01", nodes[1].GetProperty("DialogueEntryId").GetString());
 
         // 그리고 이 값의 주인은 이미터다 — 내보내기가 글자를 다시 조립하지 않는다.
         // 이미터가 규칙을 바꾸는 날 이 단언이 저절로 따라간다.

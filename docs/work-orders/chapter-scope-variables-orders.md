@@ -162,10 +162,10 @@ grep -r "<<declare" Assets/@Dialogue/*.yarn   # 결과 0건
 `ResultDocumentComposer`가 **설정노드 할당을 세그먼트로 내지 않는다.** 그 한 자리를
 막으면 이미터·미리보기·CSV가 함께 따라온다 — 셋이 같은 문서를 보기 때문이다.
 
-골든 대본이 그 차이를 그대로 보여 준다(`tests/Vn.Authoring.Tests/Golden/Story_golden_ep.yarn`):
+골든 대본이 그 차이를 그대로 보여 준다(`tests/Vn.Authoring.Tests/Golden/golden_ep.yarn`):
 
 ```diff
-  title: Story_golden_ep
+  title: golden_ep
   ---
 - <<set $__t1_sf_test_favor = 0>>
   <<camera wide>>
@@ -197,8 +197,8 @@ grep -r "<<declare" Assets/@Dialogue/*.yarn   # 결과 0건
 1. **툴의 출력 폴더가 `Assets/@Dialogue/`가 맞나.** 다른 폴더로 나가고 있으면
    `Story_*.yarn`만 손으로 옮겨졌을 수 있다.
 2. **복사·임포트가 `Story_*` 필터를 쓰나.** 선언 파일 이름은 `declarations.yarn`이라
-   그 필터에 안 걸린다. ⚠ 이 이름은 이쪽이 바꿀 수 있다 — `Story_declarations.yarn`처럼
-   접두를 붙이는 편이 낫겠으면 말해 달라. **이름 계약이라 이쪽에서 임의로 안 바꾼다.**
+   그 필터에 안 걸린다. → **§9에서 접두 자체가 없어졌다.** 이 필터는 이제 산출물을
+   *하나도* 못 고른다. 걷어 달라(그쪽에서 걷기로 했다고 들었다).
 3. **`.yarnproject`의 포함 규칙.** 파일이 폴더에 있어도 프로젝트가 안 물면
    `InitialValues`가 빈다.
 
@@ -209,3 +209,42 @@ grep -r "<<declare" Assets/@Dialogue/*.yarn   # 결과 0건
 ### §7 — 손대지 않았다
 
 접두·범위·[2] 이름 계약·`cleared:` 거부 전부 그대로다.
+
+---
+
+## 9. `Story_` 접두 폐지 (2026-08-24, 소유자 지시)
+
+발신: VnTool · 수신: `ked-presentation-runtime`
+
+> 소유자: *"`Story_` 이것도 제거해 주십시오. 런타임 측에서도 이제 필터를 없애겠습니다."*
+
+**접두가 두 번 붙고 있었다.** 기획자가 `대사엔트리` 칸에 이미 `Story_ch05_01`이라 적는데
+이미터가 또 붙였다 — 견본 챕터 여섯 줄 **전부** `Story_Story_ch05_01` 꼴로 나가고 있었다.
+§1의 증거로 붙은 `Story_new01`은 그중 접두를 안 적은 줄이었다.
+
+### 지금 나가는 것
+
+```
+yarn 타이틀   = SanitizeNodeName(대사엔트리)        // 영숫자·밑줄 아닌 글자 → '_'
+파일 이름     = {그 타이틀}.yarn
+선언 파일     = declarations.yarn                   // 이 이름만 고정
+```
+
+`대사엔트리`가 `Story_`로 시작하면 그 글자는 **그대로** 간다 — 이제 접두는 작가의 글자일
+뿐이고 도구가 손대지 않는다.
+
+⚠ **정규화는 남아 있다.** 접두가 없어졌다고 "타이틀 = 적은 글자"가 된 것이 아니다
+(`장면 1` → `장면_1`). 문은 여전히 `YarnBundleEmitter.StoryNodeTitleOf` 하나이고, 진행
+JSON의 `DialogueEntryId`도 같은 문을 지난다. 바깥에서 손으로 조립하지 말 것.
+
+### 그쪽에 부탁하는 것
+
+1. **`Story_*` 이름 필터를 걷어 달라** (§6의 2번). 이제 그 필터는 산출물을 하나도 못 고른다.
+   폴더의 `.yarn` 전부가 대상이고, 무엇을 썼는지는 툴이 `.vntool-output.json`에 적어 둔다.
+2. 낡은 폴더에는 `Story_*.yarn`이 남아 있다. **툴은 그 모양도 제 산출물로 알아본다**
+   (`OutputManifest.LooksLikeOutput`의 유산 항목) — 정리는 툴이 한다.
+
+### 이름 부딪힘
+
+파일 이름에서 접두가 빠지면서 `대사엔트리`를 `declarations`로 지으면 선언 파일을 덮는
+자리가 생겼다. **이미터가 쓰기 전에 거부한다** — 조용히 덮는 것보다 낫다.

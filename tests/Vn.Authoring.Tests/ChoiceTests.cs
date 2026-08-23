@@ -316,7 +316,7 @@ public class ChoiceTests
 
         // 옵션 출구는 본문 끝의 jump다. 2026-08-18까지는 그 앞에 <<pres_end>>가 붙었는데
         // 서브 레인이 없어져 함께 사라졌다.
-        Assert.Contains("    <<jump Story_A로_간다>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.Contains("    <<jump A로_간다>>", bundle.StoryText, StringComparison.Ordinal);
         Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
 
         // 합성 추적 변수(`$__ch_N`)도 사라졌다 — 서브 레인 사본이 같은 갈래를 타게 하려고
@@ -440,7 +440,7 @@ public class ChoiceTests
             world.Sample.Project,
             Sample.Definition,
             bundleName: "nested_ep");
-        string story = bundle.Files.Single(file => file.FileName == "Story_nested_ep.yarn").Text;
+        string story = bundle.Files.Single(file => file.FileName == "nested_ep.yarn").Text;
 
         Assert.Contains("\n    -> 치킨을 산다", story);   // 라벨이 조건 깊이만큼 들여쓰였다
         Assert.Contains("\n        치킨을 샀다.", story);  // 옵션 본문은 라벨보다 한 단 더
@@ -452,7 +452,7 @@ public class ChoiceTests
         // 조건 갈래 출구(detour)는 선택 블록의 마지막 본문 뒤, endif 앞에서 나온다 —
         // 선택 전환에 새어 나오면 선택지가 제시되기 전에 떠나 버린다.
         int lastOptionBody = story.IndexOf("빈손으로 나왔다.", StringComparison.Ordinal);
-        int detour = story.IndexOf("<<detour Story_", StringComparison.Ordinal);
+        int detour = story.IndexOf("<<detour ", StringComparison.Ordinal);
         int endif = story.IndexOf("<<endif>>", StringComparison.Ordinal);
         Assert.True(lastOptionBody >= 0 && lastOptionBody < detour && detour < endif, story);
     }

@@ -244,8 +244,21 @@ public static class YarnBundleEmitter
     /// <summary>선언 파일 이름. 폴더당 하나다.</summary>
     public const string DeclarationsFileName = "declarations.yarn";
 
-    public const string StoryPrefix = "Story_";
+    /// <summary>
+    /// ⛔ <b><c>Story_</c> 접두는 2026-08-24에 폐지됐다</b> (소유자, 런타임과 함께 —
+    /// 저쪽도 같은 날 <c>Story_*</c> 필터를 걷었다).
+    ///
+    /// 접두가 <b>두 번 붙고 있었다</b>: 기획자가 챕터 시트의 `대사엔트리`에 이미
+    /// <c>Story_ch05_01</c>이라 적는데 이미터가 또 붙여 <c>Story_Story_ch05_01</c>이 나갔다.
+    /// 견본 여섯 줄이 전부 그랬다. 이제 <b>타이틀은 곧 대사엔트리</b>다(정규화만 거친다).
+    ///
+    /// 이 상수를 되살릴 일이 있으면 <see cref="StoryTitleOf"/> 한 곳만 고치면 된다 —
+    /// 파일 이름·타이틀·점프 대상·진행 JSON의 <c>DialogueEntryId</c>가 전부 그 길을 지난다.
+    /// </summary>
+    public const string StoryPrefix = "";
 
+    // ⚠ Set·Pres는 <b>남은 이름</b>이다 — 지금은 그 파일을 만들지 않는다. 옛 폴더에
+    // 남아 있는 파일을 고아로 알아보는 데만 쓴다(`FileNamesOf`·`LooksLikeOutput`).
     public const string SetPrefix = "Set_";
 
     public const string PresPrefix = "Pres_";
@@ -265,8 +278,12 @@ public static class YarnBundleEmitter
     }
 
     /// <summary>
-    /// 번들 이름 하나가 가질 Story 타이틀. <b><c>Story_</c> 조립은 여기 한 곳이다</b> —
-    /// 이 문자열을 손으로 잇는 자리를 새로 만들지 않는다.
+    /// 번들 이름 하나가 가질 Story 타이틀.
+    ///
+    /// <b>접두를 붙이는 자리는 여기 한 곳이다</b> — 지금은 붙이는 것이 없다(2026-08-24에
+    /// <c>Story_</c>가 폐지됐다, <see cref="StoryPrefix"/>). 함수를 남겨 두는 이유는
+    /// 그 결정이 <b>한 자리에 머물게</b> 하기 위해서다: 접두가 다시 필요해지면 여기만
+    /// 고치고, 바깥에서 문자열을 손으로 잇는 자리는 새로 만들지 않는다.
     /// </summary>
     public static string StoryTitleOf(string bundleName) => StoryPrefix + bundleName;
 
@@ -555,6 +572,22 @@ public static class YarnBundleEmitter
         {
             throw new InvalidOperationException(
                 $"번들 이름 '{duplicate}'이 겹칩니다. 같은 폴더에서 서로를 덮어쓰게 됩니다.");
+        }
+
+        // ⛔ 접두가 없어진 뒤로(2026-08-24) 번들 파일이 <b>선언 파일과 같은 이름</b>이 될
+        // 수 있다 — 대사엔트리를 `declarations`라고 적으면 그렇다. 예전에는 `Story_`가
+        // 막아 주던 자리다. 덮어쓰면 선언이 통째로 사라지고, 런타임은 되돌릴 초기값을
+        // 잃는다(그 사고는 조용하다).
+        string? collision = bundles
+            .SelectMany(bundle => bundle.Files.Select(file => file.FileName))
+            .FirstOrDefault(name =>
+                string.Equals(name, DeclarationsFileName, StringComparison.OrdinalIgnoreCase));
+
+        if (collision is not null)
+        {
+            throw new InvalidOperationException(
+                $"대사엔트리 이름이 선언 파일과 겹칩니다: '{collision}'. " +
+                "그 노드의 `대사엔트리`를 다른 이름으로 바꿔 주세요.");
         }
 
         // 선언 충돌은 파일을 하나라도 쓰기 전에 확인한다.

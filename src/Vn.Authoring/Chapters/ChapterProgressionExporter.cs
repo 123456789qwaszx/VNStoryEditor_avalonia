@@ -240,10 +240,10 @@ public static class ChapterProgressionExporter
             ? nameof(Contract.EpisodeKind.Attachment)
             : nameof(Contract.EpisodeKind.Main),
         // ⚠ 이미터의 이름 규칙을 통과시킨다 (2026-08-23) — 런타임은 이 글자로 YarnProject에서
-        // 노드를 찾는다. 그냥 실으면 진행 JSON은 `new01`, yarn은 `Story_new01`이 되어
-        // 로드·검증·증명이 전부 통과하는데 재생만 안 된다. 규칙은 접두 하나가 아니라
-        // `Story_` + SanitizeNodeName 두 단계이므로 여기서 손으로 이으면 공백 든 이름에서
-        // 또 갈린다 — 규칙의 주인은 이미터 하나다.
+        // 노드를 찾는다. 그냥 실으면 진행 JSON과 yarn 타이틀이 갈려 로드·검증·증명이 전부
+        // 통과하는데 재생만 안 된다. 접두(`Story_`)는 2026-08-24에 없어졌지만 규칙이 사라진
+        // 것은 아니다 — SanitizeNodeName이 남아 `장면 1`은 `장면_1`로 나간다. 여기서 손으로
+        // 이으면 공백 든 이름에서 또 갈린다. 규칙의 주인은 이미터 하나다.
         DialogueEntryId = YarnBundleEmitter.StoryNodeTitleOf(episode.DialogueEntry),
         // v8 — 관문은 에피소드가 아니라 그 길(간선)이 갖는다. 노드의 두 필드는 스키마
         // 1:1을 위해 남기되 비어 나간다(⚠ 런타임 수입기가 NextOption 쪽을 읽어야 한다).

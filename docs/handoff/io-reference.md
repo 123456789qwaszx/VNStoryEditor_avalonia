@@ -18,7 +18,7 @@ MyGame/                          ← 이 폴더가 곧 백업·이관 단위다
     backgrounds/                 [관리자 소유] 배경 PNG — 파일명 = 키
     portraits/                   [관리자 소유] 초상화 PNG — 폴더 규약 = 키
   output/                        [산출물] 라이브 출력 지정 시 — 원본 아님
-    Story_*.yarn Set_*.yarn Pres_*.yarn declarations.yarn
+    {대사엔트리}.yarn  declarations.yarn
     Script_*.csv Review_*.csv Direction_*.csv
     .vntool-output.json          산출 기록 (고아 탐지용)
 ```
@@ -101,8 +101,9 @@ MyGame/                          ← 이 폴더가 곧 백업·이관 단위다
 
 ### 2-1. .yarn 트리오 + 선언 (런타임이 읽는 산출물)
 
-- 파일명 규약: `Story_<번들명>.yarn` · `Set_<번들명>.yarn` · `Pres_<번들명>.yarn`
-  (번들명은 대사 노드 이름 기반) + `declarations.yarn`(**폴더당 하나, 변수 선언 합집합**).
+- 파일명 규약: `{대사엔트리}.yarn` — 노드의 `대사엔트리`를 `SanitizeNodeName`에 통과시킨
+  글자이고 **접두는 없다**(`Story_`는 2026-08-24 폐지). + `declarations.yarn`(**폴더당
+  하나, 변수 선언 합집합**). ⚠ 이름으로 산출물을 고르지 말 것 — 주인은 `.vntool-output.json`이다.
 - 인코딩 UTF-8(BOM 없음), 원자적 쓰기(.tmp → 교체).
 - 유니티와의 계약: **대사 결과 Text를 YarnScript에 붙여넣으면 그대로 재생**(H-5).
 - 출력 단위 = 대사 노드. 짝이 되는 연출은 그래프의 연출 공급 연결에서 계산된다.

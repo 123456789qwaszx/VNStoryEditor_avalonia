@@ -26,7 +26,7 @@ public class OutputManifestTests
             sample.Editor.SetScriptLineText(sample.Script.Id, line, "라루", "첫 줄");
 
             WriteLive(sample, directory);
-            Assert.Contains("Story_본문.yarn", Directory.GetFiles(directory).Select(Path.GetFileName));
+            Assert.Contains("본문.yarn", Directory.GetFiles(directory).Select(Path.GetFileName));
 
             // 아직은 고아가 없다.
             Assert.Empty(Scan(sample, directory).Orphans);
@@ -36,14 +36,14 @@ public class OutputManifestTests
 
             OrphanOutputScan scan = Scan(sample, directory);
 
-            Assert.Equal(["Story_본문.yarn"], scan.Orphans.Select(orphan => orphan.FileName));
+            Assert.Equal(["본문.yarn"], scan.Orphans.Select(orphan => orphan.FileName));
             Assert.Equal(OrphanOutputSource.Recorded, scan.Orphans[0].Source);
             Assert.Null(scan.Note);
 
             // 새 이름의 파일은 살아 있고, 옛 파일도 지워지지 않았다.
             string[] onDisk = Directory.GetFiles(directory).Select(Path.GetFileName).OfType<string>().ToArray();
-            Assert.Contains("Story_본문개정.yarn", onDisk);
-            Assert.Contains("Story_본문.yarn", onDisk);
+            Assert.Contains("본문개정.yarn", onDisk);
+            Assert.Contains("본문.yarn", onDisk);
         }
         finally
         {
@@ -68,7 +68,7 @@ public class OutputManifestTests
             OrphanOutputScan scan = Scan(sample, directory);
 
             // 지운 노드의 파일만 고아다 — 남아 있는 다른 노드의 파일은 건드리지 않는다.
-            Assert.Equal(["Story_본문.yarn"], scan.Orphans.Select(orphan => orphan.FileName));
+            Assert.Equal(["본문.yarn"], scan.Orphans.Select(orphan => orphan.FileName));
             Assert.All(scan.Orphans, orphan => Assert.Equal(OrphanOutputSource.Recorded, orphan.Source));
 
             // 목록의 모든 항목이 실제로 폴더에 있는 파일이다. 그리고 지워지지 않았다.
@@ -93,7 +93,7 @@ public class OutputManifestTests
         sample.Editor.SetScriptLineText(sample.Script.Id, line, "라루", "첫 줄");
 
         Assert.Contains(
-            "Story_본문.yarn",
+            "본문.yarn",
             OutputManifest.ExpectedFileNames(sample.Project));
 
         Assert.Contains(

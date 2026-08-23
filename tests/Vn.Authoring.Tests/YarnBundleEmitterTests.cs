@@ -12,17 +12,22 @@ namespace Vn.Authoring.Tests;
 public class YarnBundleEmitterTests
 {
     [Fact]
-    public void Story_타이틀은_접두와_정규화_두_단계다()
+    public void 타이틀은_대사엔트리를_정규화한_것이다()
     {
-        // ⚠ 이 규칙이 접두 하나인 줄 알면 고쳐도 또 갈린다 (2026-08-23). yarn 타이틀은
-        // `Story_` + SanitizeNodeName이고, 진행 내보내기의 DialogueEntryId가 이것과
-        // 같은 글자여야 런타임이 YarnProject에서 노드를 찾는다.
+        // ⛔ `Story_` 접두는 2026-08-24에 폐지됐다(소유자, 런타임과 함께). 접두가 <b>두
+        // 번</b> 붙고 있었다 — 기획자가 `대사엔트리`에 이미 `Story_ch05_01`이라 적는데
+        // 이미터가 또 붙여 `Story_Story_ch05_01`이 나갔다.
         //
-        // `new01`처럼 얌전한 이름만 보면 두 단계인 것이 안 드러난다 — 그래서 공백·점·
-        // 하이픈을 케이스로 든다. 접두만 붙이는 구현은 여기서 넘어진다.
-        Assert.Equal("Story_new01", YarnBundleEmitter.StoryNodeTitleOf("new01"));
-        Assert.Equal("Story_장면_1", YarnBundleEmitter.StoryNodeTitleOf("장면 1"));
-        Assert.Equal("Story_a_b_c", YarnBundleEmitter.StoryNodeTitleOf("a.b-c"));
+        // ⚠ 그래도 <b>규칙은 여전히 두 단계다</b>: 정규화가 남아 있다. `new01`처럼 얌전한
+        // 이름만 보면 그것이 안 드러나므로 공백·점·하이픈을 케이스로 든다. 진행
+        // 내보내기의 DialogueEntryId가 이것과 같은 글자여야 런타임이 노드를 찾는다.
+        Assert.Equal("new01", YarnBundleEmitter.StoryNodeTitleOf("new01"));
+        Assert.Equal("장면_1", YarnBundleEmitter.StoryNodeTitleOf("장면 1"));
+        Assert.Equal("a_b_c", YarnBundleEmitter.StoryNodeTitleOf("a.b-c"));
+
+        // 대사엔트리가 `Story_`로 시작하면 그 글자가 <b>그대로</b> 타이틀이다 — 이미터가
+        // 덧붙이지 않는다.
+        Assert.Equal("Story_ch05_01", YarnBundleEmitter.StoryNodeTitleOf("Story_ch05_01"));
 
         // 이름이 없으면 번들 이름 규칙이 정한 대체 이름을 그대로 쓴다 — 여기서 따로
         // 판단하지 않는다(규칙 사본 금지).
@@ -45,9 +50,9 @@ public class YarnBundleEmitterTests
 
         Assert.Equal("test_ep", bundle.BundleName);
         Assert.Equal(
-            new[] { "Story_test_ep.yarn" },
+            new[] { "test_ep.yarn" },
             bundle.Files.Select(file => file.FileName));
-        Assert.StartsWith("title: Story_test_ep\n---\n", bundle.StoryText, StringComparison.Ordinal);
+        Assert.StartsWith("title: test_ep\n---\n", bundle.StoryText, StringComparison.Ordinal);
         // 2026-08-18 — 파일 하나다. 레인이 없어져 Set·Pres 사본을 만들지 않는다.
         Assert.EndsWith("===\n", bundle.StoryText, StringComparison.Ordinal);
         Assert.False(bundle.HasBlockingProblems);
@@ -103,14 +108,14 @@ public class YarnBundleEmitterTests
         // 2026-08-18 — 레인이 없어져 출구 앞의 <<pres_end>>도 함께 사라졌다.
         // 조건 갈래의 출구는 detour다 — 커스텀 씬을 재생하고 갈래로 돌아온다.
         int branchLine = bundle.StoryText.IndexOf("갈래 안 #line:", StringComparison.Ordinal);
-        int detour = bundle.StoryText.IndexOf("<<detour Story_A로_간다>>", StringComparison.Ordinal);
+        int detour = bundle.StoryText.IndexOf("<<detour A로_간다>>", StringComparison.Ordinal);
         int endif = bundle.StoryText.IndexOf("<<endif>>", StringComparison.Ordinal);
 
         Assert.True(branchLine >= 0 && detour > branchLine, "detour는 갈래 본문 뒤에 있어야 한다");
         Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
         Assert.True(endif > detour, "갈래 출구는 endif 앞, 갈래의 끝에 있어야 한다");
 
-        Assert.Contains("<<jump Story_기본으로_간다>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.Contains("<<jump 기본으로_간다>>", bundle.StoryText, StringComparison.Ordinal);
     }
 
     [Fact]

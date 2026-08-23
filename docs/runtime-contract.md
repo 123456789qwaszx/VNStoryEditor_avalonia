@@ -66,7 +66,7 @@
 대사 줄 **바로 앞**에 선다. 실제 출력:
 
 ```yarn
-title: Story_golden_ep
+title: golden_ep
 ---
 <<camera wide>>                  ← 노드 셋업
 
@@ -76,7 +76,7 @@ title: Story_golden_ep
 <<if $__t1_sf_test_favor >= 5>>
     <<character_acting smile>>
     윌로: 갈래 안 대사 #line:ln_005
-    <<detour Story_A로_간다>>
+    <<detour A로_간다>>
 <<endif>>
 ===
 ```
@@ -141,7 +141,7 @@ Yarn 암묵 ID로 충분하다.
 
 **C2. 노드 타이틀은 여전히 진입 키다.** `EpisodePlayer`가 받는 것이 이 이름이고,
 2부의 `EpisodeNode.DialogueEntryId`가 이 값과 문자열로 만난다. **한 번 출시된 노드
-타이틀은 동결.** 코드가 강제하는 명명 규칙은 없다 — `Story_`/`Set_` 접두는 저작 관례다.
+타이틀은 동결.** 코드가 강제하는 명명 규칙은 없다 — `Story_`·`Set_` 접두는 저작 관례였고 2026-08-24에 걷혔다.
 
 **C3. ~~선택지 리플레이는 위치 기반~~** — `ChoiceReplay`가 사라져 근거가 없다.
 "출시 후 옵션을 기존 항목 위에 삽입하지 말 것"이라는 제약도 함께 풀렸다.
@@ -341,15 +341,25 @@ bool 어휘 준수. 그래서 전이기와 도달성 증명은 "허공으로 가
 그대로 나가지 않는다.** `YarnBundleEmitter.StoryNodeTitleOf`를 통과한다:
 
 ```
-DialogueEntryId = "Story_" + SanitizeNodeName(대사엔트리)
-                             └ 영숫자·밑줄이 아닌 글자를 전부 '_'로  (`장면 1` → `Story_장면_1`)
+DialogueEntryId = SanitizeNodeName(대사엔트리)
+                  └ 영숫자·밑줄이 아닌 글자를 전부 '_'로  (`장면 1` → `장면_1`)
 ```
+
+⛔ **`Story_` 접두는 2026-08-24에 폐지됐다** (소유자 — 런타임도 같은 날 `Story_*` 필터를
+걷었다). 접두가 **두 번** 붙고 있었다: 기획자가 `대사엔트리`에 이미 `Story_ch05_01`이라
+적는데 이미터가 또 붙여 **`Story_Story_ch05_01`**이 나갔다(견본 여섯 줄 전부). 이제
+**타이틀은 곧 대사엔트리**다 — 대사엔트리가 `Story_`로 시작하면 그 글자가 그대로 간다.
 
 1부의 yarn 타이틀과 **한 글자도 달라선 안 된다** — 런타임이 이 글자로 `YarnProject`에서
 노드를 찾는다. 2026-08-23까지 이 자리만 규칙 밖에 있어서 진행 JSON은 `new01`, yarn은
 `Story_new01`로 갈렸다(로드·검증·증명은 전부 통과하고 재생만 안 됐다. 호스트의
-`ProgressionContentPreflight`가 잡았다). **바깥에서 `"Story_" + 이름`으로 흉내 내지 말 것** —
-규칙은 두 단계이고 주인은 이미터 하나다.
+`ProgressionContentPreflight`가 잡았다). **바깥에서 이름을 손으로 조립하지 말 것** —
+접두가 없어진 지금도 **정규화가 남아 있어** 규칙은 여전히 두 단계이고, 주인은 이미터
+하나다(`StoryNodeTitleOf`).
+
+⚠ **파일 이름도 접두가 없다**: `{대사엔트리}.yarn`. 그래서 `Story_*` 같은 이름 필터로
+산출물을 고르면 안 된다 — 폴더의 `.yarn` 전부가 대상이고, 무엇을 썼는지는 툴이
+`.vntool-output.json`에 적어 둔다. 선언 파일만 이름이 고정이다(`declarations.yarn`).
 규격: [`work-orders/dialogue-entry-naming-orders.md`](work-orders/dialogue-entry-naming-orders.md).
 
 **G-3. 커맨드 카탈로그 재검증 — ✅ 2026-08-18 완료.** 죽은 22개를 걷어 **179항목**으로 맞췄다(등록 178 + 동적 별칭 `<N>fr`). `docs/game.definition.json`은 문서가 아니라 **내장 리소스로 링크된 실물 팔레트**다 — 낡은 항목은 곧 작가가 고를 수 있는 unknown command다.
