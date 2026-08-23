@@ -108,37 +108,43 @@ public sealed class ChapterReachabilityEquivalenceTests
     // ── ⚠ 대조하다 드러난 갈림 — 증명기가 아니라 **검증 심각도**다 ────────────
 
     [Fact]
-    public void 툴이_경고로_넘긴_챕터를_코어는_거부한다()
+    public void 코어가_못_싣는_챕터는_내보내기가_거부한다()
     {
-        // ⛔ **열린 구멍이다.** 문구 없는 간선(보이지 않는 기본)에 관문이 걸리면
-        // 툴은 **경고**로 넘겨 JSON을 내보내는데, 코어 로더는 **오류**로 거부한다.
-        // 즉 툴이 "실을 수 없는 것을 내보낸다" — 자기 규율을 어기는 자리다.
+        // 이 케이스가 구멍을 드러냈다: 문구 없는 간선(보이지 않는 기본)에 관문이 걸리면
+        // 툴 검증은 **경고**로 넘기는데 코어 로더는 **오류**로 거부한다. 그대로 나가면
+        // 게임에서 그 챕터가 시작되지 않는다 — 툴이 "실을 수 없는 것을 내보내던" 자리다.
         //
-        // ⚠ 심각도를 올려 보았고(2026-08-23), 그러면 **정상적인 편집 흐름이 막힌다**:
-        // 툴의 `AddEdge`는 문구 없이도 길을 놓을 수 있고 그것이 "보이지 않는 기본"의
-        // 정의다. 무엇을 막을지는 제품 결정이라 여기서 정하지 않고, 지금 사실만 못 박는다.
-        //
-        // 이 테스트가 깨지는 날 = 누군가 그 결정을 내린 날이다. 그때 이 주석을 지운다.
+        // ⚠ 고친 방법이 중요하다. 툴의 심각도를 오류로 올리는 길은 **버렸다** — 그러면
+        // 정상적인 편집 흐름이 막히고(`AddEdge`는 문구 없이도 길을 놓는다), 무엇보다
+        // 같은 규칙을 두 곳에 적는 것이라 저쪽이 하나 늘릴 때마다 또 갈린다.
+        // 대신 내보내기가 **낸 JSON을 코어 로더에 실어 본다** — 저쪽 판정을 그대로 받는다.
+        // ⚠ 관문이 **열리는** 모양이어야 한다. 안 열리면 도달 불가가 먼저 오류로 잡혀
+        // 검증 관문에서 걸리고, 그러면 이 테스트가 재려는 자리(코어 관문)에 닿지 못한다.
         ChapterGraphModel chapter = Chapter(
-            [Episode("시작"), Episode("끝")],
-            [("시작", "끝", "신뢰5이상", 0)],
+            [Episode("시작"), Episode("중간"), Episode("끝")],
+            [("시작", "중간", null, 5), ("중간", "끝", "신뢰5이상", 0)],
             [("신뢰5이상", "trust >= 5")],
             plainAdvance: true);
 
-        // 툴: 경고만 — 오류가 아니므로 내보내기 관문을 통과한다.
+        // 툴 검증만 보면 오류가 없다 — 옛 관문은 여기서 통과시켰다.
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
 
-        Assert.Contains(
-            validation.All,
-            item => item.Code == ChapterDiagnosticCode.OptionEdgeMismatch &&
-                    item.Severity == ChapterDiagnosticSeverity.Warning);
+        Assert.DoesNotContain(
+            validation.All, item => item.Severity == ChapterDiagnosticSeverity.Error);
 
-        // 코어: 거부.
-        ChapterProgressionDto dto = ExportToDto(chapter);
-        ProgressionLoadResult load = ProgressionLoader.Load(dto);
+        // 그런데 내보내기는 거부한다 — 코어가 못 싣기 때문이다.
+        ChapterExportResult export = ChapterProgressionExporter.ExportValidated(chapter, validation);
 
-        Assert.False(load.IsValid, "코어가 실었다면 이 구멍은 이미 메워진 것이다");
-        Assert.Contains(load.Diagnostics, item => item.ToString().Contains("자동 진행"));
+        Assert.True(export.Refused, "코어가 거부한 챕터가 나가면 안 된다");
+
+        ChapterDiagnostic refusal = Assert.Single(
+            export.Validation.All,
+            item => item.Code == ChapterDiagnosticCode.CoreRefusedChapter);
+
+        // ⛔ "어딘가 잘못됐다"로 떨어지면 실패다 — 기획자가 열 시트와 행까지 짚는다.
+        Assert.Equal(ChapterSheetNames.Edges, refusal.Sheet);
+        Assert.NotNull(refusal.Row);
+        Assert.Contains("자동 진행", refusal.Message);
     }
 
     // ── 대조 ────────────────────────────────────────────────────────────────
@@ -216,6 +222,7 @@ public sealed class ChapterReachabilityEquivalenceTests
         IReadOnlyList<(string From, string To, string? Condition, int TrustDelta)> edges,
         IReadOnlyList<(string Label, string Expression)> conditions,
         int statMaximum = 10,
+        /// <summary>참이면 <b>마지막 간선만</b> 문구 없이 놓는다 — 보이지 않는 기본.</summary>
         bool plainAdvance = false)
     {
         var stats = new List<ChapterStat>
@@ -240,7 +247,9 @@ public sealed class ChapterReachabilityEquivalenceTests
         // 증명기인데 픽스처가 규격을 어겨 그 앞에서 멈춘 것이다.
         List<ChapterEdge> edgeList = edges
             .Select((edge, index) => new ChapterEdge(
-                edge.From, edge.To, plainAdvance ? null : $"{edge.To}로", edge.Condition,
+                edge.From, edge.To,
+                plainAdvance && index == edges.Count - 1 ? null : $"{edge.To}로",
+                edge.Condition,
                 HideWhenLocked: false, null, index + 2)
             {
                 StatChanges = edge.TrustDelta == 0

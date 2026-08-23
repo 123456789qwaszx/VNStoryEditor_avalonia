@@ -254,7 +254,15 @@ public sealed class ChapterGraphSyncViewTests
         Assert.DoesNotContain("새로판길", File.ReadAllText(path));
 
         ChapterWorkbookWriter.AddEpisode(project.ChapterPath, "새로판길", title: "", 3, 1);
-        ChapterWorkbookWriter.AddEdge(project.ChapterPath, "main05.01", "새로판길");
+
+        // ⚠ 문구를 준다 (2026-08-23). 문구 없는 간선은 "보이지 않는 기본"이고 에피소드당
+        // 하나뿐인데, main05.01에는 이미 하나가 있다. 둘이 되면 **진행 코어가 그 챕터를
+        // 못 싣고**, 내보내기가 그것을 옳게 거부한다 — 예전에는 그대로 나가서 게임에서만
+        // 안 되던 자리다. 이 테스트가 재려는 것은 "엑셀을 고치면 JSON이 따라오는가"이지
+        // 잘못된 데이터가 나가는가가 아니다.
+        ChapterWorkbookWriter.AddEdge(
+            project.ChapterPath, "main05.01", "새로판길", optionLabel: "새로 판 길로");
+
         view.RefreshFromDisk();
 
         Assert.Contains("새로판길", File.ReadAllText(path));

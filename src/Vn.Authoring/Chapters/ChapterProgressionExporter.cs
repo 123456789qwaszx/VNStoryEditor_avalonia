@@ -68,7 +68,125 @@ public static class ChapterProgressionExporter
             Nodes = chapter.Episodes.Select(episode => Node(chapter, episode)).ToList()
         };
 
-        return new ChapterExportResult(JsonSerializer.Serialize(payload, Options), validation);
+        string json = JsonSerializer.Serialize(payload, Options);
+
+        // ⛔ 마지막 관문 — **진짜 소비자에게 먹여 본다** (2026-08-23).
+        //
+        // 검증을 통과해도 코어가 못 싣는 챕터가 있다. 실제로 있었다: 문구 없는 간선
+        // (보이지 않는 기본)에 관문이 걸리면 이쪽은 경고로 넘기는데 코어는 거부한다.
+        // 그대로 내보내면 게임에서 그 챕터가 **시작되지 않는다** — "실을 수 없으면
+        // 내보내지 않는다"를 이쪽이 어기고 있던 자리다.
+        //
+        // 심각도를 손으로 맞추지 않는 이유가 이것이다. 규칙을 둘로 적어 두면 저쪽이
+        // 하나 늘릴 때마다 갈린다. 대신 저쪽 판정을 그대로 받는다 — 산출물 yarn을
+        // 진짜 컴파일러에 거는 것(②-A)과 같은 수다.
+        if (CoreRefusals(chapter, json) is { Count: > 0 } refusals)
+        {
+            return new ChapterExportResult(
+                null,
+                validation with { Diagnostics = [.. validation.Diagnostics, .. refusals] });
+        }
+
+        return new ChapterExportResult(json, validation);
+    }
+
+    /// <summary>
+    /// 낸 JSON을 코어 로더에 실어 보고, 거부 사유를 <b>엑셀 자리로 옮겨</b> 돌려준다.
+    /// 실을 수 있으면 빈 목록이다.
+    ///
+    /// 코어 진단은 <c>Nodes[ep_03].NextOptions[1]</c> 같은 경로를 들고 있다(그 타입의
+    /// 존재 이유라고 저쪽 주석이 적어 뒀다). 그래서 "어딘가 잘못됐다"로 떨어지지 않고
+    /// 기획자가 열 시트와 행까지 짚을 수 있다 — 이 레이어의 규칙이 그것이다.
+    /// </summary>
+    private static IReadOnlyList<ChapterDiagnostic> CoreRefusals(
+        ChapterGraphModel chapter, string json)
+    {
+        Contract.Dto.ChapterProgressionDto? dto;
+
+        try
+        {
+            dto = JsonSerializer.Deserialize<Contract.Dto.ChapterProgressionDto>(json);
+        }
+        catch (JsonException exception)
+        {
+            // 우리가 방금 쓴 글을 우리가 못 읽는다 — 조용히 넘기면 안 되는 종류다(규율 1).
+            return [Refusal(chapter, null, $"낸 JSON을 다시 읽지 못했습니다: {exception.Message}")];
+        }
+
+        if (dto is null)
+        {
+            return [Refusal(chapter, null, "낸 JSON이 비어 있습니다.")];
+        }
+
+        Contract.ProgressionLoadResult load = Contract.ProgressionLoader.Load(dto);
+
+        // ⚠ 경고는 막지 않는다. 코어의 Warning은 "실을 수는 있지만 봐야 한다"이고,
+        // 그것까지 거부하면 이쪽이 저쪽보다 엄해져 또 다른 갈림이 된다.
+        return load.Diagnostics
+            .Where(item => item.Severity == Contract.ProgressionDiagnosticSeverity.Error)
+            .Select(item => Refusal(chapter, item.Path, item.Message))
+            .ToList();
+    }
+
+    /// <summary>코어 경로(<c>Nodes[ep].NextOptions[i]</c>)를 시트·행으로 옮긴다.</summary>
+    private static ChapterDiagnostic Refusal(ChapterGraphModel chapter, string? path, string message)
+    {
+        (string? sheet, int? row) = LocateInWorkbook(chapter, path);
+
+        return new ChapterDiagnostic(
+            ChapterDiagnosticSeverity.Error,
+            ChapterDiagnosticCode.CoreRefusedChapter,
+            chapter.SourcePath,
+            sheet,
+            row,
+            null,
+            $"진행 코어가 이 챕터를 싣지 못합니다 — {message}" +
+            (path is { Length: > 0 } ? $" (코어 경로: {path})" : string.Empty));
+    }
+
+    private static (string? Sheet, int? Row) LocateInWorkbook(ChapterGraphModel chapter, string? path)
+    {
+        if (path is null || Episode(path) is not { } episodeId)
+        {
+            return (null, null);
+        }
+
+        // `Nodes[X].NextOptions[i]` — i는 **그 에피소드에서 나가는 간선의 행 순서**다.
+        // 내보내기가 그 순서로 싣는다(`Node`의 OrderBy SourceRow)므로 여기서도 같게 센다.
+        if (OptionIndex(path) is { } index)
+        {
+            List<ChapterEdge> outgoing = chapter.Edges
+                .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
+                .OrderBy(edge => edge.SourceRow)
+                .ToList();
+
+            if (index >= 0 && index < outgoing.Count)
+            {
+                return (ChapterSheetNames.Edges, outgoing[index].SourceRow);
+            }
+        }
+
+        return (ChapterSheetNames.Episodes, chapter.FindEpisode(episodeId)?.SourceRow);
+    }
+
+    private static string? Episode(string path) => Between(path, "Nodes[", "]");
+
+    private static int? OptionIndex(string path) =>
+        int.TryParse(Between(path, "NextOptions[", "]"), out int index) ? index : null;
+
+    private static string? Between(string text, string open, string close)
+    {
+        int start = text.IndexOf(open, StringComparison.Ordinal);
+
+        if (start < 0)
+        {
+            return null;
+        }
+
+        start += open.Length;
+        int end = text.IndexOf(close, start, StringComparison.Ordinal);
+
+        return end < 0 ? null : text[start..end];
     }
 
     /// <summary>
