@@ -95,15 +95,24 @@
             </Border>
         </Grid>
 
+        <!-- 아래 띠는 <b>지금 무슨 일이 벌어지는지</b>만 말한다 (2026-08-24 소유자:
+             "포트를 끌어 놓으면 연결, 빈곳좌클릭 드래그 범위선택 이런 설명문구도 제거").
+             늘 서 있던 조작법 설명은 사라졌다 — 손이 이미 아는 것을 화면이 매번 다시
+             일러 주면 정작 무언가를 말해야 할 때 눈에 안 띈다.
+
+             남은 것은 둘: 포트를 끄는 중의 안내(어디에 놓으면 되는가·빈 곳은 끊기)와
+             고른 간선의 정체다. 할 말이 없으면 띠 자체가 접힌다 — 빈 칸이 서 있으면
+             그것도 소음이다. 여닫는 문은 SetHint 하나다. -->
         <Border Grid.Row="2"
+                x:Name="HintBar"
                 Padding="10,6"
+                IsVisible="False"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,1,0,0">
             <TextBlock x:Name="HintText"
                        FontSize="11"
                        Opacity="0.7"
-                       TextWrapping="Wrap"
-                       Text="포트(●)를 끌어 노드에 놓으면 연결 · 빈 곳 좌클릭 드래그=범위 선택 · 중간 버튼=이동 · 휠=확대/축소" />
+                       TextWrapping="Wrap" />
         </Border>
     </Grid>
 </UserControl>

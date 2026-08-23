@@ -194,6 +194,11 @@ public partial class GraphEditorView : UserControl
         _frames.Clear();
         _selectedEdge = null;
 
+        // 고른 간선이 사라졌으면 그 간선을 설명하던 줄도 사라져야 한다 — 안 그러면
+        // 방금 지운 간선의 이름이 띠에 남는다(늘 서 있던 설명이 그 자리를 덮고 있어서
+        // 여태 안 보였다).
+        SetHint(null);
+
         foreach (GraphItemProjection item in _projection.Items)
         {
             switch (item)
@@ -2160,8 +2165,8 @@ public partial class GraphEditorView : UserControl
 
         GraphCanvas.Children.Add(_connectingLine);
         // 공급 포트 안내는 2026-08-22에 사라졌다 — 끌 수 있는 포트가 실행 출구뿐이다.
-        HintText.Text =
-            "연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. 빈 곳에 놓으면 실행 연결이 끊어집니다.";
+        SetHint("연결할 실행 노드 또는 접힌 파일의 실행 노드 행 위에서 놓으세요. " +
+            "빈 곳에 놓으면 실행 연결이 끊어집니다.");
 
         args.Handled = true;
     }
@@ -2325,7 +2330,9 @@ public partial class GraphEditorView : UserControl
             _connectingLine = null;
         }
 
-        HintText.Text = "포트(●)를 끌어 실제 노드나 FileProxy의 노드 행에 놓으면 연결됩니다.";
+        // 끌기가 끝났으면 할 말도 끝났다. 예전에는 여기서 <b>조작법 설명으로 되돌렸는데</b>
+        // (2026-08-24 폐기), 그것이 곧 늘 서 있던 그 문구였다.
+        SetHint(null);
 
         GraphNodeHit? dropped = NodeAt(args.GetPosition(GraphCanvas));
 
@@ -2410,7 +2417,25 @@ public partial class GraphEditorView : UserControl
             _ => "기본 출구"
         };
 
-        HintText.Text = $"{sourceName} — {kind} → {targetName} · 우클릭으로 삭제";
+        SetHint($"{sourceName} — {kind} → {targetName} · 우클릭으로 삭제");
+    }
+
+    /// <summary>
+    /// 아래 띠에 한 줄 — <b>지금 벌어지는 일만</b> 말한다 (2026-08-24 소유자: "포트를 끌어
+    /// 놓으면 연결, 빈곳좌클릭 드래그 범위선택 이런 설명문구도 제거").
+    ///
+    /// 늘 서 있던 조작법 설명은 폐지됐다. 손이 이미 아는 것을 매번 다시 일러 주면, 정작
+    /// 무언가를 말해야 할 때 그 줄이 눈에 안 띈다 — 검증 보고에서 동기화 문구를 지운 것과
+    /// 같은 선이다(같은 날).
+    ///
+    /// <b>null이면 띠가 접힌다.</b> 할 말 없는 빈 칸이 서 있으면 그것도 소음이다.
+    /// 여닫는 문을 여기 하나로 둔 이유이기도 하다 — 문구만 지우고 띠를 안 접는 자리가
+    /// 생기면 빈 줄이 남는다.
+    /// </summary>
+    private void SetHint(string? text)
+    {
+        HintText.Text = text ?? string.Empty;
+        HintBar.IsVisible = !string.IsNullOrEmpty(text);
     }
 
     private void DeleteSelectedEdge()
