@@ -1341,95 +1341,24 @@ public partial class ChapterGraphView : UserControl
         _validation = ValidationFor(entry);
     }
 
-    /// <summary>디스크가 그대로면 다시 증명하지 않는다 — 챕터별 (지문, 결과) 한 벌.</summary>
-    private readonly Dictionary<string, (string Fingerprint, ChapterValidationResult Result)>
-        _validationCache = new(StringComparer.Ordinal);
-
     /// <summary>
-    /// 실제로 증명을 돌린 횟수. 테스트가 "일을 몇 번 했는가"를 보는 창이다 —
-    /// 시간(ms)은 기계마다 다르지만 횟수는 규칙이고, 느려지는 회귀는 언제나 횟수가
-    /// 먼저 는다. <b>인스턴스에 갇혀 있어</b> 테스트가 병렬로 돌아도 서로 섞이지 않는다.
+    /// 증명과 내보내기 (2026-08-23에 이 파일에서 나갔다 — `Vn.Authoring.Chapters`).
+    ///
+    /// 캐시·지문·거부 장부가 전부 저쪽에 있다. 여기 남은 것은 <b>언제 부르나</b>뿐이고,
+    /// 그것이 화면의 일이다. 규칙이 3,835줄 안에 살면 밖에서 보이지 않는다 — 실제로
+    /// 물렸다: "동기화는 고른 챕터만, 내보내기는 전 챕터"라는 사실이 여기 묻혀 있어
+    /// 저작 관문을 걸려던 시도가 뒤늦게 그것을 알았다.
     /// </summary>
-    internal int ValidationComputeCount { get; private set; }
+    private readonly ChapterExportService _export = new();
 
-    /// <summary>
-    /// 챕터 하나의 검증 결과 — <b>파일이 그대로면 지난 결과를 그대로 준다</b> (2026-08-18).
-    ///
-    /// 검증은 순수 함수다: 챕터 워크북과 그 챕터의 대본 워크북들만 읽는다(에피소드마다
-    /// 파일을 열고, 평평화하고, 상태공간을 훑는다 — 챕터 하나에 200ms 가까이). 그런데
-    /// 화면은 갱신할 때마다 이것을 처음부터 다시 돌리고 있었다. 판을 한 번 다시 그리는
-    /// 값이 6ms인데 그 옆에서 400ms를 태우고 있던 셈이다.
-    ///
-    /// 지문은 <b>파일 내용의 해시</b>다. 수정 시각·크기가 아니다: 이 화면은 자기가
-    /// 워크북을 쓰고 <b>그 자리에서 곧바로</b> 다시 읽는다(단추 하나가 쓰기와 재읽기를
-    /// 잇따라 낸다). 두 사건이 같은 시각 눈금에 들어가고 길이까지 같으면 시각·크기
-    /// 지문은 "안 바뀌었다"고 답하고, 화면은 방금 적은 값을 모르는 옛 결과를 보여 준다 —
-    /// 캐시가 만드는 가장 나쁜 거짓말이다. 그 위험을 아예 없애려고 내용을 본다.
-    /// </summary>
-    private ChapterValidationResult ValidationFor(ChapterEntry entry)
-    {
-        string? episodesFolder = EpisodeLibrary.FolderFor(_session?.ProjectPath, entry.ChapterId);
-        string fingerprint = Fingerprint(entry.Path, episodesFolder);
+    /// <summary>직전 내보내기에서 못 나간 챕터들.</summary>
+    private ChapterExportRun _exportRun = ChapterExportRun.Empty;
 
-        if (_validationCache.TryGetValue(entry.ChapterId, out var cached) &&
-            string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
-        {
-            return cached.Result;
-        }
+    /// <summary>실제로 증명을 돌린 횟수 — 테스트가 "일을 몇 번 했는가"를 보는 창이다.</summary>
+    internal int ValidationComputeCount => _export.ValidationComputeCount;
 
-        ChapterValidationResult result = ChapterValidator.Validate(entry.Model!, episodesFolder);
-        ValidationComputeCount++;
-        _validationCache[entry.ChapterId] = (fingerprint, result);
-        return result;
-    }
-
-    /// <summary>
-    /// 검증이 읽는 파일 전부의 (이름·내용 해시). 하나라도 다르면 다시 증명한다.
-    ///
-    /// 바이트를 읽는 값이 아깝지 않다: 검증은 그 파일들을 <b>엑셀로 파싱하고</b> 평평화한
-    /// 뒤 상태공간까지 훑는다(200ms 가까이). 여기서 재는 것은 그 앞의 몇 ms다.
-    ///
-    /// 읽지 못하는 파일은 이름만 남긴다 — 잠겨 있다가 풀리는 순간을 놓치지 않으려면
-    /// 그 상태도 지문의 일부여야 한다.
-    /// </summary>
-    private static string Fingerprint(string chapterWorkbook, string? episodesFolder)
-    {
-        var builder = new System.Text.StringBuilder();
-
-        void Append(string path)
-        {
-            try
-            {
-                byte[] hash = System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path));
-
-                builder.Append(IoPath.GetFileName(path)).Append('|')
-                       .Append(Convert.ToHexString(hash)).Append('\n');
-            }
-            catch (IOException)
-            {
-                builder.Append(path).Append("|?\n");
-            }
-            catch (UnauthorizedAccessException)
-            {
-                builder.Append(path).Append("|?\n");
-            }
-        }
-
-        Append(chapterWorkbook);
-
-        if (episodesFolder is not null && Directory.Exists(episodesFolder))
-        {
-            foreach (string path in Directory.EnumerateFiles(episodesFolder, "*.xlsx")
-                         .Where(file => !IoPath.GetFileName(file).StartsWith("~$", StringComparison.Ordinal))
-                         .OrderBy(file => file, StringComparer.Ordinal))
-            {
-                Append(path);
-            }
-        }
-
-        return builder.ToString();
-    }
-
+    private ChapterValidationResult ValidationFor(ChapterEntry entry) =>
+        _export.ValidationFor(entry, _session?.ProjectPath);
     private void OpenFolder()
     {
         string? folder = ChapterLibrary.FolderFor(_session?.ProjectPath);
@@ -1451,7 +1380,8 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>런타임 수입물이 나가는 자리. 에셋과 같은 규약 폴더 방식이다 — 매니페스트 없음.</summary>
-    public const string ExportFolderName = "exported";
+    /// <summary>진행 JSON 폴더 이름. 정본은 <see cref="ChapterExportService"/>에 있다.</summary>
+    public const string ExportFolderName = ChapterExportService.ExportFolderName;
 
     /// <summary>
     /// G8 — 런타임 수입용 JSON을 쓴다. <b>검증을 통과해야만 나간다</b>(Gate C 3번) —
@@ -1542,100 +1472,19 @@ public partial class ChapterGraphView : UserControl
         args.Pointer.Capture(null);
         args.Handled = true;
     }
-
-    /// <summary>진행 JSON이 못 나간 챕터들 — 검증에 걸린 것과 파일을 못 쓴 것.</summary>
-    private readonly List<string> _exportRefused = [];
-    private readonly List<string> _exportFailed = [];
-
-    /// <summary>그 챕터의 진행 JSON이 놓일 자리.</summary>
-    internal static string ExportPathFor(string projectPath, string chapterId) => IoPath.Combine(
-        IoPath.GetDirectoryName(IoPath.GetFullPath(projectPath))!,
-        ExportFolderName,
-        chapterId + ".progression.json");
-
     /// <summary>
-    /// 다시 읽을 때마다 <b>모든</b> 챕터의 진행 JSON을 저절로 낸다 (2026-08-17 소유자:
-    /// [내보내기] 단추가 "필요 없어 보이는데"). 작가의 Yarn은 이미
-    /// <c>LiveOutputService</c>가 저절로 쓰는데 챕터만 사람 손을 기다렸고, 그래서 누른
-    /// 순간의 낡은 파일이 남았다 — <b>고른 챕터만</b> 나가던 것도 같은 병이라 여기서는
-    /// 전부 낸다.
-    ///
-    /// G8의 규칙은 그대로다: <b>검증을 통과해야만 나간다.</b> 거부되면 그 챕터의 파일은
-    /// 손대지 않는다 — 낡은 파일이 남더라도 쓰레기로 덮는 것보다 낫다(런타임이 읽는 건
-    /// 언제나 "한 번은 옳았던" 판이다).
+    /// 다시 읽을 때마다 <b>모든</b> 챕터의 진행 JSON을 저절로 낸다. 규칙과 장부는
+    /// <see cref="ChapterExportService"/>가 갖고, 여기는 <b>언제 부르나</b>만 정한다.
     ///
     /// 결과는 상태줄이 아니라 <b>검증 보고</b>에 세운다. 다시 읽기는 저장 직후에 오고
     /// 그 뒤로 동기화 보고까지 따라오므로, 상태줄에 얹으면 서로를 덮는다(실제로 덮였다).
     /// 못 나간 사유는 어차피 그 보고에 이미 서 있는 오류들이다 — 결론을 그 옆에 둔다.
     /// </summary>
-    private void AutoExport()
-    {
-        _exportRefused.Clear();
-        _exportFailed.Clear();
-
-        if (_session?.ProjectPath is not { } projectPath)
-        {
-            return;
-        }
-
-        foreach (ChapterEntry entry in _entries)
-        {
-            if (entry.Model is null)
-            {
-                continue;
-            }
-
-            // 검증은 챕터별로 한 벌만 계산한다 (2026-08-18) — 보고 패널이 쓰는 것과
-            // 같은 결과다. 예전에는 내보내기가 안에서 또 증명해 같은 값을 두 번 치렀다.
-            ChapterExportResult result =
-                ChapterProgressionExporter.ExportValidated(entry.Model, ValidationFor(entry));
-
-            if (result.Refused)
-            {
-                _exportRefused.Add(entry.ChapterId);
-                continue;
-            }
-
-            string path = ExportPathFor(projectPath, entry.ChapterId);
-
-            try
-            {
-                // 같은 글이면 안 쓴다 — 다시 읽을 때마다 파일을 두드리면 클라우드
-                // 동기화가 계속 깨어나고, 바뀐 것이 없는데 시각만 새로 찍힌다.
-                if (File.Exists(path) &&
-                    string.Equals(File.ReadAllText(path), result.Json, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                Directory.CreateDirectory(IoPath.GetDirectoryName(path)!);
-                File.WriteAllText(path, result.Json!, new System.Text.UTF8Encoding(false));
-            }
-            catch (IOException)
-            {
-                _exportFailed.Add(entry.ChapterId);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                _exportFailed.Add(entry.ChapterId);
-            }
-        }
-    }
+    private void AutoExport() =>
+        _exportRun = _export.ExportAll(_entries, _session?.ProjectPath);
 
     /// <summary>검증 보고 맨 위에 세울 내보내기 결론 — 못 나갔을 때만 있다.</summary>
-    private string? ExportNotice() => _exportRefused.Count == 0 && _exportFailed.Count == 0
-        ? null
-        : string.Join("\n", new[]
-        {
-            _exportRefused.Count == 0
-                ? null
-                : $"검증 오류로 진행 JSON이 나가지 않았습니다: {string.Join(", ", _exportRefused)}" +
-                  $" — 아래 오류를 고치면 저절로 나갑니다({ExportFolderName}/).",
-            _exportFailed.Count == 0
-                ? null
-                : $"진행 JSON을 쓰지 못했습니다: {string.Join(", ", _exportFailed)}" +
-                  $" — {ExportFolderName}/ 의 파일이 다른 프로그램에 잡혀 있는지 확인하세요."
-        }.Where(part => part is not null));
+    private string? ExportNotice() => _exportRun.Notice;
 
     // ── 그리기 ──────────────────────────────────────────────────────────────
 

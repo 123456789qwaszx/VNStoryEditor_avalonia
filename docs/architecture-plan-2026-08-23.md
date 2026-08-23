@@ -103,7 +103,8 @@
    │
 1  ②-A  내보내기에 yarn 문법 컴파일   ✅ 완료 — Vn.App → Vn.Core, 검증 9테스트
    │
-2  ①    뷰에서 저작 정책 꺼내기       ← 다음. 3의 전제이자 51초→7초
+2a ①    증명·내보내기를 꺼냈다        ✅ 완료 — ChapterExportService · 규칙 테스트 10개 93ms
+2b ①    에피소드 동기화를 꺼낸다      ← 남았다. AuthoringSession을 물고 있어 별도 판단 필요
    │
 3  ⑧    저작 관문 (대사엔트리 ↔ 노드)  ← 2 없이는 오탐을 낸다
    │
@@ -122,6 +123,30 @@
 **0을 맨 앞에 두는 이유**: 나머지는 전부 *앞으로 생길 어긋남*을 막는 일인데, 이것만
 *이미 벌어진* 어긋남이다. 그리고 15분이다.
 
+### ⚠ 2b가 2a보다 어려운 이유 — 실측 (2026-08-23)
+
+`SyncEpisodes`는 `AuthoringSession`(=`Vn.App`)을 깊이 문다: `Editor` · `Definition` ·
+`ProjectPath` · `SetStatus` · `EnsureChapterBoard` · `NotifyExternalScriptChange`. 게다가
+뷰의 사적 메서드 일곱을 부른다(`AdoptFlatWorkbooks` · `PushVocabularyToEpisodes` ·
+`ProjectSpeakerNames` · `StartWatchingEpisodes` · `SupplyEdgePresentations` · `Validate` ·
+`Draw`).
+
+**도메인 일 자체는 이미 `Vn.Authoring`에 있다** — `EpisodeSyncService.Sync` ·
+`EpisodeLibrary.EnsureWorkbook` · `EpisodeWorkbookMigrator.Migrate` · `Warn*` 셋. 뷰에
+남아 있는 것은 **순서와 정책**이다. 그래서 2b는 "옮기기"가 아니라 **경계를 새로 긋는
+일**이고(무엇이 세션의 것이고 무엇이 저작의 것인가), 2a와 달리 설계 판단이 하나 필요하다.
+
+### ⚠ 알아 둘 것 — `Vn.App.Tests`에 스위트 수준 플레이크가 있다
+
+2a 작업 중 전체 스위트에서 **서로 다른** 테스트가 두 번 넘어졌다
+(`기본_앱이_스프레드시트가_아니면_열지_않고_폴더를_보여준다` ·
+`엑셀을_고치면_JSON도_따라_갱신된다`). 둘 다 단독·클래스 단위로는 통과하고, 그 뒤
+같은 코드로 **4연속 통과**했다. 이전 커밋에서도 2회 통과라 회귀로 단정하지 못했다 —
+둘 다 파일 시스템을 만지는 테스트이고 다른 스위트를 연달아 돌린 직후에 났다.
+
+**결론을 내리지 않고 남긴다.** 41초 스위트가 이런 신호를 삼키는 것 자체가 ①을 하는
+이유이기도 하다 — 2b로 `SyncEpisodes`가 나오면 이 둘도 UI 밖에서 붙들 수 있다.
+
 **3이 2 뒤인 이유**: 관문을 지금 걸면 `SyncEpisodes`(고른 챕터만)와 `AutoExport`(전
 챕터)의 어긋남 때문에 **한 번도 안 연 챕터가 전부 거부된다.** 2가 그 둘을 한자리로
 가져와야 조건을 바르게 좁힐 수 있다.
@@ -132,7 +157,8 @@
 |---|---|
 | **0** | `PortraitDimensionsDto.cs`가 저쪽과 **바이트 일치**(줄바꿈 제외) · `school`≠`casual` 테스트 하나 추가 · 1,490 + α 통과 |
 | **1** | 챕터를 저장하면 이미터 출력이 실제로 컴파일되고, 실패하면 **기존 진단 패널에 사유가 선다** · 통과 시 아무 말 없음 · 컴파일 실패는 내보내기를 **막지 않는다**(경고) — 막을지는 실측 뒤 결정 |
-| **2** | `SyncEpisodes`·`AutoExport`·`ValidationFor`가 `Vn.Authoring`에 있고 뷰는 결과만 그린다 · 그 셋의 테스트가 `Vn.Authoring.Tests`에서 돈다(7초 대) · `ChapterGraphView`의 `internal`이 34 → 20 이하 |
+| **2a** ✅ | `AutoExport`·`ValidationFor`·지문·거부 장부가 `ChapterExportService`(`Vn.Authoring`)에 있고 뷰는 **언제 부르나**만 정한다 · 규칙 테스트 10개가 **93ms**에 돈다(같은 규칙을 덮던 UI 스위트는 41초) · 뷰 3,835 → 3,684줄 |
+| **2b** | `SyncEpisodes`(156줄)가 `Vn.Authoring`으로 · `ChapterGraphView`의 `internal`이 33 → 20 이하 |
 | **3** | 판이 있고 그 판에 노드가 있는 챕터에서만 검사 · 안 연 챕터는 종전대로 나간다 · 캐시 지문에 노드 목록 포함 · 오탐 0을 테스트가 고정 |
 | **4** | 저쪽이 패키지로 떼고 이쪽이 태그로 문다 · 손복사 경로 삭제 |
 

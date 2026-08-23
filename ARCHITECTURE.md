@@ -157,7 +157,21 @@ tests/Ked.Presentation.Core.Tests  무대 상태 계산 (344)
 tests/Vn.Core.Tests             Yarn 분석과 골든 픽스처 (60)
 ```
 
-테스트 수는 2026-08-23 기준 **1500개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 760 · Vn.App 336).
+테스트 수는 2026-08-23 기준 **1510개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 770 · Vn.App 336).
+
+### `Vn.Authoring/Chapters/ChapterExportService` — 화면에서 나온 정책 (2026-08-23)
+
+챕터의 **증명 캐시와 진행 JSON 내보내기**가 `ChapterGraphView`에서 나왔다. 둘이 한
+객체인 이유는 규칙 하나다 — *같은 증명을 두 번 돌리지 않는다*. 화면에 남은 것은
+**언제 부르나**뿐이다.
+
+⚠ **왜 옮겼나** — 그 정책이 3,835줄 코드비하인드에 살아서 **밖에서 보이지 않았다.**
+실제로 물렸다: *"동기화는 고른 챕터만, 내보내기는 전 챕터"*라는 비대칭이 묻혀 있어,
+저작 관문(⑧)을 걸려던 시도가 뒤늦게 "안 연 챕터가 전부 거부된다"를 알았다. 그 비대칭은
+이제 `ExportAll`의 주석에 ⚠로 서 있다.
+
+남은 것은 `SyncEpisodes`(156줄)다 — `AuthoringSession`을 깊이 물어 별도 판단이 필요하다
+([`architecture-plan-2026-08-23.md`](../architecture-plan-2026-08-23.md) 2b).
 
 ### ⚠ `Vn.App` → `Vn.Core` — 2026-08-23에 이었다
 
