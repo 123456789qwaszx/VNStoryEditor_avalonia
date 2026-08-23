@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-24 · 테스트 **1630 통과, 실패 0**
-(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 879 · Vn.App 347)
+기준: 2026-08-24 · 테스트 **1633 통과, 실패 0**
+(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 882 · Vn.App 347)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 

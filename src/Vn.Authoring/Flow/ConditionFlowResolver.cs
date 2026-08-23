@@ -89,8 +89,18 @@ public static class ConditionFlowResolver
             BranchBuilder? preceding = active;
             int precedingDepth = (conditionActive is null ? 0 : 1) + (choiceActive is null ? 0 : 1);
 
-            if (line.Transition is { } transition)
+            // ⚠ <b>전환은 여럿일 수 있다</b> (2026-08-24 고침). 여기가 `line.Transition`
+            // 하나만 보고 있었다 — 슬롯이 하나이던 시절의 이름이고, 2026-08-17에 목록이
+            // 된 뒤로도 <b>이 자리만</b> 안 따라왔다. 그래서 한 줄에 실린 둘째·셋째 전환이
+            // 조용히 사라졌다.
+            //
+            // 그 손실이 정확히 소유자가 겪은 것이다: 대사 없는 조건 블록은 `BeginIf`와
+            // `EndIf`가 <b>같은 줄</b>(블록 다음 대사 줄)에 함께 실리는데, 둘째인 `EndIf`가
+            // 버려져 <b>갈래가 안 닫혔다</b> — 뒤따르는 대사가 전부 그 조건 안으로 빨려
+            // 들어갔다. "조건을 건 다음에 대사를 붙여야 한다"의 정체다.
+            foreach (LineConditionTransition transition in line.Transitions)
             {
+                active = choiceActive ?? conditionActive;
                 if (choiceActive is not null && !transition.IsChoiceKind)
                 {
                     if (transition.Kind is ConditionTransitionKind.EndIf)
@@ -109,8 +119,6 @@ public static class ConditionFlowResolver
                     }
                 }
                 // 반대 방향(조건 안 선택 전환)은 정식 구성이다 (W54) — 문제로 알리지 않는다.
-
-                active = choiceActive ?? conditionActive;
 
                 switch (transition.Kind)
                 {
@@ -323,7 +331,7 @@ public static class ConditionFlowResolver
         }
 
         var builder = new BranchBuilder(
-            line.LineId,
+            AnchorFor(line, builders),
             conditionId,
             optionId: null,
             chainIndex,
@@ -334,6 +342,32 @@ public static class ConditionFlowResolver
         builders.Add(builder);
         return builder;
     }
+
+    /// <summary>
+    /// 갈래의 신원 — 보통은 <b>여는 줄의 Id</b>이지만, 한 줄이 갈래를 <b>여럿</b> 열 수 있다.
+    ///
+    /// 대사 없는 조건 블록이 그렇다: 그 블록의 `BeginIf`·`EndIf`가 바깥 줄 하나에 함께
+    /// 실리므로, 빈 블록 뒤에 또 블록이 열리면 <b>같은 줄이 갈래 둘을 연다</b>. 신원이
+    /// 겹치면 <see cref="Complete"/>의 사전이 터져 판이 아예 안 그려진다.
+    ///
+    /// ⚠ <b>첫째는 맨 이름 그대로 둔다.</b> 그 자리가 지금까지의 신원이고
+    /// <see cref="DialogueNode.BranchExits"/>가 그 글자로 출구를 붙들고 있다 — 접미를
+    /// 붙이면 이미 매달린 출구가 전부 고아가 된다. 둘째부터가 새 땅이다.
+    /// </summary>
+    private static string AnchorFor(DialogueLine line, List<BranchBuilder> builders)
+    {
+        int taken = builders.Count(builder =>
+            builder.OpenLineId == line.LineId ||
+            builder.OpenLineId.StartsWith(line.LineId + AnchorSeparator, StringComparison.Ordinal));
+
+        return taken == 0 ? line.LineId : $"{line.LineId}{AnchorSeparator}{taken}";
+    }
+
+    /// <summary>
+    /// 한 줄이 연 갈래들을 가르는 글자. LineId에 안 쓰이는 글자여야 한다
+    /// (<c>Identifier</c>가 내는 Id는 영숫자와 밑줄뿐이다).
+    /// </summary>
+    private const char AnchorSeparator = '#';
 
     /// <summary>
     /// 옵션 갈래를 연다. 조건과 달리 카탈로그 검증이 없다 — 옵션의 정체성은
@@ -348,7 +382,7 @@ public static class ConditionFlowResolver
         List<BranchBuilder> builders)
     {
         var builder = new BranchBuilder(
-            line.LineId,
+            AnchorFor(line, builders),
             conditionId: string.Empty,
             // 손으로 고친 파일이라 OptionId가 없을 수 있다. 빈 값으로 두면
             // 발행 검증이 잡는다 — 여기서 새로 발급하면 열 때마다 Id가 달라진다.
