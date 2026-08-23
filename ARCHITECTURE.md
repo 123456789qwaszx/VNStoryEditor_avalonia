@@ -157,7 +157,7 @@ tests/Ked.Presentation.Core.Tests  무대 상태 계산 (344)
 tests/Vn.Core.Tests             Yarn 분석과 골든 픽스처 (60)
 ```
 
-테스트 수는 2026-08-24 기준 **1567개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 827 · Vn.App 336).
+테스트 수는 2026-08-24 기준 **1573개**다(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 827 · Vn.App 342).
 
 ### `Vn.Authoring/Chapters/ChapterExportService` — 화면에서 나온 정책 (2026-08-23)
 

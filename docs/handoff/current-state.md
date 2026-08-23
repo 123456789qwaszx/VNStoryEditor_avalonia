@@ -1,7 +1,7 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-기준: 2026-08-24 · 테스트 **1567 통과, 실패 0**
-(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 827 · Vn.App 336)
+기준: 2026-08-24 · 테스트 **1573 통과, 실패 0**
+(Ked.Presentation.Core 344 · Vn.Core 60 · Vn.Authoring 827 · Vn.App 342)
 > ⚠ 솔루션 단위 `dotnet test`는 **빌드에 실패한 프로젝트를 조용히 건너뛴다.**
 > 요약 줄이 **넷**인지 세고 나서 "전부 통과"라고 말할 것.
 
@@ -491,6 +491,7 @@ A계층 어휘(**스탯 키**)는 **챕터 그래프가 읽은 목록 하나**�
 | 그래프에 무엇이 그려지는가 | `src/Vn.Authoring/Graph/GraphProjectionBuilder.cs` — 화면이 아니라 **여기가 정한다** |
 | 엑셀 → 노드 동기화 | `src/Vn.Authoring/Chapters/EpisodeSyncService.cs` (`Sync`·`SupplyChapterConditionsToBoard`·`ConditionSupplyNodeName`) |
 | **동기화가 언제 도는가** | `ChapterGraphView.WatchAndReload` — 챕터 선택 · 대본 폴더 변경 · **에피소드 목록 변경**(`EpisodeSetChanged`, 2026-08-22). ⚠ 재읽기마다 돌리지 않는다: `SyncEpisodes`가 에피소드 워크북을 전부 열어 보므로 저장 한 번마다 그 값을 치르면 §성능 규칙이 무너진다 |
+| **어느 챕터를 도는가** | **판이 선 챕터 전부** (2026-08-24 소유자 보고: "연출그래프의 동일한 엑셀노드에 반영이 안 되네"). 예전에는 **고른 챕터 하나**만 돌았는데, 연출 그래프는 모든 판의 노드를 함께 보여 주므로 다른 챕터의 대사노드가 그 챕터를 다시 고르기 전까지 낡은 글을 들고 있었다 — 챕터가 둘 이상이면 늘 그랬다. ⚠ **판이 없는 챕터는 안 돈다**: `EnsureChapterBoard`가 아무도 안 연 챕터의 판을 미리 만들어 버린다. ⚠ 이 고침이 감당되는 이유는 같은 날의 `WorkbookParseCache`다 — 안 바뀐 대본은 해시만 재고 지나간다 |
 | 챕터 워크북 읽기·쓰기 | `Chapters/ChapterWorkbookReader.cs` · `ChapterWorkbookWriter.cs` |
 | 구판 워크북 자동 이행 | `Chapters/ChapterWorkbookMigrator.cs` — 구→v5→v6→v7→v8→v9 한 번에, .bak. 앱 Reload가 챕터 폴더 전체에 돌린다 |
 | 대본 파일 자리·입양 | `Chapters/EpisodeLibrary.cs` (`FolderFor(project, chapterId)` = `episodes/{챕터}/` · `AdoptFlatWorkbook`) |

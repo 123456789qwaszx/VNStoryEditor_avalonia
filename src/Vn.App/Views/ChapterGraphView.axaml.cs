@@ -590,7 +590,64 @@ public partial class ChapterGraphView : UserControl
         // 이 목록으로 돌았다고 적어 둔다 — 뒤이은 재읽기가 같은 목록이면 다시 안 돈다.
         _syncedEpisodeSignature = MakeEpisodeSignature(entry);
 
-        if (entry is null)
+        // ⛔ <b>고른 챕터만 돌면 안 된다</b> (2026-08-24 소유자 보고: "챕터그래프에서
+        // 대사노드의 엑셀을 열어서 고칠 경우, 연출그래프의 동일한 엑셀노드에 반영이 안 되네").
+        //
+        // 연출 그래프는 <b>모든 판의 노드를 함께</b> 보여 준다. 그런데 반영은 고른 챕터
+        // 하나만 돌았으므로, 다른 챕터의 대사노드는 그 챕터를 다시 고르기 전까지 영영
+        // 낡은 글을 들고 있었다. 챕터가 둘 이상인 프로젝트에서는 늘 그랬다.
+        //
+        // ⚠ 이것이 <b>지금 감당되는</b> 이유: 같은 날 워크북 파싱을 내용 해시로 기억하게
+        // 했다(`WorkbookParseCache`). 안 바뀐 대본은 해시만 재고 지나가므로, 챕터를 전부
+        // 도는 값이 예전의 한 챕터보다 싸다. 그 전이었다면 이 고침은 못 했다.
+        foreach (ChapterEntry other in SyncTargets(entry))
+        {
+            RunEpisodeSync(other);
+        }
+
+        // 아래는 <b>화면</b>의 몫이다 — 고른 챕터가 없어도 내보내기·검증·그리기는 돈다.
+        AfterEpisodeSync();
+    }
+
+    /// <summary>
+    /// 이번에 따라잡을 챕터들 — 고른 챕터와 <b>이미 판이 선</b> 챕터 전부.
+    ///
+    /// 판이 없는 챕터는 대사노드도 없으므로 낡을 것이 없다. 그런 챕터까지 돌면
+    /// <see cref="ProjectEditor.EnsureChapterBoard"/>가 <b>판을 미리 만들어</b> 아무도
+    /// 안 연 챕터의 판이 프로젝트에 쌓인다 — 고치려던 것보다 큰 변화다.
+    /// </summary>
+    private IEnumerable<ChapterEntry> SyncTargets(ChapterEntry? selected)
+    {
+        if (selected is not null)
+        {
+            yield return selected;
+        }
+
+        if (_session is null)
+        {
+            yield break;
+        }
+
+        foreach (ChapterEntry candidate in _entries)
+        {
+            if (candidate.ChapterId == selected?.ChapterId || candidate.Model is null)
+            {
+                continue;
+            }
+
+            // 판 이름 = ChapterId (챕터=판 1:1, G-1 v2).
+            if (_session.Project.Files.Any(file =>
+                    string.Equals(file.Name, candidate.ChapterId, StringComparison.Ordinal)))
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    /// <summary>챕터 하나를 반영하고 그 결과를 보고 더미에 쌓는다.</summary>
+    private void RunEpisodeSync(ChapterEntry entry)
+    {
+        if (_session is null)
         {
             return;
         }
@@ -621,19 +678,6 @@ public partial class ChapterGraphView : UserControl
             StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session.ProjectPath));
         }
 
-        // ⚠ 반영이 판을 바꿨으면 **다시 내보낸다** (2026-08-23). `Reload()` 안의
-        // `AutoExport()`는 동기화보다 먼저 돌므로, 엑셀에서 방금 더한 에피소드의 대사노드는
-        // 그때 아직 없다 — 저작 관문(`DialogueEntryNodeMissing`)이 그것을 옳게 거부하고,
-        // 여기서 다시 내지 않으면 **노드가 선 뒤에도 거부가 남는다.**
-        //
-        // 되돌이는 없다: 감시자는 `chapters/`와 `episodes/`를 보고 내보내기는 `exported/`에
-        // 쓴다. 값도 잔잔하다 — 증명은 캐시가 받고, 글이 같은 파일은 다시 쓰지 않는다.
-        AutoExport();
-
-        // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
-        Validate();
-        Draw();
-
         // 무언가 <b>실제로 바뀌었으면</b> 열려 있는 편집 화면(줄 목록·그래프)을 다시
         // 만들게 알린다 — 대사 수정은 "타이핑 보호" 경로로 전달되어 화면이 옛 줄을 그대로
         // 들고 있었다(실사례).
@@ -652,9 +696,32 @@ public partial class ChapterGraphView : UserControl
         {
             _session.SetStatus(message);
         }
+    }
 
-        // 동기화는 쓴다 — 첫 대본 워크북, v11의 `연출` 칸. 그 저장이 250ms 뒤 감시자로
-        // 되돌아오는데, 화면은 이미 맞춰졌다. 여기서 지문을 찍어 그 되돌이를 끊는다.
+    /// <summary>
+    /// 챕터를 <b>전부 돈 뒤</b> 한 번만 하는 일 — 내보내기·증명·그리기·지문.
+    ///
+    /// ⚠ 챕터마다 하면 안 된다. 내보내기와 증명은 <see cref="ChapterExportService"/>가
+    /// 이미 전 챕터를 도는 일이고, 그리기는 화면 하나를 다시 만드는 일이다 — 챕터 수만큼
+    /// 되풀이하면 그 값이 그대로 곱해진다.
+    /// </summary>
+    private void AfterEpisodeSync()
+    {
+        // ⚠ 반영이 판을 바꿨으면 **다시 내보낸다** (2026-08-23). `Reload()` 안의
+        // `AutoExport()`는 동기화보다 먼저 돌므로, 엑셀에서 방금 더한 에피소드의 대사노드는
+        // 그때 아직 없다 — 저작 관문(`DialogueEntryNodeMissing`)이 그것을 옳게 거부하고,
+        // 여기서 다시 내지 않으면 **노드가 선 뒤에도 거부가 남는다.**
+        //
+        // 되돌이는 없다: 감시자는 `chapters/`와 `episodes/`를 보고 내보내기는 `exported/`에
+        // 쓴다. 값도 잔잔하다 — 증명은 캐시가 받고, 글이 같은 파일은 다시 쓰지 않는다.
+        AutoExport();
+
+        // 에피소드가 바뀌면 스탯 증감량도 바뀐다 — 도달성을 다시 증명한다.
+        Validate();
+        Draw();
+
+        // 동기화는 쓴다 — 첫 대본 워크북. 그 저장이 250ms 뒤 감시자로 되돌아오는데,
+        // 화면은 이미 맞춰졌다. 여기서 지문을 찍어 그 되돌이를 끊는다.
         _diskFingerprint = DiskFingerprint();
     }
 
