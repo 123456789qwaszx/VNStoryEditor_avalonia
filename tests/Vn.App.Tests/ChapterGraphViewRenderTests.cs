@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
+using Avalonia.VisualTree;
 using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -228,6 +230,43 @@ public sealed class ChapterGraphViewRenderTests
             card => (string)card.Tag!,
             card => (Canvas.GetLeft(card), Canvas.GetTop(card)),
             StringComparer.Ordinal);
+
+    [Fact]
+    public void 검증_보고는_늘_서_있되_접히면_한_줄만_먹는다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자 — "이건 굉장히 중요하고, 상시로 띄워놓는 건 맞는데, 원할 때
+        // 언제든 확인은 해야하되, 시각적으로 크게 보일 필요는 없어."
+        //
+        // Fluent의 Expander 머리글은 최소 48px이라 접혀 있어도 판 아래를 그만큼 늘 먹었다.
+        // ⚠ 그 48은 템플릿 안에서 토글에 <b>직접</b> 박히는 값이라 Style 세터로는 못 이긴다
+        // (해 보고 알았다). 템플릿이 쳐다보는 리소스를 Expander 자리에서 갈아 끼운다.
+        using var project = new TempProject(SamplePath);
+        (_, ChapterGraphView view) = Render(project);
+
+        var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
+
+        // 늘 서 있다 — 접히는 것이지 사라지는 것이 아니다.
+        Assert.True(expander.IsVisible);
+
+        expander.IsExpanded = false;
+        Relayout(view);
+
+        Assert.True(
+            expander.Bounds.Height is > 0 and < 32,
+            $"접힌 검증 보고가 {expander.Bounds.Height:F0}px를 먹는다 — 한 줄이어야 한다");
+    });
+
+    /// <summary>바꾼 뒤 다시 재고 배치한다 — 안 하면 Bounds가 옛 값이다.</summary>
+    private static void Relayout(ChapterGraphView view)
+    {
+        if (TopLevel.GetTopLevel(view) is Window window)
+        {
+            window.Measure(new Avalonia.Size(window.Width, window.Height));
+            window.Arrange(new Avalonia.Rect(0, 0, window.Width, window.Height));
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
 
     private static (Canvas Canvas, ChapterGraphView View) Render(TempProject project)
     {

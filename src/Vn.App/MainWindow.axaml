@@ -37,11 +37,15 @@
             </Grid>
         </Border>
 
+        <!-- 상태줄은 <b>곁눈으로 읽는 줄</b>이다 (2026-08-24 소유자: "저장했습니다,
+             로드했습니다 이런 문구의 크기를 줄여줘"). 기본 글자크기(14)에 위아래 8씩
+             주면 36px을 늘 차지하는데, 여기 뜨는 말은 대부분 "됐다"이고 그것은 크게
+             볼 것이 아니다. 이 저장소가 곁정보에 쓰는 11로 맞춘다. -->
         <Border DockPanel.Dock="Bottom"
-                Padding="12,8"
+                Padding="12,4"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,1,0,0">
-            <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
+            <TextBlock x:Name="StatusText" FontSize="11" TextWrapping="Wrap" />
         </Border>
 
         <!-- 창은 이제 탭 하나뿐이다 (2026-08-22 소유자). 곁기둥 둘이 제 화면 안으로

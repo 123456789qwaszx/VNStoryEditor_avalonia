@@ -495,10 +495,31 @@
         <Border Grid.Row="2"
                 BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                 BorderThickness="0,1,0,0">
+            <!-- 검증 보고는 <b>늘 서 있되 작아야 한다</b> (2026-08-24 소유자: "이건 굉장히
+                 중요하고, 상시로 띄워놓는 건 맞는데, 원할 때 언제든 확인은 해야하되,
+                 시각적으로 크게 보일 필요는 없어").
+
+                 Fluent의 Expander 머리글은 최소 48px이라, 접혀 있어도 판 아래를 그만큼
+                 늘 먹었다.
+
+                 ⚠ <b>Style로는 못 줄인다.</b> 그 48은 템플릿 안에서 토글에 직접 박히는
+                 값(로컬 값)이라 스타일 세터가 못 이긴다 — 해 보고 알았다(높이가 48 그대로).
+                 대신 템플릿이 쳐다보는 <b>리소스를 이 자리에서 갈아 끼운다.</b> 범위는
+                 이 Expander 안뿐이라 다른 화면은 그대로다.
+
+                 ⚠ 줄이는 것은 <b>머리글뿐</b>이다. 펼친 목록의 글자는 그대로여야 한다 —
+                 거기는 기획자가 실제로 읽고 좌표를 짚는 자리다(줄들이 제 FontSize를
+                 직접 들고 있어 이 FontSize가 그 위를 덮지 않는다). -->
             <Expander x:Name="DiagnosticsExpander"
                       Header="검증 보고"
                       Padding="0"
+                      FontSize="11"
                       HorizontalAlignment="Stretch">
+                <Expander.Resources>
+                    <x:Double x:Key="ExpanderMinHeight">26</x:Double>
+                    <Thickness x:Key="ExpanderHeaderPadding">10,2</Thickness>
+                    <x:Double x:Key="ExpanderChevronButtonSize">20</x:Double>
+                </Expander.Resources>
                 <Grid RowDefinitions="Auto,*">
                     <!-- 보고를 그대로 들고 나갈 수 있어야 한다 — 협업자·세션에 붙여넣는 용도. -->
                     <Button Grid.Row="0"
