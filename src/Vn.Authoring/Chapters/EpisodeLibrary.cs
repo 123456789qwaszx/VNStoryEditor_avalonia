@@ -279,9 +279,9 @@ public static class EpisodeLibrary
         // 어차피 머리글로 시트를 찾으므로 이름은 아무래도 좋다 — 그러면 안 낡는 이름이 낫다.
         IXLWorksheet sheet = workbook.AddWorksheet("대본");
 
-        // 6열 (v13, 2026-08-24) — <b>유형이 LineId보다 앞</b>이다. 왼쪽에서 오른쪽으로
-        // "몇 번째 줄인가 → 무슨 줄인가 → (대사면) 그 신원"으로 읽힌다.
-        string[] headers = ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        // 6열 (v14, 2026-08-24) — 왼쪽 두 칸이 <b>제어 행의 메타데이터</b>, 오른쪽 네 칸이
+        // <b>대사 줄</b>이다. 리더의 배열과 한 글자도 달라선 안 된다(시트를 찾는 근거다).
+        string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
@@ -297,19 +297,25 @@ public static class EpisodeLibrary
         // 시트 보호는 걸지 않는다 (v4). 보호의 유일한 이유였던 LineId 열을 툴이 더는
         // 쓰지 않는다 — 행 신원은 프로젝트의 ExcelLineMap이 갖는다. 보호가 없으면 구글
         // 시트 같은 외부 편집기가 재저장할 때 깨질 것도 하나 줄어든다. 그 열은 유물로 남아
-        // 회색 배경만 유지한다 (v13에서 B→C).
+        // 회색 배경만 유지한다 (v14에서 C→D).
         sheet.Column(LineIdColumn).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
 
         // 인덱스를 미리 다 깔아 준다 (10·20·30 방식, G-5). 작가는 번호를 신경 쓰지 않고
         // 그 옆 칸(화자·내용)만 채우면 된다 — 인덱스 없는 행은 표의 일부가 아니라서,
         // 시트에서 그냥 아래로 타이핑하면 대사가 조용히 버려지는 함정이 실제로 있었다.
         // 사이에 끼울 때만 사람이 15 같은 빈 숫자를 적는다(그래서 십 단위다).
+        //
+        // ⚠ v14에서 인덱스는 <b>대사 줄만</b> 갖는데 이 깔기는 행을 가리지 않는다 — 아직
+        // 아무 유형도 없는 빈 시트라 가릴 수가 없다. 사람이 그 자리에 IF를 치면 번호가
+        // 남는데, 그건 <b>툴이 동기화에서 지운다</b>(소유자 결정 —
+        // `EpisodeWorkbookWriter.ClearBlockRowIndexes`). 깔기를 그만두는 쪽이 아니라
+        // 치우는 쪽을 고른 이유는, 저 함정이 실제로 사람을 물었기 때문이다.
         for (int row = 2; row <= TemplateRows; row++)
         {
-            sheet.Cell(row, 1).SetValue((row - 1) * 10);
+            sheet.Cell(row, IndexColumn).SetValue((row - 1) * 10);
         }
 
-        sheet.Column(6).Width = 50;   // 내용
+        sheet.Column(TextColumn).Width = 50;   // 내용
 
         ApplyVocabulary(workbook, sheet, speakers, conditionLabels);
 
@@ -332,9 +338,11 @@ public static class EpisodeLibrary
     /// <summary>조건 라벨 목록을 담는 숨김 시트 (2026-08-17).</summary>
     public const string ConditionListSheetName = "조건목록";
 
-    private const int KindColumn = 2;         // B열 — §3.2의 유형 (v13에서 C→B)
-    private const int LineIdColumn = 3;       // C열 — 유물. 사람도 툴도 안 쓴다 (v13에서 B→C)
-    private const int ConditionColumn = 4;    // D열 — §3.2의 조건라벨 (v10)
+    // v14 (2026-08-24) — 구조 두 칸이 앞, 대사 네 칸이 뒤.
+    private const int KindColumn = 1;         // A열 — §3.2의 유형 (v14에서 B→A)
+    private const int ConditionColumn = 2;    // B열 — §3.2의 조건라벨 (v14에서 D→B)
+    private const int IndexColumn = 3;        // C열 — 대사 줄의 번호 (v14에서 A→C)
+    private const int LineIdColumn = 4;       // D열 — 유물. 사람도 툴도 안 쓴다 (v14에서 C→D)
     private const int SpeakerColumn = 5;      // E열 — §3.2의 화자 (v10에서 H→E)
     private const int TextColumn = 6;         // F열 — §3.2의 내용
     private const int ListRows = 200;         // 드롭다운이 가리키는 범위. 이보다 많으면 나눌 일이다.
@@ -391,6 +399,10 @@ public static class EpisodeLibrary
             .CreateDataValidation()
             .List(KindList, inCellDropdown: true);
 
+        BlockRowGuard(sheet, IndexColumn,
+            "이 행은 IF·ELSEIF·ENDIF입니다 — 인덱스는 플레이어에게 전달되는 " +
+            "대사의 순번이라 구조를 그리는 행은 갖지 않습니다(v14).");
+
         BlockRowGuard(sheet, LineIdColumn,
             "이 행은 IF·ELSEIF·ENDIF입니다 — 라인이 아니라서 LineId를 가질 수 없습니다.");
 
@@ -406,10 +418,13 @@ public static class EpisodeLibrary
     /// 유형(B열)이 IF·ELSEIF·ENDIF면 그 행의 이 칸은 비어 있어야 한다. 빈칸은 언제나
     /// 통과한다(<c>IgnoreBlanks</c>) — 막는 것은 <em>적는 것</em>뿐이다.
     ///
+    /// 걸리는 칸은 셋 — <b>인덱스(C) · LineId(D) · 내용(F)</b>.
+    ///
     /// ⚠ <b>화자(E열)에는 못 건다.</b> 엑셀은 한 칸에 검증을 하나만 허용하는데 그 열은
-    /// 이미 화자 드롭다운이 쓰고 있다. 화자는 리더가 오류로 짚는다 — 그쪽이 더 센 빗장이다
-    /// (붙여넣기로도 못 빠져나간다). 여기 검증은 <b>실수를 손에서 막는</b> 앞잡이일 뿐이고,
-    /// 규칙의 주인은 언제나 리더다.
+    /// 이미 화자 드롭다운이 쓰고 있다. 둘 중 하나를 골라야 한다면 <b>드롭다운이 이긴다</b> —
+    /// 그건 대사 줄마다 쓰는 것이고 이 빗장은 어쩌다 한 번이다. 화자는 리더가 오류로
+    /// 짚는다 — 그쪽이 더 센 빗장이다(붙여넣기로도 못 빠져나간다). 여기 검증은
+    /// <b>실수를 손에서 막는</b> 앞잡이일 뿐이고, 규칙의 주인은 언제나 리더다.
     /// </summary>
     private static void BlockRowGuard(IXLWorksheet sheet, int column, string message)
     {
@@ -442,6 +457,7 @@ public static class EpisodeLibrary
             validation.Ranges.Any(range =>
                 range.RangeAddress.FirstAddress.ColumnNumber == KindColumn) &&
             string.Equals(validation.Value, KindList, StringComparison.Ordinal)) &&
+        HasBlockRowGuard(sheet, IndexColumn) &&
         HasBlockRowGuard(sheet, LineIdColumn) &&
         HasBlockRowGuard(sheet, TextColumn);
 

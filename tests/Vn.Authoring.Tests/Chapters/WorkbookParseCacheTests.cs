@@ -185,7 +185,7 @@ public sealed class WorkbookParseCacheTests : IDisposable
     {
         using var workbook = new XLWorkbook(path);
         IXLWorksheet sheet = workbook.Worksheets
-            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스");
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형");
 
         sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
         sheet.Cell(2, 6).SetValue(text);      // F · 내용

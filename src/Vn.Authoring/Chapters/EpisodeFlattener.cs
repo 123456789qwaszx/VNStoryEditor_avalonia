@@ -143,9 +143,12 @@ public static class EpisodeFlattener
         return new EpisodeFlattenResult(builder.ToString(), emitted, diagnostics);
     }
 
-    /// <summary>행의 유효 LineId — 매핑(인덱스 키)이 우선, 없으면 B열(이행 seed).</summary>
+    /// <summary>
+    /// 행의 유효 LineId — 매핑(인덱스 키)이 우선, 없으면 D열(이행 seed).
+    /// <b>대사 행에서만 부른다</b> — 매핑의 열쇠가 대사 줄의 번호이기 때문이다(v14).
+    /// </summary>
     private static string? IdOf(EpisodeRow row, IReadOnlyDictionary<int, string>? identity) =>
-        identity is not null && identity.TryGetValue(row.Index, out string? mapped)
+        identity is not null && identity.TryGetValue(row.LineIndex, out string? mapped)
             ? mapped
             : row.LineId;
 
@@ -246,7 +249,7 @@ public static class EpisodeFlattener
         }
 
         builder.Append('\n');
-        emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.Index, effectiveId));
+        emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.LineIndex, effectiveId));
     }
 
     private const int ColumnConditionLabel = 4;

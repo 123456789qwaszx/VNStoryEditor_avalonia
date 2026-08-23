@@ -101,9 +101,10 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         {
             foreach (IXLRow row in sheet.RowsUsed())
             {
-                if (row.Cell(4).GetString().Trim() == "신뢰높음")
+                // v14 — 조건라벨은 B열(2)이다.
+                if (row.Cell(2).GetString().Trim() == "신뢰높음")
                 {
-                    row.Cell(4).SetValue("지쳐있음");
+                    row.Cell(2).SetValue("지쳐있음");
                 }
             }
         });
@@ -247,7 +248,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             using var book = new XLWorkbook(path);
 
             edit(book.Worksheets
-                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스"));
+                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형"));
 
             book.SaveAs(path);
         }
@@ -292,7 +293,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             using var book = new XLWorkbook(WorkbookPath);
 
             edit(book.Worksheets
-                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스"));
+                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형"));
 
             book.SaveAs(WorkbookPath);
         }

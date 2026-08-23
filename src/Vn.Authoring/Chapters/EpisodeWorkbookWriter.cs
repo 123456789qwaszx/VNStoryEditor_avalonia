@@ -26,13 +26,13 @@ public static class EpisodeWorkbookWriter
 {
     private const int HeaderRow = 1;
 
-    // 리더와 같은 6열 (v10). ⚠ 이 배열은 <see cref="EpisodeWorkbookReader"/>의 것과 같아야
+    // 리더와 같은 6열 (v14). ⚠ 이 배열은 <see cref="EpisodeWorkbookReader"/>의 것과 같아야
     // 한다 — 시트를 찾는 근거가 머리글이라, 한쪽만 바뀌면 여기서 시트를 못 찾는다.
     private static readonly string[] Headers =
-        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
-    private const int ColumnIndex = 1;
-    private const int ColumnKind = 2;
+    private const int ColumnKind = 1;
+    private const int ColumnIndex = 3;
     private const int ColumnSpeaker = 5;
     private const int ColumnText = 6;
 
@@ -41,7 +41,7 @@ public static class EpisodeWorkbookWriter
     /// 인덱스이기 때문이다(G-5). 엑셀 행 번호로 찾으면 사람이 시트에서 행을 하나 끼우는
     /// 순간 엉뚱한 줄을 덮는다.
     /// </summary>
-    /// <param name="index">A열 값. 노드의 <c>ExcelLineMap</c>이 LineId를 이 값에 묶어 둔다.</param>
+    /// <param name="index">C열 값. 노드의 <c>ExcelLineMap</c>이 LineId를 이 값에 묶어 둔다.</param>
     public static ChapterWriteResult SetLine(
         string path, int index, string? speaker, string? text)
     {
@@ -71,6 +71,66 @@ public static class EpisodeWorkbookWriter
             Set(sheet, row, ColumnText, text);
         });
     }
+
+    /// <summary>
+    /// 블록 행(IF·ELSEIF·ENDIF)에 남은 인덱스를 비운다 (v14, 2026-08-24 소유자: "툴이
+    /// 지워 준다").
+    ///
+    /// <b>왜 지워 줘야 하나</b> — 템플릿이 2~500행에 10·20·30을 <b>미리 깔아 두기</b>
+    /// 때문이다. 사람이 42행에 IF를 치면 그 칸에는 이미 410이 적혀 있고, 그건 사람의
+    /// 잘못이 아니다. 그래서 리더는 오류로 세우지 않고(빨간 줄은 고칠 것에만 쓴다) 여기서
+    /// 조용히 치운다. <b>다만 조용히 하지는 않는다</b> — 몇 칸을 비웠는지 돌려주고 보고에 싣는다.
+    ///
+    /// ⚠ 비우는 것은 <b>인덱스 한 칸뿐이다.</b> 같은 행의 화자·내용이 잘못 적혀 있어도
+    /// 여기서 지우지 않는다 — 그건 사람이 <b>쓴 글</b>이라, 지우면 "썼는데 사라졌다"가 된다.
+    /// 그쪽은 리더가 오류로 짚어 사람이 고르게 한다(소유자: "잘못된 걸로. 아니면 작성을
+    /// 못하게 막는 것도 좋아" — 손에서 막는 것은 엑셀 빗장이 맡는다).
+    /// </summary>
+    /// <returns>비운 칸 수. 쓸 것이 없으면 0이고 파일에 손대지 않는다.</returns>
+    public static (ChapterWriteResult Result, int Cleared) ClearBlockRowIndexes(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        int cleared = 0;
+
+        ChapterWriteResult result = Mutate(path, workbook =>
+        {
+            IXLWorksheet sheet = FindEpisodeSheet(workbook)
+                ?? throw new InvalidOperationException(
+                    "이 워크북에서 대본 시트를 찾지 못했습니다 — 머리글이 규격과 다릅니다.");
+
+            foreach (IXLRow row in sheet.RowsUsed().Where(item => item.RowNumber() > HeaderRow))
+            {
+                int number = row.RowNumber();
+                string kind = Cell(sheet, number, ColumnKind);
+
+                if (kind.Length == 0 || string.Equals(kind, "대사", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (Cell(sheet, number, ColumnIndex).Length == 0)
+                {
+                    continue;
+                }
+
+                sheet.Cell(number, ColumnIndex).Clear(XLClearOptions.Contents);
+                cleared++;
+            }
+
+            // 지울 것이 없으면 저장 자체를 하지 않는다 — 안 바뀐 파일을 다시 쓰면 감시가
+            // 깨어나고 내용 해시가 바뀌어, 아무 일도 없었는데 전부 다시 읽는다.
+            if (cleared == 0)
+            {
+                throw new NothingToWriteException();
+            }
+        });
+
+        return cleared == 0 ? (ChapterWriteResult.Ok, 0) : (result, cleared);
+    }
+
+    /// <summary>쓸 것이 없다는 신호 — <see cref="Mutate"/>의 저장을 건너뛴다.</summary>
+    private sealed class NothingToWriteException : Exception;
 
     private static IXLWorksheet? FindEpisodeSheet(XLWorkbook workbook) =>
         workbook.Worksheets.FirstOrDefault(sheet =>
@@ -130,6 +190,11 @@ public static class EpisodeWorkbookWriter
             edit(workbook);
             workbook.SaveAs(path);
 
+            return ChapterWriteResult.Ok;
+        }
+        catch (NothingToWriteException)
+        {
+            // 고칠 것이 없었다. 파일에 손대지 않은 것이 성공이다.
             return ChapterWriteResult.Ok;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

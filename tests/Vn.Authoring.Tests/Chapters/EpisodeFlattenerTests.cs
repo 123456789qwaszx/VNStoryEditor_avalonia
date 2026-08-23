@@ -148,7 +148,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
         // 리더가 이미 오류로 잡은 상태다. 그래도 반쯤 열린 Yarn을 내보내면 컴파일러의
         // 오류가 진짜 원인을 덮는다 — 여기서 닫아 둔다.
         var rows = Baseline();
-        rows[8] = ["80", null, null, null, "라루", "닫는 줄이었던 자리"];
+        rows[8] = [null, null, "80", null, "라루", "닫는 줄이었던 자리"];
 
         EpisodeFlattenResult result = Flatten(rows);
 
@@ -161,7 +161,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
     public void 조건을_못_세우면_그_블록만_통째로_빠진다()
     {
         var rows = Baseline();
-        rows[3][3] = null;   // IF의 조건라벨 제거
+        rows[3][1] = null;   // IF의 조건라벨 제거
 
         EpisodeFlattenResult result = Flatten(rows);
 
@@ -182,7 +182,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
         // YarnSyntax.AppendCondition은 빈 식을 "false"로 떨군다. 자기 문자열 연결이었다면
         // 그 처리가 없어 "<<if >>"가 나온다 — 조립기를 지났는지 이 차이로 확인된다.
         var rows = Baseline();
-        rows[3][3] = "빈식";
+        rows[3][1] = "빈식";
 
         EpisodeFlattenResult result = Flatten(rows, new Dictionary<string, ChapterCondition>(Expressions)
         {
@@ -198,7 +198,7 @@ public sealed class EpisodeFlattenerTests : IDisposable
     public void 라벨의_식을_못_찾으면_사유를_말한다()
     {
         var rows = Baseline();
-        rows[3][3] = "복도완료";
+        rows[3][1] = "복도완료";
 
         EpisodeFlattenResult result = Flatten(rows, new Dictionary<string, ChapterCondition>());
 
@@ -246,15 +246,15 @@ public sealed class EpisodeFlattenerTests : IDisposable
     /// <summary>블록 둘이 나란히 있고 그 뒤에 대사가 오는 최소 표 (견본과 같은 모양).</summary>
     private static string?[][] Baseline() =>
     [
-        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
-        ["10", null, "ln_0001", null, "윌로", "첫 줄"],
-        ["20", null, "ln_0002", null, "라루", "둘째 줄"],
-        ["30", "IF", null, "신뢰높음", null, null],
-        ["40", null, "ln_0003", null, "윌로", "첫 블록 안"],
-        ["50", "ENDIF", null, null, null, null],
-        ["60", "IF", null, "지쳐있음", null, null],
-        ["70", null, "ln_0004", null, "라루", "둘째 블록 안"],
-        ["80", "ENDIF", null, null, null, null],
-        ["90", null, "ln_0005", null, "윌로", "끝 줄"]
+        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
+        [null, null, "10", "ln_0001", "윌로", "첫 줄"],
+        [null, null, "20", "ln_0002", "라루", "둘째 줄"],
+        ["IF", "신뢰높음", null, null, null, null],
+        [null, null, "40", "ln_0003", "윌로", "첫 블록 안"],
+        ["ENDIF", null, null, null, null, null],
+        ["IF", "지쳐있음", null, null, null, null],
+        [null, null, "70", "ln_0004", "라루", "둘째 블록 안"],
+        ["ENDIF", null, null, null, null, null],
+        [null, null, "90", "ln_0005", "윌로", "끝 줄"]
     ];
 }

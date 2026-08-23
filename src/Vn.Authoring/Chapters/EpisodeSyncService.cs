@@ -92,6 +92,7 @@ public static class EpisodeSyncService
         try
         {
             model = EpisodeWorkbookReader.Read(workbookPath, labels);
+            model = TidyBlockRows(workbookPath, model, labels);
         }
         catch (XlsxReadException exception)
         {
@@ -236,7 +237,11 @@ public static class EpisodeSyncService
         }
 
         // 산출에 실리지 않는 행(CHOICE 등)의 신원은 유지한다 — 행이 아직 존재한다면.
-        HashSet<int> liveIndexes = model.Rows.Select(row => row.Index).ToHashSet();
+        // ⚠ 대사 행만 센다 (v14) — 블록 행에는 번호가 없고, 매핑의 열쇠는 대사 줄의 번호다.
+        HashSet<int> liveIndexes = model.Rows
+            .Where(row => row.IsLine)
+            .Select(row => row.LineIndex)
+            .ToHashSet();
 
         foreach ((int index, string lineId) in node.ExcelLineMap)
         {
@@ -617,6 +622,40 @@ public static class EpisodeSyncService
         }
 
         return warnings;
+    }
+
+    /// <summary>
+    /// 블록 행에 남은 인덱스를 툴이 비운다 (v14, 2026-08-24 소유자: "툴이 지워 준다").
+    ///
+    /// <b>왜 동기화가 하나</b> — 템플릿이 2~500행에 번호를 미리 깔아 두므로, 사람이 그
+    /// 자리에 IF를 치는 순간 남는 번호는 <b>제 잘못이 아니다</b>. 오류로 세워 사람을 부르는
+    /// 대신 지나가는 김에 치운다. 동기화는 챕터를 고를 때·대본이 저장될 때마다 도므로
+    /// 사람이 따로 부를 것이 없다.
+    ///
+    /// ⚠ <b>지웠으면 다시 읽는다.</b> 파일이 바뀌었는데 손에 든 모델이 옛것이면, 그 뒤의
+    /// 평평화·되쓰기가 방금 지운 값을 보고 판단한다.
+    ///
+    /// ⚠ 엑셀이 그 파일을 잡고 있으면 못 쓴다 — 그때는 <b>그대로 둔다</b>. 인덱스가 남아
+    /// 있어도 리더가 이미 무시하므로 산출은 옳고, 다음 동기화가 다시 시도한다.
+    /// </summary>
+    private static EpisodeWorkbookModel TidyBlockRows(
+        string workbookPath, EpisodeWorkbookModel model, IReadOnlyCollection<string> labels)
+    {
+        // ⚠ 진단 <b>코드</b>로 찾는다 — 모델의 `Index`는 블록 행에서 언제나 널이라(그것이
+        // v14의 뜻이다) 남은 번호가 거기 안 실린다. 글자로 찾으면 문구를 다듬는 날 조용히
+        // 안 듣는다.
+        if (!model.Diagnostics.Any(item =>
+                item.Code == ChapterDiagnosticCode.BlockRowIndexStray))
+        {
+            return model;
+        }
+
+        (ChapterWriteResult result, int cleared) =
+            EpisodeWorkbookWriter.ClearBlockRowIndexes(workbookPath);
+
+        return result.Written && cleared > 0
+            ? EpisodeWorkbookReader.Read(workbookPath, labels)
+            : model;
     }
 
     private static IReadOnlyList<EpisodePrunedLogic> CollectPruned(

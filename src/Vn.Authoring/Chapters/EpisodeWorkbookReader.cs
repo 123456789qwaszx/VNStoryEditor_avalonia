@@ -17,17 +17,25 @@ public static class EpisodeWorkbookReader
 {
     private const int HeaderRow = 1;
 
-    // 6열 (v13, 2026-08-24 소유자 — <b>유형이 LineId보다 앞</b>). 왼쪽에서 오른쪽으로
-    // 읽으면 "몇 번째 줄인가 → 무슨 줄인가 → (대사면) 그 줄의 신원"이다: 무슨 줄인지가
-    // 나머지를 전부 좌우하므로 먼저 온다. LineId는 사람이 안 쓰는 유물이라 뒤로 밀린다.
-    // v10 파일(LineId가 먼저)은 이행기가 이 모양으로 옮긴다.
+    // 6열 (v14, 2026-08-24 소유자). 왼쪽 두 칸이 <b>제어 행의 메타데이터</b>이고,
+    // 오른쪽 네 칸이 <b>대사 줄</b>이다:
+    //
+    //     유형  조건라벨 │ 인덱스  LineId  화자  내용
+    //     └─ 구조 ─────┘ └─ 대사 ──────────────────┘
+    //
+    // 그래서 첫 칸만 훑으면 대사·대사·IF·대사·ENDIF·대사 하는 문법이 그대로 보이고,
+    // 인덱스는 <b>플레이어에게 전달되는 대사의 순번</b>이라는 뜻을 갖는다 — 구조를 그리는
+    // 행이 번호를 가지면 그 번호가 대사 순번이 아니라 행 순번으로 바뀌어 버린다.
+    // 소유자: "IF, ENDIF, SET 같은 행은 스토리 구조를 표현하는 행이지 대사가 아니니까."
+    //
+    // 앞 규격(v10 LineId 먼저 · v13 인덱스 먼저)의 파일은 이행기가 이 모양으로 옮긴다.
     private static readonly string[] Headers =
-        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
-    private const int ColumnIndex = 1;
-    private const int ColumnKind = 2;
-    private const int ColumnLineId = 3;
-    private const int ColumnConditionLabel = 4;
+    private const int ColumnKind = 1;
+    private const int ColumnConditionLabel = 2;
+    private const int ColumnIndex = 3;
+    private const int ColumnLineId = 4;
     private const int ColumnSpeaker = 5;
     private const int ColumnText = 6;
 
@@ -123,73 +131,101 @@ public static class EpisodeWorkbookReader
 
         foreach (int row in DataRows(sheet))
         {
+            // ⚠ <b>유형을 먼저 읽는다</b> (v14). 예전에는 인덱스가 먼저였고 인덱스 없는
+            // 행은 표에서 빠졌는데, 이제 블록 행에는 인덱스가 <b>없는 것이 정상</b>이라
+            // 그 순서로는 IF·ENDIF가 통째로 사라진다. 무슨 줄인지가 나머지를 좌우하므로
+            // 읽는 순서도 시트의 열 순서와 같아졌다.
+            EpisodeRowKind kind = ReadKind(sheet, row, path, diagnostics);
             string rawIndex = Cell(sheet, row, ColumnIndex);
+            int? index = null;
 
-            if (rawIndex.Length == 0)
+            if (kind is EpisodeRowKind.Dialogue)
             {
-                // 인덱스가 줄의 신원이라 없는 행은 표의 일부가 아니다.
-                // 다만 화자나 내용이 적혀 있다면 그건 설명문이 아니라 **버려지는 대사**다 —
-                // 조용히 넘기면 "여러 줄을 썼는데 안 나온다"가 된다(실사례). 크게 말한다.
-                bool looksLikeDialogue =
-                    Cell(sheet, row, ColumnSpeaker).Length > 0 ||
-                    Cell(sheet, row, ColumnText).Length > 0;
+                if (rawIndex.Length == 0)
+                {
+                    // 인덱스가 대사 줄의 신원이라 없는 행은 표의 일부가 아니다.
+                    // 다만 화자나 내용이 적혀 있다면 그건 설명문이 아니라 **버려지는 대사**다 —
+                    // 조용히 넘기면 "여러 줄을 썼는데 안 나온다"가 된다(실사례). 크게 말한다.
+                    bool looksLikeDialogue =
+                        Cell(sheet, row, ColumnSpeaker).Length > 0 ||
+                        Cell(sheet, row, ColumnText).Length > 0;
 
-                diagnostics.Add(Cell(
-                    looksLikeDialogue
-                        ? ChapterDiagnosticSeverity.Warning
-                        : ChapterDiagnosticSeverity.Info,
-                    ChapterDiagnosticCode.EpisodeIdBlank,
-                    path, sheet.Name, row, ColumnIndex,
-                    looksLikeDialogue
-                        ? "화자·내용이 있는데 인덱스(A열)가 비어 이 행을 건너뜁니다 — " +
-                          "A열에 번호를 적어 주세요(위 행보다 큰 수, 10·20·30 방식)."
-                        : "인덱스가 없어 표의 행으로 읽지 않았습니다."));
-                continue;
+                    diagnostics.Add(Cell(
+                        looksLikeDialogue
+                            ? ChapterDiagnosticSeverity.Warning
+                            : ChapterDiagnosticSeverity.Info,
+                        ChapterDiagnosticCode.EpisodeIdBlank,
+                        path, sheet.Name, row, ColumnIndex,
+                        looksLikeDialogue
+                            ? "화자·내용이 있는데 인덱스(C열)가 비어 이 행을 건너뜁니다 — " +
+                              "C열에 번호를 적어 주세요(위 행보다 큰 수, 10·20·30 방식)."
+                            : "인덱스가 없어 표의 행으로 읽지 않았습니다."));
+                    continue;
+                }
+
+                if (!int.TryParse(rawIndex, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture,
+                        out int parsedIndex))
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Error,
+                        ChapterDiagnosticCode.StatValueNotInteger,
+                        path, sheet.Name, row, ColumnIndex,
+                        $"인덱스 '{rawIndex}'가 정수가 아닙니다. 이 값이 대사 줄의 신원이므로 " +
+                        "숫자여야 합니다(10·20·30 방식 — G-5)."));
+                    continue;
+                }
+
+                if (seenIndexes.TryGetValue(parsedIndex, out int firstRow))
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Error,
+                        ChapterDiagnosticCode.EpisodeIdDuplicated,
+                        path, sheet.Name, row, ColumnIndex,
+                        $"인덱스 {parsedIndex}가 {firstRow}행과 중복입니다. 인덱스가 줄의 신원이라 " +
+                        "같은 번호가 둘이면 연출이 어느 줄에 붙는지 정해지지 않습니다."));
+                    continue;
+                }
+
+                seenIndexes[parsedIndex] = row;
+                index = parsedIndex;
             }
-
-            if (!int.TryParse(rawIndex, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture,
-                    out int index))
+            else if (rawIndex.Length > 0)
             {
+                // 블록 행에 남은 번호 (v14). <b>오류로 세우지 않는다</b> — 템플릿이 2~500행에
+                // 번호를 미리 깔아 두므로, 사람이 그 자리에 IF를 치는 순간 제 잘못도 아닌
+                // 빨간 줄을 보게 된다. 대신 <b>툴이 지운다</b>(소유자 결정 2026-08-24):
+                // <see cref="EpisodeWorkbookWriter.ClearBlockRowIndexes"/>가 동기화에서
+                // 그 칸을 비우고, 그 사실은 보고에 적힌다. 읽기는 순수 함수라 여기서 쓰지 않는다.
                 diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.StatValueNotInteger,
+                    ChapterDiagnosticSeverity.Info,
+                    ChapterDiagnosticCode.BlockRowIndexStray,
                     path, sheet.Name, row, ColumnIndex,
-                    $"인덱스 '{rawIndex}'가 정수가 아닙니다. 이 값이 줄의 신원이므로 " +
-                    "숫자여야 합니다(10·20·30 방식 — G-5)."));
-                continue;
+                    $"{Word(kind)} 행의 인덱스 '{rawIndex}'는 대사 순번이 아니므로 툴이 비웁니다 — " +
+                    "인덱스는 플레이어에게 전달되는 대사의 번호입니다(v14)."));
             }
-
-            if (seenIndexes.TryGetValue(index, out int firstRow))
-            {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.EpisodeIdDuplicated,
-                    path, sheet.Name, row, ColumnIndex,
-                    $"인덱스 {index}가 {firstRow}행과 중복입니다. 인덱스가 줄의 신원이라 " +
-                    "같은 번호가 둘이면 연출이 어느 줄에 붙는지 정해지지 않습니다."));
-                continue;
-            }
-
-            seenIndexes[index] = row;
 
             // v10 — 오름차순은 이제 <b>권고</b>다. 읽는 순서는 시트의 행 순서이고 인덱스는
             // 줄의 신원(연출·세이브가 매달리는 열쇠)일 뿐이다. 구판에서 오름차순이 규칙이었던
             // 이유는 IN/OUT이 인덱스로 구간의 앞뒤를 정했기 때문인데, 블록에는 그 일이 없다.
             // 이행기가 구간을 제자리로 옮길 때 번호를 그대로 두는 것도 이 완화 덕이다 —
             // 번호를 다시 매기면 그 줄에 달린 연출이 통째로 끊긴다.
-            if (index < previousIndex)
+            //
+            // ⚠ 블록 행은 이 검사에 참여하지 않는다 (v14) — 번호가 없으니 견줄 것이 없다.
+            if (index is { } current)
             {
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Info,
-                    ChapterDiagnosticCode.EpisodeIdDuplicated,
-                    path, sheet.Name, row, ColumnIndex,
-                    $"인덱스 {index}가 앞 행({previousIndex})보다 작습니다 — 읽는 순서는 " +
-                    "시트의 행 순서라 동작에는 지장이 없지만, 번호가 뒤죽박죽이면 사람이 읽기 어렵습니다."));
+                if (current < previousIndex)
+                {
+                    diagnostics.Add(Cell(
+                        ChapterDiagnosticSeverity.Info,
+                        ChapterDiagnosticCode.EpisodeIdDuplicated,
+                        path, sheet.Name, row, ColumnIndex,
+                        $"인덱스 {current}가 앞 행({previousIndex})보다 작습니다 — 읽는 순서는 " +
+                        "시트의 행 순서라 동작에는 지장이 없지만, 번호가 뒤죽박죽이면 사람이 읽기 어렵습니다."));
+                }
+
+                previousIndex = current;
             }
 
-            previousIndex = index;
-
-            EpisodeRowKind kind = ReadKind(sheet, row, path, diagnostics);
             string? lineId = Optional(sheet, row, ColumnLineId);
             string? conditionLabel = Optional(sheet, row, ColumnConditionLabel);
 
@@ -249,6 +285,7 @@ public static class EpisodeWorkbookReader
                 row);
 
             // 인덱스만 있고 아무것도 안 쓴 행은 표의 일부가 아니다 — 템플릿이 500행까지
+            // (아래 IsBlank는 대사 행만 고르므로 블록 행은 걸리지 않는다)
             // 미리 깔아 둔 자리라서, 여기서 거르지 않으면 빈자리가 대사로 세어져 엉뚱한
             // 오류를 낸다(실사례). 인덱스는 위의 중복·오름차순 검사에 이미 참여했다.
             if (parsed.IsBlank)

@@ -79,7 +79,7 @@ public sealed class EmptyEpisodeSyncTests : IDisposable
         using (var book = new ClosedXML.Excel.XLWorkbook(workbook))
         {
             ClosedXML.Excel.IXLWorksheet sheet = book.Worksheet("대본");
-            sheet.Cell(2, 1).SetValue(10);
+            sheet.Cell(2, 3).SetValue(10);   // v14 — 인덱스는 C열
             sheet.Cell(2, 5).SetValue("윌로");
             sheet.Cell(2, 6).SetValue("이제 한 줄 있다");
             book.Save();

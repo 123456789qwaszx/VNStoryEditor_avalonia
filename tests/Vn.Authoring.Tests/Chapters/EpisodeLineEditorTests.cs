@@ -164,16 +164,42 @@ public sealed class EpisodeLineEditorTests : IDisposable
     public void 조건_블록_행에는_쓰지_않는다()
     {
         // 화자·내용 두 칸만 열었다. IF·ENDIF 행에 글을 쓰면 리더가 그 블록을 다르게 읽는다.
+        //
+        // ⚠ v14에서 블록 행에는 <b>인덱스가 없으므로</b> 보통은 겨냥할 길조차 없다. 그래도
+        // 이 빗장은 살아 있어야 한다: 템플릿이 미리 깔아 둔 번호가 아직 안 치워진 순간이
+        // 실재하기 때문이다(툴이 지우기 <em>전</em>). 그 순간을 그대로 만들어 겨눈다.
         World world = Build();
 
-        EpisodeRow block = EpisodeWorkbookReader.Read(world.WorkbookPath).Rows
-            .First(row => row.Kind is not EpisodeRowKind.Dialogue);
+        int stray = StampStrayIndex(world.WorkbookPath, 9999);
 
         ChapterWriteResult result =
-            EpisodeWorkbookWriter.SetLine(world.WorkbookPath, block.Index, "라루", "밀어 넣기");
+            EpisodeWorkbookWriter.SetLine(world.WorkbookPath, stray, "라루", "밀어 넣기");
 
         Assert.False(result.Written);
         Assert.Contains("조건 블록은 엑셀에서 고칩니다", result.Failure);
+    }
+
+    /// <summary>
+    /// 첫 블록 행(IF·ENDIF)의 인덱스 칸에 번호를 박아 둔다 — 템플릿이 깔아 둔 번호가
+    /// 아직 안 치워진 상태를 손으로 만든다. 박은 번호를 돌려준다.
+    /// </summary>
+    private static int StampStrayIndex(string workbookPath, int index)
+    {
+        EpisodeRow block = EpisodeWorkbookReader.Read(workbookPath).Rows
+            .First(row => row.Kind is not EpisodeRowKind.Dialogue);
+
+        using (var book = new ClosedXML.Excel.XLWorkbook(workbookPath))
+        {
+            book.Worksheets.First(sheet =>
+                    sheet.Cell(1, 1).GetString().Trim() == "유형")
+                .Cell(block.SourceRow, 3)
+                .SetValue(index);
+
+            book.Save();
+        }
+
+        WorkbookParseCache.Clear();
+        return index;
     }
 
     [Fact]

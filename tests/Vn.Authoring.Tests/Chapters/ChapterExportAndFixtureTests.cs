@@ -140,10 +140,10 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
 
         WriteRows(Path.Combine(episodes, "main05.02.xlsx"),
         [
-            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
-            ["10", null, "ln_0001", null, "윌로", "한 줄"],
-            ["70", "CHOICE", "ln_0006", null, null, null],
-            ["71", "OPTION", "ln_0007", null, null, "하나뿐인 선택"]
+            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
+            [null, null, "10", "ln_0001", "윌로", "한 줄"],
+            ["CHOICE", null, "70", "ln_0006", null, null],
+            ["OPTION", null, "71", "ln_0007", null, "하나뿐인 선택"]
         ]);
 
         ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
@@ -156,7 +156,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.All(deprecated, item =>
         {
             Assert.Equal(ChapterDiagnosticSeverity.Error, item.Severity);
-            Assert.Equal("B", item.Column);
+            Assert.Equal("A", item.Column);
             Assert.Contains("`선택지` 시트", item.Message);
             Assert.Contains("`간선` 시트", item.Message);
         });

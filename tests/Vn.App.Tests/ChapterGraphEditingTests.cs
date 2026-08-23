@@ -750,21 +750,22 @@ public sealed class ChapterGraphEditingTests
 
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
             sheet.Cell(1, column).SetValue(headers[column - 1]);
         }
 
-        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");
-        sheet.Cell(3, 1).SetValue(20); sheet.Cell(3, 3).SetValue("CHOICE");
+        // v14 자리 — 유형(1) 조건라벨(2) 인덱스(3) LineId(4) 화자(5) 내용(6).
+        sheet.Cell(2, 3).SetValue(10); sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");
+        sheet.Cell(3, 3).SetValue(20); sheet.Cell(3, 1).SetValue("CHOICE");
 
         for (int index = 0; index < options.Length; index++)
         {
             int row = 4 + index;
-            sheet.Cell(row, 1).SetValue(30 + index * 10);
-            sheet.Cell(row, 3).SetValue("OPTION");
+            sheet.Cell(row, 3).SetValue(30 + index * 10);
+            sheet.Cell(row, 1).SetValue("OPTION");
             sheet.Cell(row, 6).SetValue(options[index]);
         }
 

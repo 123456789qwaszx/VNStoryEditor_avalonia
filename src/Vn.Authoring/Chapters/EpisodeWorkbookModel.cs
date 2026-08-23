@@ -37,11 +37,21 @@ public enum EpisodeRowKind
 /// 이제 <c>IF</c>행과 <c>ENDIF</c>행이 그 사이를 감싼다. 범위가 눈에 보이고, 중첩이
 /// 자연스럽고, 세 열이 사라졌다.
 /// </summary>
-/// <param name="Index">A열. 10·20·30 방식(G-5). 줄의 신원이다.</param>
-/// <param name="LineId">B열. 대사 행만 갖는다. 비어 있으면 아직 ID가 없는 새 행이다.</param>
+/// <param name="Index">
+/// C열. 10·20·30 방식(G-5). 대사 줄의 신원이다.
+///
+/// ⚠ <b>대사 행만 갖는다 (v14, 2026-08-24 소유자).</b> 블록 행(IF·ELSEIF·ENDIF)에서는
+/// 언제나 <c>null</c>이다 — 셀에 무엇이 적혀 있든 리더가 안 싣는다. 그 번호의 뜻이
+/// <i>"플레이어에게 몇 번째로 전달되는 대사인가"</i>이기 때문이다: 구조를 그리는 행이
+/// 번호를 가지면 10·20·30이 대사 순번이 아니라 행 순번이 되어 버린다.
+///
+/// 그래서 <c>Index</c>를 쓰는 자리는 전부 <c>IsLine</c>이 참인 줄이다. 널이면 그 코드가
+/// 대사 아닌 행을 대사처럼 다루고 있다는 뜻이다.
+/// </param>
+/// <param name="LineId">D열. 대사 행만 갖는다. 비어 있으면 아직 ID가 없는 새 행이다.</param>
 /// <param name="SourceRow">엑셀 행 번호. 진단이 자리를 짚는 근거다.</param>
 public sealed record EpisodeRow(
-    int Index,
+    int? Index,
     string? LineId,
     EpisodeRowKind Kind,
     string? ConditionLabel,
@@ -61,6 +71,14 @@ public sealed record EpisodeRow(
         Speaker.Length == 0 &&
         Text.Length == 0 &&
         ConditionLabel is null;
+
+    /// <summary>
+    /// 이 줄의 번호 — <b>대사 행에서만 부른다</b>. 블록 행에서 부르면 터진다:
+    /// 조용히 0을 내주면 그 0이 <c>ExcelLineMap</c>·연출·세이브로 흘러 들어가
+    /// "어느 줄인지 모르는 줄"이 생긴다.
+    /// </summary>
+    public int LineIndex => Index ?? throw new InvalidOperationException(
+        $"{SourceRow}행은 {Kind} 행이라 인덱스가 없습니다 — 인덱스는 대사 줄의 번호입니다(v14).");
 }
 
 /// <summary>

@@ -35,15 +35,15 @@ public sealed class EpisodeBlockRowGuardTests : IDisposable
     // ── ① 엑셀이 손에서 막는다 ──────────────────────────────────────────────
 
     [Fact]
-    public void 새_대본에_LineId와_내용_빗장이_걸려_있다()
+    public void 새_대본에_인덱스_LineId_내용_빗장이_걸려_있다()
     {
         EpisodeLibrary.EnsureWorkbook(_folder, "ep1");
 
         using var book = new XLWorkbook(EpisodeLibrary.FindExisting(_folder, "ep1")!);
         IXLWorksheet sheet = book.Worksheets.First();
 
-        // LineId(C) · 내용(F)에 사용자 정의 검증이 있다.
-        foreach (int column in new[] { 3, 6 })
+        // v14 — 인덱스(C) · LineId(D) · 내용(F) 셋에 사용자 정의 검증이 있다.
+        foreach (int column in new[] { 3, 4, 6 })
         {
             Assert.Contains(
                 sheet.DataValidations,
@@ -57,7 +57,7 @@ public sealed class EpisodeBlockRowGuardTests : IDisposable
     [Fact]
     public void 빗장은_유형이_비었거나_대사일_때만_통과시킨다()
     {
-        // 수식이 유형 열(B)을 가리켜야 한다 — 열이 옮겨 가면 여기가 먼저 깨진다.
+        // 수식이 유형 열(A)을 가리켜야 한다 — 열이 옮겨 가면 여기가 먼저 깨진다.
         EpisodeLibrary.EnsureWorkbook(_folder, "ep1");
 
         using var book = new XLWorkbook(EpisodeLibrary.FindExisting(_folder, "ep1")!);
@@ -65,7 +65,7 @@ public sealed class EpisodeBlockRowGuardTests : IDisposable
         IXLDataValidation guard = book.Worksheets.First().DataValidations
             .First(validation => validation.AllowedValues == XLAllowedValues.Custom);
 
-        Assert.Contains("$B2", guard.Value);
+        Assert.Contains("$A2", guard.Value);
         Assert.Contains("대사", guard.Value);
         Assert.True(guard.IgnoreBlanks, "빈칸은 언제나 통과해야 한다 — 막는 것은 적는 것뿐이다");
     }
@@ -80,7 +80,7 @@ public sealed class EpisodeBlockRowGuardTests : IDisposable
     {
         ChapterDiagnostic problem = SingleError(Block(kind, lineId: "ln_9999"), "라인이 아니므로");
 
-        Assert.Equal("C", problem.Column);
+        Assert.Equal("D", problem.Column);   // v14 — LineId는 D열
     }
 
     [Theory]
@@ -103,9 +103,9 @@ public sealed class EpisodeBlockRowGuardTests : IDisposable
         // 빗장이 넓어지면 정상 대사가 막힌다 — 그 반대쪽도 함께 못 박는다.
         var rows = new string?[][]
         {
-            ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
-            ["10", null, "ln_0001", null, "라루", "평범한 대사"],
-            ["20", "대사", "ln_0002", null, "윌로", "유형을 적은 대사"]
+            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
+            [null, null, "10", "ln_0001", "라루", "평범한 대사"],
+            ["대사", null, "20", "ln_0002", "윌로", "유형을 적은 대사"]
         };
 
         Assert.Empty(Read(rows).Errors);
@@ -117,26 +117,29 @@ public sealed class EpisodeBlockRowGuardTests : IDisposable
     private static string?[][] Block(
         string kind, string? lineId = null, string? speaker = null, string? text = null)
     {
+        // v14 자리 — 유형 · 조건라벨 · 인덱스 · LineId · 화자 · 내용.
+        // ⚠ 블록 행에는 인덱스를 안 적는다. 적어도 리더가 안 싣지만, 여기서 적으면
+        //    "블록 행이 번호를 갖는다"는 옛 그림이 픽스처에 남는다.
         string?[] target = kind switch
         {
-            "IF" => ["20", "IF", lineId, "신뢰높음", speaker, text],
-            "ELSEIF" => ["20", "ELSEIF", lineId, "신뢰높음", speaker, text],
-            _ => ["20", "ENDIF", lineId, null, speaker, text]
+            "IF" => ["IF", "신뢰높음", null, lineId, speaker, text],
+            "ELSEIF" => ["ELSEIF", "신뢰높음", null, lineId, speaker, text],
+            _ => ["ENDIF", null, null, lineId, speaker, text]
         };
 
         return kind == "ENDIF"
             ?
             [
-                ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
-                ["10", "IF", null, "신뢰높음", null, null],
+                ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
+                ["IF", "신뢰높음", null, null, null, null],
                 target
             ]
             :
             [
-                ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"],
-                ["10", "IF", null, "신뢰높음", null, null],
+                ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
+                ["IF", "신뢰높음", null, null, null, null],
                 target,
-                ["30", "ENDIF", null, null, null, null]
+                ["ENDIF", null, null, null, null, null]
             ];
     }
 

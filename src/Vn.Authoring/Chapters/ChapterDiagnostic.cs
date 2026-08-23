@@ -40,6 +40,14 @@ public enum ChapterDiagnosticCode
     FixtureChoiceMalformed,
     EndingKeyBlank,
 
+    /// <summary>
+    /// v14 — 블록 행(IF·ELSEIF·ENDIF)에 대사 순번이 남아 있다. <b>오류가 아니라 할 일이다</b>:
+    /// 템플릿이 미리 깔아 둔 번호라 사람의 잘못이 아니고, 동기화가 그 칸을 비운다
+    /// (`EpisodeSyncService.TidyBlockRows` → `EpisodeWorkbookWriter.ClearBlockRowIndexes`).
+    /// ⚠ 이 코드가 <b>치울 것을 찾는 열쇠</b>다 — 글자로 찾지 않는다.
+    /// </summary>
+    BlockRowIndexStray,
+
     /// <summary>v11 — `종류`와 `선택지` 문구가 서로 어긋난다.</summary>
     EdgeKindMismatch,
 

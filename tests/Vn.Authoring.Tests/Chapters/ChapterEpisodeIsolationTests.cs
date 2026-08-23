@@ -143,14 +143,14 @@ public sealed class ChapterEpisodeIsolationTests : IDisposable
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
         for (int column = 0; column < headers.Length; column++)
         {
             sheet.Cell(1, column + 1).SetValue(headers[column]);
         }
 
-        sheet.Cell(2, 1).SetValue(10);
+        sheet.Cell(2, 3).SetValue(10);   // v14 — 인덱스는 C열
         sheet.Cell(2, 5).SetValue(speaker);
         sheet.Cell(2, 6).SetValue(text);
 

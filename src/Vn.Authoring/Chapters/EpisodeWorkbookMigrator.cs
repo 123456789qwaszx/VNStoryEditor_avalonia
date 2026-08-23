@@ -4,11 +4,16 @@ using ClosedXML.Excel;
 namespace Vn.Authoring.Chapters;
 
 /// <summary>
-/// 옛 대본 워크북을 지금 규격(v13 — 인덱스·<b>유형</b>·LineId·조건라벨·화자·내용)으로 옮긴다.
+/// 옛 대본 워크북을 지금 규격(v14 — <b>유형·조건라벨</b>·인덱스·LineId·화자·내용)으로 옮긴다.
 ///
 /// 두 길이 있다:
 ///   ① <b>구판 9열</b>(인덱스·LineId·유형·태그·조건라벨·IN·OUT·화자·내용) — 통째로 다시 깐다.
-///   ② <b>v10~v12의 6열</b>(LineId가 유형보다 앞) — <b>두 열만 맞바꾼다</b>(2026-08-24).
+///   ② <b>여섯 칸이 다 있는데 순서만 다른 시트</b> — 열을 <b>제자리로 옮긴다</b>.
+///
+/// ②가 하나의 길인 것이 중요하다. v10(LineId 먼저) · v13(인덱스 먼저) · v14가 전부 <b>같은
+/// 여섯 낱말의 순열</b>이라, 짝마다 맞바꾸기를 따로 쓰면 규격이 한 번 더 움직일 때마다
+/// 경우가 배로 는다. 대신 <b>머리글을 읽어 어느 칸이 무엇인지 알아낸 다음</b> v14 자리로
+/// 통째로 옮긴다 — 다음 재배치도 이 코드가 그대로 처리한다.
 ///
 /// <b>구간을 제자리로 옮긴다.</b> 구판은 <c>IF</c>의 <c>IN</c>이 표 아래쪽 어딘가의 구간
 /// (<c>INPUT</c>…<c>OUT</c>)을 가리켰다. 이행은 그 구간의 행들을 <c>IF</c> 바로 아래로
@@ -36,20 +41,15 @@ public static class EpisodeWorkbookMigrator
     private static readonly string[] LegacyHeaders =
         ["인덱스", "LineId", "유형", "태그", "조건라벨", "IN", "OUT", "화자", "내용"];
 
-    /// <summary>지금 규격 (v13, 2026-08-24) — <b>유형이 LineId보다 앞</b>.</summary>
+    /// <summary>지금 규격 (v14, 2026-08-24) — 구조 두 칸이 앞, 대사 네 칸이 뒤.</summary>
     private static readonly string[] Headers =
-        ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
-    /// <summary>
-    /// v10~v12의 6열 — 같은 여섯 칸인데 <b>LineId가 유형보다 앞</b>이었다.
-    /// 2026-08-24에 순서가 뒤집혔고(소유자), 그 파일들은 두 열만 맞바꾸면 된다.
-    /// </summary>
-    private static readonly string[] HeadersV10 =
-        ["인덱스", "LineId", "유형", "조건라벨", "화자", "내용"];
-
-    private const int ColumnIndex = 1;
-    private const int ColumnKind = 2;
-    private const int ColumnLineId = 3;
+    private const int ColumnKind = 1;
+    private const int ColumnConditionLabel = 2;
+    private const int ColumnIndex = 3;
+    private const int ColumnLineId = 4;
+    private const int ColumnSpeaker = 5;
     private const int ColumnText = 6;
 
     private const int TemplateRows = 500;
@@ -70,7 +70,7 @@ public static class EpisodeWorkbookMigrator
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var probe = new XLWorkbook(stream);
 
-            if (FindLegacySheet(probe) is null && FindV10Sheet(probe) is null)
+            if (FindLegacySheet(probe) is null && FindMisorderedSheet(probe) is null)
             {
                 WorkbookMigrationGate.MarkCurrent(path);
                 return MigrationResult.NotNeeded;
@@ -96,7 +96,7 @@ public static class EpisodeWorkbookMigrator
 
             using var workbook = new XLWorkbook(memory);
 
-            // 구판 9열은 통째로 다시 깐다. v10 6열은 <b>두 열만 맞바꾸면</b> 되므로
+            // 구판 9열은 통째로 다시 깐다. 순서만 다른 6열은 <b>열만 제자리로</b> 옮기므로
             // 행을 건드리지 않는다 — 옮길 이유가 없는 것을 옮기면 그만큼 틀릴 자리가 는다.
             if (FindLegacySheet(workbook) is { } legacy)
             {
@@ -104,7 +104,7 @@ public static class EpisodeWorkbookMigrator
             }
             else
             {
-                SwapKindAndLineId(FindV10Sheet(workbook)!);
+                ReorderColumns(FindMisorderedSheet(workbook)!);
             }
 
             workbook.SaveAs(path);
@@ -124,8 +124,29 @@ public static class EpisodeWorkbookMigrator
     private static IXLWorksheet? FindLegacySheet(XLWorkbook workbook) =>
         FindByHeaders(workbook, LegacyHeaders);
 
-    private static IXLWorksheet? FindV10Sheet(XLWorkbook workbook) =>
-        FindByHeaders(workbook, HeadersV10);
+    /// <summary>
+    /// 여섯 낱말이 다 있는데 <b>자리가 다른</b> 시트 — v10·v13, 그리고 앞으로 있을 재배치.
+    ///
+    /// 낱말의 <b>집합</b>으로 알아본다. 순서를 하나하나 적어 두면 규격이 움직일 때마다
+    /// 경우가 늘고, 그중 하나를 빠뜨리면 그 파일은 <b>조용히 안 옮겨진다</b> — 리더가 시트를
+    /// 못 찾아 "머리글이 규격과 맞는 시트가 없습니다"만 남는다.
+    /// </summary>
+    private static IXLWorksheet? FindMisorderedSheet(XLWorkbook workbook) =>
+        workbook.Worksheets.FirstOrDefault(sheet =>
+        {
+            string[] found = Headers
+                .Select((_, offset) => Text(sheet, 1, offset + 1))
+                .ToArray();
+
+            // 이미 제자리면 옮길 것이 없다.
+            if (found.SequenceEqual(Headers, StringComparer.Ordinal))
+            {
+                return false;
+            }
+
+            return found.Order(StringComparer.Ordinal)
+                .SequenceEqual(Headers.Order(StringComparer.Ordinal), StringComparer.Ordinal);
+        });
 
     private static IXLWorksheet? FindByHeaders(XLWorkbook workbook, string[] headers) =>
         workbook.Worksheets.FirstOrDefault(sheet =>
@@ -134,30 +155,55 @@ public static class EpisodeWorkbookMigrator
                 .All(matches => matches));
 
     /// <summary>
-    /// v10 → v13 — <b>유형과 LineId 두 열만 맞바꾼다</b> (2026-08-24).
+    /// 여섯 열을 v14 자리로 옮긴다 — v10(LineId 먼저)·v13(인덱스 먼저) 둘 다 이 길이다.
     ///
-    /// 행은 건드리지 않는다. 인덱스가 줄의 신원이고 프로젝트의 <c>ExcelLineMap</c>이 그
-    /// 번호로 연출을 붙들고 있으므로, 옮길 이유가 없는 것을 옮기면 그만큼 틀릴 자리가 는다.
+    /// 행은 건드리지 않는다. 인덱스가 대사 줄의 신원이고 프로젝트의 <c>ExcelLineMap</c>이
+    /// 그 번호로 연출을 붙들고 있으므로, 옮길 이유가 없는 것을 옮기면 그만큼 틀릴 자리가 는다.
     ///
-    /// ⚠ 서식도 함께 간다 — 회색 배경은 <b>LineId를 따라</b> C열로. 그 회색이 "여기는
-    /// 유물이니 손대지 마세요"라는 표시라서, 열만 옮기고 색을 두면 유형 칸이 유물처럼 보인다.
+    /// ⚠ <b>먼저 다 읽고 나서 쓴다.</b> 한 칸씩 옮기면 아직 안 읽은 칸을 덮어 값이 사라진다 —
+    /// 순열이라 제자리가 아닌 열은 반드시 다른 열의 자리를 뺏는다.
+    ///
+    /// ⚠ <b>빈 값도 쓴다.</b> `Set`은 빈 값을 건너뛰므로(새로 깔 때는 그게 맞다) 여기서
+    /// 쓰면 옛 값이 그 자리에 남는다. v13 이행에서 실제로 그렇게 났다: 대사 행은 유형이
+    /// 비어 있어서 옛 값(LineId)이 그대로 남고 새 자리에도 같은 값이 복사됐다.
+    ///
+    /// ⚠ 서식도 따라간다 — 회색 배경은 <b>LineId를 따라</b> 새 자리로. 그 회색이 "여기는
+    /// 유물이니 손대지 마세요"라는 표시라서, 열만 옮기고 색을 두면 엉뚱한 칸이 유물처럼 보인다.
     /// 드롭다운·빗장은 다음 어휘 밀기가 새 자리에 다시 건다(`EpisodeLibrary.PushVocabulary`).
+    ///
+    /// 옮긴 뒤 <b>블록 행에 남은 인덱스를 비운다</b> (v14) — 어차피 그 행을 지나가는 김에.
+    /// 동기화의 `ClearBlockRowIndexes`가 못 잡은 것을 여기서 또 잡는 것이 아니라, 이행 직후
+    /// 사람이 파일을 열었을 때 이미 규격대로 보이게 하기 위해서다.
     /// </summary>
-    private static void SwapKindAndLineId(IXLWorksheet sheet)
+    private static void ReorderColumns(IXLWorksheet sheet)
     {
-        int last = sheet.LastRowUsed()?.RowNumber() ?? 1;
+        // 옛 시트에서 각 낱말이 어느 칸에 있었나 — 머리글이 답이다.
+        var source = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        for (int row = 1; row <= Math.Max(last, TemplateRows); row++)
+        for (int column = 1; column <= Headers.Length; column++)
         {
-            string lineId = Text(sheet, row, ColumnKind);       // 옛 B열 = LineId
-            string kind = Text(sheet, row, ColumnLineId);       // 옛 C열 = 유형
+            source[Text(sheet, 1, column)] = column;
+        }
 
-            // ⚠ <b>덮어쓰기가 아니라 맞바꾸기다</b> — 빈 값도 써야 한다. `Set`은 빈 값을
-            // 건너뛰므로(새로 깔 때는 그게 맞다) 여기서 쓰면 옛 값이 그 자리에 남는다:
-            // 대사 행은 유형이 비어 있어서 B에 LineId가 <b>그대로 남고</b> C에도 같은 값이
-            // 복사됐다. 견본 워크북에서 실제로 그렇게 났다.
-            Overwrite(sheet, row, ColumnKind, kind);
-            Overwrite(sheet, row, ColumnLineId, lineId);
+        int last = Math.Max(sheet.LastRowUsed()?.RowNumber() ?? 1, TemplateRows);
+
+        for (int row = 2; row <= last; row++)
+        {
+            // ⚠ 한 행을 통째로 읽고 나서 쓴다 — 위 주석의 그 이유다.
+            string[] values = Headers
+                .Select(header => Text(sheet, row, source[header]))
+                .ToArray();
+
+            for (int column = 1; column <= Headers.Length; column++)
+            {
+                Overwrite(sheet, row, column, values[column - 1]);
+            }
+
+            // 블록 행에는 인덱스가 없다 (v14).
+            if (IsBlockRow(Text(sheet, row, ColumnKind)))
+            {
+                Overwrite(sheet, row, ColumnIndex, string.Empty);
+            }
         }
 
         // 머리글은 굵게·회색으로 다시 — 위 루프가 글자만 옮겼다.
@@ -169,14 +215,23 @@ public static class EpisodeWorkbookMigrator
             cell.Style.Fill.SetBackgroundColor(XLColor.FromHtml("#E8EAED"));
         }
 
-        // 옛 자리(B)의 회색을 걷고 새 자리(C)에 입힌다.
-        sheet.Column(ColumnKind).Style.Fill.SetBackgroundColor(XLColor.NoColor);
+        // 옛 자리의 회색을 전부 걷고 새 LineId 자리에만 입힌다.
+        for (int column = 1; column <= Headers.Length; column++)
+        {
+            sheet.Column(column).Style.Fill.SetBackgroundColor(XLColor.NoColor);
+        }
+
         sheet.Column(ColumnLineId).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
+        sheet.Column(ColumnText).Width = 50;
 
         // 낡은 자리의 검증을 턴다 — 새 자리의 것은 어휘 밀기가 건다.
         sheet.DataValidations.Delete(validation => validation.Ranges.Any(range =>
-            range.RangeAddress.FirstAddress.ColumnNumber is ColumnKind or ColumnLineId));
+            range.RangeAddress.FirstAddress.ColumnNumber <= Headers.Length));
     }
+
+    /// <summary>흐름만 그리는 행인가 — 인덱스·LineId·화자·내용을 갖지 않는 행.</summary>
+    private static bool IsBlockRow(string kind) =>
+        kind is "IF" or "ELSEIF" or "ELSE IF" or "ENDIF" or "END";
 
     // ── 읽기 ────────────────────────────────────────────────────────────────
 
@@ -340,11 +395,19 @@ public static class EpisodeWorkbookMigrator
             Moved row = rows[offset];
             int number = offset + 2;
 
-            sheet.Cell(number, 1).SetValue(row.Index);
-            Set(sheet, number, ColumnKind, row.Kind);       // v13 — 유형이 앞이다
-            Set(sheet, number, ColumnLineId, row.LineId);
-            Set(sheet, number, 4, row.ConditionLabel);
-            Set(sheet, number, 5, row.Speaker);
+            Set(sheet, number, ColumnKind, row.Kind);              // v14 — 유형이 맨 앞
+            Set(sheet, number, ColumnConditionLabel, row.ConditionLabel);
+
+            // ⚠ 블록 행에는 번호를 안 적는다 (v14). 구판에서는 ENDIF에도 번호를 지어
+            // 줬는데(`NextFreeIndex`), 그 번호는 <b>구간을 옮기며 자리를 잡으려고</b>
+            // 잠깐 쓰는 것이지 대사 순번이 아니다. 시트에는 남기지 않는다.
+            if (!IsBlockRow(row.Kind))
+            {
+                sheet.Cell(number, ColumnIndex).SetValue(row.Index);
+                Set(sheet, number, ColumnLineId, row.LineId);
+            }
+
+            Set(sheet, number, ColumnSpeaker, row.Speaker);
             Set(sheet, number, ColumnText, row.Text);
         }
 
@@ -353,7 +416,7 @@ public static class EpisodeWorkbookMigrator
 
         for (int number = rows.Count + 2; number <= TemplateRows; number++)
         {
-            sheet.Cell(number, 1).SetValue(next);
+            sheet.Cell(number, ColumnIndex).SetValue(next);
             next += 10;
         }
 

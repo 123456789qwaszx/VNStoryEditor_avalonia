@@ -345,16 +345,17 @@ public sealed class ChapterRailTests
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["인덱스", "유형", "LineId", "조건라벨", "화자", "내용"];
+        string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
             sheet.Cell(1, column).SetValue(headers[column - 1]);
         }
 
-        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");
+        // v14 자리 — 인덱스는 C열(3)이다.
+        sheet.Cell(2, 3).SetValue(10); sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");
         // v10 — 대본은 선택지를 선언하지 않는다. 칩의 주인은 챕터 `간선` 시트다.
-        sheet.Cell(3, 1).SetValue(20); sheet.Cell(3, 5).SetValue("라루"); sheet.Cell(3, 6).SetValue("둘째 줄");
+        sheet.Cell(3, 3).SetValue(20); sheet.Cell(3, 5).SetValue("라루"); sheet.Cell(3, 6).SetValue("둘째 줄");
         workbook.SaveAs(path);
     }
 

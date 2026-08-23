@@ -249,7 +249,7 @@ public sealed class ChapterGraphSyncViewTests
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook(path);
         ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets
-            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스");
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형");
 
         sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
         sheet.Cell(2, 6).SetValue(text);      // F · 내용
@@ -419,8 +419,8 @@ public sealed class ChapterGraphSyncViewTests
         using var memory = new MemoryStream(File.ReadAllBytes(path));
         using var workbook = new ClosedXML.Excel.XLWorkbook(memory);
         ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets.First();
-        sheet.Cell(2, 1).SetValue(10);
-        sheet.Cell(2, 2).SetValue("IF");
+        // v14 자리 — 유형(1)이 IF인데 화자·내용을 적었다. 블록 행은 흐름만 그린다.
+        sheet.Cell(2, 1).SetValue("IF");
         sheet.Cell(2, 5).SetValue("신뢰높음");
         sheet.Cell(2, 6).SetValue(900);   // 없는 구간을 가리킨다
         workbook.SaveAs(path);
