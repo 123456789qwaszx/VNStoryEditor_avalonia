@@ -334,13 +334,22 @@ DialogueEntryId = "Story_" + SanitizeNodeName(대사엔트리)
 **G-4. `Ked.Presentation.Core` — 패키지화를 기다린다 (소유자 방침, 2026-08-18).** 소스째
 복사하는 지금 방식은 **최종적으로 패키지로 가져오기로 했으므로 재복사로 때우지 않는다.**
 
-**실측 갱신 (2026-08-23)** — 줄바꿈을 무시하고 파일 단위로 대조한 결과:
+**실측 갱신 (2026-08-23, 동기화 후)** — 줄바꿈을 무시하고 파일 단위로 대조한 결과:
 
 | | |
 |---|---|
-| 같음 | **38 파일** |
-| **실질 갈림** | **1 파일** — `Tuning/PortraitDimensionsDto.cs` |
+| 같음 | **39 파일 (전부)** |
+| 실질 갈림 | **0** ✅ |
 | 저쪽에만 | `Tests/EditMode/` 24 파일 — **테스트는 안 옮긴다.** 정상 |
+
+⚠ **코드만으로는 반쪽이었다.** 런타임이 2026-08-21에 초상 에셋을 폴더 규약으로 옮기며
+**코드와 튜닝 덤프를 함께** 바꿨는데, 툴은 둘 다 못 받았다. `PortraitDimensionsDto.cs`만
+맞추면 덤프가 옛 규약(`"variant": "parkeunseol_a"`)이라 조회가 전부 실패한다. 그래서
+`tests/Vn.Authoring.Tests/TuningFixtures/ExportedTuning/`의 덤프 넷도 같은 내보내기
+(런타임 `ExportedTuning/`, 2026-08-21T14:00)로 맞췄다 —
+`portrait-dimensions.json` · `rig-schemas.json` · `export-report.json` · `schema.md`.
+
+**교훈: 이 사본의 단위는 파일이 아니라 "한 번의 내보내기"다.** 코드와 덤프는 같이 움직인다.
 
 이 문서가 적어 두었던 *"런타임에만 있는 파일 7개"*(`StageReducer.{Placement,Portrait,Shot,Show,Slot,Staging}.cs`·
 `PortraitSizingReduction.cs`)는 **낡았다 — 일곱 다 넘어와 있다.**

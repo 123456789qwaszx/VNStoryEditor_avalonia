@@ -184,12 +184,24 @@ public class CoreStageFoldTests
     [Fact]
     public void 골든_치수_없는_캐릭터는_보완_폴드가_기존_의미로_접는다()
     {
-        // "laru"는 치수 덤프에 없다 — 코어는 사이징 진단을 남기고, 화면 정보는 보완 폴드가
+        // 치수 덤프에 없는 캐릭터 — 코어는 사이징 진단을 남기고, 화면 정보는 보완 폴드가
         // 기존 의미(관대한 표시)로 접는다. 골든이 그 동등성을 고정한다.
+        //
+        // ⚠ 전제를 테스트가 스스로 말한다 (2026-08-23). 예전에는 `laru`를 썼는데 런타임이
+        // 덤프를 다시 내면서 `laru`가 **생겼고**, 그때 이 테스트가 "Unhandled가 비었다"로만
+        // 넘어져 원인이 안 보였다. 덤프는 저쪽이 소유하므로 언제든 또 는다.
+        const string absentCharacter = "noportrait";
+
+        Assert.DoesNotContain(
+            absentCharacter,
+            File.ReadAllText(Path.Combine(FixtureDirectory, "portrait-dimensions.json")),
+            StringComparison.Ordinal);
+
         PresentationResultCommand[] setup =
         [
             Command("char_rig_cast.slot", ("slotKey", "c1")),
-            Command("char_rig_cast.cast", ("slot", "c1"), ("characterKey", "laru"), ("emotionKey", "2"))
+            Command("char_rig_cast.cast", ("slot", "c1"),
+                ("characterKey", absentCharacter), ("emotionKey", "2"))
         ];
 
         MiniStageFoldLine[] lines =

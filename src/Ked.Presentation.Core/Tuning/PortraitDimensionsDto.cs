@@ -8,20 +8,20 @@ namespace Ked.Presentation.Core
     ///
     /// 조회 규약은 런타임 PortraitResolver를 그대로 따른다. 그게 요점이다 —
     /// 폴드가 다른 스프라이트를 고르면 폭이 달라지고, 그건 곧 불일치다.
-    ///   · 키 정규화: 캐릭터 소문자 · 변형은 **마지막 글자만**(`body_b` → `b`) · 표정 2자리
+    ///   · 키 정규화: 캐릭터 소문자 · 변형은 **문자열 전체**(`school` ≠ `casual`) · 표정 2자리
     ///   · 중복 키는 **먼저 들어온 것이 이긴다** (PortraitResolver의 TryAdd와 같다)
-    ///   · 정확 일치 실패 시 (캐릭터, 'a', "01")로 한 번 물러선다
+    ///   · 정확 일치 실패 시 (캐릭터, "a", "01")로 한 번 물러선다
     /// </summary>
     [Serializable]
     public sealed class PortraitDimensionsFileDto
     {
         /// <summary>PortraitResolver.DefaultVariant. 변형 인자가 없을 때 서는 자리.</summary>
-        public const string DefaultVariantKey = "a";
+        public const string DefaultVariantKey = PortraitKeyNormalizer.DefaultVariantKey;
 
         public string sourceAsset;
         public List<PortraitDimensionDto> entries;
 
-        [NonSerialized] private Dictionary<(string, char, string), PortraitDimensionDto> _index;
+        [NonSerialized] private Dictionary<(string, string, string), PortraitDimensionDto> _index;
 
         /// <summary>
         /// 종횡비(가로/세로). 사이징이 필요로 하는 유일한 값이다.
@@ -42,7 +42,7 @@ namespace Ked.Presentation.Core
             if (string.IsNullOrEmpty(emotionKey))
                 emotionKey = PortraitKeyNormalizer.DefaultEmotionCode;
 
-            char variantSuffix = PortraitKeyNormalizer.VariantSuffix(variantKey);
+            string variant = PortraitKeyNormalizer.VariantKey(variantKey);
             string emotionCode = PortraitKeyNormalizer.EmotionCode(emotionKey);
             string character = PortraitKeyNormalizer.CharacterKey(characterKey);
 
@@ -54,13 +54,13 @@ namespace Ked.Presentation.Core
 
             EnsureIndex();
 
-            if (!_index.TryGetValue((character, variantSuffix, emotionCode), out PortraitDimensionDto entry) &&
-                !_index.TryGetValue((character, PortraitKeyNormalizer.DefaultVariantSuffix,
+            if (!_index.TryGetValue((character, variant, emotionCode), out PortraitDimensionDto entry) &&
+                !_index.TryGetValue((character, PortraitKeyNormalizer.DefaultVariantKey,
                     PortraitKeyNormalizer.DefaultEmotionCode), out entry))
             {
                 reason =
-                    $"초상 치수가 없다: 캐릭터='{character}', 변형='{variantSuffix}', 표정='{emotionCode}' " +
-                    $"(폴백 '{PortraitKeyNormalizer.DefaultVariantSuffix}'/" +
+                    $"초상 치수가 없다: 캐릭터='{character}', 변형='{variant}', 표정='{emotionCode}' " +
+                    $"(폴백 '{PortraitKeyNormalizer.DefaultVariantKey}'/" +
                     $"'{PortraitKeyNormalizer.DefaultEmotionCode}'도 없다)";
 
                 return false;
@@ -82,7 +82,7 @@ namespace Ked.Presentation.Core
             if (_index != null)
                 return;
 
-            _index = new Dictionary<(string, char, string), PortraitDimensionDto>();
+            _index = new Dictionary<(string, string, string), PortraitDimensionDto>();
 
             if (entries == null)
                 return;
@@ -96,7 +96,7 @@ namespace Ked.Presentation.Core
 
                 var key = (
                     PortraitKeyNormalizer.CharacterKey(entry.character),
-                    PortraitKeyNormalizer.VariantSuffix(entry.variant),
+                    PortraitKeyNormalizer.VariantKey(entry.variant),
                     PortraitKeyNormalizer.EmotionCode(entry.emotion));
 
                 // 먼저 들어온 것이 이긴다 — PortraitResolver가 중복 키를 버리는 방향과 같다.
@@ -124,18 +124,19 @@ namespace Ked.Presentation.Core
     /// </summary>
     public static class PortraitKeyNormalizer
     {
-        public const char DefaultVariantSuffix = 'a';
+        public const string DefaultVariantKey = "a";
         public const string DefaultEmotionCode = "01";
 
         public static string CharacterKey(string key) => (key ?? "").Trim().ToLowerInvariant();
 
-        /// <summary>변형 키의 **마지막 글자**가 곧 접미사다 (`a` → 'a', `body_b` → 'b').</summary>
-        public static char VariantSuffix(string variantKey)
-        {
-            variantKey = (variantKey ?? "").Trim().ToLowerInvariant();
-
-            return variantKey.Length == 0 ? '\0' : variantKey[variantKey.Length - 1];
-        }
+        /// <summary>
+        /// 변형 키는 **문자열 전체**가 키다 (`a` → "a", `school` → "school").
+        /// 종전에는 마지막 글자만 봤는데, 초상 에셋이 폴더 규약(&lt;캐릭터&gt;/&lt;변형&gt;/&lt;표정&gt;.png)으로
+        /// 옮겨 가면서 변형이 폴더 이름 그 자체가 됐다. 마지막 글자 규칙을 남겨 두면
+        /// `school`과 `casual`이 조용히 같은 키가 된다.
+        /// </summary>
+        public static string VariantKey(string variantKey)
+            => (variantKey ?? "").Trim().ToLowerInvariant();
 
         /// <summary>
         /// 표정 코드를 두 자리로 (`2` → `02`, `02` → `02`).

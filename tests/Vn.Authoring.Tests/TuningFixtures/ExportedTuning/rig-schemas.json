@@ -967,6 +967,86 @@
                     },
                     "hasCanvasGroup": false,
                     "canvasGroupAlpha": 1.0
+                },
+                {
+                    "id": "CharacterPortraitSpriteOverlay_Root",
+                    "parent": "CharacterPortrait_ActingScale_Y",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": true,
+                    "canvasGroupAlpha": 0.0
+                },
+                {
+                    "id": "CharacterPortraitSpriteOverlay_Image",
+                    "parent": "CharacterPortraitSpriteOverlay_Root",
+                    "anchoredPosition": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMin": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "anchorMax": {
+                        "x": 1.0,
+                        "y": 1.0
+                    },
+                    "pivot": {
+                        "x": 0.5,
+                        "y": 0.5
+                    },
+                    "sizeDelta": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "localScale": {
+                        "x": 1.0,
+                        "y": 1.0,
+                        "z": 1.0
+                    },
+                    "localEulerAngles": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0
+                    },
+                    "measuredRectSize": {
+                        "x": 1920.0,
+                        "y": 1080.0
+                    },
+                    "hasCanvasGroup": false,
+                    "canvasGroupAlpha": 1.0
                 }
             ]
         },

@@ -37,16 +37,37 @@ namespace Ked.Presentation.Core.Tests
         }
 
         [Test]
-        public void 변형은_마지막_글자만_본다()
+        public void 변형은_문자열_전체가_키다()
         {
-            // PortraitResolver.MakeKey → NormalizeVariantSuffix: 변형 키의 마지막 글자가 키다.
+            // 초상 에셋이 <캐릭터>/<변형>/<표정>.png 폴더 규약을 쓰면서 변형은 폴더 이름 그 자체가 됐다.
+            // 마지막 글자만 보던 종전 규칙이라면 school과 casual이 같은 키('l')로 뭉갠다.
+            //
+            // ⚠ 이 사본이 2026-08-21 ~ 08-23 사이 런타임과 갈려 있던 자리다. 툴만 옛 규칙이라
+            // 미리보기가 엉뚱한 치수를 집고 게임은 올바른 것을 집는데 오류는 하나도 안 났다.
+            PortraitDimensionsFileDto db = Db(
+                E("tyrant", "school", "01", 700f),
+                E("tyrant", "casual", "01", 400f));
+
+            Assert.That(db.TryGetAspect("tyrant", "school", "01", out float school, out _), Is.True);
+            Assert.That(school, Is.EqualTo(0.7f).Within(Eps));
+
+            Assert.That(db.TryGetAspect("tyrant", "casual", "01", out float casual, out _), Is.True);
+            Assert.That(casual, Is.EqualTo(0.4f).Within(Eps),
+                "마지막 글자가 같아도 다른 변형이다");
+
+            Assert.That(db.TryGetAspect("tyrant", " School ", "01", out _, out _), Is.True,
+                "캐릭터 키와 마찬가지로 트림·소문자화는 한다");
+        }
+
+        [Test]
+        public void 접두사가_붙은_옛_변형_키는_더는_같은_키가_아니다()
+        {
+            // 파일 이름에 캐릭터가 눌어붙던 시절의 'body_b'는 이제 'b'와 다른 키다.
+            // 폴백 (캐릭터, "a", "01")도 없으므로 그대로 실패한다 — 짐작으로 잇지 않는다.
             PortraitDimensionsFileDto db = Db(E("tyrant", "body_b", "01", 700f));
 
-            Assert.That(db.TryGetAspect("tyrant", "b", "01", out float aspect, out _), Is.True);
-            Assert.That(aspect, Is.EqualTo(0.7f).Within(Eps));
-
-            Assert.That(db.TryGetAspect("tyrant", "outfit_b", "01", out _, out _), Is.True,
-                "접두사가 달라도 마지막 글자가 같으면 같은 키다");
+            Assert.That(db.TryGetAspect("tyrant", "b", "01", out _, out string reason), Is.False);
+            Assert.That(reason, Does.Contain("변형='b'"));
         }
 
         [Test]
