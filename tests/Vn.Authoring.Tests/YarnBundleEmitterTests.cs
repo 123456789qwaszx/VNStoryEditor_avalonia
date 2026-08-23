@@ -75,9 +75,18 @@ public class YarnBundleEmitterTests
 
         YarnBundle bundle = Emit(fixture);
 
-        // set은 Story에 한 번만 나온다 — 복제할 레인이 없다.
-        Assert.Contains("<<set $__t1_sf_test_favor = 0>>", bundle.StoryText, StringComparison.Ordinal);
+        // 작가가 줄에 단 set은 Story에 한 번만 나온다 — 복제할 레인이 없다.
         Assert.Contains("<<set $__t1_sf_test_fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
+
+        // ⛔ 설정노드의 초기값은 <b>머리에 안 나온다</b> (2026-08-24, 작업지시 §4).
+        // 나오면 그 초기화의 수명이 에피소드가 되어, 앞 에피소드에서 켠 값이 지워진다.
+        Assert.DoesNotContain("<<set $__t1_sf_test_favor", bundle.StoryText, StringComparison.Ordinal);
+
+        // 대신 선언으로 나간다 — 런타임이 챕터 진입에서 이 초기값으로 되돌린다.
+        Assert.Contains(
+            bundle.Declarations,
+            declaration => declaration.Variable == "__t1_sf_test_favor" &&
+                declaration.InitialValue == "0");
 
         // 조건 구조는 Story 안에 그대로 선다.
         Assert.Contains("<<if $__t1_sf_test_favor >= 5>>", bundle.StoryText, StringComparison.Ordinal);

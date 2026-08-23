@@ -448,6 +448,70 @@ public class YarnBundleVerificationTests
 
     // ── 고정 저작 상태 ──────────────────────────────────────────────────────
 
+    // ── 연출 실행 변수의 수명은 챕터다 (2026-08-24 호스트 실측) ─────────────
+
+    [Fact]
+    public void 설정노드_초기값은_선언으로만_나가고_노드_머리에는_안_박힌다()
+    {
+        // ⛔ 호스트 실측 (`work-orders/chapter-scope-variables-orders.md`):
+        // "에피소드1 열쇠 = true → 에피소드2 열쇠 = false ← 머리의 세 줄이 다시 밟는다."
+        //
+        // 설정노드의 할당은 <b>"이 챕터에 이런 변수가 있다"</b>는 선언이지, "이 노드에
+        // 들어올 때 이 값으로 되돌려라"가 아니다. 같은 목록이 두 뜻으로 쓰이고 있었고,
+        // 앞의 것만 참이다. 되돌리기는 챕터 진입에서 런타임이 한 번 한다.
+        YarnBundle bundle = EmitGoldenBundle();
+
+        Assert.DoesNotContain("<<set $__t1_sf_test_favor", bundle.StoryText, StringComparison.Ordinal);
+
+        // 그런데 <b>선언에는 있어야 한다</b> — 없으면 런타임이 되돌릴 값을 모른다.
+        Assert.Contains(
+            bundle.Declarations,
+            declaration => declaration.Variable == "__t1_sf_test_favor" &&
+                declaration.InitialValue == "0");
+    }
+
+    [Fact]
+    public void 작가가_줄에_단_set은_그대로_나간다()
+    {
+        // 지워야 할 것은 초기값 되밟기뿐이다. 이야기 도중의 변화는 [3]의 정상적인 쓰임이라
+        // 그대로 간다 — 여기까지 지우면 작가가 쓴 이야기가 사라진다.
+        YarnBundle bundle = EmitGoldenBundle();
+
+        Assert.Contains(
+            "<<set $__t1_sf_test_fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 선언_파일이_같은_폴더에_함께_쓰인다()
+    {
+        // 호스트 §6 — "선언 파일이 유니티에 안 온다". 이쪽 출력에는 있다는 것을 못 박는다:
+        // 이 테스트가 초록인 채로 그쪽에 안 닿으면 원인은 복사·임포트 쪽이다.
+        YarnBundle bundle = EmitGoldenBundle();
+
+        string directory = Path.Combine(
+            Path.GetTempPath(), "vn-decl-file", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles([bundle], directory);
+
+            string declarations = Assert.Single(
+                written, path => Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
+
+            Assert.Contains(
+                "<<declare $__t1_sf_test_favor = 0>>",
+                File.ReadAllText(declarations),
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     private static YarnBundle EmitGoldenBundle() => Emit(BuildWorld());
 
     private static YarnBundle Emit(BundleWorld world)

@@ -1,6 +1,5 @@
 title: Story_golden_ep
 ---
-<<set $__t1_sf_test_favor = 0>>
 <<camera wide>>
 
 <<set $__t1_sf_test_fatigue += 10>>

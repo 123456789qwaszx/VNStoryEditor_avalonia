@@ -68,7 +68,6 @@
 ```yarn
 title: Story_golden_ep
 ---
-<<set $__t1_sf_test_favor = 0>>
 <<camera wide>>                  ← 노드 셋업
 
 <<camera closeup>>               ← 이 줄의 연출
@@ -81,6 +80,18 @@ title: Story_golden_ep
 <<endif>>
 ===
 ```
+
+**A2-0. 노드 머리에 초기값 `set`은 없다** (2026-08-24 — 호스트 실측 요청
+`work-orders/chapter-scope-variables-orders.md`). 예전에는 설정노드의 할당이 **모든 대사
+노드의 머리**에 `<<set $x = 0>>`으로 박혔고, 그래서 그 초기화의 수명이 **에피소드**가
+됐다 — 에피소드1에서 켠 "열쇠를 찾았다"가 에피소드2 머리에서 지워졌다.
+
+연출 실행 변수(`__t1_…`)는 **챕터 단위로 산다.** 그래서 초기값은 `declarations.yarn`의
+`<<declare>>`로만 나가고, **되돌리는 일은 런타임이 챕터 진입에서 한 번** 한다
+(`ProgressionYarnBridge.BeginChapter` — 저장소를 비우고 `YarnProject.InitialValues`로
+다시 심는다). 챕터 안에서는 아무것도 안 지운다 — 에피소드 경계를 그대로 넘는다.
+
+⚠ 작가가 **줄에** 단 `<<set>>`은 그대로 나간다. 그건 이야기 도중의 변화다.
 
 **A2-1. 조건 갈래의 커스텀 씬은 `<<detour>>`다** (2026-08-21). 갈래에 단 커스텀 씬을
 재생하고 **갈래로 돌아와** 나머지 대본을 계속한다 — jump면 갈래 뒤의 대사가 전부 죽는다.

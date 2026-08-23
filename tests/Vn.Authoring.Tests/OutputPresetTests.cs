@@ -229,6 +229,14 @@ public class OutputPresetTests
         sample.Editor.SetScriptLineText(sample.Script.Id, opening, "라루", "첫 대사");
         string ending = sample.Line("조건 뒤", LineConditionTransition.EndIf());
         sample.Editor.SetScriptLineText(sample.Script.Id, ending, "윌로", "조건 뒤");
+
+        // ⚠ 작가가 <b>줄에</b> 단 set — 2026-08-24부터 문서에 남는 set은 이것뿐이다.
+        // 설정노드의 초기값은 선언으로만 나간다(작업지시 §4).
+        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, opening, new[]
+        {
+            new SetOperation { Variable = "favor", Operator = SetOperatorKind.Add, Value = "1" }
+        });
+
         sample.Editor.SetExitTarget(
             sample.Dialogue.Id,
             ExitPortKind.Branch,

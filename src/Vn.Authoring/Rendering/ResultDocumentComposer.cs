@@ -104,21 +104,21 @@ public static class ResultDocumentComposer
                 Text: dialogue.SourceNodeName));
         }
 
-        if (options.IncludeSetAssignments)
-        {
-            for (int index = 0; index < dialogue.Assignments.Count; index++)
-            {
-                DialogueResultAssignment assignment = dialogue.Assignments[index];
-
-                segments.Add(new RenderedSegment(
-                    Id: $"set:{dialogue.Identity.ResultId}:{index}",
-                    Kind: RenderedSegmentKind.SetAssignment,
-                    Layer: DocumentLayer.SetAssignments,
-                    Source: nodeSource,
-                    Variable: assignment.Variable,
-                    Value: assignment.Value));
-            }
-        }
+        // ⛔ <b>설정노드의 할당은 노드 머리의 `set`으로 나가지 않는다</b> (2026-08-24,
+        // `docs/work-orders/chapter-scope-variables-orders.md` §4 — 호스트 쪽 실측).
+        //
+        // 그 할당은 <b>선언</b>이다: "이 챕터에 이런 변수가 이 초기값으로 있다".
+        // 그런데 여기서 세그먼트로 내면 이미터가 <b>모든 대사노드의 머리</b>에
+        // `<<set $x = 0>>`을 박았고, 그러면 초기화의 수명이 <b>에피소드</b>가 된다 —
+        // 에피소드1에서 켠 "열쇠를 찾았다"가 에피소드2 머리에서 지워졌다.
+        //
+        // 작가가 대본 <b>줄에</b> 직접 단 set은 그대로 나간다(아래 line.Sets) — 그건
+        // 이야기 도중의 변화이고, 지워야 할 것은 초기값 되밟기뿐이다.
+        //
+        // 되돌리는 일은 런타임이 맡는다: 챕터 진입에서 `<<declare>>`의 초기값으로 한 번
+        // (`ProgressionYarnBridge.BeginChapter`). 그래서 <b>선언 파일이 반드시 나가야
+        // 한다</b> — 그 길은 이미터가 `dialogue.Assignments`에서 직접 모으므로(세그먼트를
+        // 안 지난다) 이 변경에 영향받지 않는다.
 
         if (options.IncludePresentation && presentation is not null)
         {

@@ -39,12 +39,14 @@ public class ResultDocumentComposerTests
             result.Assignments.Select(assignment => assignment.Variable));
         Assert.DoesNotContain(result.Assignments, assignment => assignment.Variable == "ignored");
 
+        // ⛔ 그런데 <b>문서에는 안 실린다</b> (2026-08-24, 작업지시 §4). 그 할당은 선언이지
+        // "이 노드에 들어올 때 이 값으로 되돌려라"가 아니다 — 세그먼트로 내면 이미터가
+        // 모든 대사노드 머리에 `set`을 박아 초기화의 수명이 <b>에피소드</b>가 된다.
         RenderedDocument document = ResultDocumentComposer.Compose(result, project: sample.Project);
-        Assert.Equal(
-            new[] { "favor", "trust" },
-            document.Segments
-                .Where(segment => segment.Kind == RenderedSegmentKind.SetAssignment)
-                .Select(segment => segment.Variable));
+
+        Assert.DoesNotContain(
+            document.Segments,
+            segment => segment.Kind == RenderedSegmentKind.SetAssignment);
     }
 
     [Fact]
@@ -131,7 +133,8 @@ public class ResultDocumentComposerTests
             $"title: {sample.Dialogue.Id}\n" +
             $"// name: {sample.Dialogue.Name}\n" +
             "---\n" +
-            "<<set $favor = 0>>\n" +
+            // 2026-08-24 — 설정노드 초기값 `<<set $favor = 0>>`이 여기서 빠졌다(작업지시 §4).
+            // 그 값은 선언 파일로만 나가고, 되돌리기는 챕터 진입에서 런타임이 한다.
             $"<<if {sample.ConditionA.Expression}>>\n" +
             $"    라루: 맞아요 #line:{opening}\n" +
             $"    <<detour {sample.TargetA.Id}>>\n" +
