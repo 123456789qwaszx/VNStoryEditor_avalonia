@@ -620,33 +620,37 @@ public partial class MainWindow : Window
                 return;
             }
 
-            string? folder = ChapterLibrary.FolderFor(_session.ProjectPath);
+            // ⚠ 개명은 <b>네 자리를 함께</b> 옮기는 한 동작이다(워크북·대본 폴더·판·조건
+            // 배관). 셸이 그중 둘만 알던 시절에 나머지 둘이 뒤처졌다 — 그 주인은 이제
+            // ChapterRenamer 하나다(2026-08-24 소유자 보고).
+            ChapterRenamer.Result result =
+                ChapterRenamer.Rename(_session.Editor, _session.ProjectPath, chapterId, newId);
 
-            if (folder is null)
-            {
-                _session.SetStatus("프로젝트를 먼저 저장해야 합니다.");
-                return;
-            }
-
-            ChapterWriteResult result = ChapterWorkbookWriter.RenameChapterWorkbook(folder, chapterId, newId);
-
-            if (!result.Written)
+            if (!result.Renamed)
             {
                 _session.SetStatus(result.Failure!);
                 return;
             }
 
-            // 판이 따라간다 — 챕터=판 1:1. 판이 아직 없었다면 만들 것도 없다.
-            if (_session.Project.Files.FirstOrDefault(file =>
-                    string.Equals(file.Name, chapterId, StringComparison.Ordinal)) is { } board)
-            {
-                _session.Editor.RenameStoryFile(board.Id, newId);
-            }
-
             ChapterGraph.RefreshFromDisk();
             ChapterGraph.SelectChapter(newId);
             flyout.Hide();
-            _session.SetStatus($"챕터 '{chapterId}' → '{newId}'로 바꿨습니다. 내보낸 JSON이 있었다면 다시 내보내 주세요.");
+
+            // 무엇이 함께 옮겨졌는지 말한다 — 개명이 파일을 옮기는 일이라, 조용하면
+            // 사람이 폴더를 열어 확인하게 된다.
+            string carried = string.Join(" · ",
+                new[]
+                {
+                    result.EpisodesMoved ? "대본 폴더" : null,
+                    result.SupplyRenamed ? "조건 노드" : null
+                }.Where(item => item is not null));
+
+            _session.SetStatus(
+                $"챕터 '{chapterId}' → '{newId}'로 바꿨습니다" +
+                (carried.Length > 0 ? $"({carried}도 함께)." : ".") +
+                (result.StaleExport is { } stale
+                    ? $" ⚠ 옛 이름의 내보내기 '{stale}'가 남아 있습니다 — 지우고 다시 내보내 주세요."
+                    : " 내보낸 JSON이 있었다면 다시 내보내 주세요."));
         });
         panel.Children.Add(rename);
 
