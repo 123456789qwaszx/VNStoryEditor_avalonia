@@ -545,6 +545,7 @@ internal sealed class AuthoringSession
     {
         StoryProject project = NewProjectInstance();
 
+        ForgetWorkbookMemos();
         ProjectPath = null;
         Definition = GameDefinition.Empty;
         BranchSelection.Clear();
@@ -561,11 +562,25 @@ internal sealed class AuthoringSession
             fileListChanged: true);
     }
 
+    /// <summary>
+    /// 워크북에 대한 기억을 비운다 (2026-08-24 성능) — 파싱 결과와 이행 판정.
+    ///
+    /// 둘 다 <b>내용 해시가 열쇠라 틀릴 일은 없지만</b>, 프로젝트를 바꾸면 그 기억은
+    /// 영영 쓸모가 없다. 들고 있을 이유가 없는 것을 들고 있지 않는다 — 그래야 기억의
+    /// 크기가 <b>지금 연 프로젝트 하나</b>로 묶인다.
+    /// </summary>
+    private static void ForgetWorkbookMemos()
+    {
+        WorkbookParseCache.Clear();
+        WorkbookMigrationGate.Clear();
+    }
+
     public void Open(string path)
     {
         ProjectLoadResult loaded = ProjectStore.Load(path);
         StoryProject project = loaded.Project;
 
+        ForgetWorkbookMemos();
         ProjectPath = loaded.ManifestPath;
         Definition = GameDefinition.LoadBeside(loaded.ManifestPath);
         BranchSelection.Clear();

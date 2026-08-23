@@ -68,6 +68,23 @@ public static class ChapterWorkbookReader
             throw new XlsxReadException(path, $"워크북 파일이 없습니다: {path}");
         }
 
+        // 내용이 그대로면 답도 그대로다 (2026-08-24 성능) — 읽기는 순수 함수다.
+        //
+        // ⚠ 열쇠에 <b>정의의 변수 이름</b>도 넣는다. 이 리더가 정의에서 보는 것은 그것뿐이고
+        // (스탯이 정의에 있는가 — 없으면 경고), 빠뜨리면 변수를 더한 뒤에도 옛 경고가
+        // 그대로 남는다. 여기가 이 캐시에서 가장 틀리기 쉬운 자리다: <b>파일 밖의 입력</b>.
+        return WorkbookParseCache.Read(
+            path,
+            variant: definition is null
+                ? "-"
+                : string.Join("|", definition.Variables
+                    .Select(variable => variable.Name)
+                    .OrderBy(name => name, StringComparer.Ordinal)),
+            () => Parse(path, definition));
+    }
+
+    private static ChapterGraphModel Parse(string path, GameDefinition? definition)
+    {
         using XLWorkbook workbook = OpenWorkbook(path);
 
         var diagnostics = new List<ChapterDiagnostic>();

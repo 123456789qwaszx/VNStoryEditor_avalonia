@@ -42,8 +42,22 @@ public static class EpisodeWorkbookReader
             throw new XlsxReadException(path, $"워크북 파일이 없습니다: {path}");
         }
 
-        conditionLabels ??= Array.Empty<string>();
+        IReadOnlyCollection<string> labels = conditionLabels ?? Array.Empty<string>();
 
+        // 내용이 그대로면 답도 그대로다 (2026-08-24 성능) — 읽기는 순수 함수다.
+        // 대본 하나만 저장해도 그 챕터의 대본을 전부 다시 파고들던 것이, 실측
+        // "변경 없는 동기화"의 91%였다(`WorkbookParseCache`).
+        //
+        // ⚠ 조건 라벨도 열쇠에 넣는다 — 같은 파일이라도 라벨 목록이 다르면 진단이 다르다.
+        return WorkbookParseCache.Read(
+            path,
+            variant: string.Join("|", labels.OrderBy(label => label, StringComparer.Ordinal)),
+            () => Parse(path, labels));
+    }
+
+    private static EpisodeWorkbookModel Parse(
+        string path, IReadOnlyCollection<string> conditionLabels)
+    {
         using XLWorkbook workbook = Open(path);
 
         var diagnostics = new List<ChapterDiagnostic>();
