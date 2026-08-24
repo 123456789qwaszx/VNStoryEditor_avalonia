@@ -112,15 +112,13 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        var board = new Vn.Authoring.Model.StoryFile(name: "chapter-graph-sample");
-        session.Project.Files.Add(board);
+        // 판은 뷰를 붙이는 순간 이미 섰고 노드도 동기화가 세웠다 — 여기서 또 만들면
+        // 같은 이름이 둘이 되어 실물이 아니라 사본을 재게 된다.
+        DialogueNode ghost = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(node => node.ExcelEpisodeId == "branch05.02A");
 
-        var ghost = new Vn.Authoring.Model.DialogueNode(name: "branch05.02A")
-        {
-            ExcelEpisodeId = "branch05.02A"
-        };
-
-        board.Nodes.Add(ghost);   // 대본이 없다 = 재생할 줄이 없다
+        // 대본은 딸려 있어도 살아 있는 줄이 없으면 빈 노드다 — 재생할 것이 없다.
+        Assert.Empty(session.Project.FindScript(ghost.ScriptId)!.ActiveLines);
 
         view.SelectEpisode("branch05.02A");
         view.DeleteSelectedEpisode();
@@ -136,20 +134,14 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        var board = new Vn.Authoring.Model.StoryFile(name: "chapter-graph-sample");
-        session.Project.Files.Add(board);
+        // 동기화가 세운 그 노드에 내용을 넣어 둔다 — 사본을 만들지 않는다.
+        DialogueNode kept = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(node => node.ExcelEpisodeId == "branch05.02A");
 
         var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
         script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
         session.Project.Scripts.Add(script);
-
-        var kept = new Vn.Authoring.Model.DialogueNode(name: "branch05.02A")
-        {
-            ExcelEpisodeId = "branch05.02A",
-            ScriptId = script.Id
-        };
-
-        board.Nodes.Add(kept);
+        kept.ScriptId = script.Id;
 
         view.SelectEpisode("branch05.02A");
         view.DeleteSelectedEpisode();

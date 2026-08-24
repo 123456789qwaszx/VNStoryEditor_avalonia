@@ -163,6 +163,10 @@ public sealed class ChapterGraphViewRenderTests
         // 화면에 뜬다. 에피소드 워크북이 없으면 스탯이 오르지 않으므로 신뢰높음(trust >= 3)이
         // 영원히 닫히고 branch05.02A에 닿을 수 없다 — 저작 시점에 잡히는 것이 이 레이어의 목적이다.
         using var project = new TempProject(SamplePath);
+
+        // 대본은 채워 둔다 — 빈 노드는 2026-08-25부터 그 자체가 오류라, 안 채우면
+        // 이 테스트가 재려는 도달 불가 한 건이 그 더미에 묻힌다.
+        EpisodeWorkbookFixture.Fill(project.EpisodesFolder);
         (Canvas canvas, ChapterGraphView view) = Render(project);
 
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
@@ -329,6 +333,9 @@ public sealed class ChapterGraphViewRenderTests
         }
 
         public string ManifestPath { get; }
+
+        /// <summary>그 챕터의 대본 폴더 — episodes/{ChapterId}/ (2026-08-16 챕터별 격리).</summary>
+        public string EpisodesFolder => Path.Combine(_directory, "episodes", "ch05");
 
         public void Dispose()
         {

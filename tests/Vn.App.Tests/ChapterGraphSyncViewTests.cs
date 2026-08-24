@@ -319,6 +319,7 @@ public sealed class ChapterGraphSyncViewTests
         // 단추를 누르지 않는다 — 챕터를 읽는 그 순간 나간다.
         using var project = new TempProject(SamplePath);
         AllowUnreachable(project.ChapterPath, "branch05.02A");
+        EpisodeWorkbookFixture.Fill(project.EpisodesFolder);   // 빈 노드는 이제 오류다
 
         (ChapterGraphView view, _) = Show(project);
 
@@ -339,6 +340,7 @@ public sealed class ChapterGraphSyncViewTests
     {
         using var project = new TempProject(SamplePath);
         AllowUnreachable(project.ChapterPath, "branch05.02A");
+        EpisodeWorkbookFixture.Fill(project.EpisodesFolder);   // 빈 노드는 이제 오류다
 
         (ChapterGraphView view, _) = Show(project);
 
@@ -355,6 +357,9 @@ public sealed class ChapterGraphSyncViewTests
         ChapterWorkbookWriter.AddEdge(
             project.ChapterPath, "main05.01", "새로판길", optionLabel: "새로 판 길로");
 
+        // 새 에피소드도 대본이 있어야 노드가 살아남는다 — 빈 노드는 오류다.
+        EpisodeWorkbookFixture.Fill(project.EpisodesFolder, "새로판길");
+
         view.RefreshFromDisk();
 
         Assert.Contains("새로판길", File.ReadAllText(path));
@@ -367,16 +372,44 @@ public sealed class ChapterGraphSyncViewTests
         // 없앤 이유가 그것이다.
         using var project = new TempProject(SamplePath);
         AllowUnreachable(project.ChapterPath, "branch05.02A");
+        EpisodeWorkbookFixture.Fill(project.EpisodesFolder);   // 빈 노드는 이제 오류다
 
         string second = Path.Combine(
             Path.GetDirectoryName(project.ChapterPath)!, "ch99.xlsx");
         File.Copy(project.ChapterPath, second);
 
-        Show(project);
+        // 둘째 챕터도 자기 대본 폴더가 있어야 한다 — 에피소드 Id는 같으므로 같은 목록이다.
+        EpisodeWorkbookFixture.Fill(
+            Path.Combine(Path.GetDirectoryName(project.EpisodesFolder)!, "ch99"));
+
+        (_, AuthoringSession session) = Show(project);
 
         Assert.True(File.Exists(Path.Combine(project.ExportFolder, "ch05.progression.json")));
-        Assert.True(File.Exists(Path.Combine(project.ExportFolder, "ch99.progression.json")));
+        Assert.True(
+            File.Exists(Path.Combine(project.ExportFolder, "ch99.progression.json")),
+            Reasons(project, "ch99", session.Project));
     });
+
+    /// <summary>안 나간 사유를 실패 메시지에 담는다 — "왜"가 없으면 이 테스트는 못 고친다.</summary>
+    private static string Reasons(TempProject project, string chapterId, StoryProject board)
+    {
+        ChapterGraphModel model = ChapterWorkbookReader.Read(
+            Path.Combine(Path.GetDirectoryName(project.ChapterPath)!, chapterId + ".xlsx"));
+
+        // ⚠ 내보내기까지 돌린다 — 검증만 보면 코어 관문(CoreRefusals)이 낸 거부가 안 보인다.
+        ChapterExportResult result = ChapterProgressionExporter.Export(
+            model, Path.Combine(Path.GetDirectoryName(project.EpisodesFolder)!, chapterId), board);
+
+        string errors = string.Join(" || ", result.Validation.All
+            .Where(item => item.Severity == ChapterDiagnosticSeverity.Error)
+            .Select(item => item.Message));
+
+        string files = Directory.Exists(project.ExportFolder)
+            ? string.Join(", ", Directory.GetFiles(project.ExportFolder).Select(Path.GetFileName))
+            : "(폴더 없음)";
+
+        return $"거부={result.Refused} / 오류={(errors.Length == 0 ? "(없음)" : errors)} / 나간 것={files}";
+    }
 
     /// <summary>
     /// `도달불가 허용` 열을 켠다 — D3의 명시 예외.

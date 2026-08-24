@@ -218,14 +218,30 @@ public sealed class ChapterExportService
     /// 그 챕터 판의 대사노드 이름들 — 정렬해서 지문에 넣는다. 판이 없으면 null이고,
     /// 그것도 상태의 일부다(안 연 챕터 ↔ 연 챕터가 지문으로 갈린다).
     /// </summary>
+    /// <summary>
+    /// 지문에 실을 <b>판의 상태</b>.
+    ///
+    /// ⚠ <b>그 챕터의 판만 보면 안 된다</b> (2026-08-25). 대사 노드를 찾는 규칙이
+    /// <c>ExcelEpisodeId</c>로 <b>프로젝트 전체</b>를 훑으므로(<see cref="ChapterBoard"/>),
+    /// 다른 판이 서는 것만으로도 이 챕터의 판정이 바뀐다. 자기 판만 재면 그 변화를 놓쳐
+    /// <b>"고쳤는데 계속 거부한다"</b>가 된다 — 실제로 한 번 그랬다: 처음 그리기에서
+    /// 노드가 아직 없어 거부된 챕터가, 동기화가 노드를 세운 뒤에도 옛 결론을 들고 있었다.
+    ///
+    /// 대사 노드는 이름과 <b>줄이 있는지</b>까지 싣는다 — 빈 노드가 오류이므로 줄이
+    /// 생기고 없어지는 것도 판정을 바꾼다.
+    /// </summary>
     private static IReadOnlyList<string>? BoardNames(StoryProject? project, string chapterId)
     {
-        StoryFile? board = project?.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+        if (project is null)
+        {
+            return null;
+        }
 
-        return board?.Nodes
+        return project.EnumerateNodes()
             .OfType<DialogueNode>()
-            .Select(node => node.Name)
+            .Select(node =>
+                $"{node.Name}{node.ExcelEpisodeId}" +
+                (project.FindScript(node.ScriptId)?.ActiveLines.Any() == true ? "1" : "0"))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
     }
