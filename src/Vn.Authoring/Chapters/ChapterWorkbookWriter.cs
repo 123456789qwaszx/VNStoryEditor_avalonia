@@ -715,6 +715,15 @@ public static class ChapterWorkbookWriter
 
         conditionSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()
             .List($"='{ChapterSheetNames.Stats}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+        // ⛔ 연산자 칸은 <b>글자 서식</b>이어야 한다 (2026-08-25 소유자 보고: "연산자 ==은
+        //    오류:520으로 되네"). 스프레드시트는 `=`로 시작하는 입력을 수식으로 읽으므로,
+        //    일반 서식이면 `==`이 빈 수식이 되어 리브레오피스는 `Err:520`, 엑셀은
+        //    수식 오류를 낸다 — 드롭다운에서 골라도 마찬가지다.
+        //
+        //    ⚠ `>=`·`<=`는 멀쩡하고 `==`만 깨진다. 그래서 "가끔 되는데 왜 이것만" 으로
+        //    보여 원인을 짚기 어려운 자리다. 칸 전체를 글자로 못박아 그 갈림을 없앤다.
+        conditionSheet.Range(2, 3, DropdownRows, 3).Style.NumberFormat.SetFormat("@");
+
         conditionSheet.Range(2, 3, DropdownRows, 3).CreateDataValidation()
             .List("\"<,>,==,>=,<=,true,false\"", inCellDropdown: true);
 
