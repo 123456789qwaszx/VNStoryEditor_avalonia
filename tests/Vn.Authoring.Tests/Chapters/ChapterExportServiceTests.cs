@@ -199,31 +199,49 @@ public sealed class ChapterExportServiceTests : IDisposable
 
     // ── ⑧ 저작 관문 — `대사엔트리`가 실재하는 대사노드를 가리키나 ─────────────
 
+    /// <summary>
+    /// ⛔ <b>2026-08-25에 계약이 뒤집혔다.</b> 예전에는 판이 없거나 비어 있으면 이 관문을
+    /// 통째로 건너뛰었다 — "아직 안 연 챕터를 잘못됐다고 하지 않는다"는 뜻이었다.
+    ///
+    /// 그 면제가 실제로 낸 사고: 그 챕터의 진행 JSON이 <b>그대로 나가고</b>, 유니티의
+    /// 사전 대조가 "부르는 노드가 하나도 없다"로 재생을 통째로 막았다. 저작에서는
+    /// 초록이고 게임에서만 죽는, 이 저장소가 가장 싫어하는 모양이다.
+    ///
+    /// <b>안 열었다는 것은 면제 사유가 못 된다</b> — 내보내는 순간에는 같은 사고다.
+    /// 판과 노드는 프로젝트 파일에 남으므로(세션 상태가 아니다) 한 번 연 챕터는 계속
+    /// 통과한다. 오탐 걱정이 향하던 자리는 그쪽이었다.
+    /// </summary>
     [Fact]
-    public void 한_번도_안_연_챕터는_검사하지_않는다()
+    public void 한_번도_안_연_챕터는_거부하고_무엇을_하면_되는지_말한다()
     {
-        // ⚠ 이 관문이 오탐을 내면 오늘 잘 나가던 챕터가 전부 막힌다. 동기화는 **고른
-        // 챕터 하나만** 돌고 내보내기는 **전 챕터**를 도는 비대칭이 그 위험의 원천이다.
-        // 판 자체가 없으면 그 챕터는 아직 안 연 것이지 잘못된 것이 아니다.
         var editor = new ProjectEditor(new StoryProject());
+        var service = new ChapterExportService();
 
-        ChapterExportRun run = new ChapterExportService()
-            .ExportAll([Entry("ch01", Sound)], ProjectPath, editor.Project);
+        ChapterExportRun run = service.ExportAll([Entry("ch01", Sound)], ProjectPath, editor.Project);
 
-        Assert.True(run.AllExported, string.Join(" / ", run.Refused));
+        Assert.Equal(["ch01"], run.Refused);
+
+        ChapterDiagnostic problem = Assert.Single(
+            service.ValidationFor(Entry("ch01", Sound), ProjectPath, editor.Project).All,
+            item => item.Code == ChapterDiagnosticCode.DialogueEntryNodeMissing);
+
+        Assert.Equal(ChapterDiagnosticSeverity.Error, problem.Severity);
+        Assert.Contains("하나도 없습니다", problem.Message);
+        Assert.Contains("한 번 열어", problem.Message);   // 고치는 법까지 말한다
     }
 
     [Fact]
-    public void 판은_섰지만_아직_동기화_전이면_검사하지_않는다()
+    public void 판은_섰지만_아직_동기화_전이어도_거부한다()
     {
-        // 챕터 목록을 클릭하면 판이 먼저 서고 노드는 동기화가 만든다. 그 사이가 있다.
+        // 챕터 목록을 클릭하면 판이 먼저 서고 노드는 동기화가 만든다. 그 사이에 내보내면
+        // 결과는 판이 아예 없을 때와 같다 — 부를 노드가 하나도 없다.
         var editor = new ProjectEditor(new StoryProject());
         editor.EnsureChapterBoard("ch01");
 
         ChapterExportRun run = new ChapterExportService()
             .ExportAll([Entry("ch01", Sound)], ProjectPath, editor.Project);
 
-        Assert.True(run.AllExported, string.Join(" / ", run.Refused));
+        Assert.Equal(["ch01"], run.Refused);
     }
 
     [Fact]

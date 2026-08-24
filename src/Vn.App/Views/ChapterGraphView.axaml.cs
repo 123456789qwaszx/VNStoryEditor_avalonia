@@ -3161,9 +3161,17 @@ public partial class ChapterGraphView : UserControl
         // 않고 이름만 바꾸므로 줄·연출·행 신원(ExcelLineMap)이 전부 보존된다. 엑셀 표식
         // (ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 연출 그래프가 챕터 밖 노드로
         // 보고 레일을 끊는다.
+        // ⚠ <b>이 챕터의 판에서만</b> 찾는다 (2026-08-25). 프로젝트 전체를 이름으로 훑으면
+        // 다른 챕터에 같은 Id가 있을 때 남의 노드를 개명한다 — 그쪽 판에서는 에피소드와
+        // 이름이 갈려 유령이 되고, 그 유령이 이름 중복으로 내보내기를 막는다.
         if (_session is { } session &&
-            session.Project.EnumerateNodes().OfType<Vn.Authoring.Model.DialogueNode>()
-                .FirstOrDefault(node => string.Equals(node.Name, oldId, StringComparison.Ordinal))
+            session.Project.Files
+                .FirstOrDefault(file =>
+                    string.Equals(file.Name, SelectedModel?.ChapterId, StringComparison.Ordinal))
+                ?.Nodes.OfType<Vn.Authoring.Model.DialogueNode>()
+                .FirstOrDefault(node =>
+                    string.Equals(node.ExcelEpisodeId, oldId, StringComparison.Ordinal) ||
+                    string.Equals(node.Name, oldId, StringComparison.Ordinal))
             is { } dialogueNode)
         {
             if (dialogueNode.ExcelEpisodeId is not null)
@@ -3210,7 +3218,59 @@ public partial class ChapterGraphView : UserControl
             _selectedEpisodeId = null;
         }
 
-        Report(result, $"'{episodeId}' 행과 그 간선·픽스처 참조를 지웠습니다. 에피소드 엑셀 파일은 그대로입니다.");
+        Report(
+            result,
+            $"'{episodeId}' 행과 그 간선·픽스처 참조를 지웠습니다. 에피소드 엑셀 파일은 " +
+            $"그대로입니다.{DetachBoardNode(episodeId)}");
+    }
+
+    /// <summary>
+    /// 지운 에피소드의 <b>대사 노드를 연출 그래프에서 거둔다</b> (2026-08-25).
+    ///
+    /// 안 거두면 판에 <b>유령이 남는다</b> — 사라진 에피소드를 자기라고 주장하는 노드다.
+    /// 그 상태는 오래 조용했는데, 빈 노드가 발행에서 막혀 산출 목록에서 통째로 빠졌기
+    /// 때문이다. 빈 노드도 내보내게 되면서(같은 날) <b>번들 이름이 겹칩니다</b>로 터졌다 —
+    /// 같은 Id로 에피소드를 다시 만들면 판에 같은 이름의 노드가 둘이 된다.
+    ///
+    /// <b>비어 있으면 지우고, 채워져 있으면 떼기만 한다.</b> 연출을 넣어 둔 노드를 툴이
+    /// 임의로 지우면 되돌릴 자리가 없다(판 편집에는 Ctrl+Z가 없다). 떼어 낸 노드는 자유
+    /// 씬이 되어 <b>더 이상 그 에피소드를 사칭하지 않고</b>, 사람이 보고 정한다.
+    ///
+    /// ⚠ <b>이 챕터의 판에서만</b> 찾는다. 프로젝트 전체에서 이름으로 찾으면 다른 챕터에
+    /// 같은 Id가 있을 때 남의 노드를 건드린다.
+    /// </summary>
+    private string DetachBoardNode(string episodeId)
+    {
+        if (_session is not { } session || SelectedModel is not { } model)
+        {
+            return string.Empty;
+        }
+
+        Vn.Authoring.Model.StoryFile? board = session.Project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, model.ChapterId, StringComparison.Ordinal));
+
+        if (board?.Nodes.OfType<Vn.Authoring.Model.DialogueNode>().FirstOrDefault(node =>
+                string.Equals(node.ExcelEpisodeId, episodeId, StringComparison.Ordinal) ||
+                string.Equals(node.Name, episodeId, StringComparison.Ordinal))
+            is not { } node)
+        {
+            return string.Empty;
+        }
+
+        bool empty = session.Project.FindScript(node.ScriptId) is not { } script ||
+            script.Lines.Count == 0 ||
+            !script.ActiveLines.Any();
+
+        if (empty)
+        {
+            session.Editor.RemoveNode(node.Id);
+            return $" 연출 그래프의 빈 노드 '{node.Name}'도 함께 지웠습니다.";
+        }
+
+        node.ExcelEpisodeId = null;
+
+        return $" ⚠ 연출 그래프의 '{node.Name}'은 내용이 있어 남겨 두고 자유 씬으로 " +
+            "떼어 냈습니다 — 살릴지 지울지는 판에서 정해 주세요.";
     }
 
     /// <summary>

@@ -189,6 +189,53 @@ public sealed class ChapterViaSceneTests : IDisposable
             validation.All, item => item.Code == ChapterDiagnosticCode.ViaSceneEmpty);
     }
 
+    [Fact]
+    public void 판에서_노드를_개명해도_DialogueEntryId가_따라간다()
+    {
+        // ⛔ 이것이 "진행 JSON이 부르는 노드가 YarnProject에 없다"의 뿌리였다 (2026-08-25).
+        //    이름의 주인이 둘이었다 — 내보내기는 엑셀의 `대사엔트리` 글자로 짓고, .yarn은
+        //    판 노드의 이름으로 선다. 판에서 개명하는 순간 둘이 갈리고, 로드·검증·증명은
+        //    전부 통과하는데 재생만 안 된다.
+        ChapterGraphModel chapter = BuildChapter();
+
+        var project = new StoryProject();
+        var file = new StoryFile(name: chapter.ChapterId);
+        var excel = new DialogueNode(name: "Id를_바꿧음") { ExcelEpisodeId = "시작" };
+
+        file.Nodes.Add(excel);
+        project.Files.Add(file);
+
+        ChapterExportResult result =
+            ChapterProgressionExporter.Export(chapter, episodesFolder: null, project);
+
+        using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
+
+        string entry = document.RootElement
+            .GetProperty("Nodes").EnumerateArray()
+            .Single(node => node.GetProperty("EpisodeId").GetString() == "시작")
+            .GetProperty("DialogueEntryId").GetString()!;
+
+        // 엑셀은 아직 `시작`이라고 적혀 있지만, 재생될 yarn 노드는 개명된 쪽이다.
+        Assert.Equal("Id를_바꿧음", entry);
+    }
+
+    [Fact]
+    public void 판을_못_보면_엑셀_글자로_되돌아간다()
+    {
+        // 챕터 모델만으로 부르는 자리(CLI·테스트)가 그대로 살아 있어야 한다.
+        ChapterExportResult result =
+            ChapterProgressionExporter.Export(BuildChapter(), episodesFolder: null);
+
+        using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
+
+        Assert.Equal(
+            "시작",
+            document.RootElement
+                .GetProperty("Nodes").EnumerateArray()
+                .Single(node => node.GetProperty("EpisodeId").GetString() == "시작")
+                .GetProperty("DialogueEntryId").GetString());
+    }
+
     /// <summary>내보낸 JSON에서 그 길의 <c>ViaNodeId</c>를 꺼낸다.</summary>
     private static string ViaOf(string json, string fromEpisodeId, string choiceLabel)
     {

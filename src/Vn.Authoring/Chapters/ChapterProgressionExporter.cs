@@ -69,7 +69,7 @@ public static class ChapterProgressionExporter
             return new ChapterExportResult(null, validation);
         }
 
-        var via = ViaScenes.For(project);
+        var via = ChapterBoard.For(project);
 
         var payload = new ChapterJson
         {
@@ -244,19 +244,22 @@ public static class ChapterProgressionExporter
     };
 
     private static NodeJson Node(
-        ChapterGraphModel chapter, ChapterEpisode episode, ViaScenes via) => new()
+        ChapterGraphModel chapter, ChapterEpisode episode, ChapterBoard via) => new()
     {
         EpisodeId = episode.EpisodeId,
         Title = episode.Title,
         IndexText = episode.Index,
         // ⚠ `Kind`(Main/Attachment)는 2026-08-25에 계약에서 사라졌다 — 코어가 `EpisodeKind`를
         // 통째로 지웠다. 저작의 `종류` 열은 남아 있지만 이제 <b>산출물에 실리지 않는다</b>.
-        // ⚠ 이미터의 이름 규칙을 통과시킨다 (2026-08-23) — 런타임은 이 글자로 YarnProject에서
-        // 노드를 찾는다. 그냥 실으면 진행 JSON과 yarn 타이틀이 갈려 로드·검증·증명이 전부
-        // 통과하는데 재생만 안 된다. 접두(`Story_`)는 2026-08-24에 없어졌지만 규칙이 사라진
-        // 것은 아니다 — SanitizeNodeName이 남아 `장면 1`은 `장면_1`로 나간다. 여기서 손으로
-        // 이으면 공백 든 이름에서 또 갈린다. 규칙의 주인은 이미터 하나다.
-        DialogueEntryId = YarnBundleEmitter.StoryNodeTitleOf(episode.DialogueEntry),
+        // ⚠ <b>이름의 주인은 판의 노드다</b> (2026-08-25). 엑셀의 `대사엔트리` 글자로 지으면
+        // 주인이 둘이 되어, 판에서 노드를 개명하는 순간 진행 JSON은 옛 이름을 부르고 .yarn은
+        // 새 이름으로 선다 — 로드·검증·증명이 전부 통과하는데 재생만 안 된다.
+        //
+        // 판을 못 볼 때만(테스트·CLI) 엑셀 글자로 되돌아간다. 그 경우에도 이미터의 이름
+        // 규칙은 지난다 — SanitizeNodeName이 `장면 1`을 `장면_1`로 만든다.
+        DialogueEntryId = via.EpisodeNodeNameFor(episode) is { Length: > 0 } onBoard
+            ? onBoard
+            : YarnBundleEmitter.StoryNodeTitleOf(episode.DialogueEntry),
         // v8 — 관문은 에피소드가 아니라 그 길(간선)이 갖는다. 노드의 두 필드는 스키마
         // 1:1을 위해 남기되 비어 나간다(⚠ 런타임 수입기가 NextOption 쪽을 읽어야 한다).
         VisibleConditions = [],
@@ -435,7 +438,7 @@ public static class ChapterProgressionExporter
         ///
         /// ⚠ <b>"노드"는 Yarn 노드다</b> — 에피소드 노드가 아니다. 저작 쪽 원본은
         /// <c>DialogueNode.ChoiceExits</c>(연출 그래프의 배선)이고 계약 쪽 이름이
-        /// <c>ViaNodeId</c>다. 값을 만드는 자리는 <see cref="ViaScenes"/> 하나다.
+        /// <c>ViaNodeId</c>다. 값을 만드는 자리는 <see cref="ChapterBoard"/> 하나다.
         ///
         /// ⚠ <b>여기에 파라미터를 붙이지 않는다</b> — 지속시간·이징·색이 들어오는 순간
         /// 경계면이 진짜로 넓어진다. 연출의 파라미터는 연출 쪽에서 산다

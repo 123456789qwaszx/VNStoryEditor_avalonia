@@ -132,14 +132,14 @@ public static class ChapterValidator
             return;
         }
 
-        ViaScenes via = ViaScenes.For(project);
+        ChapterBoard board = ChapterBoard.For(project);
 
         foreach (ChapterEpisode episode in chapter.Episodes)
         {
             foreach (ChapterEdge edge in chapter.Edges.Where(item =>
                          string.Equals(item.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal)))
             {
-                if (via.SceneFor(episode, edge) is not { } scene || HasPlayableLine(project, scene))
+                if (board.SceneFor(episode, edge) is not { } scene || HasPlayableLine(project, scene))
                 {
                     continue;
                 }
@@ -169,37 +169,40 @@ public static class ChapterValidator
         StoryProject? project,
         List<ChapterDiagnostic> diagnostics)
     {
-        if (project is null)
+        if (project is null || chapter.Episodes.Count == 0)
         {
             return;
         }
 
-        StoryFile? board = project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapter.ChapterId, StringComparison.Ordinal));
+        // ⚠ <b>"판이 없으면 건너뛴다"를 걷었다</b> (2026-08-25). 판이 없거나 비어 있으면
+        //    그 챕터의 <b>모든</b> 에피소드가 부를 노드를 잃는데, 조용히 통과시키니
+        //    내보내기가 나가고 유니티 사전 대조가 재생을 통째로 막았다(실사례).
+        //    한 번도 안 연 챕터도 <b>내보내는 순간</b>에는 같은 사고다 — 안 열었다는 것이
+        //    면제 사유가 될 수 없다. 대신 무엇을 하면 되는지를 말한다.
+        ChapterBoard board = ChapterBoard.For(project);
 
-        if (board is null)
+        List<ChapterEpisode> missing = chapter.Episodes
+            .Where(episode => board.EpisodeNodeFor(episode) is null)
+            .ToList();
+
+        if (missing.Count == chapter.Episodes.Count)
         {
-            return;   // 한 번도 안 연 챕터 — 판 자체가 없다.
+            diagnostics.Add(new ChapterDiagnostic(
+                ChapterDiagnosticSeverity.Error,
+                ChapterDiagnosticCode.DialogueEntryNodeMissing,
+                chapter.SourcePath,
+                ChapterSheetNames.Episodes,
+                null,
+                null,
+                $"'{chapter.ChapterId}' 판에 대사 노드가 하나도 없습니다 — 이대로 내보내면 " +
+                "진행 JSON이 부르는 노드가 전부 없어 게임이 재생을 시작하지 못합니다. " +
+                "챕터를 한 번 열어 대본을 동기화해 주세요."));
+
+            return;   // 에피소드마다 같은 말을 반복하지 않는다.
         }
 
-        var names = board.Nodes
-            .OfType<DialogueNode>()
-            .Select(node => node.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
-        if (names.Count == 0)
+        foreach (ChapterEpisode episode in missing)
         {
-            return;   // 판은 섰지만 아직 동기화 전이다.
-        }
-
-        foreach (ChapterEpisode episode in chapter.Episodes)
-        {
-            if (string.IsNullOrWhiteSpace(episode.DialogueEntry) ||
-                names.Contains(episode.DialogueEntry))
-            {
-                continue;
-            }
-
             diagnostics.Add(new ChapterDiagnostic(
                 ChapterDiagnosticSeverity.Error,
                 ChapterDiagnosticCode.DialogueEntryNodeMissing,

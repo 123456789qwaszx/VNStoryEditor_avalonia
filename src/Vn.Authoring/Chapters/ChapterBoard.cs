@@ -20,10 +20,10 @@ namespace Vn.Authoring.Chapters;
 /// 없으면 문구를 열쇠로 한 선택지 배선을 쓴다. 순서가 갈리면 <b>작가가 판에서 매단 씬이
 /// 산출물에서 조용히 사라진다.</b>
 /// </summary>
-internal sealed class ViaScenes
+internal sealed class ChapterBoard
 {
     /// <summary>프로젝트 없이 부른 자리 — <c>ViaNodeId</c>가 전부 빈 문자열로 나간다.</summary>
-    private static readonly ViaScenes Empty = new(null);
+    private static readonly ChapterBoard Empty = new(null);
 
     private readonly StoryProject? _project;
 
@@ -38,7 +38,7 @@ internal sealed class ViaScenes
     private readonly Dictionary<string, IReadOnlyList<ExitPort>> _ports =
         new(StringComparer.Ordinal);
 
-    private ViaScenes(StoryProject? project)
+    private ChapterBoard(StoryProject? project)
     {
         _project = project;
 
@@ -59,8 +59,47 @@ internal sealed class ViaScenes
         }
     }
 
-    public static ViaScenes For(StoryProject? project) =>
-        project is null ? Empty : new ViaScenes(project);
+    public static ChapterBoard For(StoryProject? project) =>
+        project is null ? Empty : new ChapterBoard(project);
+
+    /// <summary>
+    /// 이 에피소드를 재생할 <b>대사 노드</b>. 없으면 <c>null</c>이다.
+    ///
+    /// ⚠ <c>ExcelEpisodeId</c>를 먼저 본다 — 그것이 <b>진짜 연결</b>이다. 이름으로 찾는 것은
+    /// 아직 표식이 안 붙은 구판 프로젝트를 위한 뒷길이고, 판에서 노드를 개명하면 이름은
+    /// 갈리지만 표식은 남는다.
+    /// </summary>
+    public DialogueNode? EpisodeNodeFor(ChapterEpisode episode)
+    {
+        if (_project is null)
+        {
+            return null;
+        }
+
+        if (_excelNodes.TryGetValue(episode.EpisodeId, out DialogueNode? tagged))
+        {
+            return tagged;
+        }
+
+        string name = episode.DialogueEntry is { Length: > 0 } entry ? entry : episode.EpisodeId;
+
+        return _project.EnumerateNodes().OfType<DialogueNode>()
+            .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 이 에피소드의 <b>Yarn 노드 이름</b> — 계약의 <c>DialogueEntryId</c>. 판에서 못 찾으면
+    /// 빈 문자열이고, 그때는 검증이 이미 오류로 막았다.
+    ///
+    /// ⚠ <b>이름의 주인은 판의 노드다</b> (2026-08-25). 엑셀의 `대사엔트리` 글자로 지으면
+    /// 주인이 둘이 된다 — 판에서 노드를 개명하는 순간 진행 JSON은 옛 이름을 부르고 .yarn은
+    /// 새 이름으로 서서, <b>로드·검증·증명이 전부 통과하는데 재생만 안 된다</b>. 이미터가
+    /// 그 노드에 붙이는 타이틀과 같은 함수를 지나는 것이 유일한 방어다.
+    /// </summary>
+    public string EpisodeNodeNameFor(ChapterEpisode episode) =>
+        EpisodeNodeFor(episode) is { } node
+            ? YarnBundleEmitter.StoryNodeTitleOf(node.Name, node.Id)
+            : string.Empty;
 
     /// <summary>
     /// 이 길에 매달린 자유 씬의 <b>Yarn 노드 이름</b>. 없으면 빈 문자열이고, 런타임은

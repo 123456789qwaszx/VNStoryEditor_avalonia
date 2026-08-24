@@ -104,6 +104,61 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 에피소드를_지우면_연출_그래프의_빈_노드도_함께_지운다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 이것이 "번들 이름이 겹칩니다"의 뿌리였다 (2026-08-25). 워크북에서만 지우면
+        //    판에 <b>사라진 에피소드를 자기라고 주장하는 유령</b>이 남고, 같은 Id로 다시
+        //    만들면 같은 이름의 노드가 둘이 되어 내보내기가 통째로 막힌다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        var board = new Vn.Authoring.Model.StoryFile(name: "chapter-graph-sample");
+        session.Project.Files.Add(board);
+
+        var ghost = new Vn.Authoring.Model.DialogueNode(name: "branch05.02A")
+        {
+            ExcelEpisodeId = "branch05.02A"
+        };
+
+        board.Nodes.Add(ghost);   // 대본이 없다 = 재생할 줄이 없다
+
+        view.SelectEpisode("branch05.02A");
+        view.DeleteSelectedEpisode();
+
+        Assert.Null(session.Project.FindNode(ghost.Id));
+    });
+
+    [Fact]
+    public void 내용이_있는_노드는_지우지_않고_자유_씬으로_떼어_낸다() => HeadlessUi.Run(() =>
+    {
+        // 연출을 넣어 둔 노드를 툴이 임의로 지우면 되돌릴 자리가 없다(판에는 Ctrl+Z가 없다).
+        // 떼어 내면 더 이상 그 에피소드를 사칭하지 않으므로 유령 노릇은 끝난다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        var board = new Vn.Authoring.Model.StoryFile(name: "chapter-graph-sample");
+        session.Project.Files.Add(board);
+
+        var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
+        script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
+        session.Project.Scripts.Add(script);
+
+        var kept = new Vn.Authoring.Model.DialogueNode(name: "branch05.02A")
+        {
+            ExcelEpisodeId = "branch05.02A",
+            ScriptId = script.Id
+        };
+
+        board.Nodes.Add(kept);
+
+        view.SelectEpisode("branch05.02A");
+        view.DeleteSelectedEpisode();
+
+        Assert.NotNull(session.Project.FindNode(kept.Id));
+        Assert.Null(kept.ExcelEpisodeId);   // 더 이상 그 에피소드가 아니다
+    });
+
+    [Fact]
     public void 엑셀이_잡고_있으면_툴_편집_창구가_닫힌다() => HeadlessUi.Run(() =>
     {
         // 2026-08-24 소유자 — "엑셀이 켜지면 자동으로 잠기면서 편집이 불가능하게 막는게
