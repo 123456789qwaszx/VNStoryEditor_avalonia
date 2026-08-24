@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Vn.Authoring.Flow;
+using Vn.Authoring.Model;
 using Vn.Authoring.Rendering;
 
 // 계약 이름의 정본은 코어의 enum이다 (2026-08-23 · 로드맵 T2). 별칭을 두는 이유는
@@ -35,11 +37,17 @@ public static class ChapterProgressionExporter
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    public static ChapterExportResult Export(ChapterGraphModel chapter, string? episodesFolder)
+    /// <param name="project">
+    /// 연출 그래프의 배선을 읽을 프로젝트. 없으면 <c>ViaNodeId</c>가 빈 문자열로 나간다 —
+    /// 챕터 모델만으로 부르는 자리(테스트·CLI)가 그대로 살아 있어야 하기 때문이다.
+    /// </param>
+    public static ChapterExportResult Export(
+        ChapterGraphModel chapter, string? episodesFolder, StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(chapter);
 
-        return ExportValidated(chapter, ChapterValidator.Validate(chapter, episodesFolder));
+        return ExportValidated(
+            chapter, ChapterValidator.Validate(chapter, episodesFolder), project);
     }
 
     /// <summary>
@@ -49,7 +57,9 @@ public static class ChapterProgressionExporter
     /// 훑으므로 챕터 하나에 200ms 가까이 든다 — 그 값을 두 번 치르고 있었다.
     /// </summary>
     public static ChapterExportResult ExportValidated(
-        ChapterGraphModel chapter, ChapterValidationResult validation)
+        ChapterGraphModel chapter,
+        ChapterValidationResult validation,
+        StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(chapter);
         ArgumentNullException.ThrowIfNull(validation);
@@ -59,13 +69,15 @@ public static class ChapterProgressionExporter
             return new ChapterExportResult(null, validation);
         }
 
+        var via = ViaScenes.For(project);
+
         var payload = new ChapterJson
         {
             ChapterId = chapter.ChapterId,
             DisplayName = chapter.ChapterId,
             StartEpisodeId = chapter.StartEpisode?.EpisodeId ?? string.Empty,
             Stats = chapter.Stats.Select(Stat).ToList(),
-            Nodes = chapter.Episodes.Select(episode => Node(chapter, episode)).ToList()
+            Nodes = chapter.Episodes.Select(episode => Node(chapter, episode, via)).ToList()
         };
 
         string json = JsonSerializer.Serialize(payload, Options);
@@ -231,14 +243,14 @@ public static class ChapterProgressionExporter
         Maximum = stat.Maximum
     };
 
-    private static NodeJson Node(ChapterGraphModel chapter, ChapterEpisode episode) => new()
+    private static NodeJson Node(
+        ChapterGraphModel chapter, ChapterEpisode episode, ViaScenes via) => new()
     {
         EpisodeId = episode.EpisodeId,
         Title = episode.Title,
         IndexText = episode.Index,
-        Kind = string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase)
-            ? nameof(Contract.EpisodeKind.Attachment)
-            : nameof(Contract.EpisodeKind.Main),
+        // ⚠ `Kind`(Main/Attachment)는 2026-08-25에 계약에서 사라졌다 — 코어가 `EpisodeKind`를
+        // 통째로 지웠다. 저작의 `종류` 열은 남아 있지만 이제 <b>산출물에 실리지 않는다</b>.
         // ⚠ 이미터의 이름 규칙을 통과시킨다 (2026-08-23) — 런타임은 이 글자로 YarnProject에서
         // 노드를 찾는다. 그냥 실으면 진행 JSON과 yarn 타이틀이 갈려 로드·검증·증명이 전부
         // 통과하는데 재생만 안 된다. 접두(`Story_`)는 2026-08-24에 없어졌지만 규칙이 사라진
@@ -258,21 +270,31 @@ public static class ChapterProgressionExporter
             .Select(edge => new NextOptionJson
             {
                 TargetEpisodeId = edge.ToEpisodeId,
+                // ⚠ <b>비면 자동 진행으로 읽힌다</b> — 간선의 종류를 따로 적는 칸은 계약에
+                // 없고, 문구의 유무가 그 자리를 대신한다(코어 D5). 저작에서는 v12부터 빈
+                // 문구가 오류이므로 여기까지 빈 값이 오지 않는다.
+                //
+                // 2026-08-25 — `Kind`(PlayerChoice/AutoAdvance)를 세워 달라던 부탁은 철회됐다.
+                // 모든 길이 선택지가 되면서 이쪽이 물을 것이 없어졌고, 코어도 칸을 안 세웠다.
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
-                // v12 (2026-08-24) — 저작에 `종류` 칸이 사라졌다. 모든 길이 선택지이므로
-                // 물을 것이 없다. 값은 코어 enum 멤버 이름 그대로다.
-                Kind = nameof(Contract.OptionKind.PlayerChoice),
                 VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
-                // ⚠ v12+ (2026-08-24) — 저작의 `잠금시 숨김` 칸이 폐지됐다. 계약의 칸은
-                // 남아 있고 <b>언제나 false로 나간다</b>(저쪽 DTO를 바꾸지 않는다 — 안 채울
-                // 뿐이다. `ViaNodeId`와 같은 결). 숨기려는 조건은 이제 <b>표시조건</b>에
-                // 적는다 — `해금조건 + 잠기면 숨김`과 결과가 같고, 말이 한 번만 나온다.
-                HideWhenLocked = false,
+                // ⚠ `HideWhenLocked`는 2026-08-25에 계약에서도 사라졌다. 저작에서는 이미
+                // 2026-08-24에 폐지된 칸이다 — 숨기려는 조건은 <b>표시조건</b>에 적는다
+                // (`해금조건 + 잠기면 숨김`과 결과가 같고, 말이 한 번만 나온다).
                 LockedReasonText = edge.LockedMessage ?? string.Empty,
-                // ⚠ v12 (2026-08-24) — 저작의 `연출` 칸이 폐지됐다. 계약의 칸은 남아 있고
-                // 언제나 빈 문자열로 나간다(저쪽 DTO를 바꾸지 않는다 — 안 채울 뿐이다).
-                ViaNodeId = string.Empty,
+                // 이 길에 매달린 <b>자유 씬</b> (2026-08-24). 저작 자리는 엑셀이 아니라
+                // **연출 그래프**다 — 시나리오 작가가 엑셀노드의 선택지 포트에 커스텀
+                // 대사 노드를 잇고, 그 배선은 프로젝트에 산다(`DialogueNode.ChoiceExits`).
+                //
+                // ⚠ 간선 시트에 `연출` 칸을 두지 않는 이유가 이것이다 — 같은 것이 엑셀에도
+                // 있으면 두 곳에 살고 갈린다. v11의 그 칸은 2026-08-24에 폐지됐고, 되살릴
+                // 자리는 반대편이었다.
+                //
+                // 런타임은 이 길을 고른 뒤 <b>도착 에피소드로 가기 전에</b> 이 노드를
+                // 재생한다(`Via 재생 → Commit`). 툴이 자유 씬을 detour로 — 재생하고 부른
+                // 갈래로 돌아오게 — 다루는 것과 같은 뜻이다.
+                ViaNodeId = via.NodeNameFor(episode, edge),
                 StatChanges = edge.StatChanges
                     .Select(delta => new StatChangeJson
                     {
@@ -299,9 +321,16 @@ public static class ChapterProgressionExporter
     };
 
     /// <summary>
-    /// 챕터 조건 → 런타임 `EpisodeCondition`. 스탯 항은 <c>Stat + GreaterOrEqual/LessOrEqual/Equal</c>,
-    /// <c>cleared:</c>는 <c>EpisodeCleared + Exists</c>다. `!=`(NotEqual)는 파서가 아직 닫혀
-    /// 있으므로(D7 — 런타임 확인 후 개방 대기) 여기 나올 수 없다.
+    /// 챕터 조건 → 런타임 <c>ProgressionCondition</c>. 남은 종류는 <b>스탯 하나뿐이다</b> —
+    /// <c>Stat + GreaterOrEqual/LessOrEqual/GreaterThan/LessThan/Equal</c>.
+    ///
+    /// ⚠ <c>cleared:</c>는 2026-08-25에 폐지됐다. 코어가 클리어 이력 추적을 걷으면서
+    /// <c>ConditionKind</c>가 <c>Stat</c> 하나로 줄었고, 그 자리는 <b>Bool 스탯</b>이
+    /// 대신한다(그 에피소드를 떠나는 간선에서 <c>깃발 = true</c>로 켠다). 파서가 이미
+    /// 오류로 막으므로 여기까지 오지 않는다.
+    ///
+    /// `!=`(NotEqual)는 파서가 아직 닫혀 있으므로(D7 — 런타임 확인 후 개방 대기)
+    /// 여기 나올 수 없다.
     /// </summary>
     private static List<ConditionJson> Conditions(ChapterGraphModel chapter, string? label)
     {
@@ -310,14 +339,7 @@ public static class ChapterProgressionExporter
             return new List<ConditionJson>();
         }
 
-        return condition.Parsed.Select(term => term.Kind == ConditionTermKind.EpisodeCleared
-            ? new ConditionJson
-            {
-                Kind = nameof(Contract.ConditionKind.EpisodeCleared),
-                Key = term.Key,
-                Op = nameof(Contract.ComparisonOp.Exists)
-            }
-            : new ConditionJson
+        return condition.Parsed.Select(term => new ConditionJson
             {
                 Kind = nameof(Contract.ConditionKind.Stat),
                 Key = term.Key,
@@ -371,12 +393,10 @@ public static class ChapterProgressionExporter
         public string EpisodeId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string IndexText { get; set; } = string.Empty;
-        public string Kind { get; set; } = nameof(Contract.EpisodeKind.Main);
         public string DialogueEntryId { get; set; } = string.Empty;
         public List<ConditionJson> VisibleConditions { get; set; } = new();
         public List<ConditionJson> UnlockConditions { get; set; } = new();
         public List<NextOptionJson> NextOptions { get; set; } = new();
-        public List<object> Attachments { get; set; } = new();  // v1 비범위 (D5)
         public bool IsChapterEndingCandidate { get; set; }
         public string EndingKey { get; set; } = string.Empty;
         public string DesignerNote { get; set; } = string.Empty;
@@ -388,25 +408,16 @@ public static class ChapterProgressionExporter
     private sealed class NextOptionJson
     {
         public string TargetEpisodeId { get; set; } = string.Empty;
-        public string ChoiceLabel { get; set; } = string.Empty;
 
         /// <summary>
-        /// 이 길을 <b>누가 고르나</b> — <c>PlayerChoice</c> 또는 <c>AutoAdvance</c>
-        /// (⚠ 코어 <see cref="Contract.OptionKind"/>의 멤버 이름 그대로다. 저작 쪽 낱말인
-        /// "선택지/자동"이나 <c>EdgeKind</c>의 <c>Choice/Auto</c>와 <b>다르다</b>).
-        /// 저작의 `간선` 시트 `종류`(I) 열이 원천이다.
+        /// 화면에 뜨는 문구. ⚠ <b>비면 코어가 자동 진행으로 읽는다</b> — 간선의 종류를 적는
+        /// 칸은 계약에 없고 문구의 유무가 그 자리다(D5).
         ///
-        /// <b>왜 싣는가</b> — 이 칸이 없으면 저쪽은 <c>ChoiceLabel</c>이 비었는지로 추론할
-        /// 수밖에 없고, 그러면 <b>문구를 실수로 지운 것</b>과 <b>의도한 자동 진행</b>이
-        /// 데이터로 구별되지 않는다(`ked-progression` D5 — 그쪽이 지금 그 경고를 낸다).
-        ///
-        /// ⚠ <b>저쪽 <c>EpisodeOptionDto</c>에 아직 이 칸이 없다</b>(2026-08-23 실측 · `0.2.0`).
-        /// 호스트의 역직렬화기가 모르는 속성을 조용히 버리므로 <b>지금은 무해하지만 아무
-        /// 일도 하지 않는다</b> — D5 경고는 저쪽이 칸을 세울 때까지 그대로 뜬다. 미리 내는
-        /// 이유는 이 값의 주인이 저작이고, 저쪽이 칸을 세우는 날 이쪽을 다시 안 열어도
-        /// 되게 하기 위해서다.
+        /// <b>`Kind` 칸을 세워 달라는 부탁은 철회됐다</b>(2026-08-25). 저작에서 v12부터
+        /// 모든 길이 선택지이고 빈 문구가 오류이므로, "실수로 지운 것"과 "의도한 자동"을
+        /// 데이터로 가를 필요 자체가 없어졌다 — 이쪽이 빈 문구를 먼저 막는다.
         /// </summary>
-        public string Kind { get; set; } = nameof(Contract.OptionKind.PlayerChoice);
+        public string ChoiceLabel { get; set; } = string.Empty;
 
         /// <summary>
         /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16). 에피소드 노드의
@@ -417,15 +428,14 @@ public static class ChapterProgressionExporter
 
         /// <summary><b>해금조건</b> — 보이지만 고를 수 있으려면.</summary>
         public List<ConditionJson> Conditions { get; set; } = new();
-        public bool HideWhenLocked { get; set; }
         public string LockedReasonText { get; set; } = string.Empty;
 
         /// <summary>
-        /// 이 길을 <b>지나며 거쳐 갈</b> 연출의 Yarn 노드 이름 (v11 §6). 비면 곧장 간다.
+        /// 이 길을 <b>지나며 거쳐 갈</b> 연출의 Yarn 노드 이름. 비면 곧장 간다.
         ///
-        /// ⚠ <b>"노드"는 Yarn 노드다</b> — 에피소드 노드가 아니다. 저작 쪽 이름은
-        /// <c>ChapterEdge.PresentationNodeName</c>이고 계약 쪽은 <c>ViaNodeId</c>다
-        /// (계약서 §H-3의 이름을 그대로 쓴다 — 이름이 둘 도는 것이 이 모호함보다 나쁘다).
+        /// ⚠ <b>"노드"는 Yarn 노드다</b> — 에피소드 노드가 아니다. 저작 쪽 원본은
+        /// <c>DialogueNode.ChoiceExits</c>(연출 그래프의 배선)이고 계약 쪽 이름이
+        /// <c>ViaNodeId</c>다. 값을 만드는 자리는 <see cref="ViaScenes"/> 하나다.
         ///
         /// ⚠ <b>여기에 파라미터를 붙이지 않는다</b> — 지속시간·이징·색이 들어오는 순간
         /// 경계면이 진짜로 넓어진다. 연출의 파라미터는 연출 쪽에서 산다
