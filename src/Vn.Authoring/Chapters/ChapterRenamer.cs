@@ -37,9 +37,9 @@ public static class ChapterRenamer
     /// <param name="SupplyRenamed">조건 공급 노드의 이름이 따라갔으면 참.</param>
     /// <param name="StaleExport">
     /// 옛 이름으로 내보낸 진행 JSON이 남아 있으면 그 파일 이름. <b>지우지 않는다</b> —
-    /// 산출물이라도 남의 폴더에 있는 파일이고, 되돌릴 수 없는 삭제는 툴이 대신하지 않는다
-    /// (챕터 삭제를 안 두는 것과 같은 이유다). 대신 <b>이름을 말해</b> 사람이 지우게 한다:
-    /// 그냥 두면 런타임이 없는 챕터를 계속 싣는다.
+    /// 산출물이라도 남의 폴더(개발자가 가져가는 자리)에 있는 파일이다. 대신 <b>이름을 말해</b>
+    /// 사람이 지우게 한다: 그냥 두면 런타임이 없는 챕터를 계속 싣는다.
+    /// <see cref="ChapterDeleter"/>도 같은 규칙을 쓴다.
     /// </param>
     public sealed record Result(
         bool Renamed,

@@ -604,9 +604,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 챕터 행 우클릭 — 이름 바꾸기. 워크북 파일이 옮겨지고 판(StoryFile) 이름이 따라간다.
-    /// 챕터 삭제는 두지 않는다: 워크북 파일 삭제는 되돌릴 수 없어 툴이 대신하지 않는다 —
-    /// 지우려면 폴더에서 사람이 지운다(폴더 열기가 그 길이다).
+    /// 챕터 행 우클릭 — 이름 바꾸기와 <b>제거</b>. 둘 다 워크북·대본 폴더·판·조건 배관을
+    /// 함께 옮기거나 걷는다(<see cref="ChapterRenamer"/> · <see cref="ChapterDeleter"/>).
+    ///
+    /// ⛔ 제거는 2026-08-25에 생겼다. 그전에는 "폴더에서 사람이 지우세요"였는데, 그 길은
+    /// <b>절반만 지운다</b> — 파일은 사라져도 판과 노드가 프로젝트에 남아 이름이 겹치는
+    /// 번들로 뒤늦게 터졌다. 사람이 손으로 못 지우는 쪽이 남는 것이 문제였다.
     /// </summary>
     private void ShowChapterContextFlyout(Control anchor, string chapterId)
     {
@@ -661,10 +664,86 @@ public partial class MainWindow : Window
                     : " 내보낸 JSON이 있었다면 다시 내보내 주세요."));
         });
         panel.Children.Add(rename);
+        panel.Children.Add(MenuSeparator());
+        panel.Children.Add(BuildChapterRemoveButton(flyout, chapterId));
 
         flyout.ShowAt(anchor);
         name.SelectAll();
         name.Focus();
+    }
+
+    /// <summary>
+    /// [챕터 제거] — <b>두 번 눌러야 지워진다</b>. 첫 누름은 무엇이 함께 사라지는지를
+    /// 그 자리에서 말하고, 그 문장을 읽은 손이 한 번 더 누른다.
+    ///
+    /// 확인 창을 따로 띄우지 않는 이유는 창이 사실을 <b>덮기</b> 때문이다 — 이 판에는
+    /// 방금 읽던 챕터 이름과 이름 칸이 함께 있어서, 여기서 묻는 편이 무엇을 지우는지
+    /// 더 분명하다. 되돌릴 자리(<c>.bak</c>·되돌리기)도 같은 문장에서 말한다.
+    /// </summary>
+    private Control BuildChapterRemoveButton(Flyout flyout, string chapterId)
+    {
+        var remove = new Button
+        {
+            Content = "챕터 제거…",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Foreground = new SolidColorBrush(Color.FromRgb(190, 60, 60))
+        };
+
+        var caution = new TextBlock
+        {
+            Text = $"'{chapterId}'의 대본과 연출 그래프의 노드가 함께 사라집니다. " +
+                   "원고는 .bak으로 남고, 판은 되돌리기로 돌아옵니다.",
+            FontSize = 10,
+            Opacity = 0.75,
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false,
+            Margin = new Thickness(0, 2, 0, 0)
+        };
+
+        bool armed = false;
+
+        remove.Click += (_, _) =>
+        {
+            if (!armed)
+            {
+                armed = true;
+                remove.Content = "정말 제거 — 한 번 더";
+                caution.IsVisible = true;
+                return;
+            }
+
+            UiGuard.Run(_session, "챕터 제거", () =>
+            {
+                ChapterDeleter.Result result =
+                    ChapterDeleter.Delete(_session.Editor, _session.ProjectPath, chapterId);
+
+                if (!result.Deleted)
+                {
+                    _session.SetStatus(result.Failure!);
+                    return;
+                }
+
+                ChapterGraph.RefreshFromDisk();
+                RefreshShell();
+                flyout.Hide();
+
+                // 되돌릴 자리를 <b>이름으로</b> 말한다 — "지웠습니다"만 오면 사람은 원고가
+                // 사라진 줄 알고, 그 오해는 폴더를 열어 봐야만 풀린다.
+                string kept = string.Join(" · ",
+                    new[] { result.WorkbookBackup, result.EpisodesBackup }
+                        .Where(item => item is not null));
+
+                _session.SetStatus(
+                    $"챕터 '{chapterId}'를 지웠습니다(연출 노드 {result.NodesRemoved}개도 함께)." +
+                    (kept.Length > 0 ? $" 원고는 남겨 뒀습니다: {kept}" : string.Empty) +
+                    (result.StaleExport is { } stale
+                        ? $" ⚠ 내보낸 '{stale}'가 남아 있습니다 — 지우지 않으면 게임이 " +
+                          "없는 챕터를 계속 싣습니다."
+                        : string.Empty));
+            });
+        };
+
+        return new StackPanel { Spacing = 2, Children = { remove, caution } };
     }
 
     private async void OnNewClick(object? sender, RoutedEventArgs e)
