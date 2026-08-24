@@ -133,10 +133,12 @@ public sealed class ChapterViaSceneTests : IDisposable
     }
 
     [Fact]
-    public void 비어_있는_연출_씬은_챕터_검증이_경고로_짚는다()
+    public void 비어_있는_연출_씬은_챕터_검증이_오류로_막는다()
     {
-        // 판에서 선을 잇는 것과 씬을 채우는 것은 다른 손놀림이라, 이어만 두고 안 채운
-        // 상태가 정상적으로 존재한다. 막지는 않되 어느 길이 남았는지는 세어 보여 준다.
+        // ⛔ 처음에는 경고로 두었다 — "빈 씬도 들어갔다 곧장 나오면 그만"이라고 봤다.
+        //    그런데 Yarn 컴파일러가 <b>줄 없는 노드를 YarnProject에 아예 넣지 않는다</b>.
+        //    그러면 진행 JSON이 부르는 이름이 저쪽에 없어 재생이 통째로 막힌다 —
+        //    빈 씬 하나가 챕터 전체를 못 돌게 하므로 내보내기 전에 세워야 한다.
         ChapterGraphModel chapter = BuildChapter();
 
         var project = new StoryProject();
@@ -155,10 +157,52 @@ public sealed class ChapterViaSceneTests : IDisposable
         ChapterDiagnostic problem = Assert.Single(
             validation.All, item => item.Code == ChapterDiagnosticCode.ViaSceneEmpty);
 
-        Assert.Equal(ChapterDiagnosticSeverity.Warning, problem.Severity);
+        Assert.Equal(ChapterDiagnosticSeverity.Error, problem.Severity);
         Assert.Equal(ChapterSheetNames.Edges, problem.Sheet);
         Assert.Contains("빈 전이", problem.Message);
-        Assert.Contains("비어 있습니다", problem.Message);
+        Assert.Contains("재생할 줄이 하나도 없습니다", problem.Message);
+        Assert.Contains("YarnProject", problem.Message);   // 왜 치명적인지까지 말한다
+    }
+
+    [Fact]
+    public void 비어_있는_에피소드도_오류로_막는다()
+    {
+        // 소유자 보고 (2026-08-25): "YarnProject 자체가 대사노드가 텅 비어있으면 아예
+        // 넣지를 않네." 그래서 빈 에피소드는 재생 시작 자체를 막는다 — 챕터 그래프에서
+        // 세워야 유니티까지 안 간다.
+        ChapterGraphModel chapter = BuildChapter();
+
+        var project = new StoryProject();
+        var file = new StoryFile(name: chapter.ChapterId);
+
+        foreach (ChapterEpisode episode in chapter.Episodes)
+        {
+            // 판에는 노드가 다 있는데 대본이 하나도 없는 상태.
+            file.Nodes.Add(new DialogueNode(name: episode.EpisodeId)
+            {
+                ExcelEpisodeId = episode.EpisodeId
+            });
+        }
+
+        project.Files.Add(file);
+
+        ChapterValidationResult validation =
+            ChapterValidator.Validate(chapter, episodesFolder: null, project);
+
+        // 에피소드마다 제 행에서 선다 — 세 개가 비었으면 세 줄이다.
+        Assert.Equal(
+            3,
+            validation.All.Count(item => item.Code == ChapterDiagnosticCode.EpisodeSceneEmpty));
+
+        ChapterDiagnostic problem = Assert.Single(
+            validation.All,
+            item => item.Code == ChapterDiagnosticCode.EpisodeSceneEmpty &&
+                item.Message.Contains("'시작'의", StringComparison.Ordinal));
+
+        Assert.Equal(ChapterDiagnosticSeverity.Error, problem.Severity);
+        Assert.Equal(ChapterSheetNames.Episodes, problem.Sheet);
+        Assert.Contains("YarnProject", problem.Message);
+        Assert.Contains("더블클릭", problem.Message);   // 고치는 법까지 말한다
     }
 
     [Fact]

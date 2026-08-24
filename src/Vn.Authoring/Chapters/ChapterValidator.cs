@@ -40,7 +40,7 @@ public static class ChapterValidator
         var diagnostics = new List<ChapterDiagnostic>(chapter.Diagnostics);
 
         VerifyDialogueEntriesOnBoard(chapter, project, diagnostics);
-        VerifyViaScenesFilled(chapter, project, diagnostics);
+        VerifyScenesFilled(chapter, project, diagnostics);
 
         string[] labels = chapter.Conditions.Select(condition => condition.Label).ToArray();
         var conditionsByLabel = chapter.Conditions
@@ -90,39 +90,19 @@ public static class ChapterValidator
     }
 
     /// <summary>
-    /// ⛔ <b>`대사엔트리`가 가리키는 대사노드가 그 챕터의 판에 실제로 있는가</b> (2026-08-23).
+    /// 재생할 줄이 하나도 없는 노드를 <b>오류로</b> 짚는다 — 에피소드의 것이든, 간선에
+    /// 매단 자유 씬이든 (2026-08-25).
     ///
-    /// 내보내기의 <c>DialogueEntryId</c>는 이 글자를 이미터 규칙에 통과시킨 것이고
-    /// (정규화 — 2026-08-24까지는 <c>Story_</c> 접두도 붙었다), yarn 타이틀도 <b>같은 노드
-    /// 이름</b>에서 나온다. 그래서
-    /// 노드가 없으면 파일이 아예 안 나가고, 진행 JSON만 <b>없는 노드를 부른다</b> —
-    /// 로드·검증·도달성 증명은 전부 통과하고 재생만 안 된다. 2026-08-23에 유니티의
-    /// 사전 대조가 잡은 그 모양이다. <b>여기서 잡으면 유니티까지 안 간다.</b>
+    /// ⛔ <b>경고에서 오류로 올렸다.</b> 처음에는 "빈 씬도 들어갔다 곧장 나오면 그만"이라고
+    /// 보고 경고로 두었는데, <b>Yarn 컴파일러가 줄 없는 노드를 YarnProject에 아예 넣지
+    /// 않는다</b>(실측). 그러면 진행 JSON이 부르는 이름이 저쪽에 없어 유니티의 사전 대조가
+    /// <b>재생을 통째로 막는다</b> — 빈 씬 하나가 챕터 전체를 못 돌게 한다.
     ///
-    /// ⚠ <b>안 연 챕터를 거부하지 않는다.</b> 에피소드 동기화는 <b>고른 챕터 하나만</b>
-    /// 돌고(<see cref="EpisodeSyncRunner"/>) 내보내기는 <b>전 챕터</b>를 돈다
-    /// (<see cref="ChapterExportService.ExportAll"/>). 그 비대칭 때문에, 판이 없거나
-    /// 판에 대사노드가 하나도 없는 챕터는 <b>아직 동기화 전</b>이지 잘못된 것이 아니다 —
-    /// 그때 거부하면 오늘 잘 나가던 챕터가 전부 막힌다.
-    ///
-    /// 판에 노드가 <b>하나라도</b> 있으면 그 챕터는 한 번은 동기화됐다는 뜻이고,
-    /// 그때부터 빠진 이름은 진짜 빠진 것이다.
+    /// ⚠ 커맨드만 있고 <b>대사가 빈 줄</b>은 여기서 세지 않는다 — 그것이 순수 연출 씬의
+    /// 정상 모양이고, 이미터가 보이지 않는 글자로 채워 내므로 노드가 살아남는다.
+    /// 여기가 보는 것은 <b>줄 자체가 없는</b> 노드다.
     /// </summary>
-    /// <summary>
-    /// 간선에 매달린 자유 씬이 <b>비어 있는지</b> 알린다 (2026-08-25).
-    ///
-    /// 판에서 선을 잇는 것과 씬을 채우는 것은 다른 손놀림이라, 이어만 두고 아직 안 채운
-    /// 상태가 정상적으로 존재한다. 그 자체는 잘못이 아니지만 <b>어느 길이 남았는지 한 자리에서
-    /// 보이지 않으면</b> 열 개 중 하나가 빈 채로 출시된다.
-    ///
-    /// <b>오류가 아니라 경고다</b> — 빈 씬도 재생은 된다(들어갔다 곧장 나온다). 막는 것이
-    /// 아니라 세어 보여 주는 자리다.
-    ///
-    /// ⚠ 커맨드만 있고 대사가 빈 줄은 <b>여기서 세지 않는다</b> — 그것이 순수 연출 씬의
-    /// 정상 모양이다. 여기가 보는 것은 <b>재생할 줄이 하나도 없는</b> 씬이고, 빈 줄 하나하나는
-    /// 이미터가 따로 짚는다.
-    /// </summary>
-    private static void VerifyViaScenesFilled(
+    private static void VerifyScenesFilled(
         ChapterGraphModel chapter,
         StoryProject? project,
         List<ChapterDiagnostic> diagnostics)
@@ -136,6 +116,24 @@ public static class ChapterValidator
 
         foreach (ChapterEpisode episode in chapter.Episodes)
         {
+            // ① 에피소드 자신의 대사 노드. 없는 것은 `VerifyDialogueEntriesOnBoard`가 짚으므로
+            //    여기서는 <b>있는데 비었을 때</b>만 본다 — 같은 말을 두 번 하지 않는다.
+            if (board.EpisodeNodeFor(episode) is { } own && !HasPlayableLine(project, own))
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticCode.EpisodeSceneEmpty,
+                    chapter.SourcePath,
+                    ChapterSheetNames.Episodes,
+                    episode.SourceRow,
+                    "C",
+                    $"'{episode.EpisodeId}'의 대사 노드 '{own.Name}'에 재생할 줄이 하나도 " +
+                    "없습니다. 줄 없는 노드는 Yarn이 YarnProject에 넣지 않아서, 이대로 " +
+                    "내보내면 게임이 그 노드를 찾지 못해 재생을 시작하지 못합니다 — " +
+                    "카드를 더블클릭해 대본을 한 줄이라도 적어 주세요."));
+            }
+
+            // ② 그 에피소드에서 나가는 길에 매단 자유 씬.
             foreach (ChapterEdge edge in chapter.Edges.Where(item =>
                          string.Equals(item.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal)))
             {
@@ -145,14 +143,15 @@ public static class ChapterValidator
                 }
 
                 diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.ViaSceneEmpty,
                     chapter.SourcePath,
                     ChapterSheetNames.Edges,
                     edge.SourceRow,
                     "D",
                     $"'{episode.EpisodeId}'→'{edge.ToEpisodeId}' 길에 매단 연출 씬 " +
-                    $"'{scene.Name}'이 비어 있습니다 — 재생할 줄이 하나도 없습니다. " +
+                    $"'{scene.Name}'에 재생할 줄이 하나도 없습니다. 줄 없는 노드는 " +
+                    "YarnProject에 실리지 않아 게임이 그 씬을 찾지 못합니다 — " +
                     "연출 그래프에서 채우거나, 안 쓸 것이면 선을 떼 주세요."));
             }
         }
@@ -164,6 +163,19 @@ public static class ChapterValidator
         document.Lines.Count > 0 &&
         document.ActiveLines.Any();
 
+    /// <summary>
+    /// ⛔ <b>에피소드가 부를 대사 노드가 그 판에 실제로 있는가</b> (2026-08-23).
+    ///
+    /// 노드가 없으면 그 .yarn이 아예 안 나가고 진행 JSON만 <b>없는 노드를 부른다</b> —
+    /// 로드·검증·도달성 증명은 전부 통과하고 재생만 안 된다. 유니티의 사전 대조가 잡는
+    /// 그 모양이고, <b>여기서 잡으면 유니티까지 안 간다.</b>
+    ///
+    /// ⚠ <b>2026-08-25에 "안 연 챕터는 봐준다"를 걷었다.</b> 판이 없거나 비어 있으면 이
+    /// 관문을 통째로 건너뛰었는데, 그 면제가 실제로 사고를 냈다 — 진행 JSON이 그대로 나가고
+    /// 게임에서만 죽었다. 판과 노드는 <b>프로젝트 파일에 남으므로</b>(세션 상태가 아니다)
+    /// 한 번 연 챕터는 계속 통과한다. 옛 주석이 걱정하던 "동기화는 한 챕터, 내보내기는 전
+    /// 챕터"라는 비대칭은 그쪽을 향한 것이었다.
+    /// </summary>
     private static void VerifyDialogueEntriesOnBoard(
         ChapterGraphModel chapter,
         StoryProject? project,

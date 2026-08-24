@@ -21,10 +21,16 @@ public enum ChapterDiagnosticCode
     EpisodeIdDuplicated,
 
     /// <summary>
-    /// 간선에 매단 자유 씬이 비어 있다 (2026-08-25). 이어만 두고 안 채운 상태는 정상이지만,
-    /// 어느 길이 남았는지 한 자리에서 보이지 않으면 빈 채로 출시된다.
+    /// 간선에 매단 자유 씬에 재생할 줄이 하나도 없다 (2026-08-25). 줄 없는 노드는
+    /// YarnProject에 실리지 않아 게임이 그 씬을 찾지 못한다.
     /// </summary>
     ViaSceneEmpty,
+
+    /// <summary>
+    /// 에피소드의 대사 노드에 재생할 줄이 하나도 없다 (2026-08-25). 같은 이유로 치명적이다 —
+    /// 그 노드가 YarnProject에서 빠져 재생이 시작되지 않는다.
+    /// </summary>
+    EpisodeSceneEmpty,
 
     DialogueEntryBlank,
     PositionNotNumeric,
