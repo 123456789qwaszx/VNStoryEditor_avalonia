@@ -98,10 +98,19 @@ public partial class MainWindow : Window
             _session.SelectFile(_session.EnsureChapterBoard(chapterId));
             RebuildFileList();
         });
-        MainTabs.SelectionChanged += (_, _) =>
+        MainTabs.SelectionChanged += (_, args) =>
         {
             ApplyTabChrome();
             EnterStageTab();
+
+            // 무대에서 <b>돌아온</b> 것만 본다 — 챕터 그래프에서 건너온 사람의 화면까지
+            // 옮기면 남의 자리를 빼앗는 짓이다.
+            if (ReferenceEquals(MainTabs.SelectedItem, GraphTabItem) &&
+                args.RemovedItems.Count > 0 &&
+                ReferenceEquals(args.RemovedItems[0], StageTabItem))
+            {
+                UiGuard.Run(_session, "무대에서 돌아오기", ReturnFromStage);
+            }
         };
         Graph.NodeActivated += nodeId => UiGuard.Run(_session, "무대에서 보기", () => OpenOnStage(nodeId));
         // XAML 기본은 펼침이고 SelectionChanged는 이미 정해진 선택에 오지 않는다 —
@@ -327,6 +336,43 @@ public partial class MainWindow : Window
         _session.Select(nodeId);
         MainTabs.SelectedItem = StageTabItem;
     }
+
+    /// <summary>
+    /// 무대에서 연출 그래프로 돌아왔다 — 방금 보던 <b>에피소드 노드</b>를 고른 채로,
+    /// 화면 한가운데에 놓는다 (2026-08-25 소유자).
+    ///
+    /// ⚠ 무대의 선택은 <b>연출 노드</b>다(<see cref="EnterPresentationChannel"/>가 그리로
+    /// 옮긴다 — 대사 노드를 고른 채로 두면 발행본이 그려져 잠긴 화면이 되기 때문이다).
+    /// 그런데 사람이 "보고 있던 것"이라고 여기는 것은 그 연출이 얹힌 <b>에피소드 노드</b>다.
+    /// 그래서 공급 연결을 거꾸로 타고 그쪽으로 돌려놓는다 — 안 그러면 돌아온 화면이
+    /// 방금 본 씬이 아니라 그 옆의 🎬 카드를 가리킨다.
+    ///
+    /// 판이 아직 안 재어진 순간이라, 가운데로 옮기는 것은
+    /// <see cref="GraphEditorView.CenterOnNode"/>가 잴 수 있게 된 뒤로 미룬다.
+    /// </summary>
+    private void ReturnFromStage()
+    {
+        if (_session.SelectedNode is not { } node)
+        {
+            return;
+        }
+
+        string target = node is PresentationNode
+            ? DialogueSuppliedBy(node.Id) ?? node.Id
+            : node.Id;
+
+        _session.Select(target);
+        Graph.CenterOnNode(target);
+    }
+
+    /// <summary>이 연출 노드가 공급하는 대사 노드 — 공급 연결(연출 → 대사)을 거꾸로 탄다.</summary>
+    private string? DialogueSuppliedBy(string presentationNodeId) =>
+        _session.Project.Links
+            .FirstOrDefault(link =>
+                link.Kind == NodeLinkKind.PresentationSupply &&
+                link.IsEnabled &&
+                string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal))
+            ?.TargetNodeId;
 
     private void EnterStageTab()
     {

@@ -91,7 +91,103 @@ public sealed class PresentationGraphStageJumpTests
         window.Close();
     });
 
+    [Fact]
+    public void 무대에서_돌아오면_그_에피소드_노드가_고른_채로_한가운데_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-25 소유자: "무대프리뷰에서 선택한 에피소드 노드가 화면 중앙에 온 채,
+        // 클릭이 된 상태가 되도록."
+        //
+        // ⚠ 무대의 선택은 <b>연출 노드</b>다. 사람이 "보고 있던 것"이라고 여기는 것은 그
+        //    연출이 얹힌 에피소드 노드이므로, 돌아올 때 그쪽으로 돌려놓아야 한다 —
+        //    안 그러면 돌아온 화면이 방금 본 씬이 아니라 그 옆의 🎬 카드를 가리킨다.
+        (MainWindow window, AuthoringSession session, DialogueNode dialogue) = Stage();
+
+        // 판 밖으로 멀리 보내 둔다 — 가까이 있으면 안 옮겨도 우연히 가운데로 보인다.
+        // 그리고 <b>구석에 걸치게</b> 스크롤해 둔다: 누르려면 보여야 하고, 동시에 지금은
+        // 가운데가 아니어야 아래 단언이 뜻을 갖는다.
+        session.Editor.MoveNode(dialogue.Id, 1200, 900);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        ScrollCardToCorner(window, dialogue.Id);
+
+        Assert.False(IsCentered(window, dialogue.Id), "시작부터 가운데면 이 시험은 아무것도 안 잰다");
+
+        DoubleClick(window, CardCenter(window, dialogue.Id));
+        Assert.Equal(StageTab, Tabs(window).SelectedIndex);
+
+        Tabs(window).SelectedIndex = GraphTab;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // ① 고른 것은 <b>에피소드 노드</b>다 — 무대가 들고 있던 연출 노드가 아니다.
+        Assert.Equal(dialogue.Id, session.SelectedNodeId);
+
+        // ② 그 카드가 화면 한가운데 있다.
+        Assert.True(IsCentered(window, dialogue.Id), "에피소드 노드가 화면 한가운데가 아니다");
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 챕터_그래프에서_건너오면_화면을_옮기지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 가운데 맞추기는 <b>무대에서 돌아온</b> 사람에게만 주는 배려다. 다른 길로 들어온
+        // 사람의 스크롤 자리를 빼앗으면 그것은 배려가 아니라 방해다.
+        (MainWindow window, AuthoringSession session, DialogueNode dialogue) = Stage();
+
+        session.Editor.MoveNode(dialogue.Id, 2400, 1800);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ScrollViewer scroll = window.FindControl<GraphEditorView>("Graph")!
+            .FindControl<ScrollViewer>("GraphScroll")!;
+        Vector before = scroll.Offset;
+
+        Tabs(window).SelectedIndex = 0; // 챕터 그래프
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Tabs(window).SelectedIndex = GraphTab;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before, scroll.Offset);
+
+        window.Close();
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>그 카드가 보이는 판의 <b>왼쪽 위 구석</b>에 걸치도록 스크롤한다.</summary>
+    private static void ScrollCardToCorner(MainWindow window, string nodeId)
+    {
+        GraphEditorView graph = window.FindControl<GraphEditorView>("Graph")!;
+        Canvas canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+
+        Border card = canvas.Children.OfType<Border>()
+            .Single(border => (border.Tag as string) == nodeId);
+
+        graph.FindControl<ScrollViewer>("GraphScroll")!.Offset =
+            new Vector(Canvas.GetLeft(card), Canvas.GetTop(card));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>그 노드의 카드 한가운데가 보이는 판의 한가운데와 겹치는가(카드 반쪽 안).</summary>
+    private static bool IsCentered(MainWindow window, string nodeId)
+    {
+        GraphEditorView graph = window.FindControl<GraphEditorView>("Graph")!;
+        ScrollViewer scroll = graph.FindControl<ScrollViewer>("GraphScroll")!;
+        Canvas canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+
+        Border card = canvas.Children.OfType<Border>()
+            .Single(border => (border.Tag as string) == nodeId);
+
+        var cardCenter = new Avalonia.Point(
+            Canvas.GetLeft(card) + (card.Bounds.Width / 2),
+            Canvas.GetTop(card) + (card.Bounds.Height / 2));
+
+        var viewCenter = new Avalonia.Point(
+            scroll.Offset.X + (scroll.Viewport.Width / 2),
+            scroll.Offset.Y + (scroll.Viewport.Height / 2));
+
+        return Math.Abs(cardCenter.X - viewCenter.X) <= card.Bounds.Width / 2 &&
+               Math.Abs(cardCenter.Y - viewCenter.Y) <= card.Bounds.Height / 2;
+    }
 
     /// <summary>무대가 이 대사의 씬을 보고 있는가 — 그 대사이거나, 그 대사를 받는 연출 노드다.</summary>
     private static bool StageIsShowing(AuthoringSession session, string dialogueNodeId)

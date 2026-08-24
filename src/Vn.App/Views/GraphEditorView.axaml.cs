@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Flow;
@@ -2001,11 +2002,7 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        Control? target = FindCard(nodeId)?.Visual;
-        target ??= _proxies.FirstOrDefault(proxy => proxy.Rows.Any(row =>
-            string.Equals(row.NodeId, nodeId, StringComparison.Ordinal)))?.Visual;
-
-        if (target is null)
+        if (TargetVisualOf(nodeId) is not { } target)
         {
             return;
         }
@@ -2025,6 +2022,62 @@ public partial class GraphEditorView : UserControl
         {
             return;
         }
+
+        Center(target);
+    }
+
+    /// <summary>
+    /// 노드 하나를 <b>화면 한가운데로</b> 가져온다 — 이미 보이더라도 옮긴다
+    /// (2026-08-25 소유자: 무대에서 돌아올 때 "화면 중앙에 온 채").
+    ///
+    /// ⚠ <see cref="ScrollToSelected"/>와 <b>일부러 다르다</b>. 그쪽은 보이는 노드에 끼어들지
+    /// 않는다 — 편집 중에 화면이 저 혼자 움직이면 스크롤해 둔 자리를 빼앗기 때문이다.
+    /// 여기는 사람이 <b>판을 막 열어 눈이 아직 아무 데도 안 붙은</b> 순간이라 그 배려가
+    /// 오히려 방해가 된다: "구석에 조금 보이니까 안 옮긴다"는 곧 못 찾는다는 뜻이다.
+    ///
+    /// 탭을 막 바꾼 순간에는 판도 카드도 <b>아직 재기 전</b>이라 크기가 0이다. 그때 계산하면
+    /// 대체 크기로 어림잡게 되어 카드 높이의 절반쯤 어긋난다 — 가운데에 놓겠다고 해 놓고
+    /// 어중간한 자리에 놓는 셈이라, 판과 카드 <b>둘 다</b> 재어진 다음으로 미룬다.
+    /// </summary>
+    internal void CenterOnNode(string nodeId) => CenterOnNode(nodeId, attempt: 0);
+
+    /// <summary>재어지길 기다리는 횟수. 끝내 안 재어지면 어림값으로라도 옮긴다 — 영원히
+    /// 미루면 아무 일도 안 일어나고, 그것이 가장 나쁘다(사람은 못 찾은 채 남는다).</summary>
+    private const int CenterAttempts = 4;
+
+    private void CenterOnNode(string nodeId, int attempt)
+    {
+        if (TargetVisualOf(nodeId) is not { } target)
+        {
+            return;
+        }
+
+        bool measured =
+            GraphScroll.Viewport.Width > 0 && GraphScroll.Viewport.Height > 0 &&
+            target.Bounds.Width > 0 && target.Bounds.Height > 0;
+
+        if (!measured && attempt < CenterAttempts)
+        {
+            Dispatcher.UIThread.Post(
+                () => CenterOnNode(nodeId, attempt + 1), DispatcherPriority.Loaded);
+            return;
+        }
+
+        Center(target);
+    }
+
+    /// <summary>카드가 있으면 카드, 접힌 판 안이면 그 프록시 — 눈이 실제로 가야 할 것.</summary>
+    private Control? TargetVisualOf(string nodeId) =>
+        FindCard(nodeId)?.Visual
+        ?? _proxies.FirstOrDefault(proxy => proxy.Rows.Any(row =>
+            string.Equals(row.NodeId, nodeId, StringComparison.Ordinal)))?.Visual;
+
+    private void Center(Control target)
+    {
+        double left = Canvas.GetLeft(target);
+        double top = Canvas.GetTop(target);
+        double width = target.Bounds.Width > 0 ? target.Bounds.Width : CardWidth;
+        double height = target.Bounds.Height > 0 ? target.Bounds.Height : 160;
 
         GraphScroll.Offset = new Vector(
             Math.Max(0, ((left + (width / 2)) * _zoom) - (GraphScroll.Viewport.Width / 2)),
