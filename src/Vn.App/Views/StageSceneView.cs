@@ -2582,7 +2582,7 @@ internal sealed class StageSceneView : UserControl
         }
 
         _popoverSlotKey = slotKey; // 전역 선택도 이 슬롯을 따라간다
-        _popoverTabIndex = 3;      // 캐릭터 탭 ([자주 쓰는]이 앞에 서며 하나 밀렸다)
+        _popoverTabIndex = CharacterTabIndex;
         _consoleRebuild?.Invoke();
     }
 
@@ -2768,8 +2768,9 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 등장/퇴장 버튼 줄 — 우측 정렬 + 구분 색(등장 초록·퇴장 붉음). 조절창 하단의
-    /// 전역 줄로 어느 탭에서든 보인다(배경 탭 제외). 반대 방향 fade는 걷히고 원하는 쪽만 남는다.
+    /// 등장/퇴장 버튼 줄 — 우측 정렬 + 구분 색(등장 초록·퇴장 붉음). 조절창 하단의 전역
+    /// 줄이고, <b>슬롯을 겨누는 탭에서만</b> 선다(<see cref="HidesVisibilityRow"/>).
+    /// 반대 방향 fade는 걷히고 원하는 쪽만 남는다.
     /// </summary>
     private Control BuildVisibilityRow(string slotKey, Action onApplied)
     {
@@ -2927,15 +2928,14 @@ internal sealed class StageSceneView : UserControl
         // [자주 쓰는]이 맨 앞이자 기본 탭이다 (2026-08-22 소유자) — 나머지 네 탭이 "누가·
         // 어디·어떤 표정"을 명사로 말하는 동안, 시간·리액션·카메라·화면은 126종 목록으로
         // 나가야 했다. 그 넷을 칩 한 줄로 당겨 온 자리다.
+        // ⚠ 순서가 규격이다 (2026-08-24 소유자) — 자주 쓰는 · 슬롯 · 캐릭터 · 배경 · 오디오.
+        //   슬롯·캐릭터가 앞에 붙은 이유는 <b>둘이 한 손놀림</b>이기 때문이다: 슬롯을 세우고
+        //   곧바로 그 슬롯의 캐릭터를 만진다. 배경·오디오는 그 뒤에 한 번씩 손대는 것이다.
+        //   자리를 옮길 때는 아래 자리 상수(QuickTabIndex 등)를 함께 옮긴다.
         tabs.Items.Add(new TabItem
         {
             Header = new TextBlock { Text = "★ 자주 쓰는", FontSize = 11 },
             Content = BuildQuickTab(rebuild)
-        });
-        tabs.Items.Add(new TabItem
-        {
-            Header = new TextBlock { Text = "배경", FontSize = 11 },
-            Content = BuildBackgroundTab(rebuild)
         });
         tabs.Items.Add(new TabItem
         {
@@ -2946,6 +2946,11 @@ internal sealed class StageSceneView : UserControl
         {
             Header = new TextBlock { Text = "캐릭터", FontSize = 11 },
             Content = BuildCharacterTab(rebuild)
+        });
+        tabs.Items.Add(new TabItem
+        {
+            Header = new TextBlock { Text = "배경", FontSize = 11 },
+            Content = BuildBackgroundTab(rebuild)
         });
         // [이동] 탭은 없다 (2026-08-21 소유자: "이동도 결국 커맨드 하나일 뿐") —
         // 이동 편집은 터미널에서 그 커맨드를 고르는 정식 경로 하나로 간다.
@@ -2959,15 +2964,14 @@ internal sealed class StageSceneView : UserControl
 
         host.Children.Add(tabs);
 
-        // ── 등장/퇴장 — 탭과 무관하게 항상 보이는 전역 줄 (선택 슬롯 대상).
-        //    배경 탭에서만 숨긴다 — 배경은 슬롯이 아니다 (소유자 지시 2026-08-06 2차).
+        // ── 등장/퇴장 — 슬롯을 만지는 탭에서만 서는 전역 줄 (선택 슬롯 대상).
         Control? visibilityRow = _popoverSlotKey is { } selectedSlotKey
             ? BuildVisibilityRow(selectedSlotKey, rebuild)
             : null;
 
         if (visibilityRow is not null)
         {
-            visibilityRow.IsVisible = tabs.SelectedIndex != BackgroundTabIndex;
+            visibilityRow.IsVisible = !HidesVisibilityRow(tabs.SelectedIndex);
             host.Children.Add(visibilityRow);
         }
 
@@ -2980,15 +2984,33 @@ internal sealed class StageSceneView : UserControl
 
             if (visibilityRow is not null)
             {
-                visibilityRow.IsVisible = tabs.SelectedIndex != BackgroundTabIndex;
+                visibilityRow.IsVisible = !HidesVisibilityRow(tabs.SelectedIndex);
             }
         };
     }
 
-    // ── [자주 쓰는] 탭 (2026-08-22) ─────────────────────────────────────────
+    // ── 탭의 자리 ───────────────────────────────────────────────────────────
+    //
+    // 번호가 아니라 이름으로 가리킨다 — 순서는 소유자가 옮기는 것이고, 그때 코드가
+    // 조용히 엉뚱한 탭을 가리키면 안 된다. 순서를 바꿀 때 함께 고치는 자리는 여기뿐이다.
 
-    /// <summary>배경 탭의 자리. 등장/퇴장 줄을 숨길 탭을 번호가 아니라 이름으로 가리킨다.</summary>
-    private const int BackgroundTabIndex = 1;
+    private const int QuickTabIndex = 0;
+    private const int CharacterTabIndex = 2;
+    private const int BackgroundTabIndex = 3;
+
+    /// <summary>
+    /// 등장/퇴장 줄을 숨기는 탭인가.
+    ///
+    /// <b>배경</b> — 배경은 슬롯이 아니다 (소유자 지시 2026-08-06 2차).
+    /// <b>자주 쓰는</b> — 그 판의 칩은 <b>제 대상을 자기가 들고 있다</b> (2026-08-24 소유자).
+    /// 아래에 선 등장/퇴장은 위 콤보의 슬롯을 겨누므로, 칩을 누르는 손과 다른 대상을
+    /// 가리키는 단추 둘이 한 화면에 서서 <b>같은 것처럼 보인다</b>. 슬롯을 겨누는 일은
+    /// [슬롯]·[캐릭터] 탭의 것이고, 등장/퇴장도 거기 있으면 된다.
+    /// </summary>
+    private static bool HidesVisibilityRow(int tabIndex) =>
+        tabIndex is QuickTabIndex or BackgroundTabIndex;
+
+    // ── [자주 쓰는] 탭 (2026-08-22) ─────────────────────────────────────────
 
     /// <summary>칩을 지울 수 있는 상태인가. 팝오버를 다시 열면 꺼진다 — 편집은 잠깐의 일이다.</summary>
     private bool _quickEditMode;
@@ -3008,8 +3030,8 @@ internal sealed class StageSceneView : UserControl
 
     /// <summary>
     /// 검증용 손잡이 — 조절창 본문(슬롯 헤더 + 탭 + 등장/퇴장)을 짓는다.
-    /// 탭 <b>순서</b>가 <see cref="BackgroundTabIndex"/>와 캐릭터 탭 번호(3)의 근거라
-    /// 눈이 아니라 테스트가 지킨다.
+    /// 탭 <b>순서</b>가 자리 상수들(<see cref="QuickTabIndex"/>·<see cref="CharacterTabIndex"/>·
+    /// <see cref="BackgroundTabIndex"/>)의 근거라 눈이 아니라 테스트가 지킨다.
     /// </summary>
     internal Control BuildStagePopoverProbe()
     {

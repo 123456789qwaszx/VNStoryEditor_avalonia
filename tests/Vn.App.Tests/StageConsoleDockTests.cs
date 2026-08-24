@@ -80,7 +80,7 @@ public sealed class StageConsoleDockTests
             .GetLogicalDescendants().OfType<TabControl>().Single();
 
         Assert.Equal(
-            ["★ 자주 쓰는", "배경", "슬롯", "캐릭터", "오디오"],
+            ["★ 자주 쓰는", "슬롯", "캐릭터", "배경", "오디오"],
             tabs.Items.OfType<TabItem>().Select(item => ((TextBlock)item.Header!).Text!).ToArray());
 
         window.Close();

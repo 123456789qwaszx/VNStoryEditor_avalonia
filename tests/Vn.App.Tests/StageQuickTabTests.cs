@@ -112,13 +112,48 @@ public sealed class StageQuickTabTests
             .GetLogicalDescendants().OfType<TabControl>().Single();
 
         Assert.Equal(
-            ["★ 자주 쓰는", "배경", "슬롯", "캐릭터", "오디오"],
+            ["★ 자주 쓰는", "슬롯", "캐릭터", "배경", "오디오"],
             tabs.Items.OfType<TabItem>().Select(item => ((TextBlock)item.Header!).Text!).ToArray());
 
         // 기본 칩 = shot_zoom · shot_to · shot_reset (2026-08-22 소유자). 나머지는 사람이 담는다.
         Assert.Equal(
             ["shot.shot_zoom", "shot.shot_to", "shot.shot_reset"],
             session.Project.EffectiveQuickCommands.Select(chip => chip.Steps[0].DefinitionId).ToArray());
+    });
+
+    [Fact]
+    public void 등장_퇴장_줄은_슬롯을_겨누는_탭에서만_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-24 소유자: [자주 쓰는]에서는 등장·퇴장을 안 보이게.
+        // 그 판의 칩은 <b>제 대상을 자기가 들고</b> 있으므로, 위 콤보의 슬롯을 겨누는
+        // 단추가 아래 함께 서면 둘이 같은 것처럼 보인다. 배경은 애초에 슬롯이 아니다.
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+        StageSceneView view = SceneOf(
+            session, nodeId, lineId, Command("char_rig_cast.slot", ("slotKey", "c1")));
+
+        Control popover = view.BuildStagePopoverProbe();
+        TabControl tabs = popover.GetLogicalDescendants().OfType<TabControl>().Single();
+
+        Control row = popover.GetLogicalDescendants().OfType<Button>()
+            .First(button => Equals(button.Content, "등장 (fade_in)"))
+            .FindLogicalAncestorOfType<StackPanel>()!;
+
+        string[] headers = tabs.Items.OfType<TabItem>()
+            .Select(item => ((TextBlock)item.Header!).Text!)
+            .ToArray();
+
+        bool VisibleOn(string header)
+        {
+            tabs.SelectedIndex = Array.IndexOf(headers, header);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            return row.IsVisible;
+        }
+
+        Assert.False(VisibleOn("★ 자주 쓰는"));
+        Assert.True(VisibleOn("슬롯"));
+        Assert.True(VisibleOn("캐릭터"));
+        Assert.False(VisibleOn("배경"));
+        Assert.True(VisibleOn("오디오"));
     });
 
     [Fact]
