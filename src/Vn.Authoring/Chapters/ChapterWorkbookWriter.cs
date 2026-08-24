@@ -791,11 +791,18 @@ public static class ChapterWorkbookWriter
     {
         // 머리글 색이 곧 시트의 신원이다: 남藍 = 그래프 구조 · 초록 = 조건 · 회색 = 읽기전용
         // 미러 · 주황 = 테스트 데이터 · 청 = 어휘 사전.
+        // ⚠ <b>이 목록이 곧 그 시트의 칸 수다</b>. 열을 걷으면서 여기를 안 고치면 없어진
+        //    칸까지 격자와 색이 계속 칠해져, 사람 눈에는 "쓰라는 칸"으로 보인다
+        //    (2026-08-25 소유자 보고: 에피소드 G열 · 간선 I·J·K열).
+        //
+        //    에피소드: EpisodeId · 제목 · 대사엔트리 · X · Y · 메모  (v13에서 `종류` 폐지)
         Chrome(workbook, ChapterSheetNames.Episodes, "#333F50",
-            [14, 22, 12, 20, 7, 7, 20], reference: [1], note: [7]);
+            [14, 22, 20, 7, 7, 20], reference: [1], note: [6]);
 
+        //    간선: 출발 · 도착 · 스탯변화 · 선택지 · 표시조건 · 해금조건 · 잠금 안내문 · 엔딩키
+        //    (`잠금시 숨김`·`종류`·`연출`이 2026-08-24에 폐지됐다)
         Chrome(workbook, ChapterSheetNames.Edges, "#333F50",
-            [14, 14, 14, 26, 26, 14, 12, 26, 10, 16, 22], reference: [1, 2], note: [8]);
+            [14, 14, 14, 26, 26, 14, 26, 16], reference: [1, 2], note: [7]);
 
         Chrome(workbook, ChapterSheetNames.Conditions, "#548235",
             [18, 26, 26, 26, 44], reference: [2], note: [5]);
@@ -842,6 +849,19 @@ public static class ChapterWorkbookWriter
         {
             return;
         }
+
+        // ⛔ 규격 <b>바깥의</b> 칸에서 배경과 격자를 걷는다 (2026-08-25). 열을 걷어도 옛
+        //    파일에는 그 자리의 칠이 그대로 남아, 사람 눈에는 여전히 "쓰라는 칸"이다 —
+        //    새로 칠하는 것만으로는 안 지워진다(우리가 안 칠하는 자리이기 때문이다).
+        //
+        //    ⚠ <b>글꼴은 안 건드린다.</b> 사람이 규격 오른쪽에 적어 둔 곁말이 있고(견본의
+        //    규격 안내가 그렇다), 그것까지 씻으면 설명이 맨몸이 된다. 지우려는 것은
+        //    "칸처럼 보이는 것"이지 글이 아니다.
+        IXLRange beyond = sheet.Range(1, widths.Length + 1, ChromeRows, widths.Length + 6);
+
+        beyond.Style.Fill.SetBackgroundColor(XLColor.NoColor);
+        beyond.Style.Border.SetOutsideBorder(XLBorderStyleValues.None);
+        beyond.Style.Border.SetInsideBorder(XLBorderStyleValues.None);
 
         IXLRange table = sheet.Range(1, 1, ChromeRows, widths.Length);
 

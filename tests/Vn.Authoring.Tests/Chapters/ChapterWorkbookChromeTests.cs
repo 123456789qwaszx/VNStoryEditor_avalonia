@@ -57,18 +57,48 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
     }
 
     [Fact]
-    public void v11의_새_세_열도_읽을_수_있는_너비를_갖는다()
+    public void 규격_바깥의_칸에는_칠도_격자도_없다()
     {
-        // `종류`·`엔딩키`·`연출`은 v11에서 뒤에 붙었다 — 견본에는 없던 열이라 여기서
-        // 처음 너비를 정한다. 기본 9로 두면 `엔딩키`가 잘려 무슨 칸인지 안 보인다.
+        // ⛔ 2026-08-25 소유자 보고 — "에피소드 시트에서 g열이 색이 칠해져 있는거랑,
+        //    간선에서 i,j,k열이 색이 칠해져있는 것 정리해줘."
+        //
+        //    폐지된 열(에피소드 `종류`, 간선 `잠금시 숨김`·`종류`·`연출`)의 자리에 격자와
+        //    배경이 남아 있었다. 사람 눈에는 그것이 곧 "쓰라는 칸"이라, 없는 칸에 적고
+        //    저장했는데 아무 일도 안 일어나는 상태가 된다.
+        ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch01", [("trust", "신뢰")]);
+
+        using var workbook = new XLWorkbook(ChapterPath);
+
+        // 에피소드는 여섯 칸(A~F), 간선은 여덟 칸(A~H)이다.
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Episodes), 7);
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 9);
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 10);
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 11);
+    }
+
+    /// <summary>그 칸이 <b>칸처럼 보이지 않는가</b> — 배경도 격자도 없어야 한다.</summary>
+    private static void AssertBlank(IXLWorksheet sheet, int column)
+    {
+        IXLStyle style = sheet.Cell(2, column).Style;
+
+        // ⚠ 색을 견주지 않는다 — ClosedXML은 "칠 없음"을 인덱스 64로 들고 있어
+        //    `XLColor.NoColor`와 글자로 비교하면 같은 것이 달라 보인다. 무늬가 곧 칠이다.
+        Assert.Equal(XLFillPatternValues.None, style.Fill.PatternType);
+        Assert.Equal(XLBorderStyleValues.None, style.Border.LeftBorder);
+        Assert.Equal(XLBorderStyleValues.None, style.Border.TopBorder);
+    }
+
+    [Fact]
+    public void 남은_열들은_읽을_수_있는_너비를_갖는다()
+    {
+        // 기본 9로 두면 `엔딩키`·`잠금 안내문`이 잘려 무슨 칸인지 안 보인다.
         ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch01", [("trust", "신뢰")]);
 
         using var workbook = new XLWorkbook(ChapterPath);
         IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
 
-        Assert.True(edges.Column(9).Width >= 10);   // 종류
-        Assert.True(edges.Column(10).Width >= 12);  // 엔딩키
-        Assert.True(edges.Column(11).Width >= 20);  // 연출
+        Assert.True(edges.Column(7).Width >= 20);  // 잠금 안내문
+        Assert.True(edges.Column(8).Width >= 12);  // 엔딩키
     }
 
     [Fact]
@@ -82,7 +112,33 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
 
         using var workbook = new XLWorkbook(ChapterPath);
         Assert.True(workbook.Worksheet(ChapterSheetNames.Episodes).AutoFilter.IsEnabled);
-        Assert.True(workbook.Worksheet(ChapterSheetNames.Edges).Column(10).Width >= 12);
+        Assert.True(workbook.Worksheet(ChapterSheetNames.Edges).Column(8).Width >= 12); // 엔딩키
+    }
+
+    [Fact]
+    public void 열은_이미_걷혔는데_칠만_남은_파일도_이행이_씻어_준다()
+    {
+        // ⛔ 2026-08-25 — 소유자 손에 실제로 있던 모양이다. v13 이행(에피소드 `종류` 폐지)은
+        //    이미 지나갔으므로 열 이름으로 부르는 조건은 전부 조용하다. 그런데 그 자리의
+        //    배경과 격자는 그대로 남아 있다 — 걷을 때 칠은 안 걷었기 때문이다.
+        //
+        //    이 시험이 없으면 "새로 만든 챕터만 깨끗하고 쓰던 챕터는 영영 그대로"가 된다.
+        ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch01", [("trust", "신뢰")]);
+
+        using (var stale = new XLWorkbook(ChapterPath))
+        {
+            IXLWorksheet episodes = stale.Worksheet(ChapterSheetNames.Episodes);
+            episodes.Range(1, 7, 40, 7).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#333F50"));
+            stale.Save();
+        }
+
+        Assert.True(ChapterWorkbookMigrator.Migrate(ChapterPath).Migrated);
+
+        using var after = new XLWorkbook(ChapterPath);
+        AssertBlank(after.Worksheet(ChapterSheetNames.Episodes), 7);
+
+        // 그리고 그 이행이 스스로를 다시 부르지 않는다 — 아니면 열 때마다 `.bak`이 갈린다.
+        Assert.False(ChapterWorkbookMigrator.Migrate(ChapterPath).Migrated);
     }
 
     [Fact]
@@ -137,8 +193,9 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
         Assert.Equal(10, body.Font.FontSize);
         Assert.Equal(XLBorderStyleValues.Thin, body.Border.BottomBorder);
 
-        // 메모(G) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
-        IXLStyle note = episodes.Cell(2, 7).Style;
+        // 메모(F) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
+        // v13에서 `종류`가 걷히며 G → F로 당겨졌다 (2026-08-25).
+        IXLStyle note = episodes.Cell(2, 6).Style;
         Assert.True(note.Font.Italic);
         Assert.Equal(9, note.Font.FontSize);
 

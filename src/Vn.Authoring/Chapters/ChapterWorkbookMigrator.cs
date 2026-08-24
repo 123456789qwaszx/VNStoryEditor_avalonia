@@ -149,8 +149,16 @@ public static class ChapterWorkbookMigrator
         // 머리글의 <b>흰 글자</b>로 대표해 본다. 자동 필터 하나만 보면, 필터는 걸렸는데
         // 글꼴·색은 아직인 중간 상태(서식이 두 단계로 들어온 2026-08-18의 실제 모습)를
         // "다 됐다"로 잘못 읽는다.
+        //
+        // ⛔ 규격 <b>바깥에</b> 남은 칠도 이행을 부른다 (2026-08-25). 열을 걷는 이행은 이미
+        //    끝난 파일 — 머리글 글자는 지웠지만 그 자리의 배경은 그대로인 파일 — 이 실제로
+        //    소유자 손에 있었다("에피소드 시트에서 g열이 색이 칠해져 있는거"). 열 이름으로만
+        //    이행을 부르면 그 파일은 <b>영영 안 고쳐진다</b>: 걷을 열은 이미 없기 때문이다.
+        //
+        //    에피소드 규격은 여섯 칸이므로 일곱째가 곧 "바깥"이다.
         return !episodes.AutoFilter.IsEnabled ||
-               episodes.Cell(1, 1).Style.Font.FontColor != XLColor.White;
+               episodes.Cell(1, 1).Style.Font.FontColor != XLColor.White ||
+               episodes.Cell(1, 7).Style.Fill.PatternType != XLFillPatternValues.None;
     }
 
     /// <summary>
