@@ -11,11 +11,6 @@ namespace Ked.Progression
 
             switch (condition.Kind)
             {
-                case ConditionKind.EpisodeCleared:
-                    return state.IsEpisodeCleared(condition.Key);
-
-                case ConditionKind.ChapterCleared:
-                    return state.IsChapterCleared(condition.Key);
 
                 case ConditionKind.Stat:
                     return EvaluateStat(condition, state);

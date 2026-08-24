@@ -6,15 +6,12 @@ namespace Ked.Progression
     public enum OptionKind
     {
         PlayerChoice = 0,
-
-        // 고를 수 있는 것이 하나도 없을 때 자동으로 타는 길.
-        // 에피소드당 하나 제한. 문구나 게이트 없음.
         AutoAdvance = 1,
     }
 
     // 에피소드에서 나가는 길 - 저작 쪽 `간선` 시트의 한 행에 대응.
     //
-    // 이전에는 에피소드 노드가 표시조건·해금조건을 들고 있었는데, 이젠 간선으로 책임.
+    // 이전에는 에피소드 노드가 표시조건/해금조건을 들고 있었는데, 이젠 간선으로 책임.
     // 그래서 "같은 곳으로 가되 조건이 다른 길"을 여럿 둘 수 있음.
     public sealed class EpisodeOption
     {
@@ -32,7 +29,6 @@ namespace Ked.Progression
         // 왜 잠겼는지 알려 줌.
         public IReadOnlyList<ProgressionCondition> Conditions { get; }
 
-        public bool HideWhenLocked { get; }
         public string LockedReasonText { get; }
 
         // 스탯이 변하는 유일한 자리
@@ -51,7 +47,6 @@ namespace Ked.Progression
             string targetEpisodeId,
             IReadOnlyList<ProgressionCondition> visibleConditions,
             IReadOnlyList<ProgressionCondition> conditions,
-            bool hideWhenLocked,
             string lockedReasonText,
             IReadOnlyList<StatChange> statChanges,
             string viaNodeId)
@@ -72,7 +67,6 @@ namespace Ked.Progression
             StatChanges = statChanges ?? Array.Empty<StatChange>();
 
             TargetEpisodeId = targetEpisodeId;
-            HideWhenLocked = hideWhenLocked;
             ViaNodeId = viaNodeId ?? string.Empty;
 
             ProgressionCondition.RequireAllConstructed(
@@ -87,7 +81,6 @@ namespace Ked.Progression
             string targetEpisodeId,
             IReadOnlyList<ProgressionCondition> visibleConditions = null,
             IReadOnlyList<ProgressionCondition> conditions = null,
-            bool hideWhenLocked = false,
             string lockedReasonText = null,
             IReadOnlyList<StatChange> statChanges = null,
             string viaNodeId = null)
@@ -106,7 +99,6 @@ namespace Ked.Progression
                 targetEpisodeId,
                 visibleConditions,
                 conditions,
-                hideWhenLocked,
                 lockedReasonText,
                 statChanges,
                 viaNodeId);
@@ -124,7 +116,6 @@ namespace Ked.Progression
                 targetEpisodeId,
                 null,
                 null,
-                false,
                 null,
                 statChanges,
                 viaNodeId);

@@ -3,8 +3,14 @@ using System.Collections.Generic;
 
 namespace Ked.Progression
 {
-    // 전 챕터 공통 규칙.
+    // 전 챕터 공통 규칙:
+    // [1]ID는 유일.
+    // [2]참조는 반드시 실재.
+    // [3]데이터 표현의 자유는 제한.
+    // [4]런타임 암묵적 결정 제거.
+    
     // ChapterProgression, ProgressionLoader가 사용.
+    // - 챕터 그래프와 스탯/엔딩 규칙간 모순을 찾아서 차단.
     internal static class ChapterInvariants
     {
         public static void Collect(
@@ -59,8 +65,8 @@ namespace Ked.Progression
 
                 if (isLastOfKey && !rule.IsCatchAll)
                 {
-                    // 조건이 전부 미달이면 갈 곳이 없어진다. 그때 무슨 일이 일어나야 하는지
-                    // 아무도 안 적었으므로 런타임이 추측하게 된다 — 추측하는 규칙은 언젠가 틀린다.
+                    // 조건이 전부 미달이면 갈 곳이 없어진다.
+                    // 모든 조건 검사 후, Catch-all 체크.
                     into.Add(ProgressionDiagnostic.Error(
                         at,
                         $"엔딩 '{rule.EndingKey}'의 마지막 규칙에 조건이 달렸다. " +
@@ -80,6 +86,8 @@ namespace Ked.Progression
             VerifyEndingKeysMatch(rules, nodes, lastIndexByKey, into);
         }
 
+        // 양방향 검사:
+        // - EndingKey = "happy" 일 때, Rule에도 "EndingKey "happy"가 있는지
         private static void VerifyEndingKeysMatch(
             IReadOnlyList<EndingRule> rules,
             IReadOnlyList<EpisodeNode> nodes,
@@ -91,9 +99,7 @@ namespace Ked.Progression
             foreach (EpisodeNode node in nodes)
             {
                 if (node == null || !node.IsEndingCandidate)
-                {
                     continue;
-                }
 
                 producedKeys.Add(node.EndingKey);
 
@@ -134,7 +140,7 @@ namespace Ked.Progression
 
                 if (byKey.ContainsKey(stat.Key))
                 {
-                    // 뒤엣것이 이기면 초기값·경계가 조용히 갈린다.
+                    // 뒤엣것이 이기면 초기값/경계가 조용히 갈린다.
                     into.Add(ProgressionDiagnostic.Error(
                         $"Stats[{i}]", $"스탯 키 '{stat.Key}'가 중복 정의됐다."));
                     continue;
@@ -181,9 +187,7 @@ namespace Ked.Progression
             ICollection<ProgressionDiagnostic> into)
         {
             if (!string.IsNullOrEmpty(startEpisodeId) && nodesById.ContainsKey(startEpisodeId))
-            {
                 return;
-            }
 
             into.Add(ProgressionDiagnostic.Error(
                 "StartEpisodeId",
@@ -202,10 +206,8 @@ namespace Ked.Progression
             foreach (EpisodeNode node in nodes)
             {
                 if (node == null)
-                {
                     continue;
-                }
-
+                
                 IReadOnlyList<EpisodeOption> options = node.NextOptions;
 
                 for (int i = 0; i < options.Count; i++)
@@ -242,17 +244,6 @@ namespace Ked.Progression
                 ProgressionCondition condition = conditions[i];
                 string at = $"{where}[{i}]";
 
-                // Cleared 계열은 값 비교가 아니다 — 클리어했는가만 묻는다
-                // 연산을 여기서 확인하지 않는 이유: 팩토리가 Exists 말고는 만들 수 없게 한다.
-                //
-                // 대상의 실재도 여기서 보지 않는다. 에피소드 오타는 "영원히 안 열리는 관문"이
-                // 되는데 그건 도달성 증명이 잡는 자리이고, 챕터 오타는 시나리오가 잡는다.
-                if (condition.Kind == ConditionKind.EpisodeCleared ||
-                    condition.Kind == ConditionKind.ChapterCleared)
-                {
-                    continue;
-                }
-
                 if (condition.Kind != ConditionKind.Stat)
                 {
                     into.Add(ProgressionDiagnostic.Error(
@@ -262,8 +253,8 @@ namespace Ked.Progression
 
                 if (!statsByKey.TryGetValue(condition.Key, out StatDefinition stat))
                 {
-                    // 규율 1 — 없는 키를 0으로 읽으면 오타 낸 조건이 "언제나 통과하는 관문"이
-                    // 되고, 그 버그는 재생해 봐도 안 보인다.
+                    // 없는 키를 0으로 읽으면 오타 낸 조건이
+                    // "언제나 통과하는 관문"이 되고, 그 버그는 재생해 봐도 안 보인다.
                     into.Add(ProgressionDiagnostic.Error(
                         at,
                         $"정의되지 않은 스탯 '{condition.Key}'. " +
@@ -272,12 +263,8 @@ namespace Ked.Progression
                 }
 
                 if (stat.Type != StatType.Bool)
-                {
                     continue;
-                }
-
-                // bool 스탯의 값 공간은 0·1 하나뿐이라 크기 비교가 의미를 갖지 않는다.
-                // 저작 쪽도 같은 자리에서 막는다(ChapterWorkbookReader.VerifyBoolStatUsage).
+                
                 if (condition.Op != ComparisonOp.Equal)
                 {
                     into.Add(ProgressionDiagnostic.Error(
@@ -297,15 +284,23 @@ namespace Ked.Progression
             }
         }
 
+        // 선택지 골랐을 때의 스탯 변경 구조 검사
+        // [1]동일 키 금지.
+        // - 같은 키를 두 번 '정하면' 어느 쪽이 사는지가 배열 순서에 달리고,
+        // - 시트에서 행을 옮기는 것만으로 결과가 바뀜.
+        
+        // [2]숫자에 Set금지.
+        // - 스탯 변화의 연속적인 범위 추적이 복잡해짐. 데이터 분석 난이도 보존.
+        
+        // [3]bool에 Add금지, 한 간선에 Bool 두 번 금지.
+        // - add연산을 허용하면 clamp를 거치며 의도가 불분명해짐.
+        // - 중복 시 마지막 것이 이기는데, 시트에서 행을 옮기는 것만으로 결과가 바뀜.
         private static void VerifyStatChanges(
             IReadOnlyList<StatChange> changes,
             Dictionary<string, StatDefinition> statsByKey,
             string where,
             ICollection<ProgressionDiagnostic> into)
         {
-            // 같은 키를 두 번 '정하면' 어느 쪽이 사는지가 배열 순서에 달린다 — 순서가
-            // 뜻을 갖기 시작하면 시트에서 행을 옮기는 것만으로 결과가 바뀐다.
-            // (더하기끼리는 합쳐지므로 순서와 무관하고, 그래서 이 규칙에 걸리지 않는다.)
             var setKeys = new HashSet<string>(StringComparer.Ordinal);
             var reportedDuplicates = new HashSet<string>(StringComparer.Ordinal);
 

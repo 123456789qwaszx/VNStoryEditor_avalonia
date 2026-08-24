@@ -21,16 +21,7 @@ namespace Ked.Progression
     /// </summary>
     public static class ProgressionLoader
     {
-        public static ProgressionLoadResult Load(ChapterProgressionDto dto) =>
-            Load(dto, null);
-
-        /// <param name="fallbackStats">
-        /// 챕터가 스탯을 안 적었을 때 쓸 정의 — 시나리오가 내려 준다(D1: 소유가 시나리오다).
-        /// 챕터가 적어 두었으면 그쪽이 이기고, 경계·타입이 시나리오와 갈리는지는
-        /// <c>ScenarioInvariants</c>가 본다.
-        /// </param>
-        private static ProgressionLoadResult Load(
-            ChapterProgressionDto dto, List<StatDto> fallbackStats)
+        public static ProgressionLoadResult Load(ChapterProgressionDto dto)
         {
             var diagnostics = new List<ProgressionDiagnostic>();
 
@@ -42,24 +33,9 @@ namespace Ked.Progression
                 return new ProgressionLoadResult(null, diagnostics);
             }
 
-            var autoPaths = new List<string>();
-
-            List<StatDto> statDtos = Count(dto.Stats) > 0 ? dto.Stats : fallbackStats;
-
-            List<StatDefinition> stats = LoadStats(statDtos, diagnostics);
-            List<EpisodeNode> nodes = LoadNodes(dto.Nodes, diagnostics, autoPaths);
+            List<StatDefinition> stats = LoadStats(dto.Stats, diagnostics);
+            List<EpisodeNode> nodes = LoadNodes(dto.Nodes, diagnostics);
             List<EndingRule> endingRules = LoadEndingRules(dto.EndingRules, diagnostics);
-
-            if (autoPaths.Count > 0)
-            {
-                // 저작 데이터에 종류 열이 없어 문구가 빈 간선을 자동 진행으로 읽음.
-                diagnostics.Add(ProgressionDiagnostic.Warning(
-                    "NextOptions",
-                    $"문구가 빈 간선 {autoPaths.Count}개를 자동 진행으로 읽었다: " +
-                    $"{string.Join(", ", autoPaths)}. " +
-                    "저작 데이터에 종류 열이 없어 문구의 유무로 판별한다 — " +
-                    "선택지 문구를 실수로 지운 것이라면 여기 나타난다(D5)."));
-            }
 
             if (HasError(diagnostics))
             {
@@ -86,34 +62,31 @@ namespace Ked.Progression
             return new ProgressionLoadResult(chapter, diagnostics);
         }
 
-        /// <summary>
-        /// 시나리오 하나를 싣는다. 챕터마다 <see cref="Load(ChapterProgressionDto)"/>를 돌리고
-        /// 진단에 <c>Chapters[...]</c> 접두를 붙여 모은다 — 어느 챕터의 어느 자리인지가
-        /// 한 줄에 다 있어야 한다.
-        /// </summary>
-        public static ScenarioLoadResult Load(ScenarioProgressionDto dto)
+        // 챕터 여러 개를 시나리오로 묶어 싣는다.
+        //
+        // 시나리오는 저작물이 아니다 — 툴은 챕터 JSON만 낸다. 그래서 조립은 호스트의
+        // 일이고, 입구가 DTO가 아니라 인자다. 시나리오 JSON 모양을 두면 아무도 안 쓰는
+        // 직렬화 껍질이 하나 늘 뿐이다.
+        //
+        // 진단에는 Chapters[...] 접두가 붙는다 — 어느 챕터의 어느 자리인지가 한 줄에 다
+        // 있어야 한다.
+        public static ScenarioLoadResult LoadScenario(
+            string scenarioId,
+            string displayName,
+            string startChapterId,
+            IReadOnlyList<ChapterProgressionDto> chapterDtos)
         {
             var diagnostics = new List<ProgressionDiagnostic>();
 
-            if (dto == null)
-            {
-                diagnostics.Add(ProgressionDiagnostic.Error(
-                    string.Empty, "시나리오 DTO가 null이다."));
-
-                return new ScenarioLoadResult(null, diagnostics);
-            }
-
-            if (string.IsNullOrEmpty(dto.ScenarioId))
+            if (string.IsNullOrEmpty(scenarioId))
             {
                 diagnostics.Add(ProgressionDiagnostic.Error("ScenarioId", "시나리오 ID가 비어 있다."));
             }
 
-            List<StatDefinition> stats = LoadStats(dto.Stats, diagnostics);
             var chapters = new List<ChapterProgression>();
+            int count = chapterDtos == null ? 0 : chapterDtos.Count;
 
-            List<ChapterProgressionDto> chapterDtos = dto.Chapters;
-
-            for (int i = 0; i < Count(chapterDtos); i++)
+            for (int i = 0; i < count; i++)
             {
                 ChapterProgressionDto chapterDto = chapterDtos[i];
 
@@ -121,9 +94,7 @@ namespace Ked.Progression
                     ? $"Chapters[{chapterDto.ChapterId}]"
                     : $"Chapters[{i}]";
 
-                // 챕터가 스탯을 안 적었으면 시나리오 것을 쓴다. 조용한 기본값이 아니라
-                // 소유 규칙을 그대로 적용하는 것이다.
-                ProgressionLoadResult result = Load(chapterDto, dto.Stats);
+                ProgressionLoadResult result = Load(chapterDto);
 
                 foreach (ProgressionDiagnostic diagnostic in result.Diagnostics)
                 {
@@ -144,8 +115,7 @@ namespace Ked.Progression
                 return new ScenarioLoadResult(null, diagnostics);
             }
 
-            ScenarioInvariants.Collect(
-                stats, chapters, dto.StartChapterId, diagnostics, out _, out _);
+            ScenarioInvariants.Collect(chapters, startChapterId, diagnostics, out _);
 
             if (HasError(diagnostics))
             {
@@ -153,25 +123,19 @@ namespace Ked.Progression
             }
 
             var scenario = new ScenarioProgression(
-                dto.ScenarioId, dto.DisplayName, dto.StartChapterId, stats, chapters);
+                scenarioId, displayName, startChapterId, chapters);
 
             return new ScenarioLoadResult(scenario, diagnostics);
         }
 
-        /// <summary>
-        /// 챕터 하나를 시나리오로 감싸 싣는다 — <b>챕터만 떼어 테스트 플레이하는 길</b>이다.
-        ///
-        /// 툴은 챕터 JSON만 내는데 <see cref="EpisodeFlow"/>는 시나리오를 요구한다. 그런데
-        /// 이 길은 시나리오 저작이 생긴 뒤에도 사라지지 않는다 — 작가가 ch03만 돌려 보고
-        /// 싶은 때가 영원히 있다. 호스트 둘이 각자 감싸는 코드를 만들지 않게 여기 한 번 둔다.
-        ///
-        /// 감싼 결과: <c>ScenarioId</c> = <c>StartChapterId</c> = 챕터 ID, 챕터 하나,
-        /// <c>Stats</c>는 챕터 것을 시나리오로 승격.
-        ///
-        /// ⚠ 챕터가 든 <c>EndingRules</c>는 그대로 실린다. 그중 다음 챕터로 가는 규칙이
-        /// 있으면 갈 곳이 없으므로 <c>ScenarioInvariants</c>가 허공 간선으로 잡는다 —
-        /// <b>그게 맞는 동작이다.</b> 단일 챕터인데 다음 챕터를 적었다는 뜻이니까.
-        /// </summary>
+        // 챕터 하나만 떼어 돌리는 길 — LoadScenario의 N=1이다.
+        //
+        // 챕터가 여럿이 된 뒤에도 사라지지 않는다. 작가가 ch03만 돌려 보고 싶은 때가
+        // 영원히 있고, 호스트 둘이 각자 감싸는 코드를 만들지 않게 여기 한 번 둔다.
+        //
+        // 챕터가 든 EndingRules는 그대로 실린다. 그중 다음 챕터로 가는 규칙이 있으면
+        // 갈 곳이 없어 ScenarioInvariants가 허공 간선으로 잡는다 — 그게 맞는 동작이다.
+        // 챕터 하나뿐인데 다음 챕터를 적었다는 뜻이니까.
         public static ScenarioLoadResult LoadAsSingleChapterScenario(ChapterProgressionDto dto)
         {
             var diagnostics = new List<ProgressionDiagnostic>();
@@ -189,33 +153,14 @@ namespace Ked.Progression
                 // 시나리오 ID와 시작 챕터 ID를 둘 다 여기서 가져온다 — 비면 감쌀 이름이 없다.
                 diagnostics.Add(ProgressionDiagnostic.Error(
                     "ChapterId",
-                    "챕터 ID가 비어 있다. 단일 챕터 시나리오는 이 ID를 시나리오 ID로도 쓴다."));
+                    "챕터 ID가 비어 있다. 챕터 하나짜리 시나리오는 이 ID를 시나리오 ID로도 쓴다."));
 
                 return new ScenarioLoadResult(null, diagnostics);
             }
 
-            if (Count(dto.Stats) == 0)
-            {
-                // 시나리오가 스탯 정의의 주인인데(D1) 줄 것이 없다. 빈 목록으로 감싸면
-                // 조건이 가리키는 스탯이 전부 "정의되지 않음"이 되어, 진짜 원인인
-                // "이 JSON에는 스탯이 없다"가 진단 수십 개 밑에 묻힌다.
-                diagnostics.Add(ProgressionDiagnostic.Error(
-                    "Stats",
-                    $"챕터 '{dto.ChapterId}'에 스탯 정의가 없어 시나리오로 감쌀 수 없다(D1). " +
-                    "스탯 정의의 주인은 시나리오이고 단일 챕터에서는 챕터 것을 승격한다 — " +
-                    "승격할 것이 없다. 스탯 칸이 서기 전에 내보낸 옛 JSON이라면 다시 내보낼 것."));
-
-                return new ScenarioLoadResult(null, diagnostics);
-            }
-
-            return Load(new ScenarioProgressionDto
-            {
-                ScenarioId = dto.ChapterId,
-                DisplayName = dto.DisplayName,
-                StartChapterId = dto.ChapterId,
-                Stats = dto.Stats,
-                Chapters = new List<ChapterProgressionDto> { dto },
-            });
+            return LoadScenario(
+                dto.ChapterId, dto.DisplayName, dto.ChapterId,
+                new List<ChapterProgressionDto> { dto });
         }
 
         // ── 엔딩 규칙 ───────────────────────────────────────────────────────
@@ -336,7 +281,7 @@ namespace Ked.Progression
         // ── 노드 ────────────────────────────────────────────────────────────
 
         private static List<EpisodeNode> LoadNodes(
-            List<EpisodeNodeDto> dtos, List<ProgressionDiagnostic> into, List<string> autoPaths)
+            List<EpisodeNodeDto> dtos, List<ProgressionDiagnostic> into)
         {
             var nodes = new List<EpisodeNode>();
 
@@ -360,24 +305,15 @@ namespace Ked.Progression
                     ? at
                     : $"Nodes[{dto.EpisodeId}]";
 
-                if (!TryParseEpisodeKind(dto.Kind, out EpisodeKind kind))
-                {
-                    into.Add(ProgressionDiagnostic.Error(
-                        where, $"알 수 없는 에피소드 종류 '{dto.Kind}'. 가능한 값: Main, Attachment."));
-                    continue;
-                }
-
                 VerifyNodeIsLeanedOut(dto, where, into);
 
-                List<EpisodeOption> options =
-                    LoadOptions(dto.NextOptions, where, into, autoPaths);
+                List<EpisodeOption> options = LoadOptions(dto.NextOptions, where, into);
 
                 try
                 {
                     nodes.Add(new EpisodeNode(
                         dto.EpisodeId,
                         dto.Title,
-                        kind,
                         dto.DialogueEntryId,
                         options,
                         dto.EndingKey,
@@ -409,14 +345,6 @@ namespace Ked.Progression
                     "조용히 사라져 전부 열린 채로 돈다 — 구판 내보내기가 만든 데이터인지 확인할 것."));
             }
 
-            if (Count(dto.Attachments) > 0)
-            {
-                into.Add(ProgressionDiagnostic.Error(
-                    where,
-                    $"부착 {Count(dto.Attachments)}개가 왔는데 v1은 싣지 못한다(§G9). " +
-                    "조용히 버리지 않는다."));
-            }
-
             // sentinel 쌍 — 4조합 중 둘이 무효다.
             bool hasKey = !string.IsNullOrEmpty(dto.EndingKey);
 
@@ -434,10 +362,7 @@ namespace Ked.Progression
         // ── 간선 ────────────────────────────────────────────────────────────
 
         private static List<EpisodeOption> LoadOptions(
-            List<EpisodeOptionDto> dtos,
-            string nodePath,
-            List<ProgressionDiagnostic> into,
-            List<string> autoPaths)
+            List<EpisodeOptionDto> dtos, string nodePath, List<ProgressionDiagnostic> into)
         {
             var options = new List<EpisodeOption>();
 
@@ -475,7 +400,6 @@ namespace Ked.Progression
                             dto.TargetEpisodeId,
                             visible,
                             conditions,
-                            dto.HideWhenLocked,
                             dto.LockedReasonText,
                             changes,
                             dto.ViaNodeId));
@@ -494,7 +418,7 @@ namespace Ked.Progression
                         continue;
                     }
 
-                    if (dto.HideWhenLocked || !string.IsNullOrEmpty(dto.LockedReasonText))
+                    if (!string.IsNullOrEmpty(dto.LockedReasonText))
                     {
                         into.Add(ProgressionDiagnostic.Error(
                             at,
@@ -504,7 +428,6 @@ namespace Ked.Progression
                         continue;
                     }
 
-                    autoPaths.Add(at);
                     options.Add(EpisodeOption.Auto(dto.TargetEpisodeId, changes, dto.ViaNodeId));
                 }
                 catch (ArgumentException error)
@@ -537,12 +460,10 @@ namespace Ked.Progression
                     continue;
                 }
 
-                if (!TryParseConditionKind(dto.Kind, out ConditionKind kind))
+                if (!TryParseConditionKind(dto.Kind, out _))
                 {
                     into.Add(ProgressionDiagnostic.Error(
-                        at,
-                        $"알 수 없는 조건 종류 '{dto.Kind}'. " +
-                        "가능한 값: Stat, EpisodeCleared, ChapterCleared."));
+                        at, $"알 수 없는 조건 종류 '{dto.Kind}'. 가능한 값: Stat."));
                     continue;
                 }
 
@@ -558,26 +479,7 @@ namespace Ked.Progression
 
                 try
                 {
-                    if (kind == ConditionKind.Stat)
-                    {
-                        conditions.Add(ProgressionCondition.Stat(dto.Key, op, dto.IntValue));
-                        continue;
-                    }
-
-                    // Cleared 계열의 연산은 팩토리가 정한다. 데이터가 다른 연산을 말하고
-                    // 있다면 조용히 Exists로 바꾸지 않는다 — 뜻이 달라지는 변환이다.
-                    if (op != ComparisonOp.Exists)
-                    {
-                        into.Add(ProgressionDiagnostic.Error(
-                            at,
-                            $"{kind} 조건은 Exists만 쓴다. 받은 연산: {op}. " +
-                            "저작 쪽 출력을 먼저 확인할 것."));
-                        continue;
-                    }
-
-                    conditions.Add(kind == ConditionKind.EpisodeCleared
-                        ? ProgressionCondition.EpisodeCleared(dto.Key)
-                        : ProgressionCondition.ChapterCleared(dto.Key));
+                    conditions.Add(ProgressionCondition.Stat(dto.Key, op, dto.IntValue));
                 }
                 catch (ArgumentException error)
                 {
@@ -663,23 +565,11 @@ namespace Ked.Progression
             }
         }
 
-        private static bool TryParseEpisodeKind(string name, out EpisodeKind value)
-        {
-            switch (name)
-            {
-                case "Main": value = EpisodeKind.Main; return true;
-                case "Attachment": value = EpisodeKind.Attachment; return true;
-                default: value = default; return false;
-            }
-        }
-
         private static bool TryParseConditionKind(string name, out ConditionKind value)
         {
             switch (name)
             {
                 case "Stat": value = ConditionKind.Stat; return true;
-                case "EpisodeCleared": value = ConditionKind.EpisodeCleared; return true;
-                case "ChapterCleared": value = ConditionKind.ChapterCleared; return true;
                 default: value = default; return false;
             }
         }

@@ -3,19 +3,12 @@ using System.Collections.Generic;
 
 namespace Ked.Progression
 {
-    public enum EpisodeKind
-    {
-        Main = 0,
-        Attachment = 1,
-    }
-
     public sealed class EpisodeNode
     {
         private readonly int _autoOptionIndex;
 
         public string EpisodeId { get; }
         public string Title { get; }
-        public EpisodeKind Kind { get; }
 
         // 호스트가 재생할 대본 키.
         public string DialogueEntryId { get; }
@@ -33,7 +26,6 @@ namespace Ked.Progression
         public EpisodeNode(
             string episodeId,
             string title,
-            EpisodeKind kind,
             string dialogueEntryId,
             IReadOnlyList<EpisodeOption> nextOptions = null,
             string endingKey = null,
@@ -46,7 +38,6 @@ namespace Ked.Progression
 
             EpisodeId = episodeId;
             Title = title ?? string.Empty;
-            Kind = kind;
             DialogueEntryId = dialogueEntryId ?? string.Empty;
             NextOptions = nextOptions ?? Array.Empty<EpisodeOption>();
             EndingKey = endingKey ?? string.Empty;
@@ -68,7 +59,7 @@ namespace Ked.Progression
             return true;
         }
 
-        public override string ToString() => $"{EpisodeId}({Kind})";
+        public override string ToString() => EpisodeId;
 
         // 자동 진행 간선은 에피소드당 하나. 
         private static int FindAutoOption(

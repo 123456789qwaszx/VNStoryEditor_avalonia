@@ -42,21 +42,6 @@ namespace Ked.Progression.Dto
         public string DesignerNote { get; set; }
     }
 
-    /// <summary>
-    /// 시나리오 하나. <b>이 모양은 이 패키지가 정한다</b> — 툴에 시나리오 저작이 아직 없어
-    /// 손으로 쓴 JSON이 먼저 온다(X4).
-    /// </summary>
-    public sealed class ScenarioProgressionDto
-    {
-        public string ScenarioId { get; set; }
-        public string DisplayName { get; set; }
-        public string StartChapterId { get; set; }
-
-        /// <summary>D1 — 스탯 정의의 유일한 원천이다.</summary>
-        public List<StatDto> Stats { get; set; }
-
-        public List<ChapterProgressionDto> Chapters { get; set; }
-    }
 
     /// <summary>
     /// ⚠ <see cref="Type"/>은 <c>"Number"</c> 또는 <c>"Bool"</c>이다.
@@ -80,7 +65,6 @@ namespace Ked.Progression.Dto
         /// <summary>v5에서 폐지됐다. 언제나 빈 문자열 — 통과값이다.</summary>
         public string IndexText { get; set; }
 
-        public string Kind { get; set; }
         public string DialogueEntryId { get; set; }
 
         /// <summary>v8에서 간선으로 내려갔다. 언제나 빈 배열이어야 한다 — 로더가 확인한다.</summary>
@@ -90,9 +74,6 @@ namespace Ked.Progression.Dto
         public List<ConditionDto> UnlockConditions { get; set; }
 
         public List<EpisodeOptionDto> NextOptions { get; set; }
-
-        /// <summary>v1 비범위(§G9). 비어 있지 않으면 로더가 오류를 낸다.</summary>
-        public List<object> Attachments { get; set; }
 
         /// <summary>
         /// ⚠ 모델에는 없다. <see cref="EndingKey"/> 하나로 판별하고, 이 값과 어긋나면
@@ -112,14 +93,17 @@ namespace Ked.Progression.Dto
         public string TargetEpisodeId { get; set; }
 
         /// <summary>
-        /// ⚠ <b>비어 있으면 자동 진행으로 읽는다.</b> 저작 데이터에 종류 열이 없어서 생긴
-        /// 유일한 sentinel이고, <b>그 해석이 일어나는 자리는 로더 한 곳뿐이다</b>(D5).
+        /// 화면에 뜨는 문구. <b>비어 있으면 자동 진행이다</b> — 간선의 종류는 따로 적지 않고
+        /// 문구의 유무로 가른다. 이것이 규약이다.
+        ///
+        /// ⚠ 그래서 문구를 실수로 지운 선택지는 조용히 자동 진행이 된다. 한 에피소드에서
+        /// 둘 이상 지우면 <c>EpisodeNode</c>가 "자동 진행 간선이 둘 이상"으로 잡는다.
         /// </summary>
         public string ChoiceLabel { get; set; }
 
         public List<ConditionDto> VisibleConditions { get; set; }
         public List<ConditionDto> Conditions { get; set; }
-        public bool HideWhenLocked { get; set; }
+
         public string LockedReasonText { get; set; }
         public List<StatChangeDto> StatChanges { get; set; }
 

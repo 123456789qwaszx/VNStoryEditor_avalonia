@@ -7,37 +7,32 @@ namespace Ked.Progression
     // 빈 NextChapterId를 "시나리오 종료"의 뜻으로 쓰지 않음.
     public enum EndingOutcome
     {
-        // 다음 챕터로.
-        NextChapter = 0,
-
-        // 시나리오 끝. 종착점.
-        ScenarioEnd = 1,
+        NextChapter = 0, // 다음 챕터로.
+        ScenarioEnd = 1, // 시나리오 끝. 종착점.
     }
 
-    // 시나리오 층의 간선에 대응.
-    // 어느 엔딩인지는 이 타입이 정하지 않음.
+    // 시나리오 층의 간선에 대응.(챕터 사이를 연결)
+    // EpisodeNode.EndingKey를 받아서, 그 엔딩의 후속 행동을 결정.
     public sealed class EndingRule
     {
         public EndingOutcome Outcome { get; }
-
+        
         /// <summary><see cref="EpisodeNode.EndingKey"/>와 맞물린다.</summary>
         public string EndingKey { get; }
-
         public string DisplayName { get; }
 
         /// <summary>
-        /// 같은 엔딩키의 규칙이 여럿일 때 갈래를 고른다(AND). <b>비어 있으면 무조건 성립</b>
-        /// 하며, 같은 키의 <b>마지막</b> 규칙은 반드시 비어 있어야 한다 — 그래야 "엔딩에
-        /// 도달했는데 갈 곳이 없다"가 생기지 않는다.
+        /// 같은 엔딩키의 규칙이 여럿일 때는 (AND).
+        /// 비어 있으면 무조건 성립.
+        /// 같은 키의 마지막 규칙은 비워둔다(Catch-all용)
         /// </summary>
         public IReadOnlyList<ProgressionCondition> Conditions { get; }
 
-        // "EndingOutcome.ScenarioEnd"면 빈 문자열이다.
+        // "EndingOutcome.ScenarioEnd"면 빈 문자열.
         public string NextChapterId { get; }
 
         public string DesignerNote { get; }
 
-        // 조건이 없어 무조건 성립하는 규칙 — 같은 키의 마지막 자리.
         public bool IsCatchAll => Conditions.Count == 0;
 
         private EndingRule(
