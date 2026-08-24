@@ -1,5 +1,6 @@
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
+using Vn.Authoring.Rendering;
 using Vn.Authoring.Script;
 using Vn.Authoring.Serialization;
 
@@ -1976,6 +1977,21 @@ public sealed partial class ProjectEditor
         }
 
         List<VariableAssignment> next = assignments.Select(item => item.Clone()).ToList();
+
+        // ⚠ 변수 이름을 여기서 정규화한다 (2026-08-25). 설정 노드의 변수 칸은 자유 입력이라
+        //    공백이 들어가는데, Yarn 식별자에는 공백이 못 들어간다 — 그대로 두면
+        //    `<<set $능력이 바뀌 += 4>>`가 나가 번들 전체가 컴파일에 실패한다.
+        //
+        //    쓰는 자리가 여기 하나이므로(편집 UI·CLI·테스트가 전부 이 함수를 지난다)
+        //    한 곳만 걸면 새로 생기지 않는다. 이미 저장된 프로젝트는 내보내기 쪽
+        //    `Tier1Namespace.Apply`가 같은 규칙으로 받아 낸다.
+        //
+        //    ⚠ 다듬은 결과가 옛 이름과 다르면 <b>개명으로 다뤄진다</b> — 아래 전파가
+        //    조건식의 `$옛이름`까지 함께 갈아 주므로 배선이 끊기지 않는다.
+        foreach (VariableAssignment assignment in next)
+        {
+            assignment.Variable = YarnSyntax.SanitizeVariableName(assignment.Variable);
+        }
 
         bool sameValues = setNode.Assignments.Count == next.Count;
 

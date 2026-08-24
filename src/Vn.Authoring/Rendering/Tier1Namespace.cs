@@ -85,7 +85,15 @@ public static class Tier1Namespace
         return names;
     }
 
-    /// <summary>변수 하나에 접두를 붙인다. 스탯·합성 추적 변수·빈 이름은 그대로 둔다.</summary>
+    /// <summary>
+    /// 변수 하나에 접두를 붙인다. 스탯·합성 추적 변수·빈 이름은 접두를 안 붙인다.
+    ///
+    /// ⚠ <b>어느 갈래로 나가든 이름을 정규화한다</b> (2026-08-25). Yarn 식별자에 공백이
+    /// 못 들어가는데 그대로 나가면 <c>&lt;&lt;set $능력이 바뀌 += 4&gt;&gt;</c>가 되어
+    /// <b>번들 전체가</b> 컴파일에 실패한다. 접두를 붙이는 쪽만 다듬으면 스탯 이름이 새므로
+    /// 돌려주기 직전에 한 번에 건다 — <c>&lt;&lt;set&gt;&gt;</c>과 조건식이 같은 함수를
+    /// 지나므로(<see cref="ApplyToExpression"/>) 둘이 갈릴 수 없다.
+    /// </summary>
     public static string Apply(string variable, string prefix, IReadOnlySet<string> statNames)
     {
         string bare = variable.TrimStart('$').Trim();
@@ -94,10 +102,10 @@ public static class Tier1Namespace
             statNames.Contains(bare) ||
             bare.StartsWith("__", StringComparison.Ordinal)) // 합성 추적(__ch_N)·이미 붙은 것
         {
-            return bare;
+            return YarnSyntax.SanitizeVariableName(bare);
         }
 
-        return prefix + bare;
+        return prefix + YarnSyntax.SanitizeVariableName(bare);
     }
 
     /// <summary>
