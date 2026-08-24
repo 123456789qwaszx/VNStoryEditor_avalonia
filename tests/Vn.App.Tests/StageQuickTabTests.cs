@@ -396,27 +396,29 @@ public sealed class StageQuickTabTests
     [Fact]
     public void 커맨드와_묶음이_구역으로_갈린다() => HeadlessUi.Run(() =>
     {
-        // 소유자: "칩커맨드와 단일 커맨드가 구별되도록 둘의 영역을 구분."
+        // 소유자: "칩커맨드와 단일 커맨드가 구별되도록 둘의 영역을 구분" +
+        //         "두 종류의 프리셋 사이에 구분선을 추가" (2026-08-24 2차).
         (AuthoringSession session, string nodeId, string lineId) = Stage();
         StageSceneView view = SceneOf(session, nodeId, lineId);
 
-        // 기본은 한 단계짜리 셋뿐 — [묶음] 구역은 아예 서지 않는다(빈 제목은 자리만 먹는다).
         string[] Headings(Control tab) => tab.GetLogicalDescendants().OfType<TextBlock>()
             .Select(text => text.Text ?? string.Empty)
             .Where(text => text is "커맨드" or "묶음")
             .ToArray();
 
-        Assert.Equal(["커맨드"], Headings(view.BuildQuickTabProbe(null)));
+        Control tab = view.BuildQuickTabProbe(null);
 
-        session.Editor.PinQuickCommand(new StageQuickCommand("퇴장 한 벌",
-        [
-            new StageQuickStep("char_rig_presentation.fade_out",
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["slot"] = "c1" }),
-            new StageQuickStep("common_control.pause",
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["seconds"] = "0.2" })
-        ]));
+        // ⚠ [묶음] 구역은 <b>비어도 선다</b> — [＋ 묶음]이 거기 있기 때문이다.
+        //    만들 입구가 목록이 비었다는 이유로 사라지면 첫 묶음을 만들 길이 없다.
+        Assert.Equal(["커맨드", "묶음"], Headings(tab));
+        Assert.Contains(
+            tab.GetLogicalDescendants().OfType<Button>(),
+            button => (button.Content as string)?.StartsWith("＋ 묶음", StringComparison.Ordinal) == true);
 
-        Assert.Equal(["커맨드", "묶음"], Headings(view.BuildQuickTabProbe(null)));
+        // 두 구역 사이 구분선 — 높이 1의 띠 하나.
+        Assert.Contains(
+            tab.GetLogicalDescendants().OfType<Border>(),
+            border => border.Height == 1);
     });
 
     [Fact]
@@ -460,9 +462,17 @@ public sealed class StageQuickTabTests
         ];
 
         StageSceneView view = SceneOf(session, nodeId, lineId);
+        Control tab = view.BuildQuickTabProbe(null);
 
-        Chip(view.BuildQuickTabProbe(null), "퇴장 한 벌")
-            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        // 묶음은 단추가 아니라 표다 (2026-08-24 2차) — 실행은 머리 줄의 [붙이기]다.
+        // 그리고 <b>평소 모드에서도 세부내역이 보인다</b>: 담긴 커맨드가 표의 행으로 선다.
+        string[] rows = tab.GetLogicalDescendants().OfType<TextBlock>()
+            .Select(text => text.Text ?? string.Empty)
+            .Where(text => text is "fade_out" or "pause")
+            .ToArray();
+        Assert.Equal(["fade_out", "pause"], rows);
+
+        ButtonStarting(tab, "붙이기").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         Assert.Equal(
             ["char_rig_presentation.fade_out", "common_control.pause"],
@@ -471,6 +481,40 @@ public sealed class StageQuickTabTests
         // ⛔ 단추 하나를 누른 것은 조작 하나다 — Ctrl+Z 한 번이 두 커맨드를 함께 원복한다.
         session.Editor.Undo();
         Assert.Empty(LineCommands(session, nodeId, lineId));
+    });
+
+    [Fact]
+    public void 묶음_표는_접었다_펼_수_있다() => HeadlessUi.Run(() =>
+    {
+        // 소유자: "물론 접기도 가능해야하고." 기본은 펼침이다 — 언제든 세부내역이 보여야 한다.
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        session.Project.QuickCommands =
+        [
+            new StageQuickCommand("퇴장 한 벌",
+            [
+                new StageQuickStep("char_rig_presentation.fade_out",
+                    new Dictionary<string, string>(StringComparer.Ordinal) { ["slot"] = "c1" }),
+                new StageQuickStep("common_control.pause",
+                    new Dictionary<string, string>(StringComparer.Ordinal) { ["seconds"] = "0.2" })
+            ])
+        ];
+
+        StageSceneView view = SceneOf(session, nodeId, lineId);
+
+        int StepRows() => view.BuildQuickTabProbe(null)
+            .GetLogicalDescendants().OfType<TextBlock>()
+            .Count(text => text.Text is "fade_out" or "pause");
+
+        Assert.Equal(2, StepRows());
+
+        ButtonStarting(view.BuildQuickTabProbe(null), "▾")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(0, StepRows());
+
+        ButtonStarting(view.BuildQuickTabProbe(null), "▸")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(2, StepRows());
     });
 
     [Fact]
@@ -491,12 +535,18 @@ public sealed class StageQuickTabTests
         ];
 
         StageSceneView view = SceneOf(session, nodeId, lineId);
-        Button chip = Chip(view.BuildQuickTabProbe(null), "반만 되는 묶음");
+        Control tab = view.BuildQuickTabProbe(null);
+        Button apply = ButtonStarting(tab, "붙이기");
 
-        Assert.False(chip.IsEnabled);
-        Assert.Contains("2번째 단계", (string)ToolTip.GetTip(chip)!, StringComparison.Ordinal);
+        Assert.False(apply.IsEnabled);
+        Assert.Contains("2번째 단계", (string)ToolTip.GetTip(apply)!, StringComparison.Ordinal);
 
-        chip.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        // 못 내는 단계는 표에서도 그렇게 보인다 — 회색 단추만 두면 어느 줄이 문제인지 모른다.
+        Assert.Contains(
+            tab.GetLogicalDescendants().OfType<TextBlock>(),
+            text => text.Text == "(없는 커맨드)");
+
+        apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.Empty(LineCommands(session, nodeId, lineId));
     });
 
