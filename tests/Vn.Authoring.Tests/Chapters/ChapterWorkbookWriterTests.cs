@@ -104,10 +104,12 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     {
         string path = Copy();
 
+        // ⚠ `endingKey` 인자는 2026-08-25에 걷혔다 — 엔딩키는 v11부터 간선의 것인데
+        // 이 쓰기만 옛 자리(7열)에 남아 있었고, 그 자리는 실은 `메모` 칸이었다.
         Assert.True(ChapterWorkbookWriter.UpdateEpisode(
             path, "main05.02",
             title: "고친 제목",
-            endingKey: "",              // 빈 문자열 = 지우기
+            memo: "",                   // 빈 문자열 = 지우기
             allowUnreachable: true).Written);
 
         ChapterGraphModel reread = ChapterWorkbookReader.Read(path);
@@ -141,16 +143,27 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     }
 
     [Fact]
-    public void cleared_참조가_있는_에피소드의_개명은_거부된다()
+    public void 폐지된_cleared_참조가_남은_에피소드의_개명은_거부된다()
     {
-        // 조건식은 사람 소유다 — 툴이 고쳐 주지 않고, 남으면 유령이 되므로 막는다.
+        // ⚠ 견본은 2026-08-25에 깃발로 이관됐다 — 이 함정은 <b>옛 워크북</b>에만 남는다.
+        // 그래서 여기서 손으로 되살려 넣는다. 조건식은 사람 소유라 툴이 고쳐 주지 않고,
+        // 개명으로 참조만 더 낡게 만들 이유가 없으므로 막는다.
         string path = Copy();
+
+        using (var book = new XLWorkbook(path))
+        {
+            IXLWorksheet conditions = book.Worksheet("조건");
+            int row = conditions.LastRowUsed()!.RowNumber() + 1;
+            conditions.Cell(row, 1).SetValue("옛복도완료");
+            conditions.Cell(row, 2).SetValue("cleared:main05.02");
+            book.Save();
+        }
 
         ChapterWriteResult result = ChapterWorkbookWriter.RenameEpisode(path, "main05.02", "다른이름");
 
         Assert.False(result.Written);
         Assert.Contains("cleared:main05.02", result.Failure);
-        Assert.Contains("조건", result.Failure);
+        Assert.Contains("폐지", result.Failure);
 
         // 아무것도 안 바뀌었다.
         Assert.NotNull(ChapterWorkbookReader.Read(path).FindEpisode("main05.02"));

@@ -99,11 +99,16 @@ public sealed class ChapterReachabilityEquivalenceTests
             statMaximum: 5));
     }
 
+    /// <summary>
+    /// `cleared:` 고정점 케이스가 있던 자리다 (2026-08-25 폐지 — 저쪽 오라클에서도 함께
+    /// 빠졌다). 같은 모양을 <b>아무도 올려 주지 않는 스탯 관문</b>으로 적는다: 도달 불가가
+    /// 연쇄로 번지는 것은 같고, 참조하는 것이 도달 가능 집합이 아니라 스탯일 뿐이다.
+    /// </summary>
     [Fact]
-    public void 도달_불가에_걸린_cleared_조건에서_같은_답을_낸다() => AssertAgree(Chapter(
+    public void 아무도_올려주지_않는_관문_뒤에서_같은_답을_낸다() => AssertAgree(Chapter(
         [Episode("시작"), Episode("못가는곳"), Episode("끝")],
-        [("시작", "끝", "못가는곳클리어", 0)],
-        [("못가는곳클리어", "cleared:못가는곳")]));
+        [("시작", "끝", "신뢰1이상", 0)],
+        [("신뢰1이상", "trust >= 1")]));
 
     // ── ⚠ 대조하다 드러난 갈림 — 증명기가 아니라 **검증 심각도**다 ────────────
 
@@ -215,7 +220,7 @@ public sealed class ChapterReachabilityEquivalenceTests
     // ── 픽스처 ──────────────────────────────────────────────────────────────
 
     private static ChapterEpisode Episode(string id) =>
-        new(id, id, "", "Main", id, 0, 0, null, null, 2);
+        new(id, id, "", id, 0, 0, null, null, 2);
 
     private static ChapterGraphModel Chapter(
         IReadOnlyList<ChapterEpisode> episodes,

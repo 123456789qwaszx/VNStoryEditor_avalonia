@@ -33,8 +33,11 @@ public static class ChapterWorkbookReader
     // "보일지 말지는 이제 간선이 정한다".
     // v11 (2026-08-18) — `엔딩키`가 간선으로 옮겨 가며 이 시트에서 빠졌다. 뒤 열이 한 칸
     // 당겨진다: 메모가 8 → 7, 선택 열 `도달불가 허용`도 그만큼 앞으로 온다.
+    // v13 (2026-08-25 소유자) — `종류` 폐지. Main/Attachment는 코어가 `EpisodeKind`를
+    // 지우면서 뜻을 잃었고, 읽어도 아무도 쓰지 않는 칸이 됐다. 뒤 열이 한 칸씩 당겨진다.
+    // 의도한 섬은 `도달불가 허용`이 적는다.
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"];
+        ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"];
 
     // v11 (2026-08-18) — 뒤에 셋을 붙였다. 읽는 순서로는 `종류`가 `선택지` 옆에 오는 편이
     // 좋지만, 끼워 넣으면 뒤 열이 전부 밀려 이행에서 셀을 잃을 위험을 산다. 자리보다
@@ -129,7 +132,6 @@ public static class ChapterWorkbookReader
         IReadOnlyList<ChapterSpeaker> speakers =
             ReadSpeakers(workbook, path, diagnostics, out bool hasSpeakerSheet);
 
-        VerifyClearedTargets(conditions, episodeIds, path, diagnostics);
         VerifyBoolStatUsage(stats, conditions, edges, path, diagnostics);
 
         return new ChapterGraphModel(
@@ -221,24 +223,25 @@ public static class ChapterWorkbookReader
 
             seen[episodeId] = row;
 
-            string dialogueEntry = Text(sheet, row, 4);
+            // v13 (2026-08-25) — `종류`가 빠지며 뒤가 한 칸씩 당겨졌다.
+            string dialogueEntry = Text(sheet, row, 3);
 
             if (dialogueEntry.Length == 0)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.DialogueEntryBlank,
-                    path, sheet.Name, row, 4,
+                    path, sheet.Name, row, 3,
                     $"'{episodeId}'의 대사엔트리가 비어 있습니다. 런타임이 재생할 대상이 없습니다."));
             }
 
-            double x = Number(sheet, row, 5, path, episodeId, diagnostics);
-            double y = Number(sheet, row, 6, path, episodeId, diagnostics);
+            double x = Number(sheet, row, 4, path, episodeId, diagnostics);
+            double y = Number(sheet, row, 5, path, episodeId, diagnostics);
 
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
             int allowColumn = 0;
 
-            for (int column = 8; column <= 12; column++)
+            for (int column = 7; column <= 12; column++)
             {
                 if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
                 {
@@ -253,13 +256,12 @@ public static class ChapterWorkbookReader
                 episodeId,
                 Text(sheet, row, 2),
                 string.Empty, // 인덱스 열 폐지 (2026-08-16) — 내보내기 IndexText만 빈 값으로 남는다
-                Text(sheet, row, 3),
                 dialogueEntry,
                 x,
                 y,
                 // 엔딩키 — v11에서 간선으로 옮겼다. 모델 칸은 내보내기가 간선에서 채운다.
                 null,
-                Optional(sheet, row, 7),    // 메모 (v11에서 8 → 7)
+                Optional(sheet, row, 6),    // 메모 (v13에서 7 → 6)
                 row,
                 allowUnreachable));
         }
@@ -381,6 +383,10 @@ public static class ChapterWorkbookReader
 
         // 같은 에피소드에서 같은 문구가 서로 다른 곳으로 간다 — 플레이어에게는 같은 버튼
         // 둘이라 어느 쪽인지 고를 수 없다. 문구는 자유롭게 재사용하되 한 화면 안에서는 겹치면 안 된다.
+        //
+        // ⚠ 연출까지 함께 겹친다 (2026-08-24) — 간선에 매다는 자유 씬은 <b>문구를 열쇠로</b>
+        // 산다(`DialogueNode.ChoiceExits`). 문구가 같으면 배선이 하나뿐이라 두 길이 같은
+        // 연출을 탄다. 화면에서는 안 보이는 겹침이라 여기서 말해 준다.
         foreach (IGrouping<(string, string), ChapterEdge> collided in edges
                      .Where(edge => !string.IsNullOrWhiteSpace(edge.OptionLabel))
                      .GroupBy(edge => (edge.FromEpisodeId, edge.OptionLabel!))
@@ -391,7 +397,8 @@ public static class ChapterWorkbookReader
                 ChapterDiagnosticCode.OptionEdgeMismatch,
                 path, sheet.Name, collided.Last().SourceRow, 4,
                 $"'{collided.Key.Item1}'에서 '{collided.Key.Item2}' 선택지가 여러 갈래로 " +
-                "갑니다 — 플레이어에게는 같은 버튼 둘로 보입니다."));
+                "갑니다 — 플레이어에게는 같은 버튼 둘로 보이고, 이 문구에 매단 연출도 " +
+                "한 벌뿐이라 두 길이 같은 연출을 탑니다."));
         }
 
         VerifyEndingKeysAgree(edges, path, sheet.Name, diagnostics);
@@ -470,7 +477,8 @@ public static class ChapterWorkbookReader
 
             // 2026-08-16 소유자 개정 — 조건은 스탯(드롭다운)·연산자(드롭다운)·값 세 칸으로
             // 조립한다. 연산자·값이 비어 있으면 스탯 칸 전체를 원문 조건식으로 읽는다
-            // (탈출구 — cleared:, 복합식 `a; b`, 구판 이행분이 이 길로 산다).
+            // (탈출구 — 복합식 `a; b`와 구판 이행분이 이 길로 산다. `cleared:`도 여기로
+            // 들어오지만 2026-08-25부터 파서가 폐지 안내와 함께 거부한다).
             string statCell = Text(sheet, row, 2);
             string operatorCell = Text(sheet, row, 3);
             string valueCell = Text(sheet, row, 4);
@@ -1001,32 +1009,9 @@ public static class ChapterWorkbookReader
 
     // ── 공통 ────────────────────────────────────────────────────────────────
 
-    private static void VerifyClearedTargets(
-        IReadOnlyList<ChapterCondition> conditions,
-        IReadOnlyCollection<string> episodeIds,
-        string path,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        foreach (ChapterCondition condition in conditions)
-        {
-            foreach (ConditionTerm term in condition.Parsed
-                         .Where(item => item.Kind == ConditionTermKind.EpisodeCleared))
-            {
-                if (episodeIds.Contains(term.Key))
-                {
-                    continue;
-                }
-
-                // 다른 챕터의 에피소드를 가리킬 수 있으므로 오류가 아니라 경고다.
-                diagnostics.Add(Cell(
-                    ChapterDiagnosticSeverity.Warning,
-                    ChapterDiagnosticCode.EdgeEndpointUnknown,
-                    path, ChapterSheetNames.Conditions, condition.SourceRow, 2,
-                    $"조건 '{condition.Label}'의 cleared:{term.Key}가 이 챕터에 없는 에피소드입니다. " +
-                    "다른 챕터의 것이면 정상입니다."));
-            }
-        }
-    }
+    // ⛔ `VerifyClearedTargets`는 2026-08-25에 사라졌다 — `cleared:`가 가리키는 에피소드가
+    //    이 챕터에 있는지 보던 검사인데, 문법 자체가 폐지돼 파서가 먼저 막는다.
+    //    깃발 스탯으로 바뀐 뒤로는 `VerifyBoolStatUsage`가 그 자리를 본다.
 
     private static IXLWorksheet? FindSheet(XLWorkbook workbook, string sheetName) =>
         workbook.Worksheets.FirstOrDefault(sheet =>

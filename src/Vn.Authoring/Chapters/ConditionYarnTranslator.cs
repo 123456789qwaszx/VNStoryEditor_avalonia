@@ -20,9 +20,10 @@ public sealed record ConditionYarnTranslation(string? Yarn, string? Problem)
 /// 원문 해석은 <see cref="ConditionExpressionParser"/>가 이미 했다(챕터 리더). 여기서는 그
 /// 해석 결과(<see cref="ConditionTerm"/>)를 조립만 한다 — 식을 두 번 해석하는 곳을 만들지 않는다.
 ///
-/// <b><c>cleared:</c>는 번역하지 않는다.</b> 클리어 여부는 런타임이 Yarn 밖에서 추적하고
-/// 브리지는 스탯만 왕복한다 — Yarn 안에서 답할 수 없는 질문이라, 대사 조건에 쓰면 오류로
-/// 알린다. 그건 챕터 그래프(표시·해금·간선)의 어휘다.
+/// <b>남은 어휘는 스탯 비교 하나뿐이다</b> — 그래서 여기서 못 옮기는 항이 없다.
+/// <c>cleared:</c>는 2026-08-25에 폐지됐고(파서가 오류로 막는다), 그 자리는 Bool 스탯이
+/// 대신한다. 깃발도 결국 스탯이라 이 번역기가 그대로 옮긴다 — 예전에는 대사가 물을 수
+/// 없는 질문이었던 것이 이제 물을 수 있는 질문이 됐다.
 /// </summary>
 public static class ConditionYarnTranslator
 {
@@ -40,15 +41,6 @@ public static class ConditionYarnTranslator
 
         foreach (ConditionTerm term in condition.Parsed)
         {
-            if (term.Kind == ConditionTermKind.EpisodeCleared)
-            {
-                return new ConditionYarnTranslation(
-                    null,
-                    $"조건 '{condition.Label}'의 cleared:{term.Key}는 에피소드 대사 조건으로 쓸 수 " +
-                    "없습니다. 클리어 여부는 Yarn 밖(런타임)의 것이라 대사가 물을 수 없습니다 — " +
-                    "챕터 그래프의 표시·해금·간선 조건으로만 쓰세요.");
-            }
-
             // $ 표기는 조립기의 것 하나를 쓴다 — 여기서 문자열로 덧붙이면 규약 사본이다.
             string variable = YarnSyntax.NormalizeVariable(term.Key);
             string comparison = term.Comparison switch

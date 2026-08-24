@@ -48,17 +48,20 @@ public sealed record ChapterReachabilityResult(
 /// 안에서 변한다. 범위는 과대근사이므로 "도달 가능" 판정은 넓게, 즉 <b>진짜 도달 불가를
 /// 놓치는 일은 없게</b> 잡힌다.
 ///
-/// <c>cleared:</c> 조건은 도달 가능 집합 자체를 참조하므로 고정점 반복으로 푼다 —
-/// 집합은 단조 증가라 반드시 수렴한다.
+/// 조건이 묻는 것은 <b>스탯뿐이고</b>, 스탯은 걷는 도중에 정해진다 — 그래서 한 번만 걷는다.
+/// 2026-08-25까지는 고정점 반복이 있었는데, 도달 가능 집합 자체를 참조하는 <c>cleared:</c>
+/// 조건 때문이었다. 그 조건이 폐지되면서 두 번째 바퀴가 새로 찾을 것이 없어졌다.
 ///
 /// <para>
 /// ⚠⚠ <b>이 구현은 2026-08-18부터 남의 오라클이다. 고치기 전에 알려야 한다.</b>
 /// </para>
 /// <para>
 /// `ked-progression`이 이 증명기를 자기 쪽으로 옮기면서, 등가성을 주장이 아니라 <b>코퍼스</b>로
-/// 고정했다: 여기 있던 그대로의 구현을 케이스 일곱(직선·분기수렴·관문·도달불가·<c>cleared:</c>
-/// 고정점·부착·clamp)에 돌려 그때의 답을 저장했고
+/// 고정했다: 여기 있던 그대로의 구현을 케이스들에 돌려 그때의 답을 저장했고
 /// (저쪽 <c>Tests/Fixtures/reachability-oracle.json</c>), 저쪽 테스트가 매번 그 답과 대조한다.
+///
+/// 2026-08-25에 코퍼스가 <b>여섯으로 줄었다</b>(직선·분기수렴·관문·도달불가·간선없는노드·clamp) —
+/// <c>cleared:</c> 고정점과 부착 케이스는 그 개념이 계약에서 사라지면서 함께 빠졌다.
 /// </para>
 /// <para>
 /// 그래서 여기 동작을 바꾸면 — <b>버그 수정이라도</b> — 두 구현이 조용히 갈린다. 저쪽 코퍼스는
@@ -95,30 +98,19 @@ public static class ChapterReachabilityProver
         // 시작 규칙은 모델의 것 하나를 쓴다 — G8의 StartEpisodeId와 갈리면 안 된다.
         ChapterEpisode start = chapter.StartEpisode!;
 
-        var reachable = new HashSet<string>(StringComparer.Ordinal);
-        bool complete = true;
         int[] maxSeen = chapter.Stats.Select(stat => stat.Initial).ToArray();
         int[] minSeen = chapter.Stats.Select(stat => stat.Initial).ToArray();
 
         // 에피소드별 도착 시점 폭 (2026-08-17) — 걷는 김에 적는다.
         var spans = new Dictionary<string, (int[] Min, int[] Max)>(StringComparer.Ordinal);
 
-        // cleared:가 도달 가능 집합을 참조하므로, 집합이 자라지 않을 때까지 탐색을 반복한다.
-        while (true)
-        {
-            (HashSet<string> found, bool finished) =
-                Explore(chapter, start, reachable, maxSeen, minSeen, spans);
+        HashSet<string> reachable;
+        bool complete;
 
-            complete &= finished;
-            AddReachableAttachments(chapter, found, maxSeen, minSeen);
-
-            if (found.Count == reachable.Count)
-            {
-                break;
-            }
-
-            reachable = found;
-        }
+        // 한 번만 걷는다 (2026-08-25). 고정점 반복이 있던 이유는 `cleared:`가 도달 가능
+        // 집합 자체를 참조해서였는데, 그 조건이 폐지되면서 조건이 참조하는 것은 스탯뿐이
+        // 됐다 — 스탯은 걷는 도중에 정해지므로 두 번째 바퀴가 새로 찾을 것이 없다.
+        (reachable, complete) = Explore(chapter, start, maxSeen, minSeen, spans);
 
         ReportUnreachable(chapter, reachable, maxSeen, minSeen, complete, diagnostics);
 
@@ -130,7 +122,6 @@ public static class ChapterReachabilityProver
     private static (HashSet<string> Reachable, bool Complete) Explore(
         ChapterGraphModel chapter,
         ChapterEpisode start,
-        IReadOnlySet<string> clearedAssumption,
         int[] maxSeen,
         int[] minSeen,
         Dictionary<string, (int[] Min, int[] Max)> spans)
@@ -166,8 +157,8 @@ public static class ChapterReachabilityProver
 
                 // 관문 판정은 커밋 전 값으로 — 플레이어가 선택지를 보는 시점의 값이다.
                 // 관문은 전부 간선이 갖는다 (v8) — 표시조건과 해금조건 둘 다 서야 탄다.
-                if (!Satisfied(chapter, edge.VisibleConditionLabel, stats, clearedAssumption) ||
-                    !Satisfied(chapter, edge.ConditionLabel, stats, clearedAssumption))
+                if (!Satisfied(chapter, edge.VisibleConditionLabel, stats) ||
+                    !Satisfied(chapter, edge.ConditionLabel, stats))
                 {
                     continue;
                 }
@@ -234,8 +225,7 @@ public static class ChapterReachabilityProver
     private static bool Satisfied(
         ChapterGraphModel chapter,
         string? conditionLabel,
-        int[] stats,
-        IReadOnlySet<string> cleared)
+        int[] stats)
     {
         if (string.IsNullOrEmpty(conditionLabel))
         {
@@ -253,11 +243,7 @@ public static class ChapterReachabilityProver
 
         foreach (ConditionTerm term in condition.Parsed)
         {
-            bool holds = term.Kind == ConditionTermKind.EpisodeCleared
-                ? cleared.Contains(term.Key)
-                : CompareStat(chapter, term, stats);
-
-            if (!holds)
+            if (!CompareStat(chapter, term, stats))
             {
                 return false;
             }
@@ -285,97 +271,12 @@ public static class ChapterReachabilityProver
         };
     }
 
-    /// <summary>
-    /// 부착(Attachment) 에피소드는 간선으로 들어가는 노드가 아니다 — 런타임이 부모 곁에
-    /// 띄우는 사이드이며 `NextOption`의 대상이 될 수 없다(런타임 확인). 그래서 도달 판정도
-    /// 간선이 아니라 <b>관문 조건이 어느 도달 상태에서든 만족될 수 있는가</b>로 한다.
-    ///
-    /// 만족 가능성은 탐색이 본 스탯의 겉둘레(최소·최대)로 판정한다 — 과대근사라 "도달 가능"이
-    /// 넓게 잡히고, 부착의 진짜 도달 불가(예: 영원히 못 미치는 스탯 관문)는 그대로 잡힌다.
-    /// v1의 Attachment은 읽고 표시까지다(D5) — 이 근사가 그 범위에 맞는 값이다.
-    /// </summary>
-    private static void AddReachableAttachments(
-        ChapterGraphModel chapter,
-        HashSet<string> reachable,
-        int[] maxSeen,
-        int[] minSeen)
-    {
-        foreach (ChapterEpisode episode in chapter.Episodes.Where(episode =>
-                     string.Equals(episode.Kind, "Attachment", StringComparison.OrdinalIgnoreCase) &&
-                     !reachable.Contains(episode.EpisodeId)))
-        {
-            // v8 — 관문은 들어오는 길이 갖는다. 부착은 간선이 없을 수 있는데(사이드),
-            // 그때는 관문도 없으므로 겉둘레 안에서 언제나 성립한다.
-            List<ChapterEdge> incoming = chapter.Edges
-                .Where(edge => string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
-                .ToList();
-
-            bool satisfiable = incoming.Count == 0 || incoming.Any(edge =>
-                SatisfiableWithinEnvelope(chapter, edge.VisibleConditionLabel, reachable, maxSeen, minSeen) &&
-                SatisfiableWithinEnvelope(chapter, edge.ConditionLabel, reachable, maxSeen, minSeen));
-
-            if (satisfiable)
-            {
-                reachable.Add(episode.EpisodeId);
-            }
-        }
-    }
-
-    private static bool SatisfiableWithinEnvelope(
-        ChapterGraphModel chapter,
-        string? conditionLabel,
-        IReadOnlySet<string> cleared,
-        int[] maxSeen,
-        int[] minSeen)
-    {
-        if (string.IsNullOrEmpty(conditionLabel))
-        {
-            return true;
-        }
-
-        ChapterCondition? condition = chapter.FindCondition(conditionLabel);
-
-        if (condition is null || !condition.IsValid)
-        {
-            return false;
-        }
-
-        foreach (ConditionTerm term in condition.Parsed)
-        {
-            if (term.Kind == ConditionTermKind.EpisodeCleared)
-            {
-                if (!cleared.Contains(term.Key))
-                {
-                    return false;
-                }
-
-                continue;
-            }
-
-            int index = IndexOfStat(chapter, term.Key);
-
-            if (index < 0)
-            {
-                return false;
-            }
-
-            bool satisfiable = term.Comparison switch
-            {
-                ConditionComparison.AtLeast => maxSeen[index] >= term.Value,
-                ConditionComparison.AtMost => minSeen[index] <= term.Value,
-                ConditionComparison.Above => maxSeen[index] > term.Value,
-                ConditionComparison.Below => minSeen[index] < term.Value,
-                _ => minSeen[index] <= term.Value && term.Value <= maxSeen[index]
-            };
-
-            if (!satisfiable)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    // ⛔ `AddReachableAttachments`·`SatisfiableWithinEnvelope`는 2026-08-25에 사라졌다.
+    //    부착(Attachment) 에피소드를 "간선이 아니라 관문 만족 가능성으로" 따로 판정하던
+    //    자리인데, 코어가 `EpisodeKind`를 통째로 지우면서 부착이라는 종류 자체가 계약에서
+    //    없어졌다. 남겨 두면 툴만 부착을 도달 가능으로 세어 <b>증명과 플레이가 갈린다</b> —
+    //    이 증명기가 있는 이유가 정확히 그것을 없애는 것이다(G7).
+    //    저쪽 오라클(`reachability-oracle.json`)에서도 `부착` 케이스가 함께 빠졌다.
 
     // ── 보고 ────────────────────────────────────────────────────────────────
 
@@ -458,11 +359,6 @@ public static class ChapterReachabilityProver
 
             foreach (ConditionTerm term in condition.Parsed)
             {
-                if (term.Kind == ConditionTermKind.EpisodeCleared && !reachable.Contains(term.Key))
-                {
-                    return $"조건 '{label}'의 cleared:{term.Key}가 원인입니다 — '{term.Key}' 자체가 도달 불가입니다.";
-                }
-
                 int index = IndexOfStat(chapter, term.Key);
 
                 if (index < 0)

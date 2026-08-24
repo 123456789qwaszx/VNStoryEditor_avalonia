@@ -48,10 +48,9 @@ public static class ChapterWorkbookWriter
             int row = NextRow(sheet);
             sheet.Cell(row, 1).SetValue(episodeId);
             sheet.Cell(row, 2).SetValue(title);
-            sheet.Cell(row, 3).SetValue("Main");
-            sheet.Cell(row, 4).SetValue(episodeId);
-            sheet.Cell(row, 5).SetValue(Math.Round(x, 2));
-            sheet.Cell(row, 6).SetValue(Math.Round(y, 2));
+            sheet.Cell(row, 3).SetValue(episodeId);
+            sheet.Cell(row, 4).SetValue(Math.Round(x, 2));
+            sheet.Cell(row, 5).SetValue(Math.Round(y, 2));
         });
 
     /// <summary>
@@ -86,10 +85,9 @@ public static class ChapterWorkbookWriter
             int newRow = NextRow(episodes);
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
             episodes.Cell(newRow, 2).SetValue(title);
-            episodes.Cell(newRow, 3).SetValue("Main");
-            episodes.Cell(newRow, 4).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
-            episodes.Cell(newRow, 5).SetValue(Math.Round(x, 2));
-            episodes.Cell(newRow, 6).SetValue(Math.Round(y, 2));
+            episodes.Cell(newRow, 3).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
+            episodes.Cell(newRow, 4).SetValue(Math.Round(x, 2));
+            episodes.Cell(newRow, 5).SetValue(Math.Round(y, 2));
 
             // 부모에서 나가는 길 하나 = 선택지 하나 (v9). 문구를 받았으면 그대로 적고,
             // 사전에 없는 낱말이면 사전에도 올려 둔다 — 다음부터 드롭다운에서 고른다.
@@ -101,13 +99,17 @@ public static class ChapterWorkbookWriter
     /// 속성 패널의 저장. null이 아닌 필드만 그 셀에 쓴다.
     /// 표시·해금조건은 v8에서 간선으로 옮겨 갔다 — 여기 없다.
     /// </summary>
+    /// <remarks>
+    /// ⚠ 2026-08-25에 열 번호를 바로잡았다. <c>종류</c> 폐지로 뒤가 한 칸 당겨진 것과 함께,
+    /// <b>엔딩키를 쓰던 자리가 실은 `메모` 칸이었다</b> — v11에서 엔딩키가 간선으로 옮겨
+    /// 갔는데 이 쓰기만 옛 자리에 남아, <c>UpdateEpisode(endingKey: …)</c>가 메모를 덮어쓰고
+    /// 있었다. 에피소드 시트에 엔딩키 칸은 없으므로 그 인자를 걷는다.
+    /// </remarks>
     public static ChapterWriteResult UpdateEpisode(
         string path,
         string episodeId,
         string? title = null,
-        string? kind = null,
         string? dialogueEntry = null,
-        string? endingKey = null,
         string? memo = null,
         bool? allowUnreachable = null) =>
         Mutate(path, workbook =>
@@ -115,27 +117,32 @@ public static class ChapterWorkbookWriter
             (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
 
             Set(sheet, row, 2, title);
-            Set(sheet, row, 3, kind);
-            Set(sheet, row, 4, dialogueEntry);
-            Set(sheet, row, 7, endingKey);
-            Set(sheet, row, 8, memo);
+            Set(sheet, row, 3, dialogueEntry);
+            Set(sheet, row, 6, memo);
 
             if (allowUnreachable is { } allowed)
             {
-                // `도달불가 허용`은 선택 열(J)이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
-                if (!string.Equals(sheet.Cell(1, 10).GetString(), "도달불가 허용", StringComparison.Ordinal))
+                // `도달불가 허용`은 선택 열이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
+                // 리더가 머리글 이름으로 찾으므로 자리는 규격 칸 바로 뒤면 된다.
+                const int AllowColumn = 7;
+
+                if (!string.Equals(
+                        sheet.Cell(1, AllowColumn).GetString(), "도달불가 허용", StringComparison.Ordinal))
                 {
-                    sheet.Cell(1, 10).SetValue("도달불가 허용");
+                    sheet.Cell(1, AllowColumn).SetValue("도달불가 허용");
                 }
 
-                sheet.Cell(row, 10).SetValue(allowed ? "TRUE" : "FALSE");
+                sheet.Cell(row, AllowColumn).SetValue(allowed ? "TRUE" : "FALSE");
             }
         });
 
     /// <summary>
     /// EpisodeId 개명. <b>`간선`의 출발·도착과 픽스처 고정 선택은 함께 따라간다</b> — 신원이
-    /// 바뀌었는데 참조가 남으면 유령 간선이 된다. 단 조건식의 <c>cleared:</c>는 건드리지 않는다:
-    /// 식은 사람 소유라 툴이 고쳐 주지 않는다(자동 추측 금지). 그런 참조가 있으면 실패로 알린다.
+    /// 바뀌었는데 참조가 남으면 유령 간선이 된다.
+    ///
+    /// 폐지된 <c>cleared:</c>(2026-08-25)가 옛 워크북에 남아 있으면 개명을 <b>막는다</b>.
+    /// 식은 사람 소유라 툴이 고쳐 주지 않고(자동 추측 금지), 어차피 그 식은 이미 파서가
+    /// 오류로 짚고 있다 — 개명으로 참조만 더 낡게 만들 이유가 없다.
     /// </summary>
     public static ChapterWriteResult RenameEpisode(string path, string oldId, string newId) =>
         Mutate(path, workbook =>
@@ -148,7 +155,8 @@ public static class ChapterWorkbookWriter
                 {
                     throw new InvalidOperationException(
                         $"조건 '{row.Cell(1).GetString()}'의 식이 cleared:{oldId}를 참조합니다. " +
-                        "조건식은 사람 소유라 툴이 고치지 않습니다 — `조건` 시트를 먼저 고쳐 주세요.");
+                        "cleared: 는 2026-08-25에 폐지됐습니다 — `조건` 시트에서 Bool 스탯으로 " +
+                        "먼저 바꿔 주세요. 조건식은 사람 소유라 툴이 고치지 않습니다.");
                 }
             }
 
@@ -163,9 +171,9 @@ public static class ChapterWorkbookWriter
 
             // 대사엔트리 = EpisodeId 규약(v3)을 따르던 행이면 함께 따라간다.
             // 사람이 다르게 적어 둔 값은 건드리지 않는다.
-            if (string.Equals(episodes.Cell(episodeRow, 4).GetString(), oldId, StringComparison.Ordinal))
+            if (string.Equals(episodes.Cell(episodeRow, 3).GetString(), oldId, StringComparison.Ordinal))
             {
-                episodes.Cell(episodeRow, 4).SetValue(newId);
+                episodes.Cell(episodeRow, 3).SetValue(newId);
             }
 
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -598,7 +606,7 @@ public static class ChapterWorkbookWriter
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
             // v11 — `엔딩키`가 간선으로 옮겨 갔다. 엔딩이라는 한 개념이 (노드의 키) +
             // (간선의 연출)로 갈리지 않게, 간선 한 행에 모은다.
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"]);
+            ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
             [
                 "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문",

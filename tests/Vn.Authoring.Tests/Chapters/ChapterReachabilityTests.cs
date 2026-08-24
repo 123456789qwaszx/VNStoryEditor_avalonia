@@ -16,8 +16,8 @@ public sealed class ChapterReachabilityTests
     [Fact]
     public void 견본_챕터는_증감_없이도_주_경로가_전부_도달_가능하다()
     {
-        // 2026-08-14 개정 — 스탯 증감의 원천은 간선이다. 견본 간선에는 증감이 없으므로
-        // 스탯 관문이 없는 주 경로와 cleared: 관문이 전부 열리는지를 본다.
+        // 2026-08-14 개정 — 스탯 증감의 원천은 간선이다. 견본의 주 경로에는 스탯 관문이
+        // 없으므로 전부 열린다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
 
         ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
@@ -30,8 +30,17 @@ public sealed class ChapterReachabilityTests
         Assert.Contains("main05.03", result.ReachableEpisodeIds);
         Assert.Contains("main05.end", result.ReachableEpisodeIds);
 
-        // 복도완료(cleared:main05.02)로 열리는 부착 에피소드도 도달 가능하다.
-        Assert.Contains("attach05.02s", result.ReachableEpisodeIds);
+        // ⚠ 2026-08-25 — `attach05.02s`는 이제 도달 <b>불가</b>다. 예전에는 종류가
+        // `Attachment`라 증명기가 "간선이 아니라 관문 만족 가능성으로" 따로 통과시켰는데,
+        // 코어가 `EpisodeKind`를 지우면서 그 특례가 함께 사라졌다. 들어오는 간선이 없는
+        // 섬은 이제 그냥 섬이고, 의도임은 `도달불가 허용`이 적는다 — 그래서 오류가 아니라
+        // 알림이다(D3).
+        Assert.DoesNotContain("attach05.02s", result.ReachableEpisodeIds);
+
+        ChapterDiagnostic island = Assert.Single(result.Diagnostics,
+            item => item.Message.Contains("attach05.02s", StringComparison.Ordinal));
+
+        Assert.NotEqual(ChapterDiagnosticSeverity.Error, island.Severity);
     }
 
     [Fact]
@@ -104,8 +113,14 @@ public sealed class ChapterReachabilityTests
         Assert.Empty(result.Diagnostics);
     }
 
+    /// <summary>
+    /// `cleared:` 연쇄가 있던 자리다 (2026-08-25 폐지). 그 조건은 도달 가능 집합 자체를
+    /// 참조해서 고정점 반복이 필요했는데, 깃발 스탯으로 바뀌면서 <b>연쇄가 스탯 관문
+    /// 하나로 접혔다</b> — 깃발을 켜는 간선이 도달 불가면 깃발도 영원히 오르지 않고,
+    /// 스탯은 걷는 도중에 정해지므로 한 바퀴로 잡힌다.
+    /// </summary>
     [Fact]
-    public void 도달_불가한_에피소드에_걸린_cleared_조건은_연쇄_원인으로_지목된다()
+    public void 아무도_올려주지_않는_스탯_관문은_원인으로_지목된다()
     {
         ChapterGraphModel chapter = Chapter(
             episodes:
@@ -115,7 +130,7 @@ public sealed class ChapterReachabilityTests
                 Episode("ep3", row: 4)
             ],
             edges: [("ep1", "ep2", "관문", 0), ("ep1", "ep3", "완료조건", 0)],
-            conditions: [("관문", "trust >= 5"), ("완료조건", "cleared:ep2")]);
+            conditions: [("관문", "trust >= 5"), ("완료조건", "trust >= 1")]);
 
         ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
 
@@ -125,8 +140,8 @@ public sealed class ChapterReachabilityTests
         ChapterDiagnostic chained = Assert.Single(result.Diagnostics,
             item => item.Message.Contains("ep3", StringComparison.Ordinal));
 
-        Assert.Contains("cleared:ep2", chained.Message);
-        Assert.Contains("자체가 도달 불가", chained.Message);
+        Assert.Contains("trust", chained.Message);
+        Assert.Contains("최대 0까지", chained.Message);
     }
 
     [Fact]
@@ -289,7 +304,7 @@ public sealed class ChapterReachabilityTests
 
     /// <summary>v8 — 관문은 에피소드가 아니라 들어오는 길이 갖는다(간선 조건으로 준다).</summary>
     private static ChapterEpisode Episode(string id, int row, bool allowUnreachable = false) =>
-        new(id, id, "01", "Main", $"Story_{id}", 0, 0, null, null, row, allowUnreachable);
+        new(id, id, "01", $"Story_{id}", 0, 0, null, null, row, allowUnreachable);
 
     /// <param name="edges">TrustDelta — 그 간선을 타는 순간 커밋되는 trust 증감 (2026-08-14 규칙).</param>
     private static ChapterGraphModel Chapter(

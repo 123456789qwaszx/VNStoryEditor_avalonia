@@ -32,7 +32,6 @@ public static class ChapterFixtureWalker
             .Select(stat => fixture.Stats.GetValueOrDefault(stat.Key, stat.Initial))
             .ToArray();
 
-        var cleared = new HashSet<string>(StringComparer.Ordinal);
         var fixedChoices = fixture.Choices.ToDictionary(
             choice => choice.From, choice => choice.To, StringComparer.Ordinal);
 
@@ -46,14 +45,13 @@ public static class ChapterFixtureWalker
             }
 
             path.Add(current);
-            cleared.Add(current);
 
             List<ChapterEdge> passable = chapter.Edges
                 .Where(edge => string.Equals(edge.FromEpisodeId, current, StringComparison.Ordinal))
                 .Where(edge =>
                     chapter.FindEpisode(edge.ToEpisodeId) is not null &&
-                    Satisfied(chapter, edge.VisibleConditionLabel, stats, cleared) &&
-                    Satisfied(chapter, edge.ConditionLabel, stats, cleared))
+                    Satisfied(chapter, edge.VisibleConditionLabel, stats) &&
+                    Satisfied(chapter, edge.ConditionLabel, stats))
                 .ToList();
 
             if (passable.Count == 0)
@@ -94,7 +92,7 @@ public static class ChapterFixtureWalker
     }
 
     private static bool Satisfied(
-        ChapterGraphModel chapter, string? label, int[] stats, IReadOnlySet<string> cleared)
+        ChapterGraphModel chapter, string? label, int[] stats)
     {
         if (string.IsNullOrEmpty(label))
         {
@@ -106,36 +104,29 @@ public static class ChapterFixtureWalker
             return false;
         }
 
+        // 항의 종류가 스탯 비교 하나뿐이다 (2026-08-25) — `cleared:`가 폐지되면서
+        // 클리어 집합을 들고 걸을 이유가 없어졌다. 깃발도 스탯이라 이 길로 함께 판정된다.
         foreach (ConditionTerm term in condition.Parsed)
         {
-            bool holds;
+            int index = -1;
 
-            if (term.Kind == ConditionTermKind.EpisodeCleared)
+            for (int position = 0; position < chapter.Stats.Count; position++)
             {
-                holds = cleared.Contains(term.Key);
-            }
-            else
-            {
-                int index = -1;
-
-                for (int position = 0; position < chapter.Stats.Count; position++)
+                if (string.Equals(chapter.Stats[position].Key, term.Key, StringComparison.Ordinal))
                 {
-                    if (string.Equals(chapter.Stats[position].Key, term.Key, StringComparison.Ordinal))
-                    {
-                        index = position;
-                        break;
-                    }
+                    index = position;
+                    break;
                 }
-
-                holds = index >= 0 && term.Comparison switch
-                {
-                    ConditionComparison.AtLeast => stats[index] >= term.Value,
-                    ConditionComparison.AtMost => stats[index] <= term.Value,
-                    ConditionComparison.Above => stats[index] > term.Value,
-                    ConditionComparison.Below => stats[index] < term.Value,
-                    _ => stats[index] == term.Value
-                };
             }
+
+            bool holds = index >= 0 && term.Comparison switch
+            {
+                ConditionComparison.AtLeast => stats[index] >= term.Value,
+                ConditionComparison.AtMost => stats[index] <= term.Value,
+                ConditionComparison.Above => stats[index] > term.Value,
+                ConditionComparison.Below => stats[index] < term.Value,
+                _ => stats[index] == term.Value
+            };
 
             if (!holds)
             {
