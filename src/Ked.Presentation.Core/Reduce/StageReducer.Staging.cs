@@ -44,6 +44,71 @@ namespace Ked.Presentation.Core
             return true;
         }
 
+        /// <summary>
+        /// <c>slide_in</c> — <b>정착 상태는 항등이다.</b> 런타임 <c>SlideCommandBase</c>에서
+        /// 등장의 도착점은 클레임 시점의 <b>현재 위치</b>이고(<c>CurrentPositionIsDestination
+        /// = true</c>), 화면 밖 출발점과 punch 오버슈트는 <b>트윈 중에만</b> 존재한다.
+        /// 그래서 접는 것은 "위치를 바꾸지 않는다"는 사실 그 자체다.
+        ///
+        /// 접지 않으면 프리뷰가 이 커맨드를 영원히 "반영 안 된 연출"로 짚는다 — 고칠 것이
+        /// 없는 뱃지는 소음이고, 진짜 미표시를 그 안에 묻는다(규칙 14의 반대편).
+        ///
+        /// ⚠ 인자는 <b>읽고 검사한다.</b> 슬롯을 못 풀거나 거리 토큰이 깨졌으면 그것은
+        /// 런타임에서도 안 도는 커맨드다 — 무해하다고 통째로 눈감으면 오타가 산출까지 간다.
+        /// </summary>
+        private static bool ApplySlideIn(
+            StageState state, in StageCommand cmd, StageReducerTuning tuning, out string reason)
+            => TryReadSlide(state, cmd, tuning, SlideMotion.DefaultInDirection, out _, out _, out reason);
+
+        /// <summary>
+        /// <c>slide_out</c> — <b>나간 자리에 남는다.</b> 등장과 달리 현재 위치가 출발점이라
+        /// (<c>CurrentPositionIsDestination = false</c>) 순변위가 <b>방향 × 거리</b>다.
+        /// 표적 rect는 등장과 같은 <c>CharSlot_Track</c>이고 <c>move_by</c>와 같은 상대
+        /// 이동이므로, 시간 보간(타임라인·재생)은 <b>노드 차이에서 저절로</b> 나온다.
+        ///
+        /// ⚠ <b>가시성은 건드리지 않는다</b> — 화면 밖으로 밀어낼 뿐 알파는 그대로다
+        /// (런타임도 그렇다). 지우려면 작가가 <c>fade_out</c>을 함께 적는다.
+        /// </summary>
+        private static bool ApplySlideOut(
+            StageState state, in StageCommand cmd, StageReducerTuning tuning, out string reason)
+        {
+            if (!TryReadSlide(state, cmd, tuning, SlideMotion.DefaultOutDirection,
+                    out string slotKey, out Vec2 offset, out reason))
+                return false;
+
+            ApplyMoveClaim(state, slotKey, "CharSlot_Track", relative: true, offset);
+            return true;
+        }
+
+        /// <summary>
+        /// 슬라이드 두 커맨드의 공통 인자 — 슬롯 · 방향 · 거리. 낱말 표와 기본값의 주인은
+        /// <see cref="SlideMotion"/> 하나다(툴의 시간 계획도 같은 것을 본다 — 사본 금지).
+        /// </summary>
+        /// <param name="offset">정착 상태에 얹을 변위. 등장은 부르는 쪽이 버린다(항등).</param>
+        private static bool TryReadSlide(
+            StageState state, in StageCommand cmd, StageReducerTuning tuning,
+            string defaultDirection, out string slotKey, out Vec2 offset, out string reason)
+        {
+            offset = Vec2.Zero;
+
+            if (!TryGetSpawnedSlot(state, cmd, out slotKey, out reason))
+                return false;
+
+            string distanceToken = cmd.Arg(2, SlideMotion.DefaultDistanceToken);
+
+            // ⚠ 부호 없는 파서다 — 런타임 `YarnUnitParser.Parse`가 지나는 것과 같은 함수이고,
+            // 그 안에서 음수가 0으로 <b>클램프</b>된다(거부가 아니다). 어느 쪽으로 가는지는
+            // direction 인자만이 정하므로 거리에 부호를 실을 자리가 없다.
+            if (!UnitToken.TryParsePixels(distanceToken, tuning.ReferenceStageWidth, out float pixels))
+            {
+                reason = $"거리 토큰을 읽지 못했다: '{distanceToken}'";
+                return false;
+            }
+
+            offset = SlideMotion.DirectionVector(cmd.Arg(1, defaultDirection)) * pixels;
+            return true;
+        }
+
         private static bool ApplyMoveReset(StageState state, in StageCommand cmd, out string reason)
         {
             if (!TryGetSpawnedSlot(state, cmd, out string slotKey, out reason))

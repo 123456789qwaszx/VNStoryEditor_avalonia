@@ -55,7 +55,26 @@ public sealed record MotionTween(
     IReadOnlyList<CurveKey>? CurveKeys,
     IReadOnlyList<MotionNodeTween> Nodes,
     MotionShotTween? Shot = null,
-    MotionGestureTween? Gesture = null);
+    MotionGestureTween? Gesture = null,
+    MotionSlidePunch? Punch = null);
+
+/// <summary>
+/// 슬라이드의 <b>튐</b>(2026-08-24) — 등장은 도착 직전에, 퇴장은 출발 직후에 기본 경로를
+/// 벗어나 부풀었다 사그라든다.
+///
+/// ⚠ <b>별도의 좌표 항이 아니라 진행도의 모양이다.</b> 슬라이드는 출발·도착이 한 축 위에
+/// 있는 1차원 운동이고 런타임의 튐도 <em>그 축 방향</em>으로만 얹힌다
+/// (<c>slideDir · punch · Bump(eased)</c>). 그래서
+/// <c>위치 = 출발 + 이동거리 · (eased + 비율 · Bump(eased))</c>로 정확히 같은 값이 나온다 —
+/// 새 기하 없이 <see cref="StageMotionPlan.Shape"/> 한 줄이 된다.
+///
+/// ⚠ 기본 수치(등장 24px 대 12u=480px)에서는 모양이 <b>1을 넘지 않는다</b> — 도착을
+/// 지나치는 것이 아니라 도착 직전에 부풀어 앞서 갈 뿐이다. punch를 크게 주면 1을 넘고,
+/// 그때도 보간이 클램프하지 않으므로(<c>from + (to-from)·t</c>) 그대로 산다.
+/// </summary>
+/// <param name="Ratio">튐(px) ÷ 이동거리(px). 거리가 0이면 튐도 없다.</param>
+/// <param name="TowardEnd">등장이면 true(도착 직전), 퇴장이면 false(출발 직후).</param>
+public sealed record MotionSlidePunch(double Ratio, bool TowardEnd);
 
 /// <summary>
 /// 한 라인이 시간에 따라 흐르는 모양 (2026-08-21 소유자: "place랑 depth의 경우에도 move랑
@@ -166,10 +185,22 @@ public sealed class StageMotionPlan
     /// 진행도 → 곡선 값. 커스텀 곡선이 있으면 그것, 없으면 이징이다 — 재생·스크럽·정지가
     /// 전부 이 하나를 지난다(런타임과 등가 고정된 코어 함수).
     /// </summary>
-    private static float Shape(MotionTween tween, double progress) =>
-        tween.CurveKeys is { Count: >= 2 } keys
+    private static float Shape(MotionTween tween, double progress)
+    {
+        float shaped = tween.CurveKeys is { Count: >= 2 } keys
             ? CurveFunctions.Evaluate(keys as CurveKey[] ?? keys.ToArray(), (float)progress)
             : EaseFunctions.Evaluate(EaseKindOf(tween.Ease), (float)progress);
+
+        if (tween.Punch is not { } punch)
+        {
+            return shaped;
+        }
+
+        // 튐은 이징 <b>뒤에</b> 얹힌다 — 런타임도 eased 값을 Bump에 먹인다.
+        return shaped + (float)(punch.Ratio * (punch.TowardEnd
+            ? SlideMotion.PunchTowardEnd(shaped)
+            : SlideMotion.PunchFromStart(shaped)));
+    }
 
     /// <summary>모르는 이름은 런타임 스펙 기본값(OutCubic)으로 — 브리지의 파싱 실패와 같은 방향.</summary>
     public static EaseKind EaseKindOf(string? name) =>
@@ -274,12 +305,25 @@ public sealed class StageMotionPlan
             // 제자리 몸짓은 상태를 안 바꾸는 것이 정의라 차이로는 안 보인다 — 인자가 말한다.
             MotionGestureTween? gesture = GestureOf(definition, command, final, tuning, curves);
 
+            // 슬라이드도 시간 축을 인자에서 얻는다 — 등장은 순변위 0이라 차이로 안 보이고,
+            // 퇴장은 차이로 보이지만 이징·튐이 Yarn 인자가 아니라 스펙 상수다.
+            SlideMotion.Kind? slideKind = SlideMotion.KindOf(definition.OutputCommandName);
+            MotionSlidePunch? punch = null;
+
+            if (slideKind is { } kind)
+            {
+                (nodes, punch) = SlideOf(kind, definition, command, before, tuning, nodes);
+            }
+
             if (nodes.Count == 0 && shot is null && gesture is null)
             {
                 continue; // 바뀐 자리가 없다 — 태울 것도 없다(0u 이동 등).
             }
 
-            string? ease = EaseOf(definition, command);
+            // 슬라이드의 이징은 Yarn 인자가 아니라 스펙 상수다 — 인자 선언을 뒤져도 없다.
+            string? ease = slideKind is { } slide
+                ? SlideMotion.EaseOf(slide).ToString()
+                : EaseOf(definition, command);
 
             tweens.Add(new MotionTween(
                 command.CommandId,
@@ -289,7 +333,8 @@ public sealed class StageMotionPlan
                 CurveKeysOf(ease, curves),
                 nodes,
                 shot,
-                gesture));
+                gesture,
+                punch));
         }
 
         return tweens.Count > 0 ? new StageMotionPlan(tweens, final) : null;
@@ -441,6 +486,82 @@ public sealed class StageMotionPlan
             y,
             OscillationOf(Argument(definition, command, "xEase"), curves),
             OscillationOf(Argument(definition, command, "yEase"), curves));
+    }
+
+    /// <summary>
+    /// 슬라이드의 시간 축 (2026-08-24 소유자: "SlideOut, SlideIn이 지금 동작하지 않는데").
+    ///
+    /// 두 가지를 인자에서 얻는다 — 폴드 차이만으로는 못 얻는 것들이다:
+    /// <list type="number">
+    ///   <item><b>등장의 구간</b>. 정착 상태가 항등이라(도착점 = 현재 위치) 차이로는 아무것도
+    ///     안 보인다. 화면 밖 출발점은 <c>현재 자리 + 방향 × 거리</c>로 <b>합성</b>한다 —
+    ///     그러면 순변위 0인 채로 들어오는 움직임이 산다.</item>
+    ///   <item><b>튐</b>. 이징도 튐도 Yarn 인자가 아니라 런타임 <em>스펙 상수</em>라
+    ///     (브리지가 안 넘긴다) 카탈로그를 뒤져도 없다.</item>
+    /// </list>
+    ///
+    /// 퇴장의 구간은 손대지 않는다 — <see cref="DiffNodes"/>가 이미 만들었다(<c>move_by</c>와
+    /// 같은 rect를 미는 상대 이동이다). 여기서 얹는 것은 튐뿐이다.
+    /// </summary>
+    private static (IReadOnlyList<MotionNodeTween> Nodes, MotionSlidePunch? Punch) SlideOf(
+        SlideMotion.Kind kind,
+        PresentationCommandDefinition definition,
+        PresentationResultCommand command,
+        StageState before,
+        StageReducerTuning tuning,
+        IReadOnlyList<MotionNodeTween> diffed)
+    {
+        if (!before.TryResolveSlot(Argument(definition, command, "slot"), out string slotKey) ||
+            !UnitToken.TryParsePixels(
+                ArgumentOr(definition, command, "distance", SlideMotion.DefaultDistanceToken),
+                tuning.ReferenceStageWidth,
+                out float distance) ||
+            distance <= 0.001f)
+        {
+            // 슬롯을 못 풀거나 거리가 0이면 태울 것이 없다 — 폴드가 사유를 이미 남겼거나,
+            // 런타임에서도 제자리다(0u 이동과 같은 취급).
+            return (diffed, null);
+        }
+
+        var punch = new MotionSlidePunch(
+            SlideMotion.PunchPixels(kind) / distance,
+            TowardEnd: kind == SlideMotion.Kind.In);
+
+        if (kind == SlideMotion.Kind.Out)
+        {
+            return (diffed, punch);
+        }
+
+        string nodeKey = StageState.NodeKeyOf(slotKey, "CharSlot_Track");
+
+        if (!before.Nodes.Contains(nodeKey))
+        {
+            return (diffed, null);
+        }
+
+        Vec2 offset = SlideMotion.DirectionVector(
+            ArgumentOr(definition, command, "direction", SlideMotion.DefaultDirection(kind))) * distance;
+
+        RectNodeState rest = before.Nodes.GetState(nodeKey);
+
+        return (
+            [.. diffed, new MotionNodeTween(
+                nodeKey,
+                rest.WithAnchoredPosition(rest.AnchoredPosition + offset),
+                rest)],
+            punch);
+    }
+
+    /// <summary>적힌 값 → 카탈로그 기본값 → <paramref name="fallback"/>. 빈 값은 없는 것이다.</summary>
+    private static string ArgumentOr(
+        PresentationCommandDefinition definition,
+        PresentationResultCommand command,
+        string name,
+        string fallback)
+    {
+        string written = Argument(definition, command, name);
+
+        return written.Length > 0 ? written : fallback;
     }
 
     /// <summary>적힌 값, 없으면 카탈로그 기본값. 둘 다 없으면 빈 문자열.</summary>

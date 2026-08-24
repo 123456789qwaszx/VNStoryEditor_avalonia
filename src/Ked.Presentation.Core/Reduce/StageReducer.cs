@@ -52,7 +52,7 @@ namespace Ked.Presentation.Core
     /// 이 기록이 "아직 못 접는 것"의 유일한 진실이고, 수렴의 작업 목록이 된다.
     ///
     /// 현재 어휘(v1): slot 계열(리그 스폰) · cast/actor(배역·별칭) ·
-    ///   show(리셋+앵커+사이징+가시성) · fade_in/out · place/size 계열 ·
+    ///   show(리셋+앵커+사이징+가시성) · fade_in/out · slide_in/out · place/size 계열 ·
     ///   nudge/move/scale/rotate 계열 · shot 5종 · char_to 계열 ·
     ///   초상 축(pose/face/face_swap) · 시간 커맨드(pause·Nfr — 접을 것이 없다).
     /// 명시적 한계: 배경/오버레이/이펙트/오디오/트랜지션 리그, 대사창,
@@ -182,6 +182,10 @@ namespace Ked.Presentation.Core
                 case "right": return ApplyNudge(state, cmd, tuning, 1f, 0f, "CharSlot_Track_X", out reason);
                 case "up":    return ApplyNudge(state, cmd, tuning, 0f, 1f, "CharSlot_Track_Y", out reason);
                 case "down":  return ApplyNudge(state, cmd, tuning, 0f, -1f, "CharSlot_Track_Y", out reason);
+
+                // 슬라이드 (등장·퇴장) — 정착 상태로는 등장이 항등, 퇴장이 방향 × 거리다.
+                case "slide_in":  return ApplySlideIn(state, cmd, tuning, out reason);
+                case "slide_out": return ApplySlideOut(state, cmd, tuning, out reason);
 
                 // staging 이동/스케일/회전
                 case "move_by":      return ApplyMoveBy(state, cmd, tuning, out reason);

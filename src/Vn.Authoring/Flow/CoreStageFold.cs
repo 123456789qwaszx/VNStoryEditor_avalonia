@@ -41,6 +41,11 @@ public static class CoreStageFold
         "cast", "pose", "actor",
         "show", "face", "face_swap", "fade_in", "fade_out",
 
+        // 슬라이드 (2026-08-24) — 퇴장은 나간 자리가 곧 정착 상태라 화면에 그려야 한다.
+        // 등장은 정착으로는 항등이지만 <b>여기 있어야 한다</b>: 없으면 "접혔지만 안 그린다"
+        // 뱃지로 남고, 고칠 것이 없는 뱃지는 진짜 미표시를 그 안에 묻는다.
+        "slide_in", "slide_out",
+
         // 좌표 축 (W25에서 그리기 시작) — place 14종.
         "place", "place_left", "place_center", "place_right",
         "place_tl", "place_top", "place_tr",
