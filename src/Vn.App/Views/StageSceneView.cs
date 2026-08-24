@@ -71,11 +71,10 @@ internal sealed class StageSceneView : UserControl
     internal event Action? QuickEditModeChanged;
 
     /// <summary>
-    /// 지금 터미널이 ★를 보여야 하는가. 조절창을 여는 길이 <see cref="_quickEditMode"/>를
-    /// 반드시 끄고(열림) 닫는 길이 반드시 끄므로(Closed) 이 플래그 하나로 충분하다 —
-    /// <c>IsOpen</c>을 함께 보면 같은 사실을 두 곳에서 세는 셈이 된다.
+    /// 지금 터미널이 담기 상태여야 하는가 — <b>두 편집 중 하나라도 켜져 있으면</b>이다.
+    /// 담을 곳이 어디인지는 <see cref="QuickPinTarget"/>가 따로 답한다.
     /// </summary>
-    internal bool IsQuickPinMode => _quickEditMode;
+    internal bool IsQuickPinMode => _commandEditMode || _bundleEditMode;
 
     /// <summary>조절창을 그 자리에서 다시 그린다.</summary>
     internal void RefreshConsole() => _consoleRebuild?.Invoke();
@@ -144,16 +143,29 @@ internal sealed class StageSceneView : UserControl
     /// 때마다 무조건 쏘면 터미널이 매번 헛되이 다시 그려지고, 그 재렌더가 조절창을 여는
     /// 도중에 끼어든다.
     /// </summary>
-    private void SetQuickEditMode(bool enabled)
+    private void SetCommandEditMode(bool enabled)
     {
-        if (_quickEditMode == enabled)
+        if (_commandEditMode == enabled)
         {
             return;
         }
 
-        _quickEditMode = enabled;
-        _quickExpandedIndex = null;
-        _quickExpandedStep = null;
+        _commandEditMode = enabled;
+        _commandExpandedIndex = null;
+        QuickEditModeChanged?.Invoke();
+    }
+
+    /// <inheritdoc cref="SetCommandEditMode"/>
+    private void SetBundleEditMode(bool enabled)
+    {
+        if (_bundleEditMode == enabled)
+        {
+            return;
+        }
+
+        _bundleEditMode = enabled;
+        _bundlePinIndex = null;
+        _bundleExpandedStep = null;
         QuickEditModeChanged?.Invoke();
     }
 
@@ -3012,8 +3024,18 @@ internal sealed class StageSceneView : UserControl
 
     // ── [자주 쓰는] 탭 (2026-08-22) ─────────────────────────────────────────
 
-    /// <summary>칩을 지울 수 있는 상태인가. 팝오버를 다시 열면 꺼진다 — 편집은 잠깐의 일이다.</summary>
-    private bool _quickEditMode;
+    /// <summary>
+    /// <b>두 구역의 편집은 따로 켠다</b> (2026-08-24 3차 소유자: "개별 커맨드와 묶음 커맨드의
+    /// 조작을 분리하는게 좋겠어").
+    ///
+    /// 하나였을 때 <c>[＋ 묶음]</c>이 그 하나를 켜는 바람에, 묶음을 만들려던 사람의 눈앞에서
+    /// <b>커맨드 구역까지 통째로 편집 줄로 바뀌었다</b> — 만지지도 않을 판이 모양을 바꾸는 것은
+    /// 그 자체로 소음이다. 두 구역은 손잡이도 어휘도 다르다(단추의 이름·수치 ↔ 표의 순서·단계).
+    /// </summary>
+    private bool _commandEditMode;
+
+    /// <inheritdoc cref="_commandEditMode"/>
+    private bool _bundleEditMode;
 
     /// <summary>
     /// 검증용 손잡이 — 조절창 팝업을 띄우지 않고 [자주 쓰는] 판만 짓는다. 헤드리스에서는
@@ -3025,8 +3047,11 @@ internal sealed class StageSceneView : UserControl
         return BuildQuickTab(onApplied ?? (() => { }));
     }
 
-    /// <summary>검증용 손잡이 — 칩 편집 모드를 켠다(평소에는 탭 안 [편집]이 켠다). 신호도 같이 쏜다.</summary>
-    internal void SetQuickEditModeProbe(bool enabled) => SetQuickEditMode(enabled);
+    /// <summary>검증용 손잡이 — [커맨드] 구역의 편집을 켠다(평소에는 그 구역의 [편집]이 켠다).</summary>
+    internal void SetCommandEditModeProbe(bool enabled) => SetCommandEditMode(enabled);
+
+    /// <summary>검증용 손잡이 — [묶음] 구역의 편집을 켠다.</summary>
+    internal void SetBundleEditModeProbe(bool enabled) => SetBundleEditMode(enabled);
 
     /// <summary>
     /// 검증용 손잡이 — 조절창 본문(슬롯 헤더 + 탭 + 등장/퇴장)을 짓는다.
@@ -3063,43 +3088,17 @@ internal sealed class StageSceneView : UserControl
         PresentationCommandCatalog catalog = ManipulationCatalog;
         IReadOnlyList<StageQuickCommand> chips = _session.Project.EffectiveQuickCommands;
 
-        // ── 머리 줄: 안내 + [편집] 토글 ──
-        var editToggle = new Button
-        {
-            Content = _quickEditMode ? "완료" : "편집",
-            FontSize = 10,
-            Padding = new Thickness(7, 2)
-        };
-        editToggle.Click += (_, _) =>
-        {
-            // [완료]는 만들다 만 빈 그릇을 걷는다 (2026-08-24) — 누를 것이 없는 칩을
-            // 저장물에 남기지 않는다. 편집을 켤 때가 아니라 끌 때다: 담는 도중에 잠깐
-            // 비는 것은 정상이다.
-            if (_quickEditMode)
-            {
-                UiGuard.Run(_session, "빈 묶음 정리", () => _session!.Editor.RemoveEmptyQuickCommands());
-            }
-
-            // 모드 신호가 먼저다(터미널 활성 표시) — 판 재구성은 그 뒤여야 둘이 같은
-            // 모드를 본다.
-            SetQuickEditMode(!_quickEditMode);
-            onApplied();
-        };
-
-        var headerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var headerText = new TextBlock
+        // ── 머리 줄: 안내 한 줄 ──
+        //    [편집]은 여기 없다 (2026-08-24 3차) — 구역마다 따로 켜므로 구역 제목 옆이
+        //    제 자리다. 이 줄이 답하는 것은 <b>터미널 클릭이 어디로 가나</b> 하나이고,
+        //    그건 두 구역에 걸친 사실이라 위에 남는다.
+        panel.Children.Add(new TextBlock
         {
             Text = QuickHeaderText(chips),
             FontSize = 10,
             Opacity = 0.6,
-            TextWrapping = TextWrapping.Wrap,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        Grid.SetColumn(headerText, 0);
-        Grid.SetColumn(editToggle, 1);
-        headerRow.Children.Add(headerText);
-        headerRow.Children.Add(editToggle);
-        panel.Children.Add(headerRow);
+            TextWrapping = TextWrapping.Wrap
+        });
 
         // ── 구역 둘 (2026-08-24 소유자: "칩커맨드와 단일 커맨드가 구별되도록 영역을 구분")
         //
@@ -3112,10 +3111,10 @@ internal sealed class StageSceneView : UserControl
         {
             StageQuickCommand chip = chips[index];
 
-            // 빈 그릇은 편집 중에만 보인다 — 평소에 누를 것이 없는 단추를 세우지 않는다.
+            // 빈 그릇은 묶음 편집 중에만 보인다 — 평소에 누를 것이 없는 칩을 세우지 않는다.
             if (chip.Steps.Count == 0)
             {
-                if (_quickEditMode)
+                if (_bundleEditMode)
                 {
                     bundles.Add(index);
                 }
@@ -3135,27 +3134,30 @@ internal sealed class StageSceneView : UserControl
         }
 
         // ── 커맨드 구역 (하나짜리 칩) ──
+        AddQuickHeading(panel, "커맨드", "커맨드 하나짜리 칩입니다.", BuildCommandEditToggle(onApplied));
+
         if (single.Count > 0)
         {
-            AddQuickHeading(panel, "커맨드", "커맨드 하나짜리 칩입니다.");
-            Panel pad = _quickEditMode ? new StackPanel { Spacing = 3 } : new WrapPanel { MaxWidth = 260 };
+            Panel pad = _commandEditMode ? new StackPanel { Spacing = 3 } : new WrapPanel { MaxWidth = 260 };
 
             foreach (int index in single)
             {
-                pad.Children.Add(_quickEditMode
+                pad.Children.Add(_commandEditMode
                     ? BuildQuickChipEditRow(chips[index], index, onApplied)
                     : BuildQuickChip(chips[index], onApplied));
             }
 
             panel.Children.Add(pad);
         }
-        else if (chips.Count > 0 && bundles.Count == 0)
+        else
         {
             panel.Children.Add(new TextBlock
             {
-                Text = "이 게임 정의에는 담긴 칩의 커맨드가 없습니다.",
+                Text = chips.Count == 0
+                    ? "칩이 없습니다. [편집]을 누르고 터미널의 커맨드를 클릭해 담으세요."
+                    : "커맨드 칩이 없습니다.",
                 FontSize = 10,
-                Opacity = 0.6,
+                Opacity = 0.55,
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 250
             });
@@ -3174,7 +3176,7 @@ internal sealed class StageSceneView : UserControl
         // ── 묶음 구역 (표) ──
         //    ⚠ 이 구역은 <b>비어도 선다</b> — [＋ 묶음]이 여기 있기 때문이다.
         //    만들 입구가 목록이 비었다는 이유로 사라지면 첫 묶음을 만들 길이 없다.
-        AddQuickHeading(panel, "묶음", "누르면 담긴 순서대로 전부 붙습니다.");
+        AddQuickHeading(panel, "묶음", "누르면 담긴 순서대로 전부 붙습니다.", BuildBundleEditToggle(onApplied));
 
         foreach (int index in bundles)
         {
@@ -3195,16 +3197,20 @@ internal sealed class StageSceneView : UserControl
 
         panel.Children.Add(BuildAddBundleButton(onApplied));
 
-        if (_quickEditMode)
+        // [기본값 복원]은 목록 <b>전체</b>를 되돌린다 — 구역 하나의 일이 아니므로 맨 아래에
+        // 두고, 어느 쪽이든 편집 중일 때만 보인다.
+        if (IsQuickPinMode)
         {
             var reset = new Button
             {
                 Content = "기본값 복원",
                 FontSize = 10,
                 Padding = new Thickness(7, 2),
+                Margin = new Thickness(0, 8, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 IsEnabled = _session.Project.QuickCommands is not null
             };
+            ToolTip.SetTip(reset, "커맨드·묶음을 통째로 기본 목록으로 되돌립니다.");
             reset.Click += (_, _) =>
             {
                 UiGuard.Run(_session, "자주 쓰는 기본값 복원", () => _session.Editor.ResetQuickCommands());
@@ -3217,19 +3223,80 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 구역 제목 (2026-08-24 소유자: "칩커맨드와 단일 커맨드가 구별되도록 둘의 영역을 구분").
+    /// 구역 제목 + 그 구역만의 [편집] (2026-08-24 소유자: "칩커맨드와 단일 커맨드가 구별되도록
+    /// 둘의 영역을 구분" · 3차: "개별 커맨드와 묶음 커맨드의 조작을 분리").
     /// </summary>
-    private static void AddQuickHeading(StackPanel panel, string title, string hint)
+    private static void AddQuickHeading(StackPanel panel, string title, string hint, Control toggle)
     {
         var heading = new TextBlock
         {
             Text = title,
             FontSize = 9,
             Opacity = 0.5,
-            Margin = new Thickness(1, 2, 0, 2)
+            VerticalAlignment = VerticalAlignment.Center
         };
         ToolTip.SetTip(heading, hint);
-        panel.Children.Add(heading);
+
+        var row = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Margin = new Thickness(1, 2, 0, 2)
+        };
+        Grid.SetColumn(heading, 0);
+        Grid.SetColumn(toggle, 1);
+        row.Children.Add(heading);
+        row.Children.Add(toggle);
+        panel.Children.Add(row);
+    }
+
+    /// <summary>[커맨드] 구역의 [편집] — 이름 칸·✕·수치 조절을 켠다.</summary>
+    private Control BuildCommandEditToggle(Action onApplied)
+    {
+        var toggle = new Button
+        {
+            Content = _commandEditMode ? "완료" : "편집",
+            FontSize = 10,
+            Padding = new Thickness(7, 1)
+        };
+        ToolTip.SetTip(toggle, _commandEditMode
+            ? "커맨드 칩 편집을 마칩니다."
+            : "커맨드 칩의 이름·수치를 고치고, 터미널에서 새 칩을 담습니다.");
+        toggle.Click += (_, _) =>
+        {
+            SetCommandEditMode(!_commandEditMode);
+            onApplied();
+        };
+        return toggle;
+    }
+
+    /// <summary>
+    /// [묶음] 구역의 [편집] — 표의 손잡이(▲▼✕)·이름 칸·담을 대상 지정을 켠다.
+    ///
+    /// [완료]는 만들다 만 <b>빈 그릇을 걷는다</b> — 누를 것이 없는 칩을 저장물에 남기지
+    /// 않는다. 켤 때가 아니라 끌 때인 이유는 담는 도중에 잠깐 비는 것이 정상이기 때문이다.
+    /// </summary>
+    private Control BuildBundleEditToggle(Action onApplied)
+    {
+        var toggle = new Button
+        {
+            Content = _bundleEditMode ? "완료" : "편집",
+            FontSize = 10,
+            Padding = new Thickness(7, 1)
+        };
+        ToolTip.SetTip(toggle, _bundleEditMode
+            ? "묶음 편집을 마칩니다 — 빈 묶음은 걷힙니다."
+            : "묶음의 단계 순서·수치를 고치고, 터미널에서 골라 담습니다.");
+        toggle.Click += (_, _) =>
+        {
+            if (_bundleEditMode)
+            {
+                UiGuard.Run(_session, "빈 묶음 정리", () => _session!.Editor.RemoveEmptyQuickCommands());
+            }
+
+            SetBundleEditMode(!_bundleEditMode);
+            onApplied();
+        };
+        return toggle;
     }
 
     /// <summary>
@@ -3259,12 +3326,12 @@ internal sealed class StageSceneView : UserControl
             UiGuard.Run(_session, "묶음 만들기", () =>
             {
                 int created = _session!.Editor.CreateQuickBundle();
-                SetQuickEditMode(true);
+                SetBundleEditMode(true);
 
                 // 만든 그릇을 바로 펴 둔다 = 담을 대상이다. 만들자마자 담을 수 있어야
                 // "만들기 → 고르기"가 한 흐름으로 이어진다.
-                _quickExpandedIndex = created;
-                _quickExpandedStep = null;
+                _bundlePinIndex = created;
+                _bundleExpandedStep = null;
                 _quickCollapsed.Remove(_session.Project.EffectiveQuickCommands[created].DisplayName);
             });
 
@@ -3278,15 +3345,18 @@ internal sealed class StageSceneView : UserControl
     /// <summary>
     /// 지금 펼쳐 놓은 칩의 자리. 하나만 열린다 — 작업대와 같은 감각이다.
     ///
-    /// <b>펼친 칩이 곧 담을 대상이다</b> (2026-08-24) — 터미널에서 클릭한 커맨드는 이 칩의
-    /// 뒤에 붙고, 펼친 칩이 없으면 새 칩이 된다. 담기 단추를 칩마다 따로 두지 않은 이유는
-    /// 그것이 손잡이를 하나 더 만들 뿐이기 때문이다: 펼쳤다는 것은 이미 "이 칩을 지금
-    /// 만지고 있다"는 뜻이고, 화면도 그 하나만 열어 준다.
+    /// <b>이름 칸이 초점을 받은 묶음이 담을 대상이다</b> (2026-08-24) — 터미널에서 클릭한
+    /// 커맨드는 그 묶음 뒤에 붙는다. 담기 단추를 묶음마다 따로 두지 않은 이유는 그것이
+    /// 손잡이를 하나 더 만들 뿐이기 때문이다: 이름을 만지고 있다는 것은 이미 "이 묶음을
+    /// 지금 작업 중"이라는 뜻이다.
     /// </summary>
-    private int? _quickExpandedIndex;
+    private int? _bundlePinIndex;
 
-    /// <summary>펼친 칩 <b>안에서</b> 수치를 펴 놓은 단계. 칩과 마찬가지로 하나만 열린다.</summary>
-    private int? _quickExpandedStep;
+    /// <summary>담을 대상 묶음 <b>안에서</b> 수치를 펴 놓은 단계. 하나만 열린다.</summary>
+    private int? _bundleExpandedStep;
+
+    /// <summary>[커맨드] 구역에서 수치를 펴 놓은 칩. 하나만 열린다 — 작업대와 같은 감각이다.</summary>
+    private int? _commandExpandedIndex;
 
     /// <summary>
     /// 표를 접어 둔 묶음들 — <b>이름</b>으로 기억한다 (2026-08-24 소유자: "물론 접기도
@@ -3301,34 +3371,45 @@ internal sealed class StageSceneView : UserControl
     private readonly HashSet<string> _quickCollapsed = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 지금 터미널 클릭이 담길 곳 — 펼친 칩의 자리, 없으면 null(= 새 칩).
+    /// 지금 터미널 클릭이 담길 곳 — 담을 대상 묶음의 자리, 없으면 null(= 새 커맨드 칩).
     /// 터미널 쪽 배선(<c>MiniStagePreview</c>)이 이 하나만 보고 갈라진다.
+    ///
+    /// ⚠ <b>묶음 편집이 켜져 있을 때만</b> 답한다 — 커맨드 편집만 켜 놓고 담는 사람에게는
+    /// 묶음이 목적지가 될 수 없다(그것이 두 조작을 가른 이유다).
     /// </summary>
-    internal int? QuickPinTarget => _quickEditMode ? _quickExpandedIndex : null;
+    internal int? QuickPinTarget => _bundleEditMode ? _bundlePinIndex : null;
 
-    /// <summary>검증용 손잡이 — 담을 대상 칩을 편다(평소에는 탭 안 ▸가 편다).</summary>
+    /// <summary>검증용 손잡이 — 담을 대상 묶음을 정한다(평소에는 이름 칸의 초점이 정한다).</summary>
     internal void ExpandQuickChipProbe(int? index)
     {
-        _quickExpandedIndex = index;
-        _quickExpandedStep = null;
+        _bundlePinIndex = index;
+        _bundleExpandedStep = null;
     }
 
-    /// <summary>편집 모드의 안내 한 줄 — <b>지금 클릭이 어디로 가는지</b>를 말한다.</summary>
+    /// <summary>
+    /// 머리 줄의 안내 — <b>지금 터미널 클릭이 어디로 가는지</b>를 말한다.
+    /// 두 구역에 걸친 사실이라 구역 제목이 아니라 판 맨 위에 선다.
+    /// </summary>
     private string QuickHeaderText(IReadOnlyList<StageQuickCommand> chips)
     {
-        if (!_quickEditMode)
-        {
-            return "누르면 이 라인에 붙습니다.";
-        }
-
-        if (_quickExpandedIndex is { } index && index >= 0 && index < chips.Count)
+        if (_bundleEditMode && _bundlePinIndex is { } index && index >= 0 && index < chips.Count)
         {
             return $"담는 중: '{chips[index].DisplayName}' — 터미널의 커맨드를 클릭하면 " +
-                   $"{chips[index].Steps.Count + 1}번째로 붙습니다. ▾로 접으면 담기가 끝납니다.";
+                   $"{chips[index].Steps.Count + 1}번째 단계로 붙습니다.";
         }
 
-        return "터미널의 커맨드를 클릭하면 커맨드 칩 하나로 담깁니다. " +
-               "여러 개를 한 단추로 묶으려면 [＋ 묶음]을 누르세요.";
+        if (_bundleEditMode)
+        {
+            return "담을 묶음의 이름 칸을 누르면 그 묶음에 골라 담습니다. " +
+                   "새로 만들려면 아래 [＋ 묶음]을 누르세요.";
+        }
+
+        if (_commandEditMode)
+        {
+            return "터미널의 커맨드를 클릭하면 커맨드 칩 하나로 담깁니다.";
+        }
+
+        return "누르면 이 라인에 붙습니다.";
     }
 
     /// <summary>
@@ -3408,7 +3489,7 @@ internal sealed class StageSceneView : UserControl
     private Control BuildQuickBundleCard(StageQuickCommand chip, int index, Action onApplied)
     {
         bool collapsed = _quickCollapsed.Contains(chip.DisplayName);
-        bool pinTarget = _quickEditMode && _quickExpandedIndex == index;
+        bool pinTarget = _bundleEditMode && _bundlePinIndex == index;
 
         var card = new StackPanel();
         var frame = new Border
@@ -3448,7 +3529,7 @@ internal sealed class StageSceneView : UserControl
             });
         }
 
-        if (!_quickEditMode)
+        if (!_bundleEditMode)
         {
             return frame;
         }
@@ -3476,7 +3557,7 @@ internal sealed class StageSceneView : UserControl
     /// 표의 머리 줄 — [▾ 접기][이름][·N][붙이기 또는 ✕].
     ///
     /// 편집 중에는 이름이 <b>칸</b>이 되고, 그 칸을 누르는 것이 곧 "이 묶음에 담겠다"는
-    /// 뜻이다(<see cref="_quickExpandedIndex"/>) — 담기 대상을 고르는 손잡이를 따로 두지
+    /// 뜻이다(<see cref="_bundlePinIndex"/>) — 담기 대상을 고르는 손잡이를 따로 두지
     /// 않는다. 평소에는 [붙이기]가 그 자리를 쓴다.
     /// </summary>
     private Control BuildQuickBundleHeader(
@@ -3513,7 +3594,7 @@ internal sealed class StageSceneView : UserControl
             Margin = new Thickness(5, 0, 5, 0)
         };
 
-        Control name = _quickEditMode
+        Control name = _bundleEditMode
             ? BuildQuickBundleNameBox(chip, index, onApplied)
             : new TextBlock
             {
@@ -3538,7 +3619,7 @@ internal sealed class StageSceneView : UserControl
     /// <summary>머리 줄 오른쪽 — 평소에는 [붙이기], 편집 중에는 묶음째 빼는 ✕.</summary>
     private Control BuildQuickBundleAction(StageQuickCommand chip, int index, Action onApplied)
     {
-        if (_quickEditMode)
+        if (_bundleEditMode)
         {
             var remove = new Button
             {
@@ -3552,8 +3633,8 @@ internal sealed class StageSceneView : UserControl
             remove.Click += (_, _) =>
             {
                 UiGuard.Run(_session, "자주 쓰는 칩 제거", () => _session!.Editor.RemoveQuickCommandAt(index));
-                _quickExpandedIndex = null;
-                _quickExpandedStep = null;
+                _bundlePinIndex = null;
+                _bundleExpandedStep = null;
                 onApplied();
             };
             return remove;
@@ -3613,13 +3694,13 @@ internal sealed class StageSceneView : UserControl
 
         name.GotFocus += (_, _) =>
         {
-            if (_quickExpandedIndex == index)
+            if (_bundlePinIndex == index)
             {
                 return;
             }
 
-            _quickExpandedIndex = index;
-            _quickExpandedStep = null;
+            _bundlePinIndex = index;
+            _bundleExpandedStep = null;
             QuickEditModeChanged?.Invoke(); // 터미널 행 툴팁이 목적지를 말한다
             onApplied();
         };
@@ -3654,30 +3735,26 @@ internal sealed class StageSceneView : UserControl
         int index,
         Action onApplied)
     {
-        bool expanded = _quickExpandedIndex == index;
+        bool expanded = _commandExpandedIndex == index;
+        bool adjustable = ManipulationCatalog.Find(chip.Steps[0].DefinitionId)
+            is { } definition && definition.Parameters.Any(IsAdjustableParameter);
 
-        // ⚠ 펼치기는 <b>언제나</b> 열린다 (2026-08-24) — 수치가 없는 커맨드라도 단계 목록과
-        //   "여기 이어 담는다"는 자리는 있다. 예전에는 조절할 수치가 없으면 잠갔는데,
-        //   그러면 그런 커맨드로 만든 칩은 묶음으로 키울 길이 통째로 막힌다.
         var expand = new Button
         {
             Content = expanded ? "▾" : "▸",
             FontSize = 10,
             Padding = new Thickness(5, 2),
-            Margin = new Thickness(0, 0, 4, 0)
+            Margin = new Thickness(0, 0, 4, 0),
+            IsEnabled = adjustable,
+            Opacity = adjustable ? 1 : 0.35
         };
-        ToolTip.SetTip(expand, expanded
-            ? "접습니다. 접으면 터미널 클릭이 새 칩으로 갑니다."
-            : "단계 목록을 펼칩니다. 펼친 칩이 터미널 클릭을 받습니다.");
+        ToolTip.SetTip(expand, adjustable
+            ? "이 칩의 수치를 폅니다."
+            : "이 커맨드에는 조절할 수치가 없습니다.");
         expand.Click += (_, _) =>
         {
-            _quickExpandedIndex = expanded ? null : index;
-            _quickExpandedStep = null;
+            _commandExpandedIndex = expanded ? null : index;
             onApplied();
-
-            // 담을 곳이 바뀌었다 — 터미널 행의 툴팁이 목적지를 말하므로 그쪽도 다시 그린다
-            // (담기 모드가 켜지고 꺼질 때와 같은 이유·같은 길이다).
-            QuickEditModeChanged?.Invoke();
         };
 
         var name = new TextBox
@@ -3739,25 +3816,14 @@ internal sealed class StageSceneView : UserControl
             return row;
         }
 
-        // 한 단계짜리 칩은 <b>곧 그 커맨드</b>다 — 번호 줄과 ▲▼(둘 다 꺼짐)·✕(칩의 ✕와
-        // 같은 일)를 세우면 손잡이만 늘고 뜻은 하나도 안 는다. 수치가 바로 선다.
+        // 커맨드 칩은 <b>곧 그 커맨드</b>다 — 단계 번호도, 순서 화살표도, 이어 담기도
+        // 여기 없다(그건 묶음의 어휘다, 2026-08-24 3차). 펼치면 수치만 바로 선다.
         var body = new StackPanel { Spacing = 3, Margin = new Thickness(18, 4, 0, 6) };
 
         if (ManipulationCatalog.Find(chip.Steps[0].DefinitionId) is { } only)
         {
             AddQuickChipParameterRows(body, chip.Steps[0], only, index, stepIndex: 0);
         }
-
-        body.Children.Add(new TextBlock
-        {
-            Text = "터미널의 커맨드를 클릭하면 이 칩에 이어 붙어 묶음이 됩니다.",
-            FontSize = 9,
-            Opacity = 0.45,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(2, 2, 0, 0)
-        });
-
-        body.Children.Add(BuildQuickLinePinButton(chip));
 
         return new StackPanel { Children = { row, body } };
     }
@@ -3778,7 +3844,7 @@ internal sealed class StageSceneView : UserControl
     {
         StageQuickStep step = chip.Steps[stepIndex];
         PresentationCommandDefinition? definition = ManipulationCatalog.Find(step.DefinitionId);
-        bool expanded = _quickEditMode && _quickExpandedStep == stepIndex;
+        bool expanded = _bundleEditMode && _bundleExpandedStep == stepIndex;
 
         // 표의 한 행 — [번호][커맨드][인자]. 세 칸으로 가른 이유는 <b>세로로 줄이 맞아야</b>
         // 목록이 표로 읽히기 때문이다: 한 줄에 몰아 쓰면 커맨드 이름 길이에 따라 인자가
@@ -3822,7 +3888,7 @@ internal sealed class StageSceneView : UserControl
         }
 
         // 평소에는 행이 <b>읽는 것</b>이다 — 누를 것이 없으니 단추로 만들지 않는다.
-        if (!_quickEditMode)
+        if (!_bundleEditMode)
         {
             cellsRow.Margin = new Thickness(4, 1, 2, 1);
             ToolTip.SetTip(cellsRow, definition is null
@@ -3845,7 +3911,7 @@ internal sealed class StageSceneView : UserControl
             : "누르면 이 단계의 수치를 폅니다.");
         summary.Click += (_, _) =>
         {
-            _quickExpandedStep = expanded ? null : stepIndex;
+            _bundleExpandedStep = expanded ? null : stepIndex;
             onApplied();
         };
 
@@ -3865,7 +3931,7 @@ internal sealed class StageSceneView : UserControl
                 UiGuard.Run(_session, "칩 단계 순서", () =>
                     _session!.Editor.MoveQuickCommandStep(index, stepIndex, delta));
                 // 옮긴 단계를 계속 따라간다 — 펼쳐 놓은 것이 발밑에서 바뀌면 안 된다.
-                _quickExpandedStep = expanded ? stepIndex + delta : _quickExpandedStep;
+                _bundleExpandedStep = expanded ? stepIndex + delta : _bundleExpandedStep;
                 onApplied();
             };
             return button;
@@ -3886,7 +3952,7 @@ internal sealed class StageSceneView : UserControl
         {
             UiGuard.Run(_session, "칩 단계 제거", () =>
                 _session!.Editor.RemoveQuickCommandStepAt(index, stepIndex));
-            _quickExpandedStep = null;
+            _bundleExpandedStep = null;
             onApplied();
         };
 

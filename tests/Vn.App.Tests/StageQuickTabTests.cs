@@ -21,6 +21,10 @@ namespace Vn.App.Tests;
 /// 담기 흐름이 여기서 닫힌다: <b>[편집]이 터미널 판 전체를 활성으로 바꾸고</b>(행마다
 /// 글리프를 갈지 않는다 — 줄 높이가 흔들린다) · <b>커맨드 행을 그냥 클릭하면 인자가
 /// 통째로(슬롯·duration 포함) 담기고</b> · <b>담긴 칩의 수치를 그 자리에서 조절한다</b>.
+///
+/// <b>구역이 둘이고 편집도 둘이다</b> (2026-08-24) — `커맨드`(하나짜리, 단추) ·
+/// `묶음`(여럿, 표). 각자 제 [편집]을 켜고, 터미널 클릭의 목적지는 <b>담을 대상 묶음이
+/// 있으면 거기, 없으면 새 커맨드 칩</b> 하나로 갈린다.
 /// </summary>
 public sealed class StageQuickTabTests
 {
@@ -236,7 +240,7 @@ public sealed class StageQuickTabTests
 
         // [편집] = 판 전체가 활성으로 바뀐다. ⚠ 행의 글리프는 안 바뀐다 — 글리프가 바뀌면
         // 줄 높이가 흔들린다(2026-08-22 소유자).
-        preview.Scene.SetQuickEditModeProbe(true);
+        preview.Scene.SetCommandEditModeProbe(true);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.NotSame(Brushes.Transparent, FrameOf(preview).BorderBrush);
@@ -301,35 +305,59 @@ public sealed class StageQuickTabTests
     }
 
     [Fact]
-    public void 펼친_칩이_터미널_클릭을_이어받아_묶음이_된다() => HeadlessUi.Run(() =>
+    public void 담을_대상_묶음이_터미널_클릭을_이어받는다() => HeadlessUi.Run(() =>
     {
         (AuthoringSession session, string nodeId, string lineId) = Stage();
 
         MiniStagePreview preview = PreviewWith(session, nodeId, lineId, Command(
             "char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u"), ("duration", "18fr")));
 
+        int target = session.Editor.CreateQuickBundle();
         int before = session.Project.EffectiveQuickCommands.Count;
 
-        preview.Scene.SetQuickEditModeProbe(true);
-        preview.Scene.ExpandQuickChipProbe(0); // 첫 칩(줌 인)을 펴 둔다 = 담을 대상
+        preview.Scene.SetBundleEditModeProbe(true);
+        preview.Scene.ExpandQuickChipProbe(target); // 이름 칸 초점과 같은 자리 = 담을 대상
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         LeftClick(CommandRowOf(preview, "gesture"));
 
-        // 새 칩이 생기지 않는다 — 펼친 칩의 뒤에 단계로 붙는다.
+        // 새 칩이 생기지 않는다 — 담을 대상 묶음의 뒤에 단계로 붙는다.
         Assert.Equal(before, session.Project.EffectiveQuickCommands.Count);
 
-        StageQuickCommand grown = session.Project.EffectiveQuickCommands[0];
-        Assert.Equal(2, grown.Steps.Count);
-        Assert.Equal("shot.shot_zoom", grown.Steps[0].DefinitionId);
-        Assert.Equal("char_rig_staging.gesture", grown.Steps[1].DefinitionId);
+        StageQuickStep step = Assert.Single(session.Project.EffectiveQuickCommands[target].Steps);
+        Assert.Equal("char_rig_staging.gesture", step.DefinitionId);
         // 인자는 통째로 온다 — 한 개짜리 담기와 같은 규칙이다.
-        Assert.Equal("18fr", grown.Steps[1].Arguments["duration"]);
+        Assert.Equal("18fr", step.Arguments["duration"]);
 
-        // 접으면 다시 새 칩으로 간다.
+        // 대상을 놓으면 다시 새 칩으로 간다.
         preview.Scene.ExpandQuickChipProbe(null);
         LeftClick(CommandRowOf(preview, "gesture"));
         Assert.Equal(before + 1, session.Project.EffectiveQuickCommands.Count);
+    });
+
+    [Fact]
+    public void 커맨드_편집만_켜면_터미널_클릭은_묶음으로_안_간다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 두 조작을 가른 이유가 여기다 (2026-08-24 3차 소유자: "개별 커맨드와 묶음
+        //    커맨드의 조작을 분리"). 커맨드 칩을 담으려는 손이 묶음을 건드리면 안 된다.
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        MiniStagePreview preview = PreviewWith(session, nodeId, lineId, Command(
+            "char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u")));
+
+        int target = session.Editor.CreateQuickBundle();
+        int before = session.Project.EffectiveQuickCommands.Count;
+
+        preview.Scene.SetCommandEditModeProbe(true);
+        preview.Scene.ExpandQuickChipProbe(target); // 묶음 편집이 꺼져 있으면 대상이 아니다
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Null(preview.Scene.QuickPinTarget);
+
+        LeftClick(CommandRowOf(preview, "gesture"));
+
+        Assert.Equal(before + 1, session.Project.EffectiveQuickCommands.Count);
+        Assert.Empty(session.Project.EffectiveQuickCommands[target].Steps);
     });
 
     private static Button ButtonStarting(Control host, string prefix) =>
@@ -555,7 +583,7 @@ public sealed class StageQuickTabTests
     {
         (AuthoringSession session, string nodeId, string lineId) = Stage();
         StageSceneView view = SceneOf(session, nodeId, lineId);
-        view.SetQuickEditModeProbe(true);
+        view.SetCommandEditModeProbe(true);
 
         // ▸ 하나가 칩 하나 — 첫 칩(줌 인 = shot_zoom)을 편다.
         Control collapsed = view.BuildQuickTabProbe(null);
@@ -587,7 +615,7 @@ public sealed class StageQuickTabTests
     {
         (AuthoringSession session, string nodeId, string lineId) = Stage();
         StageSceneView view = SceneOf(session, nodeId, lineId);
-        view.SetQuickEditModeProbe(true);
+        view.SetCommandEditModeProbe(true);
 
         Control tab = view.BuildQuickTabProbe(null);
         var window = new Window { Width = 400, Height = 500, Content = tab };
