@@ -248,7 +248,8 @@ internal static class StageIndicators
 
     /// <summary>
     /// 알림 한 줄. <b>SelectableTextBlock</b>이다 (2026-08-21 소유자: "이런 문구를 복사할
-    /// 수 있도록") — 드래그로 한 줄을 집어 가고, 전체는 [진단 복사]가 들고 간다.
+    /// 수 있도록") — 드래그로 집어 간다. 전체를 들고 가던 [진단 복사] 단추는 2026-08-24에
+    /// 걷혔고, 이제 이 드래그가 <b>유일한 복사 통로</b>다.
     /// 챕터 그래프 검증 보고와 같은 문법이다(`ChapterGraphView.DiagnosticLine`).
     /// </summary>
     private static void AddNotice(Panel host, string message, bool warning)
@@ -263,49 +264,7 @@ internal static class StageIndicators
         });
     }
 
-    /// <summary>
-    /// 지금 화면에 뜬 진단을 텍스트로 모은다 — <b>그려진 줄이 곧 복사되는 줄이다</b>
-    /// (별도 조립 금지: 두 벌이면 어긋난다). 접혀 있는 상세 목록도 함께 담는다 —
-    /// 펼쳐 놓아야만 복사되면 "붙여 달라"는 부탁이 두 걸음이 된다.
-    /// </summary>
-    public static IReadOnlyList<string> CollectText(
-        string? context,
-        Panel badgeRow,
-        Panel noticeHost,
-        Panel unhandledHost)
-    {
-        var lines = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(context))
-        {
-            lines.Add(context.Trim());
-        }
-
-        string[] badges = badgeRow.Children
-            .Select(child => child switch
-            {
-                Button button => button.Content as string,
-                Border { Child: TextBlock label } => label.Text,
-                _ => null
-            })
-            .Where(text => !string.IsNullOrWhiteSpace(text))
-            .Select(text => text!.Trim())
-            .ToArray();
-
-        if (badges.Length > 0)
-        {
-            lines.Add(string.Join(" · ", badges));
-        }
-
-        foreach (Panel host in new[] { noticeHost, unhandledHost })
-        {
-            lines.AddRange(host.Children
-                .OfType<TextBlock>()
-                .Select(block => block.Text ?? string.Empty)
-                .Where(text => !string.IsNullOrWhiteSpace(text))
-                .Select(text => text.Trim()));
-        }
-
-        return lines;
-    }
+    // ⚠ `CollectText`(뜬 진단을 텍스트로 모으기)는 2026-08-24에 걷혔다 — 유일한 손님이던
+    //   무대 프리뷰의 [진단 복사] 단추가 사라졌다(소유자). 남은 복사 통로는 아래
+    //   `AddNotice`가 세우는 <b>SelectableTextBlock의 드래그</b>다.
 }

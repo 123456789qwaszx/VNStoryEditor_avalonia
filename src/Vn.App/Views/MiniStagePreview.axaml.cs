@@ -113,7 +113,9 @@ internal static class StageAudioCues
 }
 
 /// <summary>
-/// 무대에서 수치를 만질 수 있는 이동 커맨드 하나 (W66) — 칩·궤적·슬라이더가 이것 하나를 본다.
+/// 무대에서 수치를 만질 수 있는 이동 커맨드 하나 (W66) — <b>이동 편집기(슬라이더·이징·곡선)와
+/// 휴지 배치</b>가 이것 하나를 본다. 이것을 함께 보던 무대 칩과 점선 궤적은 걷혔다
+/// (2026-08-20 칩 · 2026-08-21 궤적).
 /// 좌표는 <b>루트 공간 픽셀</b>이고, 화면으로 옮기는 것은 <see cref="StageSceneView"/>가
 /// 샷 규약(<c>ShotIntentMath</c>)으로 한다.
 /// </summary>
@@ -321,8 +323,6 @@ public partial class MiniStagePreview : UserControl
         SceneHost.Content = _scene;
         ScriptHost.Content = _script;
 
-        CopyDiagnosticsButton.Click += async (_, _) => await CopyDiagnosticsAsync();
-
         // 목록은 열 때마다 다시 짓는다 — 노드 생성·개명·동기화를 따로 구독하지 않아도
         // 여는 순간이 곧 최신이다.
         SceneCombo.DropDownOpened += (_, _) => RebuildScenePicker(CurrentComboSceneId());
@@ -490,35 +490,10 @@ public partial class MiniStagePreview : UserControl
     internal Control? BuildSceneInspector(PresentationResultCommand command) =>
         _scene.BuildInspectorContent(command);
 
-    // ── 진단 복사 (2026-08-21) ──────────────────────────────────────────────
-
-    /// <summary>지금 화면에 뜬 진단 줄 전부 — 뱃지·알림·상세(접혀 있어도) 순서대로.</summary>
-    internal IReadOnlyList<string> DiagnosticsText() =>
-        StageIndicators.CollectText(ContextText.Text, BadgeRow, NoticeHost, UnhandledHost);
-
-    /// <summary>
-    /// 뜬 경고를 텍스트 그대로 클립보드에 (소유자 요청 2026-08-21) — 협업자나 세션에
-    /// 붙여넣는 통로다. 챕터 그래프의 [보고 복사]와 같은 문법이고, 화면에 그려진 줄이
-    /// 곧 복사되는 줄이다.
-    /// </summary>
-    private async Task CopyDiagnosticsAsync()
-    {
-        IReadOnlyList<string> lines = DiagnosticsText();
-
-        if (lines.Count == 0)
-        {
-            return;
-        }
-
-        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
-        {
-            _session?.SetStatus("클립보드에 접근할 수 없습니다.");
-            return;
-        }
-
-        await clipboard.SetTextAsync(string.Join(Environment.NewLine, lines));
-        _session?.SetStatus($"무대 진단 {lines.Count}줄을 복사했습니다.");
-    }
+    // ⚠ [진단 복사] 단추와 그 뒤의 `DiagnosticsText`·`CopyDiagnosticsAsync`는 2026-08-24에
+    //   걷혔다 (소유자). 남은 복사 통로는 <b>줄 드래그</b>다 — 알림·미반영 줄은 그대로
+    //   SelectableTextBlock이라 마우스로 긁어 가져간다. 챕터 그래프의 [보고 복사]는
+    //   그쪽 검증 보고의 것이고 이것과 무관하다(살아 있다).
 
     // ── 씬 선택기 (2026-08-21) ──────────────────────────────────────────────
 
@@ -849,12 +824,6 @@ public partial class MiniStagePreview : UserControl
                 NoticeHost,
                 includeRootHint: true);
         }
-
-        // 복사할 것이 있을 때만 단추가 선다 — 늘 서 있으면 "아무 문제 없음"과 구분이 안 된다.
-        CopyDiagnosticsButton.IsVisible = DiagnosticsText().Count > 0;
-
-
-
 
 
         // 재생 모델에 현재 라인 위치를 알린다 — 이동 요청이 반영됐다는 신호이기도 하다.

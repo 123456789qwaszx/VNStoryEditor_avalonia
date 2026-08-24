@@ -625,6 +625,8 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | `else` 갈래 추가 | `Model/DialogueLineExtension.cs`의 `ConditionTransitionKind` → 위 해석자 → `Flow/ConditionChoices.cs` |
 | 드롭다운에 무엇을 보여 줄지 | `Flow/ConditionChoices.cs` |
 | 어떤 조건을 쓸 수 있는지 | `Flow/AvailableConditionResolver.cs` — 연결된 SetNode + 게임 전역 |
+| 조건식 안의 `$이름`을 훑거나 갈아 끼우기 | `Flow/VariableTokens.cs` — **훑는 규칙의 주인 하나**. 개명 전파와 챕터 네임스페이스(`Rendering/Tier1Namespace.cs`)가 같은 것을 쓴다 |
+| 슬라이드(`slide_in`/`out`)의 방향·기본값·ease·튐 | `Ked.Presentation.Core/Reduce/SlideMotion.cs` — **값의 주인 하나**. 리듀서(정착 상태)와 `Flow/StageMotionPlan.cs`(궤적·튐)가 같은 것을 본다. ⚠ 등장은 정착으로 **항등**이고 궤적은 `현재 자리 + 방향 × 거리`로 합성한다 |
 | 갈래 색 | 자리 계산은 `Flow/DialogueFlow.cs`의 `PaletteIndex`, 실제 색은 `App/Views/BranchPalette.cs` |
 | 잘못된 구조를 알리는 방식 | `Flow/DialogueFlow.cs`의 `FlowProblemKind` |
 
@@ -657,6 +659,8 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | 대본에 항목 추가(태그·메모 등) | `Script/ScriptDocument.cs` → `Serialization/ScriptDocumentJson.cs` |
 | 다른 locale 추가 | `ScriptDocument.Locales`. 모델은 이미 준비되어 있고 화면만 없다 |
 | 화자·대사를 바꾸는 명령 | `Editing/ProjectEditor.Scripts.cs`의 `SetScriptLineText` — **여기 하나뿐** |
+| 화자 이름 자체를 바꾸기(개명) | `Chapters/SpeakerRenamer.cs` → `EpisodeWorkbookWriter.RenameSpeaker` + `ProjectEditor.RenameSpeaker`. ⚠ locale마다 따로 본다(옛 이름과 글자가 같은 것만) · `Revision`은 안 올린다 |
+| 아이템·능력 이름을 바꾸기(개명) | `Editing/ProjectEditor.cs`의 `SetAssignments` — 같은 `Mutate` 안에서 조건식·대사 줄 `<<set>>`까지 간다 |
 | 대본 가져오기 조작 | `App/Views/DialogueNodeEditor.axaml.cs`의 `OnImportScriptClick` |
 | 대본과 노드를 합치는 규칙 | `Flow/DialogueScriptResolver.cs` |
 
@@ -709,6 +713,7 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | 무대 조절창(탭·직접 조작) | `App/Views/StageSceneView.cs`의 `BuildStagePopover` — 탭 하나가 함수 하나(`BuildQuickTab`·`BuildBackgroundTab`·`BuildSlotTab`·`BuildCharacterTab`·`BuildAudioTab`) |
 | [★ 자주 쓰는] 기본 칩 목록 | `Model/StageQuickCommand.cs`의 `StageQuickCommands.Default` — 화면이 아니라 여기가 정한다 |
 | 수치 조절 위젯을 새 대상에 붙이기 | `App/Views/StageSceneView.cs`의 `ArgumentSink` — 슬라이더·선택기는 한 벌이고 "어디에 쓰나"만 갈아 끼운다 |
+| 라인 전이의 자리 보간·페이드 | `App/Views/StageSceneView.cs`의 `SetTransitionProgress`. ⚠ **등장·퇴장의 근거는 가시성 변화**(`Appeared`·`Departed`)다 — "직전에 자리가 있었나"로 판정하면 숨김 고스트가 자리를 등록하므로(W28) 이미 무대에 선 슬롯의 fade가 통째로 삼켜진다. 퇴장은 직전 렌더의 초상 컨트롤을 고스트 위에 다시 얹어 걷는다(배경 크로스페이드와 같은 결) |
 | 열린 프로젝트·저장 여부·선택 | `App/Services/AuthoringSession.cs` |
 | 최근 프로젝트 기억 | `App/Services/AppSettingsService.cs` |
 | 시작 오류 로그 | `App/Services/StartupLog.cs` |
@@ -980,7 +985,8 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 | `ChapterWorkbookWriter.cs` | 셀 쓰기 전부. 잠금 판정도 여기 |
 | `ChapterWorkbookMigrator.cs` | 구판 → 최신 규격 자동 이행 (`.bak`), 앱이 열 때 |
 | `EpisodeWorkbookReader.cs` · `EpisodeWorkbookMigrator.cs` | 대본 워크북(6열)의 같은 짝 |
-| `EpisodeWorkbookWriter.cs` | 대본 워크북에 쓰는 유일한 자리 — **화자(E)·내용(F) 두 칸뿐**이다 (2026-08-24). 행은 A열 인덱스로 찾고, 조건 블록 행은 거부한다 |
+| `EpisodeWorkbookWriter.cs` | 대본 워크북에 쓰는 유일한 자리 — **화자(E)·내용(F) 두 칸뿐**이다 (2026-08-24). 행은 A열 인덱스로 찾고, 조건 블록 행은 거부한다. 화자 **개명**(E열 일괄 치환)도 여기서 나간다 |
+| `SpeakerRenamer.cs` | 화자 개명 한 판 (2026-08-24) — **워크북 → 프로젝트 대본 줄 → (부르는 쪽이) 등록부** 순. ⛔ 워크북 하나라도 잠겼거나 챕터 하나라도 못 읽었으면 **시작도 안 한다**: 반쯤 개명된 프로젝트에는 되돌릴 손잡이가 없다 |
 | `WorkbookFolderFingerprint.cs` | 폴더들의 지금 모습을 한 줄로 — 감시자가 깨울 때 "정말 바뀌었나"의 근거. ⛔ 못 읽은 파일에 **상수를 적으면 안 된다**: 그러면 그 파일은 영영 안 바뀐 것이 된다(2026-08-24에 그 결함이 "엑셀을 닫아야 반영된다"로 나타났다). 리더와 같은 공유 모드로 열고, 그래도 못 읽으면 움직이는 값(쓴 시각·길이)을 적는다 |
 | `WorkbookParseCache.cs` | 워크북 **파싱 결과**를 내용 해시로 기억한다 (2026-08-24 성능). 대본 하나를 저장해도 전부 다시 파고들던 것 — 실측 "변경 없는 동기화"의 **91%**. 열쇠에 파일 밖의 입력(조건 라벨·정의 변수)도 들어가고, 경로마다 칸 하나면 미리보기와 동기화가 서로 밀어낸다. **모델이 불변이라 성립한다** |
 | `WorkbookMigrationGate.cs` | 이행 프로브를 **내용 해시로 기억**한다 (2026-08-24 성능). 두 이행기가 "고칠 것 있나"를 워크북 통째 파싱으로 판정했는데 답은 거의 늘 "없음"이었고, 재읽기마다 그것을 다시 했다 — 실측 워크북 작업의 **절반**. 열쇠가 경로가 아니라 내용이라, 구판을 갖다 놓으면 다시 이행한다 |

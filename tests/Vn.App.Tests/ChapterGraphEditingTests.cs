@@ -147,15 +147,20 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 편집_폼은_도착을_먼저_묻는다() => HeadlessUi.Run(() =>
+    public void 편집_폼은_선택지를_먼저_묻는다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-24 소유자 — 길을 놓을 때 사람이 먼저 정하는 것은 "어디로 가나"다.
-        // 예전에는 (선택지) → (도착) 순이었다.
+        // 2026-08-24 소유자 재지시 — 같은 날 오전의 "도착이 먼저" 결정을 되돌렸다.
+        // 목록의 줄이 `문구 → 도착`으로 읽히므로, 그 줄을 눌러 열리는 폼도 같은 순서여야
+        // 눈이 자리를 다시 찾지 않는다. 화살표도 →로 돌아온다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
-        Assert.Equal(0, Grid.GetColumn(view.FindControl<ComboBox>("EdgeTargetCombo")!));
-        Assert.Equal(2, Grid.GetColumn(view.FindControl<ComboBox>("EdgeLabelBox")!));
+        Assert.Equal(0, Grid.GetColumn(view.FindControl<ComboBox>("EdgeLabelBox")!));
+        Assert.Equal(2, Grid.GetColumn(view.FindControl<ComboBox>("EdgeTargetCombo")!));
+
+        // 화살표가 관계를 말한다 — 칸만 바꾸고 ←를 남겨 두면 뜻이 거꾸로 읽힌다.
+        Assert.Equal("→", view.FindControl<Grid>("EdgeFormPanel")!
+            .Children.OfType<TextBlock>().Single().Text);
     });
 
     [Fact]

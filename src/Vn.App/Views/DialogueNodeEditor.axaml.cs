@@ -973,7 +973,8 @@ public partial class DialogueNodeEditor : UserControl
             AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
             // 소리 실재생(W62): 재생이 이 라인에 도달하면 위 칩의 원본 커맨드가 울린다.
             AudioCommands: StageAudioCues.AudioOf(catalog, lineCommands),
-            // 이동 표시(W66): 작가 화면에서도 궤적은 보인다 — 편집은 위 EditContext가 잠근다.
+            // 이동 표시(W66): 작가 화면에서도 흐르는 슬롯이 출발 자리에 서고 타임라인·재생이
+            // 그 길을 태운다 — 편집은 위 EditContext가 잠근다.
             MotionCues: dialogueMotionCues,
             // 대본 패널(2026-08-20): 공급된 발행본 기준 읽기 전용 — 점·편집은 잠금이 막는다.
             ScriptRows: PresentationScriptModel.Build(

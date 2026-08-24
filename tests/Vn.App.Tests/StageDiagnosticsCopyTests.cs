@@ -6,10 +6,13 @@ using Vn.Authoring.Flow;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// 무대 진단(알림·경고·미반영 목록)을 사람이 <b>가져갈 수 있어야 한다</b>
+/// 무대 진단(알림·경고·미반영 목록)이 <b>화면에 서고 사람이 가져갈 수 있어야 한다</b>
 /// (2026-08-21 소유자: "이런 문구를 복사할 수 있도록 해줄래?").
-/// 줄 하나는 드래그(SelectableTextBlock), 전부는 [진단 복사]가 들고 간다 —
-/// 챕터 그래프 검증 보고의 [보고 복사]와 같은 문법이다.
+///
+/// ⚠ <b>[진단 복사] 단추는 2026-08-24에 걷혔다</b> (소유자) — 늘 자리를 차지할 만큼 자주
+/// 쓰는 일이 아니었다. 남은 통로는 <b>줄 드래그</b>이고, 그래서 알림·미반영 줄이
+/// 평범한 TextBlock이 아니라 <see cref="SelectableTextBlock"/>이라는 사실이 이제
+/// 복사 기능 전부다 — 이 파일의 첫 고정이 그것을 진다.
 /// </summary>
 public sealed class StageDiagnosticsCopyTests
 {
@@ -43,9 +46,10 @@ public sealed class StageDiagnosticsCopyTests
     [Fact]
     public void 알림과_미반영_줄은_드래그로_집어_갈_수_있다() => HeadlessUi.Run(() =>
     {
+        // ⛔ 단추가 걷힌 뒤 <b>유일한 복사 통로</b>다 — 평범한 TextBlock이면 마우스로
+        //    긁어도 아무것도 안 잡히고, 그러면 "붙여 달라"는 부탁에 답할 길이 없다.
         MiniStagePreview preview = ShowWithDiagnostics();
 
-        // 평범한 TextBlock이면 마우스로 긁어도 아무것도 안 잡힌다.
         var notices = preview.FindControl<StackPanel>("NoticeHost")!;
         Assert.NotEmpty(notices.Children);
         Assert.All(notices.Children, child => Assert.IsType<SelectableTextBlock>(child));
@@ -56,37 +60,39 @@ public sealed class StageDiagnosticsCopyTests
     });
 
     [Fact]
-    public void 진단_복사는_뜬_줄을_그대로_모으고_접힌_상세도_담는다() => HeadlessUi.Run(() =>
+    public void 뜬_진단이_화면에_그대로_선다() => HeadlessUi.Run(() =>
     {
+        // 단추가 모아 주던 줄들이 <b>화면에는 그대로</b> 있어야 한다 — 복사 통로가 바뀌었을
+        // 뿐 진단이 줄어든 것이 아니다. 상세는 뱃지를 눌러야 펼쳐지는 것도 그대로다.
         MiniStagePreview preview = ShowWithDiagnostics();
 
-        // 상세 목록은 뱃지를 눌러야 펼쳐진다 — 접힌 채로도 복사에는 담겨야 한다.
-        Assert.False(preview.FindControl<StackPanel>("UnhandledHost")!.IsVisible);
+        Assert.Contains(
+            preview.FindControl<WrapPanel>("BadgeRow")!.GetLogicalDescendants().OfType<TextBlock>(),
+            block => (block.Text ?? string.Empty).Contains("미표시 1", StringComparison.Ordinal));
 
-        IReadOnlyList<string> lines = preview.DiagnosticsText();
+        Assert.Contains(
+            preview.FindControl<StackPanel>("NoticeHost")!.Children.OfType<TextBlock>(),
+            block => (block.Text ?? string.Empty).Contains("role-anchor.json", StringComparison.Ordinal));
 
-        Assert.Contains(lines, line => line.Contains("연출: 테스트", StringComparison.Ordinal));
-        Assert.Contains(lines, line => line.Contains("미표시 1", StringComparison.Ordinal));
-        Assert.Contains(lines, line => line.Contains("role-anchor.json", StringComparison.Ordinal));
-        Assert.Contains(lines, line =>
-            line.Contains("gesture", StringComparison.Ordinal) &&
-            line.Contains("접힘·미표시", StringComparison.Ordinal));
+        StackPanel unhandled = preview.FindControl<StackPanel>("UnhandledHost")!;
 
-        // 복사할 것이 있으니 단추가 선다.
-        Assert.True(preview.FindControl<Button>("CopyDiagnosticsButton")!.IsVisible);
+        Assert.False(unhandled.IsVisible, "상세는 뱃지를 눌러야 펼쳐진다");
+        Assert.Contains(
+            unhandled.Children.OfType<TextBlock>(),
+            block => (block.Text ?? string.Empty).Contains("gesture", StringComparison.Ordinal) &&
+                     (block.Text ?? string.Empty).Contains("접힘·미표시", StringComparison.Ordinal));
     });
 
     [Fact]
-    public void 진단이_없으면_복사_단추도_서지_않는다() => HeadlessUi.Run(() =>
+    public void 진단_복사_단추는_없다() => HeadlessUi.Run(() =>
     {
-        var preview = new MiniStagePreview();
-        var window = new Window { Width = 1200, Height = 800, Content = preview };
-        window.Show();
+        // 2026-08-24 소유자 — "저 버튼은 제거해." 되살아나면 이 줄이 운다.
+        MiniStagePreview preview = ShowWithDiagnostics();
 
-        preview.Show(null);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.Empty(preview.DiagnosticsText());
-        Assert.False(preview.FindControl<Button>("CopyDiagnosticsButton")!.IsVisible);
+        Assert.Null(preview.FindControl<Button>("CopyDiagnosticsButton"));
+        Assert.DoesNotContain(
+            preview.GetLogicalDescendants().OfType<Button>(),
+            button => (button.Content as string ?? string.Empty)
+                .Contains("진단 복사", StringComparison.Ordinal));
     });
 }

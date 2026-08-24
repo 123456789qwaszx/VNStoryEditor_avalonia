@@ -119,29 +119,19 @@
             <!-- 알림·경고 — 뜨는 것은 좋으나 무대를 밀지 않는다 (2026-08-21 소유자:
                  "경고문구 뜨는건 좋은데, 레이아웃을 건드리진 않게"). 자리를 늘 비워 두고
                  길어지면 이 안에서 스크롤한다.
-                 오른쪽 [진단 복사]는 같은 날 소유자 요청("이런 문구를 복사할 수 있도록") —
-                 줄 하나는 드래그(SelectableTextBlock), 전부는 이 단추가 들고 간다. -->
+                 ⚠ [진단 복사] 단추는 2026-08-24에 걷혔다 (소유자) — 복사는 줄을 드래그해
+                 가져간다(SelectableTextBlock은 그대로다). 단추 하나가 늘 자리를 차지하고
+                 있을 만큼 자주 쓰는 일이 아니었다. -->
             <Grid Grid.Row="3"
-                  ColumnDefinitions="*,Auto"
                   Height="46"
                   Margin="0,6,0,0">
-                <ScrollViewer Grid.Column="0"
-                              VerticalScrollBarVisibility="Auto"
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="4">
                         <StackPanel x:Name="NoticeHost" Spacing="2" />
                         <StackPanel x:Name="UnhandledHost" Spacing="2" IsVisible="False" />
                     </StackPanel>
                 </ScrollViewer>
-
-                <Button Grid.Column="1"
-                        x:Name="CopyDiagnosticsButton"
-                        Content="진단 복사"
-                        FontSize="10"
-                        Padding="6,2"
-                        Margin="8,0,0,0"
-                        VerticalAlignment="Top"
-                        IsVisible="False" />
             </Grid>
         </Grid>
     </Border>

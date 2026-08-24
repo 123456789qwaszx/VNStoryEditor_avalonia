@@ -252,22 +252,24 @@
                                  그대로 그 길(간선)이다 — 손만 여기로 왔다. -->
                             <StackPanel x:Name="EdgeFormHost" Spacing="4" IsVisible="False">
                             <Grid x:Name="EdgeFormPanel" ColumnDefinitions="*,Auto,*,Auto" IsVisible="False">
-                                <!-- 도착이 먼저다 (2026-08-24 소유자). 길을 놓을 때 사람이
-                                     먼저 정하는 것은 "어디로 가나"이고, 문구는 그 다음이다.
-                                     화살표를 ←로 뒤집어 관계는 그대로 읽히게 둔다:
-                                     "이 도착지로 ← 이 선택지를 눌러서". -->
-                                <ComboBox Grid.Column="0" x:Name="EdgeTargetCombo" FontSize="11"
+                                <!-- 선택지가 먼저다 (2026-08-24 소유자 재지시 — 같은 날
+                                     오전의 "도착이 먼저" 결정을 되돌린다). 목록의 줄이
+                                     `문구 → 도착`으로 읽히므로, 그 줄을 눌러 열리는 폼도
+                                     같은 순서여야 눈이 자리를 다시 찾지 않는다.
+                                     화살표는 →이고 관계가 그대로 읽힌다:
+                                     "이 선택지를 고르면 → 여기로 간다". -->
+                                <ComboBox Grid.Column="0" x:Name="EdgeLabelBox" FontSize="11"
                                           HorizontalAlignment="Stretch"
-                                          PlaceholderText="도착" />
+                                          PlaceholderText="선택지" />
                                 <TextBlock Grid.Column="1"
-                                           Text="←"
+                                           Text="→"
                                            FontSize="12"
                                            Opacity="0.55"
                                            Margin="6,0"
                                            VerticalAlignment="Center" />
-                                <ComboBox Grid.Column="2" x:Name="EdgeLabelBox" FontSize="11"
+                                <ComboBox Grid.Column="2" x:Name="EdgeTargetCombo" FontSize="11"
                                           HorizontalAlignment="Stretch"
-                                          PlaceholderText="선택지" />
+                                          PlaceholderText="도착" />
                                 <Button Grid.Column="3" x:Name="AddEdgeButton" Content="수정" FontSize="11" Margin="4,0,0,0" />
                             </Grid>
                             <TextBlock Text="스탯변화 — 이 길을 건너면" FontSize="10" Opacity="0.6" />
