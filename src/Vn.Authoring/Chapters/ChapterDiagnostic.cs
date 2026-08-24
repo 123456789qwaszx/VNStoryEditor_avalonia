@@ -19,6 +19,13 @@ public enum ChapterDiagnosticCode
     ColumnHeaderUnexpected,
     EpisodeIdBlank,
     EpisodeIdDuplicated,
+
+    /// <summary>
+    /// 간선에 매단 자유 씬이 비어 있다 (2026-08-25). 이어만 두고 안 채운 상태는 정상이지만,
+    /// 어느 길이 남았는지 한 자리에서 보이지 않으면 빈 채로 출시된다.
+    /// </summary>
+    ViaSceneEmpty,
+
     DialogueEntryBlank,
     PositionNotNumeric,
     ConditionLabelUndefined,

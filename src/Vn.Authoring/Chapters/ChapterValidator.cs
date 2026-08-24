@@ -40,6 +40,7 @@ public static class ChapterValidator
         var diagnostics = new List<ChapterDiagnostic>(chapter.Diagnostics);
 
         VerifyDialogueEntriesOnBoard(chapter, project, diagnostics);
+        VerifyViaScenesFilled(chapter, project, diagnostics);
 
         string[] labels = chapter.Conditions.Select(condition => condition.Label).ToArray();
         var conditionsByLabel = chapter.Conditions
@@ -107,6 +108,62 @@ public static class ChapterValidator
     /// 판에 노드가 <b>하나라도</b> 있으면 그 챕터는 한 번은 동기화됐다는 뜻이고,
     /// 그때부터 빠진 이름은 진짜 빠진 것이다.
     /// </summary>
+    /// <summary>
+    /// 간선에 매달린 자유 씬이 <b>비어 있는지</b> 알린다 (2026-08-25).
+    ///
+    /// 판에서 선을 잇는 것과 씬을 채우는 것은 다른 손놀림이라, 이어만 두고 아직 안 채운
+    /// 상태가 정상적으로 존재한다. 그 자체는 잘못이 아니지만 <b>어느 길이 남았는지 한 자리에서
+    /// 보이지 않으면</b> 열 개 중 하나가 빈 채로 출시된다.
+    ///
+    /// <b>오류가 아니라 경고다</b> — 빈 씬도 재생은 된다(들어갔다 곧장 나온다). 막는 것이
+    /// 아니라 세어 보여 주는 자리다.
+    ///
+    /// ⚠ 커맨드만 있고 대사가 빈 줄은 <b>여기서 세지 않는다</b> — 그것이 순수 연출 씬의
+    /// 정상 모양이다. 여기가 보는 것은 <b>재생할 줄이 하나도 없는</b> 씬이고, 빈 줄 하나하나는
+    /// 이미터가 따로 짚는다.
+    /// </summary>
+    private static void VerifyViaScenesFilled(
+        ChapterGraphModel chapter,
+        StoryProject? project,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        ViaScenes via = ViaScenes.For(project);
+
+        foreach (ChapterEpisode episode in chapter.Episodes)
+        {
+            foreach (ChapterEdge edge in chapter.Edges.Where(item =>
+                         string.Equals(item.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal)))
+            {
+                if (via.SceneFor(episode, edge) is not { } scene || HasPlayableLine(project, scene))
+                {
+                    continue;
+                }
+
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.ViaSceneEmpty,
+                    chapter.SourcePath,
+                    ChapterSheetNames.Edges,
+                    edge.SourceRow,
+                    "D",
+                    $"'{episode.EpisodeId}'→'{edge.ToEpisodeId}' 길에 매단 연출 씬 " +
+                    $"'{scene.Name}'이 비어 있습니다 — 재생할 줄이 하나도 없습니다. " +
+                    "연출 그래프에서 채우거나, 안 쓸 것이면 선을 떼 주세요."));
+            }
+        }
+    }
+
+    /// <summary>재생될 줄이 하나라도 있는가 — 본문이 비어도 줄은 줄이다(연출이 매달린다).</summary>
+    private static bool HasPlayableLine(StoryProject project, DialogueNode scene) =>
+        project.FindScript(scene.ScriptId) is { } document &&
+        document.Lines.Count > 0 &&
+        document.ActiveLines.Any();
+
     private static void VerifyDialogueEntriesOnBoard(
         ChapterGraphModel chapter,
         StoryProject? project,
@@ -149,7 +206,7 @@ public static class ChapterValidator
                 chapter.SourcePath,
                 ChapterSheetNames.Episodes,
                 episode.SourceRow,
-                "D",
+                "C",   // v13 (2026-08-25) — `종류`가 걷히며 대사엔트리가 D → C로 당겨졌다.
                 $"'{episode.EpisodeId}'의 대사엔트리 '{episode.DialogueEntry}'에 해당하는 " +
                 $"대사노드가 '{chapter.ChapterId}' 판에 없습니다. 이대로 내보내면 진행 JSON이 " +
                 "존재하지 않는 대사 노드를 부르고, 로드는 통과하는데 재생만 안 됩니다. " +

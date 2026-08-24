@@ -257,6 +257,16 @@ public static class YarnBundleEmitter
     /// </summary>
     public const string StoryPrefix = "";
 
+    /// <summary>
+    /// 본문이 빈 대사 줄의 자리를 채우는 <b>보이지 않는 한 글자</b> (U+00A0, 2026-08-25).
+    ///
+    /// 빈 본문을 그대로 내면 <c>#line:</c> 태그만 남은 줄이 되어 Yarn이 파싱하지 못하고,
+    /// 줄을 빼면 그 줄에 매달린 연출 커맨드가 박스를 닫지 못해 <b>조용히 버려진다</b>.
+    /// 보통 공백이 아닌 <b>no-break space</b>인 이유가 그것이다 — 일반 공백은 트림에
+    /// 걷혀 다시 빈 줄이 된다.
+    /// </summary>
+    public const string EmptyLineBody = " ";
+
     // ⚠ Set·Pres는 <b>남은 이름</b>이다 — 지금은 그 파일을 만들지 않는다. 옛 폴더에
     // 남아 있는 파일을 고아로 알아보는 데만 쓴다(`FileNamesOf`·`LooksLikeOutput`).
     public const string SetPrefix = "Set_";
@@ -785,9 +795,19 @@ public static class YarnBundleEmitter
     {
         string text = segment.Text ?? string.Empty;
 
-        // `#line:` 태그는 런타임이 더 이상 요구하지 않지만(계약서 §C1 — 세이브가 사라졌다)
-        // 계속 낸다: LineId는 이쪽에서 연출이 매달리는 열쇠이고, 세이브가 돌아오면 그때
-        // 제일 먼저 필요해진다. 태그가 있어서 손해 보는 것은 없다.
+        // ⛔ 본문이 비면 `#line:` 태그만 남은 줄이 나가고, <b>Yarn이 그것을 파싱하지 못한다</b>
+        //    (2026-08-25). 그렇다고 줄을 빼면 더 나쁘다 — 박스는 <b>재생되는 라인이
+        //    나타나야 닫히므로</b>, 그 줄에 매달린 연출 커맨드가 어느 박스도 닫지 못하고
+        //    런타임에서 통째로 버려진다. 화면에는 아무 일도 안 일어나고 로그도 없다.
+        //
+        //    그래서 줄은 남기되 본문에 <b>보이지 않는 한 글자</b>(U+00A0)를 세운다. 순수
+        //    연출 노드(대사박스를 끄고 커맨드만 돌리는 씬)가 바로 이 모양이라, 이것이
+        //    막아야 할 오류가 아니라 <b>정상 경로</b>다.
+        //
+        //    ⚠ 다만 박스를 켜 둔 채로 본문을 비우면 빈 말풍선이 뜬다 — 그건 저작 실수일
+        //    수 있으므로 아래에서 경고로 짚는다(막지는 않는다).
+        bool empty = text.Length == 0 && string.IsNullOrWhiteSpace(segment.Speaker);
+
         story.Append(indent);
 
         if (!string.IsNullOrWhiteSpace(segment.Speaker))
@@ -795,7 +815,20 @@ public static class YarnBundleEmitter
             story.Append(segment.Speaker).Append(": ");
         }
 
-        story.Append(text);
+        if (empty)
+        {
+            story.Append(EmptyLineBody);
+
+            problems.Add(new YarnBundleProblem(
+                "대사가 비어 있는 줄이 있습니다 — 보이지 않는 한 글자로 채워 냅니다. " +
+                "연출만 돌리는 줄이면 정상이고(대사박스를 꺼 두세요), 아니라면 대사를 적어 주세요.",
+                IsBlocking: false,
+                segment.Source.LineId));
+        }
+        else
+        {
+            story.Append(text);
+        }
 
         if (segment.Source.LineId is { Length: > 0 } lineId)
         {

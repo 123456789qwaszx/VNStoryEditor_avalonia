@@ -29,6 +29,21 @@ public sealed record LiveComposition(
 /// </summary>
 public static class LiveNodeComposer
 {
+    /// <summary>
+    /// 발행에서 막는 것이 <b>내보내기에서도</b> 막는가 (2026-08-25).
+    ///
+    /// <b>대본이 없는 것만 예외다.</b> 발행은 사람이 "이걸로 굳힌다"고 선언하는 행위라
+    /// 빈 것을 굳힐 이유가 없지만, 내보내기는 <b>지금 상태를 그대로 게임에 보내는 것</b>이다.
+    /// 여기서 막으면 그 노드의 .yarn이 아예 안 나가는데 진행 JSON은 그 이름을 그대로 들고
+    /// 나가고(간선에 매단 <c>ViaNodeId</c>가 정확히 그 모양이다), 유니티의 사전 대조가
+    /// "부르는 노드가 YarnProject에 없다"로 <b>재생을 통째로 막는다</b>.
+    ///
+    /// 빈 노드는 들어갔다 곧장 나오면 그만이다. 비어 있다는 사실은 이 경고와 챕터 그래프의
+    /// <c>ViaSceneEmpty</c> 경고가 말한다 — 산출물에서 조용히 빠지는 것보다 언제나 낫다.
+    /// </summary>
+    private static bool IsBlockingHere(PublishProblem problem) =>
+        problem.IsBlocking && problem.Kind != PublishProblemKind.MissingScript;
+
     public static LiveComposition Compose(
         StoryProject project,
         string dialogueNodeId,
@@ -55,7 +70,7 @@ public static class LiveNodeComposer
 
         foreach (PublishProblem problem in draft.Problems)
         {
-            (problem.IsBlocking ? blocking : warnings).Add(problem.Message);
+            (IsBlockingHere(problem) ? blocking : warnings).Add(problem.Message);
         }
 
         if (blocking.Count > 0)

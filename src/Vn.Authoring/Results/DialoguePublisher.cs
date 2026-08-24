@@ -522,6 +522,10 @@ public static class DialoguePublisher
         {
             (PublishProblemKind kind, bool blocking) = problem.Kind switch
             {
+                // ⚠ 발행에서는 <b>막는다</b>. 발행은 사람이 "이걸로 굳힌다"고 선언하는
+                //    행위라 빈 것을 굳힐 이유가 없다. 반면 <b>내보내기</b>는 지금 상태를
+                //    그대로 게임에 보내는 것이라 빈 씬도 나가야 한다 — 그 완화는
+                //    <see cref="LiveNodeComposer"/> 한 곳에서만 한다(2026-08-25).
                 FlowProblemKind.MissingScript => (PublishProblemKind.MissingScript, true),
                 FlowProblemKind.UnknownCondition => (PublishProblemKind.UnknownCondition, true),
                 FlowProblemKind.UnavailableCondition => (PublishProblemKind.UnknownCondition, true),
@@ -555,10 +559,12 @@ public static class DialoguePublisher
             return;
         }
 
+        // 발행에서는 막는다. 내보내기에서만 완화된다 — 위 `AddFlowProblems`의 같은 이유다.
         problems.Add(new PublishProblem(
             PublishProblemKind.MissingScript,
             null,
-            $"대본 '{document.Name}'에 살아 있는 줄이 없습니다.",
+            $"대본 '{document.Name}'에 살아 있는 줄이 없습니다. " +
+            "연출만 매다는 씬이면 정상이고, 아니라면 대사를 적어 주세요.",
             IsBlocking: true));
     }
 }
