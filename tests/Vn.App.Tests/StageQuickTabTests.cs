@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Definition;
+using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
@@ -296,9 +297,44 @@ public sealed class StageQuickTabTests
         Assert.Equal(before + 1, session.Project.EffectiveQuickCommands.Count);
     });
 
+    private static Button ButtonStarting(Control host, string prefix) =>
+        host.GetLogicalDescendants().OfType<Button>().First(button =>
+            (button.Content as string)?.StartsWith(prefix, StringComparison.Ordinal) == true);
+
     [Fact]
-    public void 이_라인_통째로가_켜진_커맨드를_순서대로_담는다() => HeadlessUi.Run(() =>
+    public void 묶음_만들기가_빈_그릇을_세우고_담기를_시작한다() => HeadlessUi.Run(() =>
     {
+        // 담기의 출발점이 그릇이다 — [＋ 묶음]이 빈 칩을 세우고, 편집을 켜고, 그 칩을
+        // 펴 둔다(= 담을 대상). "만들기 → 고르기"가 한 흐름으로 이어져야 한다.
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        MiniStagePreview preview = PreviewWith(session, nodeId, lineId, Command(
+            "char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u")));
+
+        int before = session.Project.EffectiveQuickCommands.Count;
+
+        ButtonStarting(preview.Scene.BuildQuickTabProbe(null), "＋ 묶음")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before + 1, session.Project.EffectiveQuickCommands.Count);
+        Assert.Empty(session.Project.EffectiveQuickCommands[^1].Steps);
+
+        // 편집이 함께 켜지고, 만든 그릇이 담을 대상이다 — 바로 골라 담을 수 있다.
+        Assert.True(preview.Scene.IsQuickPinMode);
+        Assert.Equal(before, preview.Scene.QuickPinTarget);
+
+        LeftClick(CommandRowOf(preview, "gesture"));
+
+        StageQuickStep step = Assert.Single(session.Project.EffectiveQuickCommands[^1].Steps);
+        Assert.Equal("char_rig_staging.gesture", step.DefinitionId);
+        Assert.Equal("0.7u", step.Arguments["xAmp"]);
+    });
+
+    [Fact]
+    public void 이_라인_전부는_펼친_그릇에_순서대로_담는다() => HeadlessUi.Run(() =>
+    {
+        // 편의 기능이지 담기의 정식 경로가 아니다 — 그래서 <b>펼친 칩 안에</b> 선다.
         (AuthoringSession session, string nodeId, string lineId) = Stage();
 
         MiniStagePreview preview = PreviewWith(
@@ -306,20 +342,70 @@ public sealed class StageQuickTabTests
             Command("char_rig_presentation.fade_out", ("slot", "c1")),
             Command("common_control.pause", ("seconds", "0.2")));
 
-        preview.Scene.SetQuickEditModeProbe(true);
+        ButtonStarting(preview.Scene.BuildQuickTabProbe(null), "＋ 묶음")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Control tab = preview.Scene.BuildQuickTabProbe(null);
-        tab.GetLogicalDescendants().OfType<Button>()
-            .First(button => (button.Content as string)?.StartsWith("＋ 이 라인 통째로", StringComparison.Ordinal) == true)
+        ButtonStarting(preview.Scene.BuildQuickTabProbe(null), "＋ 이 라인 전부")
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         StageQuickCommand pinned = session.Project.EffectiveQuickCommands[^1];
 
-        Assert.Equal(2, pinned.Steps.Count);
-        Assert.Equal("char_rig_presentation.fade_out", pinned.Steps[0].DefinitionId);
-        Assert.Equal("common_control.pause", pinned.Steps[1].DefinitionId);
-        // 이름은 묻지 않는다 — 첫 커맨드 이름에 "외 N"을 단다(고치는 자리는 이름 칸).
-        Assert.EndsWith("외 1", pinned.DisplayName, StringComparison.Ordinal);
+        Assert.Equal(
+            ["char_rig_presentation.fade_out", "common_control.pause"],
+            pinned.Steps.Select(step => step.DefinitionId).ToArray());
+        // 만든 그릇에 담긴다 — 새 칩이 또 생기지 않는다.
+        Assert.Equal(ProjectEditor.DefaultQuickBundleName, pinned.DisplayName);
+    });
+
+    [Fact]
+    public void 커맨드와_묶음이_구역으로_갈린다() => HeadlessUi.Run(() =>
+    {
+        // 소유자: "칩커맨드와 단일 커맨드가 구별되도록 둘의 영역을 구분."
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+        StageSceneView view = SceneOf(session, nodeId, lineId);
+
+        // 기본은 한 단계짜리 셋뿐 — [묶음] 구역은 아예 서지 않는다(빈 제목은 자리만 먹는다).
+        string[] Headings(Control tab) => tab.GetLogicalDescendants().OfType<TextBlock>()
+            .Select(text => text.Text ?? string.Empty)
+            .Where(text => text is "커맨드" or "묶음")
+            .ToArray();
+
+        Assert.Equal(["커맨드"], Headings(view.BuildQuickTabProbe(null)));
+
+        session.Editor.PinQuickCommand(new StageQuickCommand("퇴장 한 벌",
+        [
+            new StageQuickStep("char_rig_presentation.fade_out",
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["slot"] = "c1" }),
+            new StageQuickStep("common_control.pause",
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["seconds"] = "0.2" })
+        ]));
+
+        Assert.Equal(["커맨드", "묶음"], Headings(view.BuildQuickTabProbe(null)));
+    });
+
+    [Fact]
+    public void 빈_묶음은_평소_모드에_안_보이고_완료가_걷는다() => HeadlessUi.Run(() =>
+    {
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+        StageSceneView view = SceneOf(session, nodeId, lineId);
+
+        int before = session.Project.EffectiveQuickCommands.Count;
+
+        ButtonStarting(view.BuildQuickTabProbe(null), "＋ 묶음")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        // 편집 중에는 담는 그릇으로 서 있다.
+        Assert.Contains(
+            view.BuildQuickTabProbe(null).GetLogicalDescendants().OfType<TextBox>(),
+            box => box.Text == ProjectEditor.DefaultQuickBundleName);
+
+        // [완료] = 편집 끄기. 아무것도 안 담았으므로 그릇이 걷힌다.
+        ButtonStarting(view.BuildQuickTabProbe(null), "완료")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(before, session.Project.EffectiveQuickCommands.Count);
+        Assert.False(view.IsQuickPinMode);
     });
 
     [Fact]

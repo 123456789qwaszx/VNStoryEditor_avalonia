@@ -1020,6 +1020,61 @@ public sealed partial class ProjectEditor
     }
 
     /// <summary>
+    /// <b>빈 묶음 칩</b>을 만들고 그 자리를 돌려준다 (2026-08-24 소유자: "커맨드 칩 생성을
+    /// 하면, 여기에 원하는 커맨드들을 골라담도록").
+    ///
+    /// <b>담기의 출발점이 뒤집혔다.</b> 예전에는 커맨드를 집으면 칩이 따라 생겨서 묶음이
+    /// 부산물이었다. 이제는 <b>그릇을 먼저 만들고 골라 담는다</b> — 사람이 "이제부터 묶음
+    /// 하나를 만든다"고 말할 수 있어야 담는 동안의 화면이 그 사실을 계속 보여 줄 수 있다.
+    ///
+    /// 그래서 <b>단계 없는 칩이 정상 상태다</b>(막 만든 그릇). 눌러서 낼 것이 없으므로
+    /// 화면은 평소 모드에서 그리지 않고, 편집을 마칠 때 <see cref="RemoveEmptyQuickCommands"/>가
+    /// 걷는다 — 만들다 만 그릇을 저장물에 남기지 않는다.
+    /// </summary>
+    public int CreateQuickBundle(string? displayName = null)
+    {
+        int index = Project.EffectiveQuickCommands.Count;
+        string name = UniqueQuickCommandName(
+            string.IsNullOrWhiteSpace(displayName) ? DefaultQuickBundleName : displayName.Trim());
+
+        Mutate(ProjectChangeKind.Content, () => MaterializeQuickCommands().Add(new StageQuickCommand(name, [])));
+        return index;
+    }
+
+    /// <summary>막 만든 묶음의 이름 — 담는 동안 이름 칸에서 고친다.</summary>
+    public const string DefaultQuickBundleName = "새 묶음";
+
+    /// <summary>
+    /// 단계가 하나도 없는 칩을 걷는다 — [완료]가 부른다. 걷을 것이 없으면 아무 일도 안 한다
+    /// (빈 <c>Mutate</c>는 undo 스택에 뜻 없는 단계를 쌓는다).
+    /// </summary>
+    public void RemoveEmptyQuickCommands()
+    {
+        if (Project.QuickCommands is null || !Project.QuickCommands.Any(chip => chip.Steps.Count == 0))
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+            MaterializeQuickCommands().RemoveAll(chip => chip.Steps.Count == 0));
+    }
+
+    /// <summary>이미 있는 칩 이름과 안 겹치는 이름 — 겹치면 뒤에 번호를 단다.</summary>
+    public string UniqueQuickCommandName(string baseName)
+    {
+        IReadOnlyList<StageQuickCommand> chips = Project.EffectiveQuickCommands;
+        string candidate = baseName;
+        int suffix = 2;
+
+        while (chips.Any(chip => string.Equals(chip.DisplayName, candidate, StringComparison.Ordinal)))
+        {
+            candidate = $"{baseName} {suffix++}";
+        }
+
+        return candidate;
+    }
+
+    /// <summary>
     /// 단계 여럿을 칩 하나의 <b>맨 뒤에</b> 붙인다 — 이것이 묶음이 자라는 유일한 통로다
     /// (2026-08-24 소유자: "여러개의 커맨드 단위로 커스텀").
     ///
@@ -1050,9 +1105,9 @@ public sealed partial class ProjectEditor
     }
 
     /// <summary>
-    /// 단계 하나를 뺀다. <b>마지막 단계를 빼면 칩째 사라진다</b> — 단계가 없는 칩은 눌러도
-    /// 낼 것이 없는 이름뿐인 단추이고, 그것을 남기면 화면이 "누르면 아무 일도 안 나는 칩"을
-    /// 설명해야 한다.
+    /// 단계 하나를 뺀다. 다 빼면 <b>빈 그릇으로 남는다</b> — 칩째 지우지 않는 이유는
+    /// 담는 도중에 잘못 담은 것을 하나씩 빼는 일이 정상이기 때문이다. 그릇째 없애는 것은
+    /// 칩 줄의 ✕(<see cref="RemoveQuickCommandAt"/>)이고, 끝내 비어 있으면 [완료]가 걷는다.
     /// </summary>
     public void RemoveQuickCommandStepAt(int index, int stepIndex)
     {
@@ -1061,12 +1116,6 @@ public sealed partial class ProjectEditor
         if (index < 0 || index >= chips.Count ||
             stepIndex < 0 || stepIndex >= chips[index].Steps.Count)
         {
-            return;
-        }
-
-        if (chips[index].Steps.Count == 1)
-        {
-            RemoveQuickCommandAt(index);
             return;
         }
 

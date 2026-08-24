@@ -488,13 +488,11 @@ public static class ProjectManifestJson
                 steps.Add(new StageQuickStep(definitionId, arguments));
             }
 
-            if (steps.Count == 0)
-            {
-                continue; // 단계가 하나도 없는 칩은 누를 것이 없다
-            }
-
+            // 단계 없는 칩은 <b>버리지 않는다</b> — 막 만든 빈 묶음이 그 모양이다
+            // (2026-08-24). 여기서 버리면 되돌리기 스냅샷을 오갈 때마다 칩이 사라지고,
+            // 그만큼 뒤 칩들의 자리가 밀려 펼쳐 둔 칩이 딴것으로 바뀐다.
             chips.Add(new StageQuickCommand(
-                (string?)chip["name"] ?? steps[0].DefinitionId,
+                (string?)chip["name"] ?? (steps.Count > 0 ? steps[0].DefinitionId : string.Empty),
                 steps));
         }
 

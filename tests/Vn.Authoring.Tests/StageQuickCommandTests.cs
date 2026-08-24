@@ -215,17 +215,64 @@ public sealed class StageQuickCommandTests
     }
 
     [Fact]
-    public void 마지막_단계를_빼면_칩째_사라진다()
+    public void 빈_묶음을_만들어_골라_담고_다_빼면_빈_그릇으로_남는다()
     {
-        // ⛔ 단계 없는 칩을 남기면 "눌러도 아무 일도 안 나는 단추"를 화면이 설명해야 한다.
+        // 담기의 출발점은 <b>그릇</b>이다 (2026-08-24) — 커맨드를 집으면 칩이 따라 생기던
+        // 것과 반대다. 그래서 단계 없는 칩이 정상 상태이고, 걷는 것은 [완료]의 일이다.
         var editor = new ProjectEditor(new StoryProject());
-        int index = editor.PinQuickCommand(Chip("한 개", Step("common_control.pause", ("seconds", "0.2"))));
-        int before = editor.Project.EffectiveQuickCommands.Count;
 
+        int index = editor.CreateQuickBundle();
+        StageQuickCommand created = editor.Project.EffectiveQuickCommands[index];
+
+        Assert.Equal(ProjectEditor.DefaultQuickBundleName, created.DisplayName);
+        Assert.Empty(created.Steps);
+
+        editor.AppendQuickCommandSteps(index, [Step("common_control.pause", ("seconds", "0.2"))]);
+        Assert.Single(editor.Project.EffectiveQuickCommands[index].Steps);
+
+        // 잘못 담은 것을 하나씩 빼는 것은 정상이다 — 그때 칩째 사라지면 담던 자리를 잃는다.
         editor.RemoveQuickCommandStepAt(index, 0);
+        Assert.Empty(editor.Project.EffectiveQuickCommands[index].Steps);
+        Assert.Equal(index + 1, editor.Project.EffectiveQuickCommands.Count);
 
-        Assert.Equal(before - 1, editor.Project.EffectiveQuickCommands.Count);
-        Assert.DoesNotContain(editor.Project.EffectiveQuickCommands, chip => chip.DisplayName == "한 개");
+        // [완료]가 걷는다 — 만들다 만 그릇을 저장물에 남기지 않는다.
+        editor.RemoveEmptyQuickCommands();
+        Assert.Equal(index, editor.Project.EffectiveQuickCommands.Count);
+    }
+
+    [Fact]
+    public void 빈_묶음도_저장과_스냅샷을_넘긴다()
+    {
+        // ⛔ 여기서 버리면 되돌리기 스냅샷을 오갈 때마다 칩이 사라지고, 그만큼 뒤 칩의
+        //    자리가 밀려 <b>펼쳐 둔 칩이 딴것으로 바뀐다</b>.
+        var project = new StoryProject
+        {
+            QuickCommands = [Chip("빈 그릇"), Chip("한 개", Step("shot.shot_reset"))]
+        };
+
+        ProjectManifest manifest = ProjectManifestJson.Read(ProjectManifestJson.Write(project));
+        Assert.Equal(2, manifest.QuickCommands!.Count);
+        Assert.Empty(manifest.QuickCommands[0].Steps);
+        Assert.Equal("한 개", manifest.QuickCommands[1].DisplayName);
+
+        StoryProject decoded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(project));
+        Assert.Equal(2, decoded.QuickCommands!.Count);
+    }
+
+    [Fact]
+    public void 만들_때_이름이_겹치면_번호가_붙는다()
+    {
+        var editor = new ProjectEditor(new StoryProject());
+
+        editor.CreateQuickBundle();
+        editor.CreateQuickBundle();
+
+        Assert.Equal(
+            [ProjectEditor.DefaultQuickBundleName, $"{ProjectEditor.DefaultQuickBundleName} 2"],
+            editor.Project.EffectiveQuickCommands
+                .Where(chip => chip.Steps.Count == 0)
+                .Select(chip => chip.DisplayName)
+                .ToArray());
     }
 
     [Fact]

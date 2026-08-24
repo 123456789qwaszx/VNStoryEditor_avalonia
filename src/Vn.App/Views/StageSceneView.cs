@@ -3050,6 +3050,14 @@ internal sealed class StageSceneView : UserControl
         };
         editToggle.Click += (_, _) =>
         {
+            // [완료]는 만들다 만 빈 그릇을 걷는다 (2026-08-24) — 누를 것이 없는 칩을
+            // 저장물에 남기지 않는다. 편집을 켤 때가 아니라 끌 때다: 담는 도중에 잠깐
+            // 비는 것은 정상이다.
+            if (_quickEditMode)
+            {
+                UiGuard.Run(_session, "빈 묶음 정리", () => _session!.Editor.RemoveEmptyQuickCommands());
+            }
+
             // 모드 신호가 먼저다(터미널 활성 표시) — 판 재구성은 그 뒤여야 둘이 같은
             // 모드를 본다.
             SetQuickEditMode(!_quickEditMode);
@@ -3065,26 +3073,64 @@ internal sealed class StageSceneView : UserControl
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center
         };
+        // [＋ 묶음]은 [편집] 오른쪽이다 (2026-08-24 소유자: "편집 오른쪽에 커맨드 칩 생성").
+        // 평소 모드에서도 눌린다 — 누르면 편집이 함께 켜진다. "만들려면 먼저 편집을 켜라"는
+        // 한 단계는 순수한 통행세다.
+        var addBundle = new Button
+        {
+            Content = "＋ 묶음",
+            FontSize = 10,
+            Padding = new Thickness(7, 2),
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+        ToolTip.SetTip(addBundle, "빈 묶음을 만들고 담기를 시작합니다 — 터미널의 커맨드를 클릭해 골라 담습니다.");
+        addBundle.Click += (_, _) =>
+        {
+            UiGuard.Run(_session, "묶음 만들기", () =>
+            {
+                int created = _session.Editor.CreateQuickBundle();
+                SetQuickEditMode(true);
+
+                // 만든 그릇을 바로 펴 둔다 = 담을 대상이다. 만들자마자 담을 수 있어야
+                // "만들기 → 고르기"가 한 흐름으로 이어진다.
+                _quickExpandedIndex = created;
+                _quickExpandedStep = null;
+            });
+
+            onApplied();
+            QuickEditModeChanged?.Invoke();
+        };
+
         Grid.SetColumn(headerText, 0);
         Grid.SetColumn(editToggle, 1);
+        Grid.SetColumn(addBundle, 2);
+        headerRow.ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto");
         headerRow.Children.Add(headerText);
         headerRow.Children.Add(editToggle);
+        headerRow.Children.Add(addBundle);
         panel.Children.Add(headerRow);
 
-        if (_quickEditMode)
-        {
-            panel.Children.Add(BuildQuickLinePinButton(chips));
-        }
-
-        // 평소에는 칩 판(가로로 흐르는 단추), 편집 중에는 줄 목록(이름 칸 + ✕).
-        Panel pad = _quickEditMode
-            ? new StackPanel { Spacing = 3 }
-            : new WrapPanel { MaxWidth = 260 };
-        int shown = 0;
+        // ── 구역 둘 (2026-08-24 소유자: "칩커맨드와 단일 커맨드가 구별되도록 영역을 구분")
+        //
+        // 데이터는 한 목록이고 <b>자리(index)는 그대로 쓴다</b> — 구역은 표시일 뿐이라
+        // 나누면서 번호를 다시 매기면 펼침·편집이 가리키는 칩이 어긋난다.
+        var single = new List<int>();
+        var bundles = new List<int>();
 
         for (int index = 0; index < chips.Count; index++)
         {
             StageQuickCommand chip = chips[index];
+
+            // 빈 그릇은 편집 중에만 보인다 — 평소에 누를 것이 없는 단추를 세우지 않는다.
+            if (chip.Steps.Count == 0)
+            {
+                if (_quickEditMode)
+                {
+                    bundles.Add(index);
+                }
+
+                continue;
+            }
 
             // 단계가 하나도 이 게임 정의에 없으면 조용히 빠진다 — 눌러도 예외가 날 칩을
             // 그리지 않는다(기존 규칙). 일부만 없는 묶음은 <b>회색으로 서서 말한다</b>:
@@ -3094,18 +3140,15 @@ internal sealed class StageSceneView : UserControl
                 continue;
             }
 
-            pad.Children.Add(_quickEditMode
-                ? BuildQuickChipEditRow(chip, index, onApplied)
-                : BuildQuickChip(chip, onApplied));
-            shown++;
+            (chip.Steps.Count > 1 ? bundles : single).Add(index);
         }
 
-        if (shown == 0)
+        if (single.Count == 0 && bundles.Count == 0)
         {
             panel.Children.Add(new TextBlock
             {
                 Text = chips.Count == 0
-                    ? "칩이 없습니다. [편집]을 누르고 터미널의 커맨드를 클릭해 담거나 [기본값 복원]을 누르세요."
+                    ? "칩이 없습니다. [＋ 묶음]으로 만들거나, [편집]을 누르고 터미널의 커맨드를 클릭해 담으세요."
                     : "이 게임 정의에는 담긴 칩의 커맨드가 없습니다.",
                 FontSize = 10,
                 Opacity = 0.6,
@@ -3115,7 +3158,8 @@ internal sealed class StageSceneView : UserControl
         }
         else
         {
-            panel.Children.Add(pad);
+            AddQuickSection(panel, "커맨드", "커맨드 하나짜리 칩입니다.", single, chips, onApplied);
+            AddQuickSection(panel, "묶음", "누르면 담긴 순서대로 전부 붙습니다.", bundles, chips, onApplied);
         }
 
         if (_quickEditMode)
@@ -3137,6 +3181,50 @@ internal sealed class StageSceneView : UserControl
         }
 
         return panel;
+    }
+
+    /// <summary>
+    /// 구역 하나 — 작은 제목 + 그 구역의 칩들 (2026-08-24 소유자: "칩커맨드와 단일 커맨드가
+    /// 구별되도록 둘의 영역을 구분"). 비어 있으면 <b>제목도 안 세운다</b>: 빈 구역의 제목은
+    /// 자리만 먹고 아무것도 안 알린다.
+    ///
+    /// 평소에는 칩 판(가로로 흐르는 단추), 편집 중에는 줄 목록(이름 칸 + ✕)이다.
+    /// </summary>
+    private void AddQuickSection(
+        StackPanel panel,
+        string title,
+        string hint,
+        IReadOnlyList<int> indices,
+        IReadOnlyList<StageQuickCommand> chips,
+        Action onApplied)
+    {
+        if (indices.Count == 0)
+        {
+            return;
+        }
+
+        var heading = new TextBlock
+        {
+            Text = title,
+            FontSize = 9,
+            Opacity = 0.5,
+            Margin = new Thickness(1, panel.Children.Count > 1 ? 8 : 2, 0, 1)
+        };
+        ToolTip.SetTip(heading, hint);
+        panel.Children.Add(heading);
+
+        Panel pad = _quickEditMode
+            ? new StackPanel { Spacing = 3 }
+            : new WrapPanel { MaxWidth = 260 };
+
+        foreach (int index in indices)
+        {
+            pad.Children.Add(_quickEditMode
+                ? BuildQuickChipEditRow(chips[index], index, onApplied)
+                : BuildQuickChip(chips[index], onApplied));
+        }
+
+        panel.Children.Add(pad);
     }
 
     /// <summary>
@@ -3175,42 +3263,42 @@ internal sealed class StageSceneView : UserControl
 
         if (_quickExpandedIndex is { } index && index >= 0 && index < chips.Count)
         {
-            return $"터미널의 커맨드를 클릭하면 '{chips[index].DisplayName}'의 " +
-                   $"{chips[index].Steps.Count + 1}번째로 붙습니다. ▾를 접으면 새 칩으로 담깁니다.";
+            return $"담는 중: '{chips[index].DisplayName}' — 터미널의 커맨드를 클릭하면 " +
+                   $"{chips[index].Steps.Count + 1}번째로 붙습니다. ▾로 접으면 담기가 끝납니다.";
         }
 
-        return "터미널의 커맨드를 클릭하면 새 칩으로 담깁니다. ▸로 칩을 펴면 그 칩에 이어 담깁니다.";
+        return "터미널의 커맨드를 클릭하면 커맨드 칩 하나로 담깁니다. " +
+               "여러 개를 한 단추로 묶으려면 [＋ 묶음]을 누르세요.";
     }
 
     /// <summary>
-    /// [＋ 이 라인 통째로] — 지금 라인의 커맨드 전부를 순서대로 담는다 (2026-08-24).
+    /// [＋ 이 라인 전부] — 지금 라인의 커맨드를 순서대로 이 칩에 담는다 (2026-08-24).
     ///
-    /// 묶음의 가장 흔한 정체가 <b>"이 라인의 연출 한 벌"</b>이라 가장 짧은 길을 하나 뚫었다:
-    /// 터미널에서 한 줄씩 집으면 다섯 번 클릭할 일이 한 번이 된다. 담기는 곳은 터미널
-    /// 클릭과 <b>같은 규칙</b>이다 — 펼친 칩이 있으면 거기 이어 붙고, 없으면 새 칩이다.
+    /// <b>골라 담기의 편의 기능</b>이지 담기의 정식 경로가 아니다. 정식은 터미널에서 원하는
+    /// 것만 클릭하는 것이고, 이 단추는 "이 라인 것을 통째로"가 흔해서 다섯 번 클릭을 한 번으로
+    /// 줄인다. 그래서 <b>펼친 칩 안에</b> 있다 — 어디에 담기는지가 자리로 보인다.
     ///
     /// 꺼진 커맨드는 담지 않는다 — 실행되지 않는 것을 담으면 칩이 화면과 다른 말을 한다.
     /// </summary>
-    private Control BuildQuickLinePinButton(IReadOnlyList<StageQuickCommand> chips)
+    private Control BuildQuickLinePinButton(StageQuickCommand chip)
     {
         IReadOnlyList<PresentationResultCommand> lineCommands = SelectedLineCommands();
 
         var button = new Button
         {
             Content = lineCommands.Count == 0
-                ? "＋ 이 라인 통째로"
-                : $"＋ 이 라인 통째로 ({lineCommands.Count}개)",
+                ? "＋ 이 라인 전부"
+                : $"＋ 이 라인 전부 ({lineCommands.Count}개)",
             FontSize = 10,
-            Padding = new Thickness(7, 3),
+            Padding = new Thickness(7, 2),
             HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 3, 0, 0),
             IsEnabled = lineCommands.Count > 0
         };
 
         ToolTip.SetTip(button, lineCommands.Count == 0
             ? "이 라인에는 담을 연출 커맨드가 없습니다."
-            : _quickExpandedIndex is { } index && index >= 0 && index < chips.Count
-                ? $"이 라인의 커맨드 {lineCommands.Count}개를 '{chips[index].DisplayName}' 뒤에 이어 담습니다."
-                : $"이 라인의 커맨드 {lineCommands.Count}개를 칩 하나로 담습니다.");
+            : $"이 라인의 커맨드 {lineCommands.Count}개를 '{chip.DisplayName}'에 순서대로 담습니다.");
 
         button.Click += (_, _) => QuickPinRequested?.Invoke(lineCommands);
 
@@ -3333,8 +3421,13 @@ internal sealed class StageSceneView : UserControl
         // 단계 수 배지 — 묶음인지 아닌지가 이름 옆에서 바로 보인다(1단계는 안 단다).
         var count = new TextBlock
         {
-            Text = chip.Steps.Count > 1 ? $"·{chip.Steps.Count}" : string.Empty,
-            FontSize = 10,
+            Text = chip.Steps.Count switch
+            {
+                0 => "비었음",
+                > 1 => $"·{chip.Steps.Count}",
+                _ => string.Empty
+            },
+            FontSize = chip.Steps.Count == 0 ? 9 : 10,
             Opacity = 0.55,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(5, 0, 0, 0)
@@ -3376,12 +3469,17 @@ internal sealed class StageSceneView : UserControl
 
         body.Children.Add(new TextBlock
         {
-            Text = "터미널의 커맨드를 클릭하면 여기 맨 뒤로 붙습니다.",
+            Text = chip.Steps.Count == 0
+                ? "빈 묶음입니다 — 터미널의 커맨드를 클릭해 골라 담으세요."
+                : "터미널의 커맨드를 클릭하면 여기 맨 뒤로 붙습니다.",
             FontSize = 9,
-            Opacity = 0.45,
+            Opacity = chip.Steps.Count == 0 ? 0.75 : 0.45,
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(2, 2, 0, 0)
         });
+
+        // 편의 기능은 담을 곳 안에 선다 — 어디로 담기는지가 자리로 보인다.
+        body.Children.Add(BuildQuickLinePinButton(chip));
 
         return new StackPanel { Children = { row, body } };
     }

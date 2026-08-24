@@ -728,7 +728,7 @@ public partial class MiniStagePreview : UserControl
 
         // 새 칩의 이름 — 한 개면 그 커맨드 이름, 묶음이면 "첫 커맨드 외 N". 묻지 않는 이유는
         // 담는 순간 이름을 물으면 흐름이 끊기기 때문이다(2026-08-22). 고치는 자리는 이름 칸이다.
-        string displayName = UniqueQuickName(steps.Count == 1
+        string displayName = _session.Editor.UniqueQuickCommandName(steps.Count == 1
             ? steps[0].Definition.DisplayName
             : $"{steps[0].Definition.DisplayName} 외 {steps.Count - 1}");
 
@@ -743,21 +743,6 @@ public partial class MiniStagePreview : UserControl
         });
 
         _scene.RefreshConsole();
-    }
-
-    /// <summary>이미 있는 칩 이름과 안 겹치는 이름 — 겹치면 뒤에 번호를 단다.</summary>
-    private string UniqueQuickName(string baseName)
-    {
-        IReadOnlyList<StageQuickCommand> chips = _session!.Project.EffectiveQuickCommands;
-        string candidate = baseName;
-        int suffix = 2;
-
-        while (chips.Any(chip => string.Equals(chip.DisplayName, candidate, StringComparison.Ordinal)))
-        {
-            candidate = $"{baseName} {suffix++}";
-        }
-
-        return candidate;
     }
 
     /// <summary>Ctrl+D / [복제] — 원본 바로 뒤에, 편집 통로 하나(undo 한 번)로.</summary>
