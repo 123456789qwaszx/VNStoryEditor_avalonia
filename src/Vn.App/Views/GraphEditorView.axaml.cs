@@ -56,10 +56,46 @@ public partial class GraphEditorView : UserControl
     internal void SupplyChapters(IReadOnlyList<ChapterEntry> entries)
     {
         _chapters = entries;
+        RefreshChapterCombo();
 
         if (_projection is not null)
         {
             DrawChapterRails();
+        }
+    }
+
+    /// <summary>선택을 비추는 동안에는 <c>SelectionChanged</c>가 선택을 바꾸지 않게 한다.</summary>
+    private bool _syncingChapter;
+
+    /// <summary>
+    /// 챕터 목록과 지금 활성인 판을 콤보에 비춘다 (2026-08-25).
+    ///
+    /// 목록의 원천은 <b>챕터 그래프가 읽은 하나</b>다(<see cref="SupplyChapters"/>) —
+    /// 여기서 따로 읽으면 감시·재시도 규칙이 두 벌이 된다. 선택도 마찬가지로
+    /// <c>ActiveFileId</c> 하나를 비출 뿐이라, 챕터 그래프에서 고른 것이 여기에도 보인다.
+    /// </summary>
+    private void RefreshChapterCombo()
+    {
+        _syncingChapter = true;
+
+        try
+        {
+            string[] ids = _chapters.Select(entry => entry.ChapterId).ToArray();
+
+            if (!ids.SequenceEqual(
+                    (ChapterCombo.ItemsSource as IEnumerable<string>) ?? [], StringComparer.Ordinal))
+            {
+                ChapterCombo.ItemsSource = ids;
+            }
+
+            // 판 이름 = ChapterId (챕터=판 1:1) — 활성 판이 곧 고른 챕터다.
+            ChapterCombo.SelectedItem = _session?.ActiveFile?.Name is { } name && ids.Contains(name)
+                ? name
+                : null;
+        }
+        finally
+        {
+            _syncingChapter = false;
         }
     }
 
@@ -139,6 +175,21 @@ public partial class GraphEditorView : UserControl
         AddDialogueButton.Click += (_, _) => AddNode(GraphNodeKind.Dialogue);
         DeleteNodeButton.Click += (_, _) => DeleteSelectedNode();
 
+        // 고른 챕터의 판을 활성으로 — 그 뒤의 [+ 대사 노드]가 거기에 선다.
+        // ⚠ 다시 그리기가 콤보를 맞출 때는 안 돈다(_syncingChapter) — 안 그러면
+        //    선택을 비추는 일이 선택을 바꾸는 일이 되어 서로를 부른다.
+        ChapterCombo.SelectionChanged += (_, _) =>
+        {
+            if (_syncingChapter || _session is null ||
+                ChapterCombo.SelectedItem is not string chapterId)
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, "챕터 고르기", () =>
+                _session.SelectFile(_session.EnsureChapterBoard(chapterId)));
+        };
+
         foreach (CheckBox check in new[] { FilterDialogueCheck, FilterSetCheck })
         {
             // 체크 하나가 곧 다시 그리기다 — 코드가 체크를 대신 눌러 주던 [흐름만]이
@@ -180,6 +231,9 @@ public partial class GraphEditorView : UserControl
         {
             return;
         }
+
+        // 활성 판이 바뀌면 콤보도 따라간다 — 챕터 그래프에서 고른 것이 여기에도 보인다.
+        RefreshChapterCombo();
 
         _projection = GraphProjectionBuilder.Build(
             _session.Project,

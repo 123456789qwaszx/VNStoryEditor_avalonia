@@ -219,6 +219,8 @@ public partial class MainWindow : Window
         CsvExportButton.Click += OnCsvExportClick;
         ExportFormatsButton.Click += (_, _) =>
             UiGuard.Run(_session, "내보내기 양식 선택", ShowExportFormatsFlyout);
+        OpenExportFolderButton.Click += (_, _) =>
+            UiGuard.Run(_session, "내보낸 폴더 열기", OpenExportFolder);
 
         Opened += OnOpened;
 
@@ -966,6 +968,39 @@ public partial class MainWindow : Window
         {
             Report("내보내기", exception);
         }
+    }
+
+    /// <summary>
+    /// 진행 JSON이 나가는 <c>exported/</c>를 연다 (2026-08-25).
+    ///
+    /// 이 파일들은 <b>사람 손을 안 기다리고 저절로 나간다</b>(2026-08-17). 그래서 사람이
+    /// 할 일은 만드는 것이 아니라 <b>가서 꺼내 오는 것</b>뿐인데, 그 자리를 몰라 못 꺼내
+    /// 가는 것이 실제 걸림돌이었다 — 비개발자 작가에게 건네는 준비의 일부다.
+    ///
+    /// ⚠ 폴더를 <b>대신 만들지 않는다.</b> 없다는 것은 아직 한 챕터도 안 나갔다는 뜻이고,
+    /// 빈 폴더를 열어 주면 "나갔는데 비었다"로 읽힌다 — 사유를 말하는 편이 낫다.
+    /// </summary>
+    private void OpenExportFolder()
+    {
+        if (_session?.ProjectPath is not { } projectPath)
+        {
+            _session?.SetStatus("프로젝트를 먼저 저장해야 내보낼 자리가 정해집니다.");
+            return;
+        }
+
+        string folder = Path.Combine(
+            Path.GetDirectoryName(projectPath)!, ChapterExportService.ExportFolderName);
+
+        if (!Directory.Exists(folder))
+        {
+            _session.SetStatus(
+                $"아직 나간 진행 JSON이 없습니다 — 검증을 통과한 챕터가 생기면 저절로 " +
+                $"여기 나갑니다: {folder}");
+            return;
+        }
+
+        System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo(folder) { UseShellExecute = true });
     }
 
     /// <summary>
