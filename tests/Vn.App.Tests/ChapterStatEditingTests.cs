@@ -37,12 +37,16 @@ public sealed class ChapterStatEditingTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         StatChangeEditor editor = Editor(view, "EdgeFormStatsHost");
+
+        // ⚠ 이 길에는 이미 변화가 걸려 있다 — 견본이 2026-08-25에 폐지된 `cleared:`를
+        // 대신해 심어 둔 `복도지남 true`다. 폼은 기존 줄을 싣고 서므로 새 줄은 뒤에 선다.
+        int added = Rows(editor);
         Add(editor);
 
         // 드롭다운은 엑셀 `스탯` 시트에 선언된 것만 담는다.
         ChapterStat first = model.Stats[0];
-        StatCombo(editor, 0).SelectedItem = Display(first);
-        AmountBox(editor, 0).Text = "2";
+        StatCombo(editor, added).SelectedItem = Display(first);
+        AmountBox(editor, added).Text = "2";
 
         view.SubmitEdgeForm();
 
@@ -51,9 +55,11 @@ public sealed class ChapterStatEditingTests
                 && edge.ToEpisodeId == target.ToEpisodeId
                 && (edge.OptionLabel ?? string.Empty) == (target.OptionLabel ?? string.Empty));
 
-        StatDelta delta = Assert.Single(reread.StatChanges);
-        Assert.Equal(first.Key, delta.Key);
+        StatDelta delta = Assert.Single(reread.StatChanges, item => item.Key == first.Key);
         Assert.Equal(2, delta.Amount);
+
+        // 원래 있던 것은 그대로다 — 새 줄을 더하는 것이 기존 줄을 지우지 않는다.
+        Assert.Contains(reread.StatChanges, item => item.Key == "복도지남" && item.IsSet);
 
         // 배선은 건드리지 않았다 — 문구·도착이 그대로다.
         Assert.Equal(target.ToEpisodeId, reread.ToEpisodeId);
@@ -102,16 +108,21 @@ public sealed class ChapterStatEditingTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         StatChangeEditor editor = Editor(view, "EdgeStatsHost");
+
+        // 이 길에도 견본의 `복도지남 true`가 이미 걸려 있다 — 새 줄은 그 뒤에 선다.
+        int added = Rows(editor);
         Add(editor);
-        StatCombo(editor, 0).SelectedItem = Display(stat);
-        AmountBox(editor, 0).Text = "4";
+        StatCombo(editor, added).SelectedItem = Display(stat);
+        AmountBox(editor, added).Text = "4";
 
         view.ApplyEdgeFromPanel();
 
         ChapterEdge reread = ChapterWorkbookReader.Read(project.ChapterPath).Edges
             .Single(edge => edge.ToEpisodeId == "branch05.02A");
 
-        Assert.Equal(new StatDelta(stat.Key, 4), Assert.Single(reread.StatChanges));
+        Assert.Equal(
+            new StatDelta(stat.Key, 4),
+            Assert.Single(reread.StatChanges, item => item.Key == stat.Key));
 
         // 안 건드린 값은 그대로다 — 이 길에는 해금조건이 걸려 있었다.
         Assert.Equal("신뢰높음", reread.ConditionLabel);
@@ -143,10 +154,12 @@ public sealed class ChapterStatEditingTests
         view.SubmitEdgeForm();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal($"{stat.DisplayName} 2", StatLine(view, "main05.02"));
+        // ⚠ 줄에는 챕터의 스탯이 전부 선다 — 견본에 `복도지남` 깃발이 늘어난 뒤로
+        // 뒤가 따라붙는다(2026-08-25). 여기서 재는 것은 맨 앞의 그 수치다.
+        Assert.StartsWith($"{stat.DisplayName} 2", StatLine(view, "main05.02"));
 
         // 그 길을 지나지 않은 시작 노드는 초기값 그대로다.
-        Assert.Equal($"{stat.DisplayName} {stat.Initial}", StatLine(view, "main05.01"));
+        Assert.StartsWith($"{stat.DisplayName} {stat.Initial}", StatLine(view, "main05.01"));
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -162,6 +175,10 @@ public sealed class ChapterStatEditingTests
     private static void Add(StatChangeEditor editor) =>
         editor.Children.OfType<Button>().Single()
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    /// <summary>지금 폼에 서 있는 줄 수 — 기존 변화가 실려 있으면 0이 아니다.</summary>
+    private static int Rows(StatChangeEditor editor) =>
+        editor.Children.OfType<Grid>().Count();
 
     private static Grid Row(StatChangeEditor editor, int index) =>
         editor.Children.OfType<Grid>().ElementAt(index);

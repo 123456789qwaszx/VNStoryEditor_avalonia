@@ -35,8 +35,8 @@ public sealed class ChapterSpeakerTests : IDisposable
         {
             (ChapterSheetNames.Episodes, new[]
             {
-                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y" },
-                new string?[] { "ep01", null, "Main", "ep01", "0", "0" }
+                new string?[] { "EpisodeId", "제목", "대사엔트리", "X", "Y" },
+                new string?[] { "ep01", null, "ep01", "0", "0" }
             }),
             (ChapterSheetNames.Edges, new[]
             {

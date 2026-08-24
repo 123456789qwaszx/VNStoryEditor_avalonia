@@ -15,7 +15,6 @@ public sealed record ChapterEpisode(
     string EpisodeId,
     string Title,
     string Index,
-    string Kind,
     string DialogueEntry,
     double X,
     double Y,

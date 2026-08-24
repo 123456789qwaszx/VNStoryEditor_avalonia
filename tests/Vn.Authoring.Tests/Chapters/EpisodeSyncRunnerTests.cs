@@ -182,7 +182,7 @@ public sealed class EpisodeSyncRunnerTests : IDisposable
     {
         var episodes = episodeIds
             .Select((id, index) =>
-                new ChapterEpisode(id, id, "", "Main", id, index * 200, 0, null, null, index + 2))
+                new ChapterEpisode(id, id, "", id, index * 200, 0, null, null, index + 2))
             .ToList();
 
         var edges = episodeIds

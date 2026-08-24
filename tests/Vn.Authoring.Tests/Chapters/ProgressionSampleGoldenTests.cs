@@ -69,9 +69,10 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
 
         Assert.Equal(["ch01_alone", "ch01_true"], endings);
 
-        // ⚠ v12 (2026-08-24) — 저작의 `연출` 칸이 폐지됐다. 계약의 `ViaNodeId`는 남아
-        // 있지만 이제 **언제나 빈 문자열**이다. 저쪽 DTO를 바꾸지 않는다 — 안 채울 뿐이다.
-        // 표본이 그 사실을 보여 주는 파일이므로 그것도 함께 건다.
+        // ⚠ `ViaNodeId`가 비는 이유가 2026-08-24에 바뀌었다. 예전에는 저작의 `연출` 칸이
+        // 폐지돼서 아무도 안 채웠고, 지금은 **자유 씬의 원본이 연출 그래프의 배선**이라
+        // 프로젝트 없이 내보내면 채울 것이 없다. 이 표본은 챕터 모델만으로 내보내므로
+        // 여전히 비어야 한다 — 배선이 실리는 쪽은 `ChapterViaSceneTests`가 건다.
         Assert.All(
             document.RootElement
                 .GetProperty("Nodes")
@@ -95,13 +96,13 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         using (var workbook = new XLWorkbook())
         {
             Sheet(workbook, ChapterSheetNames.Episodes,
-                ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"],
+                ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
                 [
-                    ["시작", "복도", "Main", "시작", "0", "0", null],
-                    ["믿는길", "라루를 믿는다", "Main", "믿는길", "1", "0", null],
-                    ["혼자길", "혼자 간다", "Main", "혼자길", "1", "1", null],
-                    ["좋은끝", "함께 문을 연다", "Main", "좋은끝", "2", "0", null],
-                    ["쓸쓸한끝", "혼자 문을 연다", "Main", "쓸쓸한끝", "2", "1", null]
+                    ["시작", "복도", "시작", "0", "0", null],
+                    ["믿는길", "라루를 믿는다", "믿는길", "1", "0", null],
+                    ["혼자길", "혼자 간다", "혼자길", "1", "1", null],
+                    ["좋은끝", "함께 문을 연다", "좋은끝", "2", "0", null],
+                    ["쓸쓸한끝", "혼자 문을 연다", "쓸쓸한끝", "2", "1", null]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Edges,

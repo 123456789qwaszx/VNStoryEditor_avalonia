@@ -71,6 +71,8 @@ public static class ChapterWorkbookMigrator
             MigrateChoiceSheetToDictionary(workbook);   // v9 — 칸 → 전역 문구 사전
             MigrateEndingKeysToEdges(workbook);         // v11 — 엔딩키가 에피소드 → 간선
             DropHideWhenLocked(workbook);               // 2026-08-24 — `잠금시 숨김` 폐지
+            // ⚠ 엔딩키 이행보다 <b>뒤</b>다 — 그쪽이 에피소드의 옛 열 자리를 보고 걷는다.
+            DropEpisodeKind(workbook);                  // v13 — `종류` 폐지
             MigrateConditions(workbook);
             MigrateStats(workbook);
             RemoveEmptyFixtures(workbook);
@@ -123,6 +125,8 @@ public static class ChapterWorkbookMigrator
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
                 Header(workbook, ChapterSheetNames.Edges, 8) != "엔딩키") ||
                Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키" ||
+               // v13 (2026-08-25) — 에피소드의 `종류`가 남아 있으면 아직 이행 전이다.
+               Header(workbook, ChapterSheetNames.Episodes, 3) == "종류" ||
                // 겉모습이 안 입혀진 파일 (2026-08-18). 자동 필터 하나로 대표해 본다 —
                // 셋(고정·필터·너비)이 언제나 함께 들어가므로 하나가 없으면 셋 다 없다.
                NeedsChrome(workbook);
@@ -308,6 +312,27 @@ public static class ChapterWorkbookMigrator
 
         // 인덱스는 안 쓰인다(소유자) — 열째로 지운다. `도달불가 허용`(옛 L)이 K로 따라온다.
         sheet.Column(3).Delete();
+    }
+
+    /// <summary>
+    /// v13 (2026-08-25 소유자) — 에피소드의 <c>종류</c> 열을 걷는다.
+    ///
+    /// <c>Main</c>/<c>Attachment</c>는 코어가 <c>EpisodeKind</c>를 지우면서 뜻을 잃었다.
+    /// 내보내기가 싣지 않고, 도달성 증명의 부착 특례도 함께 사라졌으므로 <b>읽어도 아무도
+    /// 쓰지 않는 칸</b>이 됐다. 의도한 섬은 <c>도달불가 허용</c>이 적는다.
+    ///
+    /// ⚠ 값을 옮기지 않는다 — 옮길 곳이 없다. <c>Attachment</c>였던 행은 이제 들어오는
+    /// 간선이 없으면 도달 불가로 잡히고, 그것이 맞는 판정이다. 원본은 <c>.bak</c>에 남는다.
+    /// </summary>
+    private static void DropEpisodeKind(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Episodes) is not { } sheet ||
+            Header(workbook, ChapterSheetNames.Episodes, 3) != "종류")
+        {
+            return;
+        }
+
+        sheet.Column(3).Delete();   // 대사엔트리·X·Y·메모가 한 칸씩 당겨진다
     }
 
     /// <summary>

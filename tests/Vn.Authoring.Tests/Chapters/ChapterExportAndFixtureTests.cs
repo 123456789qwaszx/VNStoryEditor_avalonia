@@ -59,7 +59,11 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         JsonElement start = nodes[0];
         Assert.Equal("main05.01", start.GetProperty("EpisodeId").GetString());
         Assert.Equal("닫힌 문 앞에서", start.GetProperty("Title").GetString());
-        Assert.Equal("Main", start.GetProperty("Kind").GetString());
+
+        // ⚠ 2026-08-25 — `Kind`(Main/Attachment)가 계약에서 사라졌다. 코어가 `EpisodeKind`를
+        // 통째로 지웠으므로 실으면 조용히 버려지는 칸이 하나 늘 뿐이다.
+        Assert.False(start.TryGetProperty("Kind", out _));
+        Assert.False(start.TryGetProperty("Attachments", out _));
         // ⚠ 견본 워크북의 `대사엔트리`가 `Story_ch05_01`이다 — 이름 규칙이 어디에도 없던
         // 시절 사람이 접두를 손으로 적어 둔 것이다(§4 가운데 줄의 그 방식). 이미터를
         // 통과하면 접두가 한 번 더 붙고, **그 값이 맞다**: 이미터가 그 노드에 붙이는 yarn
@@ -78,13 +82,13 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.Equal(1, options.GetArrayLength());
         Assert.Equal("main05.03", options[0].GetProperty("TargetEpisodeId").GetString());
 
-        // 부착 노드는 Kind가 Attachment이다. v8에서 관문이 길(간선)로 내려가면서 노드의
-        // VisibleConditions/UnlockConditions는 비어 나간다 — ⚠ 간선이 없는 부착의 표시
-        // 제어는 아직 갈 곳이 없다(열린 항목: run-log 2026-08-16 v8).
-        JsonElement attachment = nodes.EnumerateArray()
+        // 2026-08-25 — 부착이라는 종류가 계약에서 사라졌다. `attach05.02s`는 이제 들어오는
+        // 간선이 없는 <b>보통 에피소드</b>로 나가고, 의도임은 저작 쪽 `도달불가 허용`이
+        // 적는다(산출물에는 안 실린다 — 저작의 사정이다).
+        JsonElement island = nodes.EnumerateArray()
             .Single(node => node.GetProperty("EpisodeId").GetString() == "attach05.02s");
-        Assert.Equal("Attachment", attachment.GetProperty("Kind").GetString());
-        Assert.Equal(0, attachment.GetProperty("VisibleConditions").GetArrayLength());
+        Assert.False(island.TryGetProperty("Kind", out _));
+        Assert.Equal(0, island.GetProperty("VisibleConditions").GetArrayLength());
 
         // 엔딩 후보.
         JsonElement ending = nodes.EnumerateArray()
@@ -218,8 +222,8 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             "naming",
             string.Empty,
             [
-                new ChapterEpisode("ep1", "첫 화", "", "Main", "장면 1", 0, 0, null, null, 2),
-                new ChapterEpisode("ep2", "둘째", "", "Main", "new01", 200, 0, null, null, 3)
+                new ChapterEpisode("ep1", "첫 화", "", "장면 1", 0, 0, null, null, 2),
+                new ChapterEpisode("ep2", "둘째", "", "new01", 200, 0, null, null, 3)
             ],
             [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
             [],
@@ -347,8 +351,8 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             "stats",
             string.Empty,
             [
-                new ChapterEpisode("ep1", "첫 화", "", "Main", "ep1", 0, 0, null, null, 2),
-                new ChapterEpisode("ep2", "둘째", "", "Main", "ep2", 200, 0, null, null, 3)
+                new ChapterEpisode("ep1", "첫 화", "", "ep1", 0, 0, null, null, 2),
+                new ChapterEpisode("ep2", "둘째", "", "ep2", 200, 0, null, null, 3)
             ],
             [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
             [],

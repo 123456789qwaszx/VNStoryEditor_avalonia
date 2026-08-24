@@ -194,16 +194,14 @@ public sealed class BoolStatSetTests : IDisposable
     }
 
     [Fact]
-    public void 모든_길이_선택지로_나간다()
+    public void 길의_종류는_아예_실리지_않는다()
     {
         // v12 (2026-08-24) — 저작에서 `종류` 칸이 폐지됐다. 문구 없이 넘어가는 길이
         // 사라졌으므로 "누가 고르나"를 물을 것이 없다: 언제나 플레이어다.
         //
-        // ⚠ 값은 **코어 enum의 멤버 이름 그대로**여야 한다. 글자를 손으로 적지 않고
-        // 코어 타입에서 가져온다 — 저쪽이 개명하면 이 줄이 깨진다.
-        Assert.Equal(
-            nameof(Ked.Progression.OptionKind.PlayerChoice),
-            OnlyOptionKind(Read("trust +1")));
+        // 2026-08-25 — 그래서 코어에 `Kind` 칸을 세워 달라던 부탁을 <b>철회</b>했고,
+        // 이쪽도 안 싣는다. 코어는 문구의 유무로 가른다(D5) — 그 규약이 하나뿐이어야 한다.
+        Assert.False(OnlyOption(Read("trust +1")).TryGetProperty("Kind", out _));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -222,14 +220,13 @@ public sealed class BoolStatSetTests : IDisposable
         return (change.GetProperty("Op").GetString()!, change.GetProperty("Amount").GetInt32());
     }
 
-    /// <summary>내보내고 첫 간선의 `Kind`.</summary>
-    private static string OnlyOptionKind(ChapterGraphModel model)
+    /// <summary>내보낸 첫 간선. ⚠ 문서를 닫으면 요소가 죽으므로 복제해서 돌려준다.</summary>
+    private static System.Text.Json.JsonElement OnlyOption(ChapterGraphModel model)
     {
         using System.Text.Json.JsonDocument document = Exported(model);
 
         return document.RootElement
-            .GetProperty("Nodes")[0].GetProperty("NextOptions")[0]
-            .GetProperty("Kind").GetString()!;
+            .GetProperty("Nodes")[0].GetProperty("NextOptions")[0].Clone();
     }
 
     /// <summary>내보내기 — 거부되면 사유를 그대로 들고 넘어진다.</summary>
@@ -270,9 +267,9 @@ public sealed class BoolStatSetTests : IDisposable
         using (var workbook = new XLWorkbook())
         {
             Sheet(workbook, ChapterSheetNames.Episodes,
-                ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"],
+                ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
                 [.. ids.Select((id, index) =>
-                    new string?[] { id, id, "Main", $"Story_{index}", $"{index * 200}", "0", null })]);
+                    new string?[] { id, id, $"Story_{index}", $"{index * 200}", "0", null })]);
 
             Sheet(workbook, ChapterSheetNames.Edges,
                 [

@@ -75,9 +75,11 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
     }
 
     [Fact]
-    public void 내보내기는_언제나_false로_나간다()
+    public void 내보내기에_그_칸이_아예_없다()
     {
-        // 저쪽 DTO는 안 바꾼다 — 칸을 없애면 옛 진행 JSON이 안 읽힌다. 안 채울 뿐이다.
+        // 2026-08-25 — 저쪽 DTO에서도 사라졌다. 여기까지는 "안 채울 뿐"이었는데
+        // (칸을 없애면 옛 진행 JSON이 안 읽히므로), 코어가 칸을 지우면서 이쪽도 뺀다.
+        // 남겨 두면 조용히 버려지는 칸이 하나 더 생긴다.
         string path = Path.Combine(_folder, "export.xlsx");
         WriteOldShape(path);
         ChapterWorkbookMigrator.Migrate(path);
@@ -88,8 +90,7 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
         Assert.False(export.Refused, string.Join(
             " / ", export.Validation.All.Select(item => item.Message)));
 
-        Assert.Contains("\"HideWhenLocked\": false", export.Json);
-        Assert.DoesNotContain("\"HideWhenLocked\": true", export.Json);
+        Assert.DoesNotContain("HideWhenLocked", export.Json);
     }
 
     /// <summary>`잠금시 숨김`(G)이 살아 있던 옛 모양 — 그 뒤로 잠금 안내문·엔딩키.</summary>
@@ -98,10 +99,10 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
         using var book = new XLWorkbook();
 
         Sheet(book, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"],
+            ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
             [
-                ["시작", "첫 화", "Main", "장면_1", "0", "0", null],
-                ["끝", "끝 화", "Main", "장면_2", "200", "0", null]
+                ["시작", "첫 화", "장면_1", "0", "0", null],
+                ["끝", "끝 화", "장면_2", "200", "0", null]
             ]);
 
         Sheet(book, ChapterSheetNames.Edges,

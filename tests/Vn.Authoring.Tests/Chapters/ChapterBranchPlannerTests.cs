@@ -10,7 +10,7 @@ namespace Vn.Authoring.Tests.Chapters;
 public sealed class ChapterBranchPlannerTests
 {
     private static ChapterEpisode Episode(string id, double x, double y) =>
-        new(id, id, "10", "Main", $"Story_{id}", x, y,
+        new(id, id, "10", $"Story_{id}", x, y,
             EndingKey: null, Memo: null, SourceRow: 2, AllowUnreachable: false);
 
     private static ChapterEdge Edge(string from, string to) =>

@@ -229,7 +229,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
             sourcePath: Path.Combine(_root, "chapters", "ch01.xlsx"),
             episodes: episodeIds
                 .Select(id => new ChapterEpisode(
-                    EpisodeId: id, Title: id, Index: "1", Kind: "메인", DialogueEntry: id,
+                    EpisodeId: id, Title: id, Index: "1", DialogueEntry: id,
                     X: 0, Y: 0, EndingKey: null, Memo: null, SourceRow: 2))
                 .ToList(),
             edges: [],

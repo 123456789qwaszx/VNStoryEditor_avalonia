@@ -38,7 +38,10 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         Assert.Equal(6, model.Episodes.Count);
         Assert.Equal(5, model.Edges.Count);
         Assert.Equal(4, model.Conditions.Count);
-        Assert.Equal(3, model.Stats.Count);
+
+        // 2026-08-25 — `복도지남` 깃발이 늘었다. 폐지된 `cleared:main05.02`를 대신하는
+        // Bool 스탯이고, main05.02에서 나가는 모든 간선이 켠다.
+        Assert.Equal(4, model.Stats.Count);
         Assert.Equal(3, model.Fixtures.Count);
     }
 
@@ -119,9 +122,26 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         // AND는 ';' — 항이 둘이 된다.
         Assert.Equal(2, model.FindCondition("지쳐있음")!.Parsed.Count);
 
-        ConditionTerm cleared = Assert.Single(model.FindCondition("복도완료")!.Parsed);
-        Assert.Equal(ConditionTermKind.EpisodeCleared, cleared.Kind);
-        Assert.Equal("main05.02", cleared.Key);
+        // `cleared:main05.02`가 있던 자리다 (2026-08-25 폐지). 같은 것을 깃발로 적는다 —
+        // main05.02에서 나가는 <b>모든</b> 간선이 이 깃발을 켠다(견본 `간선` 시트).
+        ConditionTerm passed = Assert.Single(model.FindCondition("복도완료")!.Parsed);
+        Assert.Equal(ConditionTermKind.StatComparison, passed.Kind);
+        Assert.Equal("복도지남", passed.Key);
+        Assert.Equal(ConditionComparison.Exactly, passed.Comparison);
+        Assert.Equal(1, passed.Value);
+    }
+
+    [Fact]
+    public void 견본에_폐지된_cleared_가_남아_있지_않다()
+    {
+        // 견본은 사람이 보고 베끼는 파일이다 — 폐지된 문법이 남아 있으면 그것이 퍼진다.
+        ChapterGraphModel model = ChapterWorkbookReader.Read(SamplePath);
+
+        Assert.False(model.HasErrors);
+        Assert.All(
+            model.Conditions,
+            condition => Assert.DoesNotContain(
+                "cleared:", condition.Expression ?? string.Empty, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -204,14 +224,15 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     [Fact]
     public void 빈_대사엔트리가_오류로_잡힌다()
     {
+        // v13 (2026-08-25) — `종류`가 걷히며 대사엔트리가 D → C로 당겨졌다.
         var sheets = Baseline();
-        sheets[0].Rows[1][3] = null;
+        sheets[0].Rows[1][2] = null;
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.DialogueEntryBlank);
 
         Assert.Equal("에피소드", problem.Sheet);
         Assert.Equal(2, problem.Row);
-        Assert.Equal("D", problem.Column);
+        Assert.Equal("C", problem.Column);
     }
 
     [Fact]
@@ -318,11 +339,11 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 진단은_파일_시트_행_열을_한_줄로_말한다()
     {
         var sheets = Baseline();
-        sheets[0].Rows[1][3] = null;
+        sheets[0].Rows[1][2] = null;
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.DialogueEntryBlank);
 
-        Assert.StartsWith("chapter.xlsx · 에피소드 · 2행 · D열 — ", problem.Describe());
+        Assert.StartsWith("chapter.xlsx · 에피소드 · 2행 · C열 — ", problem.Describe());
     }
 
     [Fact]
@@ -367,9 +388,9 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
         // v11 (2026-08-18) — 에피소드에서 `엔딩키`가 빠지고(메모가 7열로 당겨졌다),
         // 간선에 `종류`·`엔딩키`·`연출` 셋이 뒤에 붙었다.
         ("에피소드", [
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "메모"],
-            ["ep1", "첫 화", "Main", "Story_ep1", "0", "0", null, null, null],
-            ["ep2", "둘째 화", "Main", "Story_ep2", "200", "0", null, null, null]
+            ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
+            ["ep1", "첫 화", "Story_ep1", "0", "0", null, null, null],
+            ["ep2", "둘째 화", "Story_ep2", "200", "0", null, null, null]
         ]),
         ("간선", [
             ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "엔딩키"],

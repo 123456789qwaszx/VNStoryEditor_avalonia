@@ -25,7 +25,6 @@
       "EpisodeId": "시작",
       "Title": "복도",
       "IndexText": "",
-      "Kind": "Main",
       "DialogueEntryId": "시작",
       "VisibleConditions": [],
       "UnlockConditions": [],
@@ -33,10 +32,8 @@
         {
           "TargetEpisodeId": "믿는길",
           "ChoiceLabel": "라루를 믿는다",
-          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
-          "HideWhenLocked": false,
           "LockedReasonText": "",
           "ViaNodeId": "",
           "StatChanges": [
@@ -50,10 +47,8 @@
         {
           "TargetEpisodeId": "혼자길",
           "ChoiceLabel": "혼자 간다",
-          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
-          "HideWhenLocked": false,
           "LockedReasonText": "",
           "ViaNodeId": "",
           "StatChanges": [
@@ -65,7 +60,6 @@
           ]
         }
       ],
-      "Attachments": [],
       "IsChapterEndingCandidate": false,
       "EndingKey": "",
       "DesignerNote": "",
@@ -78,7 +72,6 @@
       "EpisodeId": "믿는길",
       "Title": "라루를 믿는다",
       "IndexText": "",
-      "Kind": "Main",
       "DialogueEntryId": "믿는길",
       "VisibleConditions": [],
       "UnlockConditions": [],
@@ -86,16 +79,13 @@
         {
           "TargetEpisodeId": "좋은끝",
           "ChoiceLabel": "문을 연다",
-          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
-          "HideWhenLocked": false,
           "LockedReasonText": "",
           "ViaNodeId": "",
           "StatChanges": []
         }
       ],
-      "Attachments": [],
       "IsChapterEndingCandidate": false,
       "EndingKey": "",
       "DesignerNote": "",
@@ -108,7 +98,6 @@
       "EpisodeId": "혼자길",
       "Title": "혼자 간다",
       "IndexText": "",
-      "Kind": "Main",
       "DialogueEntryId": "혼자길",
       "VisibleConditions": [],
       "UnlockConditions": [],
@@ -116,16 +105,13 @@
         {
           "TargetEpisodeId": "쓸쓸한끝",
           "ChoiceLabel": "문을 연다",
-          "Kind": "PlayerChoice",
           "VisibleConditions": [],
           "Conditions": [],
-          "HideWhenLocked": false,
           "LockedReasonText": "",
           "ViaNodeId": "",
           "StatChanges": []
         }
       ],
-      "Attachments": [],
       "IsChapterEndingCandidate": false,
       "EndingKey": "",
       "DesignerNote": "",
@@ -138,12 +124,10 @@
       "EpisodeId": "좋은끝",
       "Title": "함께 문을 연다",
       "IndexText": "",
-      "Kind": "Main",
       "DialogueEntryId": "좋은끝",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
-      "Attachments": [],
       "IsChapterEndingCandidate": true,
       "EndingKey": "ch01_true",
       "DesignerNote": "",
@@ -156,12 +140,10 @@
       "EpisodeId": "쓸쓸한끝",
       "Title": "혼자 문을 연다",
       "IndexText": "",
-      "Kind": "Main",
       "DialogueEntryId": "쓸쓸한끝",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
-      "Attachments": [],
       "IsChapterEndingCandidate": true,
       "EndingKey": "ch01_alone",
       "DesignerNote": "",

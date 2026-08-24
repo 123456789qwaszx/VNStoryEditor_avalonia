@@ -378,20 +378,34 @@ public sealed class ChapterGraphSyncViewTests
         Assert.True(File.Exists(Path.Combine(project.ExportFolder, "ch99.progression.json")));
     });
 
-    /// <summary>`도달불가 허용` 열(K — 2026-08-16 인덱스 폐지 후)을 켠다 — D3의 명시 예외.</summary>
+    /// <summary>
+    /// `도달불가 허용` 열을 켠다 — D3의 명시 예외.
+    ///
+    /// ⚠ <b>자리를 못 박지 않는다.</b> 이 열은 규격 칸 뒤에 붙는 선택 열이라 앞 열이
+    /// 걷힐 때마다 옮겨 간다(2026-08-25 `종류` 폐지가 그랬다). 번호를 적어 두면 이미
+    /// 있는 머리글 <b>옆에</b> 하나를 더 세우고, 리더는 앞의 것을 읽어 이 켜기가
+    /// 조용히 안 듣는다. 리더와 같은 규칙으로 <b>이름을 찾아</b> 쓴다.
+    /// </summary>
     private static void AllowUnreachable(string chapterPath, string episodeId)
     {
         using var memory = new MemoryStream(File.ReadAllBytes(chapterPath));
         using var workbook = new ClosedXML.Excel.XLWorkbook(memory);
         ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheet("에피소드");
 
-        sheet.Cell(1, 11).SetValue("도달불가 허용");
+        int column = Enumerable.Range(7, 6).FirstOrDefault(
+            candidate => sheet.Cell(1, candidate).GetString().Trim() == "도달불가 허용");
+
+        if (column == 0)
+        {
+            column = (sheet.LastColumnUsed()?.ColumnNumber() ?? 6) + 1;
+            sheet.Cell(1, column).SetValue("도달불가 허용");
+        }
 
         foreach (ClosedXML.Excel.IXLRow row in sheet.RowsUsed().Skip(1))
         {
             if (row.Cell(1).GetString() == episodeId)
             {
-                row.Cell(11).SetValue("TRUE");
+                row.Cell(column).SetValue("TRUE");
             }
         }
 

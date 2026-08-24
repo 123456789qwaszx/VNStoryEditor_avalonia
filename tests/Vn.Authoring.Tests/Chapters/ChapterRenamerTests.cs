@@ -218,8 +218,8 @@ public sealed class ChapterRenamerTests : IDisposable
         using var book = new XLWorkbook();
 
         Sheet(book, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "종류", "대사엔트리", "X", "Y"],
-            [["main05.02", "조용한 복도", "Main", "장면_1", "0", "0"]]);
+            ["EpisodeId", "제목", "대사엔트리", "X", "Y"],
+            [["main05.02", "조용한 복도", "장면_1", "0", "0"]]);
 
         Sheet(book, ChapterSheetNames.Edges,
             ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건"], []);

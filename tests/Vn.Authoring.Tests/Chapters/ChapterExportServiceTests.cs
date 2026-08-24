@@ -304,8 +304,8 @@ public sealed class ChapterExportServiceTests : IDisposable
         chapterId,
         string.Empty,
         [
-            new ChapterEpisode("ep1", "첫 화", "", "Main", "ep1", 0, 0, null, null, 2),
-            new ChapterEpisode("ep2", "둘째", "", "Main", "ep2", 200, 0, null, null, 3)
+            new ChapterEpisode("ep1", "첫 화", "", "ep1", 0, 0, null, null, 2),
+            new ChapterEpisode("ep2", "둘째", "", "ep2", 200, 0, null, null, 3)
         ],
         [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
         [],
@@ -318,9 +318,9 @@ public sealed class ChapterExportServiceTests : IDisposable
         chapterId,
         string.Empty,
         [
-            new ChapterEpisode("ep1", "첫 화", "", "Main", "ep1", 0, 0, null, null, 2),
-            new ChapterEpisode("ep2", "둘째", "", "Main", "ep2", 200, 0, null, null, 3),
-            new ChapterEpisode("ep3", "닿지 않는 화", "", "Main", "ep3", 400, 0, null, null, 4)
+            new ChapterEpisode("ep1", "첫 화", "", "ep1", 0, 0, null, null, 2),
+            new ChapterEpisode("ep2", "둘째", "", "ep2", 200, 0, null, null, 3),
+            new ChapterEpisode("ep3", "닿지 않는 화", "", "ep3", 400, 0, null, null, 4)
         ],
         [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
         [],

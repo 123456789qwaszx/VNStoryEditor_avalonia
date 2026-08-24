@@ -51,7 +51,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         Assert.Equal("메모", choices.Cell(1, 3).GetString());
 
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
-        Assert.Equal("종류", episodes.Cell(1, 3).GetString());   // 인덱스가 없다
+        Assert.Equal("대사엔트리", episodes.Cell(1, 3).GetString());   // 인덱스도 종류도 없다
         Assert.Equal(string.Empty, episodes.Cell(1, 9).GetString()); // v9 — 선택지수도 없다
 
         // 조건 시트 — 스탯은 스탯 시트를 가리키는 드롭다운, 연산자는 목록.
@@ -103,9 +103,9 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         return XlsxTestWorkbook.Write(_directory, "structured.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모" },
-                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null, null, null },
-                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null, null, null }
+                new string?[] { "EpisodeId", "제목", "대사엔트리", "X", "Y", "엔딩키", "메모" },
+                new string?[] { "ep1", null, "Story_ep1", "0", "0", null, null, null, null },
+                new string?[] { "ep2", null, "Story_ep2", "200", "0", null, null, null, null }
             }),
             ("간선", edges.ToArray()),
             ("조건", conditions.ToArray()),
@@ -137,14 +137,33 @@ public sealed class ChapterSchemaV5Tests : IDisposable
     {
         ChapterGraphModel model = ChapterWorkbookReader.Read(WriteChapter(
         [
-            ["복도완료", "cleared:ep1", null, null, null],
             ["지쳐있음", "trust >= 4; anger <= 2", null, null, null]
         ]));
 
         Assert.False(model.HasErrors);
-        Assert.Equal(ConditionTermKind.EpisodeCleared,
-            Assert.Single(model.FindCondition("복도완료")!.Parsed).Kind);
         Assert.Equal(2, model.FindCondition("지쳐있음")!.Parsed.Count);
+    }
+
+    [Fact]
+    public void 폐지된_cleared_는_고치는_법까지_말하며_거부한다()
+    {
+        // 옛 워크북이 열리는 자리다. 조용히 무시하면 관문이 통째로 사라져 잠긴 길이 열린다 —
+        // 짚되, 무엇으로 바꿔야 하는지까지 말한다.
+        ChapterGraphModel model = ChapterWorkbookReader.Read(WriteChapter(
+        [
+            ["복도완료", "cleared:ep1", null, null, null]
+        ]));
+
+        Assert.True(model.HasErrors);
+        Assert.False(model.FindCondition("복도완료")!.IsValid);
+
+        string message = Assert
+            .Single(model.Diagnostics, item => item.Message.Contains("cleared:"))
+            .Message;
+
+        Assert.Contains("폐지", message);
+        Assert.Contains("cleared_ep1", message);   // 깃발 이름 제안
+        Assert.Contains("스탯변화", message);        // 켜는 자리까지 짚는다
     }
 
     // ── bool 스탯 ───────────────────────────────────────────────────────────
@@ -217,7 +236,10 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         string path = WriteChapter();
 
         Assert.True(ChapterWorkbookWriter.AddCondition(path, "신뢰높음", "trust >= 3").Written);
-        Assert.True(ChapterWorkbookWriter.AddCondition(path, "복도완료", "cleared:ep1").Written);
+
+        // 세 칸으로 못 쪼개는 식은 스탯 칸에 원문 그대로 간다. `cleared:`가 폐지된
+        // 2026-08-25 뒤로 그 탈출구에 남은 것은 <b>복합식</b>이다.
+        Assert.True(ChapterWorkbookWriter.AddCondition(path, "지쳐있음", "trust >= 4; anger <= 2").Written);
 
         using (var workbook = new XLWorkbook(path))
         {
@@ -225,13 +247,13 @@ public sealed class ChapterSchemaV5Tests : IDisposable
             Assert.Equal("trust", sheet.Cell(2, 2).GetString());
             Assert.Equal(">=", sheet.Cell(2, 3).GetString());
             Assert.Equal("3", sheet.Cell(2, 4).GetString());
-            Assert.Equal("cleared:ep1", sheet.Cell(3, 2).GetString()); // 원문 탈출구
+            Assert.Equal("trust >= 4; anger <= 2", sheet.Cell(3, 2).GetString()); // 원문 탈출구
             Assert.Equal(string.Empty, sheet.Cell(3, 3).GetString());
         }
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
         Assert.Equal("trust >= 3", model.FindCondition("신뢰높음")!.Expression);
-        Assert.Equal("cleared:ep1", model.FindCondition("복도완료")!.Expression);
+        Assert.Equal("trust >= 4; anger <= 2", model.FindCondition("지쳐있음")!.Expression);
     }
 
     // ── 구판 이행 ───────────────────────────────────────────────────────────
@@ -272,9 +294,9 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         string path = XlsxTestWorkbook.Write(_directory, "v9.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "종류", "대사엔트리", "X", "Y", "엔딩키", "메모" },
-                new string?[] { "ep1", null, "Main", "Story_ep1", "0", "0", null, null },
-                new string?[] { "ep2", null, "Main", "Story_ep2", "200", "0", null, null }
+                new string?[] { "EpisodeId", "제목", "대사엔트리", "X", "Y", "엔딩키", "메모" },
+                new string?[] { "ep1", null, "Story_ep1", "0", "0", null, null },
+                new string?[] { "ep2", null, "Story_ep2", "200", "0", null, null }
             }),
             ("간선", new[]
             {
@@ -336,8 +358,12 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         Assert.True(File.Exists(path + ".bak")); // 이전 상태가 남는다
 
         // 값이 새 자리로 옮겨져 그대로 읽힌다.
+        //
+        // ⚠ 이 구판 워크북에는 `복도완료`(`cleared:ep1`)가 들어 있다 — 2026-08-25에 폐지된
+        // 문법이라 이행 뒤에도 <b>오류로 남는다</b>. 그것이 맞다: 이행기는 칸의 자리를
+        // 옮기지 조건식의 뜻을 바꾸지 않는다(식은 사람 소유). 아래에서 그 오류가 안내와
+        // 함께 서 있는지도 함께 건다.
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        Assert.False(model.HasErrors);
 
         ChapterEpisode episode = Assert.Single(model.Episodes);
         Assert.Equal("첫 화", episode.Title);
@@ -351,7 +377,11 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         Assert.Equal(1, Assert.Single(edge.StatChanges).Amount);
 
         Assert.Equal("trust >= 3", model.FindCondition("신뢰높음")!.Expression);
+
+        // 식은 자리만 옮겨 그대로 남고, 폐지 판정은 파서가 낸다 — 이행이 뜻을 바꾸지 않는다.
         Assert.Equal("cleared:ep1", model.FindCondition("복도완료")!.Expression);
+        Assert.False(model.FindCondition("복도완료")!.IsValid);
+        Assert.Contains(model.Diagnostics, item => item.Message.Contains("폐지"));
 
         // 빈 픽스처 시트는 사라진다(임시 제거). 데이터 파기가 아니다 — 머리글뿐이었다.
         using (var workbook = new XLWorkbook(path))
