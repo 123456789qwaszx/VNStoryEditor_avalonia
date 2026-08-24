@@ -30,15 +30,29 @@ public sealed class YarnBundle
         string bundleName,
         string storyText,
         IReadOnlyList<YarnDeclaration> declarations,
-        IReadOnlyList<YarnBundleProblem> problems)
+        IReadOnlyList<YarnBundleProblem> problems,
+        string? sourceNodeName = null,
+        string? sourceNodeId = null)
     {
         BundleName = bundleName;
         StoryText = storyText;
         Declarations = declarations;
         Problems = problems;
+        SourceNodeName = sourceNodeName ?? bundleName;
+        SourceNodeId = sourceNodeId ?? string.Empty;
     }
 
     public string BundleName { get; }
+
+    /// <summary>
+    /// 이 번들을 낸 대사 노드의 <b>화면 이름</b>. 번들 이름은 그것을 sanitize한 값이라
+    /// 되짚을 수 없다(`장면 1`·`장면.1`이 둘 다 `장면_1`이 된다) — 이름이 겹쳤을 때
+    /// <b>어느 노드인지</b> 말해 주려고 들고 다닌다 (2026-08-25).
+    /// </summary>
+    public string SourceNodeName { get; }
+
+    /// <summary>겹친 노드가 같은 이름일 때 사람이 구별할 마지막 열쇠.</summary>
+    public string SourceNodeId { get; }
 
     public string StoryText { get; }
 
@@ -238,8 +252,20 @@ public static class YarnBundleEmitter
             name,
             story.ToString(),
             CollectDeclarations(dialogue, definition, tier1Prefix, statNames),
-            problems);
+            problems,
+            dialogue.SourceNodeName,
+            dialogue.SourceNodeId);
     }
+
+    /// <summary>
+    /// 겹친 번들 하나를 사람이 판에서 찾을 수 있게 적는다 — 노드 이름 · Id, 그리고
+    /// <b>비었는지</b>. 대개 한쪽이 빈 노드(개명·재동기화가 남긴 것)라 그 표시가 곧 답이다.
+    /// </summary>
+    private static string Describe(YarnBundle bundle) =>
+        $"  · 노드 '{bundle.SourceNodeName}' ({bundle.SourceNodeId})" +
+        (bundle.StoryText.Contains("#line:", StringComparison.Ordinal)
+            ? string.Empty
+            : "  ← 재생할 줄이 없습니다(빈 노드)");
 
     /// <summary>선언 파일 이름. 폴더당 하나다.</summary>
     public const string DeclarationsFileName = "declarations.yarn";
@@ -574,14 +600,26 @@ public static class YarnBundleEmitter
                         $"'{bundle.BundleName}'을 내보낼 수 없습니다.{Environment.NewLine}{bundle.BlockingSummary()}")));
         }
 
-        string? duplicate = bundles
+        // ⚠ 겹친 <b>노드를 지목한다</b> (2026-08-25). 이름만 알려 주면 찾을 수가 없다 —
+        //    번들 이름은 노드 이름을 sanitize한 값이라 되짚을 수 없고(`장면 1`과 `장면.1`이
+        //    둘 다 `장면_1`이 된다), 애초에 노드 이름은 식별자가 아니라 겹칠 수 있다.
+        //
+        //    이 자리가 갑자기 터지기 시작한 사정이 있다: 재생할 줄이 없는 노드는 예전에
+        //    발행에서 막혀 산출 목록에서 통째로 빠졌고(2026-08-25에 완화했다), 그래서
+        //    그 노드가 낀 중복은 <b>보이지 않았다</b>. 개명이나 재동기화가 남긴 빈 노드가
+        //    판에 하나 더 있으면 여기서 처음 드러난다.
+        IGrouping<string, YarnBundle>? duplicate = bundles
             .GroupBy(bundle => bundle.BundleName, StringComparer.Ordinal)
-            .FirstOrDefault(group => group.Count() > 1)?.Key;
+            .FirstOrDefault(group => group.Count() > 1);
 
         if (duplicate is not null)
         {
             throw new InvalidOperationException(
-                $"번들 이름 '{duplicate}'이 겹칩니다. 같은 폴더에서 서로를 덮어쓰게 됩니다.");
+                $"번들 이름 '{duplicate.Key}'이 겹칩니다. 같은 폴더에서 서로를 덮어쓰고, " +
+                "Yarn 타이틀도 겹쳐 런타임이 둘을 구별하지 못합니다." + Environment.NewLine +
+                string.Join(Environment.NewLine, duplicate.Select(Describe)) +
+                Environment.NewLine +
+                "판에서 한쪽의 이름을 바꾸거나, 안 쓰는 노드면 지워 주세요.");
         }
 
         // ⛔ 접두가 없어진 뒤로(2026-08-24) 번들 파일이 <b>선언 파일과 같은 이름</b>이 될

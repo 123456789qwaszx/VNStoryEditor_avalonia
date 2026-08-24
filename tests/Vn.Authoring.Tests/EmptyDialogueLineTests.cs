@@ -91,6 +91,34 @@ public sealed class EmptyDialogueLineTests
         Assert.Contains($"title: {composition.Bundle!.BundleName}", composition.Bundle.StoryText);
     }
 
+    [Fact]
+    public void 이름이_겹치면_어느_노드인지_지목한다()
+    {
+        // ⚠ 빈 노드가 산출에 들어오면서 드러나기 시작한 자리다 (2026-08-25). 이름만
+        //    알려 주면 찾을 수가 없다 — 번들 이름은 노드 이름을 sanitize한 값이고,
+        //    대개 한쪽이 개명·재동기화가 남긴 빈 노드다.
+        var sample = new Sample();
+        sample.Line("말이 있다");
+
+        DialogueNode twin = sample.Editor.AddDialogueNode(sample.File.Id, name: sample.Dialogue.Name);
+        twin.ScriptId = null;
+
+        YarnBundle[] bundles =
+        [
+            YarnBundleEmitter.Emit(
+                sample.Editor.PublishDialogue(sample.Dialogue.Id).Result, definition: Sample.Definition),
+            LiveNodeComposer.Compose(
+                sample.Project, twin.Id, Sample.Definition, DateTimeOffset.UnixEpoch).Bundle!
+        ];
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+            () => YarnBundleEmitter.WriteBundles(bundles, Path.GetTempPath()));
+
+        Assert.Contains(sample.Dialogue.Name, error.Message);
+        Assert.Contains(twin.Id, error.Message);
+        Assert.Contains("빈 노드", error.Message);   // 어느 쪽을 지우면 되는지가 보인다
+    }
+
     /// <summary>본문이 빈 줄 하나짜리 노드 — 순수 연출 씬의 최소 모양.</summary>
     private static YarnBundle Bundle(out string lineId)
     {
