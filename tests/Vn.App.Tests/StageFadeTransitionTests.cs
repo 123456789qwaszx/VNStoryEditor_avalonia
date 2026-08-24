@@ -215,6 +215,71 @@ public sealed class StageFadeTransitionTests
         stage.Window.Close();
     });
 
+    // ── 같은 라인을 다시 그려도 (2026-08-24 소유자 2차 보고) ────────────────
+    //
+    // "커맨드를 추가했을 때 재생을 시켜도 Fade효과가 안 먹혀. 다른곳에 나갔다 오면 되는데"
+    //
+    // 전이의 출발점이 <b>직전 렌더</b>였다. 커맨드 추가·선택·[＋ 연출 추가]·스탯 토글이
+    // 전부 같은 라인을 다시 그리므로, 그때 출발점이 이번 라인으로 갈려 "바뀐 것이 없다"가
+    // 된다 — 등장도 퇴장도 근거를 잃는다. 다른 라인에 갔다 오면 되던 것이 증거다.
+    // 출발점의 단위는 렌더가 아니라 <b>프레임</b>이어야 한다.
+
+    [Fact]
+    public void 같은_라인을_다시_그려도_페이드는_살아_있다() => HeadlessUi.Run(() =>
+    {
+        Stage stage = Open();
+
+        stage.Draw(Request(CastInSetup, [Nothing]));                   // ln1 — 숨김
+        stage.Draw(Request(CastInSetup, [Nothing, [FadeIn]]));         // ln2 — 등장
+        stage.Draw(Request(CastInSetup, [Nothing, [FadeIn]]));         // 같은 라인 재렌더
+
+        stage.View.SetTransitionProgress(0.5);
+
+        Assert.Contains(0.5, stage.Opacities());
+
+        stage.Window.Close();
+    });
+
+    [Fact]
+    public void 같은_라인을_다시_그려도_퇴장은_살아_있다() => HeadlessUi.Run(() =>
+    {
+        // 퇴장은 <b>직전 프레임의 초상 컨트롤</b>을 다시 얹어 걷는다 — 출발점을 잃으면
+        // 얹을 그림도 함께 사라져, 페이드 없이 그냥 툭 꺼진다.
+        Stage stage = Open();
+
+        stage.Draw(Request(CastInSetup, [[FadeIn]]));                  // ln1 — 보인다
+        int before = stage.PositionedCount();
+
+        stage.Draw(Request(CastInSetup, [[FadeIn], [FadeOut]]));       // ln2 — 퇴장
+        stage.Draw(Request(CastInSetup, [[FadeIn], [FadeOut]]));       // 같은 라인 재렌더
+
+        stage.View.SetTransitionProgress(0.25);
+
+        Assert.Equal(before + 1, stage.PositionedCount());
+        Assert.Contains(0.75, stage.Opacities());
+
+        stage.Window.Close();
+    });
+
+    [Fact]
+    public void 다시_그린_뒤_다음_라인으로_가면_출발점은_그_라인이다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 출발점을 미루는 것이 <b>미는 것을 잊는 것</b>이 되면 안 된다 — 이미 보이던
+        //    슬롯이 다음 라인에서 다시 페이드하면 대사가 넘어갈 때마다 무대가 깜빡인다.
+        Stage stage = Open();
+
+        stage.Draw(Request(CastInSetup, [Nothing]));                   // ln1 — 숨김
+        stage.Draw(Request(CastInSetup, [Nothing, [FadeIn]]));         // ln2 — 등장
+        stage.Draw(Request(CastInSetup, [Nothing, [FadeIn]]));         // 같은 라인 재렌더
+        stage.Draw(Request(CastInSetup, [Nothing, [FadeIn], Nothing]));// ln3 — 그대로 보인다
+
+        stage.View.SetTransitionProgress(0.5);
+
+        Assert.DoesNotContain(0.5, stage.Opacities());
+
+        stage.Window.Close();
+    });
+
     // ── 안 바뀐 것 (이 판정이 넘보지 않는 자리) ─────────────────────────────
 
     [Fact]

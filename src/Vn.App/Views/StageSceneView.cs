@@ -206,6 +206,23 @@ internal sealed class StageSceneView : UserControl
     /// <summary>지금 걷히는 중인 초상들 — 진행도가 확정되면 캔버스에서 내린다.</summary>
     private readonly Dictionary<string, Control> _departingPortraits = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 지금 무대에 선 <b>프레임의 정체</b> — 어느 노드의 어느 라인인가. 전이 기준선
+    /// (직전 자리·가시성·초상 컨트롤·배경)을 미룰지 밀지가 이 값 하나로 갈린다.
+    ///
+    /// ⛔ <b>렌더 한 번이 전이 한 번이 아니다</b> (2026-08-24 소유자 2차 보고: "커맨드를
+    /// 추가했을 때 재생을 시켜도 Fade가 안 먹고, 다른 데 나갔다 오면 된다"). 같은 라인을
+    /// 다시 그리는 일은 늘 있다 — 커맨드 추가·커맨드 선택·[＋ 연출 추가] 플라이아웃·스탯
+    /// HUD 토글·에셋 루트 변경이 전부 <see cref="Render"/>를 부른다. 그때마다 기준선을
+    /// 밀면 <b>직전 라인이 지워지고 이번 라인이 그 자리에 앉아</b> 등장·퇴장·배경
+    /// 크로스페이드의 근거가 통째로 사라진다(직전 = 이번이면 바뀐 것이 없다).
+    /// "다른 데 나갔다 오면 된다"가 그 증거다 — 다른 라인이 기준선을 제대로 채워 줬을 뿐이다.
+    ///
+    /// 그래서 <b>기준선의 단위는 렌더가 아니라 프레임</b>이다. 같은 프레임을 몇 번을 다시
+    /// 그리든 출발점은 직전 라인 하나로 남는다.
+    /// </summary>
+    private (string? NodeId, string? ContextLabel, string? LineId)? _renderedFrame;
+
     private readonly List<(string SlotKey, Control Control, StageRect To)> _transitionEntries = new();
     private string? _backgroundImagePath;
     private string? _previousBackgroundImagePath;
@@ -541,17 +558,29 @@ internal sealed class StageSceneView : UserControl
         _dialogueText = null;
         _dialogueFullText = null;
 
-        // 전이 (W33): 이번 렌더가 "새 자리"가 되고 직전 렌더의 자리가 "출발점"이 된다.
-        _previousPortraitRects = _portraitRects;
+        // 전이 (W33): 이번 렌더가 "새 자리"가 되고 직전 <b>프레임</b>의 자리가 "출발점"이 된다.
+        //
+        // ⛔ 출발점을 미는 것은 <b>다른 프레임으로 넘어갈 때뿐이다</b> (2026-08-24) — 같은
+        //    라인을 다시 그리는 것은 전이가 아니다. 자세한 이유는 _renderedFrame 참조.
+        (string?, string?, string?) frame =
+            (request?.EditContext?.PresentationNodeId, request?.ContextLabel, request?.SelectedLineId);
+        bool sameFrame = _renderedFrame is { } rendered && rendered == frame;
+        _renderedFrame = frame;
+
+        if (!sameFrame)
+        {
+            _previousPortraitRects = _portraitRects;
+            _previousPortraitVisible = _portraitVisible;
+            _previousPortraitControls = _portraitControls;
+            _previousBackgroundImagePath = _backgroundImagePath;
+        }
+
         _portraitRects = new Dictionary<string, StageRect>(StringComparer.Ordinal);
-        _previousPortraitVisible = _portraitVisible;
         _portraitVisible = new Dictionary<string, bool>(StringComparer.Ordinal);
-        _previousPortraitControls = _portraitControls;
         _portraitControls = new Dictionary<string, Control>(StringComparer.Ordinal);
 
         // 캔버스를 비웠으니 얹혀 있던 퇴장 초상도 함께 내려갔다 — 손잡이만 정리한다.
         _departingPortraits.Clear();
-        _previousBackgroundImagePath = _backgroundImagePath;
         _backgroundImagePath = null;
         _backgroundImage = null;
         _backgroundOverlay = null;
