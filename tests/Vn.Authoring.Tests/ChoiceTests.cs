@@ -443,7 +443,8 @@ public class ChoiceTests
             world.Sample.Project,
             Sample.Definition,
             bundleName: "nested_ep");
-        string story = bundle.Files.Single(file => file.FileName == "nested_ep.yarn").Text;
+        string story = bundle.Files
+            .Single(file => file.FileName.EndsWith("nested_ep.yarn", StringComparison.Ordinal)).Text;
 
         Assert.Contains("\n    -> 치킨을 산다", story);   // 라벨이 조건 깊이만큼 들여쓰였다
         Assert.Contains("\n        치킨을 샀다.", story);  // 옵션 본문은 라벨보다 한 단 더

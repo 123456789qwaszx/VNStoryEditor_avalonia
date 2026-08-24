@@ -63,7 +63,11 @@ public sealed class YarnBundle
 
     public bool HasBlockingProblems => Problems.Any(problem => problem.IsBlocking);
 
-    public string StoryFileName => YarnBundleEmitter.FileNameOf(YarnBundleEmitter.StoryPrefix, BundleName);
+    /// <summary>이 번들이 사는 챕터(판 이름). 모르면 빈 문자열이고 파일 이름에 안 붙는다.</summary>
+    public string ChapterId { get; init; } = string.Empty;
+
+    public string StoryFileName =>
+        YarnBundleEmitter.FileNameOf(YarnBundleEmitter.StoryPrefix, BundleName, ChapterId);
 
     /// <summary>파일 이름 → 내용. 이제 하나다.</summary>
     public IEnumerable<(string FileName, string Text)> Files
@@ -254,7 +258,10 @@ public static class YarnBundleEmitter
             CollectDeclarations(dialogue, definition, tier1Prefix, statNames),
             problems,
             dialogue.SourceNodeName,
-            dialogue.SourceNodeId);
+            dialogue.SourceNodeId)
+        {
+            ChapterId = ChapterOf(project, dialogue.SourceNodeId)
+        };
     }
 
     /// <summary>
@@ -339,18 +346,51 @@ public static class YarnBundleEmitter
     public static string StoryNodeTitleOf(string? nodeName, string? nodeId = null) =>
         StoryTitleOf(BundleNameOf(nodeName, nodeId));
 
-    /// <summary>번들 이름 하나가 만들 파일 이름.</summary>
-    public static string FileNameOf(string prefix, string bundleName) => $"{prefix}{bundleName}.yarn";
+    /// <summary>
+    /// 번들 하나가 만들 파일 이름.
+    ///
+    /// <b>챕터를 아는 자리면 파일 이름 앞에 붙인다</b> (2026-08-25 소유자: "각 에피소드가
+    /// 어떤 챕터의 것인지 구분이 불가능한데"). 산출 폴더는 챕터를 섞어 담으므로, 이름에
+    /// 없으면 사람이 파일을 열어 보기 전에는 알 방법이 없다.
+    ///
+    /// ⚠ <b>Yarn 노드 타이틀은 안 건드린다.</b> 런타임은 그 글자로 노드를 찾고 진행 JSON의
+    /// <c>DialogueEntryId</c>가 같은 것을 부르므로, 파일 이름만 바꿔야 유니티 쪽이 그대로
+    /// 돌아간다 — 폴더를 나누지 않는 이유도 같다(YarnProject의 포함 규칙을 안 건드린다).
+    /// </summary>
+    public static string FileNameOf(string prefix, string bundleName, string? chapterId = null) =>
+        chapterId is { Length: > 0 } chapter
+            ? $"{prefix}{YarnSyntax.SanitizeNodeName(chapter)}_{bundleName}.yarn"
+            : $"{prefix}{bundleName}.yarn";
+
+    /// <summary>
+    /// 이 노드가 사는 판의 이름 = 챕터 Id (챕터=판 1:1). 판을 못 찾으면 빈 문자열이다 —
+    /// 그때는 챕터를 모르는 것이므로 이름에 아무것도 안 붙인다.
+    /// </summary>
+    public static string ChapterOf(StoryProject? project, string? nodeId) =>
+        project is null || nodeId is null
+            ? string.Empty
+            : project.Files.FirstOrDefault(file =>
+                file.Nodes.Any(node => string.Equals(node.Id, nodeId, StringComparison.Ordinal)))
+                ?.Name ?? string.Empty;
 
     /// <summary>
     /// 번들 이름 하나가 만들 수 있는 파일 이름 셋. Set·Pres는 연출이 없으면 실제로는
     /// 쓰이지 않지만, "이 이름은 이 노드의 것"을 판정할 때는 셋 다 포함해야 한다.
     /// </summary>
-    public static IEnumerable<string> FileNamesOf(string bundleName)
+    public static IEnumerable<string> FileNamesOf(string bundleName, string? chapterId = null)
     {
-        yield return FileNameOf(StoryPrefix, bundleName);
-        yield return FileNameOf(SetPrefix, bundleName);
-        yield return FileNameOf(PresPrefix, bundleName);
+        foreach (string prefix in new[] { StoryPrefix, SetPrefix, PresPrefix })
+        {
+            yield return FileNameOf(prefix, bundleName, chapterId);
+
+            // ⚠ 챕터 없는 이름도 함께 센다 (2026-08-25). 이름에 챕터를 붙이기 전에 나간
+            //    파일들이 폴더에 남아 있는데, 그것을 고아로 세면 <b>멀쩡한 산출물이
+            //    갑자기 지울 것 목록에 오른다</b>. 옛 이름은 옛 이름대로 그 노드의 것이다.
+            if (chapterId is { Length: > 0 })
+            {
+                yield return FileNameOf(prefix, bundleName);
+            }
+        }
     }
 
     /// <summary>선언 전용 노드의 타이틀. 런타임은 이 노드에 진입하지 않는다.</summary>

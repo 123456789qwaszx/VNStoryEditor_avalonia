@@ -50,7 +50,8 @@ public class YarnBundleEmitterTests
 
         Assert.Equal("test_ep", bundle.BundleName);
         Assert.Equal(
-            new[] { "test_ep.yarn" },
+            // 판 이름이 앞에 붙는다 (2026-08-25) — 산출 폴더가 챕터를 섞어 담기 때문이다.
+            new[] { "테스트_파일_test_ep.yarn" },
             bundle.Files.Select(file => file.FileName));
         Assert.StartsWith("title: test_ep\n---\n", bundle.StoryText, StringComparison.Ordinal);
         // 2026-08-18 — 파일 하나다. 레인이 없어져 Set·Pres 사본을 만들지 않는다.

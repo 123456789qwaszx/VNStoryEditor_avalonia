@@ -52,10 +52,17 @@ public static class OutputManifest
 
         var names = new List<string> { YarnBundleEmitter.DeclarationsFileName };
 
-        foreach (DialogueNode node in project.EnumerateNodes().OfType<DialogueNode>())
+        // ⚠ <b>판을 돌면서</b> 센다 (2026-08-25) — 파일 이름이 챕터를 앞에 달게 되면서
+        //    (챕터=판 1:1) 그 노드가 어느 판에 사는지를 알아야 이름을 맞출 수 있다.
+        //    프로젝트 전체를 평평하게 돌면 챕터를 잃어버리고, 그러면 방금 나간 파일이
+        //    전부 고아로 잡힌다.
+        foreach (StoryFile file in project.Files)
         {
-            names.AddRange(
-                YarnBundleEmitter.FileNamesOf(YarnBundleEmitter.BundleNameOf(node.Name, node.Id)));
+            foreach (DialogueNode node in file.Nodes.OfType<DialogueNode>())
+            {
+                names.AddRange(YarnBundleEmitter.FileNamesOf(
+                    YarnBundleEmitter.BundleNameOf(node.Name, node.Id), file.Name));
+            }
         }
 
         return names;

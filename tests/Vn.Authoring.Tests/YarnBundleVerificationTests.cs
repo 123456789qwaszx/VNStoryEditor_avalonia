@@ -31,7 +31,7 @@ public class YarnBundleVerificationTests
         YarnBundle bundle = EmitGoldenBundle();
         string actual = fileName == YarnBundleEmitter.DeclarationsFileName
             ? YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!
-            : bundle.Files.Single(file => file.FileName == fileName).Text;
+            : bundle.Files.Single(file => file.FileName.EndsWith(fileName, StringComparison.Ordinal)).Text;
         string goldenPath = Path.Combine(GoldenDirectory, fileName);
 
         if (!File.Exists(goldenPath))
@@ -199,7 +199,8 @@ public class YarnBundleVerificationTests
     public void 선택지_골든과_글자_하나까지_같다(string fileName)
     {
         YarnBundle bundle = EmitChoicesBundle(ChoiceTests.BuildChoiceWorld());
-        string actual = bundle.Files.Single(file => file.FileName == fileName).Text;
+        string actual = bundle.Files
+            .Single(file => file.FileName.EndsWith(fileName, StringComparison.Ordinal)).Text;
         string goldenPath = Path.Combine(GoldenDirectory, fileName);
 
         if (!File.Exists(goldenPath))
