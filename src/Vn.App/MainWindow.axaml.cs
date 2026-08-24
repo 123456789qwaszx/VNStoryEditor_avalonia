@@ -1091,21 +1091,44 @@ public partial class MainWindow : Window
             return new[] { exportable[0] };
         }
 
-        var list = new ListBox
+        // 챕터를 실어 나른다 — 목록의 글줄과 거르개가 같은 값 하나를 본다.
+        List<ExportPick> picks = exportable
+            .Select(item => new ExportPick(item, ChapterLabelOf(item)))
+            .OrderBy(pick => pick.Chapter, StringComparer.Ordinal)
+            .ThenBy(pick => pick.Composition.DialogueNodeName, StringComparer.Ordinal)
+            .ToList();
+
+        var list = new ListBox { SelectionMode = SelectionMode.Multiple };
+
+        // ⛔ 거르개 (2026-08-25 소유자: "내보낼 대사노드 선택하는 팝업창에 챕터 단위
+        //    필터기능을 추가해"). 챕터가 여럿이면 목록이 수십 줄이 되는데, 사람이
+        //    내보내려는 것은 <b>대개 한 챕터</b>다. 거르개가 없으면 남의 챕터를 하나씩
+        //    풀어야 하고, 하나 빠뜨리면 그냥 같이 나간다 — 나간 뒤에는 안 보인다.
+        var chapters = new List<string> { AllChapters };
+        chapters.AddRange(picks.Select(pick => pick.Chapter).Distinct(StringComparer.Ordinal));
+
+        var filter = new ComboBox
         {
-            ItemsSource = exportable
-                .Select(item =>
-                {
-                    string pair = item.WorkingPresentation is not null
-                        ? "현재 대사 + 연출"
-                        : "현재 대사 (연출 공급 없음)";
-                    string warning = item.Warnings.Count > 0 ? $" · 경고 {item.Warnings.Count}" : string.Empty;
-                    return $"{item.DialogueNodeName} · {pair}{warning}";
-                })
-                .ToList(),
-            SelectionMode = SelectionMode.Multiple
+            ItemsSource = chapters,
+            SelectedIndex = 0,
+            MinWidth = 180
         };
-        list.SelectAll();
+
+        // 고른 챕터만 남기고 <b>전부 고른 채로</b> 둔다 — 거르개는 "무엇을 볼까"가 아니라
+        // "무엇을 낼까"이므로, 거른 뒤 다시 전체 선택을 시키면 두 번 시키는 것이 된다.
+        void ApplyFilter()
+        {
+            string chosen = filter.SelectedItem as string ?? AllChapters;
+
+            list.ItemsSource = string.Equals(chosen, AllChapters, StringComparison.Ordinal)
+                ? picks
+                : picks.Where(pick => string.Equals(pick.Chapter, chosen, StringComparison.Ordinal)).ToList();
+
+            list.SelectAll();
+        }
+
+        filter.SelectionChanged += (_, _) => ApplyFilter();
+        ApplyFilter();
 
         var confirm = new Button
         {
@@ -1113,17 +1136,32 @@ public partial class MainWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right
         };
 
+        var header = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Margin = new Thickness(0, 0, 0, 8),
+            Children =
+            {
+                new TextBlock { Text = "챕터", VerticalAlignment = VerticalAlignment.Center },
+                filter
+            }
+        };
+
+        DockPanel.SetDock(header, Dock.Top);
+
         var dialog = new Window
         {
             Title = "내보낼 대사 노드 선택 (여러 개 선택 가능)",
-            Width = 460,
-            Height = 340,
+            Width = 520,
+            Height = 380,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new DockPanel
             {
                 Margin = new Thickness(12),
                 Children =
                 {
+                    header,
                     Docked(confirm, Dock.Bottom),
                     new ScrollViewer { Content = list }
                 }
@@ -1132,13 +1170,15 @@ public partial class MainWindow : Window
 
         var picked = new List<LiveComposition>();
 
+        // ⚠ 자리(index)가 아니라 <b>고른 것 자체</b>를 읽는다. 거르개가 목록을 갈아 끼우면
+        //   자리는 원본 목록과 어긋나므로, 자리로 되짚으면 남의 노드를 내보낸다.
         confirm.Click += (_, _) =>
         {
-            foreach (object? item in list.Selection.SelectedIndexes.OrderBy(index => index))
+            foreach (object? item in list.SelectedItems ?? Array.Empty<object>())
             {
-                if (item is int index && index >= 0 && index < exportable.Count)
+                if (item is ExportPick pick)
                 {
-                    picked.Add(exportable[index]);
+                    picked.Add(pick.Composition);
                 }
             }
 
@@ -1147,6 +1187,34 @@ public partial class MainWindow : Window
 
         await dialog.ShowDialog(this);
         return picked;
+    }
+
+    /// <summary>거르개의 "전부" 자리. 챕터 이름과 겹치지 않게 괄호를 쓴다.</summary>
+    private const string AllChapters = "(전체)";
+
+    /// <summary>
+    /// 그 노드가 어느 챕터의 것인가. 판 이름이 곧 챕터다(챕터=판 1:1).
+    /// 어디에도 안 속한 노드는 <b>숨기지 않고</b> 제 자리를 준다 — 안 보이면 못 고친다.
+    /// </summary>
+    private static string ChapterLabelOf(LiveComposition composition) =>
+        composition.Bundle?.ChapterId is { Length: > 0 } chapter ? chapter : "(챕터 없음)";
+
+    /// <summary>목록 한 줄. <c>ToString</c>이 곧 보이는 글줄이다.</summary>
+    private sealed record ExportPick(LiveComposition Composition, string Chapter)
+    {
+        public override string ToString()
+        {
+            string pair = Composition.WorkingPresentation is not null
+                ? "현재 대사 + 연출"
+                : "현재 대사 (연출 공급 없음)";
+            string warning = Composition.Warnings.Count > 0
+                ? $" · 경고 {Composition.Warnings.Count}"
+                : string.Empty;
+
+            // 챕터를 <b>앞에</b> 세운다 — 거르개를 (전체)로 두고 훑을 때, 눈이 왼쪽 끝에서
+            // 묶음을 읽는다. 뒤에 붙이면 노드 이름 길이에 따라 자리가 들쭉날쭉해진다.
+            return $"[{Chapter}] {Composition.DialogueNodeName} · {pair}{warning}";
+        }
     }
 
     private async Task<string?> PickExportFolderAsync(string title)

@@ -109,6 +109,24 @@ public class LiveComposerTests
             warning.Contains("발행본과 현재 대사 내용이 다릅니다", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void 합성된_번들이_제_챕터를_싣고_나온다()
+    {
+        // 내보내기 팝업의 챕터 거르개가 이 값 하나에 얹혀 있다 (2026-08-25 소유자:
+        // "각각의 노드들이 어떤 챕터의 것인지 알아 볼 수가 없잖아"). 여기가 비면
+        // 목록의 모든 줄이 "(챕터 없음)"이 되어 거르개가 아무것도 못 가른다 —
+        // 그런데 팝업은 모달이라 화면 시험이 닿지 않으므로, 그 밑의 값을 여기서 붙든다.
+        var sample = new Sample();
+        string first = sample.Line("첫 줄");
+        sample.Editor.SetScriptLineText(sample.Script.Id, first, "라루", "첫 줄");
+
+        LiveComposition composition = LiveNodeComposer.Compose(
+            sample.Project, sample.Dialogue.Id, GameDefinition.Empty, Now);
+
+        // 판 이름이 곧 챕터다 (챕터=판 1:1).
+        Assert.Equal(sample.File.Name, composition.Bundle!.ChapterId);
+    }
+
     private static string TempDirectory()
     {
         string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Live.{Guid.NewGuid():N}");
