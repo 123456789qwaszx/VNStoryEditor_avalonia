@@ -103,6 +103,7 @@ public partial class MainWindow : Window
             ApplyTabChrome();
             EnterStageTab();
         };
+        Graph.NodeActivated += nodeId => UiGuard.Run(_session, "무대에서 보기", () => OpenOnStage(nodeId));
         // XAML 기본은 펼침이고 SelectionChanged는 이미 정해진 선택에 오지 않는다 —
         // 여기서 한 번 맞춰 주지 않으면 첫 화면(챕터 그래프)만 어긋난다.
         ApplyTabChrome();
@@ -295,6 +296,38 @@ public partial class MainWindow : Window
     /// 판이고, 여기 들어왔다는 것은 그 씬을 연출하겠다는 것이다. 이미 채널이 서 있으면
     /// 멱등이라 아무 일도 안 일어난다.
     /// </summary>
+    /// <summary>
+    /// 연출 그래프에서 카드를 더블클릭했다 — 그 노드를 <b>무대에 올린다</b>
+    /// (2026-08-25 소유자: "더블클릭한 노드가 선택된채로").
+    ///
+    /// 고르는 것이 먼저이고 탭은 그다음이다. 탭 전환이 <see cref="EnterStageTab"/>를 부르고
+    /// 그것이 <b>지금 고른 것</b>을 보므로, 순서가 뒤집히면 무대는 <b>직전 노드</b>를 연다.
+    ///
+    /// ⚠ 대사 노드는 <see cref="EnterPresentationChannel"/>이 선택을 <b>연출 노드로</b>
+    /// 옮긴다(탭에 들어오는 것과 같은 뜻이라 같은 함수 하나를 지난다 — 사본 금지).
+    /// 그것이 곧 "더블클릭한 노드가 선택된 채"다: 무대가 그리는 것은 그 대사의 씬이고,
+    /// 대사 노드를 고른 채로 두면 발행본이 그려져 <b>잠긴 화면</b>이 된다.
+    ///
+    /// 설정 노드는 무대에 올릴 것이 없다. 조용히 아무 일도 안 하면 더블클릭이 고장 난
+    /// 것처럼 보이므로 사유를 말한다.
+    /// </summary>
+    private void OpenOnStage(string nodeId)
+    {
+        if (_session.Project.FindNode(nodeId) is not { } node)
+        {
+            return;
+        }
+
+        if (node is SetNode)
+        {
+            _session.SetStatus("설정 노드는 무대에서 볼 것이 없습니다 — 대사 노드를 눌러 주세요.");
+            return;
+        }
+
+        _session.Select(nodeId);
+        MainTabs.SelectedItem = StageTabItem;
+    }
+
     private void EnterStageTab()
     {
         if (!ReferenceEquals(MainTabs.SelectedItem, StageTabItem) ||

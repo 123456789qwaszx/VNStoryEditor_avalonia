@@ -41,6 +41,16 @@ public partial class GraphEditorView : UserControl
     private readonly List<FileProxyVisual> _proxies = new();
     private readonly List<EdgeVisual> _edges = new();
 
+    /// <summary>
+    /// 카드를 <b>더블클릭</b>했다 — "이 노드를 무대에서 본다" (2026-08-25 소유자: "특정
+    /// 노드를 더블 클릭했을 때, 무대프리뷰로 연결되도록. 더블클릭한 노드가 선택된채로").
+    ///
+    /// ⚠ 여기서 탭을 바꾸지 않는다. 이 판은 탭이 있다는 것도, 무대 프리뷰가 있다는 것도
+    /// 모른다 — 두 화면은 서로를 모르고 <see cref="AuthoringSession"/> 하나만 본다(G-1).
+    /// 무엇을 열지는 셸이 정한다.
+    /// </summary>
+    internal event Action<string>? NodeActivated;
+
     /// <summary>챕터(판) 박스 — 펼친 판의 노드들을 감싸는 배경 프레임 + 이름표 (2단계 무대 3번).</summary>
     private readonly List<Control> _frames = new();
 
@@ -1369,6 +1379,18 @@ public partial class GraphEditorView : UserControl
         GraphCanvas.Children.Add(card);
 
         card.PointerPressed += (_, args) => OnCardPressed(visual, args);
+
+        // 더블클릭 = 이 노드를 무대에서 본다. 첫 누름이 이미 선택과 끌기를 시작해 두므로
+        // (OnCardPressed) 여기서 할 일은 <b>그 끌기를 걷고</b> 셸에 알리는 것뿐이다 —
+        // 안 걷으면 탭이 바뀐 뒤에도 카드가 마우스에 붙어 따라다닌다.
+        card.DoubleTapped += (_, args) =>
+        {
+            _draggingCard = null;
+            _draggingGroup = false;
+            args.Handled = true;
+            NodeActivated?.Invoke(visual.NodeId);
+        };
+
         return visual;
     }
 
