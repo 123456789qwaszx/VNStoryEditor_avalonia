@@ -105,6 +105,54 @@ public sealed class SpeakerTabTests : IDisposable
         Assert.Contains("이미 있습니다", session.StatusMessage);
     });
 
+    // ── 개명은 참조를 끌고 간다 (2026-08-24 소유자) ─────────────────────────
+    //
+    // "조건이나 화자의 이름을 편집한 경우도 마찬가지입니다." 등록부에서만 갈면 그 이름을
+    // 쓰던 대사 줄이 전부 미등록이 된다 — 드롭다운에서 사라지고, 초상화 매핑이 끊기고,
+    // 공백 있는 이름은 파서가 산문으로 읽어 대사와 합쳐진다.
+
+    [Fact]
+    public void 개명하면_이미_쓰인_대본의_화자_칸이_따라간다() => HeadlessUi.Run(() =>
+    {
+        WriteDialogueRow("ch01", "ep01", "늙은 상인", "어서 오게.");
+        WriteDialogueRow("ch02", "ep02", "늙은 상인", "또 왔군.");
+
+        (ChapterGraphView view, AuthoringSession session, _) = Show();
+
+        Add(view, "늙은 상인", "merchant");
+        Rename(view, 0, "떠돌이 상인");
+
+        SpeakerSpec saved = Assert.Single(session.Definition.Speakers);
+        Assert.Equal("떠돌이 상인", saved.Name);
+
+        // 챕터를 가리지 않는다 — 목록이 프로젝트의 것이므로 개명도 프로젝트의 것이다.
+        Assert.Equal("떠돌이 상인", SpeakerCell("ch01", "ep01"));
+        Assert.Equal("떠돌이 상인", SpeakerCell("ch02", "ep02"));
+
+        // 그리고 드롭다운도 새 이름을 담는다.
+        Assert.Equal(["떠돌이 상인"], SpeakerList("ch01", "ep01"));
+
+        // ⚠ 보고는 저장 뒤에 선다 — 이어지는 어휘 밀기의 메시지가 덮으면 사람은 무엇이
+        // 따라갔는지 못 본다.
+        Assert.Contains("따라갔습니다", session.StatusMessage);
+    });
+
+    [Fact]
+    public void 이미_있는_이름으로는_개명하지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 목록이 신원이라 두 줄이 같은 이름을 가질 수 없다 — [＋ 추가]와 같은 규칙이다.
+        // 허용하면 두 화자의 줄이 한 이름으로 합쳐지고, 되돌릴 손잡이가 없다.
+        (ChapterGraphView view, AuthoringSession session, _) = Show();
+
+        Add(view, "라루", "laru");
+        Add(view, "윌로", "willo");
+
+        Rename(view, 1, "라루");
+
+        Assert.Equal(["라루", "윌로"], session.Definition.Speakers.Select(speaker => speaker.Name));
+        Assert.Contains("이미 있습니다", session.StatusMessage);
+    });
+
     [Fact]
     public void 구판_화자_시트는_한_번_옮겨지고_사라진다() => HeadlessUi.Run(() =>
     {
@@ -172,6 +220,20 @@ public sealed class SpeakerTabTests : IDisposable
         Dispatcher.RunJobs();
     }
 
+    /// <summary>그 줄의 이름 칸을 고치고 Enter로 확정한다 — 사람이 하는 그대로.</summary>
+    private static void Rename(ChapterGraphView view, int row, string name)
+    {
+        TextBox box = Rows(view)[row].Children.OfType<TextBox>().First();
+        box.Text = name;
+        box.RaiseEvent(new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+            Key = Avalonia.Input.Key.Enter
+        });
+
+        Dispatcher.RunJobs();
+    }
+
     private static List<Grid> Rows(ChapterGraphView view) =>
         view.FindControl<StackPanel>("SpeakerListPanel")!.Children.OfType<Grid>().ToList();
 
@@ -194,6 +256,31 @@ public sealed class SpeakerTabTests : IDisposable
             .Select(row => list.Cell(row, 1).GetString().Trim())
             .Where(value => value.Length > 0)
             .ToList();
+    }
+
+    /// <summary>대본 첫 줄(인덱스 10)에 화자·내용을 적어 둔다 — 이미 쓰인 원고를 흉내 낸다.</summary>
+    private void WriteDialogueRow(string chapterId, string episodeId, string speaker, string text)
+    {
+        string path = EpisodePath(chapterId, episodeId);
+
+        using var workbook = new XLWorkbook(path);
+        IXLWorksheet sheet = workbook.Worksheets.First(candidate =>
+            candidate.Cell(1, 1).GetString().Trim() == "유형");
+
+        sheet.Cell(2, 5).SetValue(speaker);   // E열 — 화자
+        sheet.Cell(2, 6).SetValue(text);      // F열 — 내용
+
+        workbook.SaveAs(path);
+    }
+
+    /// <summary>그 대본 첫 줄의 화자 칸에 실제로 적혀 있는 글자.</summary>
+    private string SpeakerCell(string chapterId, string episodeId)
+    {
+        using var workbook = new XLWorkbook(EpisodePath(chapterId, episodeId));
+
+        return workbook.Worksheets
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형")
+            .Cell(2, 5).GetString().Trim();
     }
 
     private string EpisodePath(string chapterId, string episodeId) =>

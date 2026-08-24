@@ -129,6 +129,72 @@ public static class EpisodeWorkbookWriter
         return cleared == 0 ? (ChapterWriteResult.Ok, 0) : (result, cleared);
     }
 
+    /// <summary>
+    /// 화자 개명을 이 워크북의 화자 칸(E열)까지 끌고 간다 (2026-08-24 소유자 — "화자의 이름을
+    /// 편집한 경우도 연결이 이어지도록").
+    ///
+    /// [화자] 탭이 이름을 갈면 <b>드롭다운 목록만</b> 새것이 되고, 이미 셀에 적힌 옛 이름은
+    /// 그대로 남아 미등록이 된다. 그 칸이 곧 대사 줄의 화자이므로 초상화 매핑이 끊기고,
+    /// 공백 있는 이름은 파서가 산문으로 읽어 대사와 합쳐진다.
+    ///
+    /// <b>여는 것은 여전히 화자 한 칸뿐이다</b> — 줄을 더하거나 지우지 않고, 블록 행(IF·
+    /// ELSEIF·ENDIF)은 건너뛴다(그 행에는 화자가 있을 수 없다). 글자가 <b>정확히</b> 같은
+    /// 칸만 바꾼다: 사람이 손으로 적은 다른 이름을 추측해 고치지 않는다.
+    /// </summary>
+    /// <returns>바꾼 칸 수. 하나도 없으면 파일에 손대지 않는다.</returns>
+    public static (ChapterWriteResult Result, int Changed) RenameSpeaker(
+        string path, string oldName, string newName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        string from = (oldName ?? string.Empty).Trim();
+        string to = (newName ?? string.Empty).Trim();
+
+        if (from.Length == 0 || to.Length == 0 ||
+            string.Equals(from, to, StringComparison.Ordinal))
+        {
+            return (ChapterWriteResult.Ok, 0);
+        }
+
+        int changed = 0;
+
+        ChapterWriteResult result = Mutate(path, workbook =>
+        {
+            IXLWorksheet sheet = FindEpisodeSheet(workbook)
+                ?? throw new InvalidOperationException(
+                    "이 워크북에서 대본 시트를 찾지 못했습니다 — 머리글이 규격과 다릅니다.");
+
+            foreach (IXLRow row in sheet.RowsUsed().Where(item => item.RowNumber() > HeaderRow))
+            {
+                int number = row.RowNumber();
+                string kind = Cell(sheet, number, ColumnKind);
+
+                if (kind.Length > 0 && !string.Equals(kind, "대사", StringComparison.Ordinal))
+                {
+                    continue;   // 블록 행 — 화자 칸이 열려 있지 않은 자리다.
+                }
+
+                if (!string.Equals(Cell(sheet, number, ColumnSpeaker), from, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Set(sheet, number, ColumnSpeaker, to);
+                changed++;
+            }
+
+            // 안 바뀐 파일을 다시 쓰면 감시가 깨어나고 내용 해시가 달라져, 아무 일도 없었는데
+            // 그 챕터의 대본을 전부 다시 읽는다.
+            if (changed == 0)
+            {
+                throw new NothingToWriteException();
+            }
+        });
+
+        // 못 썼으면 센 것도 없던 일이다 — 파일은 옛 이름 그대로다.
+        return result.Written ? (result, changed) : (result, 0);
+    }
+
     /// <summary>쓸 것이 없다는 신호 — <see cref="Mutate"/>의 저장을 건너뛴다.</summary>
     private sealed class NothingToWriteException : Exception;
 

@@ -1784,15 +1784,123 @@ public sealed partial class ProjectEditor
         // 행 개수가 바뀌면 컨트롤 목록을 다시 만들어야 한다. 개수가 그대로인 채 변수명이나
         // 값만 바뀌었다면 현재 TextBox/AutoCompleteBox가 이미 그 값을 보여 주고 있으므로
         // 구조 재생성은 오히려 다음 클릭을 가로막는다.
-        ProjectChangeKind kind = setNode.Assignments.Count == next.Count
+        bool sameCount = setNode.Assignments.Count == next.Count;
+
+        ProjectChangeKind kind = sameCount
             ? ProjectChangeKind.Content
             : ProjectChangeKind.Structure;
+
+        // 개명은 참조를 끌고 간다 (2026-08-24 소유자) — 아이템·능력은 <b>이름이 곧 신원</b>이라
+        // 이름만 갈면 그것을 쓰던 조건식과 대사 줄의 `<<set>>`이 통째로 미아가 된다("(미등록)").
+        Dictionary<string, string> renames = sameCount
+            ? DetectVariableRenames(setNode.Assignments, next)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
 
         Mutate(kind, () =>
         {
             setNode.Assignments.Clear();
             setNode.Assignments.AddRange(next);
+
+            // 같은 Mutate 안이라 되돌리기 한 번이 개명과 그 전파를 함께 되돌린다 —
+            // 둘이 갈리면 "되돌렸는데 조건식만 새 이름"이 된다.
+            if (renames.Count > 0)
+            {
+                CascadeVariableRenames(setNode, renames);
+            }
         });
+    }
+
+    /// <summary>
+    /// 같은 자리(행 인덱스)의 이름이 달라진 것만 개명으로 본다. 행 개수가 그대로일 때만
+    /// 부른다 — 줄이 생기거나 사라졌으면 자리로 짝지을 근거가 없고, 추측해서 잇는 것보다
+    /// 아무것도 안 하는 편이 낫다(원칙 §2.3 추측 보정 금지).
+    ///
+    /// 빈 이름은 양쪽 다 뺀다: 갓 만든 줄에 이름을 <b>처음</b> 적는 것은 개명이 아니고,
+    /// 이름을 지우는 것은 "무엇으로" 바꿀지가 없어 전파할 곳이 없다.
+    /// </summary>
+    private static Dictionary<string, string> DetectVariableRenames(
+        IReadOnlyList<VariableAssignment> before,
+        IReadOnlyList<VariableAssignment> after)
+    {
+        var pairs = new List<(string Old, string New)>();
+
+        for (int index = 0; index < after.Count && index < before.Count; index++)
+        {
+            string old = before[index].Variable.Trim();
+            string renamed = after[index].Variable.Trim();
+
+            if (old.Length == 0 || renamed.Length == 0 ||
+                string.Equals(old, renamed, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            pairs.Add((old, renamed));
+        }
+
+        // 같은 이름이 두 줄에서 서로 다른 곳으로 간다면 어느 쪽을 따라야 할지 데이터가
+        // 말하지 못한다 — 그 이름만 통째로 뺀다(나머지 개명은 그대로 간다).
+        return pairs
+            .GroupBy(pair => pair.Old, StringComparer.Ordinal)
+            .Where(group => group.DistinctBy(pair => pair.New, StringComparer.Ordinal).Count() == 1)
+            .ToDictionary(group => group.Key, group => group.First().New, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// 아이템·능력 개명을 <b>그 판(챕터) 전체</b>에 전파한다.
+    ///
+    /// 범위가 판인 이유는 공급 범위가 판이기 때문이다(<see cref="ConnectedSetNodeResolver"/>) —
+    /// 같은 판의 어느 조건식에 적힌 <c>$열쇠</c>든 어느 대사 줄의 <c>&lt;&lt;set 열쇠&gt;&gt;</c>든
+    /// 전부 <b>같은 하나의 변수</b>다. 한 자리만 갈면 나머지가 미아가 된다.
+    ///
+    /// ⛔ <b>A계층 공급 노드는 건너뛴다</b> — 그 조건식의 변수는 챕터 스탯이고, 주인은
+    /// 기획자의 엑셀이다. 작가가 아이템을 <c>trust</c>라 지었다고 남의 식을 고쳐서는 안 된다.
+    /// 계층을 가르는 판단은 언제나 <c>IsConditionSupplyNode</c> 하나를 부른다(사본 금지).
+    /// </summary>
+    private void CascadeVariableRenames(
+        SetNode owner,
+        IReadOnlyDictionary<string, string> renames)
+    {
+        StoryFile? file = Project.Files.FirstOrDefault(candidate =>
+            candidate.Nodes.Any(node => string.Equals(node.Id, owner.Id, StringComparison.Ordinal)));
+
+        if (file is null)
+        {
+            return;
+        }
+
+        string Map(string name) =>
+            renames.TryGetValue(name, out string? renamed) ? renamed : name;
+
+        foreach (SetNode node in file.Nodes.OfType<SetNode>())
+        {
+            if (Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file))
+            {
+                continue;
+            }
+
+            foreach (ConditionDefinition condition in node.Conditions)
+            {
+                // 토큰만 갈아 끼운다 — `$열쇠`와 `$열쇠2`가 갈리고, 손으로 쓴 복합식도
+                // 나머지 글자가 그대로 남는다.
+                condition.Expression = VariableTokens.Rewrite(condition.Expression, Map);
+            }
+        }
+
+        foreach (DialogueNode dialogue in file.Nodes.OfType<DialogueNode>())
+        {
+            foreach (DialogueLineExtension extension in dialogue.LineExtensions)
+            {
+                foreach (SetOperation operation in extension.SetOperations)
+                {
+                    // 이쪽은 식이 아니라 이름 한 칸이다($ 없이 저장된다).
+                    if (renames.TryGetValue(operation.Variable.Trim(), out string? renamed))
+                    {
+                        operation.Variable = renamed;
+                    }
+                }
+            }
+        }
     }
 
     // ── 프로젝트 설정 ──────────────────────────────────────────────────────

@@ -756,6 +756,30 @@ public partial class ChapterGraphView : UserControl
                 return;
             }
 
+            string previous = edited[index].Name;
+
+            // 같은 이름이 이미 있으면 개명이 아니라 <b>합치기</b>다 — 목록이 신원이라
+            // 두 줄이 같은 이름을 가질 수 없다([＋ 추가]가 막는 것과 같은 규칙).
+            if (!string.Equals(previous, typed, StringComparison.Ordinal) &&
+                edited.Any(item => string.Equals(item.Name, typed, StringComparison.Ordinal)))
+            {
+                name.Text = previous;
+                _session.SetStatus($"화자 '{typed}'은 이미 있습니다.");
+                return;
+            }
+
+            // ⛔ 개명이 먼저다 (2026-08-24) — 이미 쓰인 이름을 못 끌고 가면 등록부도 갈지
+            //    않는다. 순서를 뒤집으면 엑셀이 잡고 있던 워크북이 다음 동기화에서 사람이
+            //    방금 바꾼 이름을 "미등록 화자"로 되살린다.
+            string? report = null;
+
+            if (!string.Equals(previous, typed, StringComparison.Ordinal) &&
+                !TryCarrySpeakerRename(previous, typed, out report))
+            {
+                name.Text = previous;
+                return;
+            }
+
             edited[index] = new SpeakerSpec
             {
                 Name = typed,
@@ -763,6 +787,12 @@ public partial class ChapterGraphView : UserControl
             };
 
             SaveSpeakers(edited);
+
+            // 개명 보고는 저장 뒤에 세운다 — 어휘 밀기의 상태 줄이 덮어쓰지 않게.
+            if (report is not null)
+            {
+                _session.SetStatus(report);
+            }
         }
 
         name.LostFocus += (_, _) => UiGuard.Run(_session, "화자 수정", Commit);
@@ -798,6 +828,53 @@ public partial class ChapterGraphView : UserControl
         row.Children.Add(remove);
 
         return row;
+    }
+
+    /// <summary>
+    /// 화자 개명을 <b>이미 쓰인 곳까지</b> 끌고 간다 — 대본 워크북의 화자 칸과 프로젝트
+    /// 대본의 줄들 (2026-08-24 소유자: "화자의 이름을 편집한 경우도 연결이 계속 이어지도록").
+    ///
+    /// 등록부만 갈면 그 이름을 쓰던 줄이 전부 <b>미등록</b>이 된다: 드롭다운에서 사라지고,
+    /// 초상화 매핑이 끊기고, 공백 있는 이름은 파서가 산문으로 읽어 대사와 합쳐진다.
+    /// </summary>
+    /// <param name="report">
+    /// 저장 뒤에 세울 상태 줄. 여기서 바로 쓰면 이어지는 어휘 밀기의 메시지가 덮는다.
+    /// </param>
+    /// <returns>등록부를 갈아도 되는가. false면 아무것도 바뀌지 않았다(사유는 상태 줄에).</returns>
+    private bool TryCarrySpeakerRename(string previous, string renamed, out string? report)
+    {
+        report = null;
+
+        if (_session is null)
+        {
+            return false;
+        }
+
+        SpeakerRenameOutcome outcome = SpeakerRenamer.Rename(
+            _session.Editor, _session.ProjectPath, _entries, previous, renamed);
+
+        string Blocked() => outcome.Blocked[0] +
+            (outcome.Blocked.Count > 1 ? $" (외 {outcome.Blocked.Count - 1}건)" : string.Empty);
+
+        if (!outcome.Applied)
+        {
+            _session.SetStatus(outcome.Blocked.Count > 0 ? Blocked() : "화자 이름을 바꾸지 못했습니다.");
+            return false;
+        }
+
+        // 빗장을 지난 뒤에 잠긴 파일이 있으면 나머지는 갔고 그 파일만 옛 이름이다.
+        // 조용히 넘어가지 않는다: 다음 동기화가 "미등록 화자"로 짚을 자리다.
+        report = outcome.Blocked.Count > 0
+            ? Blocked()
+            : outcome.WorkbookCells > 0 || outcome.ScriptLines > 0
+                ? $"화자 '{previous}' → '{renamed}' — 대본 {outcome.WorkbookFiles}개의 " +
+                  $"{outcome.WorkbookCells}칸, 줄 {outcome.ScriptLines}개가 따라갔습니다."
+                : null;
+
+        // 우리가 방금 쓴 워크북이 감시자로 되돌아와 "디스크가 바뀌었다"로 읽히지 않게.
+        _diskFingerprint = DiskFingerprint();
+
+        return true;
     }
 
     private static void CommitOnEnter(Avalonia.Input.KeyEventArgs args, Action commit)

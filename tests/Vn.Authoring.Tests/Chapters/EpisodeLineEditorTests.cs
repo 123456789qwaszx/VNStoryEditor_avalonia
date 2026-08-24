@@ -198,7 +198,12 @@ public sealed class EpisodeLineEditorTests : IDisposable
             book.Save();
         }
 
-        WorkbookParseCache.Clear();
+        // ⛔ 여기서 `WorkbookParseCache.Clear()`를 부르지 않는다 (2026-08-24). 정적 캐시라
+        //    <b>나란히 도는 다른 테스트 클래스의 기억까지</b> 지우고, 그쪽이 캐시 적중을
+        //    확인하는 순간이면 통째로 실패한다(`WorkbookParseCacheTests`가 간헐로 깨진
+        //    정체다 — 실행 순서에 달려 있어 재현이 들쭉날쭉했다).
+        //    비울 이유도 없다: 캐시 열쇠가 <b>내용 해시</b>라, 방금 파일을 고쳤으므로
+        //    다음 읽기가 저절로 빗나간다.
         return index;
     }
 

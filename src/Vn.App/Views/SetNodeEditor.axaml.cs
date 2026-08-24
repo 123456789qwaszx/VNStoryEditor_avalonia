@@ -29,6 +29,12 @@ public partial class SetNodeEditor : UserControl
     private string? _nodeId;
     private bool _building;
 
+    /// <summary>
+    /// 조건 표의 대상 칸(아이템·능력 드롭다운)을 제자리에서 다시 읽는 손잡이들.
+    /// 개명 전파가 조건식을 갈았을 때 행을 다시 만들지 않고 값만 맞추는 데 쓴다.
+    /// </summary>
+    private readonly List<Action> _conditionTargets = new();
+
     public SetNodeEditor()
     {
         InitializeComponent();
@@ -605,6 +611,7 @@ public partial class SetNodeEditor : UserControl
     private void RebuildConditions(SetNode node)
     {
         ConditionHost.Children.Clear();
+        _conditionTargets.Clear();
 
         List<VariableAssignment> items = node.Assignments
             .Where(item => item.Variable.Length > 0)
@@ -706,17 +713,10 @@ public partial class SetNodeEditor : UserControl
     /// 아이템·능력 편집은 <c>Content</c> 변경이라 이 화면을 다시 만들지 않으므로(타이핑 중
     /// 컨트롤 파괴 방지) 후보가 행을 만들 때의 것으로 굳어 있었다.
     /// </summary>
-    private ComboBox ConditionTargetCombo(bool ability, string picked, Action commit)
+    private ComboBox ConditionTargetCombo(
+        ConditionDefinition condition, bool ability, string picked, Action commit)
     {
-        List<string> Names() =>
-            _session?.Project.FindNode(_nodeId) is SetNode owner
-                ? owner.Assignments
-                    .Where(item => item.Variable.Length > 0 && item.IsBool == ability)
-                    .Select(item => item.Variable)
-                    .ToList()
-                : [];
-
-        List<string> names = Names();
+        List<string> names = TargetNames(ability);
 
         var combo = new ComboBox
         {
@@ -730,7 +730,7 @@ public partial class SetNodeEditor : UserControl
 
         combo.DropDownOpened += (_, _) =>
         {
-            List<string> fresh = Names();
+            List<string> fresh = TargetNames(ability);
 
             // 목록이 그대로면 손대지 않는다 — 갈아 끼우면 선택이 풀렸다 붙으며 조건 식이
             // 한 번 더 써진다.
@@ -757,7 +757,62 @@ public partial class SetNodeEditor : UserControl
         };
 
         combo.SelectionChanged += (_, _) => commit();
+
+        // 개명이 지나가면 이 칸이 가리키던 이름이 달라진다. 행을 다시 만들지 않고
+        // (그러면 방금 옮겨 간 초점을 부순다) 이 칸만 새로 읽는다 — 아래 참조.
+        _conditionTargets.Add(() => RefreshConditionTarget(condition, ability, combo));
+
         return combo;
+    }
+
+    /// <summary>그 종류(아이템/능력)의 현재 이름들. 드롭다운과 개명 갱신이 같은 하나를 본다.</summary>
+    private List<string> TargetNames(bool ability) =>
+        _session?.Project.FindNode(_nodeId) is SetNode owner
+            ? owner.Assignments
+                .Where(item => item.Variable.Length > 0 && item.IsBool == ability)
+                .Select(item => item.Variable)
+                .ToList()
+            : [];
+
+    /// <summary>
+    /// 대상 칸 하나를 <b>조건의 현재 식에서</b> 다시 읽는다. 표시를 고칠 뿐 아무것도 쓰지
+    /// 않는다(<c>_building</c> 동안은 <c>SelectionChanged</c>가 커밋으로 새지 않는다).
+    /// </summary>
+    private void RefreshConditionTarget(ConditionDefinition condition, bool ability, ComboBox combo)
+    {
+        Vn.Authoring.Chapters.ConditionExpressionParser.TryDecomposeSingle(
+            (condition.Expression ?? string.Empty).Replace("$", string.Empty, StringComparison.Ordinal),
+            out string picked, out _, out _);
+
+        List<string> fresh = TargetNames(ability);
+
+        _building = true;
+
+        try
+        {
+            combo.ItemsSource = fresh;
+            combo.SelectedItem = fresh.Contains(picked, StringComparer.Ordinal) ? picked : null;
+        }
+        finally
+        {
+            _building = false;
+        }
+    }
+
+    /// <summary>
+    /// 아이템·능력을 <b>개명</b>한 직후 조건 표의 대상 칸들을 새 이름으로 맞춘다.
+    ///
+    /// 개명 전파는 조건식을 이미 갈아 끼웠지만(<c>ProjectEditor.SetAssignments</c>),
+    /// 그 변경은 <see cref="ProjectChangeKind.Content"/>라 화면을 다시 만들지 않는다 —
+    /// 다시 만들면 이름 칸이 초점을 잃는 순간(=커밋하는 순간) 컨트롤이 사라져 <b>다음 클릭이
+    /// 먹히지 않는다</b>. 그래서 행은 그대로 두고 칸의 값만 갈아 끼운다.
+    /// </summary>
+    private void RefreshConditionTargets()
+    {
+        foreach (Action refresh in _conditionTargets)
+        {
+            refresh();
+        }
     }
 
     private IReadOnlyList<Control> BuildItemConditionCells(
@@ -785,7 +840,7 @@ public partial class SetNodeEditor : UserControl
         }
 
         name = ConditionNameBox(condition, Commit);
-        target = ConditionTargetCombo(ability: false, pickedName, Commit);
+        target = ConditionTargetCombo(condition, ability: false, pickedName, Commit);
 
         comparison = new ComboBox
         {
@@ -832,7 +887,7 @@ public partial class SetNodeEditor : UserControl
         }
 
         name = ConditionNameBox(condition, Commit);
-        target = ConditionTargetCombo(ability: true, pickedName, Commit);
+        target = ConditionTargetCombo(condition, ability: true, pickedName, Commit);
 
         // 능력에는 부호가 없다 (소유자) — On/Off뿐이라 `>=` 같은 것이 설 자리가 없다.
         toggle = new CheckBox
@@ -1057,6 +1112,10 @@ public partial class SetNodeEditor : UserControl
             };
 
             _session!.Editor.SetAssignments(node.Id, next);
+
+            // 이름을 바꿨다면 개명 전파가 조건식을 이미 갈았다 — 조건 표의 대상 칸도
+            // 새 이름을 읽게 한다(행은 그대로 둔다).
+            RefreshConditionTargets();
         }
 
         variable = AssignmentNameBox(assignment, Commit);
@@ -1128,6 +1187,7 @@ public partial class SetNodeEditor : UserControl
             };
 
             _session!.Editor.SetAssignments(node.Id, next);
+            RefreshConditionTargets();
         }
 
         variable = AssignmentNameBox(assignment, Commit);

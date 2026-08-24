@@ -327,6 +327,61 @@ public sealed class SetNodeEditorTests
         window.Close();
     });
 
+    [Fact]
+    public void 아이템을_개명하면_조건의_대상_칸이_그_자리에서_새_이름을_읽는다() => HeadlessUi.Run(() =>
+    {
+        // 소유자 (2026-08-24) — "이름을 바꿨을 때 … 연결이 계속 이어지도록."
+        //
+        // 개명 전파가 조건식을 이미 갈았지만 그 변경은 Content라 화면을 다시 만들지 않는다
+        // (다시 만들면 이름 칸이 초점을 잃는 순간 컨트롤이 사라져 다음 클릭이 먹히지 않는다).
+        // 그래서 행은 그대로 두고 <b>칸의 값만</b> 갈아 끼운다 — 안 그러면 데이터는 이어졌는데
+        // 화면에는 빈 드롭다운("아이템")이 서서 끊어진 것처럼 보인다.
+        (SetNodeEditor editor, AuthoringSession session, SetNode node, Window window) = Show();
+
+        session.Editor.SetAssignments(node.Id,
+        [
+            new VariableAssignment { Variable = "열쇠", Value = "0", Type = VariableAssignment.FloatType }
+        ]);
+        session.Editor.AddCondition(node.Id, "열쇠있음", "$열쇠 >= 1");
+
+        editor.Rebuild();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ComboBox target = editor.FindControl<StackPanel>("ConditionHost")!
+            .GetVisualDescendants()
+            .OfType<ComboBox>()
+            .First();
+
+        Assert.Equal("열쇠", target.SelectedItem);
+
+        // 사람이 이름 칸을 고치고 초점을 옮긴다 — 그것이 곧 커밋이다.
+        var tabs = editor.FindControl<TabControl>("SectionTabs")!;
+        tabs.SelectedIndex = 1;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        AutoCompleteBox name = editor.FindControl<StackPanel>("AssignmentHost")!
+            .GetVisualDescendants()
+            .OfType<AutoCompleteBox>()
+            .First();
+
+        name.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        name.Text = "보물열쇠";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        editor.FindControl<TextBox>("NameBox")!.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var after = (SetNode)session.Project.FindNode(node.Id)!;
+
+        Assert.Equal("$보물열쇠 >= 1", after.Conditions[0].Expression);   // 데이터가 이어졌고
+        Assert.Equal(["보물열쇠"], target.ItemsSource!.Cast<string>());    // 화면도 그것을 본다
+        Assert.Equal("보물열쇠", target.SelectedItem);
+
+        window.Close();
+    });
+
     /// <summary>빈 설정 노드 하나를 띄운다 — 조건·아이템·화자 탭이 모두 붙어 있다.</summary>
     private static (SetNodeEditor Editor, AuthoringSession Session, SetNode Node, Window Window) Show()
     {

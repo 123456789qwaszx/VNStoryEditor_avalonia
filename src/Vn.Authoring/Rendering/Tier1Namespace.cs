@@ -75,7 +75,7 @@ public static class Tier1Namespace
         {
             foreach (ConditionDefinition condition in supply.Conditions)
             {
-                foreach (string variable in Variables(condition.Expression))
+                foreach (string variable in Flow.VariableTokens.Names(condition.Expression))
                 {
                     names.Add(variable);
                 }
@@ -103,6 +103,8 @@ public static class Tier1Namespace
     /// <summary>
     /// 조건식 안의 <c>$이름</c>을 전부 훑어 접두를 붙인다. 식은 사람이 쓴 원문이라
     /// 파싱하지 않고 <b>변수 토큰만</b> 갈아 끼운다 — 나머지 글자는 손대지 않는다.
+    /// 훑는 규칙의 주인은 <see cref="Flow.VariableTokens"/> 하나다(사본 금지) — 개명
+    /// 전파도 같은 기계를 쓰므로, 한쪽만 <c>$열쇠</c>와 <c>$열쇠2</c>를 가르는 일이 없다.
     /// </summary>
     public static string ApplyToExpression(string? expression, string prefix, IReadOnlySet<string> statNames)
     {
@@ -111,63 +113,6 @@ public static class Tier1Namespace
             return expression ?? string.Empty;
         }
 
-        var builder = new StringBuilder(expression.Length + 16);
-        int index = 0;
-
-        while (index < expression.Length)
-        {
-            if (expression[index] != '$')
-            {
-                builder.Append(expression[index]);
-                index++;
-                continue;
-            }
-
-            int start = ++index;
-
-            while (index < expression.Length && IsNameLetter(expression[index]))
-            {
-                index++;
-            }
-
-            string name = expression[start..index];
-            builder.Append('$').Append(Apply(name, prefix, statNames));
-        }
-
-        return builder.ToString();
-    }
-
-    private static bool IsNameLetter(char letter) => char.IsLetterOrDigit(letter) || letter == '_';
-
-    /// <summary>식에 나오는 <c>$이름</c>들.</summary>
-    private static IEnumerable<string> Variables(string? expression)
-    {
-        if (string.IsNullOrEmpty(expression))
-        {
-            yield break;
-        }
-
-        for (int index = 0; index < expression.Length; index++)
-        {
-            if (expression[index] != '$')
-            {
-                continue;
-            }
-
-            int start = index + 1;
-            int end = start;
-
-            while (end < expression.Length && IsNameLetter(expression[end]))
-            {
-                end++;
-            }
-
-            if (end > start)
-            {
-                yield return expression[start..end];
-            }
-
-            index = end - 1;
-        }
+        return Flow.VariableTokens.Rewrite(expression, name => Apply(name, prefix, statNames));
     }
 }

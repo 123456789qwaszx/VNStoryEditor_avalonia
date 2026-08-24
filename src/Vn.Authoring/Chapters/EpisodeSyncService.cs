@@ -391,7 +391,10 @@ public static class EpisodeSyncService
             .DistinctBy(condition => condition!.Label, StringComparer.Ordinal)
             .Select(condition => (condition!.Label, ConditionYarnTranslator.Translate(condition)))
             .Where(pair => pair.Item2.IsTranslatable)
-            .Select(pair => (pair.Label, pair.Item2.Yarn!))
+            .Select(pair => (pair.Label, Yarn: pair.Item2.Yarn!))
+            // 식 기준으로도 한 번 걸러 둔다 — 라벨 둘이 같은 식으로 번역되면 만드는 것은
+            // 어차피 하나인데, 아래의 이름 따라가기가 그 둘 사이를 오가며 흔들린다.
+            .DistinctBy(pair => pair.Yarn, StringComparer.Ordinal)
             .ToList();
 
         if (used.Count == 0)
@@ -419,11 +422,51 @@ public static class EpisodeSyncService
 
         foreach ((string label, string yarn) in used)
         {
+            if (RenameSuppliedCondition(editor, supply, label, yarn))
+            {
+                continue;
+            }
+
             if (knownExpressions.Add(yarn))
             {
                 editor.AddCondition(supply.Id, label, yarn);
             }
         }
+    }
+
+    /// <summary>
+    /// 라벨이 바뀐 조건은 <b>이름만 갈아 끼운다</b> (2026-08-24 소유자 — "조건 이름을 편집한
+    /// 경우도 연결이 이어지도록").
+    ///
+    /// 줄에 매달린 전환은 <see cref="Model.LineConditionTransition.ConditionId"/>로 잇는다.
+    /// 그래서 이름이 바뀌었다고 조건을 <b>새로 만들면</b> Id가 달라져 이미 매달린 갈래가 전부
+    /// 고아가 된다 — 같은 식이면 같은 조건이므로, 있는 것의 이름만 고쳐 Id를 지킨다.
+    /// 반대로 이름을 그냥 두면 판에는 <b>사라진 옛 라벨</b>이 계속 보인다.
+    ///
+    /// ⚠ 고치는 것은 <b>공급 노드가 소유한 조건</b>뿐이다. 같은 식을 전역 정의나 작가의
+    /// 설정노드가 이미 주고 있어도 그쪽 이름은 남의 것이라 건드리지 않는다.
+    /// </summary>
+    /// <returns>공급 노드가 이미 그 식을 갖고 있어 새로 만들 필요가 없으면 true.</returns>
+    private static bool RenameSuppliedCondition(
+        ProjectEditor editor,
+        SetNode supply,
+        string label,
+        string yarn)
+    {
+        ConditionDefinition? existing = supply.Conditions.FirstOrDefault(condition =>
+            string.Equals(condition.Expression.Trim(), yarn, StringComparison.Ordinal));
+
+        if (existing is null)
+        {
+            return false;
+        }
+
+        if (!string.Equals(existing.Name, label, StringComparison.Ordinal))
+        {
+            editor.UpdateCondition(existing.Id, label, existing.Expression);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -444,7 +487,8 @@ public static class EpisodeSyncService
         List<(string Label, string Yarn)> translatable = chapter.Conditions
             .Select(condition => (condition.Label, Translated: ConditionYarnTranslator.Translate(condition)))
             .Where(pair => pair.Translated.IsTranslatable)
-            .Select(pair => (pair.Label, pair.Translated.Yarn!))
+            .Select(pair => (pair.Label, Yarn: pair.Translated.Yarn!))
+            .DistinctBy(pair => pair.Yarn, StringComparer.Ordinal)
             .ToList();
 
         if (translatable.Count == 0)
@@ -459,13 +503,10 @@ public static class EpisodeSyncService
 
         supply ??= editor.AddSetNode(fileId, name: supplyName);
 
-        HashSet<string> known = supply.Conditions
-            .Select(condition => condition.Expression.Trim())
-            .ToHashSet(StringComparer.Ordinal);
-
         foreach ((string label, string yarn) in translatable)
         {
-            if (known.Add(yarn))
+            // 있으면 이름만 따라가고(Id 보존 = 매달린 갈래 보존), 없으면 만든다.
+            if (!RenameSuppliedCondition(editor, supply, label, yarn))
             {
                 editor.AddCondition(supply.Id, label, yarn);
             }

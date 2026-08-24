@@ -620,6 +620,59 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>
+    /// 화자 개명을 <b>이미 쓰인 대사 줄까지</b> 끌고 간다 (2026-08-24 소유자 — "화자의 이름을
+    /// 편집한 경우도 연결이 이어지도록").
+    ///
+    /// 화자의 신원은 <b>[화자] 탭 목록의 그 줄</b>이고 이름은 그것의 표시다. 그런데 대사 줄이
+    /// 붙드는 것은 이름 문자열 하나뿐이라(대본 엑셀 E열과 같은 값), 등록부에서만 이름을 갈면
+    /// 그 줄들이 전부 <b>미등록 화자</b>가 된다 — 초상화 매핑이 끊기고, 공백 있는 이름은
+    /// 파서가 산문으로 읽어 대사와 합쳐지기까지 한다.
+    ///
+    /// <b>⚠ locale마다 따로 본다</b> (로컬라이징 대비). <see cref="LocalizedLine.Speaker"/>는
+    /// locale별 값이라, 일본어 판이 이미 <c>ウィロー</c>로 번역돼 있으면 그것은 이 개명의
+    /// 대상이 아니다 — <b>옛 이름과 글자가 같은 항목만</b> 갈아 끼운다. 아직 번역 전이라
+    /// 한국어 이름을 그대로 들고 있는 locale은 자연히 함께 따라온다.
+    ///
+    /// <b>⚠ <see cref="ScriptLine.Revision"/>은 올리지 않는다.</b> 그것은 "이 줄의 문구가
+    /// 바뀌었으니 번역·녹음이 다시 보라"는 신호인데, 등록부의 개명은 줄이 <em>말하는 내용</em>을
+    /// 바꾸지 않는다. 올리면 화자 하나 고칠 때마다 그 화자의 모든 줄이 재작업 대상이 된다.
+    /// </summary>
+    /// <returns>이름이 바뀐 줄 수(모든 대본·모든 locale 합계).</returns>
+    public int RenameSpeaker(string oldName, string newName)
+    {
+        string from = (oldName ?? string.Empty).Trim();
+        string to = (newName ?? string.Empty).Trim();
+
+        if (from.Length == 0 || to.Length == 0 ||
+            string.Equals(from, to, StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        List<(ScriptLocale Locale, string LineId, LocalizedLine Line)> hits = Project.Scripts
+            .SelectMany(script => script.Locales)
+            .SelectMany(locale => locale.Entries
+                .Where(entry => string.Equals(entry.Value.Speaker, from, StringComparison.Ordinal))
+                .Select(entry => (Locale: locale, LineId: entry.Key, Line: entry.Value)))
+            .ToList();
+
+        if (hits.Count == 0)
+        {
+            return 0;
+        }
+
+        Mutate(ProjectChangeKind.DialogueContent, () =>
+        {
+            foreach ((ScriptLocale locale, string lineId, LocalizedLine line) in hits)
+            {
+                locale.Entries[lineId] = line with { Speaker = to };
+            }
+        });
+
+        return hits.Count;
+    }
+
     /// <summary>이 대사 노드가 읽을 대본을 정한다. 조건 구조는 LineId 기준으로 그대로 남는다.</summary>
     public void SetDialogueScript(string dialogueNodeId, string? scriptId)
     {
