@@ -367,6 +367,8 @@ public partial class MiniStagePreview : UserControl
         ConsoleHost.Content = _scene.BuildDockedConsole();
 
         _script.CommandPinRequested += PinQuickCommand;
+        // 조절창의 [＋ 이 라인 통째로]도 같은 담기 함수로 들어온다 — 입구는 둘, 규칙은 하나.
+        _scene.QuickPinRequested += PinQuickCommands;
         _script.HasClipboardCommand = () => _commandClipboard is not null;
         // 담기 모드가 켜지고 꺼졌다 — 터미널의 ★를 다시 그린다. 조절창은 안 건드린다
         // (Render는 캔버스와 터미널만 만지고 팝업은 제 자리에 남는다).
@@ -662,30 +664,82 @@ public partial class MiniStagePreview : UserControl
     /// 번호를 단다</b> — 같은 커맨드를 값만 달리해 담는 것이 이 판의 정상 쓰임이라 이름이
     /// 겹치는 것이 예외가 아니다. 고치는 자리는 조절창 [편집]의 이름 칸이다.
     /// </summary>
-    private void PinQuickCommand(PresentationResultCommand command)
+    /// <summary>담기 모드 행 툴팁의 문장 — 조절창이 정한 목적지를 그대로 옮긴다.</summary>
+    private string QuickPinHint()
     {
-        if (_session is null)
+        IReadOnlyList<StageQuickCommand> chips =
+            _session?.Project.EffectiveQuickCommands ?? [];
+
+        return _scene.QuickPinTarget is { } target && target >= 0 && target < chips.Count
+            ? $"클릭하면 '{chips[target].DisplayName}'의 {chips[target].Steps.Count + 1}번째 단계로 담깁니다."
+            : "클릭하면 [★ 자주 쓰는]에 새 칩으로 담습니다 (슬롯·시간 그대로).";
+    }
+
+    private void PinQuickCommand(PresentationResultCommand command) => PinQuickCommands([command]);
+
+    /// <summary>
+    /// 담기의 유일한 통로 (2026-08-24 — 묶음 칩) — 커맨드 목록 하나가 칩이 된다.
+    /// 터미널 행 하나를 집는 것도, 조절창의 [＋ 이 라인 통째로]도 여기로 들어온다:
+    /// 이름 짓기와 <b>담을 곳 판정</b>이 두 벌이 되면 두 입구가 다르게 굴기 시작한다.
+    ///
+    /// <b>담을 곳은 조절창이 정한다</b>(<see cref="StageSceneView.QuickPinTarget"/>):
+    /// 편집 중에 펼쳐 놓은 칩이 있으면 그 뒤에 단계로 붙고, 없으면 새 칩이다.
+    /// 규칙이 하나라 "이번 클릭이 어디로 가나"를 화면(안내 줄)이 늘 말할 수 있다.
+    /// </summary>
+    private void PinQuickCommands(IReadOnlyList<PresentationResultCommand> commands)
+    {
+        if (_session is null || commands.Count == 0)
         {
             return;
         }
 
         PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
 
-        if (catalog.Find(command.DefinitionId) is not { } definition)
+        List<(PresentationCommandDefinition Definition, StageQuickStep Step)> steps = commands
+            .Select(command => (Definition: catalog.Find(command.DefinitionId), Command: command))
+            .Where(pair => pair.Definition is not null)
+            .Select(pair => (pair.Definition!, new StageQuickStep(
+                pair.Definition!.Id,
+                new Dictionary<string, string>(pair.Command.Arguments, StringComparer.Ordinal))))
+            .ToList();
+
+        if (steps.Count == 0)
         {
             _session.SetStatus("카탈로그에 없는 커맨드는 담을 수 없습니다.");
             return;
         }
 
-        string displayName = UniqueQuickName(definition.DisplayName);
+        IReadOnlyList<StageQuickCommand> chips = _session.Project.EffectiveQuickCommands;
+
+        if (_scene.QuickPinTarget is { } target && target >= 0 && target < chips.Count)
+        {
+            string chipName = chips[target].DisplayName;
+            int total = chips[target].Steps.Count + steps.Count;
+
+            UiGuard.Run(_session, "자주 쓰는 데 담기", () =>
+            {
+                _session.Editor.AppendQuickCommandSteps(target, steps.Select(pair => pair.Step).ToList());
+                _session.SetStatus($"'{chipName}'에 {steps.Count}개를 이어 담았습니다 (총 {total}단계).");
+            });
+
+            _scene.RefreshConsole();
+            return;
+        }
+
+        // 새 칩의 이름 — 한 개면 그 커맨드 이름, 묶음이면 "첫 커맨드 외 N". 묻지 않는 이유는
+        // 담는 순간 이름을 물으면 흐름이 끊기기 때문이다(2026-08-22). 고치는 자리는 이름 칸이다.
+        string displayName = UniqueQuickName(steps.Count == 1
+            ? steps[0].Definition.DisplayName
+            : $"{steps[0].Definition.DisplayName} 외 {steps.Count - 1}");
 
         UiGuard.Run(_session, "자주 쓰는 데 담기", () =>
         {
             _session.Editor.PinQuickCommand(new StageQuickCommand(
                 displayName,
-                definition.Id,
-                new Dictionary<string, string>(command.Arguments, StringComparer.Ordinal)));
-            _session.SetStatus($"'{displayName}' 칩을 담았습니다.");
+                steps.Select(pair => pair.Step).ToList()));
+            _session.SetStatus(steps.Count == 1
+                ? $"'{displayName}' 칩을 담았습니다."
+                : $"'{displayName}' 칩을 담았습니다 ({steps.Count}단계).");
         });
 
         _scene.RefreshConsole();
@@ -780,6 +834,7 @@ public partial class MiniStagePreview : UserControl
         // 담기 모드의 주인은 조절창 하나다 (2026-08-22) — 여기서 매번 물어보므로 두 화면의
         // 모드가 어긋날 자리가 없다(사본 금지).
         _script.PinMode = _scene.IsQuickPinMode;
+        _script.PinHint = QuickPinHint();
         _script.Show(request?.ScriptRows, request?.SelectedLineId, unlocked, _setupSelected);
         ScriptHost.IsVisible = _script.IsVisible;
 

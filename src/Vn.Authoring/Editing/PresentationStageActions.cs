@@ -134,6 +134,67 @@ public static class PresentationStageActions
         return Apply(editor, catalog, presentationNodeId, lineId, desired, Args(("slot", slotKey)));
     }
 
+    /// <summary>
+    /// 커맨드 여러 개를 <b>순서대로, 한 번의 편집으로</b> 라인에 반영한다
+    /// (2026-08-24 — 자주 쓰는 칩이 묶음이 되면서 생긴 통로).
+    ///
+    /// <b>합치기 규칙은 <see cref="Apply"/>와 같은 하나다</b>: 같은 outputCommand + 같은
+    /// 대상이면 쌓지 않고 값을 바꾼다. 그 규칙이 <b>묶음 안에서도</b> 돈다 — 앞 단계가
+    /// 방금 만든 커맨드를 뒤 단계가 다시 겨누면 뒤의 것이 이긴다. 그래서
+    /// <b>칩을 나눠 누르든 묶어 누르든 결과가 같다</b>. 이 성질이 없으면 묶음은
+    /// "커맨드를 여러 개 붙이는 다른 기능"이 되어, 사람이 규칙을 두 벌 외워야 한다.
+    ///
+    /// 되돌리기 한 번이 단추 한 번을 원복한다 — 단추 하나를 누른 것은 조작 하나다.
+    /// </summary>
+    public static IReadOnlyList<Applied> ApplyAll(
+        ProjectEditor editor,
+        PresentationCommandCatalog catalog,
+        string presentationNodeId,
+        string lineId,
+        IReadOnlyList<(string OutputCommand, IReadOnlyDictionary<string, string> Arguments)> steps)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(steps);
+
+        PresentationNode node = editor.Project.FindPresentation(presentationNodeId)
+            ?? throw new InvalidOperationException($"'{presentationNodeId}'는 연출 노드가 아닙니다.");
+
+        IReadOnlyList<PresentationCommandInstance> lineCommands =
+            node.FindBinding(lineId)?.Commands ?? [];
+
+        var edits = new List<ProjectEditor.PresentationCommandEdit>(steps.Count);
+        var slotByTarget = new Dictionary<(string Output, string Target), int>();
+        var updated = new List<bool>(steps.Count);
+
+        foreach ((string outputCommand, IReadOnlyDictionary<string, string> arguments) in steps)
+        {
+            PresentationCommandDefinition definition = catalog.FindByOutputCommand(outputCommand)
+                ?? throw new InvalidOperationException($"카탈로그에 없는 커맨드입니다: '{outputCommand}'");
+
+            (string, string) key = (outputCommand, TargetOf(definition, arguments) ?? string.Empty);
+
+            // 묶음 안에서 이미 겨눈 자리 — 새 항목을 만들지 않고 그 자리의 값을 갈아 끼운다.
+            if (slotByTarget.TryGetValue(key, out int slot))
+            {
+                edits[slot] = edits[slot] with { Arguments = arguments };
+                continue;
+            }
+
+            PresentationCommandInstance? existing = FindMatch(
+                catalog, lineCommands, outputCommand, TargetOf(definition, arguments));
+
+            slotByTarget[key] = edits.Count;
+            updated.Add(existing is not null);
+            edits.Add(new ProjectEditor.PresentationCommandEdit(existing?.Id, definition.Id, arguments));
+        }
+
+        IReadOnlyList<PresentationCommandInstance> applied =
+            editor.ApplyPresentationCommandBatch(presentationNodeId, lineId, edits);
+
+        return applied.Select((command, index) => new Applied(command, updated[index])).ToList();
+    }
+
     /// <summary>목록에서 같은 outputCommand + 같은 대상인 커맨드를 찾는다 — dedupe 판정의 단일 구현.</summary>
     private static PresentationCommandInstance? FindMatch(
         PresentationCommandCatalog catalog,

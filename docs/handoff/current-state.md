@@ -579,7 +579,7 @@ A계층 어휘(**스탯 키**)는 **챕터 그래프가 읽은 목록 하나**�
 | 모델을 바꾸는 유일한 통로 | `src/Vn.Authoring/Editing/ProjectEditor.cs` |
 | 연출 채널 자동화(발행·배선) | `Editing/ProjectEditor.Results.cs` (`EnsurePresentationChannel`) — 입구는 `src/Vn.App/Views/MiniStagePreview.axaml.cs`의 씬 선택기(`SceneCombo`) |
 | 무대 조절창(탭·칩·직접 조작) | `src/Vn.App/Views/StageSceneView.cs` (`BuildStagePopover`·`BuildQuickTab`·`BuildCharacterTab`·`ApplyStageCommand`) |
-| 자주 쓰는 칩의 기본 목록 | `src/Vn.Authoring/Model/StageQuickCommand.cs` (`StageQuickCommands.Default`) — 담기·빼기는 `ProjectEditor.PinQuickCommand`/`RemoveQuickCommandAt` |
+| 자주 쓰는 칩의 기본 목록 | `src/Vn.Authoring/Model/StageQuickCommand.cs` (`StageQuickCommands.Default`) — 담기·빼기는 `ProjectEditor.PinQuickCommand`/`RemoveQuickCommandAt`. **칩 하나가 단계 목록이다**(2026-08-24 묶음) — 잇기·순서·단계 빼기는 `AppendQuickCommandSteps`/`MoveQuickCommandStep`/`RemoveQuickCommandStepAt`, 누를 때의 적용은 `PresentationStageActions.ApplyAll`(되돌리기 한 번) |
 | 출구 포트 계산 | `src/Vn.Authoring/Flow/NodeConnections.cs` |
 
 전체 구조와 "이 기능은 어디" 표는 [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
@@ -803,6 +803,21 @@ A계층 어휘(**스탯 키**)는 **챕터 그래프가 읽은 목록 하나**�
   표정"이고 **카메라만 어느 탭에도 없었다** — 그 바깥은 여태 터미널 우클릭의 **126종 ×
   15탭**으로만 닿았다. **기본 칩은 샷 셋뿐**(`줌 인`·`카메라 이동`·`카메라 원위치` —
   같은 날 소유자), 나머지는 사람이 담는다.
+  - **칩 하나가 커맨드 여럿이다 (2026-08-24 소유자: "여러개의 커맨드 단위로 커스텀")** —
+    `StageQuickCommand.Steps`. 한 단계짜리는 묶음의 특수한 경우일 뿐 별도 개념이 아니다.
+    **누르면 순서대로 한 번의 편집으로** 붙고(`PresentationStageActions.ApplyAll`),
+    **되돌리기 한 번**이 그 누름을 원복한다. 합치기 규칙은 조절창 전체와 같은 하나라
+    **나눠 누르나 묶어 누르나 결과가 같다**(같은 커맨드·같은 대상은 뒤의 것이 이긴다).
+    - **담을 곳의 규칙은 하나다: 펼친 칩이 있으면 거기 이어 붙고, 없으면 새 칩이다**
+      (`StageSceneView.QuickPinTarget`). 입구가 둘이어도(터미널 행 클릭 ·
+      조절창 **[＋ 이 라인 통째로]**) 규칙이 하나라 안내 줄과 행 툴팁이 언제나
+      "이번 클릭이 어디로 가는지"를 말할 수 있다
+    - 펼친 칩 안: 단계마다 `<<커맨드 인자>>` 한 줄 + [▲][▼][✕], 줄을 누르면 그 단계의
+      수치가 편다. **한 단계짜리 칩은 예전 모양 그대로** 수치가 바로 선다 —
+      번호 줄과 꺼진 화살표는 손잡이만 늘고 뜻은 안 는다
+    - **저장 모양이 바뀌었다**: `quickCommands[].steps[]`. 옛 모양(칩에 `command`·`args`가
+      펼쳐진 것)도 **읽어서** 한 단계 묶음으로 올린다 — 이미 담아 둔 칩이 사라지면
+      그것이 곧 데이터 손실이다. 쓰기는 새 모양 하나다
   - **담기 = 탭 안 [편집] → 터미널의 커맨드 행 클릭**(`PresentationScriptPanel.PinMode`).
     ⚠ **행마다 글리프를 갈지 않는다**(소유자: "X를 ★로 바꾸는 건 최악의 아이디어야") —
     글리프가 달라지면 글리프 높이가 달라지고 그것이 곧 줄 높이라 터미널이 꿈틀거렸다.

@@ -153,6 +153,7 @@ internal sealed class StageSceneView : UserControl
 
         _quickEditMode = enabled;
         _quickExpandedIndex = null;
+        _quickExpandedStep = null;
         QuickEditModeChanged?.Invoke();
     }
 
@@ -1930,6 +1931,41 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
+    /// 커맨드 여럿을 <b>한 번의 편집으로</b> 라인에 반영한다 — 자주 쓰는 묶음 칩의 통로다
+    /// (2026-08-24). 되돌리기 한 번이 단추 한 번을 원복한다.
+    ///
+    /// 상태줄도 한 번만 말한다: 단계마다 알리면 다섯 단계짜리 칩이 화면 아래를 다섯 번
+    /// 갈아 치우고, 사람이 읽을 수 있는 것은 마지막 하나뿐이다.
+    /// </summary>
+    private void ApplyStageCommands(
+        string chipName,
+        IReadOnlyList<(string Output, IReadOnlyDictionary<string, string> Arguments)> steps)
+    {
+        if (_session is null || steps.Count == 0 ||
+            _request?.EditContext is not { Editable: true } context)
+        {
+            return;
+        }
+
+        UiGuard.Run(_session, "무대 조작", () =>
+        {
+            PresentationStageActions.ApplyAll(
+                _session.Editor,
+                ManipulationCatalog,
+                context.PresentationNodeId,
+                context.LineId!,
+                steps);
+
+            if (steps.Count > 1)
+            {
+                _session.SetStatus($"'{chipName}' {steps.Count}단계를 붙였습니다 (되돌리기 한 번).");
+            }
+
+            ManipulationApplied?.Invoke();
+        });
+    }
+
+    /// <summary>
     /// 장면 준비 조작(슬롯 생성·캐스팅)을 노드 Setup에 반영한다 — 어느 라인의 프리뷰에서
     /// 조작했든 같은 자리다. 같은 대상의 재설정은 커맨드가 쌓이지 않고 값이 바뀐다.
     /// </summary>
@@ -3023,9 +3059,7 @@ internal sealed class StageSceneView : UserControl
         var headerRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var headerText = new TextBlock
         {
-            Text = _quickEditMode
-                ? "터미널의 커맨드를 클릭하면 담깁니다. ▸로 수치를 펴고, ✕로 뺍니다."
-                : "누르면 이 라인에 붙습니다.",
+            Text = QuickHeaderText(chips),
             FontSize = 10,
             Opacity = 0.6,
             TextWrapping = TextWrapping.Wrap,
@@ -3037,6 +3071,11 @@ internal sealed class StageSceneView : UserControl
         headerRow.Children.Add(editToggle);
         panel.Children.Add(headerRow);
 
+        if (_quickEditMode)
+        {
+            panel.Children.Add(BuildQuickLinePinButton(chips));
+        }
+
         // 평소에는 칩 판(가로로 흐르는 단추), 편집 중에는 줄 목록(이름 칸 + ✕).
         Panel pad = _quickEditMode
             ? new StackPanel { Spacing = 3 }
@@ -3046,17 +3085,18 @@ internal sealed class StageSceneView : UserControl
         for (int index = 0; index < chips.Count; index++)
         {
             StageQuickCommand chip = chips[index];
-            PresentationCommandDefinition? definition = catalog.Find(chip.DefinitionId);
 
-            // 이 게임 정의에 없는 커맨드는 조용히 빠진다 — 눌러도 예외가 날 칩을 그리지 않는다.
-            if (definition is null)
+            // 단계가 하나도 이 게임 정의에 없으면 조용히 빠진다 — 눌러도 예외가 날 칩을
+            // 그리지 않는다(기존 규칙). 일부만 없는 묶음은 <b>회색으로 서서 말한다</b>:
+            // 조용히 나머지만 실행하면 사람은 다 붙은 줄 안다.
+            if (!chip.Steps.Any(step => catalog.Find(step.DefinitionId) is not null))
             {
                 continue;
             }
 
             pad.Children.Add(_quickEditMode
-                ? BuildQuickChipEditRow(chip, definition, index, onApplied)
-                : BuildQuickChip(chip, definition, onApplied));
+                ? BuildQuickChipEditRow(chip, index, onApplied)
+                : BuildQuickChip(chip, onApplied));
             shown++;
         }
 
@@ -3099,8 +3139,108 @@ internal sealed class StageSceneView : UserControl
         return panel;
     }
 
-    /// <summary>지금 수치를 펼쳐 놓은 칩의 자리. 하나만 열린다 — 작업대와 같은 감각이다.</summary>
+    /// <summary>
+    /// 지금 펼쳐 놓은 칩의 자리. 하나만 열린다 — 작업대와 같은 감각이다.
+    ///
+    /// <b>펼친 칩이 곧 담을 대상이다</b> (2026-08-24) — 터미널에서 클릭한 커맨드는 이 칩의
+    /// 뒤에 붙고, 펼친 칩이 없으면 새 칩이 된다. 담기 단추를 칩마다 따로 두지 않은 이유는
+    /// 그것이 손잡이를 하나 더 만들 뿐이기 때문이다: 펼쳤다는 것은 이미 "이 칩을 지금
+    /// 만지고 있다"는 뜻이고, 화면도 그 하나만 열어 준다.
+    /// </summary>
     private int? _quickExpandedIndex;
+
+    /// <summary>펼친 칩 <b>안에서</b> 수치를 펴 놓은 단계. 칩과 마찬가지로 하나만 열린다.</summary>
+    private int? _quickExpandedStep;
+
+    /// <summary>
+    /// 지금 터미널 클릭이 담길 곳 — 펼친 칩의 자리, 없으면 null(= 새 칩).
+    /// 터미널 쪽 배선(<c>MiniStagePreview</c>)이 이 하나만 보고 갈라진다.
+    /// </summary>
+    internal int? QuickPinTarget => _quickEditMode ? _quickExpandedIndex : null;
+
+    /// <summary>검증용 손잡이 — 담을 대상 칩을 편다(평소에는 탭 안 ▸가 편다).</summary>
+    internal void ExpandQuickChipProbe(int? index)
+    {
+        _quickExpandedIndex = index;
+        _quickExpandedStep = null;
+    }
+
+    /// <summary>편집 모드의 안내 한 줄 — <b>지금 클릭이 어디로 가는지</b>를 말한다.</summary>
+    private string QuickHeaderText(IReadOnlyList<StageQuickCommand> chips)
+    {
+        if (!_quickEditMode)
+        {
+            return "누르면 이 라인에 붙습니다.";
+        }
+
+        if (_quickExpandedIndex is { } index && index >= 0 && index < chips.Count)
+        {
+            return $"터미널의 커맨드를 클릭하면 '{chips[index].DisplayName}'의 " +
+                   $"{chips[index].Steps.Count + 1}번째로 붙습니다. ▾를 접으면 새 칩으로 담깁니다.";
+        }
+
+        return "터미널의 커맨드를 클릭하면 새 칩으로 담깁니다. ▸로 칩을 펴면 그 칩에 이어 담깁니다.";
+    }
+
+    /// <summary>
+    /// [＋ 이 라인 통째로] — 지금 라인의 커맨드 전부를 순서대로 담는다 (2026-08-24).
+    ///
+    /// 묶음의 가장 흔한 정체가 <b>"이 라인의 연출 한 벌"</b>이라 가장 짧은 길을 하나 뚫었다:
+    /// 터미널에서 한 줄씩 집으면 다섯 번 클릭할 일이 한 번이 된다. 담기는 곳은 터미널
+    /// 클릭과 <b>같은 규칙</b>이다 — 펼친 칩이 있으면 거기 이어 붙고, 없으면 새 칩이다.
+    ///
+    /// 꺼진 커맨드는 담지 않는다 — 실행되지 않는 것을 담으면 칩이 화면과 다른 말을 한다.
+    /// </summary>
+    private Control BuildQuickLinePinButton(IReadOnlyList<StageQuickCommand> chips)
+    {
+        IReadOnlyList<PresentationResultCommand> lineCommands = SelectedLineCommands();
+
+        var button = new Button
+        {
+            Content = lineCommands.Count == 0
+                ? "＋ 이 라인 통째로"
+                : $"＋ 이 라인 통째로 ({lineCommands.Count}개)",
+            FontSize = 10,
+            Padding = new Thickness(7, 3),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            IsEnabled = lineCommands.Count > 0
+        };
+
+        ToolTip.SetTip(button, lineCommands.Count == 0
+            ? "이 라인에는 담을 연출 커맨드가 없습니다."
+            : _quickExpandedIndex is { } index && index >= 0 && index < chips.Count
+                ? $"이 라인의 커맨드 {lineCommands.Count}개를 '{chips[index].DisplayName}' 뒤에 이어 담습니다."
+                : $"이 라인의 커맨드 {lineCommands.Count}개를 칩 하나로 담습니다.");
+
+        button.Click += (_, _) => QuickPinRequested?.Invoke(lineCommands);
+
+        return button;
+    }
+
+    /// <summary>
+    /// 담아 달라는 신호 — 커맨드 목록 하나가 칩 하나(또는 펼친 칩의 뒤 단계들)가 된다.
+    /// 이름 짓기와 담을 곳 판정은 터미널 쪽 배선이 든다(<c>MiniStagePreview</c>) —
+    /// 터미널 행 ★과 이 단추가 <b>같은 함수</b>로 흐르게 하려는 것이다.
+    /// </summary>
+    internal event Action<IReadOnlyList<PresentationResultCommand>>? QuickPinRequested;
+
+    /// <summary>지금 고른 라인의 켜진 연출 커맨드 — 대본 패널이 그리는 것과 같은 행에서 읽는다.</summary>
+    private IReadOnlyList<PresentationResultCommand> SelectedLineCommands()
+    {
+        if (_request is not { SelectedLineId: { } lineId, ScriptRows: { } rows })
+        {
+            return [];
+        }
+
+        return rows
+            .Where(row =>
+                row.Kind == PresentationScriptRowKind.Command &&
+                row.IsEnabled &&
+                row.Command is not null &&
+                string.Equals(row.LineId, lineId, StringComparison.Ordinal))
+            .Select(row => row.Command!)
+            .ToList();
+    }
 
     /// <summary>
     /// 편집 중의 칩 한 줄 — [▸ 펼치기][이름 칸][✕], 펼치면 그 아래 <b>수치 조절</b>이 선다
@@ -3115,29 +3255,33 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     private Control BuildQuickChipEditRow(
         StageQuickCommand chip,
-        PresentationCommandDefinition definition,
         int index,
         Action onApplied)
     {
         bool expanded = _quickExpandedIndex == index;
-        bool adjustable = definition.Parameters.Any(IsAdjustableParameter);
 
+        // ⚠ 펼치기는 <b>언제나</b> 열린다 (2026-08-24) — 수치가 없는 커맨드라도 단계 목록과
+        //   "여기 이어 담는다"는 자리는 있다. 예전에는 조절할 수치가 없으면 잠갔는데,
+        //   그러면 그런 커맨드로 만든 칩은 묶음으로 키울 길이 통째로 막힌다.
         var expand = new Button
         {
             Content = expanded ? "▾" : "▸",
             FontSize = 10,
             Padding = new Thickness(5, 2),
-            Margin = new Thickness(0, 0, 4, 0),
-            IsEnabled = adjustable,
-            Opacity = adjustable ? 1 : 0.35
+            Margin = new Thickness(0, 0, 4, 0)
         };
-        ToolTip.SetTip(expand, adjustable
-            ? "이 칩의 수치를 펼칩니다."
-            : "이 커맨드에는 조절할 수치가 없습니다.");
+        ToolTip.SetTip(expand, expanded
+            ? "접습니다. 접으면 터미널 클릭이 새 칩으로 갑니다."
+            : "단계 목록을 펼칩니다. 펼친 칩이 터미널 클릭을 받습니다.");
         expand.Click += (_, _) =>
         {
             _quickExpandedIndex = expanded ? null : index;
+            _quickExpandedStep = null;
             onApplied();
+
+            // 담을 곳이 바뀌었다 — 터미널 행의 툴팁이 목적지를 말하므로 그쪽도 다시 그린다
+            // (담기 모드가 켜지고 꺼질 때와 같은 이유·같은 길이다).
+            QuickEditModeChanged?.Invoke();
         };
 
         var name = new TextBox
@@ -3147,7 +3291,7 @@ internal sealed class StageSceneView : UserControl
             MinHeight = 26,
             Padding = new Thickness(6, 2)
         };
-        ToolTip.SetTip(name, QuickChipTip(definition, chip.Arguments));
+        ToolTip.SetTip(name, QuickChipTip(chip));
 
         void Commit()
         {
@@ -3186,12 +3330,24 @@ internal sealed class StageSceneView : UserControl
             onApplied();
         };
 
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        // 단계 수 배지 — 묶음인지 아닌지가 이름 옆에서 바로 보인다(1단계는 안 단다).
+        var count = new TextBlock
+        {
+            Text = chip.Steps.Count > 1 ? $"·{chip.Steps.Count}" : string.Empty,
+            FontSize = 10,
+            Opacity = 0.55,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(5, 0, 0, 0)
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
         Grid.SetColumn(expand, 0);
         Grid.SetColumn(name, 1);
-        Grid.SetColumn(remove, 2);
+        Grid.SetColumn(count, 2);
+        Grid.SetColumn(remove, 3);
         row.Children.Add(expand);
         row.Children.Add(name);
+        row.Children.Add(count);
         row.Children.Add(remove);
 
         if (!expanded)
@@ -3199,8 +3355,138 @@ internal sealed class StageSceneView : UserControl
             return row;
         }
 
-        var body = new StackPanel { Spacing = 4, Margin = new Thickness(18, 4, 0, 6) };
-        AddQuickChipParameterRows(body, chip, definition, index);
+        var body = new StackPanel { Spacing = 3, Margin = new Thickness(18, 4, 0, 6) };
+
+        if (chip.Steps.Count == 1)
+        {
+            // 한 단계짜리 칩은 <b>곧 그 커맨드</b>다 — 번호 줄과 ▲▼(둘 다 꺼짐)·✕(칩의 ✕와
+            // 같은 일)를 세우면 손잡이만 늘고 뜻은 하나도 안 는다. 예전 모양 그대로 수치가 선다.
+            if (ManipulationCatalog.Find(chip.Steps[0].DefinitionId) is { } only)
+            {
+                AddQuickChipParameterRows(body, chip.Steps[0], only, index, stepIndex: 0);
+            }
+        }
+        else
+        {
+            for (int stepIndex = 0; stepIndex < chip.Steps.Count; stepIndex++)
+            {
+                body.Children.Add(BuildQuickStepRow(chip, index, stepIndex, onApplied));
+            }
+        }
+
+        body.Children.Add(new TextBlock
+        {
+            Text = "터미널의 커맨드를 클릭하면 여기 맨 뒤로 붙습니다.",
+            FontSize = 9,
+            Opacity = 0.45,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(2, 2, 0, 0)
+        });
+
+        return new StackPanel { Children = { row, body } };
+    }
+
+    /// <summary>
+    /// 펼친 칩의 단계 한 줄 — <c>1 &lt;&lt;fade_out c1 0.4s&gt;&gt;</c> 와 [▲][▼][✕].
+    ///
+    /// <b>줄 자체가 수치 입구다</b>: 누르면 그 단계의 슬라이더·선택기가 아래 펼쳐진다
+    /// (칩과 마찬가지로 하나만 열린다). 화살표를 따로 두면 좁은 줄에 손잡이가 넷이 된다.
+    ///
+    /// 요약은 <b>이 단계가 실제로 낼 커맨드</b>다 — 이름이 무엇을 감추는지 숨기지 않는다.
+    /// </summary>
+    private Control BuildQuickStepRow(
+        StageQuickCommand chip,
+        int index,
+        int stepIndex,
+        Action onApplied)
+    {
+        StageQuickStep step = chip.Steps[stepIndex];
+        PresentationCommandDefinition? definition = ManipulationCatalog.Find(step.DefinitionId);
+        bool expanded = _quickExpandedStep == stepIndex;
+
+        var summary = new Button
+        {
+            Content = new TextBlock
+            {
+                Text = definition is null
+                    ? $"{stepIndex + 1}  (이 게임 정의에 없는 커맨드)"
+                    : $"{stepIndex + 1}  {QuickStepTip(definition, step.Arguments)}",
+                FontSize = 10,
+                Opacity = definition is null ? 0.5 : 0.85,
+                TextWrapping = TextWrapping.Wrap
+            },
+            FontSize = 10,
+            Padding = new Thickness(6, 3),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Background = expanded ? new SolidColorBrush(Color.FromArgb(40, 250, 204, 21)) : Brushes.Transparent
+        };
+        ToolTip.SetTip(summary, definition is null
+            ? "이 단계는 실행할 수 없습니다 — 칩 전체가 회색으로 섭니다."
+            : "누르면 이 단계의 수치를 폅니다.");
+        summary.Click += (_, _) =>
+        {
+            _quickExpandedStep = expanded ? null : stepIndex;
+            onApplied();
+        };
+
+        Button Arrow(string glyph, int delta, string tip)
+        {
+            var button = new Button
+            {
+                Content = glyph,
+                FontSize = 9,
+                Padding = new Thickness(4, 1),
+                Margin = new Thickness(2, 0, 0, 0),
+                IsEnabled = stepIndex + delta >= 0 && stepIndex + delta < chip.Steps.Count
+            };
+            ToolTip.SetTip(button, tip);
+            button.Click += (_, _) =>
+            {
+                UiGuard.Run(_session, "칩 단계 순서", () =>
+                    _session!.Editor.MoveQuickCommandStep(index, stepIndex, delta));
+                // 옮긴 단계를 계속 따라간다 — 펼쳐 놓은 것이 발밑에서 바뀌면 안 된다.
+                _quickExpandedStep = expanded ? stepIndex + delta : _quickExpandedStep;
+                onApplied();
+            };
+            return button;
+        }
+
+        var drop = new Button
+        {
+            Content = "✕",
+            FontSize = 9,
+            Padding = new Thickness(5, 1),
+            Margin = new Thickness(2, 0, 0, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38))
+        };
+        ToolTip.SetTip(drop, chip.Steps.Count == 1
+            ? "마지막 단계입니다 — 빼면 칩이 사라집니다."
+            : "이 단계를 뺍니다.");
+        drop.Click += (_, _) =>
+        {
+            UiGuard.Run(_session, "칩 단계 제거", () =>
+                _session!.Editor.RemoveQuickCommandStepAt(index, stepIndex));
+            _quickExpandedStep = null;
+            onApplied();
+        };
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto") };
+        Control[] cells = [summary, Arrow("▲", -1, "위로"), Arrow("▼", 1, "아래로"), drop];
+
+        for (int column = 0; column < cells.Length; column++)
+        {
+            Grid.SetColumn(cells[column], column);
+            row.Children.Add(cells[column]);
+        }
+
+        if (!expanded || definition is null)
+        {
+            return row;
+        }
+
+        var body = new StackPanel { Spacing = 4, Margin = new Thickness(14, 3, 0, 5) };
+        AddQuickChipParameterRows(body, step, definition, index, stepIndex);
 
         return new StackPanel { Children = { row, body } };
     }
@@ -3217,9 +3503,10 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     private void AddQuickChipParameterRows(
         StackPanel host,
-        StageQuickCommand chip,
+        StageQuickStep chip,
         PresentationCommandDefinition definition,
-        int index)
+        int index,
+        int stepIndex)
     {
         if (_session is null)
         {
@@ -3229,7 +3516,7 @@ internal sealed class StageSceneView : UserControl
         void Write(string argumentName, string value)
         {
             UiGuard.Run(_session, "칩 수치 조절", () =>
-                _session.Editor.SetQuickCommandArgument(index, argumentName, value));
+                _session.Editor.SetQuickCommandArgument(index, stepIndex, argumentName, value));
         }
 
         foreach (PresentationCommandParameter parameter in definition.Parameters)
@@ -3310,36 +3597,52 @@ internal sealed class StageSceneView : UserControl
         }
     }
 
-    /// <summary>칩 하나 — 누르면 지금 고른 라인에 붙는 단추.</summary>
-    private Control BuildQuickChip(
-        StageQuickCommand chip,
-        PresentationCommandDefinition definition,
-        Action onApplied)
+    /// <summary>
+    /// 칩 하나 — 누르면 담긴 단계가 <b>순서대로 한 번에</b> 지금 고른 라인에 붙는다.
+    /// 되돌리기 한 번이 그 누름 하나를 원복한다(<c>PresentationStageActions.ApplyAll</c>).
+    ///
+    /// 묶음은 이름 옆 <c>·N</c>으로 몇 단계짜리인지 말하고, 툴팁이 그 N줄을 그대로 편다 —
+    /// 눌러 보기 전에 무엇이 붙을지 알 수 있어야 한다.
+    /// </summary>
+    private Control BuildQuickChip(StageQuickCommand chip, Action onApplied)
     {
-        IReadOnlyDictionary<string, string>? arguments = ResolveQuickArguments(chip, definition);
+        (IReadOnlyList<(string Output, IReadOnlyDictionary<string, string> Arguments)> steps, string? blocked) =
+            ResolveQuickSteps(chip);
+
+        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        label.Children.Add(new TextBlock { Text = chip.DisplayName, FontSize = 11 });
+
+        if (chip.Steps.Count > 1)
+        {
+            label.Children.Add(new TextBlock
+            {
+                Text = $"·{chip.Steps.Count}",
+                FontSize = 10,
+                Opacity = 0.55,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+        }
 
         var button = new Button
         {
-            Content = chip.DisplayName,
+            Content = label,
             FontSize = 11,
             Padding = new Thickness(9, 4),
             Margin = new Thickness(0, 0, 4, 4),
-            // 대상 슬롯을 못 채웠다 = 무효한 커맨드가 된다. 회색으로 세우고 이유를 툴팁이 말한다.
-            IsEnabled = arguments is not null
+            // 한 단계라도 낼 수 없으면 회색이다 — 나머지만 조용히 붙이면 사람은 다 붙은 줄 안다.
+            IsEnabled = blocked is null
         };
 
-        ToolTip.SetTip(button, arguments is null
-            ? $"<<{definition.OutputCommandName}>> — 대상 슬롯이 없습니다. 위 [+]로 슬롯을 먼저 만드세요."
-            : QuickChipTip(definition, arguments));
+        ToolTip.SetTip(button, blocked ?? QuickChipTip(chip));
 
         button.Click += (_, _) =>
         {
-            if (arguments is null)
+            if (blocked is not null)
             {
                 return;
             }
 
-            ApplyStageCommand(definition.OutputCommandName, arguments);
+            ApplyStageCommands(chip.DisplayName, steps);
             onApplied();
         };
 
@@ -3347,46 +3650,79 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 칩이 실제로 낼 인자 — 카탈로그 기본값 위에 <b>칩이 담아 둔 값을 얹는다</b>
+    /// 칩이 실제로 낼 커맨드 열 — 단계마다 카탈로그 기본값 위에 <b>담아 둔 값을 얹는다</b>
     /// (슬롯·duration 포함, 2026-08-22 소유자). 담긴 값이 언제나 이긴다.
     ///
     /// 조절창의 선택 슬롯이 들어가는 경우는 하나뿐이다: 커맨드가 대상을 요구하는데
-    /// <b>칩이 그 자리를 안 담았을 때</b>(기본 목록·손으로 지운 칩). 그것도 없으면 null —
-    /// 부르는 쪽이 칩을 회색으로 세운다.
+    /// <b>그 단계가 그 자리를 안 담았을 때</b>(기본 목록·손으로 지운 칩).
+    ///
+    /// 막힌 사유를 <b>문장으로</b> 돌려준다 — 회색 단추는 왜 회색인지 말할 수 있어야 한다.
+    /// 묶음에서는 "몇 번째 단계가" 까지 말해야 사람이 어디를 고칠지 안다.
     /// </summary>
-    private IReadOnlyDictionary<string, string>? ResolveQuickArguments(
-        StageQuickCommand chip,
-        PresentationCommandDefinition definition)
+    private (IReadOnlyList<(string Output, IReadOnlyDictionary<string, string> Arguments)> Steps, string? Blocked)
+        ResolveQuickSteps(StageQuickCommand chip)
     {
-        var arguments = new Dictionary<string, string>(
-            definition.DefaultArgumentValues(), StringComparer.Ordinal);
+        PresentationCommandCatalog catalog = ManipulationCatalog;
+        var resolved = new List<(string, IReadOnlyDictionary<string, string>)>(chip.Steps.Count);
 
-        foreach ((string key, string value) in chip.Arguments)
+        for (int index = 0; index < chip.Steps.Count; index++)
         {
-            arguments[key] = value;
-        }
+            StageQuickStep step = chip.Steps[index];
 
-        foreach (PresentationCommandParameter parameter in definition.Parameters)
-        {
-            if (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) ||
-                chip.Arguments.ContainsKey(parameter.Name))
+            if (catalog.Find(step.DefinitionId) is not { } definition)
             {
-                continue;
+                return (resolved, $"{index + 1}번째 단계의 커맨드가 이 게임 정의에 없습니다.");
             }
 
-            if (_popoverSlotKey is not { } slotKey)
+            var arguments = new Dictionary<string, string>(
+                definition.DefaultArgumentValues(), StringComparer.Ordinal);
+
+            foreach ((string key, string value) in step.Arguments)
             {
-                return null;
+                arguments[key] = value;
             }
 
-            arguments[parameter.Name] = slotKey;
+            foreach (PresentationCommandParameter parameter in definition.Parameters)
+            {
+                if (!ArgumentTokenCandidates.IsStageTargetType(parameter.Type) ||
+                    step.Arguments.ContainsKey(parameter.Name))
+                {
+                    continue;
+                }
+
+                if (_popoverSlotKey is not { } slotKey)
+                {
+                    return (resolved,
+                        $"{index + 1}번째 단계(<<{definition.OutputCommandName}>>)의 대상 슬롯이 없습니다. " +
+                        "위 [+]로 슬롯을 먼저 만드세요.");
+                }
+
+                arguments[parameter.Name] = slotKey;
+            }
+
+            resolved.Add((definition.OutputCommandName, arguments));
         }
 
-        return arguments;
+        return (resolved, null);
     }
 
-    /// <summary>툴팁 = 이 칩이 낼 커맨드 그대로. 칩 이름이 무엇을 감추는지 숨기지 않는다.</summary>
-    private static string QuickChipTip(
+    /// <summary>툴팁 = 이 칩이 낼 커맨드 그대로, 단계마다 한 줄. 이름이 감추는 것을 숨기지 않는다.</summary>
+    private string QuickChipTip(StageQuickCommand chip)
+    {
+        PresentationCommandCatalog catalog = ManipulationCatalog;
+
+        return string.Join('\n', chip.Steps.Select((step, index) =>
+        {
+            string prefix = chip.Steps.Count > 1 ? $"{index + 1}  " : string.Empty;
+
+            return catalog.Find(step.DefinitionId) is { } definition
+                ? prefix + QuickStepTip(definition, step.Arguments)
+                : prefix + "(이 게임 정의에 없는 커맨드)";
+        }));
+    }
+
+    /// <summary>단계 한 줄의 표기 — 담긴 인자를 정의 순서대로 편 yarn 한 줄이다.</summary>
+    private static string QuickStepTip(
         PresentationCommandDefinition definition,
         IReadOnlyDictionary<string, string> arguments)
     {

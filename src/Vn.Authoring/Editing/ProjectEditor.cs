@@ -1009,8 +1009,7 @@ public sealed partial class ProjectEditor
 
         for (int index = 0; index < chips.Count; index++)
         {
-            if (string.Equals(chips[index].DefinitionId, chip.DefinitionId, StringComparison.Ordinal) &&
-                SameArguments(chips[index].Arguments, chip.Arguments))
+            if (chips[index].SameStepsAs(chip))
             {
                 return index;
             }
@@ -1018,6 +1017,97 @@ public sealed partial class ProjectEditor
 
         Mutate(ProjectChangeKind.Content, () => MaterializeQuickCommands().Add(chip.Copy()));
         return chips.Count;
+    }
+
+    /// <summary>
+    /// 단계 여럿을 칩 하나의 <b>맨 뒤에</b> 붙인다 — 이것이 묶음이 자라는 유일한 통로다
+    /// (2026-08-24 소유자: "여러개의 커맨드 단위로 커스텀").
+    ///
+    /// 붙이는 자리가 맨 뒤인 이유는 <b>순서가 곧 뜻</b>이기 때문이다: 터미널에서 집는
+    /// 순서가 곧 무대에 붙는 순서다. 중간에 끼우고 싶으면 붙인 뒤 ▲▼로 옮긴다
+    /// (<see cref="MoveQuickCommandStep"/>) — 담는 순간에 자리까지 묻지 않는다.
+    ///
+    /// 같은 것을 두 번 붙이는 것은 막지 않는다. 묶음 안의 같은 커맨드·같은 대상은 적용에서
+    /// 뒤의 것이 이기므로 해가 없고, 값을 달리해 두 번 거는 것이 정상 쓰임이다.
+    /// </summary>
+    public void AppendQuickCommandSteps(int index, IReadOnlyList<StageQuickStep> steps)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+
+        if (index < 0 || index >= Project.EffectiveQuickCommands.Count || steps.Count == 0)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            List<StageQuickCommand> chips = MaterializeQuickCommands();
+            chips[index] = chips[index] with
+            {
+                Steps = [.. chips[index].Steps, .. steps.Select(step => step.Copy())]
+            };
+        });
+    }
+
+    /// <summary>
+    /// 단계 하나를 뺀다. <b>마지막 단계를 빼면 칩째 사라진다</b> — 단계가 없는 칩은 눌러도
+    /// 낼 것이 없는 이름뿐인 단추이고, 그것을 남기면 화면이 "누르면 아무 일도 안 나는 칩"을
+    /// 설명해야 한다.
+    /// </summary>
+    public void RemoveQuickCommandStepAt(int index, int stepIndex)
+    {
+        IReadOnlyList<StageQuickCommand> chips = Project.EffectiveQuickCommands;
+
+        if (index < 0 || index >= chips.Count ||
+            stepIndex < 0 || stepIndex >= chips[index].Steps.Count)
+        {
+            return;
+        }
+
+        if (chips[index].Steps.Count == 1)
+        {
+            RemoveQuickCommandAt(index);
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            List<StageQuickCommand> materialized = MaterializeQuickCommands();
+            List<StageQuickStep> steps = [.. materialized[index].Steps];
+            steps.RemoveAt(stepIndex);
+            materialized[index] = materialized[index] with { Steps = steps };
+        });
+    }
+
+    /// <summary>
+    /// 단계 하나를 위/아래로 옮긴다(<paramref name="delta"/> = -1/+1). 순서가 뜻이므로
+    /// 옮기기는 값 편집과 같은 급이다. 목록 밖으로 나가는 이동은 아무 일도 안 한다 —
+    /// 끝에서 한 번 더 누른 것이 목록을 감아 돌면 사람이 방금 무슨 일이 났는지 놓친다.
+    /// </summary>
+    public void MoveQuickCommandStep(int index, int stepIndex, int delta)
+    {
+        IReadOnlyList<StageQuickCommand> chips = Project.EffectiveQuickCommands;
+
+        if (index < 0 || index >= chips.Count ||
+            stepIndex < 0 || stepIndex >= chips[index].Steps.Count)
+        {
+            return;
+        }
+
+        int target = stepIndex + delta;
+
+        if (delta == 0 || target < 0 || target >= chips[index].Steps.Count)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.Content, () =>
+        {
+            List<StageQuickCommand> materialized = MaterializeQuickCommands();
+            List<StageQuickStep> steps = [.. materialized[index].Steps];
+            (steps[stepIndex], steps[target]) = (steps[target], steps[stepIndex]);
+            materialized[index] = materialized[index] with { Steps = steps };
+        });
     }
 
     /// <summary>칩 하나를 뺀다. 전부 빼면 <b>빈 목록</b>이 남는다 — 기본으로 되돌아가지 않는다.</summary>
@@ -1064,15 +1154,22 @@ public sealed partial class ProjectEditor
     /// 수치를 조절할 수 있게 … 터미널 아래에서 그랬던 것 처럼"). 칩은 발행 결과가 아니라
     /// 프로젝트의 값 한 벌이라 커맨드 인자 수정과 같은 통로를 못 쓴다 — 이것이 그 통로다.
     /// </summary>
-    public void SetQuickCommandArgument(int index, string argumentName, string value)
+    public void SetQuickCommandArgument(int index, string argumentName, string value) =>
+        SetQuickCommandArgument(index, stepIndex: 0, argumentName, value);
+
+    /// <inheritdoc cref="SetQuickCommandArgument(int, string, string)"/>
+    public void SetQuickCommandArgument(int index, int stepIndex, string argumentName, string value)
     {
-        if (index < 0 || index >= Project.EffectiveQuickCommands.Count ||
+        IReadOnlyList<StageQuickCommand> chips = Project.EffectiveQuickCommands;
+
+        if (index < 0 || index >= chips.Count ||
+            stepIndex < 0 || stepIndex >= chips[index].Steps.Count ||
             string.IsNullOrWhiteSpace(argumentName))
         {
             return;
         }
 
-        if (Project.EffectiveQuickCommands[index].Arguments.TryGetValue(argumentName, out string? current) &&
+        if (chips[index].Steps[stepIndex].Arguments.TryGetValue(argumentName, out string? current) &&
             string.Equals(current, value, StringComparison.Ordinal))
         {
             return; // 같은 값 = 편집이 아니다(undo 스택에 빈 단계를 쌓지 않는다)
@@ -1080,12 +1177,18 @@ public sealed partial class ProjectEditor
 
         Mutate(ProjectChangeKind.Content, () =>
         {
-            List<StageQuickCommand> chips = MaterializeQuickCommands();
-            var arguments = new Dictionary<string, string>(chips[index].Arguments, StringComparer.Ordinal)
+            List<StageQuickCommand> materialized = MaterializeQuickCommands();
+            List<StageQuickStep> steps = [.. materialized[index].Steps];
+
+            steps[stepIndex] = steps[stepIndex] with
             {
-                [argumentName] = value
+                Arguments = new Dictionary<string, string>(steps[stepIndex].Arguments, StringComparer.Ordinal)
+                {
+                    [argumentName] = value
+                }
             };
-            chips[index] = chips[index] with { Arguments = arguments };
+
+            materialized[index] = materialized[index] with { Steps = steps };
         });
     }
 
@@ -1108,16 +1211,6 @@ public sealed partial class ProjectEditor
     {
         return Project.QuickCommands ??=
             StageQuickCommands.Default.Select(chip => chip.Copy()).ToList();
-    }
-
-    private static bool SameArguments(
-        IReadOnlyDictionary<string, string> left,
-        IReadOnlyDictionary<string, string> right)
-    {
-        return left.Count == right.Count &&
-            left.All(pair =>
-                right.TryGetValue(pair.Key, out string? value) &&
-                string.Equals(value, pair.Value, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -1199,6 +1292,80 @@ public sealed partial class ProjectEditor
         });
 
         return created;
+    }
+
+    /// <summary>
+    /// 배치 편집 한 항목 — <see cref="CommandId"/>가 있으면 그 커맨드의 인자를 덮어쓰고,
+    /// 없으면 새 커맨드를 라인 끝에 붙인다. 무엇이 "이미 있는 것"인지 고르는 판정은
+    /// 카탈로그를 아는 <c>PresentationStageActions</c>의 몫이고, 여기는 그 결정을 실행한다.
+    /// </summary>
+    public readonly record struct PresentationCommandEdit(
+        string? CommandId,
+        string DefinitionId,
+        IReadOnlyDictionary<string, string> Arguments);
+
+    /// <summary>
+    /// 추가와 수정이 섞인 편집 여러 개를 <b>한 번의 편집으로</b> 라인에 반영한다
+    /// (2026-08-24 — 자주 쓰는 칩이 묶음이 되면서 생긴 통로).
+    ///
+    /// <b>왜 한 번인가</b>: 단추 하나를 누른 것은 조작 하나다. 단계마다 <c>Mutate</c>를
+    /// 지나면 다섯 단계짜리 칩을 되돌리는 데 Ctrl+Z를 다섯 번 눌러야 한다 —
+    /// "조작 하나 = 편집 하나"가 그 자리에서 깨진다.
+    /// </summary>
+    public IReadOnlyList<PresentationCommandInstance> ApplyPresentationCommandBatch(
+        string presentationNodeId,
+        string lineId,
+        IReadOnlyList<PresentationCommandEdit> edits)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+        PresentationNode node = RequirePresentation(presentationNodeId);
+
+        PresentationLineBinding? existingBinding = node.Bindings.FirstOrDefault(item =>
+            string.Equals(item.LineId, lineId, StringComparison.Ordinal));
+        PresentationLineBinding binding = existingBinding ?? new PresentationLineBinding(lineId);
+
+        // 대상을 먼저 전부 잡아 둔다 — Mutate 안에서 못 찾는 커맨드가 나오면 스냅샷은
+        // 이미 찍혔는데 편집은 절반만 도는 상태가 된다.
+        var touched = new List<(PresentationCommandInstance Command, IReadOnlyDictionary<string, string> Arguments, bool IsNew)>(edits.Count);
+
+        foreach (PresentationCommandEdit edit in edits)
+        {
+            if (edit.CommandId is { } commandId)
+            {
+                PresentationCommandInstance target = FindPresentationCommand(node, commandId)
+                    ?? throw new InvalidOperationException($"커맨드 '{commandId}'를 찾을 수 없습니다.");
+                touched.Add((target, edit.Arguments, IsNew: false));
+                continue;
+            }
+
+            touched.Add((new PresentationCommandInstance(definitionId: edit.DefinitionId), edit.Arguments, IsNew: true));
+        }
+
+        Mutate(ProjectChangeKind.PresentationContent, () =>
+        {
+            if (existingBinding is null && touched.Any(item => item.IsNew))
+            {
+                node.Bindings.Add(binding);
+            }
+
+            foreach ((PresentationCommandInstance command, IReadOnlyDictionary<string, string> arguments, bool isNew) in touched)
+            {
+                foreach ((string key, string value) in arguments)
+                {
+                    command.Arguments[key] = value;
+                }
+
+                if (!isNew)
+                {
+                    continue;
+                }
+
+                binding.Commands.Add(command);
+                RecordRecentCommand(command.DefinitionId);
+            }
+        });
+
+        return touched.Select(item => item.Command).ToList();
     }
 
     /// <summary>

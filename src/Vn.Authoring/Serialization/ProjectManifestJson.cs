@@ -410,19 +410,29 @@ public static class ProjectManifestJson
 
         foreach (StageQuickCommand chip in chips)
         {
-            var args = new JsonObject();
+            var steps = new JsonArray();
 
-            // 인자 이름 순으로 — 결정적 출력이라야 저장할 때마다 diff가 안 생긴다.
-            foreach ((string key, string value) in chip.Arguments.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            foreach (StageQuickStep step in chip.Steps)
             {
-                args[key] = value;
+                var args = new JsonObject();
+
+                // 인자 이름 순으로 — 결정적 출력이라야 저장할 때마다 diff가 안 생긴다.
+                foreach ((string key, string value) in step.Arguments.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                {
+                    args[key] = value;
+                }
+
+                steps.Add(new JsonObject
+                {
+                    ["command"] = step.DefinitionId,
+                    ["args"] = args
+                });
             }
 
             array.Add(new JsonObject
             {
                 ["name"] = chip.DisplayName,
-                ["command"] = chip.DefinitionId,
-                ["args"] = args
+                ["steps"] = steps
             });
         }
 
@@ -445,27 +455,47 @@ public static class ProjectManifestJson
                 throw new InvalidDataException("quickCommands 항목이 객체가 아닙니다.");
             }
 
-            string definitionId = (string?)chip["command"] ?? string.Empty;
+            // 묶음(2026-08-24)은 steps 배열이다. 그 전에 저장된 칩은 한 단계가 칩 자체에
+            // 펼쳐져 있으므로(command·args) 여기서 한 단계짜리 묶음으로 읽어 올린다 —
+            // <b>이미 담아 둔 칩이 조용히 사라지면 그것이 곧 데이터 손실이다.</b>
+            // 쓰기는 언제나 새 모양 하나다(두 벌로 쓰면 어느 쪽이 진실인지 못 말한다).
+            var steps = new List<StageQuickStep>();
 
-            if (string.IsNullOrWhiteSpace(definitionId))
+            List<JsonObject> stepNodes = chip["steps"] is JsonArray stepArray
+                ? stepArray
+                    .Select(entry => entry as JsonObject
+                        ?? throw new InvalidDataException("quickCommands 단계가 객체가 아닙니다."))
+                    .ToList()
+                : [chip];
+
+            foreach (JsonObject step in stepNodes)
             {
-                continue; // 커맨드 없는 칩은 누를 것이 없다
+                if ((string?)step["command"] is not { Length: > 0 } definitionId)
+                {
+                    continue; // 커맨드 없는 단계는 낼 것이 없다
+                }
+
+                var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+                foreach (KeyValuePair<string, JsonNode?> pair in step["args"]?.AsObject() ?? new JsonObject())
+                {
+                    if ((string?)pair.Value is { } value)
+                    {
+                        arguments[pair.Key] = value;
+                    }
+                }
+
+                steps.Add(new StageQuickStep(definitionId, arguments));
             }
 
-            var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
-
-            foreach (KeyValuePair<string, JsonNode?> pair in chip["args"]?.AsObject() ?? new JsonObject())
+            if (steps.Count == 0)
             {
-                if ((string?)pair.Value is { } value)
-                {
-                    arguments[pair.Key] = value;
-                }
+                continue; // 단계가 하나도 없는 칩은 누를 것이 없다
             }
 
             chips.Add(new StageQuickCommand(
-                (string?)chip["name"] ?? definitionId,
-                definitionId,
-                arguments));
+                (string?)chip["name"] ?? steps[0].DefinitionId,
+                steps));
         }
 
         return chips;

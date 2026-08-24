@@ -77,8 +77,12 @@ public sealed class StageQuickTabTests
         return view;
     }
 
+    /// <summary>칩 단추 하나 — 묶음이면 이름 옆에 <c>·N</c> 배지가 붙으므로 이름만 본다.</summary>
     private static Button Chip(Control tab, string label) =>
-        tab.GetLogicalDescendants().OfType<Button>().First(button => Equals(button.Content, label));
+        tab.GetLogicalDescendants().OfType<Button>().First(button =>
+            Equals(button.Content, label) ||
+            (button.Content as Panel)?.Children.OfType<TextBlock>()
+                .Any(text => string.Equals(text.Text, label, StringComparison.Ordinal)) == true);
 
     /// <summary>터미널 판의 테두리 — 담기 모드에서만 색이 선다(두께는 늘 2px 그대로다).</summary>
     private static Border FrameOf(MiniStagePreview preview) =>
@@ -113,7 +117,7 @@ public sealed class StageQuickTabTests
         // 기본 칩 = shot_zoom · shot_to · shot_reset (2026-08-22 소유자). 나머지는 사람이 담는다.
         Assert.Equal(
             ["shot.shot_zoom", "shot.shot_to", "shot.shot_reset"],
-            session.Project.EffectiveQuickCommands.Select(chip => chip.DefinitionId).ToArray());
+            session.Project.EffectiveQuickCommands.Select(chip => chip.Steps[0].DefinitionId).ToArray());
     });
 
     [Fact]
@@ -143,7 +147,7 @@ public sealed class StageQuickTabTests
         // 대상을 요구하는데 담긴 슬롯이 없는 칩 — 대상 없이 담긴 경우다.
         session.Project.QuickCommands =
         [
-            new StageQuickCommand(
+            StageQuickCommand.Single(
                 "흔들기",
                 "char_rig_staging.gesture",
                 new Dictionary<string, string>(StringComparer.Ordinal) { ["xAmp"] = "0.3u" })
@@ -208,19 +212,172 @@ public sealed class StageQuickTabTests
 
         // 인자가 통째로 담긴다 — 슬롯도 duration도 그대로 (소유자: "그대로 복사하는게 포인트").
         StageQuickCommand pinned = session.Project.EffectiveQuickCommands[^1];
-        Assert.Equal("char_rig_staging.gesture", pinned.DefinitionId);
-        Assert.Equal("c1", pinned.Arguments["slot"]);
-        Assert.Equal("18fr", pinned.Arguments["duration"]);
-        Assert.Equal("0.7u", pinned.Arguments["xAmp"]);
+        Assert.Equal("char_rig_staging.gesture", pinned.Steps[0].DefinitionId);
+        Assert.Equal("c1", pinned.Steps[0].Arguments["slot"]);
+        Assert.Equal("18fr", pinned.Steps[0].Arguments["duration"]);
+        Assert.Equal("0.7u", pinned.Steps[0].Arguments["xAmp"]);
 
         // 같은 커맨드를 또 담으면 이름에 번호가 붙는다 — 값만 달리해 담는 것이 정상 쓰임이다.
-        session.Editor.PinQuickCommand(new StageQuickCommand(
+        session.Editor.PinQuickCommand(StageQuickCommand.Single(
             pinned.DisplayName,
-            pinned.DefinitionId,
+            pinned.Steps[0].DefinitionId,
             new Dictionary<string, string>(StringComparer.Ordinal) { ["slot"] = "c2" }));
         Assert.Equal("제자리 몸짓", pinned.DisplayName);
     });
 
+
+    // ── 묶음 칩 (2026-08-24 소유자: "여러개의 커맨드 단위로 커스텀") ──────────
+    //
+    // 담기의 규칙은 하나다: <b>펼친 칩이 있으면 거기 이어 붙고, 없으면 새 칩이다.</b>
+    // 입구가 둘(터미널 행 · [＋ 이 라인 통째로])이어도 규칙은 그 하나라, 안내 줄이
+    // "이번 클릭이 어디로 가는지"를 언제나 말할 수 있다.
+
+    /// <summary>터미널이 달린 프리뷰 하나 — 담기 흐름은 여기서만 끝까지 돈다.</summary>
+    private static MiniStagePreview PreviewWith(
+        AuthoringSession session,
+        string nodeId,
+        string lineId,
+        params PresentationResultCommand[] lineCommands)
+    {
+        var preview = new MiniStagePreview();
+        var window = new Window { Width = 1200, Height = 800, Content = preview };
+        window.Show();
+        preview.Attach(session);
+
+        preview.Show(new MiniStagePreviewRequest(
+            "연출: 테스트",
+            MiniStageFold.Fold(PresentationCommandCatalog.Default, [], []),
+            HasPresentation: true,
+            SelectedLineId: lineId,
+            SpeakerName: null,
+            LineText: "첫 줄",
+            EditContext: new StageEditContext(nodeId, lineId),
+            ScriptRows: lineCommands
+                .Select(command => new PresentationScriptRow(
+                    PresentationScriptRowKind.Command,
+                    lineId,
+                    command,
+                    $"<<{command.DefinitionId}>>"))
+                .ToArray()));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        return preview;
+    }
+
+    [Fact]
+    public void 펼친_칩이_터미널_클릭을_이어받아_묶음이_된다() => HeadlessUi.Run(() =>
+    {
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        MiniStagePreview preview = PreviewWith(session, nodeId, lineId, Command(
+            "char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u"), ("duration", "18fr")));
+
+        int before = session.Project.EffectiveQuickCommands.Count;
+
+        preview.Scene.SetQuickEditModeProbe(true);
+        preview.Scene.ExpandQuickChipProbe(0); // 첫 칩(줌 인)을 펴 둔다 = 담을 대상
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        LeftClick(CommandRowOf(preview, "gesture"));
+
+        // 새 칩이 생기지 않는다 — 펼친 칩의 뒤에 단계로 붙는다.
+        Assert.Equal(before, session.Project.EffectiveQuickCommands.Count);
+
+        StageQuickCommand grown = session.Project.EffectiveQuickCommands[0];
+        Assert.Equal(2, grown.Steps.Count);
+        Assert.Equal("shot.shot_zoom", grown.Steps[0].DefinitionId);
+        Assert.Equal("char_rig_staging.gesture", grown.Steps[1].DefinitionId);
+        // 인자는 통째로 온다 — 한 개짜리 담기와 같은 규칙이다.
+        Assert.Equal("18fr", grown.Steps[1].Arguments["duration"]);
+
+        // 접으면 다시 새 칩으로 간다.
+        preview.Scene.ExpandQuickChipProbe(null);
+        LeftClick(CommandRowOf(preview, "gesture"));
+        Assert.Equal(before + 1, session.Project.EffectiveQuickCommands.Count);
+    });
+
+    [Fact]
+    public void 이_라인_통째로가_켜진_커맨드를_순서대로_담는다() => HeadlessUi.Run(() =>
+    {
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        MiniStagePreview preview = PreviewWith(
+            session, nodeId, lineId,
+            Command("char_rig_presentation.fade_out", ("slot", "c1")),
+            Command("common_control.pause", ("seconds", "0.2")));
+
+        preview.Scene.SetQuickEditModeProbe(true);
+
+        Control tab = preview.Scene.BuildQuickTabProbe(null);
+        tab.GetLogicalDescendants().OfType<Button>()
+            .First(button => (button.Content as string)?.StartsWith("＋ 이 라인 통째로", StringComparison.Ordinal) == true)
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        StageQuickCommand pinned = session.Project.EffectiveQuickCommands[^1];
+
+        Assert.Equal(2, pinned.Steps.Count);
+        Assert.Equal("char_rig_presentation.fade_out", pinned.Steps[0].DefinitionId);
+        Assert.Equal("common_control.pause", pinned.Steps[1].DefinitionId);
+        // 이름은 묻지 않는다 — 첫 커맨드 이름에 "외 N"을 단다(고치는 자리는 이름 칸).
+        Assert.EndsWith("외 1", pinned.DisplayName, StringComparison.Ordinal);
+    });
+
+    [Fact]
+    public void 묶음_칩은_클릭_하나로_전부_붙고_되돌리기_한_번에_사라진다() => HeadlessUi.Run(() =>
+    {
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        session.Project.QuickCommands =
+        [
+            new StageQuickCommand("퇴장 한 벌",
+            [
+                new StageQuickStep("char_rig_presentation.fade_out",
+                    new Dictionary<string, string>(StringComparer.Ordinal) { ["slot"] = "c1" }),
+                new StageQuickStep("common_control.pause",
+                    new Dictionary<string, string>(StringComparer.Ordinal) { ["seconds"] = "0.2" })
+            ])
+        ];
+
+        StageSceneView view = SceneOf(session, nodeId, lineId);
+
+        Chip(view.BuildQuickTabProbe(null), "퇴장 한 벌")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+        Assert.Equal(
+            ["char_rig_presentation.fade_out", "common_control.pause"],
+            LineCommands(session, nodeId, lineId).Select(command => command.DefinitionId).ToArray());
+
+        // ⛔ 단추 하나를 누른 것은 조작 하나다 — Ctrl+Z 한 번이 두 커맨드를 함께 원복한다.
+        session.Editor.Undo();
+        Assert.Empty(LineCommands(session, nodeId, lineId));
+    });
+
+    [Fact]
+    public void 한_단계라도_못_내면_칩이_회색으로_서고_이유를_말한다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 나머지만 조용히 붙이면 사람은 다 붙은 줄 안다 — 묶음은 전부 아니면 전무다.
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        session.Project.QuickCommands =
+        [
+            new StageQuickCommand("반만 되는 묶음",
+            [
+                new StageQuickStep("shot.shot_reset",
+                    new Dictionary<string, string>(StringComparer.Ordinal)),
+                new StageQuickStep("없는.커맨드",
+                    new Dictionary<string, string>(StringComparer.Ordinal))
+            ])
+        ];
+
+        StageSceneView view = SceneOf(session, nodeId, lineId);
+        Button chip = Chip(view.BuildQuickTabProbe(null), "반만 되는 묶음");
+
+        Assert.False(chip.IsEnabled);
+        Assert.Contains("2번째 단계", (string)ToolTip.GetTip(chip)!, StringComparison.Ordinal);
+
+        chip.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Empty(LineCommands(session, nodeId, lineId));
+    });
 
     [Fact]
     public void 칩을_펴면_작업대와_같은_수치_조절이_선다() => HeadlessUi.Run(() =>
@@ -249,9 +406,9 @@ public sealed class StageQuickTabTests
         zoom.Value = 2;
         zoom.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = Key.Right });
 
-        Assert.Equal("2", session.Project.EffectiveQuickCommands[0].Arguments["zoom"]);
+        Assert.Equal("2", session.Project.EffectiveQuickCommands[0].Steps[0].Arguments["zoom"]);
         // 손대지 않은 인자는 그대로다.
-        Assert.Equal("0.45s", session.Project.EffectiveQuickCommands[0].Arguments["duration"]);
+        Assert.Equal("0.45s", session.Project.EffectiveQuickCommands[0].Steps[0].Arguments["duration"]);
     });
 
     [Fact]

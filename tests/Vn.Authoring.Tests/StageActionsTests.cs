@@ -273,6 +273,85 @@ public class StageActionsTests
         Assert.Equal("3", FoldOf(node).Slots["c2"].EmotionKey);
     }
 
+    // ── 묶음 적용 (2026-08-24 — 자주 쓰는 칩이 묶음이 됐다) ─────────────────
+
+    /// <summary>단계 하나 — (outputCommand, 인자들).</summary>
+    private static (string, IReadOnlyDictionary<string, string>) Step(
+        string outputCommand, params (string Key, string Value)[] arguments) =>
+        (outputCommand, Args(arguments));
+
+    [Fact]
+    public void 묶어_눌러도_나눠_누른_것과_같다()
+    {
+        // ⛔ 이것이 묶음의 정체다 — 규칙이 갈리면 사람이 두 벌을 외워야 한다.
+        //    같은 커맨드·같은 대상은 묶음 <b>안에서도</b> 쌓이지 않고 뒤의 것이 이긴다.
+        (ProjectEditor apart, PresentationNode apartNode) = BuildEditor();
+
+        PresentationStageActions.Apply(
+            apart, Catalog, apartNode.Id, "ln_x", "face_swap", Args(("slot", "c1"), ("emotion", "5")));
+        PresentationStageActions.Apply(
+            apart, Catalog, apartNode.Id, "ln_x", "fade_in", Args(("slot", "c1")));
+        PresentationStageActions.Apply(
+            apart, Catalog, apartNode.Id, "ln_x", "face_swap", Args(("slot", "c1"), ("emotion", "7")));
+
+        (ProjectEditor together, PresentationNode togetherNode) = BuildEditor();
+
+        PresentationStageActions.ApplyAll(together, Catalog, togetherNode.Id, "ln_x", [
+            Step("face_swap", ("slot", "c1"), ("emotion", "5")),
+            Step("fade_in", ("slot", "c1")),
+            Step("face_swap", ("slot", "c1"), ("emotion", "7"))
+        ]);
+
+        string Shape(PresentationNode node) => string.Join(" | ", node.FindBinding("ln_x")!.Commands
+            .Select(command => $"{command.DefinitionId} {string.Join(',', command.Arguments
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => $"{pair.Key}={pair.Value}"))}"));
+
+        Assert.Equal(Shape(apartNode), Shape(togetherNode));
+        Assert.Equal(2, togetherNode.FindBinding("ln_x")!.Commands.Count);
+    }
+
+    [Fact]
+    public void 묶음은_되돌리기_한_번에_통째로_사라진다()
+    {
+        // 단추 하나를 누른 것은 조작 하나다 — 단계마다 undo를 쌓으면 다섯 단계짜리 칩을
+        // 되돌리는 데 Ctrl+Z를 다섯 번 눌러야 한다.
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        PresentationStageActions.ApplyAll(editor, Catalog, node.Id, "ln_x", [
+            Step("fade_in", ("slot", "c1")),
+            Step("face_swap", ("slot", "c1"), ("emotion", "5")),
+            Step("move_by", ("slot", "c1"), ("x", "1u"))
+        ]);
+
+        Assert.Equal(3, node.FindBinding("ln_x")!.Commands.Count);
+
+        editor.Undo();
+
+        Assert.Null(editor.Project.FindPresentation(node.Id)!.FindBinding("ln_x"));
+    }
+
+    [Fact]
+    public void 묶음의_단계가_이미_있는_커맨드를_겨누면_값만_바뀐다()
+    {
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        PresentationCommandInstance existing = editor.AddPresentationCommand(
+            node.Id, "ln_x", "char_rig_presentation.face_swap", Args(("slot", "c1"), ("emotion", "2")));
+
+        IReadOnlyList<PresentationStageActions.Applied> applied = PresentationStageActions.ApplyAll(
+            editor, Catalog, node.Id, "ln_x", [
+                Step("face_swap", ("slot", "c1"), ("emotion", "8")),
+                Step("fade_in", ("slot", "c1"))
+            ]);
+
+        Assert.True(applied[0].Updated);
+        Assert.False(applied[1].Updated);
+        Assert.Same(existing, applied[0].Command);
+        Assert.Equal("8", existing.Arguments["emotion"]);
+        Assert.Equal(2, node.FindBinding("ln_x")!.Commands.Count);
+    }
+
     [Fact]
     public void 폴드가_bg_리그_키를_기억한다()
     {

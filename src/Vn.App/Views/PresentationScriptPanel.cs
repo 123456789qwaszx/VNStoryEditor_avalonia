@@ -99,6 +99,13 @@ internal sealed class PresentationScriptPanel : UserControl
     /// </summary>
     public bool PinMode { get; set; }
 
+    /// <summary>
+    /// 담기 모드에서 행 툴팁이 말할 <b>목적지</b> (2026-08-24 — 묶음 칩). 담긴 곳이
+    /// 새 칩이냐 펼쳐 둔 칩이냐로 갈리므로, 손이 행 위에 있는 그 순간 그것을 말한다.
+    /// 조절창이 정본이고(<c>StageSceneView.QuickPinTarget</c>) 여기는 그 문장을 받는다.
+    /// </summary>
+    public string? PinHint { get; set; }
+
     /// <summary>지금 노란 띠가 선 커맨드 — 작업대 표시 동기화용. 없으면 null.</summary>
     internal string? SelectedCommandId => _selectedCommandId;
 
@@ -506,7 +513,7 @@ internal sealed class PresentationScriptPanel : UserControl
             // 바탕과 커서만 바뀐다 — 자리를 차지하는 것은 아무것도 안 늘어난다.
             host.Cursor = new Cursor(StandardCursorType.Hand);
             host.Background = new SolidColorBrush(Color.FromArgb(28, 250, 204, 21));
-            ToolTip.SetTip(host, "클릭하면 [★ 자주 쓰는]에 담습니다 (슬롯·시간 그대로).");
+            ToolTip.SetTip(host, PinHint ?? "클릭하면 [★ 자주 쓰는]에 담습니다 (슬롯·시간 그대로).");
 
             host.PointerPressed += (_, args) =>
             {
