@@ -309,8 +309,16 @@ public sealed class StageQuickTabTests
     {
         (AuthoringSession session, string nodeId, string lineId) = Stage();
 
-        MiniStagePreview preview = PreviewWith(session, nodeId, lineId, Command(
-            "char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u"), ("duration", "18fr")));
+        // ⚠ 줄에 커맨드가 <b>둘</b>이다. 두 번째 다리("대상을 놓으면 새 칩")를 같은 커맨드로
+        //    치면 <see cref="ProjectEditor.PinQuickCommand"/>의 중복 거르개에 걸린다 —
+        //    방금 그것을 묶음에 담았으므로 <b>단계가 똑같은 칩이 이미 있다</b>. 그러면
+        //    "새 칩으로 간다"가 아니라 "중복이라 안 담는다"를 재는 시험이 된다.
+        MiniStagePreview preview = PreviewWith(
+            session,
+            nodeId,
+            lineId,
+            Command("char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u"), ("duration", "18fr")),
+            Command("shot.shot_zoom", ("zoom", "2.2"), ("duration", "1.1s")));
 
         int target = session.Editor.CreateQuickBundle();
         int before = session.Project.EffectiveQuickCommands.Count;
@@ -331,8 +339,31 @@ public sealed class StageQuickTabTests
 
         // 대상을 놓으면 다시 새 칩으로 간다.
         preview.Scene.ExpandQuickChipProbe(null);
-        LeftClick(CommandRowOf(preview, "gesture"));
+        LeftClick(CommandRowOf(preview, "shot_zoom"));
         Assert.Equal(before + 1, session.Project.EffectiveQuickCommands.Count);
+    });
+
+    [Fact]
+    public void 이미_담긴_것을_또_담으면_담지_않았다고_말한다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 중복 거르개가 <b>조용히</b> 돌고 있었다. 담기지 않았는데 상태줄은 "'…' 칩을
+        //    담았습니다"라고 답해, 사람은 담긴 줄 알고 [자주 쓰는]을 뒤지게 된다.
+        //    거르개 자체는 옳다(같은 것을 두 번 담는 것은 실수다) — 틀린 것은 <b>보고</b>다.
+        (AuthoringSession session, string nodeId, string lineId) = Stage();
+
+        MiniStagePreview preview = PreviewWith(session, nodeId, lineId, Command(
+            "char_rig_staging.gesture", ("slot", "c1"), ("xAmp", "0.7u"), ("duration", "18fr")));
+
+        preview.Scene.SetCommandEditModeProbe(true);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        LeftClick(CommandRowOf(preview, "gesture"));
+        int after = session.Project.EffectiveQuickCommands.Count;
+
+        LeftClick(CommandRowOf(preview, "gesture"));
+
+        Assert.Equal(after, session.Project.EffectiveQuickCommands.Count); // 안 늘었다
+        Assert.Contains("이미", session.StatusMessage, StringComparison.Ordinal); // 그렇게 말했다
     });
 
     [Fact]

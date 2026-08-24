@@ -732,11 +732,28 @@ public partial class MiniStagePreview : UserControl
             ? steps[0].Definition.DisplayName
             : $"{steps[0].Definition.DisplayName} 외 {steps.Count - 1}");
 
+        // ⛔ 중복 거르개가 <b>조용히</b> 돌고 있었다 (2026-08-25). PinQuickCommand는 단계가
+        //    똑같은 칩이 이미 있으면 담지 않고 그 자리를 돌려주는데, 여기서 그 답을 버리고
+        //    늘 "담았습니다"라고 말했다 — 담기지 않았는데 담겼다고 답하면 사람은 [자주 쓰는]을
+        //    뒤지게 된다. 거르개는 옳다(같은 것을 두 번 담는 것은 실수다). 틀린 것은 보고다.
+        //
+        //    묶음에 담자마자 대상을 놓고 같은 커맨드를 또 집으면 바로 이 길로 온다.
+        int had = chips.Count;
+
         UiGuard.Run(_session, "자주 쓰는 데 담기", () =>
         {
-            _session.Editor.PinQuickCommand(new StageQuickCommand(
+            int at = _session.Editor.PinQuickCommand(new StageQuickCommand(
                 displayName,
                 steps.Select(pair => pair.Step).ToList()));
+
+            if (at < had)
+            {
+                _session.SetStatus(
+                    $"이미 '{_session.Project.EffectiveQuickCommands[at].DisplayName}'에 " +
+                    $"똑같은 것이 있어 담지 않았습니다.");
+                return;
+            }
+
             _session.SetStatus(steps.Count == 1
                 ? $"'{displayName}' 칩을 담았습니다."
                 : $"'{displayName}' 칩을 담았습니다 ({steps.Count}단계).");
