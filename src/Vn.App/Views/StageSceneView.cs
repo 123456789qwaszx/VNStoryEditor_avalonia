@@ -177,6 +177,35 @@ internal sealed class StageSceneView : UserControl
     // 사이를 뷰가 선형 보간으로 잇는다 — 좌표 계산이 아니라 자리 옮기기다(H-5).
     private Dictionary<string, StageRect> _portraitRects = new(StringComparer.Ordinal);
     private Dictionary<string, StageRect> _previousPortraitRects = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 슬롯이 <b>보이는 상태였는지</b> — 자리(<see cref="_portraitRects"/>)와 따로 기억한다
+    /// (2026-08-24 소유자 보고: "fade_in이 종종 안 먹는다").
+    ///
+    /// ⛔ <b>자리로 등장을 판정하면 안 된다.</b> 숨김 슬롯도 고스트 윤곽으로 자리를
+    /// 등록하므로(W28), 무대에 이미 서 있던 슬롯의 <c>fade_in</c>이 "자리가 있었으니
+    /// 이동"으로 읽혀 불투명도 1로 튀어 올랐다 — 페이드가 도는 것은 슬롯이 그 라인에서
+    /// <b>처음 생길 때</b>뿐이었고, 그래서 "종종" 먹었다. 등장은 <b>가시성이 바뀐 것</b>이다.
+    /// </summary>
+    private Dictionary<string, bool> _portraitVisible = new(StringComparer.Ordinal);
+    private Dictionary<string, bool> _previousPortraitVisible = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 직전 렌더의 <b>보이는 초상 컨트롤</b> — 퇴장 크로스페이드가 다시 얹을 그림이다
+    /// (2026-08-24 소유자: "퇴장도 같은 결로").
+    ///
+    /// <c>fade_out</c>이 든 라인에서 이 슬롯은 고스트 윤곽으로 다시 그려지므로, 나가는
+    /// 초상은 이미 캔버스에서 내려가 있다. 페이드하려면 <b>다시 얹어야</b> 한다 — 배경
+    /// 크로스페이드(<see cref="_backgroundOverlay"/>)와 같은 결이다. 그림을 비트맵에서
+    /// 새로 짜지 않고 그 컨트롤을 그대로 재활용한다: 좌우 반전·화자 테두리·"없음" 자리표시가
+    /// 전부 따라오고, 같은 모양을 짓는 코드가 두 벌이 되지 않는다.
+    /// </summary>
+    private Dictionary<string, Control> _portraitControls = new(StringComparer.Ordinal);
+    private Dictionary<string, Control> _previousPortraitControls = new(StringComparer.Ordinal);
+
+    /// <summary>지금 걷히는 중인 초상들 — 진행도가 확정되면 캔버스에서 내린다.</summary>
+    private readonly Dictionary<string, Control> _departingPortraits = new(StringComparer.Ordinal);
+
     private readonly List<(string SlotKey, Control Control, StageRect To)> _transitionEntries = new();
     private string? _backgroundImagePath;
     private string? _previousBackgroundImagePath;
@@ -185,8 +214,13 @@ internal sealed class StageSceneView : UserControl
 
     /// <summary>
     /// 전이 진행도 적용 (W33). null/1 이상 = 확정 상태(모든 자리 최종값·오버레이 제거).
-    /// 0..1 = 직전 자리 → 새 자리 선형 보간, 새로 등장한 슬롯은 페이드 인,
-    /// 배경이 바뀌었으면 옛 배경을 위에 얹어 크로스페이드.
+    /// 0..1 = 직전 자리 → 새 자리 선형 보간, <b>등장한 슬롯은 페이드 인, 퇴장한 슬롯은
+    /// 나가는 초상이 페이드 아웃</b>(2026-08-24), 배경이 바뀌었으면 옛 배경을 위에 얹어
+    /// 크로스페이드.
+    ///
+    /// ⚠ 등장·퇴장의 근거는 언제나 <b>가시성 변화</b>다(<see cref="Appeared"/>·
+    /// <see cref="Departed"/>) — "직전에 자리가 있었나"가 아니다. 숨김 슬롯도 고스트로
+    /// 자리를 등록하므로 그 판정은 무대에 이미 선 슬롯의 fade를 통째로 삼킨다.
     /// </summary>
     internal void SetTransitionProgress(double? progress)
     {
@@ -197,8 +231,9 @@ internal sealed class StageSceneView : UserControl
         if (progress is not { } t || t >= 1)
         {
             // null = 정지 화면 (W66 소유자 결정): 시간을 가진 커맨드의 슬롯은 이 라인이
-            // 시작되는 순간의 자리·크기 — 곧 출발이다. 궤적·고스트가 어디로 갈지를
-            // 말하고, ▶가 태운다. 1 = 재생이 끝까지 태웠다 — 도착에 남는다.
+            // 시작되는 순간의 자리·크기 — 곧 출발이다. 어디로 가는지는 타임라인을 끌거나
+            // ▶로 태워서 본다(도착을 겹쳐 그리던 궤적·고스트는 2026-08-21에 걷혔다).
+            // 1 = 재생이 끝까지 태웠다 — 도착에 남는다.
             IReadOnlyDictionary<string, StageRect>? rest = progress is null ? _motionStartRects : null;
 
             foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
@@ -208,6 +243,9 @@ internal sealed class StageSceneView : UserControl
                     rest is not null && rest.TryGetValue(slotKey, out StageRect? start) ? start : to);
                 control.Opacity = 1;
             }
+
+            // 걷히던 초상도 함께 내린다 — 확정 프레임에 반투명한 잔상이 남으면 그것이 버그다.
+            ClearDepartingPortraits();
 
             if (_backgroundOverlay is not null)
             {
@@ -231,24 +269,38 @@ internal sealed class StageSceneView : UserControl
 
         foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
         {
+            bool hadRect = _previousPortraitRects.TryGetValue(slotKey, out StageRect? from) && from is not null;
+
+            // 페이드 인의 근거는 <b>가시성이 켜진 것</b>이다 (2026-08-24) — 자리가 없었다는
+            // 것만으로 판정하면, 숨김 고스트로 이미 자리를 갖고 있던 슬롯의 fade_in이
+            // 불투명도 1로 튀어 오른다(소유자 보고: "fade_in이 종종 안 먹는다"). 무대에
+            // 처음 서는 슬롯은 자리도 가시성 기록도 없으니 어느 쪽으로도 페이드 인이다.
+            control.Opacity = !hadRect || Appeared(slotKey) ? t : 1;
+
             if (frame is not null &&
                 _motionPlan?.AnimatedSlots.Contains(slotKey) == true &&
                 frame.TryGetValue(slotKey, out StageRect? now))
             {
-                control.Opacity = 1;
                 ApplyRect(control, now);
             }
-            else if (_previousPortraitRects.TryGetValue(slotKey, out StageRect? from) && from is not null)
+            else if (hadRect)
             {
-                control.Opacity = 1;
-                Canvas.SetLeft(control, Lerp(from.X, to.X, t));
+                Canvas.SetLeft(control, Lerp(from!.X, to.X, t));
                 Canvas.SetTop(control, Lerp(from.Y, to.Y, t));
                 control.Width = Lerp(from.Width, to.Width, t);
                 control.Height = Lerp(from.Height, to.Height, t);
             }
-            else
+
+            // 퇴장 — 나가는 초상을 고스트 위에 얹고 서서히 걷는다. 자리 계산이 끝난 뒤라
+            // <b>고스트의 지금 자리를 그대로 베낀다</b>: 같은 산식을 두 번 쓰면 place가
+            // 함께 걸린 라인에서 둘이 갈려 초상이 뒤에 남는다.
+            if (Departed(slotKey) && TakeDepartingPortrait(slotKey, control) is { } leaving)
             {
-                control.Opacity = t; // 새로 등장 — 페이드 인
+                Canvas.SetLeft(leaving, Canvas.GetLeft(control));
+                Canvas.SetTop(leaving, Canvas.GetTop(control));
+                leaving.Width = control.Width;
+                leaving.Height = control.Height;
+                leaving.Opacity = 1 - t;
             }
         }
 
@@ -285,6 +337,78 @@ internal sealed class StageSceneView : UserControl
                 _backgroundImage.Opacity = t; // 첫 배경 — 페이드 인
             }
         }
+    }
+
+    /// <summary>
+    /// 전이 대상 하나를 등록한다 — 자리와 <b>가시성</b>을 함께. 두 렌더 경로(보이는 초상 ·
+    /// 숨김 고스트)가 같은 자리를 지나야 둘이 어긋나지 않는다.
+    /// </summary>
+    private void RegisterTransition(string slotKey, Control control, StageRect rect, bool visible)
+    {
+        _portraitRects[slotKey] = rect;
+        _portraitVisible[slotKey] = visible;
+        _transitionEntries.Add((slotKey, control, rect));
+
+        // 퇴장 크로스페이드가 다시 얹을 그림 — 보이는 초상만이다(고스트 윤곽은 얹을 것이 아니다).
+        if (visible)
+        {
+            _portraitControls[slotKey] = control;
+        }
+    }
+
+    /// <summary>
+    /// 이 슬롯이 <b>이번 라인에서 등장했는가</b> — 안 보이던(또는 무대에 없던) 것이 보이게
+    /// 됐는가. 이것이 페이드 인의 유일한 근거다(자리가 있었는지는 근거가 아니다).
+    /// </summary>
+    private bool Appeared(string slotKey) => Visible(_portraitVisible, slotKey) &&
+        !Visible(_previousPortraitVisible, slotKey);
+
+    /// <summary>
+    /// 이 슬롯이 <b>이번 라인에서 퇴장했는가</b> — 보이던 것이 안 보이게 됐는가.
+    /// <see cref="Appeared"/>의 거울이고, 판정 근거도 같다(가시성 변화 하나).
+    /// </summary>
+    private bool Departed(string slotKey) => !Visible(_portraitVisible, slotKey) &&
+        Visible(_previousPortraitVisible, slotKey);
+
+    private static bool Visible(Dictionary<string, bool> record, string slotKey) =>
+        record.TryGetValue(slotKey, out bool visible) && visible;
+
+    /// <summary>
+    /// 걷히는 중인 초상을 준비한다 — 직전 렌더의 컨트롤을 <b>고스트 바로 위</b>에 다시
+    /// 얹는다(한 번만). 얹을 그림이 없으면 null이고, 그때 퇴장은 그냥 사라짐이다.
+    ///
+    /// ⚠ <b>손짓을 뗀다</b>(<c>IsHitTestVisible</c>) — 걷히는 중인 그림을 눌러 조절창이
+    /// 열리면, 사람은 이미 화면에 없는 것을 만지고 있는 셈이다.
+    /// </summary>
+    private Control? TakeDepartingPortrait(string slotKey, Control ghost)
+    {
+        if (_departingPortraits.TryGetValue(slotKey, out Control? existing))
+        {
+            return existing;
+        }
+
+        if (!_previousPortraitControls.TryGetValue(slotKey, out Control? leaving))
+        {
+            return null;
+        }
+
+        leaving.IsHitTestVisible = false;
+
+        int index = _canvas.Children.IndexOf(ghost);
+        _canvas.Children.Insert(index < 0 ? _canvas.Children.Count : index + 1, leaving);
+        _departingPortraits[slotKey] = leaving;
+
+        return leaving;
+    }
+
+    private void ClearDepartingPortraits()
+    {
+        foreach (Control leaving in _departingPortraits.Values)
+        {
+            _canvas.Children.Remove(leaving);
+        }
+
+        _departingPortraits.Clear();
     }
 
     private static double Lerp(double from, double to, double t) => from + (to - from) * t;
@@ -420,6 +544,13 @@ internal sealed class StageSceneView : UserControl
         // 전이 (W33): 이번 렌더가 "새 자리"가 되고 직전 렌더의 자리가 "출발점"이 된다.
         _previousPortraitRects = _portraitRects;
         _portraitRects = new Dictionary<string, StageRect>(StringComparer.Ordinal);
+        _previousPortraitVisible = _portraitVisible;
+        _portraitVisible = new Dictionary<string, bool>(StringComparer.Ordinal);
+        _previousPortraitControls = _portraitControls;
+        _portraitControls = new Dictionary<string, Control>(StringComparer.Ordinal);
+
+        // 캔버스를 비웠으니 얹혀 있던 퇴장 초상도 함께 내려갔다 — 손잡이만 정리한다.
+        _departingPortraits.Clear();
         _previousBackgroundImagePath = _backgroundImagePath;
         _backgroundImagePath = null;
         _backgroundImage = null;
@@ -522,7 +653,7 @@ internal sealed class StageSceneView : UserControl
         }
 
         RenderAudioCues(request, height, em);
-        RenderMotionCues(request, layout, height, em);
+        ApplyMotionStartLayout();
         RenderStatsHud(request, width, em);
 
         // 붙박이 조절창은 무대와 함께 간다 (2026-08-22) — 슬롯 목록·표정 썸네일·수치가
@@ -532,23 +663,20 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 이 라인에서 시간에 따라 흐르는 것들을 무대에 그린다 (W66 → 2026-08-21 일반화).
+    /// <b>흐르는 슬롯을 출발 자리에 세운다</b> — 정지 화면 = 이 라인이 시작되는 순간이다
+    /// (W66 소유자 결정). ▶가 그 길을 태우고, 무대 아래 타임라인이 중간 프레임을 짚는다.
+    /// 자리는 코어가 접은 상태를 컴포저에 통과시킨 결과이고, 이동뿐 아니라 배치(place)·
+    /// 뎁스(size)도 같은 규칙을 탄다 (2026-08-21).
     ///
-    /// <b>정지 화면 = 이 라인이 시작되는 순간이다</b> (소유자 결정): 시간을 가진 커맨드의
-    /// 슬롯은 출발 자리에 선다 — ▶가 그 길을 태우고, 무대 아래 타임라인이 중간 프레임을
-    /// 짚는다. 자리는 <b>코어가 접은 상태를 컴포저에 통과시킨 결과</b>이고, 이동뿐 아니라
-    /// 배치(place)·뎁스(size)도 같은 규칙을 탄다 (2026-08-21).
-    ///
-    /// ⚠ 도착 자리의 <b>노란 고스트 윤곽과 점선 궤적은 2026-08-21에 걷혔다</b>
-    /// (소유자: "잘 안쓰게 되네"). 어디로 가는지는 타임라인을 끌거나 재생하면 보인다 —
-    /// 상시로 겹쳐 그리면 정지 화면이 그만큼 시끄러워진다.
+    /// ⚠ <b>무대는 이것만 얹는다.</b> 도착 자리의 노란 고스트 윤곽·점선 궤적(2026-08-21
+    /// 걷힘 — "잘 안쓰게 되네"), 커맨드 칩, 프레임 스크럽은 전부 여기 없다: 목록·편집
+    /// 입구는 왼쪽 대본 패널이고 타임라인은 무대 아래 재생 줄이다. 상시로 겹쳐 그리면
+    /// 정지 화면이 그만큼 시끄러워진다.
     /// </summary>
-    private void RenderMotionCues(
-        MiniStagePreviewRequest request, StageSceneLayout layout, double height, double em)
+    private void ApplyMotionStartLayout()
     {
-        // 휴지 배치 (W66 소유자 결정) — 렌더 직후의 기본 화면은 "이 라인이 시작되는 순간"
-        // 이다: 흐르는 슬롯은 출발 자리·크기에 선다. 재생이 돌고 있으면 곧이어 오는 전이
-        // 동기화가 실제 진행도로 덮는다(MiniStagePreview.Render 끝의 SyncTransition).
+        // 재생이 돌고 있으면 곧이어 오는 전이 동기화가 실제 진행도로 덮는다
+        // (MiniStagePreview.Render 끝의 SyncTransition).
         foreach ((string slotKey, Control control, _) in _transitionEntries)
         {
             if (_motionPlan?.AnimatedSlots.Contains(slotKey) == true &&
@@ -557,9 +685,6 @@ internal sealed class StageSceneView : UserControl
                 ApplyRect(control, rest);
             }
         }
-
-        // 커맨드 텍스트도 프레임 스크럽도 무대에 띄우지 않는다 (2026-08-20 / 2026-08-21
-        // 소유자 정리) — 목록·편집 입구는 왼쪽 대본 패널, 타임라인은 무대 아래 재생 줄이다.
     }
 
     /// <summary>
@@ -1037,7 +1162,7 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     private StageMotionPlan? _motionPlan;
 
-    /// <summary>라인이 시작되는 순간의 자리들(진행 0) — 정지 화면·궤적의 출발이다.</summary>
+    /// <summary>라인이 시작되는 순간의 자리들(진행 0) — 정지 화면이 서는 자리다.</summary>
     private IReadOnlyDictionary<string, StageRect>? _motionStartRects;
 
     /// <summary>합성에 필요한 재료 — 진행도마다 같은 컴포저를 다시 부르기 위해 렌더가 남긴다.</summary>
@@ -1370,9 +1495,8 @@ internal sealed class StageSceneView : UserControl
 
         Add(image, portrait.Rect);
 
-        // 전이(W33) 대상 — 이 슬롯의 자리.
-        _portraitRects[portrait.SlotKey] = portrait.Rect;
-        _transitionEntries.Add((portrait.SlotKey, image, portrait.Rect));
+        // 전이(W33) 대상 — 이 슬롯의 자리. 보이는 초상이므로 가시성은 true다.
+        RegisterTransition(portrait.SlotKey, image, portrait.Rect, visible: true);
 
         if (caption is not null)
         {
@@ -1428,9 +1552,9 @@ internal sealed class StageSceneView : UserControl
 
         Add(outline, portrait.Rect);
 
-        // 전이(W33) 대상 — 숨김 슬롯의 자리도 미끄러진다.
-        _portraitRects[portrait.SlotKey] = portrait.Rect;
-        _transitionEntries.Add((portrait.SlotKey, outline, portrait.Rect));
+        // 전이(W33) 대상 — 숨김 슬롯의 자리도 미끄러진다. ⚠ 자리는 등록하되 <b>가시성은
+        // false</b>다: 이 구분이 없으면 다음 라인의 fade_in이 등장이 아니라 이동으로 읽힌다.
+        RegisterTransition(portrait.SlotKey, outline, portrait.Rect, visible: false);
 
         string label = portrait.Slot.CharacterId is { } cast
             ? $"{portrait.SlotKey} · {cast} (숨김)"
