@@ -461,6 +461,12 @@ public static class EpisodeLibrary
         HasBlockRowGuard(sheet, LineIdColumn) &&
         HasBlockRowGuard(sheet, TextColumn);
 
+    private static bool HasDropdown(IXLWorksheet sheet, int column) =>
+        sheet.DataValidations.Any(validation =>
+            validation.Ranges.Any(range =>
+                range.RangeAddress.FirstAddress.ColumnNumber == column) &&
+            validation.AllowedValues == XLAllowedValues.List);
+
     private static bool HasBlockRowGuard(IXLWorksheet sheet, int column) =>
         sheet.DataValidations.Any(validation =>
             validation.Ranges.Any(range =>
@@ -541,8 +547,8 @@ public static class EpisodeLibrary
 
             IXLWorksheet scriptSheet = FindScriptSheet(workbook);
 
-            if (ListMatches(workbook, Speakers, speakers) &&
-                ListMatches(workbook, Conditions, conditionLabels) &&
+            if (ListMatches(workbook, scriptSheet, Speakers, speakers) &&
+                ListMatches(workbook, scriptSheet, Conditions, conditionLabels) &&
                 KindListMatches(scriptSheet))
             {
                 return VocabularyPush.Unchanged;
@@ -564,10 +570,28 @@ public static class EpisodeLibrary
         }
     }
 
-    /// <summary>숨김 시트의 목록이 지금 목록과 같은가 — 순서까지 같아야 같다(드롭다운 순서).</summary>
+    /// <summary>
+    /// 숨김 시트의 목록이 지금 목록과 같고, <b>그 목록을 가리키는 드롭다운도 아직 거기 있는가</b>.
+    /// 순서까지 같아야 같다(드롭다운 순서).
+    ///
+    /// ⛔ 2026-08-25 소유자 보고 — "유형이랑 조건 라벨의 드롭다운이 사라진 상태야."
+    ///    숨김 목록만 대조하면, 외부 편집기가 재저장하며 <b>검증만</b> 떨군 파일이
+    ///    "이미 맞다"로 통과해 영영 안 고쳐진다 — 목록은 그대로 있으니 대조가 맞다고 답한다.
+    ///
+    /// ⚠ 넣을 낱말이 없으면 드롭다운도 걸지 않는다(<c>ApplyVocabulary</c>). 그때까지
+    ///   드롭다운을 요구하면 달라진 것이 없는데도 열 때마다 원고를 다시 쓰고 `.bak`이 갈린다.
+    /// </summary>
     private static bool ListMatches(
-        XLWorkbook workbook, Vocabulary vocabulary, IReadOnlyList<string> values)
+        XLWorkbook workbook,
+        IXLWorksheet scriptSheet,
+        Vocabulary vocabulary,
+        IReadOnlyList<string> values)
     {
+        if (values.Count > 0 && !HasDropdown(scriptSheet, vocabulary.Column))
+        {
+            return false;
+        }
+
         IXLWorksheet? list = workbook.Worksheets.FirstOrDefault(candidate =>
             string.Equals(candidate.Name, vocabulary.SheetName, StringComparison.Ordinal));
 
