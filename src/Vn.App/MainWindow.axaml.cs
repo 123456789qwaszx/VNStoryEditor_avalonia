@@ -318,8 +318,14 @@ public partial class MainWindow : Window
         bool chapterMode = ReferenceEquals(MainTabs.SelectedItem, ChapterTabItem);
 
         ExportButton.IsVisible = !chapterMode;
-        CsvExportButton.IsVisible = !chapterMode;
-        ExportFormatsButton.IsVisible = !chapterMode;
+
+        // ⏸ [CSV 내보내기…]와 [양식…]은 <b>임시로</b> 내렸다 (2026-08-25 소유자).
+        //    지우지 않고 접어 두는 이유: 뒤의 것(OnCsvExportClick·ShowExportFormatsFlyout·
+        //    LiveOutputService의 양식 선택)은 그대로 살아 있고 라이브 출력이 계속 그
+        //    선택을 따르므로, 코드를 걷으면 되살릴 때 두 벌이 된다. 되돌리는 것은
+        //    아래 두 줄을 `!chapterMode`로 되돌리는 것뿐이다.
+        CsvExportButton.IsVisible = false;
+        ExportFormatsButton.IsVisible = false;
     }
 
     /// <summary>

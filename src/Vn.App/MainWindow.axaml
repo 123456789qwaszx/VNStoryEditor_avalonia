@@ -29,7 +29,7 @@
                   일은 "가서 꺼내 오는 것"뿐이다. 그 자리를 몰라 못 꺼내 가던 것을 연다
                   (2026-08-25 소유자 — 비개발자 작가에게 건네는 준비의 일부).
                 -->
-                <Button Grid.Column="11" x:Name="OpenExportFolderButton" Content="📂 내보낸 폴더"
+                <Button Grid.Column="11" x:Name="OpenExportFolderButton" Content="📂 챕터진행"
                         Margin="6,0,0,0"
                         ToolTip.Tip="exported/ 폴더를 엽니다 — 챕터별 진행 JSON이 여기 있습니다." />
 
