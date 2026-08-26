@@ -151,6 +151,26 @@ public sealed class StageFadeTransitionTests
         stage.Window.Close();
     });
 
+    [Fact]
+    public void 첫_라인의_fade_in은_기준선이_굳어도_페이드로_흐른다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "첫번째 말하는 거는 fade_in의 duration을 늘리더라도
+        // 0인것처럼 즉시 보이는". 씬에 처음 들어올 때 첫 라인이 <b>정체가 다른 요청</b>으로
+        // 두 번 그려지면(편집기 둘이 미는 실사례) 기준선이 "이미 보임"으로 굳는다 —
+        // 그래도 이 라인에 적힌 fade_in이 등장의 근거다: 재생은 그 라인의 커맨드를
+        // 처음부터 다시 트는 것이다.
+        Stage stage = Open();
+
+        stage.Draw(Request(CastInSetup, [[FadeIn]]));
+        stage.Draw(Request(CastInSetup, [[FadeIn]]) with { ContextLabel = "다른 정체" });
+
+        stage.View.SetTransitionProgress(0.5);
+
+        Assert.Contains(0.5, stage.Opacities());
+
+        stage.Window.Close();
+    });
+
     // ── 퇴장도 같은 결로 (2026-08-24 소유자) ────────────────────────────────
 
     [Fact]

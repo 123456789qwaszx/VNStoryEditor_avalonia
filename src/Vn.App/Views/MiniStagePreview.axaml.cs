@@ -240,9 +240,10 @@ internal sealed record MiniStagePreviewRequest(
     IReadOnlyList<StageMotionCue>? MotionCues = null,
     IReadOnlyList<PresentationScriptRow>? ScriptRows = null,
     StageMotionPlan? MotionPlan = null,
-    // 이 라인의 페이드 시간(slotKey → 초, 2026-08-26) — 페이드 불투명도는 라인 시계가
-    // 아니라 제 duration으로 흐른다. 항목 없는 슬롯의 가시성 변화(show 등)는 즉시다.
-    IReadOnlyDictionary<string, double>? Fades = null);
+    // 이 라인의 페이드(slotKey → 방향·초, 2026-08-26) — 불투명도는 라인 시계가 아니라
+    // 제 duration으로 흐르고, fade_in이 적힌 슬롯은 기준선과 무관하게 등장으로 판정한다.
+    // 항목 없는 슬롯의 가시성 변화(show 등)는 즉시다.
+    IReadOnlyDictionary<string, StageFade>? Fades = null);
 
 /// <summary>
 /// 무대 프리뷰 판 (2026-08-20 중앙 탭 승격) — 좌측 대본 터미널 + 우측 무대.

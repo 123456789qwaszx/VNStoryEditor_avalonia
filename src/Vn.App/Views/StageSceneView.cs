@@ -309,7 +309,13 @@ internal sealed class StageSceneView : UserControl
             // ⚠ 진행도는 라인 시계(t)가 아니라 <b>그 페이드의 duration</b>이다 (2026-08-26
             // 소유자: "fade_in역시 동일한 원인으로 같은 문제") — 라인 시계는 가장 긴
             // 커맨드의 것이라, 그것을 타면 0fr 페이드도 그 시간만큼 천천히 밝아진다.
-            control.Opacity = !hadRect || Appeared(slotKey)
+            //
+            // ⚠ 이 라인에 fade_in이 적혀 있으면 기준선과 무관하게 등장이다 (같은 날
+            // 소유자: "첫번째 말하는 거는 … 즉시 보이는") — 씬에 처음 들어올 때 첫
+            // 라인이 정체가 다른 요청으로 두 번 그려지며 기준선이 "이미 보임"으로 굳어,
+            // 첫 라인의 fade_in만 삼켜졌다. 재생은 그 라인의 커맨드를 처음부터 다시
+            // 트는 것이니, 적힌 fade_in이 곧 등장의 근거다.
+            control.Opacity = FadesIn(slotKey) || !hadRect || Appeared(slotKey)
                 ? FadeProgress(slotKey, t * lineSeconds)
                 : 1;
 
@@ -405,10 +411,16 @@ internal sealed class StageSceneView : UserControl
     /// </summary>
     private double FadeProgress(string slotKey, double elapsedSeconds) =>
         _request?.Fades is { } fades &&
-        fades.TryGetValue(slotKey, out double seconds) &&
-        seconds > 0
-            ? Math.Clamp(elapsedSeconds / seconds, 0, 1)
+        fades.TryGetValue(slotKey, out StageFade fade) &&
+        fade.Seconds > 0
+            ? Math.Clamp(elapsedSeconds / fade.Seconds, 0, 1)
             : 1;
+
+    /// <summary>이 라인에 이 슬롯의 fade_in이 적혀 있는가 — 기준선과 무관한 등장 근거다.</summary>
+    private bool FadesIn(string slotKey) =>
+        _request?.Fades is { } fades &&
+        fades.TryGetValue(slotKey, out StageFade fade) &&
+        fade.FadeIn;
 
     /// <summary>
     /// 이 슬롯이 <b>이번 라인에서 등장했는가</b> — 안 보이던(또는 무대에 없던) 것이 보이게
