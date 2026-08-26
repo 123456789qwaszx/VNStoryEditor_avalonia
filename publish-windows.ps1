@@ -31,16 +31,13 @@ try {
         throw "VnTool publish failed with exit code $LASTEXITCODE."
     }
 
-    # 받는 사람이 열어 볼 것 둘을 함께 담는다.
-    #  · 시작 안내 — 무엇을 먼저 누르는지
-    #  · 예제 프로젝트 — 빈 화면 대신 열어 볼 것이 있어야 한다
-    Copy-Item (Join-Path $root "docs\작가에게.txt") `
-              (Join-Path $publishDirectory "먼저 읽어주세요.txt") -Force
-
-    $sample = Join-Path $root "dist\예제 프로젝트"
-    if (Test-Path $sample) {
-        Copy-Item $sample (Join-Path $publishDirectory "예제 프로젝트") -Recurse -Force
-    }
+    # ⛔ 지금은 <b>실행 파일만</b> 담는다 (2026-08-26 소유자: "읽어주세요와 견본 project는
+    #    일단은 없는 상태로. exe만 포함되도록").
+    #
+    #    걷은 것 둘 — `docs\작가에게.txt` → `먼저 읽어주세요.txt`, `dist\예제 프로젝트`.
+    #    "일단은"이므로 <b>원본은 그대로 둔다</b>: 되살리려면 이 자리에 복사 두 줄을 다시
+    #    세우면 된다. 규격이 며칠 사이 v14까지 굴렀고 그 둘이 옛 규격을 말하고 있어서,
+    #    낡은 안내와 낡은 견본을 함께 건네느니 안 건네는 편이 낫다는 판단이다.
 
     Compress-Archive -Path (Join-Path $publishDirectory "*") -DestinationPath $zipPath
 
@@ -50,6 +47,7 @@ try {
     Write-Host ""
     Write-Host "꾸러미: $zipPath"
     Write-Host "실행 파일: $exe ($sizeMb MB)"
+    Write-Host "담긴 것: 실행 파일 하나 (안내문·예제 프로젝트는 이번 꾸러미에 없습니다)"
     Write-Host "받는 사람은 압축을 풀고 Vn.App.exe를 누르면 됩니다."
 }
 finally {
