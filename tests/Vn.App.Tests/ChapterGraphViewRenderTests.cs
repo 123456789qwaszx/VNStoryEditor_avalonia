@@ -230,6 +230,69 @@ public sealed class ChapterGraphViewRenderTests
         Assert.Empty(canvas.Children);
         Assert.True(empty.IsVisible);
         Assert.Contains(ChapterLibrary.FolderName, empty.Text);
+
+        // 프로젝트는 있는데 챕터가 없는 첫 화면 — 안내문 아래 판 한가운데에 [＋ 챕터]가
+        // 함께 선다. [새 프로젝트]는 아니다: 프로젝트는 이미 있다.
+        Assert.True(view.ChapterAddCenterButton.IsVisible);
+        Assert.False(view.ProjectNewCenterButton.IsVisible);
+    });
+
+    [Fact]
+    public void 프로젝트가_없으면_새_프로젝트_단추가_먼저_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "새 프로젝트를 만들지도 않았는데 +챕터버튼부터 나오니
+        // 오히려 헷갈려." 첫걸음은 순서다: 프로젝트가 먼저고 챕터는 그 다음이다.
+        var session = new AuthoringSession();   // 열지도 저장하지도 않았다 — ProjectPath 없음.
+        var view = new ChapterGraphView();
+        var window = new Window { Width = 1280, Height = 800, Content = view };
+        window.Show();
+
+        try
+        {
+            view.Attach(session);
+            window.Measure(new Avalonia.Size(1280, 800));
+            window.Arrange(new Avalonia.Rect(0, 0, 1280, 800));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.True(view.ProjectNewCenterButton.IsVisible);
+            Assert.False(view.ChapterAddCenterButton.IsVisible);
+        }
+        finally
+        {
+            view.DetachSession();
+            window.Close();
+        }
+    });
+
+    [Fact]
+    public void 빈_챕터를_열면_가운데_에피소드_추가_단추가_선다() => HeadlessUi.Run(() =>
+    {
+        // 셋째 걸음 (2026-08-26 소유자: "챕터를 열었는데, 아무 에피소드가 없을 땐
+        // + 에피소드 버튼이 나오도록") — 새 챕터의 에피소드 시트는 머리글뿐이다.
+        using var project = new TempProject(samplePath: null);
+        string chapters = Path.Combine(
+            Path.GetDirectoryName(project.ManifestPath)!, ChapterLibrary.FolderName);
+        ChapterWorkbookWriter.EnsureChapterWorkbook(chapters, "ch01");
+
+        (_, ChapterGraphView view) = Render(project);
+
+        Assert.True(view.EpisodeAddCenterButton.IsVisible);
+        // 앞의 두 걸음은 이미 지났다 — 프로젝트도 챕터도 있다.
+        Assert.False(view.ProjectNewCenterButton.IsVisible);
+        Assert.False(view.ChapterAddCenterButton.IsVisible);
+    });
+
+    [Fact]
+    public void 챕터가_서면_가운데_첫걸음_단추는_사라진다() => HeadlessUi.Run(() =>
+    {
+        // 이 단추들은 "아무것도 없을 때의 첫걸음"이다 — 판이 그려지는 순간 할 일은
+        // 만들기가 아니라 그리기·잇기이고, 만들기는 우측 기둥의 [＋]가 계속 진다.
+        using var project = new TempProject(SamplePath);
+        (_, ChapterGraphView view) = Render(project);
+
+        Assert.False(view.ChapterAddCenterButton.IsVisible);
+        Assert.False(view.ProjectNewCenterButton.IsVisible);
+        Assert.False(view.EpisodeAddCenterButton.IsVisible);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────

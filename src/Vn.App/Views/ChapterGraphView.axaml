@@ -10,7 +10,7 @@
                  안 썼어"). 안 쓴 이유가 있다 — **저절로 따라오기 때문이다.** 챕터 폴더와
                  대본 폴더에 감시자가 붙어 있고, 저장이 내려앉으면 화면이 스스로 다시 읽는다.
                  손잡이가 필요했던 시절은 감시자가 없던 시절이다. -->
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
                            Text="챕터"
                            FontSize="11"
@@ -22,12 +22,14 @@
                      탭마다 다른 크기로 서면, 탭이 바뀔 때 그 자리가 흔들린다.
                      짝: `GraphEditorView.axaml`의 ChapterCombo — 한쪽을 고치면 둘 다 고친다. -->
                 <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" FontSize="11" />
-                <Button Grid.Column="2" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
+                <!-- ⛔ [폴더 열기]는 2026-08-26에 없앴다 (소유자). 챕터 폴더로 가는 길은
+                     이미 둘이 남아 있다 — 노드 더블클릭이 그 챕터의 엑셀을 열고, 엑셀
+                     없는 기계에서는 열기가 탐색기의 폴더 선택으로 대신 선다. -->
                 <!-- [내보내기] 단추는 없앴다 (2026-08-17 소유자: "필요 없어 보이는데").
                      작가의 Yarn이 LiveOutputService로 저절로 나가는데 챕터 진행 JSON만
                      사람 손을 기다리면, 누른 순간의 낡은 파일이 디스크에 남는다. 이제
                      다시 읽을 때마다 저절로 나간다 — G8의 거부 규칙은 그대로다. -->
-                <Button Grid.Column="3"
+                <Button Grid.Column="2"
                         x:Name="AddEpisodeButton"
                         Content="＋ 에피소드"
                         Margin="6,0,0,0"
@@ -46,7 +48,7 @@
                      같은 사실을 두 곳에 적는 짓이었다: 진짜 잠금은 파일에 있고 체크는
                      그 그림자였다. 이제 표시는 위 배너 하나뿐이다.
                      그 오른쪽 끝이 파괴적 동작의 자리다 — 빨갛게, 편집이 열렸을 때만 보인다. -->
-                <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="10">
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10">
                     <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 잠금이 풀릴 때
                          갑자기 튀어나오면 그 자리를 누르던 손이 삭제를 누른다(실사례).
                          평소엔 회색·비활성, 편집이 열려 있을 때만 빨갛게 살아난다. -->
@@ -87,13 +89,43 @@
                     <TextBlock x:Name="ZoomText" />
                 </Button>
 
-                <TextBlock x:Name="EmptyText"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           TextAlignment="Center"
-                           Opacity="0.55"
-                           TextWrapping="Wrap"
-                           MaxWidth="420" />
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="12">
+                    <TextBlock x:Name="EmptyText"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               Opacity="0.55"
+                               TextWrapping="Wrap"
+                               MaxWidth="420" />
+                    <!-- 빈 판의 첫걸음은 <b>둘 중 하나만</b> 선다 (2026-08-26 소유자:
+                         "새 프로젝트를 만들지도 않았는데 +챕터버튼부터 나오니 오히려
+                         헷갈려"). 프로젝트가 아직 없으면 [새 프로젝트]가, 프로젝트는
+                         있는데 챕터가 하나도 없으면 [＋ 챕터]가 선다 — 안내문만 있으면
+                         다음 할 일이 글로만 서 있으니, 누를 자리가 판 한가운데 함께 선다.
+                         배선은 셸: 각각 툴바의 [새로 만들기]·우측 기둥의 [＋]와 같은 길이다. -->
+                    <Button x:Name="EmptyNewProjectButton"
+                            Content="새 프로젝트"
+                            HorizontalAlignment="Center"
+                            Padding="16,6"
+                            IsVisible="False"
+                            ToolTip.Tip="새 프로젝트를 만들고 저장합니다 — 저장돼야 챕터가 살 폴더가 정해집니다." />
+                    <Button x:Name="EmptyAddChapterButton"
+                            Content="＋ 챕터"
+                            HorizontalAlignment="Center"
+                            Padding="16,6"
+                            IsVisible="False"
+                            ToolTip.Tip="새 챕터 — chapters/ 폴더에 규격 워크북을 만들고 판을 엽니다." />
+                    <!-- 셋째 걸음 — 챕터는 열렸는데 에피소드가 하나도 없을 때. 앞의 둘과
+                         달리 배선까지 이 뷰의 것이다: 툴바의 [＋ 에피소드]와 같은 길을 탄다
+                         (선택이 없으니 홀로 선다). -->
+                    <Button x:Name="EmptyAddEpisodeButton"
+                            Content="＋ 에피소드"
+                            HorizontalAlignment="Center"
+                            Padding="16,6"
+                            IsVisible="False"
+                            ToolTip.Tip="첫 에피소드를 만듭니다 — 이름은 우측 [이름] 칸에서 고치고 Enter." />
+                </StackPanel>
             </Grid>
 
             <GridSplitter Grid.Column="1"

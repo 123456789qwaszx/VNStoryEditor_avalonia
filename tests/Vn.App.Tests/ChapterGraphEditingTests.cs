@@ -544,9 +544,10 @@ public sealed class ChapterGraphEditingTests
         Assert.Null(view.FindControl<Button>("ReloadButton"));
         Assert.Null(view.FindControl<ComboBox>("FixtureCombo"));
         Assert.Null(view.FindControl<TextBlock>("FixtureStopText"));
+        // [폴더 열기]도 2026-08-26에 사라졌다 (소유자) — 노드 더블클릭이 엑셀을 연다.
+        Assert.Null(view.FindControl<Button>("OpenFolderButton"));
 
         // 남아야 하는 이웃 — 지우다 같이 쓸려 나가면 여기서 걸린다.
-        Assert.NotNull(view.FindControl<Button>("OpenFolderButton"));
         Assert.NotNull(view.FindControl<Button>("AddEpisodeButton"));
         Assert.NotNull(view.FindControl<Button>("DeleteEpisodeButton"));
     });

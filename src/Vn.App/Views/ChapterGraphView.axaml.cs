@@ -146,6 +146,24 @@ public partial class ChapterGraphView : UserControl
     /// <summary>[＋] 새 챕터 — 셸이 클릭을 받고 플라이아웃의 과녁으로도 쓴다.</summary>
     internal Button ChapterAddButton => AddChapterButton;
 
+    /// <summary>
+    /// 판 한가운데의 [＋ 챕터] — 프로젝트는 있는데 챕터가 하나도 없을 때만 보인다.
+    /// 클릭의 뜻은 우측 기둥의 [＋]와 같으므로 배선도 같은 셸이 짓는다.
+    /// </summary>
+    internal Button ChapterAddCenterButton => EmptyAddChapterButton;
+
+    /// <summary>
+    /// 판 한가운데의 [새 프로젝트] — 프로젝트가 아직 없을 때만 보인다(챕터보다 먼저다).
+    /// 클릭의 뜻은 툴바의 [새로 만들기]와 같으므로 배선도 같은 셸이 짓는다.
+    /// </summary>
+    internal Button ProjectNewCenterButton => EmptyNewProjectButton;
+
+    /// <summary>
+    /// 판 한가운데의 [＋ 에피소드] — 챕터는 열렸는데 에피소드가 하나도 없을 때만 보인다.
+    /// 앞의 둘과 달리 배선도 이 뷰의 것이다(툴바 [＋ 에피소드]와 같은 길).
+    /// </summary>
+    internal Button EpisodeAddCenterButton => EmptyAddEpisodeButton;
+
     /// <summary>머리글 아래 한 줄 — 지금 활성인 판의 요약.</summary>
     internal TextBlock ChapterSummaryText => ChapterSummary;
 
@@ -156,7 +174,8 @@ public partial class ChapterGraphView : UserControl
         // ⛔ [다시 읽기] 단추는 2026-08-24에 없앴다 (소유자: 한 번도 안 썼다). 감시자가
         // 붙은 뒤로 화면이 스스로 따라오므로 손잡이가 할 일이 남지 않았다. <see cref="Reload"/>
         // 자체는 그대로다 — 부르는 곳이 사람 손에서 감시자와 챕터 전환으로 옮겨갔을 뿐이다.
-        OpenFolderButton.Click += (_, _) => UiGuard.Run(_session, "챕터 폴더 열기", OpenFolder);
+        // ⛔ [폴더 열기]도 2026-08-26에 없앴다 (소유자) — 노드 더블클릭이 엑셀을 여는
+        // 길이 이미 있어, 폴더로 가는 손잡이는 상시로 자리만 먹었다.
 
         // [화자] 탭 — 프로젝트 전체의 캐스트 (2026-08-23). 엔터로도 더한다: 이름을 여럿
         // 적을 때 손이 마우스로 갔다 오지 않는다.
@@ -209,6 +228,8 @@ public partial class ChapterGraphView : UserControl
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
+        // 빈 판 한가운데의 [＋ 에피소드]도 같은 길이다 — 선택이 없으니 홀로 선다.
+        EmptyAddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
 
         // 간선 패널은 고르는 순간 저장된다 (2026-08-17 소유자: "굳이 적용을 누르지 않아도
@@ -1317,25 +1338,6 @@ public partial class ChapterGraphView : UserControl
 
     private ChapterValidationResult ValidationFor(ChapterEntry entry) =>
         _export.ValidationFor(entry, _session?.ProjectPath, _session?.Project);
-    private void OpenFolder()
-    {
-        string? folder = ChapterLibrary.FolderFor(_session?.ProjectPath);
-
-        if (folder is null)
-        {
-            _session?.SetStatus("프로젝트를 먼저 저장해야 챕터 폴더 자리가 정해집니다.");
-            return;
-        }
-
-        if (!Directory.Exists(folder))
-        {
-            // 폴더를 대신 만들지 않는다 — 이 레이어에서 파일을 만드는 쪽은 언제나 사람이다.
-            _session?.SetStatus($"챕터 폴더가 없습니다: {folder}");
-            return;
-        }
-
-        Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
-    }
 
     /// <summary>런타임 수입물이 나가는 자리. 에셋과 같은 규약 폴더 방식이다 — 매니페스트 없음.</summary>
     /// <summary>
@@ -1476,14 +1478,25 @@ public partial class ChapterGraphView : UserControl
 
             EmptyText.IsVisible = true;
             EmptyText.Text = folder is null
-                ? "프로젝트를 저장하면 그 옆의 chapters 폴더에서 챕터 워크북을 읽습니다."
+                ? "아직 프로젝트가 없습니다.\n새 프로젝트를 만들고 저장하면 여기에 챕터 판이 섭니다."
                 : $"챕터 워크북이 없습니다.\n{folder} 에 {{ChapterId}}.xlsx 를 넣으면 여기에 그려집니다.";
+
+            // 빈 판의 첫걸음은 둘 중 하나만 선다 (2026-08-26 소유자: "새 프로젝트를
+            // 만들지도 않았는데 +챕터버튼부터 나오니 오히려 헷갈려") — 순서가 곧 안내다:
+            // 프로젝트가 먼저고 챕터는 그 다음이다. 챕터 단추는 챕터가 하나도 없을 때만이다.
+            // 목록에는 있는데 아직 안 고른 경우는 아니다: 그때 할 일은 만들기가 아니라 고르기다.
+            EmptyNewProjectButton.IsVisible = folder is null;
+            EmptyAddChapterButton.IsVisible = folder is not null && _entries.Count == 0;
+            EmptyAddEpisodeButton.IsVisible = false;
 
             DiagnosticsExpander.Header = "검증 보고";
             return;
         }
 
         EmptyText.IsVisible = false;
+        EmptyNewProjectButton.IsVisible = false;
+        EmptyAddChapterButton.IsVisible = false;
+        EmptyAddEpisodeButton.IsVisible = false;
 
         if (entry.Model is null)
         {
@@ -1494,6 +1507,17 @@ public partial class ChapterGraphView : UserControl
         }
 
         ChapterGraphModel model = entry.Model;
+
+        // 셋째 걸음 (2026-08-26 소유자: "챕터를 열었는데, 아무 에피소드가 없을 땐
+        // + 에피소드 버튼이 나오도록") — 새 챕터의 에피소드 시트는 머리글뿐이라
+        // 판이 그냥 텅 비어 있었다. 안내문과 단추만 세우고 나머지 그리기는 그대로
+        // 지나간다 — 그릴 것이 없을 뿐 검증·보고는 여느 챕터와 같다.
+        if (model.Episodes.Count == 0)
+        {
+            EmptyText.IsVisible = true;
+            EmptyText.Text = $"'{entry.ChapterId}'에 에피소드가 없습니다.\n첫 에피소드를 세우면 여기에 그려집니다.";
+            EmptyAddEpisodeButton.IsVisible = true;
+        }
 
         // 배치는 깊이 레이아웃이 소유한다 (v3) — 열 = 깊이, 드래그 없음.
         // 흐름(간선)이 바뀌면 자리가 저절로 따라온다.

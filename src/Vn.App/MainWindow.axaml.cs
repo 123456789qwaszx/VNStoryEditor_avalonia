@@ -218,7 +218,15 @@ public partial class MainWindow : Window
         _session.SelectionChanged += OnSelectionChanged;
         _session.FileGraphStateChanged += OnFileGraphStateChanged;
 
-        ChapterGraph.ChapterAddButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", ShowAddChapterFlyout);
+        ChapterGraph.ChapterAddButton.Click += (_, _) =>
+            UiGuard.Run(_session, "새 챕터", () => ShowAddChapterFlyout(ChapterGraph.ChapterAddButton));
+        // 챕터가 하나도 없을 때 판 한가운데 서는 [＋ 챕터] — 뜻이 같으니 배선도 같다.
+        // 플라이아웃만 누른 그 단추에 붙는다(화면 반대편에서 열리면 눈이 길을 잃는다).
+        ChapterGraph.ChapterAddCenterButton.Click += (_, _) =>
+            UiGuard.Run(_session, "새 챕터", () => ShowAddChapterFlyout(ChapterGraph.ChapterAddCenterButton));
+        // 프로젝트가 아직 없을 때는 [새 프로젝트]가 먼저다 (2026-08-26 소유자) —
+        // 툴바의 [새로 만들기]와 같은 길 하나를 지난다.
+        ChapterGraph.ProjectNewCenterButton.Click += OnNewClick;
         NewButton.Click += OnNewClick;
         OpenButton.Click += OnOpenClick;
         SaveButton.Click += OnSaveClick;
@@ -531,7 +539,7 @@ public partial class MainWindow : Window
     /// 새 챕터 (챕터 v2, G-1 v2) — chapters/ 폴더에 §3.1 규격 워크북을 만들고 그 판을 연다.
     /// 스탯 시트는 game.definition의 변수로 채운다. Id는 사람이 정한다(자동 발명 금지).
     /// </summary>
-    private void ShowAddChapterFlyout()
+    private void ShowAddChapterFlyout(Control anchor)
     {
         var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
 
@@ -581,7 +589,7 @@ public partial class MainWindow : Window
         });
         panel.Children.Add(create);
 
-        flyout.ShowAt(ChapterGraph.ChapterAddButton);
+        flyout.ShowAt(anchor);
         name.Focus();
     }
 
