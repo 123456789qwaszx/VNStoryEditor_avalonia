@@ -45,12 +45,13 @@ public static class ChapterWorkbookWriter
                 throw new InvalidOperationException($"EpisodeId '{episodeId}'가 이미 있습니다.");
             }
 
+            // v14 열 순서 — EpisodeId · 대사엔트리 · 제목 · 이벤트키 · X · Y · 메모.
             int row = NextRow(sheet);
             sheet.Cell(row, 1).SetValue(episodeId);
-            sheet.Cell(row, 2).SetValue(title);
-            sheet.Cell(row, 3).SetValue(episodeId);
-            sheet.Cell(row, 4).SetValue(Math.Round(x, 2));
-            sheet.Cell(row, 5).SetValue(Math.Round(y, 2));
+            sheet.Cell(row, 2).SetValue(episodeId);   // 대사엔트리 = EpisodeId (v3 규약)
+            sheet.Cell(row, 3).SetValue(title);
+            sheet.Cell(row, 5).SetValue(Math.Round(x, 2));
+            sheet.Cell(row, 6).SetValue(Math.Round(y, 2));
         });
 
     /// <summary>
@@ -84,10 +85,10 @@ public static class ChapterWorkbookWriter
 
             int newRow = NextRow(episodes);
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
-            episodes.Cell(newRow, 2).SetValue(title);
-            episodes.Cell(newRow, 3).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
-            episodes.Cell(newRow, 4).SetValue(Math.Round(x, 2));
-            episodes.Cell(newRow, 5).SetValue(Math.Round(y, 2));
+            episodes.Cell(newRow, 2).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
+            episodes.Cell(newRow, 3).SetValue(title);
+            episodes.Cell(newRow, 5).SetValue(Math.Round(x, 2));
+            episodes.Cell(newRow, 6).SetValue(Math.Round(y, 2));
 
             // 부모에서 나가는 길 하나 = 선택지 하나 (v9). 문구를 받았으면 그대로 적고,
             // 사전에 없는 낱말이면 사전에도 올려 둔다 — 다음부터 드롭다운에서 고른다.
@@ -116,23 +117,42 @@ public static class ChapterWorkbookWriter
         {
             (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
 
-            Set(sheet, row, 2, title);
-            Set(sheet, row, 3, dialogueEntry);
-            Set(sheet, row, 6, memo);
+            // v14 열 순서 — 대사엔트리(B) · 제목(C) · 메모(G).
+            Set(sheet, row, 2, dialogueEntry);
+            Set(sheet, row, 3, title);
+            Set(sheet, row, 7, memo);
 
             if (allowUnreachable is { } allowed)
             {
                 // `도달불가 허용`은 선택 열이다 — 처음 켤 때 머리글도 함께 만든다 (D3).
-                // 리더가 머리글 이름으로 찾으므로 자리는 규격 칸 바로 뒤면 된다.
-                const int AllowColumn = 7;
+                // 리더가 머리글 이름으로 찾으므로 자리는 규격 칸 뒤 아무 빈 머리글이면 된다.
+                // ⚠ v14부터 일곱째까지가 규격이라 자리를 박아 두지 못한다 — 이름으로 찾고,
+                //   없으면 첫 빈 머리글 자리에 세운다(보통 8).
+                int allowColumn = 0;
 
-                if (!string.Equals(
-                        sheet.Cell(1, AllowColumn).GetString(), "도달불가 허용", StringComparison.Ordinal))
+                for (int column = 8; column <= 12; column++)
                 {
-                    sheet.Cell(1, AllowColumn).SetValue("도달불가 허용");
+                    if (string.Equals(
+                            sheet.Cell(1, column).GetString().Trim(), "도달불가 허용", StringComparison.Ordinal))
+                    {
+                        allowColumn = column;
+                        break;
+                    }
                 }
 
-                sheet.Cell(row, AllowColumn).SetValue(allowed ? "TRUE" : "FALSE");
+                if (allowColumn == 0)
+                {
+                    allowColumn = 8;
+
+                    while (sheet.Cell(1, allowColumn).GetString().Trim().Length > 0)
+                    {
+                        allowColumn++;
+                    }
+
+                    sheet.Cell(1, allowColumn).SetValue("도달불가 허용");
+                }
+
+                sheet.Cell(row, allowColumn).SetValue(allowed ? "TRUE" : "FALSE");
             }
         });
 
@@ -169,11 +189,11 @@ public static class ChapterWorkbookWriter
 
             episodes.Cell(episodeRow, 1).SetValue(newId);
 
-            // 대사엔트리 = EpisodeId 규약(v3)을 따르던 행이면 함께 따라간다.
+            // 대사엔트리 = EpisodeId 규약(v3)을 따르던 행이면 함께 따라간다 (v14에서 C → B).
             // 사람이 다르게 적어 둔 값은 건드리지 않는다.
-            if (string.Equals(episodes.Cell(episodeRow, 3).GetString(), oldId, StringComparison.Ordinal))
+            if (string.Equals(episodes.Cell(episodeRow, 2).GetString(), oldId, StringComparison.Ordinal))
             {
-                episodes.Cell(episodeRow, 3).SetValue(newId);
+                episodes.Cell(episodeRow, 2).SetValue(newId);
             }
 
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -604,20 +624,21 @@ public static class ChapterWorkbookWriter
         // 픽스처 시트는 만들지 않는다 (2026-08-16 소유자 — 당장 안 쓰니 임시 제거.
         // 리더는 있으면 여전히 읽는다 — 되살릴 때 시트만 다시 만들면 된다).
         IXLWorksheet episodeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Episodes,
-            // v11 — `엔딩키`가 간선으로 옮겨 갔다. 엔딩이라는 한 개념이 (노드의 키) +
-            // (간선의 연출)로 갈리지 않게, 간선 한 행에 모은다.
-            ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"]);
+            // v14 (2026-08-26) — `이벤트키`: 유니티 전용 패스스루 인덱스(시청 완료 트리거).
+            // 툴은 해석하지 않는다. 같은 날 열 순서도 갈렸다 — 신원·내용이 앞, 남에게
+            // 건네는 열쇠가 가운데, 판 좌표와 곁말이 뒤.
+            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
-            [
-                "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문",
-                // v12 (2026-08-24) — `종류`·`연출` 폐지. 엔딩키만 남는다.
-                // 같은 날 `잠금시 숨김`도 폐지 — 그 식을 표시조건에 적으면 결과가 같다.
-                "엔딩키"
-            ]);
+            // v12 (2026-08-24) — `종류`·`연출`·`잠금시 숨김` 폐지.
+            // v14 (2026-08-26) — 간선의 `엔딩키` 폐지: 키는 에피소드의 `이벤트키`로 돌아갔다
+            // (에피소드에 살면 "같은 도착의 키 충돌"이 구조적으로 없다).
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
-            ["스탯키", "표시명", "초기값", "최소", "최대", "타입"]);
+            // v14 (2026-08-26) — `타입`이 맨 앞. 그 값이 나머지를 어떻게 읽을지를 정한다
+            // (bool이면 최소·최대를 안 읽는다) — 대본 시트의 `유형`과 같은 자리, 같은 이유.
+            ["타입", "스탯키", "표시명", "초기값", "최소", "최대"]);
         // 선택지 사전 (v9) — 챕터가 함께 쓰는 문구 목록. 간선이 여기서 골라 문구를 적는다.
         IXLWorksheet choiceSheet = CreateChoiceSheet(workbook);
 
@@ -631,11 +652,13 @@ public static class ChapterWorkbookWriter
 
         foreach ((string key, string name) in stats ?? Array.Empty<(string, string)>())
         {
-            statSheet.Cell(statRow, 1).SetValue(key);
-            statSheet.Cell(statRow, 2).SetValue(name);
-            statSheet.Cell(statRow, 3).SetValue(0);
+            // v14 열 순서 — 타입 · 스탯키 · 표시명 · 초기값 · 최소 · 최대.
+            // 타입은 비워 둔다: 빈 칸이 곧 int이고, 새 스탯의 기본은 정수다.
+            statSheet.Cell(statRow, 2).SetValue(key);
+            statSheet.Cell(statRow, 3).SetValue(name);
             statSheet.Cell(statRow, 4).SetValue(0);
-            statSheet.Cell(statRow, 5).SetValue(10);
+            statSheet.Cell(statRow, 5).SetValue(0);
+            statSheet.Cell(statRow, 6).SetValue(10);
             statRow++;
         }
 
@@ -690,7 +713,7 @@ public static class ChapterWorkbookWriter
     ///   조건을 더하면 목록이 저절로 는다.
     /// - 조건 스탯(B): `스탯` 시트 키 열 참조. 연산자(C): &lt; &gt; == &gt;= &lt;= + true/false.
     ///   값(D)은 연산자가 true/false면 회색(조건부 서식) — bool 조건은 값 칸을 쓰지 않는다.
-    /// - 스탯 타입(F): int/bool.
+    /// - 스탯 타입(A, v14 — 옛 F): int/bool.
     /// </summary>
     internal static void ApplyChapterDropdowns(
         IXLWorksheet episodeSheet,
@@ -713,8 +736,10 @@ public static class ChapterWorkbookWriter
             edgeChoicePick.ShowErrorMessage = false;
         }
 
+        // ⚠ 스탯키 열은 v14에서 A → <b>B</b>로 갔다(`타입`이 맨 앞으로). 이 참조가 안 따라가면
+        //    드롭다운이 <b>타입 목록</b>(int·bool)을 스탯키라고 내민다 — 조용히 틀린 목록이다.
         conditionSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()
-            .List($"='{ChapterSheetNames.Stats}'!$A$2:$A${DropdownRows}", inCellDropdown: true);
+            .List($"='{ChapterSheetNames.Stats}'!$B$2:$B${DropdownRows}", inCellDropdown: true);
         // ⛔ 연산자 칸은 <b>글자 서식</b>이어야 한다 (2026-08-25 소유자 보고: "연산자 ==은
         //    오류:520으로 되네"). 스프레드시트는 `=`로 시작하는 입력을 수식으로 읽으므로,
         //    일반 서식이면 `==`이 빈 수식이 되어 리브레오피스는 `Err:520`, 엑셀은
@@ -733,7 +758,8 @@ public static class ChapterWorkbookWriter
             .WhenIsTrue("=OR($C2=\"true\",$C2=\"false\")")
             .Fill.SetBackgroundColor(XLColor.FromHtml("#D9D9D9"));
 
-        statSheet.Range(2, 6, DropdownRows, 6).CreateDataValidation()
+        // 스탯 타입(A, v14 — 옛 F).
+        statSheet.Range(2, 1, DropdownRows, 1).CreateDataValidation()
             .List("\"int,bool\"", inCellDropdown: true);
     }
 
@@ -784,8 +810,8 @@ public static class ChapterWorkbookWriter
     ///
     /// 값은 견본에서 그대로 떠 왔다 — 소유자가 좋다고 한 것이 그 파일이므로, 새로 고르는
     /// 것보다 <b>이미 합격한 값을 옮기는</b> 편이 맞다. 견본에 없던 것만 새로 정했다:
-    /// v11의 세 열(`종류`·`엔딩키`·`연출`)과, 견본을 만든 뒤에 생긴 두 사전 시트
-    /// (`선택지`·`화자` — 파일 안에 이미 있던 남색 #1F4E79을 쓴다).
+    /// 견본을 만든 뒤에 생긴 두 사전 시트(`선택지`·`화자` — 파일 안에 이미 있던 남색
+    /// #1F4E79을 쓴다).
     /// </summary>
     internal static void ApplyChapterChrome(XLWorkbook workbook)
     {
@@ -795,22 +821,24 @@ public static class ChapterWorkbookWriter
         //    칸까지 격자와 색이 계속 칠해져, 사람 눈에는 "쓰라는 칸"으로 보인다
         //    (2026-08-25 소유자 보고: 에피소드 G열 · 간선 I·J·K열).
         //
-        //    에피소드: EpisodeId · 제목 · 대사엔트리 · X · Y · 메모  (v13에서 `종류` 폐지)
+        //    에피소드: EpisodeId · 대사엔트리 · 제목 · 이벤트키 · X · Y · 메모
+        //    (v13에서 `종류` 폐지 · v14에서 `이벤트키` 추가 + 열 순서 개정)
         Chrome(workbook, ChapterSheetNames.Episodes, "#333F50",
-            [14, 22, 20, 7, 7, 20], reference: [1], note: [6]);
+            [14, 20, 22, 14, 7, 7, 20], reference: [1], note: [7]);
 
-        //    간선: 출발 · 도착 · 스탯변화 · 선택지 · 표시조건 · 해금조건 · 잠금 안내문 · 엔딩키
-        //    (`잠금시 숨김`·`종류`·`연출`이 2026-08-24에 폐지됐다)
+        //    간선: 출발 · 도착 · 스탯변화 · 선택지 · 표시조건 · 해금조건 · 잠금 안내문
+        //    (`잠금시 숨김`·`종류`·`연출`은 2026-08-24에, `엔딩키`는 v14(2026-08-26)에 폐지됐다)
         Chrome(workbook, ChapterSheetNames.Edges, "#333F50",
-            [14, 14, 14, 26, 26, 14, 26, 16], reference: [1, 2], note: [7]);
+            [14, 14, 14, 26, 26, 14, 26], reference: [1, 2], note: [7]);
 
         Chrome(workbook, ChapterSheetNames.Conditions, "#548235",
             [18, 26, 26, 26, 44], reference: [2], note: [5]);
 
         // `스탯`은 game.definition.json의 읽기전용 미러다 — 옅은 회색 바탕이 "여긴 원천이
         // 아니다"를 말한다.
+        //    스탯: 타입 · 스탯키 · 표시명 · 초기값 · 최소 · 최대 (v14 — 타입이 맨 앞)
         Chrome(workbook, ChapterSheetNames.Stats, "#7F7F7F",
-            [14, 14, 10, 8, 8, 10], reference: [1], body: "#F2F2F2");
+            [10, 14, 14, 10, 8, 8], reference: [2], body: "#F2F2F2");
 
         Chrome(workbook, ChapterSheetNames.Choices, "#1F4E79",
             [8, 52, 24], reference: [1], note: [3]);
@@ -908,7 +936,7 @@ public static class ChapterWorkbookWriter
         // `간선` 시트에서는 이게 없으면 무슨 칸에 적는지 알 수 없다.
         sheet.SheetView.FreezeRows(1);
 
-        // 자동 필터 — 기획자가 "엔딩 간선만" "이 에피소드에서 나가는 것만" 추려 보는 손잡이다.
+        // 자동 필터 — 기획자가 "이 에피소드에서 나가는 것만" 추려 보는 손잡이다.
         // 이미 걸려 있으면 그대로 둔다(사람이 걸어 둔 조건을 지우지 않는다).
         if (!sheet.AutoFilter.IsEnabled)
         {

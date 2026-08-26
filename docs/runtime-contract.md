@@ -222,7 +222,7 @@ Stat   : { Key, DisplayName, Type("Number"|"Bool"), Initial, Minimum, Maximum }
 
 Node   : { EpisodeId, Title, IndexText, Kind("Main"|"Attachment"), DialogueEntryId,
            VisibleConditions[], UnlockConditions[], NextOptions[], Attachments[],
-           IsChapterEndingCandidate, EndingKey, DesignerNote, Position{X,Y} }
+           EventKey, DesignerNote, Position{X,Y} }
 
 Option : { TargetEpisodeId, ChoiceLabel, Kind("PlayerChoice"|"AutoAdvance"), VisibleConditions[],
            Conditions[], HideWhenLocked, LockedReasonText, ViaNodeId,
@@ -238,6 +238,8 @@ Option : { TargetEpisodeId, ChoiceLabel, Kind("PlayerChoice"|"AutoAdvance"), Vis
 | `Nodes[]` | `EpisodeNode` | |
 | `NextOptions[]` | `EpisodeOption` | **배열 순서 = 화면 순서.** 정렬 금지 |
 | `EndingRules` | **없음** | 모양이 없어 모델에 넣지 않았다. 언제나 빈 배열 |
+| `Node.EndingKey` · `IsChapterEndingCandidate` | **안 싣는다** | ⛔ v14(2026-08-26) — 저작에서 간선 엔딩키가 폐지됐다(읽는 곳이 `EndingRules`뿐인데 그것이 언제나 빈 배열이라, 아무도 안 읽는 값이었다). 저쪽 DTO는 그대로 — 빈 값이 기본이라 로더 일관성 검사도 통과한다. 시나리오 저작을 지을 때 그쪽 규격으로 다시 세운다(H-4와 같은 날) |
+| **`Node.EventKey`** | **없음 (칸 부탁 중)** | ✅ v14(2026-08-26)부터 나간다 — 에피소드 `이벤트키`(유니티 전용 패스스루: "이 에피소드를 다 시청했을 때"의 이벤트·보상 인덱스, 진행 평가에는 안 낀다). ⚠ DTO에 칸이 서기 전까지 로더가 조용히 무시한다 — 부탁은 `progression-handoff.md` 추기 |
 | `Node.VisibleConditions`·`UnlockConditions` | **없음** | v8에서 간선으로 내려갔다. 언제나 빈 배열 |
 | `Node.IndexText` | **없음** | v5 폐지. 언제나 빈 문자열 |
 | `Node.Position` | **없음** | 저작 레이아웃이다. 평가 입력이 아니다 |

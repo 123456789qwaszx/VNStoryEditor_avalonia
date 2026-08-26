@@ -85,19 +85,17 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     }
 
     [Fact]
-    public void 견본의_엔딩과_잠금이_구분된다()
+    public void 견본의_이벤트키와_잠금이_읽힌다()
     {
         ChapterGraphModel model = ChapterWorkbookReader.Read(SamplePath);
 
-        // v11 (2026-08-18) — 엔딩키의 주인이 에피소드에서 **간선**으로 옮겨 갔다.
-        // 연출이 간선에 붙게 되면서, 키가 노드에 남으면 엔딩이라는 한 개념이
-        // (노드의 키) + (간선의 연출)로 갈린다.
-        ChapterEdge ending = Assert.Single(model.Edges, edge => edge.IsEnding);
-        Assert.Equal("main05.end", ending.ToEpisodeId);
-        Assert.Equal("ch05_normal", ending.EndingKey);
-
-        // 에피소드는 더 이상 키를 들지 않는다.
-        Assert.Null(model.FindEpisode("main05.end")!.EndingKey);
+        // v14 (2026-08-26) — 간선의 `엔딩키`는 폐지됐고, 키는 에피소드의 `이벤트키`로
+        // 돌아왔다(유니티 전용 패스스루 — 이행이 간선의 값을 도착 에피소드로 옮겼다).
+        ChapterEpisode ending = model.FindEpisode("main05.end")!;
+        Assert.Equal("ch05_normal", ending.EventKey);
+        Assert.All(
+            model.Episodes.Where(episode => !ReferenceEquals(episode, ending)),
+            episode => Assert.True(string.IsNullOrEmpty(episode.EventKey)));
 
         // v8 — 관문은 그 에피소드로 들어오는 길이 갖는다.
         ChapterEdge gated = model.Edges.Single(edge => edge.ToEpisodeId == "branch05.02A");
@@ -224,15 +222,15 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     [Fact]
     public void 빈_대사엔트리가_오류로_잡힌다()
     {
-        // v13 (2026-08-25) — `종류`가 걷히며 대사엔트리가 D → C로 당겨졌다.
+        // v14 (2026-08-26) — 열 순서 개정으로 대사엔트리가 C → B로 올라왔다.
         var sheets = Baseline();
-        sheets[0].Rows[1][2] = null;
+        sheets[0].Rows[1][1] = null;
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.DialogueEntryBlank);
 
         Assert.Equal("에피소드", problem.Sheet);
         Assert.Equal(2, problem.Row);
-        Assert.Equal("C", problem.Column);
+        Assert.Equal("B", problem.Column);
     }
 
     [Fact]
@@ -325,9 +323,10 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     [Fact]
     public void 스탯_범위가_뒤집히면_오류다()
     {
+        // v14 — 타입이 맨 앞으로 오면서 최소·최대가 한 칸씩 밀렸다.
         var sheets = Baseline();
-        sheets[3].Rows[1][3] = "5";
-        sheets[3].Rows[1][4] = "1";
+        sheets[3].Rows[1][4] = "5";
+        sheets[3].Rows[1][5] = "1";
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.StatRangeInvalid);
 
@@ -339,11 +338,11 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     public void 진단은_파일_시트_행_열을_한_줄로_말한다()
     {
         var sheets = Baseline();
-        sheets[0].Rows[1][2] = null;
+        sheets[0].Rows[1][1] = null;
 
         ChapterDiagnostic problem = SingleError(sheets, ChapterDiagnosticCode.DialogueEntryBlank);
 
-        Assert.StartsWith("chapter.xlsx · 에피소드 · 2행 · C열 — ", problem.Describe());
+        Assert.StartsWith("chapter.xlsx · 에피소드 · 2행 · B열 — ", problem.Describe());
     }
 
     [Fact]
@@ -385,25 +384,27 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     /// <summary>오류가 하나도 없는 최소 챕터(2026-08-16 규격). 각 테스트는 여기서 한 칸만 망가뜨린다.</summary>
     private static (string Name, string?[][] Rows)[] Baseline() =>
     [
-        // v11 (2026-08-18) — 에피소드에서 `엔딩키`가 빠지고(메모가 7열로 당겨졌다),
-        // 간선에 `종류`·`엔딩키`·`연출` 셋이 뒤에 붙었다.
+        // v14 (2026-08-26) — 간선의 `엔딩키`가 폐지되고(일곱 칸이 전부다), 에피소드에
+        // `이벤트키`(D — 유니티 전용 패스스루)가 섰다. 같은 날 에피소드 열 순서도
+        // 갈렸다: 신원·내용이 앞, 건네는 열쇠가 가운데, 좌표와 곁말이 뒤.
         ("에피소드", [
-            ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
-            ["ep1", "첫 화", "Story_ep1", "0", "0", null, null, null],
-            ["ep2", "둘째 화", "Story_ep2", "200", "0", null, null, null]
+            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
+            ["ep1", "Story_ep1", "첫 화", null, "0", "0", null, null],
+            ["ep2", "Story_ep2", "둘째 화", null, "200", "0", null, null]
         ]),
         ("간선", [
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "엔딩키"],
-            ["ep1", "ep2", null, "계속", null, null, null, null]
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"],
+            ["ep1", "ep2", null, "계속", null, null, null]
         ]),
         ("조건", [
             ["라벨", "스탯", "연산자", "값", "설명"],
             ["신뢰높음", "trust", ">=", "3", "라루를 신뢰"]
         ]),
         ("스탯", [
-            ["스탯키", "표시명", "초기값", "최소", "최대", "타입"],
-            ["trust", "신뢰", "0", "0", "10", null],
-            ["anger", "분노", "0", "0", "10", null]
+            // v14 (2026-08-26) — `타입`이 맨 앞이다. 비면 int.
+            ["타입", "스탯키", "표시명", "초기값", "최소", "최대"],
+            [null, "trust", "신뢰", "0", "0", "10"],
+            [null, "anger", "분노", "0", "0", "10"]
         ]),
         ("픽스처", [
             ["픽스처명", "활성", "trust", "anger", "고정 선택 (에피소드ID→도착ID)"],

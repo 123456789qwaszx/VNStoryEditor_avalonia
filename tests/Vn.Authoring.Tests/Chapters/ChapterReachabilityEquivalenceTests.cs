@@ -220,7 +220,7 @@ public sealed class ChapterReachabilityEquivalenceTests
     // ── 픽스처 ──────────────────────────────────────────────────────────────
 
     private static ChapterEpisode Episode(string id) =>
-        new(id, id, "", id, 0, 0, null, null, 2);
+        new(id, id, "", id, 0, 0, null, 2);
 
     private static ChapterGraphModel Chapter(
         IReadOnlyList<ChapterEpisode> episodes,

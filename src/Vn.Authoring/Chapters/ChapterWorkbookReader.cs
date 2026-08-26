@@ -36,29 +36,48 @@ public static class ChapterWorkbookReader
     // v13 (2026-08-25 소유자) — `종류` 폐지. Main/Attachment는 코어가 `EpisodeKind`를
     // 지우면서 뜻을 잃었고, 읽어도 아무도 쓰지 않는 칸이 됐다. 뒤 열이 한 칸씩 당겨진다.
     // 의도한 섬은 `도달불가 허용`이 적는다.
+    // v14 (2026-08-26 소유자) — `이벤트키`가 선다. 유니티 전용 패스스루 인덱스로,
+    // 툴은 해석하지 않고 실어 나르기만 한다(옛 `엔딩키`의 후신이되 뜻은 "시청 완료
+    // 트리거"다). 선택 열 `도달불가 허용`은 그 뒤(H~)로 밀려 이름으로 찾는다.
+    //
+    // ⚠ <b>같은 날 열 순서도 소유자 지시로 바뀌었다</b>: 신원·내용이 앞(EpisodeId ·
+    // 대사엔트리 · 제목), 남에게 건네는 열쇠가 가운데(이벤트키), 판 좌표와 곁말이
+    // 뒤(X · Y · 메모). 값의 종류가 같은 것끼리 붙어 있어야 눈이 한 번에 짚는다.
+    // <b>낱말은 그대로이고 자리만 바뀐 순열</b>이라 이행기가 머리글을 읽어 옮긴다
+    // (`ChapterWorkbookMigrator.ReorderEpisodeColumns` — 대본 v14와 같은 방식).
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"];
+        ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"];
 
     // v11 (2026-08-18) — 뒤에 셋을 붙였다. 읽는 순서로는 `종류`가 `선택지` 옆에 오는 편이
     // 좋지만, 끼워 넣으면 뒤 열이 전부 밀려 이행에서 셀을 잃을 위험을 산다. 자리보다
     // 안전을 골랐다.
-    // v12 (2026-08-24 소유자) — `종류`·`연출` 폐지. 남은 아홉 칸이 전부다.
+    // v12 (2026-08-24 소유자) — `종류`·`연출` 폐지.
     //
     // `종류`는 문구 없는 길("보이지 않는 기본")이 사라지면서 뜻을 잃었다 — 모든 길이
     // 선택지이므로 물을 것이 없다. `연출`은 간선에 매다는 대사 없는 연출인데, 소유자
-    // 판단으로 개념째 접었다. 엔딩키가 J → I로 당겨진다.
+    // 판단으로 개념째 접었다.
+    //
+    // v14 (2026-08-26 소유자) — 간선의 `엔딩키` 폐지. 시나리오 층으로 나가는 통로
+    // (EndingRules)가 이 툴에 없어 아무 데도 실리지 않는 칸이었다("어차피 EndingKey는
+    // 내보낼 방법이 없었어"). 툴의 보장은 <b>챕터 안의 분기·그래프 구조</b>까지다.
+    // 키 자체는 같은 날 <b>에피소드의 `이벤트키`</b>로 다시 태어났다 — 시청 완료 트리거용
+    // 패스스루 인덱스이고, 간선과 달리 "같은 도착의 키 충돌"이 구조적으로 없다.
     private static readonly string[] EdgeHeaders =
     [
         // ⛔ `잠금시 숨김`은 2026-08-24에 폐지됐다 (소유자: "이미 표시조건과 해금조건이
         // 있다보니 기능적으로 제거하더라도 아무런 차이가 없어"). 실제로 같은 말을 두 번
         // 하는 칸이었다 — <b>해금조건 + 잠기면 숨김</b>은 그 식을 <b>표시조건</b>에 적은
         // 것과 결과가 같다. 옛 워크북은 이행기가 그 열을 걷는다.
-        "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "엔딩키"
+        "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"
     ];
 
     private static readonly string[] ConditionHeaders = ["라벨", "스탯", "연산자", "값", "설명"];
 
-    private static readonly string[] StatHeaders = ["스탯키", "표시명", "초기값", "최소", "최대", "타입"];
+    // v14 (2026-08-26 소유자: "스탯시트에서도 타입이 가장 앞쪽으로") — `타입`이 맨 앞이다.
+    // 그 값이 <b>나머지를 어떻게 읽을지</b>를 정하기 때문이다: bool이면 최소·최대를 읽지 않고
+    // 0·1로 굳힌다. 대본 시트의 `유형`이 첫 칸인 것과 같은 이유 — 첫 칸만 훑으면 이 행이
+    // 무슨 행인지 보인다. 낱말은 그대로인 순열이라 이행기가 머리글을 읽어 옮긴다.
+    private static readonly string[] StatHeaders = ["타입", "스탯키", "표시명", "초기값", "최소", "최대"];
 
     private static readonly string[] SpeakerHeaders = ["이름", "캐릭터키", "메모"];
 
@@ -223,25 +242,25 @@ public static class ChapterWorkbookReader
 
             seen[episodeId] = row;
 
-            // v13 (2026-08-25) — `종류`가 빠지며 뒤가 한 칸씩 당겨졌다.
-            string dialogueEntry = Text(sheet, row, 3);
+            // v14 (2026-08-26) — 대사엔트리가 B로 올라왔다(신원·내용이 앞).
+            string dialogueEntry = Text(sheet, row, 2);
 
             if (dialogueEntry.Length == 0)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.DialogueEntryBlank,
-                    path, sheet.Name, row, 3,
+                    path, sheet.Name, row, 2,
                     $"'{episodeId}'의 대사엔트리가 비어 있습니다. 런타임이 재생할 대상이 없습니다."));
             }
 
-            double x = Number(sheet, row, 4, path, episodeId, diagnostics);
-            double y = Number(sheet, row, 5, path, episodeId, diagnostics);
+            double x = Number(sheet, row, 5, path, episodeId, diagnostics);
+            double y = Number(sheet, row, 6, path, episodeId, diagnostics);
 
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
             int allowColumn = 0;
 
-            for (int column = 7; column <= 12; column++)
+            for (int column = 8; column <= 12; column++)
             {
                 if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
                 {
@@ -252,18 +271,27 @@ public static class ChapterWorkbookReader
 
             bool allowUnreachable = allowColumn > 0 && Boolean(sheet, row, allowColumn, path, diagnostics);
 
+            // 이벤트키 (D, v14) — 패스스루라 값 검사가 없다. ⚠ 머리글이 정말 `이벤트키`일
+            // 때만 읽는다: 이행 전 파일은 이 자리에 X가 살고 있어서, 자리만 믿으면
+            // 좌표가 이벤트키로 둔갑한다.
+            string? eventKey =
+                string.Equals(Text(sheet, HeaderRow, 4), "이벤트키", StringComparison.Ordinal)
+                    ? Optional(sheet, row, 4)
+                    : null;
+
             episodes.Add(new ChapterEpisode(
                 episodeId,
-                Text(sheet, row, 2),
+                Text(sheet, row, 3),        // 제목 (v14에서 2 → 3)
                 string.Empty, // 인덱스 열 폐지 (2026-08-16) — 내보내기 IndexText만 빈 값으로 남는다
                 dialogueEntry,
                 x,
                 y,
-                // 엔딩키 — v11에서 간선으로 옮겼다. 모델 칸은 내보내기가 간선에서 채운다.
-                null,
-                Optional(sheet, row, 6),    // 메모 (v13에서 7 → 6)
+                Optional(sheet, row, 7),    // 메모 (v14에서 6 → 7)
                 row,
-                allowUnreachable));
+                allowUnreachable)
+            {
+                EventKey = eventKey
+            });
         }
 
         return episodes;
@@ -350,9 +378,6 @@ public static class ChapterWorkbookReader
                     "넘어가기만 하면 되는 자리라면 '계속' 같은 한 낱말이면 됩니다."));
             }
 
-            // 엔딩키 (I열, v12) — 있으면 이 길이 챕터를 끝낸다.
-            string? endingKey = Optional(sheet, row, 8);
-
             edges.Add(new ChapterEdge(
                 from,
                 to,
@@ -361,7 +386,6 @@ public static class ChapterWorkbookReader
                 Optional(sheet, row, 7),
                 row)
             {
-                EndingKey = endingKey,
                 StatChanges = deltas.Deltas,
                 VisibleConditionLabel = visibleLabel
             });
@@ -401,50 +425,7 @@ public static class ChapterWorkbookReader
                 "한 벌뿐이라 두 길이 같은 연출을 탑니다."));
         }
 
-        VerifyEndingKeysAgree(edges, path, sheet.Name, diagnostics);
-
         return edges;
-    }
-
-
-    /// <summary>
-    /// ⚠ <b>같은 도착으로 들어오는 간선들의 엔딩키는 같아야 한다</b> (v11).
-    ///
-    /// 저작에서 엔딩키는 간선의 것이지만 계약에서는 <b>도착 에피소드 하나에 하나</b>다.
-    /// 서로 다른 키가 들어오면 내보내기가 조용히 하나를 고르게 되고, 그 순간 나머지가
-    /// 사라진다 — 그리고 <b>JSON에 도착한 시점에는 이미 키가 하나라 수입기가 못 잡는다.</b>
-    ///
-    /// 그래서 이것은 <b>검증 소유 경계의 예외</b>다: 그래프 무결성은 수입 쪽이 정본이지만
-    /// 이 하나는 저작 쪽만 볼 수 있다(`ked-progression`과 합의, 2026-08-18).
-    /// </summary>
-    private static void VerifyEndingKeysAgree(
-        IReadOnlyList<ChapterEdge> edges,
-        string path,
-        string sheetName,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        foreach (IGrouping<string, ChapterEdge> arriving in edges
-                     .Where(edge => edge.IsEnding)
-                     .GroupBy(edge => edge.ToEpisodeId, StringComparer.Ordinal))
-        {
-            string[] keys = arriving
-                .Select(edge => edge.EndingKey!.Trim())
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-
-            if (keys.Length <= 1)
-            {
-                continue;
-            }
-
-            diagnostics.Add(Cell(
-                ChapterDiagnosticSeverity.Error,
-                ChapterDiagnosticCode.EndingKeyConflict,
-                path, sheetName, arriving.Last().SourceRow, 10,
-                $"'{arriving.Key}'로 들어오는 간선들이 서로 다른 엔딩키를 갖습니다" +
-                $"({string.Join(" · ", keys)}) — 엔딩은 도착 에피소드 하나에 하나입니다. " +
-                "엔딩을 나누려면 도착 에피소드를 따로 만들어 주세요."));
-        }
     }
 
     // ── 조건 ────────────────────────────────────────────────────────────────
@@ -568,22 +549,23 @@ public static class ChapterWorkbookReader
             return Array.Empty<ChapterStat>();
         }
 
-        VerifyHeaders(sheet, StatHeaders, path, diagnostics, optionalTrailing: 1); // 타입(F)은 나중 규격
+        // v14 — `타입`이 맨 앞으로 오면서 꼬리 선택 열이 없어졌다(옛 파일은 이행기가 세운다).
+        VerifyHeaders(sheet, StatHeaders, path, diagnostics);
 
         var stats = new List<ChapterStat>();
 
         foreach (int row in DataRows(sheet))
         {
-            string key = Text(sheet, row, 1);
+            string key = Text(sheet, row, 2);
 
             if (key.Length == 0)
             {
                 continue;
             }
 
-            // 타입 (F열, 선택 — 2026-08-16 소유자). 비면 int. bool은 값 공간이 0/1 하나라
-            // 최소·최대 칸을 읽지 않고 경계를 0·1로 고정한다 — 프루버가 그대로 옳게 돈다.
-            string typeText = Text(sheet, row, 6);
+            // 타입 (A열, v14 — 2026-08-16에 선택 열로 태어났다). 비면 int. bool은 값 공간이
+            // 0/1 하나라 최소·최대 칸을 읽지 않고 경계를 0·1로 고정한다 — 프루버가 그대로 옳게 돈다.
+            string typeText = Text(sheet, row, 1);
             ChapterStatType type = ChapterStatType.Int;
 
             if (string.Equals(typeText, "bool", StringComparison.OrdinalIgnoreCase))
@@ -596,19 +578,19 @@ public static class ChapterWorkbookReader
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    path, sheet.Name, row, 6,
+                    path, sheet.Name, row, 1,
                     $"스탯 '{key}'의 타입 '{typeText}'을 모릅니다 — int로 봅니다. 쓸 수 있는 것: int · bool."));
             }
 
             if (type == ChapterStatType.Bool)
             {
-                string rawInitial = Text(sheet, row, 3);
+                string rawInitial = Text(sheet, row, 4);
                 int boolInitial = string.Equals(rawInitial, "TRUE", StringComparison.OrdinalIgnoreCase) ||
                                   rawInitial == "1"
                     ? 1
                     : 0;
 
-                stats.Add(new ChapterStat(key, Text(sheet, row, 2), boolInitial, 0, 1, row,
+                stats.Add(new ChapterStat(key, Text(sheet, row, 3), boolInitial, 0, 1, row,
                     ChapterStatType.Bool));
 
                 if (definition is not null &&
@@ -618,7 +600,7 @@ public static class ChapterWorkbookReader
                     diagnostics.Add(Cell(
                         ChapterDiagnosticSeverity.Warning,
                         ChapterDiagnosticCode.StatMissingFromGameDefinition,
-                        path, sheet.Name, row, 1,
+                        path, sheet.Name, row, 2,
                         $"스탯 '{key}'가 game.definition.json에 없습니다. " +
                         "이 시트는 읽기전용 미러이고 원천은 정의 파일입니다(§3.1)."));
                 }
@@ -626,16 +608,16 @@ public static class ChapterWorkbookReader
                 continue;
             }
 
-            int initial = Integer(sheet, row, 3, path, key, "초기값", diagnostics);
-            int minimum = Integer(sheet, row, 4, path, key, "최소", diagnostics);
-            int maximum = Integer(sheet, row, 5, path, key, "최대", diagnostics);
+            int initial = Integer(sheet, row, 4, path, key, "초기값", diagnostics);
+            int minimum = Integer(sheet, row, 5, path, key, "최소", diagnostics);
+            int maximum = Integer(sheet, row, 6, path, key, "최대", diagnostics);
 
             if (minimum > maximum)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.StatRangeInvalid,
-                    path, sheet.Name, row, 4,
+                    path, sheet.Name, row, 5,
                     $"스탯 '{key}'의 최소({minimum})가 최대({maximum})보다 큽니다. " +
                     "이 범위는 도달성 증명(G7)의 탐색 경계라 비어 있으면 안 됩니다."));
             }
@@ -644,7 +626,7 @@ public static class ChapterWorkbookReader
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.StatRangeInvalid,
-                    path, sheet.Name, row, 3,
+                    path, sheet.Name, row, 4,
                     $"스탯 '{key}'의 초기값({initial})이 최소~최대({minimum}~{maximum}) 밖입니다."));
             }
 
@@ -655,12 +637,12 @@ public static class ChapterWorkbookReader
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.StatMissingFromGameDefinition,
-                    path, sheet.Name, row, 1,
+                    path, sheet.Name, row, 2,
                     $"스탯 '{key}'가 game.definition.json에 없습니다. " +
                     "이 시트는 읽기전용 미러이고 원천은 정의 파일입니다(§3.1)."));
             }
 
-            stats.Add(new ChapterStat(key, Text(sheet, row, 2), initial, minimum, maximum, row));
+            stats.Add(new ChapterStat(key, Text(sheet, row, 3), initial, minimum, maximum, row));
         }
 
         if (stats.Count is < 2 or > 5)

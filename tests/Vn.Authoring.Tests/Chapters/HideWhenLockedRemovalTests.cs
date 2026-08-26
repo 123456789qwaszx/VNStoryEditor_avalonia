@@ -35,17 +35,18 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
         IXLWorksheet sheet = book.Worksheet(ChapterSheetNames.Edges);
 
         Assert.Equal(
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "엔딩키"],
-            Enumerable.Range(1, 8).Select(column => sheet.Cell(1, column).GetString().Trim()));
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"],
+            Enumerable.Range(1, 7).Select(column => sheet.Cell(1, column).GetString().Trim()));
 
-        Assert.Equal(string.Empty, sheet.Cell(1, 9).GetString());
+        Assert.Equal(string.Empty, sheet.Cell(1, 8).GetString());
     }
 
     [Fact]
     public void 옛_워크북은_그_열이_걷히고_뒤가_당겨진다()
     {
-        // ⚠ 뒤의 두 칸(잠금 안내문·엔딩키)이 한 칸씩 당겨져야 한다 — 안 당겨지면 리더가
-        //    "규격의 자리대로" 읽어 <b>안내문 자리에서 FALSE를 읽는</b> 식으로 어긋난다.
+        // ⚠ 뒤의 칸(잠금 안내문)이 당겨져야 한다 — 안 당겨지면 리더가 "규격의 자리대로"
+        //    읽어 <b>안내문 자리에서 FALSE를 읽는</b> 식으로 어긋난다.
+        //    옛 간선의 `엔딩키`는 v14 이행이 도착 에피소드의 `이벤트키`로 옮긴다.
         string path = Path.Combine(_folder, "old.xlsx");
         WriteOldShape(path);
 
@@ -59,7 +60,9 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
 
         Assert.Equal("신뢰높음", edge.ConditionLabel);
         Assert.Equal("신뢰가 부족하다", edge.LockedMessage);   // FALSE가 여기 오면 안 된다
-        Assert.Equal("ch01_true", edge.EndingKey);
+
+        // v14 — 간선에 적혀 있던 키가 도착 에피소드의 이벤트키가 됐다.
+        Assert.Equal("ch01_true", model.FindEpisode("끝")!.EventKey);
     }
 
     [Fact]

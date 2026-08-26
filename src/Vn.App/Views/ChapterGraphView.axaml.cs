@@ -1770,13 +1770,10 @@ public partial class ChapterGraphView : UserControl
         };
         GraphCanvas.Children.Add(hit);
 
-        // v11 — 엔딩 간선은 판에서 보여야 한다. 이 길을 타면 챕터가 끝나는데 라벨이
-        // 조용하면 기획자가 "여기서 끝난다"를 그래프에서 읽을 수 없다.
         string label = string.Join(" · ", new[]
         {
             edge.OptionLabel,
             edge.ConditionLabel is null ? null : $"[{edge.ConditionLabel}]",
-            edge.IsEnding ? $"⏹ {edge.EndingKey}" : null,
         }.Where(part => !string.IsNullOrEmpty(part)));
 
         if (label.Length == 0)
@@ -1842,12 +1839,6 @@ public partial class ChapterGraphView : UserControl
             header.Children.Add(lockMark);
         }
 
-        // v11 — 엔딩은 간선의 것이다. "이 에피소드로 들어오는 엔딩 간선이 있는가"를 묻는다.
-        if (model.IsEndingEpisode(episode.EpisodeId))
-        {
-            header.Children.Add(new TextBlock { Text = "★", FontSize = 11, Foreground = Brushes.Goldenrod });
-        }
-
         if (hasError)
         {
             header.Children.Add(new TextBlock { Text = "⚠", FontSize = 11, Foreground = Brushes.IndianRed });
@@ -1908,9 +1899,7 @@ public partial class ChapterGraphView : UserControl
             BorderThickness = new Thickness(hasError ? 2 : 1),
             BorderBrush = hasError
                 ? Brushes.IndianRed
-                : model.IsEndingEpisode(episode.EpisodeId)
-                    ? new SolidColorBrush(Color.Parse("#C09A3E"))
-                    : new SolidColorBrush(Color.Parse("#7F8A96")),
+                : new SolidColorBrush(Color.Parse("#7F8A96")),
             Background = new SolidColorBrush(Color.Parse("#FAFBFCFD")),
             Child = body,
             // 노드 카드임을 EpisodeId로 표시한다. 간선 라벨도 Border라서, 표식이 없으면
@@ -3401,11 +3390,6 @@ public partial class ChapterGraphView : UserControl
         {
             lines.Add("들어오는 길의 관문 —");
             lines.Add(gate);
-        }
-
-        if (model.EndingKeyOf(episode.EpisodeId) is { } endingKey)
-        {
-            lines.Add($"엔딩키: {endingKey} (간선이 소유 — v11)");
         }
 
         if (!string.IsNullOrWhiteSpace(episode.Memo))

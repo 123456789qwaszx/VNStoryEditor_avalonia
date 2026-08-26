@@ -218,8 +218,8 @@ public sealed class ChapterRenamerTests : IDisposable
         using var book = new XLWorkbook();
 
         Sheet(book, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "대사엔트리", "X", "Y"],
-            [["main05.02", "조용한 복도", "장면_1", "0", "0"]]);
+            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y"],
+            [["main05.02", "장면_1", "조용한 복도", null, "0", "0"]]);
 
         Sheet(book, ChapterSheetNames.Edges,
             ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건"], []);
@@ -229,8 +229,8 @@ public sealed class ChapterRenamerTests : IDisposable
             [["신뢰높음", "trust", ">=", "3", "라루를 신뢰"]]);
 
         Sheet(book, ChapterSheetNames.Stats,
-            ["키", "이름", "초기", "최소", "최대"],
-            [["trust", "신뢰", "0", "0", "5"]]);
+            ["타입", "스탯키", "표시명", "초기값", "최소", "최대"],
+            [[null, "trust", "신뢰", "0", "0", "5"]]);
 
         Sheet(book, ChapterSheetNames.Choices, ["인덱스", "대본", "메모"], []);
 

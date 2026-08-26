@@ -90,11 +90,15 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         Assert.False(island.TryGetProperty("Kind", out _));
         Assert.Equal(0, island.GetProperty("VisibleConditions").GetArrayLength());
 
-        // 엔딩 후보.
+        // v14 (2026-08-26) — `EndingKey`·`IsChapterEndingCandidate`는 안 실리고(간선의
+        // 엔딩키가 개념째 폐지 — 코어 DTO는 빈 값을 기본으로 받는다), 대신 에피소드의
+        // `이벤트키`가 `EventKey`로 실린다(유니티 전용 패스스루 — 견본의 옛 엔딩 간선
+        // 키가 이행으로 도착 에피소드에 옮겨 왔다).
         JsonElement ending = nodes.EnumerateArray()
             .Single(node => node.GetProperty("EpisodeId").GetString() == "main05.end");
-        Assert.True(ending.GetProperty("IsChapterEndingCandidate").GetBoolean());
-        Assert.Equal("ch05_normal", ending.GetProperty("EndingKey").GetString());
+        Assert.False(ending.TryGetProperty("IsChapterEndingCandidate", out _));
+        Assert.False(ending.TryGetProperty("EndingKey", out _));
+        Assert.Equal("ch05_normal", ending.GetProperty("EventKey").GetString());
 
         // 픽스처는 어디에도 없다 (§3.1 — 테스트 데이터).
         Assert.DoesNotContain("픽스처", result.Json);
@@ -222,8 +226,8 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             "naming",
             string.Empty,
             [
-                new ChapterEpisode("ep1", "첫 화", "", "장면 1", 0, 0, null, null, 2),
-                new ChapterEpisode("ep2", "둘째", "", "new01", 200, 0, null, null, 3)
+                new ChapterEpisode("ep1", "첫 화", "", "장면 1", 0, 0, null, 2),
+                new ChapterEpisode("ep2", "둘째", "", "new01", 200, 0, null, 3)
             ],
             [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
             [],
@@ -351,8 +355,8 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             "stats",
             string.Empty,
             [
-                new ChapterEpisode("ep1", "첫 화", "", "ep1", 0, 0, null, null, 2),
-                new ChapterEpisode("ep2", "둘째", "", "ep2", 200, 0, null, null, 3)
+                new ChapterEpisode("ep1", "첫 화", "", "ep1", 0, 0, null, 2),
+                new ChapterEpisode("ep2", "둘째", "", "ep2", 200, 0, null, 3)
             ],
             [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
             [],

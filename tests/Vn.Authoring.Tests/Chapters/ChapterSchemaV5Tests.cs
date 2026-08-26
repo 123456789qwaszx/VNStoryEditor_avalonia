@@ -50,9 +50,12 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         Assert.Equal("대본", choices.Cell(1, 2).GetString());
         Assert.Equal("메모", choices.Cell(1, 3).GetString());
 
+        // v14 (2026-08-26) — 신원·내용이 앞, 건네는 열쇠가 가운데, 좌표와 곁말이 뒤.
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
-        Assert.Equal("대사엔트리", episodes.Cell(1, 3).GetString());   // 인덱스도 종류도 없다
-        Assert.Equal(string.Empty, episodes.Cell(1, 9).GetString()); // v9 — 선택지수도 없다
+        Assert.Equal(
+            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
+            Enumerable.Range(1, 7).Select(column => episodes.Cell(1, column).GetString()));
+        Assert.Equal(string.Empty, episodes.Cell(1, 8).GetString()); // 인덱스도 종류도 선택지수도 없다
 
         // 조건 시트 — 스탯은 스탯 시트를 가리키는 드롭다운, 연산자는 목록.
         IXLWorksheet conditions = workbook.Worksheet(ChapterSheetNames.Conditions);
@@ -65,10 +68,16 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         // bool이면 값 칸이 회색 — 조건부 서식이 걸려 있다.
         Assert.NotEmpty(conditions.ConditionalFormats);
 
-        // 스탯 시트 — 타입 드롭다운 int/bool.
+        // 스탯 시트 (v14) — `타입`이 맨 앞이고 그 칸이 int/bool 드롭다운이다.
         IXLWorksheet stats = workbook.Worksheet(ChapterSheetNames.Stats);
-        Assert.Equal("타입", stats.Cell(1, 6).GetString());
-        Assert.Contains("bool", stats.Cell(2, 6).GetDataValidation().Value);
+        Assert.Equal(
+            ["타입", "스탯키", "표시명", "초기값", "최소", "최대"],
+            Enumerable.Range(1, 6).Select(column => stats.Cell(1, column).GetString()));
+        Assert.Contains("bool", stats.Cell(2, 1).GetDataValidation().Value);
+
+        // ⚠ 조건 시트의 스탯 드롭다운은 <b>스탯키 열(B)</b>을 가리켜야 한다 — v14에서
+        //    A는 타입이 됐다. 안 따라가면 목록이 int·bool을 스탯키라고 내민다.
+        Assert.Contains("$B$2", statPick.Value);
     }
 
     // ── 조건의 구조화 열 ────────────────────────────────────────────────────
@@ -81,11 +90,11 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         var conditions = new List<string?[]> { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } };
         conditions.AddRange(conditionRows ?? []);
 
-        var stats = new List<string?[]> { new string?[] { "스탯키", "표시명", "초기값", "최소", "최대", "타입" } };
+        var stats = new List<string?[]> { new string?[] { "타입", "스탯키", "표시명", "초기값", "최소", "최대" } };
         stats.AddRange(statRows ?? new[]
         {
-            new string?[] { "trust", "신뢰", "0", "0", "10", null },
-            new string?[] { "anger", "분노", "0", "0", "10", null }
+            new string?[] { null, "trust", "신뢰", "0", "0", "10" },
+            new string?[] { null, "anger", "분노", "0", "0", "10" }
         });
 
         var edges = new List<string?[]>
@@ -103,9 +112,9 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         return XlsxTestWorkbook.Write(_directory, "structured.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "대사엔트리", "X", "Y", "엔딩키", "메모" },
-                new string?[] { "ep1", null, "Story_ep1", "0", "0", null, null, null, null },
-                new string?[] { "ep2", null, "Story_ep2", "200", "0", null, null, null, null }
+                new string?[] { "EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모" },
+                new string?[] { "ep1", "Story_ep1", null, null, "0", "0", null, null, null },
+                new string?[] { "ep2", "Story_ep2", null, null, "200", "0", null, null, null }
             }),
             ("간선", edges.ToArray()),
             ("조건", conditions.ToArray()),
@@ -175,8 +184,8 @@ public sealed class ChapterSchemaV5Tests : IDisposable
             conditionRows: [["프롤로그봄", "seen", "true", null, null]],
             statRows:
             [
-                ["trust", "신뢰", "0", "0", "10", null],
-                ["seen", "프롤로그", "FALSE", null, null, "bool"]
+                [null, "trust", "신뢰", "0", "0", "10"],
+                ["bool", "seen", "프롤로그", "FALSE", null, null]
             ]));
 
         Assert.False(model.HasErrors);
@@ -201,8 +210,8 @@ public sealed class ChapterSchemaV5Tests : IDisposable
             conditionRows: [["이상한조건", "seen", ">=", "1", null]],
             statRows:
             [
-                ["trust", "신뢰", "0", "0", "10", null],
-                ["seen", "프롤로그", "FALSE", null, null, "bool"]
+                [null, "trust", "신뢰", "0", "0", "10"],
+                ["bool", "seen", "프롤로그", "FALSE", null, null]
             ],
             edgeRows: [["ep1", "ep2", "seen +1", "계속", null, null, "FALSE", null]]));
 
@@ -294,9 +303,9 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         string path = XlsxTestWorkbook.Write(_directory, "v9.xlsx",
             ("에피소드", new[]
             {
-                new string?[] { "EpisodeId", "제목", "대사엔트리", "X", "Y", "엔딩키", "메모" },
-                new string?[] { "ep1", null, "Story_ep1", "0", "0", null, null },
-                new string?[] { "ep2", null, "Story_ep2", "200", "0", null, null }
+                new string?[] { "EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모" },
+                new string?[] { "ep1", "Story_ep1", null, null, "0", "0", null },
+                new string?[] { "ep2", "Story_ep2", null, null, "200", "0", null }
             }),
             ("간선", new[]
             {
@@ -308,9 +317,9 @@ public sealed class ChapterSchemaV5Tests : IDisposable
             ("조건", new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
             ("스탯", new[]
             {
-                new string?[] { "스탯키", "표시명", "초기값", "최소", "최대", "타입" },
-                new string?[] { "trust", "신뢰", "0", "0", "10", null },
-                new string?[] { "anger", "분노", "0", "0", "10", null }
+                new string?[] { "타입", "스탯키", "표시명", "초기값", "최소", "최대" },
+                new string?[] { null, "trust", "신뢰", "0", "0", "10" },
+                new string?[] { null, "anger", "분노", "0", "0", "10" }
             }),
             ("선택지", new[]
             {
@@ -388,7 +397,9 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         {
             Assert.DoesNotContain(workbook.Worksheets, sheet =>
                 sheet.Name == ChapterSheetNames.Fixtures);
-            Assert.Equal("타입", workbook.Worksheet(ChapterSheetNames.Stats).Cell(1, 6).GetString());
+            // v14 — `타입`이 맨 앞으로 옮겨졌다(구판에는 그 칸이 아예 없었다).
+            Assert.Equal("타입", workbook.Worksheet(ChapterSheetNames.Stats).Cell(1, 1).GetString());
+            Assert.Equal("스탯키", workbook.Worksheet(ChapterSheetNames.Stats).Cell(1, 2).GetString());
         }
 
         // 두 번째 부름은 파일에 손대지 않는다 — 폴더 감시가 맴돌면 안 된다.

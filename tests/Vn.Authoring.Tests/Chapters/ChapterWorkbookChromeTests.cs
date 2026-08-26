@@ -69,11 +69,11 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
 
         using var workbook = new XLWorkbook(ChapterPath);
 
-        // 에피소드는 여섯 칸(A~F), 간선은 여덟 칸(A~H)이다.
-        AssertBlank(workbook.Worksheet(ChapterSheetNames.Episodes), 7);
+        // 에피소드는 일곱 칸(A~G — v14의 `이벤트키`까지), 간선은 일곱 칸(A~G)이다.
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Episodes), 8);
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 8);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 9);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 10);
-        AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 11);
     }
 
     /// <summary>그 칸이 <b>칸처럼 보이지 않는가</b> — 배경도 격자도 없어야 한다.</summary>
@@ -91,14 +91,13 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
     [Fact]
     public void 남은_열들은_읽을_수_있는_너비를_갖는다()
     {
-        // 기본 9로 두면 `엔딩키`·`잠금 안내문`이 잘려 무슨 칸인지 안 보인다.
+        // 기본 9로 두면 `잠금 안내문`이 잘려 무슨 칸인지 안 보인다.
         ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "ch01", [("trust", "신뢰")]);
 
         using var workbook = new XLWorkbook(ChapterPath);
         IXLWorksheet edges = workbook.Worksheet(ChapterSheetNames.Edges);
 
         Assert.True(edges.Column(7).Width >= 20);  // 잠금 안내문
-        Assert.True(edges.Column(8).Width >= 12);  // 엔딩키
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
 
         using var workbook = new XLWorkbook(ChapterPath);
         Assert.True(workbook.Worksheet(ChapterSheetNames.Episodes).AutoFilter.IsEnabled);
-        Assert.True(workbook.Worksheet(ChapterSheetNames.Edges).Column(8).Width >= 12); // 엔딩키
+        Assert.True(workbook.Worksheet(ChapterSheetNames.Edges).Column(7).Width >= 20); // 잠금 안내문
     }
 
     [Fact]
@@ -128,14 +127,15 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
         using (var stale = new XLWorkbook(ChapterPath))
         {
             IXLWorksheet episodes = stale.Worksheet(ChapterSheetNames.Episodes);
-            episodes.Range(1, 7, 40, 7).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#333F50"));
+            // v14부터 규격 바깥은 여덟째부터다(`이벤트키`가 일곱째를 차지했다).
+            episodes.Range(1, 8, 40, 8).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#333F50"));
             stale.Save();
         }
 
         Assert.True(ChapterWorkbookMigrator.Migrate(ChapterPath).Migrated);
 
         using var after = new XLWorkbook(ChapterPath);
-        AssertBlank(after.Worksheet(ChapterSheetNames.Episodes), 7);
+        AssertBlank(after.Worksheet(ChapterSheetNames.Episodes), 8);
 
         // 그리고 그 이행이 스스로를 다시 부르지 않는다 — 아니면 열 때마다 `.bak`이 갈린다.
         Assert.False(ChapterWorkbookMigrator.Migrate(ChapterPath).Migrated);
@@ -193,9 +193,10 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
         Assert.Equal(10, body.Font.FontSize);
         Assert.Equal(XLBorderStyleValues.Thin, body.Border.BottomBorder);
 
-        // 메모(F) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
-        // v13에서 `종류`가 걷히며 G → F로 당겨졌다 (2026-08-25).
-        IXLStyle note = episodes.Cell(2, 6).Style;
+        // 메모(G) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
+        // v13에서 `종류`가 걷히며 G → F로 갔다가(2026-08-25), v14 열 순서 개정으로
+        // 맨 뒤(G)로 돌아왔다 — 곁말은 표의 끝이 제자리다.
+        IXLStyle note = episodes.Cell(2, 7).Style;
         Assert.True(note.Font.Italic);
         Assert.Equal(9, note.Font.FontSize);
 

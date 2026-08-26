@@ -18,7 +18,6 @@ public sealed record ChapterEpisode(
     string DialogueEntry,
     double X,
     double Y,
-    string? EndingKey,
     string? Memo,
     int SourceRow,
     bool AllowUnreachable = false)
@@ -26,7 +25,19 @@ public sealed record ChapterEpisode(
     // v9 (2026-08-17 소유자) — `선택지수` 열 폐지. 칸이라는 개념이 사라졌으니 셀 것도
     // 없다: 이 에피소드에서 나가는 간선 하나가 곧 선택지 하나다.
 
-    public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
+    /// <summary>
+    /// `이벤트키` 열(G, v14) — <b>유니티 전용 패스스루 인덱스</b>다 (2026-08-26 소유자:
+    /// "툴이 직접 활용하기 보다는, 특정 에피소드를 다 시청했을 때 유니티에서 자체적으로
+    /// 이벤트라던지 보상을 발생시키기 위해서 이어주는 일종의 인덱스 같은 느낌" · "엔딩키보다도
+    /// 이벤트키가 맞겠다" — 챕터의 끝이 아니라 <b>시청 완료 트리거</b>라 이름을 갈았다).
+    ///
+    /// 툴은 이 값을 <b>해석하지 않는다</b> — 배지도 검증도 전이 의미도 없다. 엑셀에서 적고,
+    /// 내보내기가 노드의 <c>EventKey</c>로 그대로 싣는 것이 전부다. 옛 `엔딩키`(v11~v13,
+    /// 간선)와 달리 에피소드에 사니 "같은 도착의 키 충돌"이라는 오류 부류 자체가 없다.
+    /// 계약의 `EndingKey`/`EndingRules`(시나리오 층)와는 <b>다른 것</b>이다 — 그쪽은 v14에서
+    /// 안 싣게 된 채로 남아 있고, 시나리오 층을 지을 때 그쪽 규격으로 다시 정한다.
+    /// </summary>
+    public string? EventKey { get; init; }
 }
 
 /// <summary>
@@ -80,23 +91,9 @@ public sealed record ChapterEdge(
     // OptionLabel = `선택지` 열(D)의 값 그대로다 (v9). 파생도 참조도 아니다 —
     // 문구를 고쳐도 배선이 안 깨지는 대신, 같은 문구를 어느 에피소드에서든 쓸 수 있다.
 
-
-    /// <summary>
-    /// `엔딩키` 열 (v11) — 있으면 <b>이 길이 챕터를 끝낸다.</b> 유니티가 이 키를 보고
-    /// 엔딩 처리를 하고, 뒤따르는 연출은 시각 효과일 뿐이다.
-    ///
-    /// <b>저작에서는 간선의 것이고 계약에서는 도착 에피소드의 것이다</b>(2026-08-18 합의).
-    /// 기획자는 한 행에서 "이 길을 타면 이 엔딩"을 보고, 내보내기가 그것을 도착
-    /// 에피소드의 <c>EndingKey</c>로 옮겨 싣는다 — 진행 패키지의 D2("엔딩은 한 곳이
-    /// 정한다")를 깨지 않기 위해서다. 그 번역이 정보를 잃지 않도록, <b>같은 도착으로
-    /// 들어오는 간선들의 엔딩키가 다르면 내보내기가 거부한다</b>(검증 소유 경계의 예외 —
-    /// JSON에 도착하면 키가 이미 하나라 수입기가 못 잡는다).
-    /// </summary>
-    public string? EndingKey { get; init; }
-
-    /// <summary>있으면 이 길을 타는 순간 챕터 런이 끝난다.</summary>
-    public bool IsEnding => !string.IsNullOrWhiteSpace(EndingKey);
-
+    // `엔딩키`(v11~v13)는 v14(2026-08-26)에서 개념째 폐지됐다 — 시나리오 층으로 나가는
+    // 통로(EndingRules)가 이 툴에 없어 아무 데도 실리지 않는 칸이었다(소유자: "어차피
+    // EndingKey는 내보낼 방법이 없었어"). 툴의 보장은 챕터 안의 분기·그래프 구조까지다.
 
     /// <summary>
     /// `스탯변화` 열 (2026-08-14) — 이 간선을 타는 순간 1회 커밋되는 증감. 스탯이 변하는
@@ -275,27 +272,6 @@ public sealed class ChapterGraphModel
     /// 런타임은 이 값이 비면 도달 제한을 아예 걸지 않으므로, 두 곳이 갈리면 안 된다.
     /// </summary>
     public ChapterEpisode? StartEpisode => Episodes.Count > 0 ? Episodes[0] : null;
-
-    /// <summary>
-    /// 이 에피소드로 <b>들어오는 엔딩 간선</b>의 키. 엔딩이 아니면 null (v11).
-    ///
-    /// 엔딩키의 주인은 간선이지만, "이 에피소드가 엔딩인가"를 묻는 자리가 여럿이다
-    /// (판의 ★ 배지 · 카드 스타일 · 상세 · 내보내기). <b>같은 규칙을 네 곳에 쓰면 한 곳만
-    /// 고쳐지는 날이 온다</b> — 그래서 여기 한 번만 둔다.
-    ///
-    /// 같은 도착으로 들어오는 엔딩키가 여럿이면 리더가 이미 오류로 막았으므로
-    /// (<see cref="ChapterDiagnosticCode.EndingKeyConflict"/>), 첫 번째가 곧 유일한 값이다.
-    /// </summary>
-    public string? EndingKeyOf(string episodeId) =>
-        Edges
-            .FirstOrDefault(edge =>
-                edge.IsEnding &&
-                string.Equals(edge.ToEpisodeId, episodeId, StringComparison.Ordinal))
-            ?.EndingKey?.Trim();
-
-    /// <summary>그 에피소드로 들어오는 엔딩 간선이 있는가 (v11).</summary>
-    public bool IsEndingEpisode(string episodeId) =>
-        !string.IsNullOrEmpty(EndingKeyOf(episodeId));
 
     public ChapterEpisode? FindEpisode(string episodeId) =>
         Episodes.FirstOrDefault(item => string.Equals(item.EpisodeId, episodeId, StringComparison.Ordinal));

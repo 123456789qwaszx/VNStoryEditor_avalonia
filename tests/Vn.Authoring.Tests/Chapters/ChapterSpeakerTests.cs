@@ -35,8 +35,8 @@ public sealed class ChapterSpeakerTests : IDisposable
         {
             (ChapterSheetNames.Episodes, new[]
             {
-                new string?[] { "EpisodeId", "제목", "대사엔트리", "X", "Y" },
-                new string?[] { "ep01", null, "ep01", "0", "0" }
+                new string?[] { "EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y" },
+                new string?[] { "ep01", "ep01", null, null, "0", "0" }
             }),
             (ChapterSheetNames.Edges, new[]
             {
@@ -45,9 +45,9 @@ public sealed class ChapterSpeakerTests : IDisposable
             (ChapterSheetNames.Conditions, new[] { new string?[] { "라벨", "스탯", "연산자", "값", "설명" } }),
             (ChapterSheetNames.Stats, new[]
             {
-                new string?[] { "스탯키", "표시명", "초기값", "최소", "최대", "타입" },
-                new string?[] { "trust", "신뢰", "0", "0", "10", null },
-                new string?[] { "fatigue", "피로", "0", "0", "10", null }
+                new string?[] { "타입", "스탯키", "표시명", "초기값", "최소", "최대" },
+                new string?[] { null, "trust", "신뢰", "0", "0", "10" },
+                new string?[] { null, "fatigue", "피로", "0", "0", "10" }
             })
         };
 

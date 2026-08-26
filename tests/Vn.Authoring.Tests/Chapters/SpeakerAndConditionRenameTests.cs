@@ -230,7 +230,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
             episodes: episodeIds
                 .Select(id => new ChapterEpisode(
                     EpisodeId: id, Title: id, Index: "1", DialogueEntry: id,
-                    X: 0, Y: 0, EndingKey: null, Memo: null, SourceRow: 2))
+                    X: 0, Y: 0, Memo: null, SourceRow: 2))
                 .ToList(),
             edges: [],
             conditions: [],

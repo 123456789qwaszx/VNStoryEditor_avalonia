@@ -267,9 +267,9 @@ public sealed class BoolStatSetTests : IDisposable
         using (var workbook = new XLWorkbook())
         {
             Sheet(workbook, ChapterSheetNames.Episodes,
-                ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
+                ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
                 [.. ids.Select((id, index) =>
-                    new string?[] { id, id, $"Story_{index}", $"{index * 200}", "0", null })]);
+                    new string?[] { id, $"Story_{index}", id, null, $"{index * 200}", "0", null })]);
 
             Sheet(workbook, ChapterSheetNames.Edges,
                 [
@@ -283,10 +283,10 @@ public sealed class BoolStatSetTests : IDisposable
 
             // `met`은 bool, `trust`는 정수 — 두 규칙이 갈리는 자리를 한 챕터에서 본다.
             Sheet(workbook, ChapterSheetNames.Stats,
-                ["스탯키", "표시명", "초기값", "최소", "최대", "타입"],
+                ["타입", "스탯키", "표시명", "초기값", "최소", "최대"],
                 [
-                    ["met", "만났음", "0", "0", "1", "bool"],
-                    ["trust", "신뢰", "0", "0", "5", null]
+                    ["bool", "met", "만났음", "0", "0", "1"],
+                    [null, "trust", "신뢰", "0", "0", "5"]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Choices, ["인덱스", "대본", "메모"], []);

@@ -69,12 +69,18 @@ public static class ChapterWorkbookMigrator
             MigrateEdgeLabelsToChoiceSheet(workbook);   // v6·v7 — 선택지 문구 → 선택지 시트
             MigrateGatesToEdges(workbook);              // v8 — 표시·해금조건 → 간선
             MigrateChoiceSheetToDictionary(workbook);   // v9 — 칸 → 전역 문구 사전
-            MigrateEndingKeysToEdges(workbook);         // v11 — 엔딩키가 에피소드 → 간선
+            FoldEdgeColumnsV12(workbook);               // v12 — 간선의 `종류`·`연출` 폐지
             DropHideWhenLocked(workbook);               // 2026-08-24 — `잠금시 숨김` 폐지
-            // ⚠ 엔딩키 이행보다 <b>뒤</b>다 — 그쪽이 에피소드의 옛 열 자리를 보고 걷는다.
             DropEpisodeKind(workbook);                  // v13 — `종류` 폐지
+            // ⚠ 둘 다 맨 뒤다 — 앞 단계들이 열을 밀고 당기므로, 자리가 다 정해진 뒤에
+            //   이름으로 찾아 옮긴다.
+            MoveEndingKeyToEventKey(workbook);          // v14 — 엔딩키 → 에피소드 `이벤트키`
             MigrateConditions(workbook);
             MigrateStats(workbook);
+            // ⚠ 순서 이행은 <b>그 시트를 만지는 모든 단계 뒤</b>다 — 앞이 열을 밀고 당기므로
+            //   자리가 다 정해진 뒤에 머리글을 읽어 옮긴다. 규칙은 한 벌이다(v14).
+            ReorderColumns(workbook, ChapterSheetNames.Episodes, EpisodeColumnOrder);
+            ReorderColumns(workbook, ChapterSheetNames.Stats, StatColumnOrder);
             RemoveEmptyFixtures(workbook);
             ReapplyDropdowns(workbook);
 
@@ -113,18 +119,23 @@ public static class ChapterWorkbookMigrator
                Header(workbook, ChapterSheetNames.Episodes, 7) == "표시조건" ||  // v8 이전
                Header(workbook, ChapterSheetNames.Edges, 5) == "조건" ||        // v8 이전
                Header(workbook, ChapterSheetNames.Conditions, 2) == "조건식" ||
-               (Find(workbook, ChapterSheetNames.Stats) is not null &&
-                Header(workbook, ChapterSheetNames.Stats, 6) != "타입") ||
+               (Find(workbook, ChapterSheetNames.Stats) is { } stats &&
+                HeaderColumn(stats, "타입") == 0) ||
+               ColumnsNeedReorder(workbook, ChapterSheetNames.Stats, StatColumnOrder) ||
                (fixtures is not null && fixtures.RowsUsed().Count() <= 1) ||
-               // 간선의 여덟째 칸이 `엔딩키`여야 한다 — v12에서 종류·연출이, 2026-08-24에
-               // `잠금시 숨김`이 빠지면서 아홉째 → 여덟째로 당겨졌다.
+               // v14 (2026-08-26) — 간선은 일곱 칸(끝이 `잠금 안내문`)이고 `엔딩키`가 없어야
+               // 하며, 에피소드의 일곱째 칸은 `이벤트키`여야 한다(엔딩키의 후신 — 유니티
+               // 전용 패스스루. v12에서 종류·연출이, 2026-08-24에 `잠금시 숨김`이 빠졌다).
                //
-               // ⚠ <b>이 숫자가 곧 "이행이 끝났다"의 정의다.</b> 열을 걷으면서 여기를 안
+               // ⚠ <b>이 조건이 곧 "이행이 끝났다"의 정의다.</b> 열을 걷으면서 여기를 안
                // 고치면 최신 파일도 늘 "이행 필요"가 되어 <b>열 때마다 다시 쓰고 `.bak`이
                // 매번 갈린다</b> — 사람이 되돌릴 자리를 조용히 잃는다(테스트가 그것을 잡는다).
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
-                Header(workbook, ChapterSheetNames.Edges, 8) != "엔딩키") ||
-               Header(workbook, ChapterSheetNames.Episodes, 7) == "엔딩키" ||
+                Header(workbook, ChapterSheetNames.Edges, 7) != "잠금 안내문") ||
+               Header(workbook, ChapterSheetNames.Edges, 8) == "엔딩키" ||
+               (Find(workbook, ChapterSheetNames.Episodes) is { } episodes &&
+                HeaderColumn(episodes, "이벤트키") == 0) ||
+               ColumnsNeedReorder(workbook, ChapterSheetNames.Episodes, EpisodeColumnOrder) ||
                // v13 (2026-08-25) — 에피소드의 `종류`가 남아 있으면 아직 이행 전이다.
                Header(workbook, ChapterSheetNames.Episodes, 3) == "종류" ||
                // 겉모습이 안 입혀진 파일 (2026-08-18). 자동 필터 하나로 대표해 본다 —
@@ -155,10 +166,12 @@ public static class ChapterWorkbookMigrator
         //    소유자 손에 있었다("에피소드 시트에서 g열이 색이 칠해져 있는거"). 열 이름으로만
         //    이행을 부르면 그 파일은 <b>영영 안 고쳐진다</b>: 걷을 열은 이미 없기 때문이다.
         //
-        //    에피소드 규격은 여섯 칸이므로 일곱째가 곧 "바깥"이다.
+        //    에피소드 규격은 일곱 칸(v14 — `이벤트키`까지)이므로 여덟째가 곧 "바깥"이다.
+        //    ⚠ 선택 열 `도달불가 허용`이 여덟째에 살 수 있지만, 그 열은 칠 없이 태어나므로
+        //    (UpdateEpisode가 머리글 글자만 적는다) 이 검사와 부딪히지 않는다.
         return !episodes.AutoFilter.IsEnabled ||
                episodes.Cell(1, 1).Style.Font.FontColor != XLColor.White ||
-               episodes.Cell(1, 7).Style.Fill.PatternType != XLFillPatternValues.None;
+               episodes.Cell(1, 8).Style.Fill.PatternType != XLFillPatternValues.None;
     }
 
     /// <summary>
@@ -344,73 +357,22 @@ public static class ChapterWorkbookMigrator
     }
 
     /// <summary>
-    /// v11 (2026-08-18) — 엔딩키의 주인이 <b>에피소드에서 간선으로</b> 옮겨 간다.
-    ///
-    /// 연출이 간선에 붙게 되면서, 엔딩키가 노드에 남으면 <b>엔딩이라는 한 개념이
-    /// (노드의 키) + (간선의 연출)로 갈린다.</b> 간선에 모으면 기획자가 한 행에서 다 본다.
-    ///
-    /// 옮기는 방향: 에피소드의 엔딩키 → 그 에피소드로 <b>들어오는</b> 모든 간선.
-    /// "이 길을 타면 저 엔딩"이 되므로 들어오는 쪽이 맞다.
-    ///
-    /// ⚠ <b>들어오는 간선이 없는 엔딩 에피소드는 키를 잃는다.</b> 그런 에피소드는 이미
-    /// 도달 불가라 검증기가 따로 짚고 있어 여기서 막지 않는다(v8에서 부착 에피소드의
-    /// 관문이 갈 곳을 잃었을 때와 같은 처리다). `.bak`에 원본이 남는다.
-    /// </summary>
-    private static void MigrateEndingKeysToEdges(XLWorkbook workbook)
-    {
-        if (Find(workbook, ChapterSheetNames.Episodes) is not { } episodes ||
-            Find(workbook, ChapterSheetNames.Edges) is not { } edges)
-        {
-            return;
-        }
-
-        EnsureEdgeColumnsV12(edges);
-
-        // 에피소드 시트에 엔딩키 열이 남아 있을 때만 옮긴다 — 두 번 돌아도 안전하다.
-        if (!string.Equals(episodes.Cell(1, 7).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var keyByEpisode = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        foreach (IXLRow row in episodes.RowsUsed().Skip(1))
-        {
-            string id = row.Cell(1).GetString().Trim();
-            string key = row.Cell(7).GetString().Trim();
-
-            if (id.Length > 0 && key.Length > 0)
-            {
-                keyByEpisode[id] = key;
-            }
-        }
-
-        foreach (IXLRow row in edges.RowsUsed().Skip(1))
-        {
-            string to = row.Cell(2).GetString().Trim();
-
-            if (to.Length > 0 &&
-                keyByEpisode.TryGetValue(to, out string? key) &&
-                row.Cell(10).GetString().Trim().Length == 0)
-            {
-                row.Cell(10).SetValue(key);
-            }
-        }
-
-        episodes.Column(7).Delete();
-    }
-
-    /// <summary>
-    /// 간선 시트를 <b>v12 아홉 칸</b>으로 맞춘다 (2026-08-24).
+    /// 간선 시트의 v11 꼬리 열을 접는다 (v12, 2026-08-24).
     ///
     /// v11은 뒤에 셋(`종류`·`엔딩키`·`연출`)을 달았는데, 소유자 결정으로 `종류`와 `연출`이
     /// 폐지됐다 — 모든 길이 선택지이므로 종류를 물을 것이 없고, 간선에 매다는 연출은
-    /// 개념째 접었다. 남는 것은 `엔딩키` 하나이고 자리가 I(9)로 당겨진다.
+    /// 개념째 접었다. (간선의 `엔딩키`도 v14에서 에피소드 `이벤트키`로 돌아갔다 —
+    /// <see cref="MoveEndingKeyToEventKey"/>가 옮긴다.)
     ///
     /// <b>뒤에서부터 지운다</b> — 앞을 먼저 지우면 뒤 열이 밀려 엉뚱한 칸을 삭제한다.
     /// </summary>
-    private static void EnsureEdgeColumnsV12(IXLWorksheet edges)
+    private static void FoldEdgeColumnsV12(XLWorkbook workbook)
     {
+        if (Find(workbook, ChapterSheetNames.Edges) is not { } edges)
+        {
+            return;
+        }
+
         if (string.Equals(edges.Cell(1, 11).GetString().Trim(), "연출", StringComparison.Ordinal))
         {
             edges.Column(11).Delete();
@@ -418,12 +380,7 @@ public static class ChapterWorkbookMigrator
 
         if (string.Equals(edges.Cell(1, 9).GetString().Trim(), "종류", StringComparison.Ordinal))
         {
-            edges.Column(9).Delete();   // 엔딩키가 10 → 9로 당겨진다
-        }
-
-        if (!string.Equals(edges.Cell(1, 9).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
-        {
-            edges.Cell(1, 9).SetValue("엔딩키");
+            edges.Column(9).Delete();
         }
 
         // v12 — 문구 없는 길("보이지 않는 기본")이 폐지됐다. 빈 칸을 그대로 두면 열자마자
@@ -436,6 +393,275 @@ public static class ChapterWorkbookMigrator
                 row.Cell(4).SetValue("계속");
             }
         }
+    }
+
+    /// <summary>
+    /// v14 (2026-08-26 소유자) — 엔딩키가 <b>간선에서 에피소드의 `이벤트키`(G)</b>로 돌아간다.
+    ///
+    /// 간선의 `엔딩키`(v11~v13)는 시나리오 층으로 나가는 통로(`EndingRules`)가 이 툴에 없어
+    /// 아무 데도 실리지 않는 칸이었다("어차피 EndingKey는 내보낼 방법이 없었어"). 같은 날
+    /// 소유자가 개념을 다시 정의했다: <b>유니티 전용 패스스루 인덱스</b> — "특정 에피소드를
+    /// 다 시청했을 때 유니티에서 자체적으로 이벤트라던지 보상을 발생시키기 위해서 이어주는
+    /// 인덱스", 이름은 "엔딩키보다도 이벤트키가 맞겠다". 에피소드에 살면 "같은 도착의 키
+    /// 충돌"이라는 오류 부류가 구조적으로 없다(v11의 충돌 거부·이행 손실이 전부 소멸).
+    ///
+    /// 옮기는 방향은 v11의 역이다: 간선의 엔딩키 → <b>도착</b> 에피소드의 이벤트키.
+    /// 자리가 아니라 <b>머리글 이름으로</b> 찾는다 — v11 이전 파일은 에피소드 시트에,
+    /// v11~v13 파일은 간선 시트에 이 열이 있고, 앞 단계들이 열을 밀고 당긴 뒤라 번호를
+    /// 믿을 수 없다. ⚠ 같은 도착으로 서로 다른 키가 들어오던 파일은 <b>먼저 적힌 것이
+    /// 남는다</b>(막지 않는다 — 원본은 `.bak`에 있고, 이제 값의 뜻이 전이가 아니라 장식이다).
+    /// </summary>
+    private static void MoveEndingKeyToEventKey(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Episodes) is not { } episodes)
+        {
+            return;
+        }
+
+        var keyByEpisode = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // ① 에피소드 시트의 옛 `엔딩키`(v11 이전) — 거두고 열을 걷는다. 뒤에서부터.
+        for (int column = 15; column >= 1; column--)
+        {
+            if (!string.Equals(episodes.Cell(1, column).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            Collect(episodes, idColumn: 1, keyColumn: column, keyByEpisode);
+            episodes.Column(column).Delete();
+        }
+
+        // ② 간선 시트의 `엔딩키`(v11~v13) — 도착 에피소드의 것으로 거두고 열을 걷는다.
+        if (Find(workbook, ChapterSheetNames.Edges) is { } edges)
+        {
+            for (int column = 15; column >= 1; column--)
+            {
+                if (!string.Equals(edges.Cell(1, column).GetString().Trim(), "엔딩키", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Collect(edges, idColumn: 2, keyColumn: column, keyByEpisode);
+                edges.Column(column).Delete();
+            }
+        }
+
+        // ③ `이벤트키` 열이 있기만 하면 된다 — <b>자리는 뒤의 순서 이행이 정한다</b>
+        //    (<see cref="ReorderEpisodeColumns"/>). 여기서 자리까지 박으면 같은 규칙이
+        //    두 곳에 살고, 그 둘이 갈리는 날이 온다.
+        int keyColumn = HeaderColumn(episodes, "이벤트키");
+
+        if (keyColumn == 0)
+        {
+            keyColumn = 1;
+
+            while (episodes.Cell(1, keyColumn).GetString().Trim().Length > 0)
+            {
+                keyColumn++;
+            }
+
+            episodes.Cell(1, keyColumn).SetValue("이벤트키");
+        }
+
+        // ④ 거둔 키를 되쓴다 — 이미 적힌 칸은 사람의 것이라 덮지 않는다.
+        foreach (IXLRow row in episodes.RowsUsed().Skip(1))
+        {
+            string id = row.Cell(1).GetString().Trim();
+
+            if (id.Length > 0 &&
+                keyByEpisode.TryGetValue(id, out string? key) &&
+                row.Cell(keyColumn).GetString().Trim().Length == 0)
+            {
+                row.Cell(keyColumn).SetValue(key);
+            }
+        }
+
+        static void Collect(
+            IXLWorksheet sheet, int idColumn, int keyColumn, Dictionary<string, string> into)
+        {
+            foreach (IXLRow row in sheet.RowsUsed().Skip(1))
+            {
+                string id = row.Cell(idColumn).GetString().Trim();
+                string key = row.Cell(keyColumn).GetString().Trim();
+
+                if (id.Length > 0 && key.Length > 0 && !into.ContainsKey(id))
+                {
+                    into[id] = key;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// `에피소드` 시트의 v14 열 순서 (2026-08-26 소유자 지시).
+    ///
+    /// 신원·내용이 앞(<c>EpisodeId · 대사엔트리 · 제목</c>), 남에게 건네는 열쇠가 가운데
+    /// (<c>이벤트키</c>), 판 좌표와 곁말이 뒤(<c>X · Y · 메모</c>). 종류가 같은 값끼리
+    /// 붙어 있어야 눈이 한 번에 짚는다.
+    ///
+    /// ⚠ <b>이 배열 하나가 정본이다</b> — 리더의 <c>EpisodeHeaders</c>·라이터의 새 워크북
+    /// 머리글과 같은 순서여야 하고, 갈리면 이행이 매번 다시 돈다.
+    /// </summary>
+    private static readonly string[] EpisodeColumnOrder =
+        ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"];
+
+    /// <summary>
+    /// `스탯` 시트의 v14 열 순서 (2026-08-26 소유자: "스탯시트에서도 타입이 가장 앞쪽으로").
+    ///
+    /// <b>타입이 맨 앞이다</b> — 그 값이 <b>나머지를 어떻게 읽을지</b>를 정하기 때문이다
+    /// (bool이면 최소·최대를 읽지 않고 0·1로 굳힌다). 대본 시트의 <c>유형</c>이 첫 칸인 것과
+    /// 같은 이유다: 첫 칸만 훑으면 이 표가 무슨 표인지 보인다.
+    ///
+    /// ⚠ <see cref="EpisodeColumnOrder"/>와 같은 규율 — 이 배열이 리더의 <c>StatHeaders</c>·
+    /// 라이터의 새 워크북 머리글과 같은 순서여야 한다.
+    /// </summary>
+    private static readonly string[] StatColumnOrder =
+        ["타입", "스탯키", "표시명", "초기값", "최소", "최대"];
+
+    /// <summary>
+    /// v14 (2026-08-26) — 시트 하나를 <paramref name="order"/> 자리로 옮긴다.
+    ///
+    /// <b>낱말은 그대로이고 자리만 바뀐 순열</b>이라, 짝마다 맞바꾸기를 두면 규격이 움직일
+    /// 때마다 경우가 배로 는다. 대본 v14와 같은 방식으로 푼다 — <b>머리글을 읽어 어느 칸이
+    /// 무엇인지 알아낸 뒤</b> 새 자리로 옮긴다. 시트마다 사본을 두지 않는 이유도 같다:
+    /// 에피소드와 스탯이 같은 날 같은 종류로 움직였고, 규칙이 한 벌이어야 안 갈린다.
+    ///
+    /// ⚠ <b>통째로 읽고 나서 쓴다</b> — 순열이라 제자리가 아닌 열은 <b>반드시 남의 자리를
+    /// 뺏는다</b>. 값은 <c>XLCellValue</c>로 옮기므로 X·Y·초기값의 숫자 셀이 글자로 굳지
+    /// 않는다(서식은 뒤따르는 <c>ApplyChapterChrome</c>이 자리 기준으로 다시 입힌다).
+    ///
+    /// ⚠ 규격 <b>바깥</b>의 열(선택 열 `도달불가 허용`, 사람이 적어 둔 곁말)은 <b>규격 칸
+    /// 뒤로, 원래 순서 그대로</b> 따라온다 — 리더가 그 열을 이름으로 찾으므로 자리는 자유다.
+    ///
+    /// ⚠ <b>빠진 낱말은 빈 열로 세운다</b>(구판에는 `메모`도 `타입`도 없는 시트가 실재한다).
+    /// 자리를 안 채우고 두면 <b>남은 칸이 제자리로 못 가고</b>, 리더는 규격 자리대로 읽으므로
+    /// 제목을 대사엔트리로 읽는 반쪽 상태가 된다 — 이행이 고치라고 있는 바로 그 모양이다.
+    /// </summary>
+    private static void ReorderColumns(XLWorkbook workbook, string sheetName, string[] order)
+    {
+        if (!ColumnsNeedReorder(workbook, sheetName, order) ||
+            Find(workbook, sheetName) is not { } sheet)
+        {
+            return;
+        }
+
+        string[] headers = HeaderRowOf(sheet);
+
+        // 새 자리 → 옛 자리. 규격 칸이 먼저, 나머지는 원래 순서대로 뒤에.
+        var sources = new List<int>();
+
+        foreach (string name in order)
+        {
+            sources.Add(Array.IndexOf(headers, name));
+        }
+
+        for (int column = 1; column < headers.Length; column++)
+        {
+            if (!order.Contains(headers[column], StringComparer.Ordinal))
+            {
+                sources.Add(column);
+            }
+        }
+
+        int lastRow = sheet.LastRowUsed()?.RowNumber() ?? 1;
+        var buffer = new XLCellValue[lastRow + 1, sources.Count];
+
+        for (int row = 1; row <= lastRow; row++)
+        {
+            for (int slot = 0; slot < sources.Count; slot++)
+            {
+                // 없던 낱말(source 0)은 빈 칸으로 태어난다 — 머리글만 아래에서 얹는다.
+                buffer[row, slot] = sources[slot] > 0
+                    ? sheet.Cell(row, sources[slot]).Value
+                    : Blank.Value;
+            }
+        }
+
+        for (int row = 1; row <= lastRow; row++)
+        {
+            for (int slot = 0; slot < sources.Count; slot++)
+            {
+                sheet.Cell(row, slot + 1).Value = buffer[row, slot];
+            }
+        }
+
+        for (int slot = 0; slot < order.Length; slot++)
+        {
+            sheet.Cell(1, slot + 1).SetValue(order[slot]);
+        }
+    }
+
+    /// <summary>
+    /// 그 시트의 규격 열이 <paramref name="order"/> 자리에 하나씩 있는가.
+    ///
+    /// <b>이 판정이 곧 "순서 이행이 끝났다"의 정의다</b> — 이행이 하는 일과 어긋나면
+    /// 최신 파일도 늘 "이행 필요"가 되어 열 때마다 다시 쓰고 `.bak`이 매번 갈린다.
+    /// 그래서 <see cref="NeedsMigration"/>과 <see cref="ReorderColumns"/>가
+    /// <b>같은 함수 하나</b>를 부른다.
+    /// </summary>
+    private static bool ColumnsNeedReorder(XLWorkbook workbook, string sheetName, string[] order)
+    {
+        if (Find(workbook, sheetName) is not { } sheet)
+        {
+            return false;
+        }
+
+        string[] headers = HeaderRowOf(sheet);
+
+        // 낱말이 제 자리에 하나씩 있어야 끝난 것이다. 빠진 낱말(−1)도 "옮길 것 있음"에
+        // 든다 — 이행이 빈 열로 세워 준다. ⚠ 판정과 이행이 <b>같은 범위·같은 규칙</b>을
+        // 봐야 한다: 한쪽만 찾은 낱말이 생기면 그 자리에서 이행이 터진다(실제로 그랬다).
+        for (int slot = 0; slot < order.Length; slot++)
+        {
+            if (Array.IndexOf(headers, order[slot]) != slot + 1)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 머리글 행 — <b>자리 그대로</b>(0번은 비운다). <b>빈 칸 하나가 표의 끝</b>이라
+    /// 그 뒤의 곁말은 담지 않는다(리더의 규칙과 같다).
+    ///
+    /// 판정(<see cref="ColumnsNeedReorder"/>)과 이행(<see cref="ReorderColumns"/>)이
+    /// <b>같은 범위</b>를 보게 하는 것이 이 함수의 일이다 — 둘이 다른 범위를 보면 한쪽만
+    /// 찾은 낱말이 생기고, 그 자리에서 이행이 터진다.
+    /// </summary>
+    private static string[] HeaderRowOf(IXLWorksheet sheet)
+    {
+        var headers = new List<string> { string.Empty };
+
+        for (int column = 1; column <= 15; column++)
+        {
+            string header = sheet.Cell(1, column).GetString().Trim();
+
+            if (header.Length == 0)
+            {
+                break;
+            }
+
+            headers.Add(header);
+        }
+
+        return [.. headers];
+    }
+
+    /// <summary>머리글이 그 이름인 열. 없으면 0.</summary>
+    private static int HeaderColumn(IXLWorksheet sheet, string header)
+    {
+        for (int column = 1; column <= 15; column++)
+        {
+            if (string.Equals(sheet.Cell(1, column).GetString().Trim(), header, StringComparison.Ordinal))
+            {
+                return column;
+            }
+        }
+
+        return 0;
     }
 
     /// <summary>
@@ -729,10 +955,18 @@ public static class ChapterWorkbookMigrator
         }
     }
 
+    /// <summary>
+    /// `타입` 열이 없는 구판 `스탯` 시트에 그 칸을 세운다 (2026-08-16).
+    ///
+    /// ⚠ <b>있는지 없는지는 이름으로 본다.</b> 예전에는 "여섯째가 타입인가"로 물었는데,
+    /// v14에서 타입이 <b>맨 앞</b>으로 가면서 그 물음이 이행 끝난 파일에서도 참이 아니게 됐다
+    /// — 다른 이유(겉모습 등)로 이행이 한 번 더 돌면 <b>여섯째인 `최대`의 머리글을
+    /// "타입"으로 덮어쓴다</b>. 자리는 뒤의 순서 이행이 정하고, 여기서는 있기만 하게 한다.
+    /// </summary>
     private static void MigrateStats(XLWorkbook workbook)
     {
         if (Find(workbook, ChapterSheetNames.Stats) is not { } sheet ||
-            Header(workbook, ChapterSheetNames.Stats, 6) == "타입")
+            HeaderColumn(sheet, "타입") != 0)
         {
             return;
         }

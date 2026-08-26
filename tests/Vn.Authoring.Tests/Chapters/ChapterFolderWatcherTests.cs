@@ -190,9 +190,11 @@ public sealed class ChapterFolderWatcherTests : IDisposable
 
         Fill(workbook.AddWorksheet("에피소드"),
         [
-            ["EpisodeId", "제목", "인덱스", "종류", "대사엔트리", "X", "Y", "표시조건", "해금조건", "엔딩키", "메모"],
-            ["ep1", episodeTitle, "01", "Main", "Story_ep1", "0", "0", null, null, null, null],
-            ["ep2", "둘째 화", "02", "Main", "Story_ep2", "200", "0", null, null, null, null]
+            // v14 열 순서 (2026-08-26) — 이 시험이 보는 것은 감시자이지 이행이 아니므로
+            // 지금 규격 그대로 적는다.
+            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
+            ["ep1", "Story_ep1", episodeTitle, null, "0", "0", null],
+            ["ep2", "Story_ep2", "둘째 화", null, "200", "0", null]
         ]);
 
         Fill(workbook.AddWorksheet("간선"),
@@ -209,9 +211,9 @@ public sealed class ChapterFolderWatcherTests : IDisposable
 
         Fill(workbook.AddWorksheet("스탯"),
         [
-            ["스탯키", "표시명", "초기값", "최소", "최대"],
-            ["trust", "신뢰", "0", "0", "10"],
-            ["anger", "분노", "0", "0", "10"]
+            ["타입", "스탯키", "표시명", "초기값", "최소", "최대"],
+            [null, "trust", "신뢰", "0", "0", "10"],
+            [null, "anger", "분노", "0", "0", "10"]
         ]);
 
         Fill(workbook.AddWorksheet("픽스처"),

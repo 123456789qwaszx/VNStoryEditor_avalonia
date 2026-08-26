@@ -53,21 +53,31 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
     }
 
     [Fact]
-    public void 표본이_v11_엔딩을_실제로_담고_있다()
+    public void 표본이_v14_이벤트키를_담고_엔딩키는_없다()
     {
         // 골든 비교만으로는 "둘 다 낡은 것"을 못 잡는다. 표본이 무엇을 보여 주기로 한
-        // 파일인지를 따로 건다 — 엔딩 둘, 서로 다른 키.
+        // 파일인지를 따로 건다 — v14(2026-08-26): 간선의 `엔딩키`는 개념째 폐지됐고
+        // (코어 DTO는 빈 값을 기본으로 받는다), 에피소드의 `이벤트키`가 `EventKey`로
+        // 실린다(유니티 전용 패스스루 — 코어 DTO에 칸이 서기 전까지 로더는 무시한다).
         using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(SamplePath));
 
-        string[] endings = document.RootElement
+        Assert.All(
+            document.RootElement.GetProperty("Nodes").EnumerateArray(),
+            node =>
+            {
+                Assert.False(node.TryGetProperty("EndingKey", out _));
+                Assert.False(node.TryGetProperty("IsChapterEndingCandidate", out _));
+            });
+
+        string[] eventKeys = document.RootElement
             .GetProperty("Nodes")
             .EnumerateArray()
-            .Where(node => node.GetProperty("IsChapterEndingCandidate").GetBoolean())
-            .Select(node => node.GetProperty("EndingKey").GetString()!)
+            .Select(node => node.GetProperty("EventKey").GetString()!)
+            .Where(key => key.Length > 0)
             .OrderBy(key => key, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["ch01_alone", "ch01_true"], endings);
+        Assert.Equal(["ch01_alone", "ch01_true"], eventKeys);
 
         // ⚠ `ViaNodeId`가 비는 이유가 2026-08-24에 바뀌었다. 예전에는 저작의 `연출` 칸이
         // 폐지돼서 아무도 안 채웠고, 지금은 **자유 씬의 원본이 연출 그래프의 배선**이라
@@ -82,10 +92,11 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
     }
 
     /// <summary>
-    /// 표본 챕터 — 갈라졌다 <b>서로 다른 엔딩으로</b> 끝나는 최소 모양.
+    /// 표본 챕터 — 갈라졌다 서로 다른 막다른 화로 끝나는 최소 모양.
     ///
-    /// 한 파일에서 보여 주려는 것: 스탯 사전 · 스탯 증감이 붙은 선택지 · 문구 없는 자동
-    /// 간선 · 그리고 v11의 엔딩키(도착 에피소드에 실린다).
+    /// 한 파일에서 보여 주려는 것: 스탯 사전 · 스탯 증감이 붙은 선택지 · 갈래 둘 ·
+    /// 그리고 v14의 `이벤트키`(마지막 두 화에 하나씩 — `EventKey`로 실린다).
+    /// 챕터의 끝은 나가는 간선이 없다는 사실 자체다(간선의 옛 `엔딩키`는 폐지).
     /// </summary>
     private ChapterGraphModel BuildChapter()
     {
@@ -96,36 +107,35 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         using (var workbook = new XLWorkbook())
         {
             Sheet(workbook, ChapterSheetNames.Episodes,
-                ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
+                ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
                 [
-                    ["시작", "복도", "시작", "0", "0", null],
-                    ["믿는길", "라루를 믿는다", "믿는길", "1", "0", null],
-                    ["혼자길", "혼자 간다", "혼자길", "1", "1", null],
-                    ["좋은끝", "함께 문을 연다", "좋은끝", "2", "0", null],
-                    ["쓸쓸한끝", "혼자 문을 연다", "쓸쓸한끝", "2", "1", null]
+                    ["시작", "시작", "복도", null, "0", "0", null],
+                    ["믿는길", "믿는길", "라루를 믿는다", null, "1", "0", null],
+                    ["혼자길", "혼자길", "혼자 간다", null, "1", "1", null],
+                    ["좋은끝", "좋은끝", "함께 문을 연다", "ch01_true", "2", "0", null],
+                    ["쓸쓸한끝", "쓸쓸한끝", "혼자 문을 연다", "ch01_alone", "2", "1", null]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Edges,
                 [
-                    // `잠금시 숨김`은 2026-08-24에 폐지됐다 — 잠금 안내문·엔딩키가 한 칸씩 당겨진다.
-                    "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
-                    "잠금 안내문", "엔딩키"
+                    // v14 (2026-08-26) — `엔딩키` 폐지. 일곱 칸이 전부다.
+                    "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"
                 ],
                 [
-                    ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, null, null],
-                    ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, null, null],
-                    ["믿는길", "좋은끝", null, "문을 연다", null, null, null, "ch01_true"],
-                    ["혼자길", "쓸쓸한끝", null, "문을 연다", null, null, null, "ch01_alone"]
+                    ["시작", "믿는길", "trust +2", "라루를 믿는다", null, null, null],
+                    ["시작", "혼자길", "fatigue +1", "혼자 간다", null, null, null],
+                    ["믿는길", "좋은끝", null, "문을 연다", null, null, null],
+                    ["혼자길", "쓸쓸한끝", null, "문을 연다", null, null, null]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Conditions,
                 ["라벨", "스탯", "연산자", "값", "설명"], []);
 
             Sheet(workbook, ChapterSheetNames.Stats,
-                ["스탯키", "표시명", "초기값", "최소", "최대", "타입"],
+                ["타입", "스탯키", "표시명", "초기값", "최소", "최대"],
                 [
-                    ["trust", "신뢰", "0", "0", "10", null],
-                    ["fatigue", "피로", "0", "0", "10", null]
+                    [null, "trust", "신뢰", "0", "0", "10"],
+                    [null, "fatigue", "피로", "0", "0", "10"]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Speakers, ["이름", "캐릭터키", "메모"], []);

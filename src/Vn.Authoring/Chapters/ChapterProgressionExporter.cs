@@ -202,20 +202,6 @@ public static class ChapterProgressionExporter
     }
 
     /// <summary>
-    /// 이 에피소드로 들어오는 <b>엔딩 간선</b>의 키 (v11). 없으면 빈 문자열이다.
-    ///
-    /// 규칙 자체는 <see cref="ChapterGraphModel.EndingKeyOf"/> 하나뿐이다 — 판의 ★ 배지도
-    /// 같은 것을 본다. 여기서 따로 세면 한 곳만 고쳐지는 날이 온다.
-    ///
-    /// 리더가 "같은 도착의 엔딩키는 하나뿐"을 이미 강제하므로 그 값은 유일하다. 그 검사가
-    /// 없으면 조용히 하나가 골라지고, JSON에 도착한 뒤에는 나머지가 사라졌다는 것을 아무도
-    /// 모른다 — 그래서 그 검사는 <b>저작 쪽만 할 수 있는</b> 것이었다
-    /// (`ked-progression`과 합의, 2026-08-18).
-    /// </summary>
-    private static string EndingKeyOf(ChapterGraphModel chapter, ChapterEpisode episode) =>
-        chapter.EndingKeyOf(episode.EpisodeId) ?? string.Empty;
-
-    /// <summary>
     /// 스탯 정의 한 벌 → 런타임 <c>StatDefinition</c> (2026-08-18).
     ///
     /// <b>이 칸이 비어 있던 것이 Gate D를 막고 있었다.</b> 초기값·최소·최대가 어느 런타임
@@ -310,15 +296,17 @@ public static class ChapterProgressionExporter
                     .ToList()
             })
             .ToList(),
-        // v11 (2026-08-18) — 엔딩키는 저작에서 **간선**의 것이고 계약에서는 **도착
-        // 에피소드**의 것이다. 여기가 그 번역이 일어나는 자리다.
+        // `EndingKey`·`IsChapterEndingCandidate`(v11)는 v14(2026-08-26)에서 실리지 않게
+        // 됐다 — 저작에서 엔딩키가 개념째 폐지됐다. 코어 DTO는 그대로다(둘 다 비면
+        // 로더의 일관성 검사도 통과한다): EndingRules를 언제나 빈 배열로 내는 것과 같은
+        // 결이고, 시나리오 층을 짓는 날 그쪽 규격으로 다시 세운다.
         //
-        // 기획자는 간선 한 행에서 "이 길을 타면 이 엔딩"을 보고, 진행 패키지는 D2("엔딩은
-        // 한 곳이 정한다")를 그대로 지킨다. 이 에피소드로 들어오는 엔딩 간선들의 키가
-        // 서로 다르면 리더가 이미 오류로 막았으므로(EndingKeyConflict), 여기서는 첫 번째를
-        // 그대로 쓴다 — 조용히 고르는 것이 아니라 하나뿐임이 보장된 것이다.
-        IsChapterEndingCandidate = EndingKeyOf(chapter, episode).Length > 0,
-        EndingKey = EndingKeyOf(chapter, episode),
+        // 대신 `EventKey`(같은 날)가 실린다 — 에피소드 `이벤트키` 열의 값 그대로.
+        // 유니티가 "이 에피소드를 다 시청했을 때"의 이벤트·보상 트리거로 쓰는 패스스루
+        // 인덱스이고, 툴은 해석하지 않는다. ⚠ 코어 DTO에는 아직 이 칸이 없어 로더가
+        // 조용히 지나친다 — 칸을 세워 달라는 부탁이 progression-handoff.md 추기에 있다
+        // (`StatChange.Op` 때와 같은 절차. 값이 오해될 자리는 없으므로 Op와 달리 먼저 싣는다).
+        EventKey = episode.EventKey?.Trim() ?? string.Empty,
         DesignerNote = episode.Memo ?? string.Empty,
         Position = new PositionJson { X = episode.X, Y = episode.Y }
     };
@@ -400,8 +388,17 @@ public static class ChapterProgressionExporter
         public List<ConditionJson> VisibleConditions { get; set; } = new();
         public List<ConditionJson> UnlockConditions { get; set; } = new();
         public List<NextOptionJson> NextOptions { get; set; } = new();
-        public bool IsChapterEndingCandidate { get; set; }
-        public string EndingKey { get; set; } = string.Empty;
+
+        // `IsChapterEndingCandidate`·`EndingKey`는 v14(2026-08-26)부터 안 싣는다 —
+        // 저작에서 엔딩키가 개념째 폐지됐고, 코어 DTO는 빈 값을 기본으로 받는다.
+
+        /// <summary>
+        /// 에피소드 `이벤트키`(v14) — 유니티 전용 패스스루. "이 에피소드를 다 시청했을 때"
+        /// 이벤트·보상을 매다는 인덱스이고 진행 평가에는 안 낀다. 코어 DTO에 칸이 서기
+        /// 전까지 로더는 무시한다(progression-handoff.md 추기).
+        /// </summary>
+        public string EventKey { get; set; } = string.Empty;
+
         public string DesignerNote { get; set; } = string.Empty;
 
         /// <summary>이 레이어의 확장 (G-2) — 게임 내 그래프가 같은 구도로 그린다.</summary>

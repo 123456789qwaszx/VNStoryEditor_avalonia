@@ -60,8 +60,7 @@
           ]
         }
       ],
-      "IsChapterEndingCandidate": false,
-      "EndingKey": "",
+      "EventKey": "",
       "DesignerNote": "",
       "Position": {
         "X": 0,
@@ -86,8 +85,7 @@
           "StatChanges": []
         }
       ],
-      "IsChapterEndingCandidate": false,
-      "EndingKey": "",
+      "EventKey": "",
       "DesignerNote": "",
       "Position": {
         "X": 1,
@@ -112,8 +110,7 @@
           "StatChanges": []
         }
       ],
-      "IsChapterEndingCandidate": false,
-      "EndingKey": "",
+      "EventKey": "",
       "DesignerNote": "",
       "Position": {
         "X": 1,
@@ -128,8 +125,7 @@
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
-      "IsChapterEndingCandidate": true,
-      "EndingKey": "ch01_true",
+      "EventKey": "ch01_true",
       "DesignerNote": "",
       "Position": {
         "X": 2,
@@ -144,8 +140,7 @@
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
-      "IsChapterEndingCandidate": true,
-      "EndingKey": "ch01_alone",
+      "EventKey": "ch01_alone",
       "DesignerNote": "",
       "Position": {
         "X": 2,

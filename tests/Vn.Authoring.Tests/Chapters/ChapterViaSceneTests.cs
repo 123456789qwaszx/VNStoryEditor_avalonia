@@ -312,17 +312,17 @@ public sealed class ChapterViaSceneTests : IDisposable
         using var workbook = new XLWorkbook();
 
         Sheet(workbook, ChapterSheetNames.Episodes,
-            ["EpisodeId", "제목", "대사엔트리", "X", "Y", "메모"],
+            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
             [
-                ["시작", "복도", "시작", "0", "0", null],
-                ["믿는길", "믿는다", "믿는길", "1", "0", null],
-                ["혼자길", "혼자 간다", "혼자길", "1", "1", null]
+                ["시작", "시작", "복도", null, "0", "0", null],
+                ["믿는길", "믿는길", "믿는다", null, "1", "0", null],
+                ["혼자길", "혼자길", "혼자 간다", null, "1", "1", null]
             ]);
 
         Sheet(workbook, ChapterSheetNames.Edges,
             [
                 "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건",
-                "잠금 안내문", "엔딩키"
+                "잠금 안내문"
             ],
             [
                 ["시작", "믿는길", null, "믿는다", null, null, null, null],
@@ -333,7 +333,7 @@ public sealed class ChapterViaSceneTests : IDisposable
 
         Sheet(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"], []);
         Sheet(workbook, ChapterSheetNames.Stats,
-            ["스탯키", "표시명", "초기값", "최소", "최대", "타입"], []);
+            ["타입", "스탯키", "표시명", "초기값", "최소", "최대"], []);
         Sheet(workbook, ChapterSheetNames.Speakers, ["이름", "캐릭터키", "메모"], []);
         Sheet(workbook, ChapterSheetNames.Choices, ["인덱스", "대본", "메모"], []);
 

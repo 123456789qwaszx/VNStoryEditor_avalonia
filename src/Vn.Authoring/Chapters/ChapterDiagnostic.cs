@@ -51,7 +51,6 @@ public enum ChapterDiagnosticCode
     ExitIntoExcelNode,
     FixtureStatColumnUnknown,
     FixtureChoiceMalformed,
-    EndingKeyBlank,
 
     /// <summary>
     /// v14 — 블록 행(IF·ELSEIF·ENDIF)에 대사 순번이 남아 있다. <b>오류가 아니라 할 일이다</b>:
@@ -66,9 +65,6 @@ public enum ChapterDiagnosticCode
 
     /// <summary>v11 — `종류` 칸에 모르는 낱말이 적혀 있다.</summary>
     EdgeKindUnknown,
-
-    /// <summary>v11 — 같은 도착으로 들어오는 간선들의 엔딩키가 다르다.</summary>
-    EndingKeyConflict,
 
     /// <summary>v11 — 간선에 매달린 연출 노드가 아직 비어 있다(경고).</summary>
     EdgePresentationEmpty,
