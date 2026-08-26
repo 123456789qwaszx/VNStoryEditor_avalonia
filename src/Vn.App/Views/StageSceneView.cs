@@ -305,7 +305,13 @@ internal sealed class StageSceneView : UserControl
             // 것만으로 판정하면, 숨김 고스트로 이미 자리를 갖고 있던 슬롯의 fade_in이
             // 불투명도 1로 튀어 오른다(소유자 보고: "fade_in이 종종 안 먹는다"). 무대에
             // 처음 서는 슬롯은 자리도 가시성 기록도 없으니 어느 쪽으로도 페이드 인이다.
-            control.Opacity = !hadRect || Appeared(slotKey) ? t : 1;
+            //
+            // ⚠ 진행도는 라인 시계(t)가 아니라 <b>그 페이드의 duration</b>이다 (2026-08-26
+            // 소유자: "fade_in역시 동일한 원인으로 같은 문제") — 라인 시계는 가장 긴
+            // 커맨드의 것이라, 그것을 타면 0fr 페이드도 그 시간만큼 천천히 밝아진다.
+            control.Opacity = !hadRect || Appeared(slotKey)
+                ? FadeProgress(slotKey, t * lineSeconds)
+                : 1;
 
             if (frame is not null &&
                 _motionPlan?.AnimatedSlots.Contains(slotKey) == true &&
@@ -335,7 +341,8 @@ internal sealed class StageSceneView : UserControl
                 Canvas.SetTop(leaving, Canvas.GetTop(control));
                 leaving.Width = control.Width;
                 leaving.Height = control.Height;
-                leaving.Opacity = 1 - t;
+                // 퇴장도 제 duration으로 걷힌다 (2026-08-26) — 등장과 같은 규칙 하나다.
+                leaving.Opacity = 1 - FadeProgress(slotKey, t * lineSeconds);
             }
         }
 
@@ -390,6 +397,18 @@ internal sealed class StageSceneView : UserControl
             _portraitControls[slotKey] = control;
         }
     }
+
+    /// <summary>
+    /// 이 슬롯 페이드의 진행도(0..1) — <b>그 페이드 커맨드 자신의 duration</b>으로 흐른다
+    /// (2026-08-26). 이 라인에 그 슬롯의 페이드가 없거나 0fr이면 <b>즉시(1)</b>다 —
+    /// show 같은 즉시 가시성 변화가 여기로 온다(런타임도 태우지 않는다).
+    /// </summary>
+    private double FadeProgress(string slotKey, double elapsedSeconds) =>
+        _request?.Fades is { } fades &&
+        fades.TryGetValue(slotKey, out double seconds) &&
+        seconds > 0
+            ? Math.Clamp(elapsedSeconds / seconds, 0, 1)
+            : 1;
 
     /// <summary>
     /// 이 슬롯이 <b>이번 라인에서 등장했는가</b> — 안 보이던(또는 무대에 없던) 것이 보이게

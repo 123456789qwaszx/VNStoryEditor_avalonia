@@ -67,7 +67,8 @@ public sealed class StageInstantCommandTests
             CoreState: fold.CoreState,
             TransitionSeconds: StageTransitions.SecondsFor(Catalog, lineCommands),
             MotionCues: StageMotionCues.Of(Catalog, setup, foldLines, lineCommands, Tuning),
-            MotionPlan: StageMotionPlan.Build(Catalog, setup, foldLines, lineCommands, Tuning));
+            MotionPlan: StageMotionPlan.Build(Catalog, setup, foldLines, lineCommands, Tuning),
+            Fades: StageFades.Of(Catalog, lineCommands, fold.State));
     }
 
     private sealed record Stage(StageSceneView View, Window Window)
@@ -163,6 +164,107 @@ public sealed class StageInstantCommandTests
         Assert.Equal(
             StageTransitions.DefaultSeconds, StageTransitions.SecondsFor(Catalog, []));
     }
+
+    [Fact]
+    public void show_없이_fade_in으로_세운_슬롯도_size가_크기를_바꾼다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 보고 — "<<size s1 close bust 0fr>> … 여전히 Y만 움직이네."
+        // 소유자의 yarn은 show 없이 slot+cast 뒤 fade_in으로 세운다 — 그 모양 그대로 잰다.
+        Stage stage = Open();
+
+        MiniStagePreviewRequest At(string depth) => Request(
+            CastInSetup,
+            [[Command("char_rig_presentation.fade_in", ("slot", "c1"), ("duration", "14fr")),
+              Command("char_rig_placement.place",
+                  ("slot", "c1"), ("focus", "bust"), ("screenPoint", "center"), ("duration", "0fr")),
+              Command("char_rig_depth.size",
+                  ("slot", "c1"), ("depth", depth), ("focus", "bust"), ("duration", "0fr"))]]);
+
+        stage.Draw(At("mid"));
+        double[] midWidths = stage.Positioned()
+            .Select(control => control.Width).OrderBy(w => w).ToArray();
+
+        stage.Draw(At("close"));
+        double[] closeWidths = stage.Positioned()
+            .Select(control => control.Width).OrderBy(w => w).ToArray();
+
+        Assert.NotEqual(midWidths, closeWidths);
+
+        stage.Window.Close();
+    });
+
+    [Fact]
+    public void duration_있는_size는_배율과_Y가_함께_흐른다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "duration이 들어가있더라도, Size는 최종상태로 적용되다보니,
+        // 실제 프리뷰에서는 Y값만 이동하는 것처럼 보이는 버그." 배율이 스냅되고 위치만
+        // 흐르면 그 그림이 된다 — 둘 다 제 시간에 흘러야 런타임과 같다.
+        Stage stage = Open();
+
+        PresentationResultCommand[] setup =
+            [.. CastInSetup, Command("char_rig_entrance.show", ("slot", "c1"))];
+
+        stage.Draw(Request(setup, [[]]));                              // ln1 — 기준선(mid 크기)
+        stage.Draw(Request(setup, [
+            [],
+            [Command("char_rig_depth.size",
+                ("slot", "c1"), ("depth", "close"), ("focus", "bust"), ("duration", "12fr"))]]));
+
+        // 출발(정지 화면)의 초상 — 도착에서 폭이 자랄 그 컨트롤을 짚는다.
+        (Control Control, double Width, double Top)[] rests = stage.Positioned()
+            .Select(control => (control, control.Width, Canvas.GetTop(control)))
+            .Where(entry => !double.IsNaN(entry.Width))
+            .ToArray();
+
+        stage.View.SetTransitionProgress(1);
+        (Control moved, double restWidth, double restTop) = Assert.Single(
+            rests, entry => Math.Abs(entry.Control.Width - entry.Width) > 1);
+        double finalWidth = moved.Width;
+        double finalTop = Canvas.GetTop(moved);
+
+        // 중간 프레임 — 배율(폭)도 위치(Y)도 출발과 도착 사이여야 한다.
+        stage.View.SetTransitionProgress(0.5);
+        Assert.InRange(
+            moved.Width,
+            Math.Min(restWidth, finalWidth) + 0.5,
+            Math.Max(restWidth, finalWidth) - 0.5);
+        Assert.InRange(
+            Canvas.GetTop(moved),
+            Math.Min(restTop, finalTop) + 0.5,
+            Math.Max(restTop, finalTop) - 0.5);
+
+        stage.Window.Close();
+    });
+
+    [Fact]
+    public void fade_in_0fr은_더_긴_커맨드와_같은_라인이어도_즉시_밝다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "fade_in역시 동일한 원인으로 같은 문제". 페이드 불투명도가
+        // 라인 시계(커맨드 duration 최댓값)를 타면, 0fr 페이드가 같은 라인의 24fr 이동에
+        // 끌려 1초 동안 천천히 밝아진다. 페이드는 제 duration으로 흐른다 — 0fr은 즉시다.
+        Stage stage = Open();
+
+        stage.Draw(Request(CastInSetup, [[]]));                        // ln1 — 숨김(기준선)
+        stage.Draw(Request(CastInSetup, [
+            [],
+            [Command("char_rig_staging.move_by",
+                 ("slot", "c1"), ("x", "+2u"), ("duration", "24fr")),
+             Command("char_rig_presentation.fade_in",
+                 ("slot", "c1"), ("duration", "0fr"))]]));
+
+        // 도착 자리를 적어 둔다 — 아직 나는 중인 컨트롤이 곧 그 초상이다.
+        stage.View.SetTransitionProgress(1);
+        Dictionary<Control, double> arrived = stage.Positioned()
+            .ToDictionary(control => control, Canvas.GetLeft);
+
+        // 이동은 아직 중간인데(라인 시계 0.5) 밝기는 이미 온전해야 한다.
+        stage.View.SetTransitionProgress(0.5);
+        Control moving = stage.Positioned()
+            .Single(control => Math.Abs(Canvas.GetLeft(control) - arrived[control]) > 1);
+        Assert.Equal(1, moving.Opacity, 3);
+
+        stage.Window.Close();
+    });
 
     [Fact]
     public void duration_0의_fade_in은_정지_화면부터_보인다() => HeadlessUi.Run(() =>

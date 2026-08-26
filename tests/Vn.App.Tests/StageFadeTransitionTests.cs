@@ -70,7 +70,10 @@ public sealed class StageFadeTransitionTests
             SpeakerName: null,
             LineText: "대사",
             CoreState: fold.CoreState,
-            TransitionSeconds: 0.5);
+            TransitionSeconds: 0.5,
+            // 페이드는 제 duration으로 흐른다 (2026-08-26) — 이 파일의 페이드는 전부
+            // 12fr(=0.5초)이라 라인 시계와 같은 속도이고, 기존 단언 값이 그대로 선다.
+            Fades: StageFades.Of(Catalog, lines.Length > 0 ? lines[^1] : [], fold.State));
     }
 
     private sealed record Stage(StageSceneView View, Window Window)
@@ -105,9 +108,11 @@ public sealed class StageFadeTransitionTests
         return new Stage(view, window);
     }
 
-    private static PresentationResultCommand FadeIn => Command("char_rig_presentation.fade_in", ("slot", "c1"));
+    private static PresentationResultCommand FadeIn =>
+        Command("char_rig_presentation.fade_in", ("slot", "c1"), ("duration", "12fr"));
 
-    private static PresentationResultCommand FadeOut => Command("char_rig_presentation.fade_out", ("slot", "c1"));
+    private static PresentationResultCommand FadeOut =>
+        Command("char_rig_presentation.fade_out", ("slot", "c1"), ("duration", "12fr"));
 
     private static PresentationResultCommand[] Nothing => [];
 

@@ -276,6 +276,8 @@ public partial class PresentationNodeEditor : UserControl
             BranchBlocks: branch.Blocks,
             // 전이(W33): 이 라인으로 넘어가는 시간 = 라인 커맨드 duration의 최댓값.
             TransitionSeconds: StageTransitions.SecondsFor(catalog, lineBinding?.Commands),
+            // 페이드는 제 duration으로 흐른다 (2026-08-26) — 라인 시계와 따로 센다.
+            Fades: StageFades.Of(catalog, lineBinding?.Commands, state),
             // 소리 표시(W34-b): 정지 프레임에 없는 오디오를 ♪ 칩으로.
             AudioCues: StageAudioCues.Of(catalog, lineBinding?.Commands),
             AutoBranchBlocks: simulation.AutoBlocks.ToArray(),

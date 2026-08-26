@@ -976,6 +976,17 @@ public partial class DialogueNodeEditor : UserControl
             // 이동 표시(W66): 작가 화면에서도 흐르는 슬롯이 출발 자리에 서고 타임라인·재생이
             // 그 길을 태운다 — 편집은 위 EditContext가 잠근다.
             MotionCues: dialogueMotionCues,
+            // 시간 흐름도 연출 편집기와 같은 계획 하나다 (2026-08-26) — 예전에는 이 화면이
+            // 계획 없이 "직전→새 자리" 일괄 보간(걷힘)에 얹혀 근사로 흘렀다.
+            MotionPlan: StageMotionPlan.Build(
+                catalog,
+                export.Presentation.SetupCommands,
+                branch.FoldLines,
+                lineCommands,
+                _session.TuningLibrary.Tuning,
+                _session.Project.EaseCurves),
+            // 페이드는 제 duration으로 흐른다 (2026-08-26) — 라인 시계와 따로 센다.
+            Fades: StageFades.Of(catalog, lineCommands, fold.State),
             // 대본 패널(2026-08-20): 공급된 발행본 기준 읽기 전용 — 점·편집은 잠금이 막는다.
             ScriptRows: PresentationScriptModel.Build(
                 catalog, export.Dialogue, export.Presentation.SetupCommands, export.Presentation.Bindings)));
