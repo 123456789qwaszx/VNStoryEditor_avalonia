@@ -107,6 +107,37 @@ public class StageSceneComposerCoreTests
     }
 
     [Fact]
+    public void 카메라는_배경도_태운다()
+    {
+        // 2026-08-27 소유자 — "shot_to … 원래라면 bg역시도 크기를 받아야 하는데, 지금은
+        // 오직 캐릭터만 크기영향을 받고 있어." 배경의 자리도 초상과 같은 적용측 규약
+        // (보이는 위치 = 논리 × 배율 + pan)을 무대 네 모서리에 씌운 것이어야 한다.
+        StageCommand[] common =
+        [
+            new("slot", ["c1"]),
+            new("cast", ["c1", "parkeunseol", "a", "1"]),
+            new("show", ["c1"])
+        ];
+
+        StageRect? Background(StageState core) => StageSceneComposer.Compose(
+            Projection("c1"), speakerName: null, speakerCharacterId: null, Width, Height, core)
+            .Background;
+
+        StageRect plain = Background(CoreState(common))!;
+        StageRect zoomed = Background(CoreState([.. common, new StageCommand("shot_zoom", ["4"])]))!;
+
+        // 샷 없음 = 무대 전체.
+        Assert.Equal(new StageRect(0, 0, Width, Height), plain);
+
+        // 줌 = 배율 규약 그대로 커지고, 중앙 기준으로 사방으로 넘친다.
+        double scale = ShotIntentMath.EvaluateCameraScale(4f);
+        Assert.Equal(Width * scale, zoomed.Width, precision: 2);
+        Assert.Equal(Height * scale, zoomed.Height, precision: 2);
+        Assert.Equal((Width - zoomed.Width) / 2, zoomed.X, precision: 2);
+        Assert.Equal((Height - zoomed.Height) / 2, zoomed.Y, precision: 2);
+    }
+
+    [Fact]
     public void size_close가_초상을_더_크게_그린다()
     {
         StageCommand[] common =

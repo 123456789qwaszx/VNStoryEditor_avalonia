@@ -48,7 +48,10 @@ public sealed record StageSceneLayout(
     double Height,
     IReadOnlyList<StagePortraitPlacement> Portraits,
     StageDialogueBoxPlacement? DialogueBox,
-    string? OffStageSpeakerName);
+    string? OffStageSpeakerName,
+    // 카메라(shot)를 태운 배경의 자리 (2026-08-27) — 코어 상태가 없으면(근사 모드) 무대
+    // 전체다. 대사창·안내 같은 UI는 카메라를 안 탄다 — 배경과 초상만 무대의 것이다.
+    StageRect? Background = null);
 
 /// <summary>
 /// 기준 해상도(기본 1920×1080) 좌표계 위의 무대 배치를 계산하는 순수 함수.
@@ -82,7 +85,32 @@ public static class StageSceneComposer
             height,
             portraits,
             PlaceDialogueBox(state.BoxKindFor(hasSpeaker), width, height, surfaceLayouts),
-            hasSpeaker && !speakerOnStage ? speakerName : null);
+            hasSpeaker && !speakerOnStage ? speakerName : null,
+            coreState is null
+                ? new StageRect(0, 0, width, height)
+                : CameraStageRect(coreState, width, height));
+    }
+
+    /// <summary>
+    /// 카메라(shot)를 태운 무대 전체 rect (2026-08-27 소유자: "shot_to … 원래라면 bg역시도
+    /// 크기를 받아야 하는데, 지금은 오직 캐릭터만") — 초상과 같은 적용측 규약
+    /// (보이는 위치 = 논리 × 배율 + pan)을 무대 네 모서리에 그대로 적용한 것이다.
+    /// 배경은 무대 크기로 깔리므로 이 rect가 곧 배경의 자리다.
+    /// </summary>
+    private static StageRect CameraStageRect(StageState core, double width, double height)
+    {
+        float cameraScale = ShotIntentMath.EvaluateCameraScale(core.Shot.Zoom);
+        Vec2 pan = core.Shot.PanInRigSpace;
+
+        double halfWidth = width / 2 * cameraScale;
+        double halfHeight = height / 2 * cameraScale;
+
+        // 루트 공간(중앙 원점·y 위) → 캔버스(좌상 원점·y 아래) — PlaceCorePortraits와 같은 변환.
+        return new StageRect(
+            width / 2 + (-halfWidth + pan.X),
+            height / 2 - (halfHeight + pan.Y),
+            halfWidth * 2,
+            halfHeight * 2);
     }
 
     /// <summary>

@@ -236,11 +236,24 @@ internal sealed class StageSceneView : UserControl
     private (string? NodeId, string? ContextLabel, string? LineId)? _renderedFrame;
 
     private readonly List<(string SlotKey, Control Control, StageRect To)> _transitionEntries = new();
-    // ⛔ 배경 크로스페이드(_backgroundImage·_backgroundOverlay·_previousBackgroundImagePath)는
-    //   2026-08-27에 걷었다 (소유자: "지금은 bg가 순차적으로 스르르 바뀌는데, 그냥 탁탁
-    //   바뀌어도 괜찮을 것 같아"). 걷기 전에는 출발점이 렌더 기준선이라, 첫 라인을
-    //   재생하면 <b>둘째 라인의 배경에서 첫 배경으로</b> 거꾸로 스르르 바뀌는 버그도
-    //   함께 있었다 — 배경은 이제 라인이 바뀌는 순간 즉시 선다.
+    // ⛔ 배경 크로스페이드(_backgroundOverlay·_previousBackgroundImagePath)는 2026-08-27에
+    //   걷었다 (소유자: "지금은 bg가 순차적으로 스르르 바뀌는데, 그냥 탁탁 바뀌어도
+    //   괜찮을 것 같아"). 걷기 전에는 출발점이 렌더 기준선이라, 첫 라인을 재생하면
+    //   <b>둘째 라인의 배경에서 첫 배경으로</b> 거꾸로 스르르 바뀌는 버그도 함께 있었다 —
+    //   배경 교체는 이제 라인이 바뀌는 순간 즉시 선다.
+
+    /// <summary>
+    /// 카메라를 타는 배경 (2026-08-27 소유자: "shot_to … bg역시도 크기를 받아야") —
+    /// shot이 흐르면 이 컨트롤의 rect가 초상들과 같은 규약으로 따라간다. 교체
+    /// 크로스페이드가 아니다(그건 같은 날 걷혔다).
+    /// </summary>
+    private Image? _backgroundImage;
+
+    /// <summary>이 라인 확정 상태의 배경 자리(카메라 적용) — 전이 확정 프레임의 자리다.</summary>
+    private StageRect? _backgroundFinalRect;
+
+    /// <summary>라인 시작 순간의 배경 자리 — 정지 화면과 재생 출발이 서는 자리다.</summary>
+    private StageRect? _motionStartBackground;
 
     /// <summary>
     /// 전이 진행도 적용 (W33). null/1 이상 = 확정 상태(모든 자리 최종값·오버레이 제거).
@@ -274,6 +287,14 @@ internal sealed class StageSceneView : UserControl
                 control.Opacity = 1;
             }
 
+            // 배경도 카메라를 탄다 (2026-08-27) — 정지는 출발의 샷, 확정(1)은 도착의 샷이다.
+            if (_backgroundImage is not null &&
+                (progress is null ? _motionStartBackground ?? _backgroundFinalRect : _backgroundFinalRect)
+                    is { } backgroundRest)
+            {
+                ApplyRect(_backgroundImage, backgroundRest);
+            }
+
             // 걷히던 초상도 함께 내린다 — 확정 프레임에 반투명한 잔상이 남으면 그것이 버그다.
             ClearDepartingPortraits();
 
@@ -284,7 +305,15 @@ internal sealed class StageSceneView : UserControl
         // 커맨드마다 제 duration·이징으로 흐르고(라인 최대가 아니다), 자리도 크기도
         // 코어가 낸 상태에서 나온다. 모양은 코어 EaseFunctions/CurveFunctions —
         // 런타임과 등가 고정된 그 곡선이다(W66b).
-        IReadOnlyDictionary<string, StageRect>? frame = ComposeMotionRects(t * lineSeconds);
+        (IReadOnlyDictionary<string, StageRect> Slots, StageRect? Background)? motion =
+            ComposeMotionFrame(t * lineSeconds);
+        IReadOnlyDictionary<string, StageRect>? frame = motion?.Slots;
+
+        // 배경도 카메라를 탄다 (2026-08-27) — 그 시각의 샷이 낸 무대 rect 그대로다.
+        if (motion is { Background: { } movingBackground } && _backgroundImage is not null)
+        {
+            ApplyRect(_backgroundImage, movingBackground);
+        }
 
         foreach ((string slotKey, Control control, StageRect to) in _transitionEntries)
         {
@@ -586,6 +615,9 @@ internal sealed class StageSceneView : UserControl
 
         // 캔버스를 비웠으니 얹혀 있던 퇴장 초상도 함께 내려갔다 — 손잡이만 정리한다.
         _departingPortraits.Clear();
+        _backgroundImage = null;
+        _backgroundFinalRect = null;
+        _motionStartBackground = null;
         _transitionEntries.Clear();
         _motionPlan = null;
         _motionStartRects = null;
@@ -605,13 +637,16 @@ internal sealed class StageSceneView : UserControl
         PreviewAssetLibrary library = _session?.AssetLibrary ?? PreviewAssetLibrary.Empty;
         string? speakerCharacterId = _session?.Definition.FindSpeakerCharacterId(request.SpeakerName);
 
-        RenderBackground(library, request.State, width, height, em);
-
         // 시간 흐름 (2026-08-21) — 라인 시작 자리를 <b>같은 컴포저</b>로 짓는다.
         // 이동·배치·뎁스가 저마다 다른 노드를 만져도 여기 한 번의 합성으로 합쳐진다.
         _composeContext = (request.State, request.SpeakerName, speakerCharacterId, width, height);
         _motionPlan = request.MotionPlan;
-        _motionStartRects = ComposeMotionRects(0);
+
+        if (ComposeMotionFrame(0) is { } start)
+        {
+            _motionStartRects = start.Slots;
+            _motionStartBackground = start.Background;
+        }
 
         StageSceneLayout layout = StageSceneComposer.Compose(
             request.State,
@@ -621,6 +656,12 @@ internal sealed class StageSceneView : UserControl
             height,
             request.CoreState,
             _session?.TuningLibrary.SurfaceLayouts);
+
+        // 배경도 카메라를 탄다 (2026-08-27) — 자리는 컴포저가 초상과 같은 규약으로 계산했다.
+        // 캔버스에 가장 먼저 얹혀야 하므로(맨 뒤) 컴포즈 직후·초상 앞이 이 호출의 자리다.
+        _backgroundFinalRect = layout.Background;
+        RenderBackground(
+            library, request.State, layout.Background ?? new StageRect(0, 0, width, height), width, em);
 
         foreach (StagePortraitPlacement portrait in layout.Portraits)
         {
@@ -715,6 +756,12 @@ internal sealed class StageSceneView : UserControl
             {
                 ApplyRect(control, rest);
             }
+        }
+
+        // 배경도 카메라를 탄다 (2026-08-27) — 정지 화면은 출발의 샷이다.
+        if (_backgroundImage is not null && _motionStartBackground is { } backgroundStart)
+        {
+            ApplyRect(_backgroundImage, backgroundStart);
         }
     }
 
@@ -1201,13 +1248,15 @@ internal sealed class StageSceneView : UserControl
         _composeContext;
 
     /// <summary>
-    /// 라인 시작 후 <paramref name="elapsedSeconds"/> 시점의 자리들. 계획이 없으면 null —
-    /// 그때는 라인 사이 전이(직전 렌더 → 이번 렌더)가 화면을 맡는다.
+    /// 라인 시작 후 <paramref name="elapsedSeconds"/> 시점의 자리들 — 슬롯들과 <b>배경</b>
+    /// (2026-08-27 — 카메라가 흐르면 배경도 같은 규약으로 흐른다). 계획이 없으면 null —
+    /// 그때는 정지 화면이 곧 확정 상태다.
     ///
     /// 좌표를 여기서 손으로 더하지 않는다: <b>보간한 무대 상태를 컴포저에 그대로 넘긴다.</b>
     /// 그래서 배율·포커스 보정처럼 자리와 크기가 함께 걸린 커맨드도 저절로 맞는다.
     /// </summary>
-    private IReadOnlyDictionary<string, StageRect>? ComposeMotionRects(double elapsedSeconds)
+    private (IReadOnlyDictionary<string, StageRect> Slots, StageRect? Background)? ComposeMotionFrame(
+        double elapsedSeconds)
     {
         if (_motionPlan is not { } plan || _composeContext is not { } context)
         {
@@ -1230,7 +1279,7 @@ internal sealed class StageSceneView : UserControl
             rects[portrait.SlotKey] = portrait.Rect;
         }
 
-        return rects;
+        return (rects, layout.Background);
     }
 
     /// <summary>
@@ -1384,8 +1433,8 @@ internal sealed class StageSceneView : UserControl
     private void RenderBackground(
         PreviewAssetLibrary library,
         MiniStageState state,
+        StageRect rect,
         double width,
-        double height,
         double em)
     {
         string? keyText;
@@ -1400,13 +1449,17 @@ internal sealed class StageSceneView : UserControl
 
             if (background.FilePath is { } path && _session?.ImageCache.Get(path) is { } bitmap)
             {
-                Add(new Image
+                // 자리는 카메라를 탄 무대 rect다 (2026-08-27) — shot이 흐르면
+                // SetTransitionProgress가 이 컨트롤을 같은 규약으로 옮긴다.
+                var backgroundImage = new Image
                 {
                     Source = bitmap,
                     Stretch = Stretch.UniformToFill,
-                    Width = width,
-                    Height = height
-                }, new StageRect(0, 0, width, height));
+                    Width = rect.Width,
+                    Height = rect.Height
+                };
+                Add(backgroundImage, rect);
+                _backgroundImage = backgroundImage;
                 return;
             }
 
@@ -1423,7 +1476,7 @@ internal sealed class StageSceneView : UserControl
             Opacity = 0.8,
             TextAlignment = TextAlignment.Center,
             Width = width
-        }, new StageRect(0, height * 0.04, width, em * 1.4));
+        }, new StageRect(0, _canvas.Height * 0.04, width, em * 1.4));
     }
 
     private void RenderPortrait(PreviewAssetLibrary library, StagePortraitPlacement portrait, double em)
