@@ -313,12 +313,17 @@ internal sealed class StageSceneView : UserControl
             {
                 ApplyRect(control, now);
             }
-            else if (hadRect)
+            else
             {
-                Canvas.SetLeft(control, Lerp(from!.X, to.X, t));
-                Canvas.SetTop(control, Lerp(from.Y, to.Y, t));
-                control.Width = Lerp(from.Width, to.Width, t);
-                control.Height = Lerp(from.Height, to.Height, t);
+                // ⛔ 직전 자리 → 새 자리 일괄 보간은 2026-08-26에 걷었다 (소유자 보고:
+                // "place … 0fr로 바꿧는데도 … 천천히 이동" · 끄면 "역으로 … 천천히 이동").
+                // 시간에 따라 움직이는 것은 <b>모션 계획에 든 슬롯뿐</b>이고(위 갈래 —
+                // 커맨드가 제 duration·이징으로 끈다), 계획 밖의 자리 변화는 시간을 안 가진
+                // 커맨드(0fr)의 것이라 런타임처럼 <b>즉시 스냅</b>이다. 이 보간은 모션
+                // 계획(2026-08-21) 전에 라인 사이를 잇던 근사인데, 남아 있으니 0fr이
+                // 기준선과의 차이만큼 미끄러졌고 — 연출 그래프를 다녀오면 기준선이 비어
+                // 우연히 정상으로 보였다.
+                ApplyRect(control, to);
             }
 
             // 퇴장 — 나가는 초상을 고스트 위에 얹고 서서히 걷는다. 자리 계산이 끝난 뒤라

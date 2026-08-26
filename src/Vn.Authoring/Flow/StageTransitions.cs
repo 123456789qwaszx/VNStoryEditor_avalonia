@@ -16,8 +16,13 @@ namespace Vn.Authoring.Flow;
 /// 정확히 24프레임이라, 그보다 긴 커맨드는 라인 시계가 먼저 끝나 중간에 잘리고
 /// 확정 자리로 튀었다. 커맨드가 쓴 프레임이 곧 이 라인이 흐르는 시간이다.
 ///
-/// 시간을 가진 커맨드가 하나도 없으면 짧은 기본 전이를 쓴다 — 무엇도 안 변하는
+/// <b>커맨드가 하나도 없는 라인만</b> 짧은 기본 전이를 쓴다 — 무엇도 안 변하는
 /// 라인이면 보간이 스스로 무행위가 된다.
+///
+/// ⛔ <b>커맨드가 있는데 전부 0이면 0이다</b> (2026-08-26 소유자 보고: "place …
+/// 0fr로 바꿧는데도 … duration이 있는 상태로 천천히 이동"). 0fr은 작가가 "즉시"라고
+/// 적은 것인데 기본 0.35초가 얹히면 런타임과 갈린다 — 런타임은 그 라인에서 아무것도
+/// 태우지 않는다.
 /// </summary>
 public static class StageTransitions
 {
@@ -47,6 +52,8 @@ public static class StageTransitions
             }
         }
 
-        return max > 0 ? max : DefaultSeconds;
+        return max > 0
+            ? max
+            : commands is { Count: > 0 } ? 0 : DefaultSeconds;
     }
 }
