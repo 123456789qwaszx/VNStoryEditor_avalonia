@@ -48,7 +48,8 @@ public sealed class StageInstantCommandTests
 
     private static MiniStagePreviewRequest Request(
         PresentationResultCommand[] setup,
-        PresentationResultCommand[][] lines)
+        PresentationResultCommand[][] lines,
+        string? speakerName = null)
     {
         MiniStageFoldLine[] foldLines = lines
             .Select((commands, index) => new MiniStageFoldLine($"ln{index + 1}", false, commands))
@@ -62,7 +63,7 @@ public sealed class StageInstantCommandTests
             fold.State,
             HasPresentation: true,
             SelectedLineId: foldLines.Length > 0 ? foldLines[^1].LineId : null,
-            SpeakerName: null,
+            SpeakerName: speakerName,
             LineText: "대사",
             CoreState: fold.CoreState,
             TransitionSeconds: StageTransitions.SecondsFor(Catalog, lineCommands),
@@ -191,6 +192,68 @@ public sealed class StageInstantCommandTests
         Assert.NotEqual(midWidths, closeWidths);
 
         stage.Window.Close();
+    });
+
+    [Fact]
+    public void 화자_강조가_붙어도_size가_그림_크기를_끈다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "duration을 넣어뒀음에도 depth는 최종완료상태를 preview에
+        // 반영하고 있어." 화자 강조 테두리로 감싼 초상은 안쪽 그림이 최종 크기를 명시값으로
+        // 따로 들고 있어서, 전이·모션(ApplyRect)이 테두리만 줄이고 그림은 그대로였다 —
+        // 말하는 캐릭터에서만 나는 버그라 화자 없는 하네스가 못 봤다.
+        string directory = Path.Combine(
+            Path.GetTempPath(), "vn-stage-speaker", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string manifest = Path.Combine(
+            directory, "p" + Vn.Authoring.Serialization.ProjectManifestJson.FileExtension);
+        Vn.Authoring.Serialization.ProjectStore.Save(
+            manifest, new Vn.Authoring.Model.StoryProject { Title = "화자" });
+
+        var session = new Vn.App.Services.AuthoringSession();
+        session.Open(manifest);
+        Assert.True(session.SaveSpeakers(
+            [new SpeakerSpec { Name = "라루", CharacterId = "parkeunseol" }]));
+
+        var view = new StageSceneView();
+        var window = new Window { Content = view, Width = 800, Height = 600 };
+        window.Show();
+        view.Attach(session);
+
+        try
+        {
+            var stage = new Stage(view, window);
+            PresentationResultCommand[] setup =
+                [.. CastInSetup, Command("char_rig_entrance.show", ("slot", "c1"))];
+
+            stage.Draw(Request(setup, [[]], speakerName: "라루"));
+            stage.Draw(Request(setup, [
+                [],
+                [Command("char_rig_depth.size",
+                    ("slot", "c1"), ("depth", "close"), ("focus", "bust"), ("duration", "12fr"))]],
+                speakerName: "라루"));
+
+            // 도착에서 폭이 자랄 컨트롤 = 화자 테두리를 두른 초상이다.
+            (Control Control, double Width)[] rests = stage.Positioned()
+                .Select(control => (control, control.Width))
+                .Where(entry => !double.IsNaN(entry.Width))
+                .ToArray();
+
+            stage.View.SetTransitionProgress(1);
+            (Control moved, _) = Assert.Single(
+                rests, entry => Math.Abs(entry.Control.Width - entry.Width) > 1);
+
+            Border speaker = Assert.IsType<Border>(moved);
+
+            // 크기의 주인은 바깥 하나다 — 안쪽 그림이 명시 크기를 들면 테두리만 줄어든다.
+            Assert.True(
+                double.IsNaN(((Control)speaker.Child!).Width),
+                "화자 테두리 안쪽 그림이 크기를 따로 들고 있다 — depth가 최종 크기로 굳는다");
+        }
+        finally
+        {
+            window.Close();
+            Directory.Delete(directory, recursive: true);
+        }
     });
 
     [Fact]

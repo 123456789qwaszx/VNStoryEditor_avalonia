@@ -1523,6 +1523,13 @@ internal sealed class StageSceneView : UserControl
 
         if (portrait.IsSpeaker)
         {
+            // ⚠ 크기의 주인은 <b>맨 바깥 컨트롤 하나</b>다 — 전이·모션(ApplyRect)이
+            // 리사이즈하는 것이 그것이기 때문이다. 안쪽 이미지가 명시 크기를 따로 들면
+            // 테두리만 줄고 그림은 최종 크기로 남는다 (2026-08-26 소유자: "depth는
+            // 최종완료상태를 preview에 반영하고 있어" — 화자 강조가 붙은 슬롯에서만 났다).
+            image.Width = double.NaN;
+            image.Height = double.NaN;
+
             image = new Border
             {
                 BorderBrush = SpeakerHighlight,
