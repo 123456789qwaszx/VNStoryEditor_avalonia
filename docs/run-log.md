@@ -7943,9 +7943,10 @@ Vn.App 377 — 알림 고리를 거는 시험 하나 추가).
 **고정** — `머리글_글줄은_사라지고_챕터_콤보가_그_자리에_선다` ·
 `선택기는_고른_챕터의_씬만_담는다` · `뜬_진단이_화면에_그대로_선다`(접힌 보고 + 머리글
 요약으로 개정). 씬 선택기 테스트 둘은 앱 흐름대로 `SelectFile`을 밟는다.
-**Vn.App 384 통과, 실패 0.** ⚠ `PresentationGraphStageJumpTests`가 전체 실행에서
+**Vn.App 384 통과, 실패 0.** ~~⚠ `PresentationGraphStageJumpTests`가 전체 실행에서
 간헐 실패한다(더블클릭 제스처 타이밍 — 단독 실행은 늘 통과, 오늘 스테이지 변경 전부터
-있던 패턴, 열린 항목).
+있던 패턴, 열린 항목).~~ → **닫혔다** — "무대 점프 간헐 실패의 정체" 항목(같은 날).
+타이밍은 절반이었고, 뿌리는 테스트 창이 <b>이 컴퓨터의 최근 프로젝트를 복원</b>하던 것.
 
 ---
 
@@ -8257,3 +8258,75 @@ Broken/Blocked 구분 · 유령 스탯키) · `StageEpisodeChoiceTests`(깨진 �
 표시 미달 흐림/해금 미달 잠금 안내문 · **커밋이 다음 에피소드 관문을 연다** + HUD 누적 ·
 새 재생 = 처음값). **전체 1797 통과, 실패 0** (Core 356 · Vn.Core 60 · Vn.Authoring 975 ·
 Vn.App 406).
+
+---
+
+## 무대 점프 간헐 실패의 정체 — 테스트 창이 이 컴퓨터의 최근 프로젝트를 물려받고 있었다 (`(다음 커밋)`)
+
+> ⏱ **앞선 날짜(2026-08-26)의 작업이 뒤늦게 들어왔다** — 분리된 워크트리
+> (`claude/reverent-turing-44322f`)에서 따로 진행돼 이 브랜치에 없었고, 2026-08-27에
+> 체리픽으로 가져왔다. 그 사이 이 브랜치는 **같은 문제의 절반**(설정 경로만 돌려세우기)을
+> 제 나름대로 들고 있었다 — 합치며 한 벌로 정리했다(아래 **합칠 때 고친 것**).
+
+**증상** (2026-08-26) — `PresentationGraphStageJumpTests`가 전체 스위트에서만 하루 세 번,
+매번 <b>다른</b> 테스트가 하나씩 떨어졌다. 단독 실행(`--filter`)은 늘 통과.
+
+**원인은 둘이 겹쳐 있었다**
+
+1. **테스트 프로세스가 사용자의 진짜 설정 파일을 쓰고 있었다** — 세션이 프로젝트를 열
+   때마다 `AppSettingsService.SaveRecentProject`가 AppData의 실제 settings.json에 적고
+   (실제로 사용자의 최근 프로젝트가 `Temp\vn-work-amount\…`라는 지워진 테스트 폴더를
+   가리키고 있었다), 반대로 <b>모든 `MainWindow`가 Opened에서 그 최근 프로젝트를
+   복원</b>한다. 전체 스위트에서는 다른 테스트가 방금 연 살아 있는 임시 프로젝트가
+   복원되고, 그 챕터 감시자의 에피소드 동기화가 <b>비동기로</b> 판을 다시 그린다 —
+   워크북에 없는 대사 노드 솎아내기 포함(`StageTabEntryTests`가 이미 겪고 제 판으로
+   피해 갔던 그 위험). 더블클릭 넷 사이에 판이 재건되면 카드가 새 객체로 바뀌어
+   제스처가 끊기거나(원래 증상), 좌표가 낡아 옆 카드를 누른다(설정 노드 테스트가 무대로
+   가 버리던 오늘의 새 증상). 단독 실행이 늘 통과한 것은 그때의 "최근 프로젝트"가 이미
+   지워진 임시 폴더라 복원이 조용히 실패했기 때문 — <b>이 컴퓨터의 상태가 테스트 결과를
+   정하고 있었다</b>.
+2. **합성 더블클릭이 진짜 시계에 매여 있었다** — MouseDown/Up 둘이 묶이려면 두 눌림
+   사이가 플랫폼 더블탭 시간(500ms 고정) 안이어야 하는데, 헤드리스 입력의 Timestamp는
+   Stopwatch 실시간이다. 스위트 부하의 GC·스케줄링이 끼면 그냥 넘는다.
+
+**한 일**
+
+- **테스트 프로세스 격리** (`TestProcessIsolation` — ModuleInitializer, 어떤 테스트보다
+  먼저): 설정 파일을 `Temp\vntool-tests\settings.json`으로 돌려세우고(지우고 시작),
+  `MainWindow.RestoreRecentProjectOnOpen`(새 검증용 손잡이)을 꺼서 테스트 창이 아무것도
+  물려받지 않게 했다. `AppSettingsService.SettingsPath`가 세터를 얻었다. 사용자의 진짜
+  설정을 테스트가 덮어쓰던 것도 이것으로 함께 끝났다.
+- **더블탭 시간 창을 테스트가 쥔다** (`TestPlatformSettings`): 클릭 넷을 보내는 동안만
+  더블탭 창을 사실상 무한대로 연다 — 경로(히트 테스트 → ClickCount → DoubleTapped)는
+  실물 그대로고, 프로세스 전체로 늘리면 같은 자리를 두 번 따로 누르는 다른 테스트가
+  더블클릭으로 묶이므로 스코프로만 연다. ⚠ Avalonia 12의 참조 어셈블리는
+  `IPlatformSettings` 구현·`DefaultPlatformSettings` 상속·`AvaloniaLocator` 접근을 전부
+  봉인해서(PrivateApi), 런타임에 인터페이스를 대신 구현하는 `DispatchProxy` + 리플렉션
+  로케이터 되묶기로 들어갔다(MouseDevice는 클릭마다 로케이터에서 설정을 새로 꺼낸다 —
+  디컴파일로 확인). DoubleClick 헬퍼는 설정이 프록시를 실제로 지나갔는지도 단언한다 —
+  Avalonia가 읽는 자리를 바꾸면 간헐 실패가 아니라 즉시 실패로 드러난다.
+
+**되돌리는 법** — 격리만 걷으려면 `TestProcessIsolation.cs`를 지우고
+`RestoreRecentProjectOnOpen`·`SettingsPathOverride`를 걷는다. 더블탭 스코프만 걷으려면
+`TestPlatformSettings.cs`와 `HeadlessUi`의 `AfterSetup` 한 줄.
+
+**확인** — `dotnet test tests/Vn.App.Tests` 전체 384개를 **3회 연속** 실행, 실패 0.
+솔루션 단위도 요약 줄 넷 전부 통과(Ked.Presentation.Core 356 · Vn.Core 60 · Vn.Authoring 967 · Vn.App 384, 실패 0).
+
+### 합칠 때 고친 것 (2026-08-27 체리픽)
+
+이 브랜치에는 같은 날 **같은 문제의 절반**이 따로 서 있었다: `HeadlessUi`의 정적
+생성자가 `AppSettingsService.SettingsPathOverride`를 임시 GUID 경로로 돌려세우는 것.
+합치면 격리 손잡이가 **두 벌**이 되므로(값의 주인은 한 곳) 한 벌로 정리했다.
+
+- **주인은 `TestProcessIsolation` 하나** — `HeadlessUi`의 정적 생성자를 걷었다.
+  ModuleInitializer가 더 세다: 어셈블리가 실리는 순간 도므로 **창을 띄우되 `HeadlessUi`를
+  안 지나는 길**이 생겨도 격리가 새지 않는다.
+- **속성 모양은 이 브랜치의 것을 남겼다** — 들어온 쪽의 `SettingsPath { get; set; }`
+  대신 `SettingsPathOverride`(널 가능) + 계산 속성 `SettingsPath`. 진짜 기본 경로가
+  불변으로 남고 되돌리기가 되며, 손잡이가 `internal`이라 제품 코드가 실수로 못 바꾼다.
+  `TestProcessIsolation`이 이 이름으로 돌려세운다.
+- ⚠ **경로만 바꾸는 것으로는 모자란다는 사실이 이 합침의 값이다** — 이 브랜치의 절반은
+  "임시 경로가 비어 있어 복원이 조용히 실패하던 것"에 기대고 있었다. 그 폴더에 프로젝트가
+  남는 순간 같은 흔들림이 돌아온다. 복원 자체를 끄는 `RestoreRecentProjectOnOpen`이
+  짝이고, 둘이 함께 있어야 격리다.

@@ -22,11 +22,18 @@ internal static class AppSettingsService
     };
 
     /// <summary>
-    /// 테스트 격리 (2026-08-26) — 헤드리스 MainWindow가 이 파일을 진짜 %APPDATA%에서
-    /// 읽으면 <b>개발자의 실제 최근 프로젝트를 열어 버린다</b>(OnOpened): 테스트가 그
-    /// 프로젝트의 그날 상태에 따라 무작위로 흔들리고(실사례 — 소유자가 실험하던
-    /// 프로젝트가 바뀌자 무관한 테스트들이 죽었다), 세션이 실제 원고 폴더에 감시자를
-    /// 걸고 노드를 더한다. 테스트 러너가 이 값을 임시 경로로 바꾼다(HeadlessUi).
+    /// 테스트 격리의 손잡이 (2026-08-26) — <b>피해가 양방향이었다.</b> 헤드리스
+    /// MainWindow가 이 파일을 진짜 %APPDATA%에서 읽으면 개발자의 실제 최근 프로젝트를
+    /// 열어 버리고(OnOpened — 그 프로젝트의 그날 상태에 따라 무관한 테스트들이 무작위로
+    /// 죽고, 세션이 실제 원고 폴더에 감시자를 걸고 노드를 더한다), 반대로 테스트가 여는
+    /// 임시 프로젝트가 <b>사용자의 진짜 최근 프로젝트를 덮어썼다</b> — 실제로 사용자의
+    /// settings.json이 이미 지워진 임시 폴더를 가리키고 있었다.
+    ///
+    /// 돌려세우는 자리는 <see cref="Vn.App.Tests.TestProcessIsolation"/> 하나다(어셈블리가
+    /// 실리는 순간 = 어떤 테스트보다 먼저). ⚠ 경로를 바꾸는 것만으로는 모자란다 —
+    /// 복원 자체를 끄는 <see cref="MainWindow.RestoreRecentProjectOnOpen"/>이 짝이다.
+    /// 임시 경로가 비어 있어 복원이 <b>조용히 실패하던 것</b>에 기대고 있었을 뿐이라,
+    /// 그 폴더에 프로젝트가 남으면 같은 흔들림이 돌아온다.
     /// </summary>
     internal static string? SettingsPathOverride { get; set; }
 

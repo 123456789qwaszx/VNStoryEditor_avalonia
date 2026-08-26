@@ -222,14 +222,32 @@ public sealed class PresentationGraphStageJumpTests
             new Avalonia.Point(card.Bounds.Width / 2, 12), window)!.Value;
     }
 
-    /// <summary>진짜 더블클릭 — 눌림 둘이 제스처로 묶이는지까지 함께 잰다.</summary>
+    /// <summary>
+    /// 진짜 더블클릭 — 눌림 둘이 제스처로 묶이는지까지 함께 잰다.
+    ///
+    /// ⚠ 묶임 판정은 두 눌림 사이의 <b>진짜 시계</b>다(헤드리스 입력 Timestamp가 실시간).
+    /// 스위트 부하에서 그 간격이 기본 500ms를 넘으면 제스처가 안 묶여 매번 다른 테스트가
+    /// 하나씩 떨어졌다(2026-08-26). 그래서 클릭 넷을 보내는 동안만 더블탭 시간 창을
+    /// 열어 둔다 — 경로(히트 테스트 → ClickCount → DoubleTapped)는 실물 그대로다.
+    /// </summary>
     private static void DoubleClick(MainWindow window, Avalonia.Point point)
     {
-        window.MouseDown(point, MouseButton.Left);
-        window.MouseUp(point, MouseButton.Left);
-        window.MouseDown(point, MouseButton.Left);
-        window.MouseUp(point, MouseButton.Left);
+        int readsBefore = TestPlatformSettings.Instance.DoubleTapTimeReads;
+
+        using (TestPlatformSettings.Instance.HoldDoubleTapWindowOpen())
+        {
+            window.MouseDown(point, MouseButton.Left);
+            window.MouseUp(point, MouseButton.Left);
+            window.MouseDown(point, MouseButton.Left);
+            window.MouseUp(point, MouseButton.Left);
+        }
+
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 배선 단절을 소리 나게 — Avalonia가 더블탭 시간을 다른 데서 읽게 바뀌면
+        // 간헐 실패로 돌아가는 대신 여기서 즉시 무너진다.
+        Assert.True(TestPlatformSettings.Instance.DoubleTapTimeReads > readsBefore,
+            "더블탭 시간 창이 TestPlatformSettings를 지나지 않았다 — 합성 더블클릭이 다시 진짜 시계에 매였다");
     }
 
     /// <summary>연출 그래프 탭에 선 창 하나 + 재생할 줄이 있는 대사 노드.</summary>

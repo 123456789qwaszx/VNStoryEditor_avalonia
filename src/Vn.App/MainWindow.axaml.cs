@@ -437,12 +437,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 검증용 손잡이 — 최근 프로젝트 복원을 끈다. 헤드리스 테스트의 창은 "이 컴퓨터가
+    /// 마지막에 연 프로젝트"를 물려받으면 안 된다: 복원된 챕터의 감시자가 부르는 에피소드
+    /// 동기화가 테스트가 세운 노드를 솎아 내고 판을 다시 그려, 부하에 따라 매번 다른
+    /// 테스트가 흔들렸다(2026-08-26 — 더블클릭 넷 사이에 판이 재건되면 제스처도 끊긴다).
+    /// </summary>
+    internal static bool RestoreRecentProjectOnOpen { get; set; } = true;
+
+    /// <summary>
     /// 최근 프로젝트 복원은 편의 기능이다. 실패해도 빈 창은 그대로 쓸 수 있어야 한다.
     /// 이 핸들러는 async void라 예외가 새면 잡아 줄 곳이 없고 곧장 프로세스를 죽인다.
     /// </summary>
     private void OnOpened(object? sender, EventArgs e)
     {
-        if (_restoredRecent)
+        if (_restoredRecent || !RestoreRecentProjectOnOpen)
         {
             return;
         }
