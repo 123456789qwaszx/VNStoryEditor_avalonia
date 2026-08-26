@@ -1789,8 +1789,24 @@ internal sealed class StageSceneView : UserControl
                 }
             };
 
+            // 에피소드 끝 선택지 (2026-08-27) — 클릭의 뜻은 옵션이 스스로 든다(도착
+            // 에피소드로 씬 전환). 버튼 그리기는 갈래 선택과 한 벌, 배선만 갈린다.
+            if (option.Choose is { } choose && _session is not null)
+            {
+                optionBox.Cursor = new Cursor(StandardCursorType.Hand);
+                optionBox.PointerPressed += (_, args) =>
+                {
+                    if (!args.GetCurrentPoint(optionBox).Properties.IsLeftButtonPressed)
+                    {
+                        return;
+                    }
+
+                    UiGuard.Run(_session, "선택지 선택", choose);
+                    args.Handled = true;
+                };
+            }
             // 옵션 클릭 = 그 갈래 선택 (W35). 재생 중이면 선택 후 곧장 진행이기도 하다(W35-5).
-            if (option is { LineId: { } optionLineId, BlockLineId: { } blockLineId } && _session is not null)
+            else if (option is { LineId: { } optionLineId, BlockLineId: { } blockLineId } && _session is not null)
             {
                 optionBox.Cursor = new Cursor(StandardCursorType.Hand);
                 optionBox.PointerPressed += (_, args) =>

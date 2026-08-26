@@ -520,13 +520,52 @@ public sealed class StagePlayback
     }
 
     /// <summary>
-    /// 재생을 처음부터 다시 시작한다 — 쌓인 복귀와 "다녀왔음" 표시를 버린다.
-    /// 이 청소가 없으면 두 번째 재생에서 detour가 통째로 건너뛰어진다.
+    /// 재생을 처음부터 다시 시작한다 — 쌓인 복귀와 "다녀왔음" 표시, 그리고 자유 씬 뒤에
+    /// 이어질 도착 에피소드를 버린다. 이 청소가 없으면 두 번째 재생에서 detour가 통째로
+    /// 건너뛰어지고, 지난 재생의 선택이 이번 재생의 끝에 되살아난다.
     /// </summary>
     public void ResetDetours()
     {
         _detours.Clear();
         _spentExits.Clear();
+        _pendingEpisodeTargetNodeId = null;
+    }
+
+    // ── 에피소드 끝 선택지 (2026-08-27 소유자 보고: 에피소드가 끝나도 선택지가 안 선다) ──
+    //
+    // 전이 규칙 v9①: 에피소드 대본이 끝나면 챕터 `간선`의 선택지가 제시된다. 간선에 자유
+    // 씬(ViaNode)이 매달려 있으면 런타임은 그 씬을 재생한 뒤 도착 에피소드로 간다 — 그
+    // "씬 다음 자리"를 여기 적어 두고, 나갈 곳 없는 노드 끝에서 detour 복귀 다음 순서로
+    // 소비한다. detour 스택과 같은 수명이라 청소도 같은 자리다(ResetDetours).
+
+    private string? _pendingEpisodeTargetNodeId;
+
+    /// <summary>자유 씬으로 나가기 직전 — 씬이 끝나면 이어질 도착 에피소드 노드를 적는다.</summary>
+    public void SetPendingEpisodeTarget(string nodeId) => _pendingEpisodeTargetNodeId = nodeId;
+
+    /// <summary>적어 둔 도착 에피소드를 꺼낸다(소비) — 없으면 null.</summary>
+    public string? TakePendingEpisodeTarget()
+    {
+        string? target = _pendingEpisodeTargetNodeId;
+        _pendingEpisodeTargetNodeId = null;
+        return target;
+    }
+
+    /// <summary>
+    /// 에피소드 끝 선택지가 화면에 섰다 — 클릭이 올 때까지 시간이 흐르지 않는다
+    /// (선택지 라인의 WaitInput과 같은 위상). 재생 중이 아니면 이미 멈춰 있으니 할 일이 없다.
+    /// </summary>
+    public void WaitForChoiceInput()
+    {
+        if (!IsPlaying)
+        {
+            return;
+        }
+
+        _isChoice = true;
+        _phase = Phase.WaitInput;
+        TypingProgress?.Invoke();
+        StateChanged?.Invoke();
     }
 
     /// <summary>그 방향으로 옮길 라인이 있는가 — 재생 줄의 [◀ 이전]·[다음 ▶]이 이걸 본다.</summary>

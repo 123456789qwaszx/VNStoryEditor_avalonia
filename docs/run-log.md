@@ -8164,3 +8164,47 @@ pan)을 무대 네 모서리에 씌운 rect가 됐다.
 
 **고정** — `카메라는_배경도_태운다`(샷 없음 = 무대 전체 · 줌 = 배율 규약대로 커지고
 중앙 기준 사방으로 넘친다). **Vn.Authoring 968 · Vn.App 394 통과, 실패 0.**
+
+---
+
+## 에피소드 끝에서 챕터 선택지가 선다 (`(다음 커밋)`)
+
+**소유자 보고 (2026-08-27)** — *"무대 프리뷰에서 에피소드가 끝날 때 선택지가 제시되지
+않고 있어."*
+
+**원인** — 전이 규칙 v9①(에피소드 끝 = `간선` 선택지 제시)의 프리뷰 절반이 없었다.
+나갈 곳 없는 노드 끝(`DetourReturnPlayback.Exit`)이 detour 복귀만 시도하고 없으면
+`StopAtEnd()`로 그냥 멈췄다 — 런타임이라면 선택지가 서는 그 자리다.
+
+**한 일**
+
+1. **나갈 곳 없는 노드 끝의 순서가 넷이 됐다** (`DetourReturnPlayback.Exit`) — detour
+   복귀 → **자유 씬 다음 자리**(아래 3) → **에피소드 끝 선택지 제시** → 다 없으면
+   지금처럼 멈춤(나가는 간선 없는 에피소드 = 챕터 종료라 멈추는 것이 맞다).
+2. **선택지 제시** (`MiniStagePreview.TryPresentEpisodeChoices`) — 재생 노드가 말하는
+   대사 노드(연출 노드면 `PresentationSupply` 공급 대상 — 채널 상태줄과 같은 자리)의
+   `ExcelEpisodeId` → 노드가 사는 판 이름(=ChapterId)으로 챕터 모델(원천은
+   `SupplyChapters` 목록 하나 — 뷰가 워크북을 직접 읽지 않는다) → 그 에피소드의 나가는
+   간선을 **행 순서대로** 무대 중앙 버튼으로. 그리기는 갈래 선택(W35)과 한 벌이고
+   (`StageChoiceOption`에 `Choose` 콜백만 얹었다), 재생은 `WaitForChoiceInput`으로
+   클릭까지 시계를 멈춘다(선택지 라인의 WaitInput 위상 재사용). ⚠ **관문(표시·해금조건)은
+   숨기지 않고 문구 옆에 병기한다** — 프리뷰는 챕터 스탯을 시뮬레이션하지 않으므로
+   숨기면 거짓말이다(근사임을 화면이 말한다). 문구 없는 간선은 v12부터 규격 오류라
+   버튼이 못 된다.
+3. **고르면 씬 선택기와 같은 길 하나** — `RequestSceneChange`가 `OnNodeSwitch` 후
+   `SceneChosen`을 쏘고, 셸의 `EnterPresentationChannel`이 연출 채널을 세운다(길이
+   두 벌이 되지 않는다). 간선에 **자유 씬**(ViaNode — 구판 OPTION 포트 먼저, 없으면
+   `ChoiceExits`, 내보내기 `ChapterBoard`·철도 `PortFor`와 같은 순서)이 매달려 있으면
+   씬을 먼저 재생하고, 도착 에피소드는 `StagePlayback.SetPendingEpisodeTarget`에 적어
+   뒀다가 씬 끝(detour 복귀 소진 뒤)에 소비한다 — detour 스택과 같은 수명이라 청소도
+   `ResetDetours` 한 자리다. 도착 에피소드가 아직 동기화 전(판에 노드 없음)이면
+   상태줄이 길을 말하고 제자리에 남는다.
+
+**되돌리는 법** — `DetourReturnPlayback.Exit`의 pending·present 두 분기를 걷으면 예전
+"detour 없으면 멈춤"으로 돌아간다. 나머지는 각자 독립(콜백 없는 `StageChoiceOption`은
+그대로 갈래 선택이다).
+
+**테스트** — `StageEpisodeChoiceTests`(행 순서 제시 · 관문 병기 · 간선 없음/커스텀 씬
+비제시 · 클릭 = 도착 씬 전환 · 자유 씬 경유 + pending · 동기화 전 안내) ·
+`StagePlaybackTests`(선택지 대기 = 시계 정지 · pending 소비 1회 · 새 재생이 지움).
+**전체 1787 통과, 실패 0** (Core 356 · Vn.Core 60 · Vn.Authoring 968 · Vn.App 403).

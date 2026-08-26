@@ -569,4 +569,44 @@ public class StagePlaybackTests
         Arrive(playback, -1, 0, null);
         Assert.False(playback.IsPlaying);
     }
+
+    // ── 에피소드 끝 선택지 (2026-08-27) ──────────────────────────────────
+
+    [Fact]
+    public void 선택지_대기는_클릭이_올_때까지_시간이_흐르지_않는다()
+    {
+        (StagePlayback playback, List<int> moves) = Build(lineIndex: 1, lineCount: 2, text: "");
+
+        playback.Play();
+        playback.WaitForChoiceInput(); // 에피소드 끝 — 선택지가 화면에 섰다
+
+        playback.Tick(100);
+        Assert.True(playback.IsPlaying); // 멈춘 것이 아니라 기다리는 것이다
+        Assert.Empty(moves);
+        Assert.Null(playback.VisibleCharacters); // 선택지 화면 = 전문 표시
+    }
+
+    [Fact]
+    public void 선택지_대기는_재생_중이_아니면_아무_일도_없다()
+    {
+        (StagePlayback playback, _) = Build(lineIndex: 1, lineCount: 2, text: "");
+
+        playback.WaitForChoiceInput();
+        Assert.False(playback.IsPlaying);
+    }
+
+    [Fact]
+    public void 자유_씬_다음_자리는_한_번_꺼내면_비고_새_재생이_지운다()
+    {
+        (StagePlayback playback, _) = Build(lineIndex: 0, lineCount: 1, text: "");
+
+        playback.SetPendingEpisodeTarget("ep02-node");
+        Assert.Equal("ep02-node", playback.TakePendingEpisodeTarget()); // 소비
+        Assert.Null(playback.TakePendingEpisodeTarget());               // 두 번은 없다
+
+        // 새 전체 재생은 지난 선택의 다음 자리를 물려받지 않는다 — detour 이력과 같은 수명.
+        playback.SetPendingEpisodeTarget("ep03-node");
+        playback.Play(); // 일시정지에서 이어 붙는 재생이 아니므로 ResetDetours가 돈다
+        Assert.Null(playback.TakePendingEpisodeTarget());
+    }
 }

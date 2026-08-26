@@ -27,13 +27,16 @@ internal sealed record StageEditContext(
 /// 선택지 제시 화면의 옵션 버튼 하나.
 /// <see cref="LineId"/>·<see cref="BlockLineId"/>가 있으면 클릭이 그 갈래 선택이 된다 (W35).
 /// <see cref="IsTakenBranch"/>는 현재 프리뷰가 접고 있는 갈래 표시다(커서 강조와 별개).
+/// <see cref="Choose"/>가 있으면 클릭의 뜻이 그것 하나다 — 에피소드 끝의 챕터 간선 선택지
+/// (2026-08-27)가 이 길로 도착 에피소드로 넘어간다. 버튼 그리기는 갈래 선택과 한 벌이다.
 /// </summary>
 internal sealed record StageChoiceOption(
     string Text,
     bool IsSelected,
     string? LineId = null,
     string? BlockLineId = null,
-    bool IsTakenBranch = false);
+    bool IsTakenBranch = false,
+    Action? Choose = null);
 
 /// <summary>
 /// 선택지 버튼 목록 조립의 단일 구현 (W35) — 대사·연출 편집기가 같은 규칙 하나를 쓴다.
@@ -288,6 +291,187 @@ public partial class MiniStagePreview : UserControl
 
     /// <summary>편집기가 복귀를 확정한 뒤 부른다 — 선택은 이미 그 노드로 옮겨져 있다.</summary>
     internal void RequestDetourResume(string lineId) => DetourResumeRequested?.Invoke(lineId);
+
+    // ── 에피소드 끝 선택지 (2026-08-27 소유자 보고: 에피소드가 끝나도 선택지가 안 선다) ──
+    //
+    // 전이 규칙 v9①: 에피소드 대본이 끝나면 챕터 `간선`의 선택지가 제시된다(뜨는 순서 =
+    // `간선` 시트의 행 순서). 프리뷰 재생은 그 절반이 없어서 노드 끝에서 그냥 멈췄다.
+    // 간선의 원천은 챕터 그래프가 읽은 목록 하나(SupplyChapters)이고, 고르면 씬 선택기와
+    // 같은 길(SceneChosen → EnsurePresentationChannel)로 도착 에피소드가 무대에 오른다.
+
+    /// <summary>지금 무대에 선 요청 — 테스트가 제시된 선택지를 들여다보는 창이다.</summary>
+    internal MiniStagePreviewRequest? CurrentRequest => _current;
+
+    /// <summary>
+    /// 재생을 이 대사 노드로 넘긴다 — 씬 선택기가 하는 그 일이다(연출 채널은 셸이 세운다).
+    /// 노드가 없으면 false — 부른 쪽이 재생을 멈춘다.
+    /// </summary>
+    internal bool RequestSceneChange(string nodeId)
+    {
+        if (_session?.Project.FindNode(nodeId) is not DialogueNode)
+        {
+            return false;
+        }
+
+        Playback.OnNodeSwitch();
+        SceneChosen?.Invoke(nodeId);
+        return true;
+    }
+
+    /// <summary>
+    /// 나갈 곳 없는 노드 끝 (detour 복귀·자유 씬 다음 자리 모두 소진) — 이 노드가 에피소드라면
+    /// 챕터 간선의 선택지를 무대 중앙에 세우고 클릭을 기다린다. 세울 것이 없으면 false —
+    /// 나가는 간선이 없는 에피소드는 챕터 종료이므로 지금처럼 멈추는 것이 맞다.
+    /// </summary>
+    internal bool TryPresentEpisodeChoices(string? nodeId)
+    {
+        if (_session is null || _current is null || nodeId is null)
+        {
+            return false;
+        }
+
+        if (PlayingDialogueOf(nodeId) is not { ExcelEpisodeId: { } episodeId } source)
+        {
+            return false; // 커스텀 씬의 끝은 에피소드 끝이 아니다
+        }
+
+        StoryFile? file = _session.Project.FindFileContainingNode(source.Id);
+        ChapterGraphModel? chapter = file is null
+            ? null
+            : _chapters.FirstOrDefault(entry =>
+                string.Equals(entry.ChapterId, file.Name, StringComparison.Ordinal))?.Model;
+
+        if (chapter is null)
+        {
+            return false; // 챕터 판이 아니거나 워크북을 못 읽었다 — 선택지를 지어낼 원천이 없다
+        }
+
+        // 문구 없는 간선은 v12부터 규격 오류라 버튼이 못 된다 — 리더가 이미 짚었다.
+        List<ChapterEdge> edges = chapter.Edges
+            .Where(edge =>
+                string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal) &&
+                !edge.HasNoOptionLabel)
+            .ToList();
+
+        if (edges.Count == 0)
+        {
+            return false;
+        }
+
+        StageChoiceOption[] options = edges
+            .Select(edge => new StageChoiceOption(
+                EpisodeEdgeText(edge),
+                IsSelected: false,
+                Choose: () => ChooseEpisodeEdge(file!, source, edge)))
+            .ToArray();
+
+        _current = _current with { ChoiceOptions = options };
+        Render();
+        Playback.WaitForChoiceInput();
+        return true;
+    }
+
+    /// <summary>
+    /// 재생 노드 → 그 노드가 말하는 대사 노드. 연출 노드는 자기 공급 연결의 대상
+    /// (<c>PresentationSupply</c>)이 그 대사다 — 채널 상태줄이 보는 것과 같은 자리 하나다.
+    /// </summary>
+    private DialogueNode? PlayingDialogueOf(string nodeId)
+    {
+        StoryProject project = _session!.Project;
+
+        return project.FindNode(nodeId) switch
+        {
+            DialogueNode dialogue => dialogue,
+            PresentationNode presentation => project.Links.FirstOrDefault(link =>
+                    link.Kind == NodeLinkKind.PresentationSupply &&
+                    link.IsEnabled &&
+                    string.Equals(link.SourceNodeId, presentation.Id, StringComparison.Ordinal))
+                is { } supply
+                    ? project.FindNode(supply.TargetNodeId) as DialogueNode
+                    : null,
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// 버튼에 설 문구 — 프리뷰는 챕터 스탯을 시뮬레이션하지 않으므로 관문(표시·해금조건)을
+    /// 숨기거나 잠그는 대신 문구 옆에 정직하게 병기한다(근사임을 화면이 말한다).
+    /// </summary>
+    private static string EpisodeEdgeText(ChapterEdge edge)
+    {
+        var gates = new List<string>(2);
+
+        if (!string.IsNullOrWhiteSpace(edge.VisibleConditionLabel))
+        {
+            gates.Add($"표시: {edge.VisibleConditionLabel}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(edge.ConditionLabel))
+        {
+            gates.Add($"해금: {edge.ConditionLabel}");
+        }
+
+        return gates.Count == 0
+            ? edge.OptionLabel!
+            : $"{edge.OptionLabel} 〔{string.Join(" · ", gates)}〕";
+    }
+
+    /// <summary>
+    /// 선택지 클릭 — 도착 에피소드의 노드로 씬을 넘긴다. 간선에 자유 씬이 매달려 있으면
+    /// 그 씬을 먼저 재생하고 도착 에피소드가 뒤따른다(계약의 ViaNodeId — 다음 자리는
+    /// <see cref="StagePlayback.SetPendingEpisodeTarget"/>이 들고, 씬 끝에서 소비된다).
+    /// </summary>
+    private void ChooseEpisodeEdge(StoryFile file, DialogueNode source, ChapterEdge edge)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        // EpisodeId는 챕터 안에서만 유일하다 — 같은 판(파일)에서만 찾는다.
+        DialogueNode? target = file.Nodes.OfType<DialogueNode>()
+            .FirstOrDefault(node =>
+                string.Equals(node.ExcelEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal));
+
+        if (target is null)
+        {
+            // 아직 동기화 전인 에피소드 — 판에 카드가 없으니 넘어갈 곳도 없다.
+            _session.SetStatus(
+                $"'{edge.ToEpisodeId}' 에피소드는 아직 판에 노드가 없어 이어 재생할 수 없습니다 — " +
+                "챕터 그래프에서 이 챕터를 한 번 고르면 동기화가 세웁니다.");
+            return;
+        }
+
+        if (ViaSceneIdFor(source, edge.OptionLabel!) is { } viaId &&
+            _session.Project.FindNode(viaId) is DialogueNode)
+        {
+            Playback.SetPendingEpisodeTarget(target.Id);
+            RequestSceneChange(viaId);
+            return;
+        }
+
+        RequestSceneChange(target.Id);
+    }
+
+    /// <summary>
+    /// 이 간선에 매달린 자유 씬 — 배선이 사는 두 자리를 내보내기(<c>ChapterBoard</c>)·철도
+    /// 배선(<c>GraphEditorView.PortFor</c>)과 <b>같은 순서로</b> 본다: 문구가 같은 구판
+    /// OPTION 줄의 포트가 먼저, 없으면 문구를 열쇠로 한 선택지 배선이다.
+    /// </summary>
+    private string? ViaSceneIdFor(DialogueNode source, string optionLabel)
+    {
+        ExitPort? legacy = NodeConnections.PortsOf(source, _session!.Project)
+            .FirstOrDefault(port =>
+                port.IsChoice &&
+                string.Equals(port.ChoiceText, optionLabel, StringComparison.Ordinal));
+
+        if (legacy is not null)
+        {
+            return legacy.TargetNodeId;
+        }
+
+        return source.ChoiceExits.GetValueOrDefault(optionLabel);
+    }
 
     /// <summary>
     /// 씬 선택기에서 대사 노드 하나를 골랐다 (2026-08-21) — MainWindow가 연출 채널을

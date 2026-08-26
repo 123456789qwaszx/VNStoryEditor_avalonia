@@ -21,9 +21,12 @@ namespace Vn.App.Views;
 internal static class DetourReturnPlayback
 {
     /// <summary>
-    /// 경로 끝에서 노드를 나가는 <b>단 하나의 길</b>. 셋 중 하나가 일어난다:
+    /// 경로 끝에서 노드를 나가는 <b>단 하나의 길</b>. 넷 중 하나가 일어난다:
     ///
-    /// - 나갈 곳이 없다 → 쌓아 둔 detour 복귀를 태운다(없으면 false, 재생이 끝난다)
+    /// - 나갈 곳이 없다 → 쌓아 둔 detour 복귀를 태운다 → 없으면 자유 씬 뒤에 적어 둔
+    ///   도착 에피소드로 잇는다 → 그것도 없으면 <b>에피소드 끝 선택지</b>가 제시된다
+    ///   (전이 규칙 v9① — 2026-08-27 소유자 보고: 에피소드가 끝나도 선택지가 안 선다).
+    ///   선택지도 없으면 false — 챕터 종료, 재생이 끝난다
     /// - 갈래 출구(detour) → <b>돌아올 자리를 쌓고</b> 그 노드로 나간다
     /// - 기본 출구(jump) → 그냥 나간다. 돌아오지 않는다
     ///
@@ -43,7 +46,20 @@ internal static class DetourReturnPlayback
 
         if (path.ExitTargetNodeId is null)
         {
-            return TryReturn(session, preview);
+            if (TryReturn(session, preview))
+            {
+                return true;
+            }
+
+            // 자유 씬을 다 봤다 — 고른 간선의 도착 에피소드로 이어진다 (전이 규칙 v9①의
+            // ViaNode 절반). detour 복귀보다 뒤인 이유: 씬 안의 조건 갈래에서 다녀온
+            // detour가 아직 남아 있으면 그쪽이 먼저 "나머지 대본"이다.
+            if (preview?.Playback.TakePendingEpisodeTarget() is { } pendingTarget)
+            {
+                return preview.RequestSceneChange(pendingTarget);
+            }
+
+            return preview?.TryPresentEpisodeChoices(nodeId) == true;
         }
 
         if (path.ExitViaBranch &&
