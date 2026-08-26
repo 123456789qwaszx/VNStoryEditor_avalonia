@@ -208,10 +208,9 @@ internal sealed class StageSceneView : UserControl
     /// (2026-08-24 소유자: "퇴장도 같은 결로").
     ///
     /// <c>fade_out</c>이 든 라인에서 이 슬롯은 고스트 윤곽으로 다시 그려지므로, 나가는
-    /// 초상은 이미 캔버스에서 내려가 있다. 페이드하려면 <b>다시 얹어야</b> 한다 — 배경
-    /// 크로스페이드(<see cref="_backgroundOverlay"/>)와 같은 결이다. 그림을 비트맵에서
-    /// 새로 짜지 않고 그 컨트롤을 그대로 재활용한다: 좌우 반전·화자 테두리·"없음" 자리표시가
-    /// 전부 따라오고, 같은 모양을 짓는 코드가 두 벌이 되지 않는다.
+    /// 초상은 이미 캔버스에서 내려가 있다. 페이드하려면 <b>다시 얹어야</b> 한다.
+    /// 그림을 비트맵에서 새로 짜지 않고 그 컨트롤을 그대로 재활용한다: 좌우 반전·화자
+    /// 테두리·"없음" 자리표시가 전부 따라오고, 같은 모양을 짓는 코드가 두 벌이 되지 않는다.
     /// </summary>
     private Dictionary<string, Control> _portraitControls = new(StringComparer.Ordinal);
     private Dictionary<string, Control> _previousPortraitControls = new(StringComparer.Ordinal);
@@ -237,10 +236,11 @@ internal sealed class StageSceneView : UserControl
     private (string? NodeId, string? ContextLabel, string? LineId)? _renderedFrame;
 
     private readonly List<(string SlotKey, Control Control, StageRect To)> _transitionEntries = new();
-    private string? _backgroundImagePath;
-    private string? _previousBackgroundImagePath;
-    private Image? _backgroundImage;
-    private Image? _backgroundOverlay;
+    // ⛔ 배경 크로스페이드(_backgroundImage·_backgroundOverlay·_previousBackgroundImagePath)는
+    //   2026-08-27에 걷었다 (소유자: "지금은 bg가 순차적으로 스르르 바뀌는데, 그냥 탁탁
+    //   바뀌어도 괜찮을 것 같아"). 걷기 전에는 출발점이 렌더 기준선이라, 첫 라인을
+    //   재생하면 <b>둘째 라인의 배경에서 첫 배경으로</b> 거꾸로 스르르 바뀌는 버그도
+    //   함께 있었다 — 배경은 이제 라인이 바뀌는 순간 즉시 선다.
 
     /// <summary>
     /// 전이 진행도 적용 (W33). null/1 이상 = 확정 상태(모든 자리 최종값·오버레이 제거).
@@ -276,17 +276,6 @@ internal sealed class StageSceneView : UserControl
 
             // 걷히던 초상도 함께 내린다 — 확정 프레임에 반투명한 잔상이 남으면 그것이 버그다.
             ClearDepartingPortraits();
-
-            if (_backgroundOverlay is not null)
-            {
-                _canvas.Children.Remove(_backgroundOverlay);
-                _backgroundOverlay = null;
-            }
-
-            if (_backgroundImage is not null)
-            {
-                _backgroundImage.Opacity = 1;
-            }
 
             return;
         }
@@ -352,39 +341,7 @@ internal sealed class StageSceneView : UserControl
             }
         }
 
-        if (_backgroundImage is not null &&
-            !string.Equals(_previousBackgroundImagePath, _backgroundImagePath, StringComparison.Ordinal))
-        {
-            if (_previousBackgroundImagePath is { } previousPath)
-            {
-                // 배경 교체 — 옛 배경을 새 배경 위에 얹고 서서히 걷는다.
-                if (_backgroundOverlay is null && _session?.ImageCache.Get(previousPath) is { } previousBitmap)
-                {
-                    _backgroundOverlay = new Image
-                    {
-                        Source = previousBitmap,
-                        Stretch = Stretch.UniformToFill,
-                        Width = _canvas.Width,
-                        Height = _canvas.Height,
-                        IsHitTestVisible = false
-                    };
-                    Canvas.SetLeft(_backgroundOverlay, 0);
-                    Canvas.SetTop(_backgroundOverlay, 0);
-
-                    int backgroundIndex = _canvas.Children.IndexOf(_backgroundImage);
-                    _canvas.Children.Insert(Math.Max(backgroundIndex + 1, 0), _backgroundOverlay);
-                }
-
-                if (_backgroundOverlay is not null)
-                {
-                    _backgroundOverlay.Opacity = 1 - t;
-                }
-            }
-            else
-            {
-                _backgroundImage.Opacity = t; // 첫 배경 — 페이드 인
-            }
-        }
+        // ⛔ 배경 크로스페이드는 여기 살았다 — 2026-08-27에 걷었다(위 필드 자리의 주석 참조).
     }
 
     /// <summary>
@@ -621,7 +578,6 @@ internal sealed class StageSceneView : UserControl
             _previousPortraitRects = _portraitRects;
             _previousPortraitVisible = _portraitVisible;
             _previousPortraitControls = _portraitControls;
-            _previousBackgroundImagePath = _backgroundImagePath;
         }
 
         _portraitRects = new Dictionary<string, StageRect>(StringComparer.Ordinal);
@@ -630,9 +586,6 @@ internal sealed class StageSceneView : UserControl
 
         // 캔버스를 비웠으니 얹혀 있던 퇴장 초상도 함께 내려갔다 — 손잡이만 정리한다.
         _departingPortraits.Clear();
-        _backgroundImagePath = null;
-        _backgroundImage = null;
-        _backgroundOverlay = null;
         _transitionEntries.Clear();
         _motionPlan = null;
         _motionStartRects = null;
@@ -1447,18 +1400,13 @@ internal sealed class StageSceneView : UserControl
 
             if (background.FilePath is { } path && _session?.ImageCache.Get(path) is { } bitmap)
             {
-                var backgroundImage = new Image
+                Add(new Image
                 {
                     Source = bitmap,
                     Stretch = Stretch.UniformToFill,
                     Width = width,
                     Height = height
-                };
-                Add(backgroundImage, new StageRect(0, 0, width, height));
-
-                // 전이(W33)의 크로스페이드 대상.
-                _backgroundImage = backgroundImage;
-                _backgroundImagePath = path;
+                }, new StageRect(0, 0, width, height));
                 return;
             }
 

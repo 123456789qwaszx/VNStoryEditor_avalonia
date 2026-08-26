@@ -177,7 +177,7 @@ public sealed class StageFadeTransitionTests
     public void fade_out은_나가는_초상이_걷히며_사라진다() => HeadlessUi.Run(() =>
     {
         // 퇴장 라인에서 이 슬롯은 <b>고스트 윤곽</b>으로 다시 그려진다 — 나가는 초상은 이미
-        // 캔버스에서 내려가 있으므로, 페이드하려면 다시 얹어야 한다(배경 크로스페이드와 같은 결).
+        // 캔버스에서 내려가 있으므로, 페이드하려면 다시 얹어야 한다.
         Stage stage = Open();
 
         stage.Draw(Request(CastInSetup, [[FadeIn]]));                  // ln1 — 보인다
