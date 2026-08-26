@@ -161,7 +161,9 @@ public sealed class ChapterViaSceneTests : IDisposable
         Assert.Equal(ChapterSheetNames.Edges, problem.Sheet);
         Assert.Contains("빈 전이", problem.Message);
         Assert.Contains("재생할 줄이 하나도 없습니다", problem.Message);
-        Assert.Contains("YarnProject", problem.Message);   // 왜 치명적인지까지 말한다
+        // "왜 치명적인가"(YarnProject 사정)는 문구에서 뺐다 (2026-08-26 소유자:
+        // "굳이 말할 필요 없어") — 기획자에게는 고치는 법 한 문장이면 된다.
+        Assert.DoesNotContain("YarnProject", problem.Message);
     }
 
     [Fact]
@@ -201,8 +203,8 @@ public sealed class ChapterViaSceneTests : IDisposable
 
         Assert.Equal(ChapterDiagnosticSeverity.Error, problem.Severity);
         Assert.Equal(ChapterSheetNames.Episodes, problem.Sheet);
-        Assert.Contains("YarnProject", problem.Message);
-        Assert.Contains("더블클릭", problem.Message);   // 고치는 법까지 말한다
+        Assert.DoesNotContain("YarnProject", problem.Message);   // 사정은 코드 주석의 것이다
+        Assert.Contains("더블클릭", problem.Message);   // 고치는 법을 말한다
     }
 
     [Fact]

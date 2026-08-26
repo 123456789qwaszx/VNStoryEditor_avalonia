@@ -127,10 +127,10 @@ public static class ChapterValidator
                     ChapterSheetNames.Episodes,
                     episode.SourceRow,
                     "C",
+                    // Yarn이 줄 없는 노드를 안 싣는다는 사정은 위 주석의 것이다 (2026-08-26
+                    // 소유자: "굳이 말할 필요 없어") — 기획자에게는 고치는 법 한 문장이면 된다.
                     $"'{episode.EpisodeId}'의 대사 노드 '{own.Name}'에 재생할 줄이 하나도 " +
-                    "없습니다. 줄 없는 노드는 Yarn이 YarnProject에 넣지 않아서, 이대로 " +
-                    "내보내면 게임이 그 노드를 찾지 못해 재생을 시작하지 못합니다 — " +
-                    "카드를 더블클릭해 대본을 한 줄이라도 적어 주세요."));
+                    "없습니다. 카드를 더블클릭해 대본을 한 줄이라도 적어 주세요."));
             }
 
             // ② 그 에피소드에서 나가는 길에 매단 자유 씬.
@@ -150,8 +150,7 @@ public static class ChapterValidator
                     edge.SourceRow,
                     "D",
                     $"'{episode.EpisodeId}'→'{edge.ToEpisodeId}' 길에 매단 연출 씬 " +
-                    $"'{scene.Name}'에 재생할 줄이 하나도 없습니다. 줄 없는 노드는 " +
-                    "YarnProject에 실리지 않아 게임이 그 씬을 찾지 못합니다 — " +
+                    $"'{scene.Name}'에 재생할 줄이 하나도 없습니다. " +
                     "연출 그래프에서 채우거나, 안 쓸 것이면 선을 떼 주세요."));
             }
         }

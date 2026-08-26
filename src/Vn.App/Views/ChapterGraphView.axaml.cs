@@ -3224,17 +3224,47 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
+        // 대본 파일을 먼저 .bak으로 민다 (2026-08-26 소유자: "삭제했는데 여전히 폴더에는
+        // 남아있는 버그") — 못 밀면(엑셀이 열고 있다) 행도 안 지운다: 행은 없는데 원고만
+        // 남으면 지운 에피소드의 파일이 폴더에 유물로 쌓인다(이 버그 그 자체다).
+        (string? backup, string? original, string? archiveFailure) =
+            SelectedEpisodesFolder is { } folder
+                ? EpisodeLibrary.ArchiveWorkbook(folder, episodeId)
+                : (null, null, null);
+
+        if (archiveFailure is not null)
+        {
+            _session?.SetStatus(archiveFailure);
+            return;
+        }
+
         ChapterWriteResult result = ChapterWorkbookWriter.RemoveEpisode(path, episodeId);
 
         if (result.Written)
         {
             _selectedEpisodeId = null;
         }
+        else if (backup is not null && original is not null)
+        {
+            // 행을 못 지웠으면 파일을 되돌린다 — 행은 있는데 원고가 .bak인 반쪽도 나쁘다.
+            // 여기서 또 실패하면 조용히 넘긴다: 사유는 이미 Report가 사람에게 말한다.
+            try
+            {
+                File.Move(backup, original, overwrite: true);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
 
         Report(
             result,
-            $"'{episodeId}' 행과 그 간선·픽스처 참조를 지웠습니다. 에피소드 엑셀 파일은 " +
-            $"그대로입니다.{DetachBoardNode(episodeId)}");
+            $"'{episodeId}' 행과 그 간선·픽스처 참조를 지웠습니다." +
+            (backup is not null
+                ? $" 대본 파일은 {IoPath.GetFileName(backup)}으로 밀어 두었습니다."
+                : string.Empty) +
+            DetachBoardNode(episodeId));
     }
 
     /// <summary>
@@ -3337,14 +3367,34 @@ public partial class ChapterGraphView : UserControl
             // 대본 워크북도 지금 만든다 (v4) — "노드를 클릭해야 생긴다"는 느슨함을 없앤다.
             // 생성은 없던 파일을 만드는 것이라 단일 writer 원칙과 충돌하지 않고,
             // 이후 툴은 이 파일을 다시는 쓰지 않는다.
-            if (SelectedEpisodesFolder is { } episodesFolder &&
-                EpisodeLibrary.EnsureWorkbook(
-                    episodesFolder,
-                    episodeId,
-                    ProjectSpeakerNames(),
-                    model.Conditions.Select(condition => condition.Label).ToList()))
+            //
+            // 첫 대사도 함께 심는다 (2026-08-26 소유자) — 빈 대본은 검증이 오류로 막으므로,
+            // 방금 더한 에피소드가 그 오류부터 들고 시작하지 않게 한다. 동기화가 만드는
+            // 워크북(엑셀에서 더한 에피소드)은 안 심는다 — 그쪽 기획자는 시트에서 적는다.
+            if (SelectedEpisodesFolder is { } episodesFolder)
             {
-                StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
+                if (EpisodeLibrary.EnsureWorkbook(
+                        episodesFolder,
+                        episodeId,
+                        ProjectSpeakerNames(),
+                        model.Conditions.Select(condition => condition.Label).ToList(),
+                        firstLine: EpisodeLibrary.DefaultFirstLine))
+                {
+                    StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
+                }
+                // 워크북이 이미 있었다 — 에피소드 삭제가 대본 파일을 남기므로, 지운 Id를
+                // 다시 더하면 빈 유물이 재사용된다. 완전히 비어 있을 때만 심는다(사람이
+                // 쓰다 만 대본에는 손대지 않는다).
+                else if (EpisodeLibrary.FindExisting(episodesFolder, episodeId) is { } existing)
+                {
+                    (ChapterWriteResult seed, _) = EpisodeWorkbookWriter.SeedFirstLineIfEmpty(
+                        existing, EpisodeLibrary.DefaultFirstLine);
+
+                    if (seed.Failure is { } failure)
+                    {
+                        _session?.SetStatus(failure);
+                    }
+                }
             }
         }
 

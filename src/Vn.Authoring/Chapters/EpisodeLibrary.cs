@@ -253,12 +253,59 @@ public static class EpisodeLibrary
     /// 챕터 `조건` 시트의 라벨들 (2026-08-17 소유자). 조건라벨 열(D)에 같은 방식으로 깐다 —
     /// 이쪽은 <b>오타가 곧 오류</b>라(리더가 미등록 라벨을 잡는다) 드롭다운의 값이 더 크다.
     /// </param>
+    /// <summary>
+    /// 에피소드의 대본 워크북을 <c>.bak</c>으로 민다 (2026-08-26 소유자: "에피소드를
+    /// 삭제했는데 여전히 폴더에는 남아있는 버그") — 지우는 종류의 작업은 직전 상태를
+    /// <c>.bak</c>으로 남긴다(저장소 공통 규약, <see cref="ChapterDeleter.BackupSuffix"/>).
+    /// 이미 있던 <c>.bak</c>은 갈린다 — 직전 상태를 담는 자리이지 이력을 쌓는 자리가 아니다.
+    /// </summary>
+    /// <returns>
+    /// 민 곳(Backup)과 원래 자리(Original) — 못 지운 행을 되돌릴 때 쓴다. 파일이 없었으면
+    /// 셋 다 null(지울 것이 없는 것은 실패가 아니다), 못 밀었으면 Failure에 사유가 선다.
+    /// </returns>
+    public static (string? Backup, string? Original, string? Failure) ArchiveWorkbook(
+        string folder, string episodeId)
+    {
+        if (FindExisting(folder, episodeId) is not { } workbook)
+        {
+            return (null, null, null);
+        }
+
+        string target = workbook + ChapterDeleter.BackupSuffix;
+
+        try
+        {
+            File.Move(workbook, target, overwrite: true);
+            return (target, workbook, null);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return (null, null,
+                $"대본 파일을 치우지 못해 에피소드를 지우지 않았습니다(엑셀이 열고 있을 수 " +
+                $"있습니다): {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 툴이 에피소드를 더할 때 심는 첫 대사 (2026-08-26 소유자: "에피소드 추가할 시
+    /// 자동으로 기본 대사문구를 한 줄 추가하는 게 좋겠어"). 빈 대본은 검증이 오류로
+    /// 막으므로(줄 없는 노드는 재생이 안 된다), 방금 만든 에피소드가 그 오류부터 들고
+    /// 시작하지 않게 한다 — 문구 자체가 "여기를 채우라"는 표지다.
+    /// </summary>
+    public const string DefaultFirstLine = "(대사를 적어 주세요)";
+
+    /// <param name="firstLine">
+    /// 새 워크북의 2행 `내용`에 심을 첫 대사 (2026-08-26). null이면 예전처럼 빈 템플릿이다 —
+    /// 기본을 바꾸지 않는 이유는, 이 함수는 동기화도 부르는 자리라(엑셀에서 더한 에피소드의
+    /// 첫 대본) 빈 워크북의 규격을 붙드는 곳이 많기 때문이다. 심는 쪽이 명시한다.
+    /// </param>
     /// <returns>새로 만들었으면 true.</returns>
     public static bool EnsureWorkbook(
         string folder,
         string episodeId,
         IReadOnlyList<string>? speakers = null,
-        IReadOnlyList<string>? conditionLabels = null)
+        IReadOnlyList<string>? conditionLabels = null,
+        string? firstLine = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
@@ -316,6 +363,13 @@ public static class EpisodeLibrary
         }
 
         sheet.Column(TextColumn).Width = 50;   // 내용
+
+        // 첫 대사를 심는다 — 인덱스는 위 깔기가 이미 놓았고(2행 = 10), 화자는 비워 둔다
+        // (빈 화자 = 지문). LineId는 첫 동기화가 발급한다.
+        if (firstLine is not null)
+        {
+            sheet.Cell(2, TextColumn).SetValue(firstLine);
+        }
 
         ApplyVocabulary(workbook, sheet, speakers, conditionLabels);
 

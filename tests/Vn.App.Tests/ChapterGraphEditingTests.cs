@@ -104,6 +104,25 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
+    public void 에피소드를_지우면_대본_파일은_bak으로_밀린다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "에피소드를 삭제했는데 여전히 폴더에는 남아있는 버그."
+        // 지우는 종류의 작업은 직전 상태를 .bak으로 남긴다(챕터 삭제와 같은 규약).
+        // 파일이 남으면 같은 Id를 다시 더할 때 빈 유물이 재사용되기도 한다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, _) = Show(project);
+
+        EpisodeLibrary.EnsureWorkbook(project.EpisodesFolder, "branch05.02A");
+        string workbook = EpisodeLibrary.FindExisting(project.EpisodesFolder, "branch05.02A")!;
+
+        view.SelectEpisode("branch05.02A");
+        view.DeleteSelectedEpisode();
+
+        Assert.Null(EpisodeLibrary.FindExisting(project.EpisodesFolder, "branch05.02A"));
+        Assert.True(File.Exists(workbook + ChapterDeleter.BackupSuffix));
+    });
+
+    [Fact]
     public void 에피소드를_지우면_연출_그래프의_빈_노드도_함께_지운다() => HeadlessUi.Run(() =>
     {
         // ⛔ 이것이 "번들 이름이 겹칩니다"의 뿌리였다 (2026-08-25). 워크북에서만 지우면
@@ -446,8 +465,41 @@ public sealed class ChapterGraphEditingTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); // QueueReload 한 차례
 
         // 엑셀을 열지 않았는데도 노드가 서 있다 — 목록이 달라진 것이 곧 동기화의 이유다.
-        Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            node => node.ExcelEpisodeId == "new01");
+        DialogueNode node = Assert.Single(
+            session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            item => item.ExcelEpisodeId == "new01");
+
+        // 첫 대사도 함께 심어져 있다 (2026-08-26 소유자) — 빈 대본은 검증이 오류로
+        // 막으므로, 방금 더한 에피소드가 그 오류부터 들고 시작하지 않는다.
+        Assert.True(
+            session.Project.FindScript(node.ScriptId) is { } document &&
+            document.ActiveLines.Any(),
+            "새 에피소드의 대사 노드에 기본 대사 한 줄이 있어야 한다");
+    });
+
+    [Fact]
+    public void 빈_유물_워크북이_남아_있어도_다시_더하면_첫_대사가_선다() => HeadlessUi.Run(() =>
+    {
+        // 에피소드 삭제는 대본 파일을 남긴다 — 지운 Id를 다시 더하면 EnsureWorkbook이
+        // 빈 유물을 그대로 재사용해 첫 대사가 안 심겼다(2026-08-26 소유자가 바로 밟았다:
+        // "여전히 기본 대사는 비어있는 상태야"). 비어 있을 때만 심고, 쓰다 만 대본에는
+        // 손대지 않는다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        EpisodeLibrary.EnsureWorkbook(project.EpisodesFolder, "new01");   // 기능 전의 빈 유물
+
+        view.AddEpisodeFromToolbar();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        DialogueNode node = Assert.Single(
+            session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            item => item.ExcelEpisodeId == "new01");
+
+        Assert.True(
+            session.Project.FindScript(node.ScriptId) is { } document &&
+            document.ActiveLines.Any(),
+            "유물 워크북이어도 기본 대사 한 줄이 있어야 한다");
     });
 
     [Fact]

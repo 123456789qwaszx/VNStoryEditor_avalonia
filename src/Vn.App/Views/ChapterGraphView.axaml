@@ -10,30 +10,31 @@
                  안 썼어"). 안 쓴 이유가 있다 — **저절로 따라오기 때문이다.** 챕터 폴더와
                  대본 폴더에 감시자가 붙어 있고, 저장이 내려앉으면 화면이 스스로 다시 읽는다.
                  손잡이가 필요했던 시절은 감시자가 없던 시절이다. -->
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
-                <TextBlock Grid.Column="0"
-                           Text="챕터"
-                           FontSize="11"
-                           Opacity="0.6"
-                           VerticalAlignment="Center"
-                           Margin="0,0,6,0" />
-                <!-- ⚠ 챕터 콤보는 <b>연출 그래프의 것과 같은 치수</b>다 (2026-08-26 소유자:
-                     "둘의 크기가 달라서 불편하다"). 탭을 오가며 같은 일을 하는 손잡이가
-                     탭마다 다른 크기로 서면, 탭이 바뀔 때 그 자리가 흔들린다.
-                     짝: `GraphEditorView.axaml`의 ChapterCombo — 한쪽을 고치면 둘 다 고친다. -->
-                <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" FontSize="11" />
-                <!-- ⛔ [폴더 열기]는 2026-08-26에 없앴다 (소유자). 챕터 폴더로 가는 길은
-                     이미 둘이 남아 있다 — 노드 더블클릭이 그 챕터의 엑셀을 열고, 엑셀
-                     없는 기계에서는 열기가 탐색기의 폴더 선택으로 대신 선다. -->
-                <!-- [내보내기] 단추는 없앴다 (2026-08-17 소유자: "필요 없어 보이는데").
-                     작가의 Yarn이 LiveOutputService로 저절로 나가는데 챕터 진행 JSON만
-                     사람 손을 기다리면, 누른 순간의 낡은 파일이 디스크에 남는다. 이제
-                     다시 읽을 때마다 저절로 나간다 — G8의 거부 규칙은 그대로다. -->
-                <Button Grid.Column="2"
-                        x:Name="AddEpisodeButton"
-                        Content="＋ 에피소드"
-                        Margin="6,0,0,0"
-                        ToolTip.Tip="선택된 에피소드의 다음으로 새 에피소드를 만들어 잇습니다. 선택이 없으면 홀로 섭니다. 이름은 우측 [이름] 칸에서 고치고 Enter." />
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- ⚠ 왼쪽 무리는 <b>연출 그래프 툴바와 한 쌍</b>이다 (2026-08-26 소유자:
+                     "'챕터'라는 글자와 챕터드롭다운 사이의 간격이 다르다보니 엄청 신경쓰여").
+                     같은 StackPanel(Spacing=6) · 같은 라벨 여백 · 콤보 뒤 같은 구분선.
+                     짝: `GraphEditorView.axaml`의 툴바 — 한쪽을 고치면 둘 다 고친다.
+                     (콤보 치수가 한 쌍인 것도 같은 날, 같은 이유다.) -->
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="챕터"
+                               FontSize="11"
+                               Opacity="0.6"
+                               VerticalAlignment="Center"
+                               Margin="0,0,4,0" />
+                    <ComboBox x:Name="ChapterCombo" MinWidth="180" FontSize="11" />
+                    <!-- ⛔ [폴더 열기]는 2026-08-26에 없앴다 (소유자). 챕터 폴더로 가는 길은
+                         이미 둘이 남아 있다 — 노드 더블클릭이 그 챕터의 엑셀을 열고, 엑셀
+                         없는 기계에서는 열기가 탐색기의 폴더 선택으로 대신 선다. -->
+                    <!-- [내보내기] 단추는 없앴다 (2026-08-17 소유자: "필요 없어 보이는데").
+                         작가의 Yarn이 LiveOutputService로 저절로 나가는데 챕터 진행 JSON만
+                         사람 손을 기다리면, 누른 순간의 낡은 파일이 디스크에 남는다. 이제
+                         다시 읽을 때마다 저절로 나간다 — G8의 거부 규칙은 그대로다. -->
+                    <Border Width="1" Margin="4,2" Background="{DynamicResource ThemeBorderLowBrush}" />
+                    <Button x:Name="AddEpisodeButton"
+                            Content="＋ 에피소드"
+                            ToolTip.Tip="선택된 에피소드의 다음으로 새 에피소드를 만들어 잇습니다. 선택이 없으면 홀로 섭니다. 이름은 우측 [이름] 칸에서 고치고 Enter." />
+                </StackPanel>
 
                 <!-- ⛔ 픽스처(재생루트 하이라이트, G6)는 2026-08-24에 화면에서 걷었다
                      (소유자: 한 번도 안 썼다). 2026-08-16에 콤보를 이미 숨겨 뒀었고,
@@ -48,7 +49,7 @@
                      같은 사실을 두 곳에 적는 짓이었다: 진짜 잠금은 파일에 있고 체크는
                      그 그림자였다. 이제 표시는 위 배너 하나뿐이다.
                      그 오른쪽 끝이 파괴적 동작의 자리다 — 빨갛게, 편집이 열렸을 때만 보인다. -->
-                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
                     <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 잠금이 풀릴 때
                          갑자기 튀어나오면 그 자리를 누르던 손이 삭제를 누른다(실사례).
                          평소엔 회색·비활성, 편집이 열려 있을 때만 빨갛게 살아난다. -->
@@ -56,7 +57,7 @@
                             Content="에피소드 삭제"
                             FontSize="11"
                             VerticalAlignment="Center"
-                            ToolTip.Tip="선택한 에피소드의 행과 그 에피소드를 오가는 간선을 함께 지웁니다. 대본 엑셀 파일과 챕터의 선택지 문구는 그대로 둡니다." />
+                            ToolTip.Tip="선택한 에피소드의 행과 그 에피소드를 오가는 간선을 함께 지웁니다. 대본 엑셀 파일은 .bak으로 밀어 두고, 챕터의 선택지 문구는 그대로 둡니다." />
                 </StackPanel>
             </Grid>
         </Border>

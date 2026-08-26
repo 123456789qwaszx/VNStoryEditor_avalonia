@@ -73,6 +73,59 @@ public static class EpisodeWorkbookWriter
     }
 
     /// <summary>
+    /// 워크북이 <b>사람의 흔적 하나 없이</b> 비어 있으면 첫 대사를 심는다 (2026-08-26).
+    ///
+    /// <b>왜 필요한가</b> — [＋ 에피소드]는 새 워크북에 첫 대사를 심는데
+    /// (<see cref="EpisodeLibrary.EnsureWorkbook"/>의 <c>firstLine</c>), 그 함수는 이미 있는
+    /// 파일을 절대 덮어쓰지 않는다. 그런데 <b>에피소드 삭제는 대본 파일을 남기므로</b>, 지운
+    /// Id를 다시 더하면 빈 유물이 그대로 재사용되어 첫 대사가 안 심긴다(실사례 — 기능을
+    /// 넣은 날 소유자가 바로 밟았다: "여전히 기본 대사는 비어있는 상태야").
+    ///
+    /// ⚠ <b>흔적이 하나라도 있으면 아무것도 안 한다</b> — 유형(블록)·화자·내용 어느 칸이든.
+    /// 사람이 쓰다 만 대본에 툴이 글을 얹으면 "안 쓴 글이 생겼다"가 된다. 미리 깔린
+    /// 인덱스(10·20·…)는 흔적이 아니다(템플릿이 깐 것이다).
+    /// </summary>
+    /// <returns>심었으면 Seeded가 true. 흔적이 있어 물러난 것도 Result는 성공이다.</returns>
+    public static (ChapterWriteResult Result, bool Seeded) SeedFirstLineIfEmpty(
+        string path, string text)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        bool seeded = false;
+
+        ChapterWriteResult result = Mutate(path, workbook =>
+        {
+            IXLWorksheet sheet = FindEpisodeSheet(workbook)
+                ?? throw new InvalidOperationException(
+                    "이 워크북에서 대본 시트를 찾지 못했습니다 — 머리글이 규격과 다릅니다.");
+
+            bool hasContent = sheet.RowsUsed()
+                .Where(row => row.RowNumber() > HeaderRow)
+                .Any(row =>
+                    Cell(sheet, row.RowNumber(), ColumnKind).Length > 0 ||
+                    Cell(sheet, row.RowNumber(), ColumnSpeaker).Length > 0 ||
+                    Cell(sheet, row.RowNumber(), ColumnText).Length > 0);
+
+            if (hasContent)
+            {
+                throw new NothingToWriteException();
+            }
+
+            // 인덱스는 깔려 있으면 그대로(2행 = 10), 지워졌으면 다시 놓는다 —
+            // 인덱스 없는 행은 표의 일부가 아니라 리더가 조용히 버린다.
+            if (Cell(sheet, HeaderRow + 1, ColumnIndex).Length == 0)
+            {
+                sheet.Cell(HeaderRow + 1, ColumnIndex).SetValue(10);
+            }
+
+            sheet.Cell(HeaderRow + 1, ColumnText).SetValue(text);
+            seeded = true;
+        });
+
+        return (result, seeded);
+    }
+
+    /// <summary>
     /// 블록 행(IF·ELSEIF·ENDIF)에 남은 인덱스를 비운다 (v14, 2026-08-24 소유자: "툴이
     /// 지워 준다").
     ///
