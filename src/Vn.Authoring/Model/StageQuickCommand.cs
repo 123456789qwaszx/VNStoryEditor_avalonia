@@ -80,9 +80,13 @@ public static class StageQuickCommands
             definitionId,
             arguments.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
 
+    // ⛔ `줌 인`(shot_zoom) 칩은 2026-08-26에 걷었다 (소유자). 줌만 따로 만지는 일이
+    //    기본으로 둘 만큼 잦지 않았고, 같은 날 `shot_to`의 zoom이 슬라이더로 열리면서
+    //    `카메라 이동` 칩 하나에서 줌·이동·시간을 함께 만질 수 있게 됐다 — 기본 칩은
+    //    적을수록 좋다(나머지는 터미널에서 맞춰 놓고 통째로 집는 것이 정식 경로다).
+    //    ⚠ 커맨드 자체는 그대로다: `shot_zoom`은 카탈로그에 있고 터미널에서 쓴다.
     public static IReadOnlyList<StageQuickCommand> Default { get; } =
     [
-        Chip("줌 인", "shot.shot_zoom", ("zoom", "1.4"), ("duration", "0.45s")),
         Chip("카메라 이동", "shot.shot_to", ("zoom", "1"), ("x", "2.5u"), ("y", "0u"), ("duration", "0.45s")),
         Chip("카메라 원위치", "shot.shot_reset", ("duration", "0.3s"))
     ];

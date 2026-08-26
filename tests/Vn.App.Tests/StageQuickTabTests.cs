@@ -107,7 +107,7 @@ public sealed class StageQuickTabTests
             ?? (IReadOnlyList<PresentationCommandInstance>)Array.Empty<PresentationCommandInstance>();
 
     [Fact]
-    public void 자주_쓰는_탭이_맨_앞에_서고_기본은_샷_셋뿐이다() => HeadlessUi.Run(() =>
+    public void 자주_쓰는_탭이_맨_앞에_서고_기본은_샷뿐이다() => HeadlessUi.Run(() =>
     {
         (AuthoringSession session, string nodeId, string lineId) = Stage();
         StageSceneView view = SceneOf(session, nodeId, lineId);
@@ -119,9 +119,12 @@ public sealed class StageQuickTabTests
             ["★ 자주 쓰는", "슬롯", "캐릭터", "배경", "오디오"],
             tabs.Items.OfType<TabItem>().Select(item => ((TextBlock)item.Header!).Text!).ToArray());
 
-        // 기본 칩 = shot_zoom · shot_to · shot_reset (2026-08-22 소유자). 나머지는 사람이 담는다.
+        // 기본 칩 = shot_to · shot_reset. 나머지는 사람이 담는다 (2026-08-22 소유자).
+        // ⚠ `shot_zoom` 칩은 2026-08-26에 걷혔다 — 같은 날 `shot_to`의 zoom이 슬라이더로
+        //   열리면서 [카메라 이동] 하나에서 줌·이동·시간을 함께 만지게 됐다.
+        //   재는 것은 "샷 말고는 없다"이지 개수가 셋이라는 것이 아니다.
         Assert.Equal(
-            ["shot.shot_zoom", "shot.shot_to", "shot.shot_reset"],
+            ["shot.shot_to", "shot.shot_reset"],
             session.Project.EffectiveQuickCommands.Select(chip => chip.Steps[0].DefinitionId).ToArray());
     });
 
@@ -174,7 +177,7 @@ public sealed class StageQuickTabTests
         Assert.Equal("2.5u", added.Arguments["x"]);
 
         // 다른 커맨드는 나란히 선다 — 같은 커맨드였다면 값만 바뀐다.
-        Chip(view.BuildQuickTabProbe(null), "줌 인")
+        Chip(view.BuildQuickTabProbe(null), "카메라 원위치")
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.Equal(2, LineCommands(session, nodeId, lineId).Count);
     });
@@ -616,7 +619,9 @@ public sealed class StageQuickTabTests
         StageSceneView view = SceneOf(session, nodeId, lineId);
         view.SetCommandEditModeProbe(true);
 
-        // ▸ 하나가 칩 하나 — 첫 칩(줌 인 = shot_zoom)을 편다.
+        // ▸ 하나가 칩 하나 — 첫 칩(카메라 이동 = shot_to)을 편다.
+        // ⚠ 2026-08-26에 `줌 인` 칩이 걷히며 첫 칩이 바뀌었다. shot_to도 zoom 슬라이더를
+        //   갖는다(같은 날 카탈로그 선언 추가) — 그래서 이 시험이 재는 것은 그대로다.
         Control collapsed = view.BuildQuickTabProbe(null);
         Assert.Empty(collapsed.GetLogicalDescendants().OfType<Slider>());
         collapsed.GetLogicalDescendants().OfType<Button>()
@@ -625,10 +630,10 @@ public sealed class StageQuickTabTests
 
         Control tab = view.BuildQuickTabProbe(null);
 
-        // zoom 슬라이더(카탈로그 선언 -10~20)가 칩이 담아 둔 1.4에 서 있다.
+        // zoom 슬라이더(카탈로그 선언 -10~20)가 칩이 담아 둔 값에 서 있다.
         Slider zoom = Assert.Single(
             tab.GetLogicalDescendants().OfType<Slider>(), slider => slider.Maximum == 20);
-        Assert.Equal(1.5, zoom.Value); // 0.5 눈금에 붙는다
+        Assert.Equal(1, zoom.Value);
         // 시간 슬라이더도 함께 — duration은 프레임으로 선다(0.45s = 약 11fr).
         Assert.Contains(tab.GetLogicalDescendants().OfType<Slider>(), slider => slider.Maximum != 20);
 
@@ -654,8 +659,10 @@ public sealed class StageQuickTabTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // 편집 중에는 칩이 [▸][이름 칸][✕] 줄이다 — 담기는 터미널 행 클릭이 진다.
+        // ⚠ 이름을 글자로 박지 않는다 — 기본 칩 목록이 바뀔 때마다 이 시험이 깨진다
+        //   (2026-08-26 `줌 인` 삭제가 그랬다). 재는 것은 "첫 칩의 이름 칸이 선다"이다.
         TextBox first = tab.GetLogicalDescendants().OfType<TextBox>().First();
-        Assert.Equal("줌 인", first.Text);
+        Assert.Equal(StageQuickCommands.Default[0].DisplayName, first.Text);
 
         // 초점을 잃을 때 커밋한다 — 이름을 치다 터미널 ★를 눌러도 이름이 살아남는 길이다.
         first.Focus();
