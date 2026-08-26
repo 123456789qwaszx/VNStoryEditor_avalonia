@@ -309,6 +309,12 @@ public partial class MiniStagePreview : UserControl
         RefreshChapterCombo();
     }
 
+    /// <summary>
+    /// 에셋 탐색기 자리 (2026-08-26 소유자 — 연출 그래프에서 이사). 자리는 이 뷰의 것,
+    /// 내용은 셸의 것이다(챕터 목록 손잡이들과 같은 규칙).
+    /// </summary>
+    internal ContentControl AssetExplorerHost => AssetHost;
+
     /// <summary>챕터 목록과 지금 활성인 판을 콤보에 비춘다 — 판 이름 = ChapterId (1:1).</summary>
     private void RefreshChapterCombo()
     {

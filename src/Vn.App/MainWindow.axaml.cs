@@ -77,6 +77,9 @@ public partial class MainWindow : Window
 
         // 곁기둥을 제 화면에 건다 — Attach보다 먼저여야 첫 그리기부터 자리가 서 있다.
         Graph.SetSidePanel(BuildSidePanel());
+        // 에셋 탐색기는 무대 프리뷰 조절창 아래에 산다 (2026-08-26 소유자 — 연출
+        // 그래프에서 이사). 자리는 뷰의 것, 배선(Attach·에셋 루트 지정)은 셸의 것이다.
+        StagePreview.AssetExplorerHost.Content = AssetExplorer;
 
         Graph.Attach(_session);
         // 왼쪽 챕터 목록의 원천은 챕터 그래프 뷰가 읽은 목록 하나다 — 두 곳이 따로 읽으면
@@ -424,17 +427,13 @@ public partial class MainWindow : Window
     /// </summary>
     private Control BuildSidePanel()
     {
-        var editors = new Panel
+        // ⛔ 에셋 탐색기는 2026-08-26에 무대 프리뷰로 이사했다 (소유자: "에셋이
+        //    연출그래프에 있는데, 그게 무대프리뷰로 옮겨와줘") — 에셋을 보며 고르는
+        //    화면이 무대라서다. 여기엔 노드 편집기들만 남는다.
+        return new Panel
         {
             Children = { DialogueEditor, SetEditor, PresentationEditor, EmptyText }
         };
-
-        var grid = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
-        Grid.SetRow(editors, 0);
-        Grid.SetRow(AssetExplorer, 1);
-        grid.Children.Add(editors);
-        grid.Children.Add(AssetExplorer);
-        return grid;
     }
 
     /// <summary>

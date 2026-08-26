@@ -93,11 +93,12 @@ public sealed class MainChromeTests
     });
 
     [Fact]
-    public void 편집_자료는_사라지고_에셋은_연출_그래프_안에_남는다() => HeadlessUi.Run(() =>
+    public void 편집_자료는_사라지고_에셋은_무대_프리뷰_안에_남는다() => HeadlessUi.Run(() =>
     {
         // 2026-08-21 소유자 — "이제 편집자료는 굳이 표시할 필요가 없는 것 같아".
         // 대본·발행 결과·연출 공급을 나열하던 현황판인데, 발행·배선이 자동이 된 뒤로는
-        // 볼 이유가 없다. 에셋 탐색기는 남되, 2026-08-22에 연출 그래프 안으로 이사했다.
+        // 볼 이유가 없다. 에셋 탐색기는 남되, 2026-08-22에 연출 그래프 안으로,
+        // 2026-08-26에 다시 무대 프리뷰로 이사했다 — 에셋을 보며 고르는 화면이 무대라서다.
         var window = new MainWindow();
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -105,9 +106,9 @@ public sealed class MainChromeTests
         Assert.Null(window.FindControl<ScrollViewer>("ResourceScroll"));
         Assert.Null(window.FindControl<ToggleButton>("ResourceCollapseToggle"));
 
-        SelectTab(window, 1);
-        var graph = window.FindControl<GraphEditorView>("Graph")!;
-        Assert.Contains(graph, Assert.Single(Live<AssetExplorerView>(window)).GetVisualAncestors());
+        SelectTab(window, 2);
+        var stage = window.FindControl<MiniStagePreview>("StagePreview")!;
+        Assert.Contains(stage, Assert.Single(Live<AssetExplorerView>(window)).GetVisualAncestors());
 
         window.Close();
     });
@@ -126,16 +127,16 @@ public sealed class MainChromeTests
         Assert.Empty(Live<DialogueNodeEditor>(window));
         Assert.Empty(Live<AssetExplorerView>(window));
 
-        SelectTab(window, 1); // 연출 그래프 — 편집기 셋 + 탐색기가 선다
+        SelectTab(window, 1); // 연출 그래프 — 편집기 셋이 선다 (탐색기는 2026-08-26에 무대로)
         Assert.Single(Live<DialogueNodeEditor>(window));
         Assert.Single(Live<SetNodeEditor>(window));
         Assert.Single(Live<PresentationNodeEditor>(window));
-        Assert.Single(Live<AssetExplorerView>(window));
+        Assert.Empty(Live<AssetExplorerView>(window));
 
-        SelectTab(window, 2); // 무대 프리뷰 — 다시 없다
+        SelectTab(window, 2); // 무대 프리뷰 — 편집기는 없고 탐색기가 선다
         Assert.Empty(Live<DialogueNodeEditor>(window));
         Assert.Empty(Live<PresentationNodeEditor>(window));
-        Assert.Empty(Live<AssetExplorerView>(window));
+        Assert.Single(Live<AssetExplorerView>(window));
         Assert.Single(Live<MiniStagePreview>(window));
 
         window.Close();

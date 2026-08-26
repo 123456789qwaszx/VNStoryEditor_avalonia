@@ -121,7 +121,14 @@
                 <Border Grid.Column="4"
                         BorderBrush="{DynamicResource ThemeBorderLowBrush}"
                         BorderThickness="1,0,0,0">
-                    <ContentControl x:Name="ConsoleHost" />
+                    <Grid RowDefinitions="*,Auto">
+                        <ContentControl x:Name="ConsoleHost" />
+                        <!-- 에셋 탐색기 자리 (2026-08-26 소유자: "에셋이 연출그래프에
+                             있는데, 그게 무대프리뷰로 옮겨와줘") — 에셋을 보며 고르는
+                             화면이 무대라서다. 자리만 이 뷰가 내주고 내용(AssetExplorerView)은
+                             셸이 꽂는다 — 배선이 세션·탐색기 새로 고침과 얽혀 있다. -->
+                        <ContentControl Grid.Row="1" x:Name="AssetHost" />
+                    </Grid>
                 </Border>
             </Grid>
 

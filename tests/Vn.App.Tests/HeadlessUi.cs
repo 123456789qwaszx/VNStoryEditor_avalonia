@@ -16,6 +16,19 @@ namespace Vn.App.Tests;
 /// </summary>
 internal static class HeadlessUi
 {
+    static HeadlessUi()
+    {
+        // ⛔ 테스트가 개발자의 진짜 설정(%APPDATA%\VnTool)을 읽지 않게 한다 (2026-08-26).
+        // MainWindow는 뜨자마자 최근 프로젝트를 복원하므로(OnOpened), 이게 없으면 창을
+        // 띄우는 모든 테스트가 <b>개발자가 그날 만지던 실제 프로젝트</b>를 열어 버린다 —
+        // 그 프로젝트의 상태에 따라 무관한 테스트들이 무작위로 죽고(실사례: 소유자가
+        // 앱에서 실험하던 날 스위트가 계속 흔들렸다), 세션이 실제 원고 폴더에 감시자를
+        // 걸고 테스트 노드를 더한다. 임시 경로에는 설정 파일이 없으므로 복원은 조용히
+        // 건너뛰고, 테스트가 남기는 설정 저장도 임시 폴더에 떨어진다.
+        Vn.App.Services.AppSettingsService.SettingsPathOverride = Path.Combine(
+            Path.GetTempPath(), "vn-app-tests-settings", Guid.NewGuid().ToString("N"), "settings.json");
+    }
+
     private static readonly Lazy<HeadlessUnitTestSession> SessionHandle =
         new(() => HeadlessUnitTestSession.StartNew(typeof(TestAppBuilder)));
 

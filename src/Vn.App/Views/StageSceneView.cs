@@ -2599,10 +2599,13 @@ internal sealed class StageSceneView : UserControl
     }
 
     /// <summary>
-    /// 캐릭터 탭 — 캐릭터 클릭 화면 그대로: 표정 교체(스프라이트)·variant(pose)·
-    /// 위치(place)·깊이(size)·미러. 전부 이 라인의 커맨드가 되고, 같은 대상의 재조작은
-    /// 값만 바뀐다. 표정은 보이는 캐릭터면 face_swap, 캐스팅만 된 캐릭터면 face다.
-    /// 캐스팅은 [슬롯] 탭, 등장/퇴장은 탭 아래 전역 줄이 담당한다.
+    /// 캐릭터 탭 — <b>표정만</b>이다 (2026-08-26 소유자: "캐릭터에는 표정만 남기고,
+    /// 위치와 깊이는 슬롯으로 옮겨달라"): 표정 교체(스프라이트)·variant(pose)·미러.
+    /// 전부 이 라인의 커맨드가 되고, 같은 대상의 재조작은 값만 바뀐다. 표정은 보이는
+    /// 캐릭터면 face_swap, 캐스팅만 된 캐릭터면 face다.
+    /// 캐스팅·무대/레이어·위치(place)·깊이(size)는 [슬롯] 탭 — 누구를 세울지와 어디에
+    /// 세울지는 슬롯의 일이고, 세운 캐릭터의 얼굴이 이 탭의 일이다.
+    /// 등장/퇴장은 탭 아래 전역 줄이 담당한다.
     /// </summary>
     private Control BuildCharacterTab(Action onApplied)
     {
@@ -2750,17 +2753,8 @@ internal sealed class StageSceneView : UserControl
             }
         }
 
-        // 위치 이동은 캐스팅 여부와 무관하다 — 빈 슬롯도 자리를 정할 수 있다.
-        panel.Children.Add(new TextBlock { Text = "위치 (place)", FontSize = 10, Opacity = 0.6 });
-        panel.Children.Add(BuildScreenPointGrid(() => slotKey, onApplied));
-
-        panel.Children.Add(new TextBlock { Text = "깊이 (size)", FontSize = 10, Opacity = 0.6 });
-        panel.Children.Add(BuildDepthRow(() => slotKey, onApplied));
-
-        if (PlaceApproximationNote() is { } characterPlaceNote)
-        {
-            panel.Children.Add(characterPlaceNote);
-        }
+        // ⛔ 위치(place)·깊이(size)는 2026-08-26에 [슬롯] 탭으로 이사했다 (소유자) —
+        //    자리는 슬롯의 것이라서다. 격자·줄 함수는 그쪽이 그대로 쓴다(사본 금지).
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
 
@@ -2781,7 +2775,7 @@ internal sealed class StageSceneView : UserControl
 
     /// <summary>
     /// 등장/퇴장 버튼 줄 — 우측 정렬 + 구분 색(등장 초록·퇴장 붉음). 조절창 하단의 전역
-    /// 줄이고, <b>슬롯을 겨누는 탭에서만</b> 선다(<see cref="HidesVisibilityRow"/>).
+    /// 줄이고, <b>[슬롯] 탭에서만</b> 선다(<see cref="HidesVisibilityRow"/>).
     /// 반대 방향 fade는 걷히고 원하는 쪽만 남는다.
     /// </summary>
     private Control BuildVisibilityRow(string slotKey, Action onApplied)
@@ -3007,20 +3001,20 @@ internal sealed class StageSceneView : UserControl
     // 조용히 엉뚱한 탭을 가리키면 안 된다. 순서를 바꿀 때 함께 고치는 자리는 여기뿐이다.
 
     private const int QuickTabIndex = 0;
+    private const int SlotTabIndex = 1;
     private const int CharacterTabIndex = 2;
     private const int BackgroundTabIndex = 3;
 
     /// <summary>
-    /// 등장/퇴장 줄을 숨기는 탭인가.
+    /// 등장/퇴장 줄을 숨기는 탭인가 — <b>[슬롯] 탭에서만 선다</b> (2026-08-26 소유자:
+    /// 캐릭터·오디오에서도 없애 달라).
     ///
-    /// <b>배경</b> — 배경은 슬롯이 아니다 (소유자 지시 2026-08-06 2차).
-    /// <b>자주 쓰는</b> — 그 판의 칩은 <b>제 대상을 자기가 들고 있다</b> (2026-08-24 소유자).
-    /// 아래에 선 등장/퇴장은 위 콤보의 슬롯을 겨누므로, 칩을 누르는 손과 다른 대상을
-    /// 가리키는 단추 둘이 한 화면에 서서 <b>같은 것처럼 보인다</b>. 슬롯을 겨누는 일은
-    /// [슬롯]·[캐릭터] 탭의 것이고, 등장/퇴장도 거기 있으면 된다.
+    /// 무대에 세우고 거두는 일은 <b>슬롯의 일</b>이다 — 캐스팅·무대/레이어·위치·깊이가
+    /// 같은 날 전부 [슬롯] 탭으로 모였고(캐릭터 탭은 표정만), 등장/퇴장도 그 무리다.
+    /// 배경은 애초에 슬롯이 아니고(2026-08-06 2차), [자주 쓰는]의 칩은 제 대상을 자기가
+    /// 들고 있어(2026-08-24) 위 콤보의 슬롯을 겨누는 단추가 함께 서면 같은 것처럼 보인다.
     /// </summary>
-    private static bool HidesVisibilityRow(int tabIndex) =>
-        tabIndex is QuickTabIndex or BackgroundTabIndex;
+    private static bool HidesVisibilityRow(int tabIndex) => tabIndex != SlotTabIndex;
 
     // ── [자주 쓰는] 탭 (2026-08-22) ─────────────────────────────────────────
 
@@ -4280,7 +4274,11 @@ internal sealed class StageSceneView : UserControl
 
     /// <summary>
     /// 슬롯 탭 — <b>전역 선택 슬롯 하나</b>의 조작이다(추가·선택은 조절창 상단 전역 헤더).
-    /// 무대/레이어(Setup의 slot 재선언 — 부착만 갱신), 위치(place)·깊이(size)는 이 라인.
+    ///
+    /// 순서가 규격이다 (2026-08-26 소유자): <b>캐스팅이 맨 위</b>(고를 수 있는 캐릭터를
+    /// 큰 단추로), 구분선 아래에 <b>무대/레이어·위치·깊이</b>. 위치(place)·깊이(size)는
+    /// 같은 날 [캐릭터] 탭에서 이리로 왔다 — 자리는 슬롯의 것이고 캐릭터 탭에는 표정만
+    /// 남는다. 무대/레이어·캐스팅은 Setup, 위치·깊이는 이 라인의 커맨드다.
     /// tuning이 수입돼 있으면 전부 코어 좌표로 실반영되고(W25·W27), 없으면 근사임을 쓴다(규칙 14).
     /// </summary>
     private Control BuildSlotTab(Action onApplied)
@@ -4298,6 +4296,65 @@ internal sealed class StageSceneView : UserControl
             });
             return panel;
         }
+
+        // ── 캐스팅 → Setup — 맨 위다 (2026-08-26 소유자: "캐스팅 목록은 가장 위쪽으로"
+        //    · "캐릭터 이름버튼의 크기를 키우고"). 슬롯을 세우면 첫 손이 가는 곳이라서다.
+        MiniStageSlot slot = _request.State.Slots[slotKey];
+        PreviewAssetLibrary library = _session!.AssetLibrary;
+
+        string[] characters = CastingCandidates(
+            library.PortraitEntries.Select(entry => entry.Key.CharacterId),
+            _session.Definition.Speakers.Select(speaker => speaker.CharacterId));
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"'{slotKey}' 캐스팅 — 고를 수 있는 캐릭터 (노드 Setup에 기록)",
+            FontSize = 10,
+            Opacity = 0.6
+        });
+
+        if (characters.Length == 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "초상화 폴더나 화자 등록에서 캐릭터를 찾지 못했습니다.",
+                FontSize = 10,
+                Opacity = 0.65,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        var characterWrap = new WrapPanel { MaxWidth = 260 };
+
+        foreach (string characterId in characters)
+        {
+            var characterButton = new Button
+            {
+                Content = characterId,
+                FontSize = 12,
+                Padding = new Thickness(10, 5),
+                Margin = new Thickness(0, 0, 4, 4),
+                IsEnabled = !string.Equals(characterId, slot.CharacterId, StringComparison.Ordinal)
+            };
+
+            characterButton.Click += (_, _) =>
+            {
+                ApplySetupCommand("cast", ("slot", slotKey), ("characterKey", characterId));
+                onApplied();
+            };
+
+            characterWrap.Children.Add(characterButton);
+        }
+
+        panel.Children.Add(characterWrap);
+
+        // 캐스팅(누구)과 자리 잡기(어디)를 가르는 선 (소유자: "구분선으로 구분을 지어달라").
+        panel.Children.Add(new Border
+        {
+            Height = 1,
+            Margin = new Thickness(0, 4, 0, 2),
+            Background = new SolidColorBrush(Color.FromArgb(60, 148, 163, 184))
+        });
 
         // ── 슬롯의 위치(무대/레이어) → Setup slot 재선언 (부착만 갱신, W27) ──
         // 현재 값은 코어 부착 상태에서 읽는다. 후보 어휘는 카탈로그 타입 후보 한 곳.
@@ -4356,55 +4413,18 @@ internal sealed class StageSceneView : UserControl
         positionRow.Children.Add(layerCombo);
         panel.Children.Add(positionRow);
 
-        // ── 캐스팅 → Setup (위치·깊이는 [캐릭터] 탭 — 겹치지 않는다) ──
-        MiniStageSlot slot = _request.State.Slots[slotKey];
-        PreviewAssetLibrary library = _session!.AssetLibrary;
+        // ── 위치·깊이 — 이 라인의 place·size (2026-08-26 [캐릭터] 탭에서 이사). 격자와
+        //    줄은 그쪽이 쓰던 <b>같은 함수</b>다(사본 금지). 빈 슬롯도 자리를 정할 수 있다.
+        panel.Children.Add(new TextBlock { Text = "위치 (place)", FontSize = 10, Opacity = 0.6 });
+        panel.Children.Add(BuildScreenPointGrid(() => slotKey, onApplied));
 
-        string[] characters = CastingCandidates(
-            library.PortraitEntries.Select(entry => entry.Key.CharacterId),
-            _session.Definition.Speakers.Select(speaker => speaker.CharacterId));
+        panel.Children.Add(new TextBlock { Text = "깊이 (size)", FontSize = 10, Opacity = 0.6 });
+        panel.Children.Add(BuildDepthRow(() => slotKey, onApplied));
 
-        panel.Children.Add(new TextBlock
+        if (PlaceApproximationNote() is { } placeNote)
         {
-            Text = $"'{slotKey}' 캐스팅 (노드 Setup에 기록)",
-            FontSize = 10,
-            Opacity = 0.6
-        });
-
-        if (characters.Length == 0)
-        {
-            panel.Children.Add(new TextBlock
-            {
-                Text = "초상화 폴더나 화자 등록에서 캐릭터를 찾지 못했습니다.",
-                FontSize = 10,
-                Opacity = 0.65,
-                TextWrapping = TextWrapping.Wrap
-            });
+            panel.Children.Add(placeNote);
         }
-
-        var characterWrap = new WrapPanel { MaxWidth = 260 };
-
-        foreach (string characterId in characters)
-        {
-            var characterButton = new Button
-            {
-                Content = characterId,
-                FontSize = 10,
-                Padding = new Thickness(6, 2),
-                Margin = new Thickness(0, 0, 4, 4),
-                IsEnabled = !string.Equals(characterId, slot.CharacterId, StringComparison.Ordinal)
-            };
-
-            characterButton.Click += (_, _) =>
-            {
-                ApplySetupCommand("cast", ("slot", slotKey), ("characterKey", characterId));
-                onApplied();
-            };
-
-            characterWrap.Children.Add(characterButton);
-        }
-
-        panel.Children.Add(characterWrap);
 
         return panel;
     }
@@ -4437,7 +4457,7 @@ internal sealed class StageSceneView : UserControl
     ];
 
     /// <summary>
-    /// 위치 이동 격자. 슬롯 탭과 캐릭터 팝오버가 <b>같은 격자 하나</b>를 쓴다(사본 금지).
+    /// 위치 이동 격자 (2026-08-26부터 [슬롯] 탭의 것 — 캐릭터 탭에는 표정만 남았다).
     /// 누르면 이 라인의 <c>place</c>가 되고, 같은 슬롯을 여러 번 옮겨도 커맨드는 하나가 수정된다.
     /// </summary>
     private Control BuildScreenPointGrid(Func<string?> resolveSlotKey, Action onApplied)

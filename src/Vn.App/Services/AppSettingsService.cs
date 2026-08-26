@@ -21,7 +21,18 @@ internal static class AppSettingsService
         WriteIndented = true
     };
 
-    public static string SettingsPath { get; } = Path.Combine(
+    /// <summary>
+    /// 테스트 격리 (2026-08-26) — 헤드리스 MainWindow가 이 파일을 진짜 %APPDATA%에서
+    /// 읽으면 <b>개발자의 실제 최근 프로젝트를 열어 버린다</b>(OnOpened): 테스트가 그
+    /// 프로젝트의 그날 상태에 따라 무작위로 흔들리고(실사례 — 소유자가 실험하던
+    /// 프로젝트가 바뀌자 무관한 테스트들이 죽었다), 세션이 실제 원고 폴더에 감시자를
+    /// 걸고 노드를 더한다. 테스트 러너가 이 값을 임시 경로로 바꾼다(HeadlessUi).
+    /// </summary>
+    internal static string? SettingsPathOverride { get; set; }
+
+    public static string SettingsPath => SettingsPathOverride ?? DefaultSettingsPath;
+
+    private static readonly string DefaultSettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "VnTool",
         "settings.json");

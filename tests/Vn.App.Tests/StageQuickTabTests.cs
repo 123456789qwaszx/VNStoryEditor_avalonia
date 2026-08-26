@@ -129,11 +129,12 @@ public sealed class StageQuickTabTests
     });
 
     [Fact]
-    public void 등장_퇴장_줄은_슬롯을_겨누는_탭에서만_선다() => HeadlessUi.Run(() =>
+    public void 등장_퇴장_줄은_슬롯_탭에서만_선다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-24 소유자: [자주 쓰는]에서는 등장·퇴장을 안 보이게.
-        // 그 판의 칩은 <b>제 대상을 자기가 들고</b> 있으므로, 위 콤보의 슬롯을 겨누는
-        // 단추가 아래 함께 서면 둘이 같은 것처럼 보인다. 배경은 애초에 슬롯이 아니다.
+        // 2026-08-26 소유자: 캐릭터·오디오에서도 등장·퇴장을 없애 달라 — 무대에 세우고
+        // 거두는 일은 슬롯의 일이라, 캐스팅·자리와 함께 [슬롯] 탭에만 선다.
+        // ([자주 쓰는]은 2026-08-24부터 숨김 — 칩이 제 대상을 자기가 들고 있다.
+        // 배경은 애초에 슬롯이 아니다.)
         (AuthoringSession session, string nodeId, string lineId) = Stage();
         StageSceneView view = SceneOf(
             session, nodeId, lineId, Command("char_rig_cast.slot", ("slotKey", "c1")));
@@ -158,9 +159,9 @@ public sealed class StageQuickTabTests
 
         Assert.False(VisibleOn("★ 자주 쓰는"));
         Assert.True(VisibleOn("슬롯"));
-        Assert.True(VisibleOn("캐릭터"));
+        Assert.False(VisibleOn("캐릭터"));
         Assert.False(VisibleOn("배경"));
-        Assert.True(VisibleOn("오디오"));
+        Assert.False(VisibleOn("오디오"));
     });
 
     [Fact]
