@@ -396,6 +396,47 @@ public class AuthoringSessionTests
         }
     }
 
+    /// <summary>
+    /// 기획자 어휘가 갈리면 <b>스스로 알린다</b> (2026-08-26 소유자 보고: 챕터 그래프에서
+    /// 화자를 지웠는데 연출 그래프가 옛 목록을 계속 보였다 — "바로바로 반영이 됐으면 해").
+    ///
+    /// 예전에는 <c>SaveSpeakers</c>가 파일을 쓰고 정의를 <b>조용히</b> 다시 읽었고, 이미
+    /// 그려진 화면은 그 사실을 알 길이 없어 제 노드를 다시 고를 때까지 낡은 목록을 들었다.
+    /// <b>지우기가 특히 나빴다</b>: 없는 이름이 드롭다운에 남아 고를 수 있었다.
+    ///
+    /// ⚠ 이 시험이 거는 것은 <b>알림이 온다</b>는 사실 하나다 — 누가 무엇을 다시 그리는지는
+    /// 듣는 쪽의 사정이고, 알림이 없으면 어느 쪽도 알 수가 없다.
+    /// </summary>
+    [Fact]
+    public void 화자를_지우면_정의가_바뀌었다고_알린다()
+    {
+        string directory = TempDirectory();
+
+        try
+        {
+            var session = new AuthoringSession();
+            session.Save(Path.Combine(directory, "project.vnproject.json"));
+
+            Assert.True(session.SaveSpeakers([
+                new SpeakerSpec { Name = "라루" },
+                new SpeakerSpec { Name = "윌로우" }
+            ]));
+
+            int notified = 0;
+            session.DefinitionChanged += (_, _) => notified++;
+
+            // 지우는 방식 — 남길 것만 넘긴다(통째로 쓰는 것이 규격이다).
+            Assert.True(session.SaveSpeakers([new SpeakerSpec { Name = "라루" }]));
+
+            Assert.Equal(1, notified);
+            Assert.Equal("라루", Assert.Single(session.Definition.Speakers).Name);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     // ── 새 프로젝트 자동 준비 + PNG 가져오기 (W48) ────────────────────────
 
     [Fact]

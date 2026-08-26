@@ -39,7 +39,28 @@ internal sealed class AuthoringSession
     /// <summary>현재 프로젝트 manifest 경로. 아직 저장하지 않았으면 null이다.</summary>
     public string? ProjectPath { get; private set; }
 
-    public GameDefinition Definition { get; private set; } = GameDefinition.Empty;
+    /// <summary>
+    /// `game.definition.json`의 내용 — 기획자가 소유하는 어휘(스탯·조건·화자·연출 카탈로그).
+    ///
+    /// ⚠ <b>바뀌면 스스로 알린다</b> (2026-08-26 소유자 보고: 챕터 그래프에서 화자를 지웠는데
+    /// 연출 그래프가 옛 목록을 계속 보였다). 예전에는 쓰는 자리마다 파일을 다시 읽고
+    /// <b>조용히</b> 이 칸만 갈아 끼웠고, 이미 그려진 화면은 그 사실을 알 길이 없어 제 노드를
+    /// 다시 고를 때까지 낡은 목록을 들고 있었다.
+    ///
+    /// <b>알림을 세터에 둔 이유</b>: 다시 읽는 자리가 다섯이라(열기·저장·화자 저장·변수 등록·
+    /// 새 프로젝트) 부르는 쪽마다 알림을 적으면 언젠가 한 곳이 빠진다. 값이 바뀌는 길이
+    /// 하나면 알림도 하나다.
+    /// </summary>
+    public GameDefinition Definition
+    {
+        get;
+
+        private set
+        {
+            field = value;
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    } = GameDefinition.Empty;
 
     /// <summary>
     /// <b>A계층(기획자) 스탯 키</b> — 챕터 `스탯` 시트가 등록한 것들 (2026-08-17 소유자:
@@ -521,6 +542,15 @@ internal sealed class AuthoringSession
     public event EventHandler? StatusChanged;
 
     public event EventHandler? SelectionChanged;
+
+    /// <summary>
+    /// <see cref="Definition"/>이 갈렸을 때 — 기획자의 어휘가 바뀌었다는 알림이다.
+    ///
+    /// ⚠ <b>프로젝트 변경(<see cref="Changed"/>)과 갈라 둔다.</b> 정의 파일은 프로젝트
+    /// 바깥에 살고, 저것으로 방송하면 워크북 재읽기·판 재구성이 딸려 온다(2026-08-18
+    /// 성능 항목의 그 고리다). 듣는 쪽은 <b>제가 그리는 목록만</b> 다시 세운다.
+    /// </summary>
+    public event EventHandler? DefinitionChanged;
 
     /// <summary>
     /// 현재 파일 또는 그래프 펼침 상태가 바뀌었을 때.

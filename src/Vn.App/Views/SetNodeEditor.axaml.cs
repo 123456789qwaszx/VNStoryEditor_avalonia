@@ -62,7 +62,18 @@ public partial class SetNodeEditor : UserControl
     // 2026-08-17 폐지)에 이어 재진입 빗장(_rebuildingSpeakers)까지 사라졌다. 고칠 수 없는
     // 목록에는 "고치는 중"이라는 상태가 없다.
 
-    internal void Attach(AuthoringSession session) => _session = session;
+    internal void Attach(AuthoringSession session)
+    {
+        _session = session;
+
+        // 기획자의 화자 목록이 바뀌면 <b>그 자리에서</b> 다시 선다 (2026-08-26 소유자:
+        // "바로바로 반영이 됐으면 해"). 예전에는 이 노드를 다시 골라야 새 목록이 왔다.
+        //
+        // ⚠ 여기서 다시 세우는 것은 <b>읽기 전용 표 하나</b>다(등록 화자는 회색 고정) —
+        //   사람이 타이핑하던 칸을 파괴하는 그 위험(2026-08-24 성능 규칙 ⑤)이 없다.
+        //   조건·아이템 표는 안 건드린다: 그쪽은 손이 머무는 자리다.
+        session.DefinitionChanged += (_, _) => RebuildSpeakers();
+    }
 
     internal void Show(string? nodeId)
     {
