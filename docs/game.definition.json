@@ -2425,7 +2425,13 @@
           "name": "zoom",
           "type": "float",
           "required": false,
-          "default": "1"
+          "default": "1",
+          "slider": {
+            "min": -10,
+            "max": 20,
+            "step": 0.5
+          },
+          "description": "줌 1당 배율 +0.05 (규약 상수 ZoomToScaleFactor) — 10이면 1.5배, -10이면 0.5배. 2026-08-26 소유자: 작업대에서 x·y·시간과 함께 이 값도 슬라이더로 만진다(shot_zoom의 zoom과 같은 눈금)"
         },
         {
           "name": "x",

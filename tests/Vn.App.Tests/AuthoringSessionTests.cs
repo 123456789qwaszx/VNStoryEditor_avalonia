@@ -280,6 +280,13 @@ public class AuthoringSessionTests
             Assert.True(File.Exists(Path.Combine(tuningRoot, "presets", "depth.json")));
             Assert.True(session.TuningLibrary.IsLoaded);
             Assert.True(session.TuningLibrary.RigCount > 0);
+
+            // ⛔ <b>기본 튜닝은 로더가 찾는 것을 하나도 빠뜨리지 않는다</b> (2026-08-26).
+            //    파일 이름을 몇 개 세는 것으로는 이걸 못 지킨다 — 로더에 축이 하나 늘면
+            //    (W64의 `presets/role-anchor.json`이 그랬다) 여기 목록은 조용히 통과하고
+            //    새 프로젝트는 <b>열 때마다 경고</b>를 맞는다. 실제로 그렇게 났다.
+            //    불평 목록이 비어 있는지를 걸면 다음에 축이 늘 때 이 시험이 먼저 운다.
+            Assert.Empty(session.TuningLibrary.Problems);
         }
         finally
         {

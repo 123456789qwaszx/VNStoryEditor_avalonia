@@ -21,24 +21,34 @@
                 <Button Grid.Column="5" x:Name="UndoButton" Content="실행 취소" />
                 <Button Grid.Column="6" x:Name="RedoButton" Content="다시 실행" Margin="6,0,0,0" />
 
-                <Button Grid.Column="8" x:Name="ExportButton" Content="내보내기…" />
-                <Button Grid.Column="9" x:Name="CsvExportButton" Content="CSV 내보내기…" Margin="6,0,0,0" />
-                <Button Grid.Column="10" x:Name="ExportFormatsButton" Content="양식…" Margin="6,0,0,0" />
                 <!--
                   진행 JSON은 사람 손을 안 기다리고 저절로 나가므로(2026-08-17), 사람이 할
                   일은 "가서 꺼내 오는 것"뿐이다. 그 자리를 몰라 못 꺼내 가던 것을 연다
                   (2026-08-25 소유자 — 비개발자 작가에게 건네는 준비의 일부).
+
+                  ⚠ <b>이 무리에서 맨 왼쪽이다</b> (2026-08-26 소유자: "챕터진행이 좌측에
+                  있고 내보내기가 우측으로"). 저절로 나간 것을 꺼내 가는 일이 흔하고,
+                  손으로 내보내는 일이 드물다 — 자주 쓰는 것이 앞이다.
+                  ⚠ 뒤 셋(내보내기·CSV·양식)은 <b>한 가족</b>이라 붙여 둔다. 지금 CSV·양식은
+                  접혀 있지만(ApplyTabChrome), 되살아날 때 이 무리 안에서 서야 한다.
                 -->
-                <Button Grid.Column="11" x:Name="OpenExportFolderButton" Content="📂 챕터진행"
-                        Margin="6,0,0,0"
+                <Button Grid.Column="8" x:Name="OpenExportFolderButton" Content="📂 챕터진행"
                         ToolTip.Tip="exported/ 폴더를 엽니다 — 챕터별 진행 JSON이 여기 있습니다." />
+                <Button Grid.Column="9" x:Name="ExportButton" Content="내보내기…" Margin="6,0,0,0" />
+                <Button Grid.Column="10" x:Name="CsvExportButton" Content="CSV 내보내기…" Margin="6,0,0,0" />
+                <Button Grid.Column="11" x:Name="ExportFormatsButton" Content="양식…" Margin="6,0,0,0" />
 
                 <StackPanel Grid.Column="13" VerticalAlignment="Center" Margin="8,0">
                     <TextBlock x:Name="ProjectNameText" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="ProjectPathText" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <TextBlock Grid.Column="13"
+                <!-- ⚠ <b>맨 끝 열(마지막 Auto)이 이 표시의 자리다.</b> 앞에 단추를 하나
+                     더하면 열이 늘고, 그때 <c>*</c>(프로젝트 이름)와 이 칸이 <b>함께</b>
+                     밀려야 한다. `📂 챕터진행`을 더할 때 이름 칸만 12→13으로 옮기고 이쪽을
+                     안 옮겨서, 이 글이 <b>이름 위에 겹쳐</b> 섰다(2026-08-26 소유자 보고:
+                     "원래 우측상단 끝이였는데"). 열 번호는 둘이 한 쌍이다. -->
+                <TextBlock Grid.Column="14"
                            x:Name="DirtyText"
                            VerticalAlignment="Center"
                            FontWeight="SemiBold" />

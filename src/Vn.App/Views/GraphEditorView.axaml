@@ -23,7 +23,9 @@
                 -->
                 <TextBlock Text="챕터" FontSize="11" Opacity="0.6" VerticalAlignment="Center"
                            Margin="0,0,4,0" />
-                <ComboBox x:Name="ChapterCombo" MinWidth="140" FontSize="11"
+                <!-- ⚠ 치수는 챕터 그래프의 콤보와 <b>한 쌍</b>이다 (2026-08-26 소유자) —
+                     짝: `ChapterGraphView.axaml`의 ChapterCombo. -->
+                <ComboBox x:Name="ChapterCombo" MinWidth="180" FontSize="11"
                           ToolTip.Tip="새 노드가 설 판입니다. 챕터 그래프의 선택과 같은 값을 봅니다." />
                 <Border Width="1" Margin="4,2" Background="{DynamicResource ThemeBorderLowBrush}" />
                 <Button x:Name="AddDialogueButton" Content="+ 대사 노드" />

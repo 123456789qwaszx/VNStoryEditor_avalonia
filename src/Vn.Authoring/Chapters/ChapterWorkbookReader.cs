@@ -645,16 +645,14 @@ public static class ChapterWorkbookReader
             stats.Add(new ChapterStat(key, Text(sheet, row, 3), initial, minimum, maximum, row));
         }
 
-        if (stats.Count is < 2 or > 5)
-        {
-            diagnostics.Add(Diagnostic(
-                ChapterDiagnosticSeverity.Warning,
-                ChapterDiagnosticCode.StatCountOutOfRange,
-                path, sheet.Name, null, null,
-                $"Tier 2 스탯이 {stats.Count}개입니다. 규격은 2~5개를 전제합니다(§0) — " +
-                "많아질수록 도달성 증명(G7)의 상태공간이 급격히 커집니다. " +
-                "스탯의 원천은 game.definition.json의 변수이고, `스탯` 시트는 그 거울입니다."));
-        }
+        // ⛔ <b>스탯 개수 경고는 2026-08-26에 걷었다</b> (소유자: "이 경고는 그냥 지우는 게
+        //    낫겠어"). 챕터를 갓 만들면 0개라 <b>언제나 뜨는 경고</b>였고, 언제나 뜨는 경고는
+        //    읽히지 않는다 — 그 옆에 선 진짜 오류까지 함께 안 읽히게 만든다.
+        //
+        //    ⚠ 개수가 늘 때의 위험(도달성 증명의 상태공간)은 사라지지 않았다. 다만 그것을
+        //    <b>미리 겁주는</b> 자리가 여기가 아닐 뿐이다: 실제로 넓으면 증명이 오래 걸리는
+        //    것으로 드러나고, 범위가 뒤집히면 `StatRangeInvalid`가 오류로 짚는다.
+        //    규격의 권고(2~5개, 0~5쯤)는 `chapter-graph-orders.md` §0과 기획자 안내에 남는다.
 
         return stats;
     }

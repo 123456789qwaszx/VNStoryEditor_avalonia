@@ -17,7 +17,11 @@
                            Opacity="0.6"
                            VerticalAlignment="Center"
                            Margin="0,0,6,0" />
-                <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" />
+                <!-- ⚠ 챕터 콤보는 <b>연출 그래프의 것과 같은 치수</b>다 (2026-08-26 소유자:
+                     "둘의 크기가 달라서 불편하다"). 탭을 오가며 같은 일을 하는 손잡이가
+                     탭마다 다른 크기로 서면, 탭이 바뀔 때 그 자리가 흔들린다.
+                     짝: `GraphEditorView.axaml`의 ChapterCombo — 한쪽을 고치면 둘 다 고친다. -->
+                <ComboBox Grid.Column="1" x:Name="ChapterCombo" MinWidth="180" FontSize="11" />
                 <Button Grid.Column="2" x:Name="OpenFolderButton" Content="폴더 열기" Margin="6,0,0,0" />
                 <!-- [내보내기] 단추는 없앴다 (2026-08-17 소유자: "필요 없어 보이는데").
                      작가의 Yarn이 LiveOutputService로 저절로 나가는데 챕터 진행 JSON만

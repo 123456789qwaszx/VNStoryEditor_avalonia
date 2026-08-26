@@ -40,6 +40,13 @@ public enum ChapterDiagnosticCode
     StatKeyUnknown,
     StatValueNotInteger,
     StatRangeInvalid,
+
+    /// <summary>
+    /// ⛔ <b>안 쓴다 (2026-08-26 폐지)</b> — 스탯이 2~5개 밖일 때 뜨던 경고. 챕터를 갓 만들면
+    /// 0개라 언제나 떴고, 언제나 뜨는 경고는 옆에 선 진짜 오류까지 안 읽히게 만들었다.
+    /// <b>이름은 남긴다</b>: 이 enum은 사람이 읽는 진단 코드라 값을 지우면 옛 보고·기록의
+    /// 코드 이름이 다른 뜻으로 밀린다.
+    /// </summary>
     StatCountOutOfRange,
     StatMissingFromGameDefinition,
     EdgeEndpointUnknown,
