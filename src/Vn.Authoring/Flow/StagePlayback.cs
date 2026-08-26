@@ -520,6 +520,12 @@ public sealed class StagePlayback
     }
 
     /// <summary>
+    /// 새 판이 시작됐다 — 판 수명의 상태(챕터 런 스탯 등)를 든 쪽이 처음으로 되돌린다.
+    /// detour 이력과 같은 순간에 운다: 수명이 같은 상태는 청소 신호도 하나여야 한다.
+    /// </summary>
+    public event Action? RunReset;
+
+    /// <summary>
     /// 재생을 처음부터 다시 시작한다 — 쌓인 복귀와 "다녀왔음" 표시, 그리고 자유 씬 뒤에
     /// 이어질 도착 에피소드를 버린다. 이 청소가 없으면 두 번째 재생에서 detour가 통째로
     /// 건너뛰어지고, 지난 재생의 선택이 이번 재생의 끝에 되살아난다.
@@ -529,6 +535,7 @@ public sealed class StagePlayback
         _detours.Clear();
         _spentExits.Clear();
         _pendingEpisodeTargetNodeId = null;
+        RunReset?.Invoke();
     }
 
     // ── 에피소드 끝 선택지 (2026-08-27 소유자 보고: 에피소드가 끝나도 선택지가 안 선다) ──

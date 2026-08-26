@@ -91,49 +91,9 @@ public static class ChapterFixtureWalker
             string.Equals(edge.ToEpisodeId, target, StringComparison.Ordinal));
     }
 
+    // 판정의 단일 구현은 ChapterGateJudge다 (2026-08-27) — 증명기·무대 프리뷰와 한 벌.
+    // 항의 종류가 스탯 비교 하나뿐이라(2026-08-25 `cleared:` 폐지) 깃발도 같은 길로 판정된다.
     private static bool Satisfied(
-        ChapterGraphModel chapter, string? label, int[] stats)
-    {
-        if (string.IsNullOrEmpty(label))
-        {
-            return true;
-        }
-
-        if (chapter.FindCondition(label) is not { IsValid: true } condition)
-        {
-            return false;
-        }
-
-        // 항의 종류가 스탯 비교 하나뿐이다 (2026-08-25) — `cleared:`가 폐지되면서
-        // 클리어 집합을 들고 걸을 이유가 없어졌다. 깃발도 스탯이라 이 길로 함께 판정된다.
-        foreach (ConditionTerm term in condition.Parsed)
-        {
-            int index = -1;
-
-            for (int position = 0; position < chapter.Stats.Count; position++)
-            {
-                if (string.Equals(chapter.Stats[position].Key, term.Key, StringComparison.Ordinal))
-                {
-                    index = position;
-                    break;
-                }
-            }
-
-            bool holds = index >= 0 && term.Comparison switch
-            {
-                ConditionComparison.AtLeast => stats[index] >= term.Value,
-                ConditionComparison.AtMost => stats[index] <= term.Value,
-                ConditionComparison.Above => stats[index] > term.Value,
-                ConditionComparison.Below => stats[index] < term.Value,
-                _ => stats[index] == term.Value
-            };
-
-            if (!holds)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+        ChapterGraphModel chapter, string? label, int[] stats) =>
+        ChapterGateJudge.Judge(chapter, label, stats) == ChapterGateVerdict.Open;
 }

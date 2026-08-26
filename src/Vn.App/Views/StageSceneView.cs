@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Ked.Presentation.Core;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Flow;
@@ -1789,6 +1790,13 @@ internal sealed class StageSceneView : UserControl
                 }
             };
 
+            // 지금 스탯으로 못 지나는 길 (2026-08-27) — 게임처럼 못 고르되, 지우는 대신
+            // 흐리게 남긴다(사유는 문구가 든다). 저작 도구에서 조용히 사라지는 것은 고장처럼 보인다.
+            if (option.IsDisabled)
+            {
+                optionBox.Opacity = 0.45;
+            }
+
             // 에피소드 끝 선택지 (2026-08-27) — 클릭의 뜻은 옵션이 스스로 든다(도착
             // 에피소드로 씬 전환). 버튼 그리기는 갈래 선택과 한 벌, 배선만 갈린다.
             if (option.Choose is { } choose && _session is not null)
@@ -1835,10 +1843,15 @@ internal sealed class StageSceneView : UserControl
     /// <summary>
     /// 스탯 HUD (X3·W35) — 등록 변수의 "이 라인까지" 누적 값. 선택된 갈래 기준이고,
     /// 미선택 갈래가 남아 있으면(요청의 근사 뱃지) 그 구간만 문서 순서 근사다(규칙 14).
+    /// <b>챕터 런 스탯도 같은 판에 선다</b> (2026-08-27) — 간선 선택이 커밋한 챕터 단위
+    /// 누적값. 켜고 끄는 토글은 하나다(둘 다 "지금 값이 얼마인가"라는 같은 물음이다).
     /// </summary>
     private void RenderStatsHud(MiniStagePreviewRequest request, double width, double em)
     {
-        if (request.Stats is not { Count: > 0 } stats)
+        IReadOnlyList<StatFold.StatValue> stats = request.Stats ?? [];
+        IReadOnlyList<ChapterRunStatValue> chapterStats = request.ChapterStats ?? [];
+
+        if (stats.Count == 0 && chapterStats.Count == 0)
         {
             return;
         }
@@ -1869,31 +1882,35 @@ internal sealed class StageSceneView : UserControl
         Add(toggle, new StageRect(width - em * 3.4, em * 0.5, em * 2.9, em * 1.2));
 
         // 조건 값 시뮬 (W36-b) — 시작값을 바꿔 "이 값이면 어느 갈래인가"를 본다.
-        bool simActive = _session?.SimulationValues.Count > 0;
-        var simChip = new Border
+        // B계층 연출 변수의 것이라 그 변수가 있을 때만 선다(챕터 스탯은 간선 커밋이 정한다).
+        if (stats.Count > 0)
         {
-            Background = new SolidColorBrush(simActive
-                ? Color.FromArgb(190, 30, 64, 175)
-                : Color.FromArgb(150, 0, 0, 0)),
-            CornerRadius = new CornerRadius(em * 0.2),
-            Padding = new Thickness(em * 0.35, em * 0.12),
-            Cursor = new Cursor(StandardCursorType.Hand),
-            Child = new TextBlock
+            bool simActive = _session?.SimulationValues.Count > 0;
+            var simChip = new Border
             {
-                Text = simActive ? "시뮬 ●" : "시뮬",
-                FontSize = em * 0.6,
-                Foreground = Brushes.White,
-                Opacity = 0.9
-            }
-        };
-        ToolTip.SetTip(simChip, "변수 시작값을 바꿔 조건 갈래 자동 판정을 봅니다.");
-        simChip.PointerPressed += (_, args) =>
-        {
-            _consoleOpenAt = args.GetPosition(this);
-            UiGuard.Run(_session, "값 시뮬", () => ShowSimulationFlyout(stats));
-            args.Handled = true;
-        };
-        Add(simChip, new StageRect(width - em * 6.6, em * 0.5, em * 2.9, em * 1.2));
+                Background = new SolidColorBrush(simActive
+                    ? Color.FromArgb(190, 30, 64, 175)
+                    : Color.FromArgb(150, 0, 0, 0)),
+                CornerRadius = new CornerRadius(em * 0.2),
+                Padding = new Thickness(em * 0.35, em * 0.12),
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Child = new TextBlock
+                {
+                    Text = simActive ? "시뮬 ●" : "시뮬",
+                    FontSize = em * 0.6,
+                    Foreground = Brushes.White,
+                    Opacity = 0.9
+                }
+            };
+            ToolTip.SetTip(simChip, "변수 시작값을 바꿔 조건 갈래 자동 판정을 봅니다.");
+            simChip.PointerPressed += (_, args) =>
+            {
+                _consoleOpenAt = args.GetPosition(this);
+                UiGuard.Run(_session, "값 시뮬", () => ShowSimulationFlyout(stats));
+                args.Handled = true;
+            };
+            Add(simChip, new StageRect(width - em * 6.6, em * 0.5, em * 2.9, em * 1.2));
+        }
 
         if (!_statsVisible)
         {
@@ -1901,27 +1918,61 @@ internal sealed class StageSceneView : UserControl
         }
 
         var rows = new StackPanel { Spacing = em * 0.08 };
+        int rowCount = 0;
 
-        foreach (StatFold.StatValue stat in stats)
+        // 챕터 런 스탯 (2026-08-27) — 간선 선택이 커밋한 챕터 단위 누적. 새 ▶가 처음값이다.
+        if (chapterStats.Count > 0)
         {
             rows.Children.Add(new TextBlock
             {
-                Text = $"{stat.Variable}  {stat.Display}",
-                FontSize = em * 0.62,
-                Foreground = Brushes.White
+                Text = "챕터 스탯 — 간선 선택이 커밋 · 새 ▶는 처음값",
+                FontSize = em * 0.45,
+                Foreground = Brushes.White,
+                Opacity = 0.55
             });
+
+            foreach (ChapterRunStatValue value in chapterStats)
+            {
+                string name = string.IsNullOrWhiteSpace(value.Stat.DisplayName)
+                    ? value.Stat.Key
+                    : value.Stat.DisplayName;
+
+                rows.Children.Add(new TextBlock
+                {
+                    Text = $"{name}  {value.DisplayText}",
+                    FontSize = em * 0.62,
+                    Foreground = Brushes.White
+                });
+            }
+
+            rowCount += chapterStats.Count + 1;
         }
 
-        rows.Children.Add(new TextBlock
+        if (stats.Count > 0)
         {
-            Text = (_request?.State.PassedBranchApproximation == true
-                    ? "미선택 갈래 있음 — 그 구간은 문서 순서 근사"
-                    : "선택된 갈래 기준") +
-                (_session?.SimulationValues.Count > 0 ? " · 시뮬 시작값 적용 중" : string.Empty),
-            FontSize = em * 0.45,
-            Foreground = Brushes.White,
-            Opacity = 0.55
-        });
+            foreach (StatFold.StatValue stat in stats)
+            {
+                rows.Children.Add(new TextBlock
+                {
+                    Text = $"{stat.Variable}  {stat.Display}",
+                    FontSize = em * 0.62,
+                    Foreground = Brushes.White
+                });
+            }
+
+            rows.Children.Add(new TextBlock
+            {
+                Text = (_request?.State.PassedBranchApproximation == true
+                        ? "미선택 갈래 있음 — 그 구간은 문서 순서 근사"
+                        : "선택된 갈래 기준") +
+                    (_session?.SimulationValues.Count > 0 ? " · 시뮬 시작값 적용 중" : string.Empty),
+                FontSize = em * 0.45,
+                Foreground = Brushes.White,
+                Opacity = 0.55
+            });
+
+            rowCount += stats.Count + 1;
+        }
 
         Add(new Border
         {
@@ -1929,7 +1980,7 @@ internal sealed class StageSceneView : UserControl
             CornerRadius = new CornerRadius(em * 0.2),
             Padding = new Thickness(em * 0.4, em * 0.25),
             Child = rows
-        }, new StageRect(width - em * 8.4, em * 1.9, em * 7.9, em * (stats.Count + 2)));
+        }, new StageRect(width - em * 8.4, em * 1.9, em * 7.9, em * (rowCount + 1)));
     }
 
     private Control PlaceholderPortrait(string label, StageRect rect, double em)

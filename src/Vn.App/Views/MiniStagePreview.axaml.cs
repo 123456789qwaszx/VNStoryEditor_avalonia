@@ -29,6 +29,8 @@ internal sealed record StageEditContext(
 /// <see cref="IsTakenBranch"/>는 현재 프리뷰가 접고 있는 갈래 표시다(커서 강조와 별개).
 /// <see cref="Choose"/>가 있으면 클릭의 뜻이 그것 하나다 — 에피소드 끝의 챕터 간선 선택지
 /// (2026-08-27)가 이 길로 도착 에피소드로 넘어간다. 버튼 그리기는 갈래 선택과 한 벌이다.
+/// <see cref="IsDisabled"/>는 지금 스탯으로 못 지나는 길이다(숨김·잠김·깨진 조건) —
+/// 게임에서와 같이 못 고르되, 저작 도구라 지우는 대신 흐리게 보이고 사유를 문구가 든다.
 /// </summary>
 internal sealed record StageChoiceOption(
     string Text,
@@ -36,7 +38,8 @@ internal sealed record StageChoiceOption(
     string? LineId = null,
     string? BlockLineId = null,
     bool IsTakenBranch = false,
-    Action? Choose = null);
+    Action? Choose = null,
+    bool IsDisabled = false);
 
 /// <summary>
 /// 선택지 버튼 목록 조립의 단일 구현 (W35) — 대사·연출 편집기가 같은 규칙 하나를 쓴다.
@@ -246,7 +249,10 @@ internal sealed record MiniStagePreviewRequest(
     // 이 라인의 페이드(slotKey → 방향·초, 2026-08-26) — 불투명도는 라인 시계가 아니라
     // 제 duration으로 흐르고, fade_in이 적힌 슬롯은 기준선과 무관하게 등장으로 판정한다.
     // 항목 없는 슬롯의 가시성 변화(show 등)는 즉시다.
-    IReadOnlyDictionary<string, StageFade>? Fades = null);
+    IReadOnlyDictionary<string, StageFade>? Fades = null,
+    // 챕터 런의 현재 스탯 (2026-08-27) — 편집기가 아니라 프리뷰가 Render에서 얹는다
+    // (챕터 런 상태의 주인이 프리뷰라, 요청을 짓는 편집기는 이 값을 모른다).
+    IReadOnlyList<ChapterRunStatValue>? ChapterStats = null);
 
 /// <summary>
 /// 무대 프리뷰 판 (2026-08-20 중앙 탭 승격) — 좌측 대본 터미널 + 우측 무대.
@@ -358,17 +364,102 @@ public partial class MiniStagePreview : UserControl
             return false;
         }
 
+        ChapterRunState run = EnsureChapterRunFor(chapter);
+
         StageChoiceOption[] options = edges
-            .Select(edge => new StageChoiceOption(
-                EpisodeEdgeText(edge),
-                IsSelected: false,
-                Choose: () => ChooseEpisodeEdge(file!, source, edge)))
+            .Select(edge => BuildEpisodeOption(run, chapter, file!, source, edge))
             .ToArray();
 
         _current = _current with { ChoiceOptions = options };
         Render();
         Playback.WaitForChoiceInput();
         return true;
+    }
+
+    // ── 챕터 런 상태 (2026-08-27 소유자: "선택을 따라가며 스탯 HUD가 챕터 단위로
+    //    누적되는" 쪽) — 시작은 `스탯` 시트 초기값, 변화는 간선 커밋뿐, 새 전체 재생이
+    //    처음으로 되돌린다(detour 이력과 같은 수명 — Playback.RunReset 하나가 청소 신호다).
+
+    private ChapterRunState? _chapterRun;
+
+    /// <summary>이 챕터의 런 하나 — 챕터가 바뀌면 새로 선다(챕터를 넘는 스탯은 없다).</summary>
+    private ChapterRunState EnsureChapterRunFor(ChapterGraphModel chapter)
+    {
+        if (_chapterRun is { } run && string.Equals(run.ChapterId, chapter.ChapterId, StringComparison.Ordinal))
+        {
+            return run;
+        }
+
+        _chapterRun = new ChapterRunState(chapter);
+        return _chapterRun;
+    }
+
+    /// <summary>활성 판(=챕터)의 런 — HUD가 매 렌더에 읽는다. 챕터 판이 아니면 null.</summary>
+    private ChapterRunState? ActiveChapterRun()
+    {
+        if (_session?.ActiveFile?.Name is not { } chapterId)
+        {
+            return null;
+        }
+
+        ChapterGraphModel? model = _chapters
+            .FirstOrDefault(entry => string.Equals(entry.ChapterId, chapterId, StringComparison.Ordinal))
+            ?.Model;
+
+        return model is null ? null : EnsureChapterRunFor(model);
+    }
+
+    /// <summary>
+    /// 간선 하나 → 버튼 하나. 관문은 <b>지금 스탯으로 실제 판정한다</b>(판정은 커밋 전 값) —
+    /// 게임과 같은 규칙 하나(<see cref="ChapterGateJudge"/>, 증명기·워커와 한 벌)다.
+    /// 다만 저작 도구라 숨김·잠김을 지우는 대신 흐리게 두고 사유를 병기한다 — 무엇이 왜
+    /// 안 보이는지가 이 화면의 정보다. 다른 갈래를 억지로 타 보려면 씬 선택기가 뒷길이다.
+    /// </summary>
+    private StageChoiceOption BuildEpisodeOption(
+        ChapterRunState run,
+        ChapterGraphModel chapter,
+        StoryFile file,
+        DialogueNode source,
+        ChapterEdge edge)
+    {
+        ChapterGateVerdict visible = run.Judge(edge.VisibleConditionLabel);
+        ChapterGateVerdict unlock = run.Judge(edge.ConditionLabel);
+
+        if (visible == ChapterGateVerdict.Broken || unlock == ChapterGateVerdict.Broken)
+        {
+            string broken = visible == ChapterGateVerdict.Broken
+                ? edge.VisibleConditionLabel!
+                : edge.ConditionLabel!;
+
+            // 검증이 이미 오류로 짚은 데이터다 — 통과시켜 도달을 부풀리지 않는다(증명기와 같은 결).
+            return new StageChoiceOption(
+                $"{edge.OptionLabel} 〔조건 해석 불가 · {broken}〕", IsSelected: false, IsDisabled: true);
+        }
+
+        if (visible == ChapterGateVerdict.Blocked)
+        {
+            // 런타임이라면 목록에서 아예 빠지는 길이다.
+            return new StageChoiceOption(
+                $"{edge.OptionLabel} 〔표시조건 미달 · {edge.VisibleConditionLabel}〕",
+                IsSelected: false,
+                IsDisabled: true);
+        }
+
+        if (unlock == ChapterGateVerdict.Blocked)
+        {
+            // 런타임이라면 잠긴 채 보이는 길이다 — 잠금 안내문이 있으면 그것이 곧 화면의 말이다.
+            string reason = string.IsNullOrWhiteSpace(edge.LockedMessage)
+                ? $"〔해금조건 미달 · {edge.ConditionLabel}〕"
+                : $"— {edge.LockedMessage}";
+
+            return new StageChoiceOption(
+                $"🔒 {edge.OptionLabel} {reason}", IsSelected: false, IsDisabled: true);
+        }
+
+        return new StageChoiceOption(
+            edge.OptionLabel!,
+            IsSelected: false,
+            Choose: () => ChooseEpisodeEdge(chapter, file, source, edge));
     }
 
     /// <summary>
@@ -394,34 +485,14 @@ public partial class MiniStagePreview : UserControl
     }
 
     /// <summary>
-    /// 버튼에 설 문구 — 프리뷰는 챕터 스탯을 시뮬레이션하지 않으므로 관문(표시·해금조건)을
-    /// 숨기거나 잠그는 대신 문구 옆에 정직하게 병기한다(근사임을 화면이 말한다).
-    /// </summary>
-    private static string EpisodeEdgeText(ChapterEdge edge)
-    {
-        var gates = new List<string>(2);
-
-        if (!string.IsNullOrWhiteSpace(edge.VisibleConditionLabel))
-        {
-            gates.Add($"표시: {edge.VisibleConditionLabel}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(edge.ConditionLabel))
-        {
-            gates.Add($"해금: {edge.ConditionLabel}");
-        }
-
-        return gates.Count == 0
-            ? edge.OptionLabel!
-            : $"{edge.OptionLabel} 〔{string.Join(" · ", gates)}〕";
-    }
-
-    /// <summary>
     /// 선택지 클릭 — 도착 에피소드의 노드로 씬을 넘긴다. 간선에 자유 씬이 매달려 있으면
     /// 그 씬을 먼저 재생하고 도착 에피소드가 뒤따른다(계약의 ViaNodeId — 다음 자리는
     /// <see cref="StagePlayback.SetPendingEpisodeTarget"/>이 들고, 씬 끝에서 소비된다).
+    /// <b>간선을 타는 순간 그 간선의 `스탯변화`가 1회 커밋된다</b> (2026-08-27 — 전이 규칙
+    /// v9① 그대로). 커밋은 이동이 성사될 때만이다 — 도착이 없어 제자리에 남으면 스탯도 그대로다.
     /// </summary>
-    private void ChooseEpisodeEdge(StoryFile file, DialogueNode source, ChapterEdge edge)
+    private void ChooseEpisodeEdge(
+        ChapterGraphModel chapter, StoryFile file, DialogueNode source, ChapterEdge edge)
     {
         if (_session is null)
         {
@@ -441,6 +512,11 @@ public partial class MiniStagePreview : UserControl
                 "챕터 그래프에서 이 챕터를 한 번 고르면 동기화가 세웁니다.");
             return;
         }
+
+        // 제시 시점의 런이 아니라 지금의 런에 커밋한다 — 제시와 클릭 사이에 새 재생이
+        // 런을 되돌렸을 수 있다(그 사이 화면의 선택지는 옛 판의 것이지만, 커밋만은
+        // 지금 서 있는 판의 것이어야 잃어버린 스탯이 생기지 않는다).
+        EnsureChapterRunFor(chapter).Commit(edge.StatChanges);
 
         if (ViaSceneIdFor(source, edge.OptionLabel!) is { } viaId &&
             _session.Project.FindNode(viaId) is DialogueNode)
@@ -631,6 +707,8 @@ public partial class MiniStagePreview : UserControl
         // 재생 배선 — 시간의 원천은 이 타이머 하나, 라인 이동은 기존 선택 경로다.
         Playback.MoveRequested += delta => LineMoveRequested?.Invoke(delta);
         Playback.NodeExitRequested = () => NodeExitRequested?.Invoke() == true;
+        // 챕터 런 스탯은 detour 이력과 같은 수명이다 — 새 전체 재생이 처음값으로 되돌린다.
+        Playback.RunReset += () => _chapterRun = null;
         _scene.PlaybackAdvance = Playback.TryAdvanceByInput;
         // 재생 컨트롤은 타임라인을 사이에 두고 양 끝으로 갈린다 (2026-08-21 소유자) —
         // 왼쪽은 지금 다듬는 라인의 것, 오른쪽 끝은 가끔 쓰는 것(노드 전체 재생·배속).
@@ -1078,6 +1156,15 @@ public partial class MiniStagePreview : UserControl
 
     private void Render()
     {
+        // 챕터 런 스탯은 프리뷰가 얹는다 (2026-08-27) — 요청을 짓는 편집기는 런 상태를
+        // 모르고, 여기는 모든 요청이 지나는 하나의 문이다.
+        if (_current is not null &&
+            ActiveChapterRun() is { } chapterRun &&
+            chapterRun.Values is { Count: > 0 } chapterStats)
+        {
+            _current = _current with { ChapterStats = chapterStats };
+        }
+
         MiniStagePreviewRequest? request = _current;
         PreviewAssetLibrary library = _session?.AssetLibrary ?? PreviewAssetLibrary.Empty;
         _renderedLibrary = library;

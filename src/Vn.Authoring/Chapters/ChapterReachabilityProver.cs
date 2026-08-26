@@ -222,54 +222,14 @@ public static class ChapterReachabilityProver
         return next;
     }
 
+    // 판정의 단일 구현은 ChapterGateJudge다 (2026-08-27) — 워커·무대 프리뷰와 한 벌.
+    // 미정의·깨진 라벨(Broken)도 "지나갈 수 없음"이다: 깨진 조건을 통과시켜 도달 가능을
+    // 부풀리지 않는다.
     private static bool Satisfied(
         ChapterGraphModel chapter,
         string? conditionLabel,
-        int[] stats)
-    {
-        if (string.IsNullOrEmpty(conditionLabel))
-        {
-            return true;
-        }
-
-        ChapterCondition? condition = chapter.FindCondition(conditionLabel);
-
-        if (condition is null || !condition.IsValid)
-        {
-            // 미정의·깨진 라벨은 구조 검증의 오류다. 여기서는 "지나갈 수 없음"으로만 다룬다 —
-            // 깨진 조건을 통과시켜 도달 가능을 부풀리지 않는다.
-            return false;
-        }
-
-        foreach (ConditionTerm term in condition.Parsed)
-        {
-            if (!CompareStat(chapter, term, stats))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool CompareStat(ChapterGraphModel chapter, ConditionTerm term, int[] stats)
-    {
-        int index = IndexOfStat(chapter, term.Key);
-
-        if (index < 0)
-        {
-            return false; // 미등록 스탯키 — 구조 검증이 이미 오류로 잡았다.
-        }
-
-        return term.Comparison switch
-        {
-            ConditionComparison.AtLeast => stats[index] >= term.Value,
-            ConditionComparison.AtMost => stats[index] <= term.Value,
-            ConditionComparison.Above => stats[index] > term.Value,
-            ConditionComparison.Below => stats[index] < term.Value,
-            _ => stats[index] == term.Value
-        };
-    }
+        int[] stats) =>
+        ChapterGateJudge.Judge(chapter, conditionLabel, stats) == ChapterGateVerdict.Open;
 
     // ⛔ `AddReachableAttachments`·`SatisfiableWithinEnvelope`는 2026-08-25에 사라졌다.
     //    부착(Attachment) 에피소드를 "간선이 아니라 관문 만족 가능성으로" 따로 판정하던
