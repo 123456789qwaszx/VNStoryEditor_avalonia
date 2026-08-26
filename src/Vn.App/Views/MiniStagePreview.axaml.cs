@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Vn.App.Services;
 using Vn.Authoring.Assets;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
@@ -292,6 +293,47 @@ public partial class MiniStagePreview : UserControl
 
     private bool _updatingSceneCombo;
 
+    // ── 챕터 고르기 (2026-08-26 소유자: "챕터 그래프, 연출 그래프와 동일하게 챕터
+    //    드롭다운을") — 목록의 원천은 챕터 그래프가 읽은 하나(SupplyChapters, 셸이 건다),
+    //    선택은 ActiveFile 하나를 비춘다. GraphEditorView의 콤보와 같은 규칙이다.
+
+    /// <summary>챕터 그래프 뷰가 읽은 챕터 목록 — 이 뷰는 워크북을 직접 읽지 않는다.</summary>
+    private IReadOnlyList<ChapterEntry> _chapters = Array.Empty<ChapterEntry>();
+
+    /// <summary>선택을 비추는 동안에는 SelectionChanged가 선택을 바꾸지 않게 한다.</summary>
+    private bool _syncingChapter;
+
+    internal void SupplyChapters(IReadOnlyList<ChapterEntry> entries)
+    {
+        _chapters = entries;
+        RefreshChapterCombo();
+    }
+
+    /// <summary>챕터 목록과 지금 활성인 판을 콤보에 비춘다 — 판 이름 = ChapterId (1:1).</summary>
+    private void RefreshChapterCombo()
+    {
+        _syncingChapter = true;
+
+        try
+        {
+            string[] ids = _chapters.Select(entry => entry.ChapterId).ToArray();
+
+            if (!ids.SequenceEqual(
+                    (ChapterCombo.ItemsSource as IEnumerable<string>) ?? [], StringComparer.Ordinal))
+            {
+                ChapterCombo.ItemsSource = ids;
+            }
+
+            ChapterCombo.SelectedItem = _session?.ActiveFile?.Name is { } name && ids.Contains(name)
+                ? name
+                : null;
+        }
+        finally
+        {
+            _syncingChapter = false;
+        }
+    }
+
     private readonly PresentationScriptPanel _script = new();
 
     /// <summary>
@@ -322,6 +364,21 @@ public partial class MiniStagePreview : UserControl
 
         SceneHost.Content = _scene;
         ScriptHost.Content = _script;
+
+        // 고른 챕터의 판을 활성으로 — 씬 선택기가 그 판의 씬만 담는다.
+        // ⚠ 콤보를 비추는 중에는 안 돈다(_syncingChapter) — 비추는 일이 바꾸는 일이 되면
+        //    서로를 부른다(GraphEditorView와 같은 빗장).
+        ChapterCombo.SelectionChanged += (_, _) =>
+        {
+            if (_syncingChapter || _session is null ||
+                ChapterCombo.SelectedItem is not string chapterId)
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, "챕터 고르기", () =>
+                _session.SelectFile(_session.EnsureChapterBoard(chapterId)));
+        };
 
         // 목록은 열 때마다 다시 짓는다 — 노드 생성·개명·동기화를 따로 구독하지 않아도
         // 여는 순간이 곧 최신이다.
@@ -516,8 +573,11 @@ public partial class MiniStagePreview : UserControl
     internal void SetCurrentScene(string? dialogueNodeId) => RebuildScenePicker(dialogueNodeId);
 
     /// <summary>
-    /// 연출할 수 있는 씬 목록 — 프로젝트의 모든 대사 노드. 에피소드(📄)가 먼저,
-    /// 커스텀 씬(✎)이 뒤다(파일 순서 그대로 — 판의 읽는 순서와 같다).
+    /// 연출할 수 있는 씬 목록 — <b>고른 챕터(활성 판)의 대사 노드만</b> (2026-08-26 소유자:
+    /// "선택한 챕터의 것만, 무대프리뷰 왼쪽의 노드드롭다운에 표시되면 좋겠습니다").
+    /// 예전에는 프로젝트 전체를 담아 챕터가 늘수록 목록이 섞였다. 에피소드(📄)가 먼저,
+    /// 커스텀 씬(✎)이 뒤고, 무리 안에서는 <b>이름 순</b>이다 (같은 날 소유자: "이름 순으로
+    /// 정렬 해달라" — 파일 순서는 판의 생성 순서라, 찾는 사람의 눈에는 무작위였다).
     /// </summary>
     private void RebuildScenePicker(string? selectedDialogueId)
     {
@@ -526,9 +586,10 @@ public partial class MiniStagePreview : UserControl
             return;
         }
 
-        List<DialogueNode> scenes = _session.Project.EnumerateNodes()
+        List<DialogueNode> scenes = (_session.ActiveFile?.Nodes ?? [])
             .OfType<DialogueNode>()
             .OrderBy(node => node.ExcelEpisodeId is null ? 1 : 0)
+            .ThenBy(node => node.Name, StringComparer.Ordinal)
             .ToList();
 
         _updatingSceneCombo = true;
@@ -827,7 +888,8 @@ public partial class MiniStagePreview : UserControl
         PreviewAssetLibrary library = _session?.AssetLibrary ?? PreviewAssetLibrary.Empty;
         _renderedLibrary = library;
 
-        ContextText.Text = request?.ContextLabel ?? string.Empty;
+        // 활성 판이 바뀌면 챕터 콤보도 따라간다 — 다른 탭에서 고른 것이 여기에도 보인다.
+        RefreshChapterCombo();
         _scene.Render(request);
 
         bool editable = request?.EditContext?.Editable == true;
@@ -863,12 +925,12 @@ public partial class MiniStagePreview : UserControl
         {
             BadgeRow.Children.Clear();
             UnhandledHost.Children.Clear();
-            UnhandledHost.IsVisible = false;
             NoticeHost.Children.Clear();
+            StageReportExpander.Header = "연출 보고";
         }
         else
         {
-            StageIndicators.FillBadges(
+            string? summary = StageIndicators.FillBadges(
                 request,
                 BadgeRow,
                 UnhandledHost,
@@ -880,6 +942,14 @@ public partial class MiniStagePreview : UserControl
                 request,
                 NoticeHost,
                 includeRootHint: true);
+
+            // 접힌 보고의 머리글이 요약을 든다 — 챕터 그래프 검증 보고와 같은 문법.
+            // 미반영이 없어도 알림이 있으면 개수는 보인다(펴기 전에 "볼 것이 있다"가 서야 한다).
+            StageReportExpander.Header = summary is not null
+                ? $"연출 보고 — {summary}"
+                : NoticeHost.Children.Count > 0
+                    ? $"연출 보고 — 알림 {NoticeHost.Children.Count}건"
+                    : "연출 보고";
         }
 
 

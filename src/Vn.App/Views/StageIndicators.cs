@@ -14,7 +14,13 @@ namespace Vn.App.Views;
 /// </summary>
 internal static class StageIndicators
 {
-    public static void FillBadges(
+    /// <returns>
+    /// 하단 [연출 보고] 머리글에 실을 요약 — "🔴 반영 안 된 연출 N (이 라인 x) · 미표시 M".
+    /// 짚을 것이 없으면 null이다. 뱃지 줄이 아니라 머리글이 이 요약을 드는 이유는
+    /// 2026-08-26 소유자 지시다: "챕터 그래프처럼 아래쪽에서 경고로 접혀진 상태로
+    /// 표시되었다가, 오른쪽의 펼치기 버튼으로 펴면 상세하게."
+    /// </returns>
+    public static string? FillBadges(
         MiniStagePreviewRequest request,
         Panel badgeRow,
         Panel unhandledHost,
@@ -22,14 +28,11 @@ internal static class StageIndicators
         Action? onBranchSelectionChanged = null)
     {
         badgeRow.Children.Clear();
-
-        bool wasExpanded = unhandledHost.IsVisible;
         unhandledHost.Children.Clear();
-        unhandledHost.IsVisible = false;
 
         if (!request.HasPresentation)
         {
-            return;
+            return null;
         }
 
         MiniStageState state = request.State;
@@ -41,26 +44,22 @@ internal static class StageIndicators
         bool hasDetail = state.Unhandled.Count > 0 ||
             (request.CoreState?.Unhandled.Count ?? 0) > 0;
 
+        // 확장의 백로그가 되는 요약이다. 조용히 버려진 연출은 없다 — 접힌 보고의
+        // 머리글에서도 개수가 보인다(챕터 그래프 검증 보고와 같은 문법).
+        string? summary = null;
+
         if (notFolded.Length > 0)
         {
             int forLine = notFolded.Count(item =>
                 string.Equals(item.LineId, request.SelectedLineId, StringComparison.Ordinal));
 
-            // 확장의 백로그가 되는 목록이다. 조용히 버려진 연출은 없다.
-            AddToggleBadge(
-                badgeRow,
-                unhandledHost,
-                $"반영 안 된 연출 {notFolded.Length}" + (forLine > 0 ? $" (이 라인 {forLine})" : string.Empty),
-                Color.FromArgb(40, 220, 38, 38));
+            summary = $"🔴 반영 안 된 연출 {notFolded.Length}" +
+                (forLine > 0 ? $" (이 라인 {forLine})" : string.Empty);
         }
 
         if (notDrawn.Length > 0)
         {
-            AddToggleBadge(
-                badgeRow,
-                unhandledHost,
-                $"미표시 {notDrawn.Length}",
-                Color.FromArgb(40, 120, 120, 128));
+            summary = (summary is null ? string.Empty : summary + " · ") + $"미표시 {notDrawn.Length}";
         }
 
         if (hasDetail)
@@ -93,7 +92,6 @@ internal static class StageIndicators
                 }
             }
 
-            unhandledHost.IsVisible = wasExpanded;
         }
 
         // tuning 미수입이면 배치가 균등 나열 근사다 — 근사를 정확한 척하지 않는다 (W25, 규칙 14).
@@ -177,6 +175,8 @@ internal static class StageIndicators
                 badgeRow.Children.Add(chip);
             }
         }
+
+        return summary;
     }
 
     private static string Shorten(string text, int max)
@@ -231,20 +231,9 @@ internal static class StageIndicators
     /// <summary>뱃지 줄은 WrapPanel이다(W37) — 간격은 Spacing이 아니라 이 마진 하나로 준다.</summary>
     private static readonly Thickness BadgeMargin = new(0, 0, 6, 4);
 
-    private static void AddToggleBadge(Panel badgeRow, Panel unhandledHost, string text, Color background)
-    {
-        var badge = new Button
-        {
-            Content = text,
-            FontSize = 10,
-            Padding = new Thickness(6, 2),
-            Margin = BadgeMargin,
-            Background = new SolidColorBrush(background)
-        };
-
-        badge.Click += (_, _) => unhandledHost.IsVisible = !unhandledHost.IsVisible;
-        badgeRow.Children.Add(badge);
-    }
+    // ⛔ 토글 뱃지(반영 안 된 연출·미표시)는 2026-08-26에 걷혔다 (소유자) — 요약은 하단
+    //   [연출 보고] 머리글이 들고, 상세는 그 보고를 펴면 선다. 뱃지 줄에는 근사 표시와
+    //   갈래 칩만 남는다.
 
     /// <summary>
     /// 알림 한 줄. <b>SelectableTextBlock</b>이다 (2026-08-21 소유자: "이런 문구를 복사할

@@ -63,24 +63,35 @@ public sealed class StageDiagnosticsCopyTests
     public void 뜬_진단이_화면에_그대로_선다() => HeadlessUi.Run(() =>
     {
         // 단추가 모아 주던 줄들이 <b>화면에는 그대로</b> 있어야 한다 — 복사 통로가 바뀌었을
-        // 뿐 진단이 줄어든 것이 아니다. 상세는 뱃지를 눌러야 펼쳐지는 것도 그대로다.
+        // 뿐 진단이 줄어든 것이 아니다. 상세가 있는 자리만 바뀌었다 (2026-08-26 소유자:
+        // "챕터 그래프처럼 아래쪽에서 경고로 접혀진 상태로 표시되었다가 … 펴면 상세하게") —
+        // 뱃지 토글 대신 하단 [연출 보고]가 접힌 채 서고 머리글이 요약을 든다.
         MiniStagePreview preview = ShowWithDiagnostics();
 
-        Assert.Contains(
-            preview.FindControl<WrapPanel>("BadgeRow")!.GetLogicalDescendants().OfType<TextBlock>(),
-            block => (block.Text ?? string.Empty).Contains("미표시 1", StringComparison.Ordinal));
+        var report = preview.FindControl<Expander>("StageReportExpander")!;
+
+        Assert.False(report.IsExpanded, "보고는 접힌 채로 시작한다");
+        Assert.Contains("미표시 1", (string)report.Header!);
 
         Assert.Contains(
             preview.FindControl<StackPanel>("NoticeHost")!.Children.OfType<TextBlock>(),
             block => (block.Text ?? string.Empty).Contains("role-anchor.json", StringComparison.Ordinal));
 
-        StackPanel unhandled = preview.FindControl<StackPanel>("UnhandledHost")!;
-
-        Assert.False(unhandled.IsVisible, "상세는 뱃지를 눌러야 펼쳐진다");
         Assert.Contains(
-            unhandled.Children.OfType<TextBlock>(),
+            preview.FindControl<StackPanel>("UnhandledHost")!.Children.OfType<TextBlock>(),
             block => (block.Text ?? string.Empty).Contains("gesture", StringComparison.Ordinal) &&
                      (block.Text ?? string.Empty).Contains("접힘·미표시", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 머리글_글줄은_사라지고_챕터_콤보가_그_자리에_선다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "'무대프리뷰 연출: …' 이런 글자를 없애주십시오 …
+        // 그렇게 비워진 자리는 … 동일하게 챕터 드롭다운을 둬주십시오."
+        MiniStagePreview preview = ShowWithDiagnostics();
+
+        Assert.Null(preview.FindControl<TextBlock>("ContextText"));
+        Assert.NotNull(preview.FindControl<ComboBox>("ChapterCombo"));
     });
 
     [Fact]

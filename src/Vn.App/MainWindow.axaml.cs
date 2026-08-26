@@ -90,6 +90,9 @@ public partial class MainWindow : Window
             RebuildFileList();
             // 연출 그래프의 철도 배선(T1)도 같은 목록 하나를 본다 — 두 곳이 따로 읽지 않는다.
             Graph.SupplyChapters(entries);
+            // 무대 프리뷰의 챕터 콤보도 같은 목록이다 (2026-08-26 소유자 — 씬 선택기가
+            // 고른 챕터의 씬만 담도록 챕터 드롭다운이 이 탭에도 섰다).
+            StagePreview.SupplyChapters(entries);
         };
         // 위 드롭다운으로 골라도 왼쪽 목록의 강조가 따라온다 (2026-08-17 소유자 보고) —
         // 목록 클릭이 하던 일(판 활성 + 목록 다시 그리기)을 여기서도 똑같이 한다.

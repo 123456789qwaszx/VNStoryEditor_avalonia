@@ -15,12 +15,20 @@ namespace Vn.App.Tests;
 public sealed class StageScenePickerTests
 {
     [Fact]
-    public void 선택기는_에피소드를_앞에_커스텀_씬을_뒤에_나열한다() => HeadlessUi.Run(() =>
+    public void 선택기는_에피소드를_앞에_커스텀_씬을_뒤에_이름_순으로_나열한다() => HeadlessUi.Run(() =>
     {
         var (preview, session) = ShowPreview();
         string fileId = session.EnsureChapterBoard("ch05");
+        // 목록은 활성 판의 것만 담는다 (2026-08-26) — 앱에서는 챕터를 고르는 순간 판이
+        // 활성이 되므로, 그 흐름 그대로 활성화한다.
+        session.SelectFile(fileId);
 
+        // 일부러 이름 역순으로 만든다 — 파일 순서가 아니라 이름 순임을 재기 위해서다
+        // (2026-08-26 소유자: "이름 순으로 정렬 해달라").
+        session.Editor.AddDialogueNode(fileId, name: "커스텀B");
         session.Editor.AddDialogueNode(fileId, name: "커스텀A");
+        DialogueNode late = session.Editor.AddDialogueNode(fileId, name: "EP10");
+        late.ExcelEpisodeId = "EP10";
         DialogueNode episode = session.Editor.AddDialogueNode(fileId, name: "EP00");
         episode.ExcelEpisodeId = "EP00";
 
@@ -28,12 +36,32 @@ public sealed class StageScenePickerTests
         combo.IsDropDownOpen = true; // 열 때마다 목록을 다시 짓는다
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
+        Assert.Equal(
+            ["📄 EP00", "📄 EP10", "✎ 커스텀A", "✎ 커스텀B"],
+            ((IEnumerable<string>)combo.ItemsSource!).ToList());
+    });
+
+    [Fact]
+    public void 선택기는_고른_챕터의_씬만_담는다() => HeadlessUi.Run(() =>
+    {
+        // 2026-08-26 소유자 — "선택한 챕터의 것만, 무대프리뷰 왼쪽의 노드드롭다운에
+        // 표시되면 좋겠습니다." 예전에는 프로젝트 전체라 챕터가 늘수록 목록이 섞였다.
+        var (preview, session) = ShowPreview();
+        string ch05 = session.EnsureChapterBoard("ch05");
+        string ch06 = session.EnsureChapterBoard("ch06");
+
+        session.Editor.AddDialogueNode(ch05, name: "이쪽씬");
+        session.Editor.AddDialogueNode(ch06, name: "저쪽씬");
+
+        session.SelectFile(ch05);
+
+        var combo = preview.FindControl<ComboBox>("SceneCombo")!;
+        combo.IsDropDownOpen = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
         var labels = ((IEnumerable<string>)combo.ItemsSource!).ToList();
-        Assert.Contains("📄 EP00", labels);
-        Assert.Contains("✎ 커스텀A", labels);
-        Assert.True(
-            labels.IndexOf("📄 EP00") < labels.IndexOf("✎ 커스텀A"),
-            "에피소드(📄)가 커스텀 씬(✎)보다 앞이어야 한다");
+        Assert.Contains("✎ 이쪽씬", labels);
+        Assert.DoesNotContain("✎ 저쪽씬", labels);
     });
 
     [Fact]
@@ -41,6 +69,7 @@ public sealed class StageScenePickerTests
     {
         var (preview, session) = ShowPreview();
         string fileId = session.EnsureChapterBoard("ch05");
+        session.SelectFile(fileId);   // 목록은 활성 판의 것만 담는다 (2026-08-26)
 
         DialogueNode scene = session.Editor.AddDialogueNode(fileId, name: "커스텀A");
         ScriptLine line = session.Editor.InsertScriptLine(scene.ScriptId!);
