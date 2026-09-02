@@ -38,6 +38,13 @@ public sealed record ChapterEpisode(
     /// 안 싣게 된 채로 남아 있고, 시나리오 층을 지을 때 그쪽 규격으로 다시 정한다.
     /// </summary>
     public string? EventKey { get; init; }
+
+    /// <summary>런타임의 저장·롤백 경계. 비어 있으면 에피소드별 기본 장면을 쓴다.</summary>
+    public string? SceneId { get; init; }
+
+    public string EffectiveSceneId => string.IsNullOrWhiteSpace(SceneId)
+        ? $"__scene_{EpisodeId}"
+        : SceneId.Trim();
 }
 
 /// <summary>
@@ -226,6 +233,15 @@ public sealed class ChapterGraphModel
     public string SourcePath { get; }
 
     public IReadOnlyList<ChapterEpisode> Episodes { get; }
+
+    /// <summary>챕터 시작점 또는 다른 장면에서 처음 들어오는 에피소드는 장면 루트다.</summary>
+    public bool IsSceneRoot(ChapterEpisode episode) =>
+        ReferenceEquals(StartEpisode, episode) ||
+        Edges.Any(edge => string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
+                          Episodes.FirstOrDefault(candidate =>
+                              string.Equals(candidate.EpisodeId, edge.FromEpisodeId, StringComparison.Ordinal))
+                              is { } source &&
+                          !string.Equals(source.EffectiveSceneId, episode.EffectiveSceneId, StringComparison.Ordinal));
 
     public IReadOnlyList<ChapterEdge> Edges { get; }
 

@@ -107,13 +107,13 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         using (var workbook = new XLWorkbook())
         {
             Sheet(workbook, ChapterSheetNames.Episodes,
-                ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
+                ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"],
                 [
-                    ["시작", "시작", "복도", null, "0", "0", null],
-                    ["믿는길", "믿는길", "라루를 믿는다", null, "1", "0", null],
-                    ["혼자길", "혼자길", "혼자 간다", null, "1", "1", null],
-                    ["좋은끝", "좋은끝", "함께 문을 연다", "ch01_true", "2", "0", null],
-                    ["쓸쓸한끝", "쓸쓸한끝", "혼자 문을 연다", "ch01_alone", "2", "1", null]
+                    ["시작", "시작", "복도", null, null, "0", "0", null],
+                    ["믿는길", "믿는길", "라루를 믿는다", null, null, "1", "0", null],
+                    ["혼자길", "혼자길", "혼자 간다", null, null, "1", "1", null],
+                    ["좋은끝", "좋은끝", "함께 문을 연다", null, "ch01_true", "2", "0", null],
+                    ["쓸쓸한끝", "쓸쓸한끝", "혼자 문을 연다", null, "ch01_alone", "2", "1", null]
                 ]);
 
             Sheet(workbook, ChapterSheetNames.Edges,

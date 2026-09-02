@@ -69,8 +69,8 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
 
         using var workbook = new XLWorkbook(ChapterPath);
 
-        // 에피소드는 일곱 칸(A~G — v14의 `이벤트키`까지), 간선은 일곱 칸(A~G)이다.
-        AssertBlank(workbook.Worksheet(ChapterSheetNames.Episodes), 8);
+        // 에피소드는 여덟 칸(A~H — v15의 `장면ID`까지), 간선은 일곱 칸(A~G)이다.
+        AssertBlank(workbook.Worksheet(ChapterSheetNames.Episodes), 9);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 8);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 9);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 10);
@@ -127,15 +127,15 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
         using (var stale = new XLWorkbook(ChapterPath))
         {
             IXLWorksheet episodes = stale.Worksheet(ChapterSheetNames.Episodes);
-            // v14부터 규격 바깥은 여덟째부터다(`이벤트키`가 일곱째를 차지했다).
-            episodes.Range(1, 8, 40, 8).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#333F50"));
+            // v15부터 규격 바깥은 아홉째부터다(`장면ID`가 넷째에 들어왔다).
+            episodes.Range(1, 9, 40, 9).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#333F50"));
             stale.Save();
         }
 
         Assert.True(ChapterWorkbookMigrator.Migrate(ChapterPath).Migrated);
 
         using var after = new XLWorkbook(ChapterPath);
-        AssertBlank(after.Worksheet(ChapterSheetNames.Episodes), 8);
+        AssertBlank(after.Worksheet(ChapterSheetNames.Episodes), 9);
 
         // 그리고 그 이행이 스스로를 다시 부르지 않는다 — 아니면 열 때마다 `.bak`이 갈린다.
         Assert.False(ChapterWorkbookMigrator.Migrate(ChapterPath).Migrated);
@@ -193,10 +193,10 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
         Assert.Equal(10, body.Font.FontSize);
         Assert.Equal(XLBorderStyleValues.Thin, body.Border.BottomBorder);
 
-        // 메모(G) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
+        // 메모(H) — 기울인 옅은 회색 9pt. 데이터가 아니라 곁말이다.
         // v13에서 `종류`가 걷히며 G → F로 갔다가(2026-08-25), v14 열 순서 개정으로
         // 맨 뒤(G)로 돌아왔다 — 곁말은 표의 끝이 제자리다.
-        IXLStyle note = episodes.Cell(2, 7).Style;
+        IXLStyle note = episodes.Cell(2, 8).Style;
         Assert.True(note.Font.Italic);
         Assert.Equal(9, note.Font.FontSize);
 

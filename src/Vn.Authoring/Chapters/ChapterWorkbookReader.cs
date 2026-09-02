@@ -46,7 +46,7 @@ public static class ChapterWorkbookReader
     // <b>낱말은 그대로이고 자리만 바뀐 순열</b>이라 이행기가 머리글을 읽어 옮긴다
     // (`ChapterWorkbookMigrator.ReorderEpisodeColumns` — 대본 v14와 같은 방식).
     private static readonly string[] EpisodeHeaders =
-        ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"];
+        ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"];
 
     // v11 (2026-08-18) — 뒤에 셋을 붙였다. 읽는 순서로는 `종류`가 `선택지` 옆에 오는 편이
     // 좋지만, 끼워 넣으면 뒤 열이 전부 밀려 이행에서 셀을 잃을 위험을 산다. 자리보다
@@ -254,13 +254,19 @@ public static class ChapterWorkbookReader
                     $"'{episodeId}'의 대사엔트리가 비어 있습니다. 런타임이 재생할 대상이 없습니다."));
             }
 
-            double x = Number(sheet, row, 5, path, episodeId, diagnostics);
-            double y = Number(sheet, row, 6, path, episodeId, diagnostics);
+            int sceneColumn = HeaderColumn(sheet, "장면ID");
+            int eventKeyColumn = HeaderColumn(sheet, "이벤트키");
+            int xColumn = HeaderColumn(sheet, "X");
+            int yColumn = HeaderColumn(sheet, "Y");
+            int memoColumn = HeaderColumn(sheet, "메모");
+
+            double x = Number(sheet, row, xColumn == 0 ? 5 : xColumn, path, episodeId, diagnostics);
+            double y = Number(sheet, row, yColumn == 0 ? 6 : yColumn, path, episodeId, diagnostics);
 
             // `도달불가 허용`(D3)은 선택 열이다 — 머리글이 그 이름인 자리를 찾아 읽는다.
             int allowColumn = 0;
 
-            for (int column = 8; column <= 12; column++)
+            for (int column = EpisodeHeaders.Length + 1; column <= EpisodeHeaders.Length + 5; column++)
             {
                 if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
                 {
@@ -274,10 +280,8 @@ public static class ChapterWorkbookReader
             // 이벤트키 (D, v14) — 패스스루라 값 검사가 없다. ⚠ 머리글이 정말 `이벤트키`일
             // 때만 읽는다: 이행 전 파일은 이 자리에 X가 살고 있어서, 자리만 믿으면
             // 좌표가 이벤트키로 둔갑한다.
-            string? eventKey =
-                string.Equals(Text(sheet, HeaderRow, 4), "이벤트키", StringComparison.Ordinal)
-                    ? Optional(sheet, row, 4)
-                    : null;
+            string? eventKey = eventKeyColumn == 0 ? null : Optional(sheet, row, eventKeyColumn);
+            string? sceneId = sceneColumn == 0 ? null : Optional(sheet, row, sceneColumn);
 
             episodes.Add(new ChapterEpisode(
                 episodeId,
@@ -286,11 +290,12 @@ public static class ChapterWorkbookReader
                 dialogueEntry,
                 x,
                 y,
-                Optional(sheet, row, 7),    // 메모 (v14에서 6 → 7)
+                memoColumn == 0 ? Optional(sheet, row, 7) : Optional(sheet, row, memoColumn),
                 row,
                 allowUnreachable)
             {
-                EventKey = eventKey
+                EventKey = eventKey,
+                SceneId = sceneId
             });
         }
 
@@ -1034,6 +1039,23 @@ public static class ChapterWorkbookReader
         }
 
         return width;
+    }
+
+    /// <summary>
+    /// 선택 꼬리 열은 자리가 아니라 머리글이 소유한다. 구판을 읽을 때 X/Y 같은 값이
+    /// 장면ID로 밀려 들어오는 일을 막기 위해 이름으로만 찾는다.
+    /// </summary>
+    private static int HeaderColumn(IXLWorksheet sheet, string header)
+    {
+        for (int column = 1; column <= DataWidth(sheet); column++)
+        {
+            if (string.Equals(Text(sheet, HeaderRow, column), header, StringComparison.Ordinal))
+            {
+                return column;
+            }
+        }
+
+        return 0;
     }
 
     /// <summary>

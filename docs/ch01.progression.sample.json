@@ -61,6 +61,7 @@
         }
       ],
       "EventKey": "",
+      "SceneId": "",
       "DesignerNote": "",
       "Position": {
         "X": 0,
@@ -86,6 +87,7 @@
         }
       ],
       "EventKey": "",
+      "SceneId": "",
       "DesignerNote": "",
       "Position": {
         "X": 1,
@@ -111,6 +113,7 @@
         }
       ],
       "EventKey": "",
+      "SceneId": "",
       "DesignerNote": "",
       "Position": {
         "X": 1,
@@ -126,6 +129,7 @@
       "UnlockConditions": [],
       "NextOptions": [],
       "EventKey": "ch01_true",
+      "SceneId": "",
       "DesignerNote": "",
       "Position": {
         "X": 2,
@@ -141,6 +145,7 @@
       "UnlockConditions": [],
       "NextOptions": [],
       "EventKey": "ch01_alone",
+      "SceneId": "",
       "DesignerNote": "",
       "Position": {
         "X": 2,

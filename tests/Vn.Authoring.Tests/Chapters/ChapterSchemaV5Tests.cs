@@ -50,12 +50,12 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         Assert.Equal("대본", choices.Cell(1, 2).GetString());
         Assert.Equal("메모", choices.Cell(1, 3).GetString());
 
-        // v14 (2026-08-26) — 신원·내용이 앞, 건네는 열쇠가 가운데, 좌표와 곁말이 뒤.
+        // v15 — 신원·내용이 앞, 장면 경계와 건네는 열쇠가 가운데, 좌표와 곁말이 뒤.
         IXLWorksheet episodes = workbook.Worksheet(ChapterSheetNames.Episodes);
         Assert.Equal(
-            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
-            Enumerable.Range(1, 7).Select(column => episodes.Cell(1, column).GetString()));
-        Assert.Equal(string.Empty, episodes.Cell(1, 8).GetString()); // 인덱스도 종류도 선택지수도 없다
+            ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"],
+            Enumerable.Range(1, 8).Select(column => episodes.Cell(1, column).GetString()));
+        Assert.Equal(string.Empty, episodes.Cell(1, 9).GetString()); // 인덱스도 종류도 선택지수도 없다
 
         // 조건 시트 — 스탯은 스탯 시트를 가리키는 드롭다운, 연산자는 목록.
         IXLWorksheet conditions = workbook.Worksheet(ChapterSheetNames.Conditions);

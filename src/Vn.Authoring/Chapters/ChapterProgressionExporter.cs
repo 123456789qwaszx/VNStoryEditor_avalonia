@@ -296,6 +296,7 @@ public static class ChapterProgressionExporter
                     .ToList()
             })
             .ToList(),
+        SceneId = episode.SceneId?.Trim() ?? string.Empty,
         // `EndingKey`·`IsChapterEndingCandidate`(v11)는 v14(2026-08-26)에서 실리지 않게
         // 됐다. 대신 `EventKey`가 에피소드 `이벤트키` 열의 값 그대로 실린다.
         // 유니티가 "이 에피소드를 다 시청했을 때"의 이벤트·보상 트리거로 쓰는 패스스루
@@ -390,6 +391,9 @@ public static class ChapterProgressionExporter
         /// 이벤트·보상을 매다는 인덱스이고 진행 평가에는 안 낀다.
         /// </summary>
         public string EventKey { get; set; } = string.Empty;
+
+        /// <summary>저장·롤백 경계. 빈 값은 런타임이 에피소드별 기본 장면으로 보정한다.</summary>
+        public string SceneId { get; set; } = string.Empty;
 
         public string DesignerNote { get; set; } = string.Empty;
 

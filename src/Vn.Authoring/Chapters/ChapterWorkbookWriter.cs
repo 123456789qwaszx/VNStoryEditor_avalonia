@@ -50,8 +50,8 @@ public static class ChapterWorkbookWriter
             sheet.Cell(row, 1).SetValue(episodeId);
             sheet.Cell(row, 2).SetValue(episodeId);   // 대사엔트리 = EpisodeId (v3 규약)
             sheet.Cell(row, 3).SetValue(title);
-            sheet.Cell(row, 5).SetValue(Math.Round(x, 2));
-            sheet.Cell(row, 6).SetValue(Math.Round(y, 2));
+            sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
+            sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
         });
 
     /// <summary>
@@ -87,8 +87,8 @@ public static class ChapterWorkbookWriter
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
             episodes.Cell(newRow, 2).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
             episodes.Cell(newRow, 3).SetValue(title);
-            episodes.Cell(newRow, 5).SetValue(Math.Round(x, 2));
-            episodes.Cell(newRow, 6).SetValue(Math.Round(y, 2));
+            episodes.Cell(newRow, 6).SetValue(Math.Round(x, 2));
+            episodes.Cell(newRow, 7).SetValue(Math.Round(y, 2));
 
             // 부모에서 나가는 길 하나 = 선택지 하나 (v9). 문구를 받았으면 그대로 적고,
             // 사전에 없는 낱말이면 사전에도 올려 둔다 — 다음부터 드롭다운에서 고른다.
@@ -112,7 +112,8 @@ public static class ChapterWorkbookWriter
         string? title = null,
         string? dialogueEntry = null,
         string? memo = null,
-        bool? allowUnreachable = null) =>
+        bool? allowUnreachable = null,
+        string? sceneId = null) =>
         Mutate(path, workbook =>
         {
             (IXLWorksheet sheet, int row) = RequireEpisodeRow(workbook, episodeId);
@@ -120,7 +121,8 @@ public static class ChapterWorkbookWriter
             // v14 열 순서 — 대사엔트리(B) · 제목(C) · 메모(G).
             Set(sheet, row, 2, dialogueEntry);
             Set(sheet, row, 3, title);
-            Set(sheet, row, 7, memo);
+            Set(sheet, row, 4, sceneId);
+            Set(sheet, row, 8, memo);
 
             if (allowUnreachable is { } allowed)
             {
@@ -130,7 +132,7 @@ public static class ChapterWorkbookWriter
                 //   없으면 첫 빈 머리글 자리에 세운다(보통 8).
                 int allowColumn = 0;
 
-                for (int column = 8; column <= 12; column++)
+                for (int column = 9; column <= 13; column++)
                 {
                     if (string.Equals(
                             sheet.Cell(1, column).GetString().Trim(), "도달불가 허용", StringComparison.Ordinal))
@@ -142,7 +144,7 @@ public static class ChapterWorkbookWriter
 
                 if (allowColumn == 0)
                 {
-                    allowColumn = 8;
+                    allowColumn = 9;
 
                     while (sheet.Cell(1, allowColumn).GetString().Trim().Length > 0)
                     {
@@ -627,7 +629,7 @@ public static class ChapterWorkbookWriter
             // v14 (2026-08-26) — `이벤트키`: 유니티 전용 패스스루 인덱스(시청 완료 트리거).
             // 툴은 해석하지 않는다. 같은 날 열 순서도 갈렸다 — 신원·내용이 앞, 남에게
             // 건네는 열쇠가 가운데, 판 좌표와 곁말이 뒤.
-            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"]);
+            ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"]);
         IXLWorksheet edgeSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Edges,
             // v12 (2026-08-24) — `종류`·`연출`·`잠금시 숨김` 폐지.
             // v14 (2026-08-26) — 간선의 `엔딩키` 폐지: 키는 에피소드의 `이벤트키`로 돌아갔다
@@ -821,10 +823,10 @@ public static class ChapterWorkbookWriter
         //    칸까지 격자와 색이 계속 칠해져, 사람 눈에는 "쓰라는 칸"으로 보인다
         //    (2026-08-25 소유자 보고: 에피소드 G열 · 간선 I·J·K열).
         //
-        //    에피소드: EpisodeId · 대사엔트리 · 제목 · 이벤트키 · X · Y · 메모
+        //    에피소드: EpisodeId · 대사엔트리 · 제목 · 장면ID · 이벤트키 · X · Y · 메모
         //    (v13에서 `종류` 폐지 · v14에서 `이벤트키` 추가 + 열 순서 개정)
         Chrome(workbook, ChapterSheetNames.Episodes, "#333F50",
-            [14, 20, 22, 14, 7, 7, 20], reference: [1], note: [7]);
+            [14, 20, 22, 16, 14, 7, 7, 20], reference: [1], note: [8]);
 
         //    간선: 출발 · 도착 · 스탯변화 · 선택지 · 표시조건 · 해금조건 · 잠금 안내문
         //    (`잠금시 숨김`·`종류`·`연출`은 2026-08-24에, `엔딩키`는 v14(2026-08-26)에 폐지됐다)

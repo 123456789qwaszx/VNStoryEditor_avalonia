@@ -134,7 +134,8 @@ public static class ChapterWorkbookMigrator
                 Header(workbook, ChapterSheetNames.Edges, 7) != "잠금 안내문") ||
                Header(workbook, ChapterSheetNames.Edges, 8) == "엔딩키" ||
                (Find(workbook, ChapterSheetNames.Episodes) is { } episodes &&
-                HeaderColumn(episodes, "이벤트키") == 0) ||
+                (HeaderColumn(episodes, "이벤트키") == 0 ||
+                 HeaderColumn(episodes, "장면ID") == 0)) ||
                ColumnsNeedReorder(workbook, ChapterSheetNames.Episodes, EpisodeColumnOrder) ||
                // v13 (2026-08-25) — 에피소드의 `종류`가 남아 있으면 아직 이행 전이다.
                Header(workbook, ChapterSheetNames.Episodes, 3) == "종류" ||
@@ -166,12 +167,12 @@ public static class ChapterWorkbookMigrator
         //    소유자 손에 있었다("에피소드 시트에서 g열이 색이 칠해져 있는거"). 열 이름으로만
         //    이행을 부르면 그 파일은 <b>영영 안 고쳐진다</b>: 걷을 열은 이미 없기 때문이다.
         //
-        //    에피소드 규격은 일곱 칸(v14 — `이벤트키`까지)이므로 여덟째가 곧 "바깥"이다.
-        //    ⚠ 선택 열 `도달불가 허용`이 여덟째에 살 수 있지만, 그 열은 칠 없이 태어나므로
+        //    에피소드 규격은 여덟 칸(v15 — `장면ID` 포함)이므로 아홉째가 곧 "바깥"이다.
+        //    ⚠ 선택 열 `도달불가 허용`이 아홉째에 살 수 있지만, 그 열은 칠 없이 태어나므로
         //    (UpdateEpisode가 머리글 글자만 적는다) 이 검사와 부딪히지 않는다.
         return !episodes.AutoFilter.IsEnabled ||
                episodes.Cell(1, 1).Style.Font.FontColor != XLColor.White ||
-               episodes.Cell(1, 8).Style.Fill.PatternType != XLFillPatternValues.None;
+               episodes.Cell(1, 9).Style.Fill.PatternType != XLFillPatternValues.None;
     }
 
     /// <summary>
@@ -494,17 +495,17 @@ public static class ChapterWorkbookMigrator
     }
 
     /// <summary>
-    /// `에피소드` 시트의 v14 열 순서 (2026-08-26 소유자 지시).
+    /// `에피소드` 시트의 v15 열 순서.
     ///
     /// 신원·내용이 앞(<c>EpisodeId · 대사엔트리 · 제목</c>), 남에게 건네는 열쇠가 가운데
-    /// (<c>이벤트키</c>), 판 좌표와 곁말이 뒤(<c>X · Y · 메모</c>). 종류가 같은 값끼리
+    /// (<c>장면ID · 이벤트키</c>), 판 좌표와 곁말이 뒤(<c>X · Y · 메모</c>). 종류가 같은 값끼리
     /// 붙어 있어야 눈이 한 번에 짚는다.
     ///
     /// ⚠ <b>이 배열 하나가 정본이다</b> — 리더의 <c>EpisodeHeaders</c>·라이터의 새 워크북
     /// 머리글과 같은 순서여야 하고, 갈리면 이행이 매번 다시 돈다.
     /// </summary>
     private static readonly string[] EpisodeColumnOrder =
-        ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"];
+        ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"];
 
     /// <summary>
     /// `스탯` 시트의 v14 열 순서 (2026-08-26 소유자: "스탯시트에서도 타입이 가장 앞쪽으로").
