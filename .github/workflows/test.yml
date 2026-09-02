@@ -7,7 +7,8 @@ on:
 
 jobs:
   dotnet:
-    runs-on: ubuntu-latest
+    # 파일 잠금·휴대용 Windows 패키지·CRLF 골든을 검증하는 제품이므로 Windows가 정본 환경이다.
+    runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
