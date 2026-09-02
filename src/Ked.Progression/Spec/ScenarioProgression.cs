@@ -4,9 +4,7 @@ using System.Collections.Generic;
 namespace Ked.Progression
 {
     // 챕터들을 묶는 자리.
-    // [1] 영구 계층을 다루지 않기에 사실상 껍데기.
-    //
-    // 챕터 ID가 유일한가, 시작 챕터가 실재하는가, 엔딩이 가리키는 다음 챕터가 실재하는가.
+    // [1] 현재 영구 계층을 다루지 않기에, 사실상 껍데기.
     public sealed class ScenarioProgression
     {
         private readonly Dictionary<string, ChapterProgression> _chaptersById;

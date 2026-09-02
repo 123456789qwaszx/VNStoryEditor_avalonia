@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 namespace Ked.Progression
 {
-    // 시나리오 로드 결과.
     public sealed class ScenarioLoadResult
     {
         public ScenarioProgression Scenario { get; }
         public IReadOnlyList<ProgressionDiagnostic> Diagnostics { get; }
 
         public ScenarioLoadResult(
-            ScenarioProgression scenario, IReadOnlyList<ProgressionDiagnostic> diagnostics)
+            ScenarioProgression scenario,
+            IReadOnlyList<ProgressionDiagnostic> diagnostics)
         {
             Scenario = scenario;
             Diagnostics = diagnostics ?? Array.Empty<ProgressionDiagnostic>();
@@ -39,7 +39,8 @@ namespace Ked.Progression
         public IReadOnlyList<ProgressionDiagnostic> Diagnostics { get; }
 
         public ProgressionLoadResult(
-            ChapterProgression chapter, IReadOnlyList<ProgressionDiagnostic> diagnostics)
+            ChapterProgression chapter,
+            IReadOnlyList<ProgressionDiagnostic> diagnostics)
         {
             Chapter = chapter;
             Diagnostics = diagnostics ?? Array.Empty<ProgressionDiagnostic>();

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Ked.Progression.Dto;
 
 namespace Ked.Progression
 {
@@ -11,10 +10,8 @@ namespace Ked.Progression
     /// <see cref="ProgressionLoadResult.Chapter"/>를 <c>null</c>로 냄.
     /// (부분 통과 금지)
     ///
-    /// 여기서 새로 쓰는 규칙은 데이터의 모양에 관한 것뿐이다
-    /// 알 수 없는 enum 이름,
-    /// 언제나 비어 있어야 할 칸이 안 비었을 때,
-    /// sentinel 쌍의 불일치.
+    /// 여기서 새로 쓰는 규칙은 데이터의 모양에 관한 것뿐이다 —
+    /// 알 수 없는 enum 이름, 비어서는 안 될 칸이 비었을 때.
     /// 
     /// 챕터 전체의 불변식은 <see cref="ChapterInvariants"/> 한 곳에 있고
     /// 여기서는 그것을 모으는 방식으로 쓴다.
@@ -35,29 +32,22 @@ namespace Ked.Progression
 
             List<StatDefinition> stats = LoadStats(dto.Stats, diagnostics);
             List<EpisodeNode> nodes = LoadNodes(dto.Nodes, diagnostics);
-            List<EndingRule> endingRules = LoadEndingRules(dto.EndingRules, diagnostics);
 
             if (HasError(diagnostics))
-            {
                 return new ProgressionLoadResult(null, diagnostics);
-            }
-
+            
             // 챕터 전체의 불변식은 ChapterInvariants가 소유. 여기서는 수집만.
             ChapterInvariants.Collect(
-                stats, nodes, endingRules, dto.StartEpisodeId, diagnostics, out _, out _);
+                stats, nodes, dto.StartEpisodeId, diagnostics, out _, out _);
 
             if (string.IsNullOrEmpty(dto.ChapterId))
-            {
                 diagnostics.Add(ProgressionDiagnostic.Error("ChapterId", "챕터 ID가 비어 있다."));
-            }
-
+            
             if (HasError(diagnostics))
-            {
                 return new ProgressionLoadResult(null, diagnostics);
-            }
 
             var chapter = new ChapterProgression(
-                dto.ChapterId, dto.DisplayName, dto.StartEpisodeId, stats, nodes, endingRules);
+                dto.ChapterId, dto.DisplayName, dto.StartEpisodeId, stats, nodes);
 
             return new ProgressionLoadResult(chapter, diagnostics);
         }
@@ -79,10 +69,8 @@ namespace Ked.Progression
             var diagnostics = new List<ProgressionDiagnostic>();
 
             if (string.IsNullOrEmpty(scenarioId))
-            {
                 diagnostics.Add(ProgressionDiagnostic.Error("ScenarioId", "시나리오 ID가 비어 있다."));
-            }
-
+            
             var chapters = new List<ChapterProgression>();
             int count = chapterDtos == null ? 0 : chapterDtos.Count;
 
@@ -105,25 +93,18 @@ namespace Ked.Progression
                 }
 
                 if (result.Chapter != null)
-                {
                     chapters.Add(result.Chapter);
-                }
             }
 
             if (HasError(diagnostics))
-            {
                 return new ScenarioLoadResult(null, diagnostics);
-            }
-
+            
             ScenarioInvariants.Collect(chapters, startChapterId, diagnostics, out _);
 
             if (HasError(diagnostics))
-            {
                 return new ScenarioLoadResult(null, diagnostics);
-            }
-
-            var scenario = new ScenarioProgression(
-                scenarioId, displayName, startChapterId, chapters);
+            
+            ScenarioProgression scenario = new(scenarioId, displayName, startChapterId, chapters);
 
             return new ScenarioLoadResult(scenario, diagnostics);
         }
@@ -132,10 +113,6 @@ namespace Ked.Progression
         //
         // 챕터가 여럿이 된 뒤에도 사라지지 않는다. 작가가 ch03만 돌려 보고 싶은 때가
         // 영원히 있고, 호스트 둘이 각자 감싸는 코드를 만들지 않게 여기 한 번 둔다.
-        //
-        // 챕터가 든 EndingRules는 그대로 실린다. 그중 다음 챕터로 가는 규칙이 있으면
-        // 갈 곳이 없어 ScenarioInvariants가 허공 간선으로 잡는다 — 그게 맞는 동작이다.
-        // 챕터 하나뿐인데 다음 챕터를 적었다는 뜻이니까.
         public static ScenarioLoadResult LoadAsSingleChapterScenario(ChapterProgressionDto dto)
         {
             var diagnostics = new List<ProgressionDiagnostic>();
@@ -163,75 +140,6 @@ namespace Ked.Progression
                 new List<ChapterProgressionDto> { dto });
         }
 
-        // ── 엔딩 규칙 ───────────────────────────────────────────────────────
-
-        private static List<EndingRule> LoadEndingRules(
-            List<EndingRuleDto> dtos, List<ProgressionDiagnostic> into)
-        {
-            var rules = new List<EndingRule>();
-
-            if (dtos == null)
-            {
-                return rules;
-            }
-
-            for (int i = 0; i < dtos.Count; i++)
-            {
-                EndingRuleDto dto = dtos[i];
-                string at = $"EndingRules[{i}]";
-
-                if (dto == null)
-                {
-                    into.Add(ProgressionDiagnostic.Error(at, "엔딩 규칙이 null이다."));
-                    continue;
-                }
-
-                List<ProgressionCondition> conditions =
-                    LoadConditions(dto.Conditions, at + ".Conditions", into);
-
-                bool endsScenario;
-
-                switch (dto.Outcome)
-                {
-                    case "NextChapter": endsScenario = false; break;
-                    case "ScenarioEnd": endsScenario = true; break;
-                    default:
-                        into.Add(ProgressionDiagnostic.Error(
-                            at,
-                            $"알 수 없는 결과 '{dto.Outcome}'. 가능한 값: NextChapter, ScenarioEnd. " +
-                            "다음 챕터 칸이 비었는지로 판별하지 않는다 — " +
-                            "\"끝난다\"와 \"안 적었다\"가 같은 모양이 되기 때문이다."));
-                        continue;
-                }
-
-                bool hasNext = !string.IsNullOrEmpty(dto.NextChapterId);
-
-                if (endsScenario && hasNext)
-                {
-                    into.Add(ProgressionDiagnostic.Error(
-                        at,
-                        $"ScenarioEnd인데 다음 챕터 '{dto.NextChapterId}'가 적혀 있다. " +
-                        "둘 중 어느 쪽이 뜻인지 추측하지 않는다."));
-                    continue;
-                }
-
-                try
-                {
-                    rules.Add(endsScenario
-                        ? EndingRule.Ends(dto.EndingKey, conditions, dto.DisplayName, dto.DesignerNote)
-                        : EndingRule.To(
-                            dto.EndingKey, dto.NextChapterId, conditions,
-                            dto.DisplayName, dto.DesignerNote));
-                }
-                catch (ArgumentException error)
-                {
-                    into.Add(ProgressionDiagnostic.Error(at, error.Message));
-                }
-            }
-
-            return rules;
-        }
-
         // ── 스탯 ────────────────────────────────────────────────────────────
 
         private static List<StatDefinition> LoadStats(
@@ -239,10 +147,9 @@ namespace Ked.Progression
         {
             var stats = new List<StatDefinition>();
 
+            // JSON에 칸이 없으면 null로 온다 — "없음"은 "빈 것"과 같게 읽는다.
             if (dtos == null)
-            {
                 return stats;
-            }
 
             for (int i = 0; i < dtos.Count; i++)
             {
@@ -286,9 +193,7 @@ namespace Ked.Progression
             var nodes = new List<EpisodeNode>();
 
             if (dtos == null)
-            {
                 return nodes;
-            }
 
             for (int i = 0; i < dtos.Count; i++)
             {
@@ -305,58 +210,18 @@ namespace Ked.Progression
                     ? at
                     : $"Nodes[{dto.EpisodeId}]";
 
-                VerifyNodeIsLeanedOut(dto, where, into);
-
                 List<EpisodeOption> options = LoadOptions(dto.NextOptions, where, into);
 
-                try
-                {
-                    nodes.Add(new EpisodeNode(
-                        dto.EpisodeId,
-                        dto.Title,
-                        dto.DialogueEntryId,
-                        options,
-                        dto.EndingKey,
-                        dto.DesignerNote));
-                }
-                catch (ArgumentException error)
-                {
-                    into.Add(ProgressionDiagnostic.Error(where, error.Message));
-                }
+                nodes.Add(new EpisodeNode(
+                    dto.EpisodeId,
+                    dto.Title,
+                    dto.DialogueEntryId,
+                    options,
+                    dto.EventKey,
+                    dto.SceneId));
             }
 
             return nodes;
-        }
-
-        /// <summary>
-        /// 모델이 안 받는 칸에 값이 들어 있는지 본다. <b>이 검사가 없으면 그 데이터가
-        /// 조용히 사라진다.</b>
-        /// </summary>
-        private static void VerifyNodeIsLeanedOut(
-            EpisodeNodeDto dto, string where, List<ProgressionDiagnostic> into)
-        {
-            // 분기 관문이 노드에서 간선으로 내려감. 마이그레이션 검사용.
-            if (Count(dto.VisibleConditions) > 0 || Count(dto.UnlockConditions) > 0)
-            {
-                into.Add(ProgressionDiagnostic.Error(
-                    where,
-                    "노드에 표시조건·해금조건이 실려 있다. v8에서 관문은 간선(NextOptions)의 " +
-                    "것이 됐고 노드 쪽은 언제나 비어 나온다. 이대로 실으면 그 관문이 " +
-                    "조용히 사라져 전부 열린 채로 돈다 — 구판 내보내기가 만든 데이터인지 확인할 것."));
-            }
-
-            // sentinel 쌍 — 4조합 중 둘이 무효다.
-            bool hasKey = !string.IsNullOrEmpty(dto.EndingKey);
-
-            if (dto.IsChapterEndingCandidate != hasKey)
-            {
-                into.Add(ProgressionDiagnostic.Error(
-                    where,
-                    dto.IsChapterEndingCandidate
-                        ? "엔딩 후보로 표시됐는데 EndingKey가 비어 있다. 어느 엔딩인지 알 수 없다."
-                        : $"EndingKey('{dto.EndingKey}')가 있는데 엔딩 후보로 표시되지 않았다. " +
-                          "둘 중 어느 쪽이 뜻인지 추측하지 않는다."));
-            }
         }
 
         // ── 간선 ────────────────────────────────────────────────────────────
@@ -367,9 +232,7 @@ namespace Ked.Progression
             var options = new List<EpisodeOption>();
 
             if (dtos == null)
-            {
                 return options;
-            }
 
             for (int i = 0; i < dtos.Count; i++)
             {
@@ -382,6 +245,23 @@ namespace Ked.Progression
                     continue;
                 }
 
+                // 문구 없는 간선으로 자동 진행을 추론하던 것은 폐지됐다 — 툴의 실수가 조용히 지나갔다.
+                // 자동 간선은 Auto 깃발로만 켠다(규칙은 ChapterInvariants가 본다).
+                if (string.IsNullOrEmpty(dto.ChoiceLabel) && !dto.Auto)
+                {
+                    into.Add(ProgressionDiagnostic.Error(
+                        at, "간선의 문구가 비어 있다. 묻지 않고 지나가려면 Auto를 켤 것 — 문구만 비우는 것으로는 안 된다."));
+
+                    continue;
+                }
+
+                if (string.IsNullOrEmpty(dto.TargetEpisodeId))
+                {
+                    into.Add(ProgressionDiagnostic.Error(at, "간선의 도착 에피소드가 비어 있다."));
+
+                    continue;
+                }
+
                 List<ProgressionCondition> visible =
                     LoadConditions(dto.VisibleConditions, at + ".VisibleConditions", into);
                 List<ProgressionCondition> conditions =
@@ -389,46 +269,17 @@ namespace Ked.Progression
                 List<StatChange> changes =
                     LoadStatChanges(dto.StatChanges, at + ".StatChanges", into);
 
-                bool isAuto = string.IsNullOrEmpty(dto.ChoiceLabel);
-
                 try
                 {
-                    if (!isAuto)
-                    {
-                        options.Add(EpisodeOption.Choice(
-                            dto.ChoiceLabel,
-                            dto.TargetEpisodeId,
-                            visible,
-                            conditions,
-                            dto.LockedReasonText,
-                            changes,
-                            dto.ViaNodeId));
-
-                        continue;
-                    }
-
-                    // 자동 진행이 받지 않는 칸에 값이 있으면 그대로 실을 때 조용히 사라진다.
-                    if (visible.Count > 0 || conditions.Count > 0)
-                    {
-                        into.Add(ProgressionDiagnostic.Error(
-                            at,
-                            "문구 없는 간선(자동 진행)에 관문이 달렸다(§G6-2). 그 관문마저 막히면 " +
-                            "챕터가 조용히 끝난다 — 문구를 주어 보통 선택지로 만들거나 조건을 뗄 것."));
-
-                        continue;
-                    }
-
-                    if (!string.IsNullOrEmpty(dto.LockedReasonText))
-                    {
-                        into.Add(ProgressionDiagnostic.Error(
-                            at,
-                            "문구 없는 간선(자동 진행)에 잠금 설정이 달렸다. 자동 진행은 잠기지 " +
-                            "않으므로 이 값은 실리지 않는다 — 조용히 버리지 않는다."));
-
-                        continue;
-                    }
-
-                    options.Add(EpisodeOption.Auto(dto.TargetEpisodeId, changes, dto.ViaNodeId));
+                    options.Add(EpisodeOption.Choice(
+                        dto.ChoiceLabel,
+                        dto.TargetEpisodeId,
+                        visible,
+                        conditions,
+                        dto.LockedReasonText,
+                        changes,
+                        dto.ViaNodeId,
+                        dto.Auto));
                 }
                 catch (ArgumentException error)
                 {
@@ -445,9 +296,7 @@ namespace Ked.Progression
             var conditions = new List<ProgressionCondition>();
 
             if (dtos == null)
-            {
                 return conditions;
-            }
 
             for (int i = 0; i < dtos.Count; i++)
             {
@@ -496,18 +345,14 @@ namespace Ked.Progression
             var changes = new List<StatChange>();
 
             if (dtos == null)
-            {
                 return changes;
-            }
 
             for (int i = 0; i < dtos.Count; i++)
             {
                 StatChangeDto dto = dtos[i];
 
                 if (dto == null)
-                {
                     continue;
-                }
 
                 string at = $"{where}[{i}]";
 
@@ -587,8 +432,6 @@ namespace Ked.Progression
                 default: value = default; return false;
             }
         }
-
-        private static int Count<T>(List<T> list) => list == null ? 0 : list.Count;
 
         private static bool HasError(List<ProgressionDiagnostic> diagnostics)
         {

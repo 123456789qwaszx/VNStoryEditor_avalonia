@@ -20,18 +20,22 @@ namespace Ked.Progression
                 throw new ArgumentException(
                     $"지금 에피소드 '{state.CurrentEpisodeId}'가 챕터 '{chapter.ChapterId}'에 없다.", nameof(state));
             
+            IReadOnlyList<EpisodeOption> options = node.NextOptions;
+
+            // 자동 간선 — 불변식이 "유일한 간선·조건 없음"을 보장하므로 판정할 것이 없다.
+            if (options.Count == 1 && options[0].IsAuto)
+                return new ChapterAdvance(
+                    ChapterAdvanceKind.AutoAdvance,
+                    new[] { ResolvedOption.Shown(options[0], 0) },
+                    0);
+
             var shownOrLocked = new List<ResolvedOption>();
             int hidden = 0;
             bool anySelectable = false;
 
-            IReadOnlyList<EpisodeOption> options = node.NextOptions;
-
             for (int i = 0; i < options.Count; i++)
             {
                 EpisodeOption option = options[i];
-
-                if (option.Kind == OptionKind.AutoAdvance)
-                    continue;
                 
                 if (FirstUnmet(option.VisibleConditions, state).IsConstructed)
                 {
@@ -44,25 +48,20 @@ namespace Ked.Progression
 
                 if (!blocking.IsConstructed)
                 {
-                    shownOrLocked.Add(ResolvedOption.Shown(option));
+                    shownOrLocked.Add(ResolvedOption.Shown(option, i));
                     anySelectable = true;
                     continue;
                 }
 
-                shownOrLocked.Add(ResolvedOption.Locked(option, blocking));
+                shownOrLocked.Add(ResolvedOption.Locked(option, i, blocking));
             }
 
             if (anySelectable)
                 return new ChapterAdvance(
-                    ChapterAdvanceKind.AwaitPlayerChoice, shownOrLocked, null, hidden);
-
-            // 고를 수 있는 것이 하나도 없다. 잠긴 것들은 화면에 세우지 않는다.
-            if (node.TryGetAutoOption(out EpisodeOption auto))
-                return new ChapterAdvance(
-                    ChapterAdvanceKind.AutoAdvance, None, auto, hidden);
+                    ChapterAdvanceKind.AwaitPlayerChoice, shownOrLocked, hidden);
             
             return new ChapterAdvance(
-                ChapterAdvanceKind.ChapterEnded, None, null, hidden);
+                ChapterAdvanceKind.ChapterEnded, None, hidden);
         }
 
         // 미달 조건 중 첫번째 것.

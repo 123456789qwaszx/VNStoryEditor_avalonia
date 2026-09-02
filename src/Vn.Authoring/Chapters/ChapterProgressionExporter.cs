@@ -110,14 +110,14 @@ public static class ChapterProgressionExporter
     /// 존재 이유라고 저쪽 주석이 적어 뒀다). 그래서 "어딘가 잘못됐다"로 떨어지지 않고
     /// 기획자가 열 시트와 행까지 짚을 수 있다 — 이 레이어의 규칙이 그것이다.
     /// </summary>
-    private static IReadOnlyList<ChapterDiagnostic> CoreRefusals(
+    internal static IReadOnlyList<ChapterDiagnostic> CoreRefusals(
         ChapterGraphModel chapter, string json)
     {
-        Contract.Dto.ChapterProgressionDto? dto;
+        Contract.ChapterProgressionDto? dto;
 
         try
         {
-            dto = JsonSerializer.Deserialize<Contract.Dto.ChapterProgressionDto>(json);
+            dto = JsonSerializer.Deserialize<Contract.ChapterProgressionDto>(json);
         }
         catch (JsonException exception)
         {
@@ -297,15 +297,9 @@ public static class ChapterProgressionExporter
             })
             .ToList(),
         // `EndingKey`·`IsChapterEndingCandidate`(v11)는 v14(2026-08-26)에서 실리지 않게
-        // 됐다 — 저작에서 엔딩키가 개념째 폐지됐다. 코어 DTO는 그대로다(둘 다 비면
-        // 로더의 일관성 검사도 통과한다): EndingRules를 언제나 빈 배열로 내는 것과 같은
-        // 결이고, 시나리오 층을 짓는 날 그쪽 규격으로 다시 세운다.
-        //
-        // 대신 `EventKey`(같은 날)가 실린다 — 에피소드 `이벤트키` 열의 값 그대로.
+        // 됐다. 대신 `EventKey`가 에피소드 `이벤트키` 열의 값 그대로 실린다.
         // 유니티가 "이 에피소드를 다 시청했을 때"의 이벤트·보상 트리거로 쓰는 패스스루
-        // 인덱스이고, 툴은 해석하지 않는다. ⚠ 코어 DTO에는 아직 이 칸이 없어 로더가
-        // 조용히 지나친다 — 칸을 세워 달라는 부탁이 progression-handoff.md 추기에 있다
-        // (`StatChange.Op` 때와 같은 절차. 값이 오해될 자리는 없으므로 Op와 달리 먼저 싣는다).
+        // 인덱스이고, 툴은 해석하지 않는다.
         EventKey = episode.EventKey?.Trim() ?? string.Empty,
         DesignerNote = episode.Memo ?? string.Empty,
         Position = new PositionJson { X = episode.X, Y = episode.Y }
@@ -362,7 +356,6 @@ public static class ChapterProgressionExporter
         public List<StatJson> Stats { get; set; } = new();
 
         public List<NodeJson> Nodes { get; set; } = new();
-        public List<object> EndingRules { get; set; } = new();  // v1은 읽고 표시까지 (D5)
     }
 
     /// <summary>런타임 <c>StatDefinition</c>과 1:1. <c>Type</c>은 이름 문자열이다.</summary>
@@ -394,8 +387,7 @@ public static class ChapterProgressionExporter
 
         /// <summary>
         /// 에피소드 `이벤트키`(v14) — 유니티 전용 패스스루. "이 에피소드를 다 시청했을 때"
-        /// 이벤트·보상을 매다는 인덱스이고 진행 평가에는 안 낀다. 코어 DTO에 칸이 서기
-        /// 전까지 로더는 무시한다(progression-handoff.md 추기).
+        /// 이벤트·보상을 매다는 인덱스이고 진행 평가에는 안 낀다.
         /// </summary>
         public string EventKey { get; set; } = string.Empty;
 

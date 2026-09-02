@@ -5,97 +5,41 @@ namespace Ked.Progression
 {
     public sealed class EpisodeNode
     {
-        private readonly int _autoOptionIndex;
-
         public string EpisodeId { get; }
         public string Title { get; }
+        public string DialogueEntryId { get; } // 호스트가 재생할 대본 키.
+        public IReadOnlyList<EpisodeOption> NextOptions { get; } // 간선
 
-        // 호스트가 재생할 대본 키.
-        public string DialogueEntryId { get; }
+        // 시청 완료 시 이벤트·보상 트리거. 해석 없이 실어 나르기만 함.
+        public string EventKey { get; }
 
-        // 나가는 길. 배열 순서가 곧 화면에 뜨는 순서.
-        // 저작엑셀의 간선시트의 행 순서 유지.
-        public IReadOnlyList<EpisodeOption> NextOptions { get; }
-
-        public string EndingKey { get; }
-
-        public string DesignerNote { get; }
-
-        public bool IsEndingCandidate => EndingKey.Length != 0;
+        // 이 에피소드가 속한 장면. 연출·롤백·커밋·저장의 경계가 이것 하나로 정해진다.
+        //
+        // 저작 쪽이 비워 두면 에피소드마다 고유한 값을 발급한다 — 장면 하나에
+        // 에피소드 하나인 퇴화 상태이고, 그것이 장면 개념이 서기 전의 동작이다.
+        public string SceneId { get; }
 
         public EpisodeNode(
             string episodeId,
             string title,
             string dialogueEntryId,
             IReadOnlyList<EpisodeOption> nextOptions = null,
-            string endingKey = null,
-            string designerNote = null)
+            string eventKey = null,
+            string sceneId = null)
         {
-            if (string.IsNullOrEmpty(episodeId))
-            {
-                throw new ArgumentException("에피소드 ID가 비어 있다.", nameof(episodeId));
-            }
-
             EpisodeId = episodeId;
             Title = title ?? string.Empty;
             DialogueEntryId = dialogueEntryId ?? string.Empty;
             NextOptions = nextOptions ?? Array.Empty<EpisodeOption>();
-            EndingKey = endingKey ?? string.Empty;
-            DesignerNote = designerNote ?? string.Empty;
+            EventKey = eventKey ?? string.Empty;
 
-            _autoOptionIndex = FindAutoOption(EpisodeId, NextOptions);
+            SceneId = string.IsNullOrEmpty(sceneId)
+                ? DefaultSceneId(episodeId)
+                : sceneId;
         }
 
-        // 문구 없는 자동 진행 간선. 디폴트로 사용.
-        public bool TryGetAutoOption(out EpisodeOption option)
-        {
-            if (_autoOptionIndex < 0)
-            {
-                option = null;
-                return false;
-            }
-
-            option = NextOptions[_autoOptionIndex];
-            return true;
-        }
-
-        public override string ToString() => EpisodeId;
-
-        // 자동 진행 간선은 에피소드당 하나. 
-        private static int FindAutoOption(
-            string episodeId, IReadOnlyList<EpisodeOption> options)
-        {
-            int found = -1;
-
-            for (int i = 0; i < options.Count; i++)
-            {
-                EpisodeOption option = options[i];
-
-                if (option == null)
-                {
-                    throw new ArgumentException(
-                        $"에피소드 '{episodeId}'의 {i}번째 선택지가 null이다.", nameof(options));
-                }
-
-                if (option.Kind != OptionKind.AutoAdvance)
-                {
-                    continue;
-                }
-
-                if (found >= 0)
-                {
-                    throw new ArgumentException(
-                        $"에피소드 '{episodeId}'에 자동 진행 간선이 둘 이상이다: " +
-                        $"[{found}] → {options[found].TargetEpisodeId}, " +
-                        $"[{i}] → {option.TargetEpisodeId}. " +
-                        "에피소드당 하나여야 한다(§G6-2).",
-                        nameof(options));
-                }
-
-                found = i;
-            }
-
-            return found;
-        }
+        // 발급을 생성자에 두는 이유: 로더로 들어오든 코드로 만들든 SceneId가 비는
+        // 노드가 없어야, 장면 비교가 "빈 것끼리 같다"로 무너지지 않는다.
+        private static string DefaultSceneId(string episodeId) => "__scene_" + episodeId;
     }
 }

@@ -138,6 +138,111 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     }
 
     [Fact]
+    public void 구판_JSON은_에피소드마다_고유한_퇴화_Scene으로_로드된다()
+    {
+        const string json = """
+        {
+          "ChapterId": "legacy",
+          "DisplayName": "구판",
+          "StartEpisodeId": "ep1",
+          "Stats": [],
+          "Nodes": [
+            {
+              "EpisodeId": "ep1",
+              "DialogueEntryId": "ep1",
+              "Title": "첫 화",
+              "EventKey": "",
+              "NextOptions": [{
+                "TargetEpisodeId": "ep2",
+                "StatChanges": [],
+                "ChoiceLabel": "다음",
+                "VisibleConditions": [],
+                "Conditions": [],
+                "LockedReasonText": "",
+                "ViaNodeId": ""
+              }]
+            },
+            {
+              "EpisodeId": "ep2",
+              "DialogueEntryId": "ep2",
+              "Title": "둘째",
+              "EventKey": "",
+              "NextOptions": []
+            }
+          ]
+        }
+        """;
+
+        Ked.Progression.ChapterProgressionDto dto =
+            JsonSerializer.Deserialize<Ked.Progression.ChapterProgressionDto>(json)!;
+        Ked.Progression.ProgressionLoadResult result = Ked.Progression.ProgressionLoader.Load(dto);
+
+        Assert.NotNull(result.Chapter);
+        Assert.DoesNotContain(result.Diagnostics,
+            item => item.Severity == Ked.Progression.ProgressionDiagnosticSeverity.Error);
+        Assert.Equal("__scene_ep1", result.Chapter!.SceneIdOf("ep1"));
+        Assert.Equal("__scene_ep2", result.Chapter.SceneIdOf("ep2"));
+        Assert.False(result.Chapter.IsSameScene("ep1", "ep2"));
+    }
+
+    [Fact]
+    public void 새_코어의_Scene_Auto_거부는_간선_행으로_돌아온다()
+    {
+        var chapter = new ChapterGraphModel(
+            "invalid",
+            "invalid.xlsx",
+            [
+                new ChapterEpisode("root", "루트", "", "root", 0, 0, null, 2),
+                new ChapterEpisode("a", "A", "", "a", 200, 0, null, 3),
+                new ChapterEpisode("b", "B", "", "b", 400, 0, null, 4)
+            ],
+            [
+                new ChapterEdge("root", "a", "A로", null, null, 11),
+                new ChapterEdge("root", "b", "B로", null, null, 12)
+            ],
+            [], [], [], []);
+
+        const string json = """
+        {
+          "ChapterId": "invalid",
+          "DisplayName": "invalid",
+          "StartEpisodeId": "root",
+          "Stats": [],
+          "Nodes": [
+            {
+              "EpisodeId": "root", "DialogueEntryId": "root", "Title": "루트",
+              "EventKey": "", "SceneId": "scene-root",
+              "NextOptions": [
+                { "TargetEpisodeId": "a", "StatChanges": [], "ChoiceLabel": "A로",
+                  "VisibleConditions": [], "Conditions": [], "LockedReasonText": "",
+                  "ViaNodeId": "", "Auto": true },
+                { "TargetEpisodeId": "b", "StatChanges": [], "ChoiceLabel": "B로",
+                  "VisibleConditions": [], "Conditions": [], "LockedReasonText": "",
+                  "ViaNodeId": "", "Auto": false }
+              ]
+            },
+            { "EpisodeId": "a", "DialogueEntryId": "a", "Title": "A", "EventKey": "",
+              "SceneId": "scene-shared", "NextOptions": [] },
+            { "EpisodeId": "b", "DialogueEntryId": "b", "Title": "B", "EventKey": "",
+              "SceneId": "scene-shared", "NextOptions": [] }
+          ]
+        }
+        """;
+
+        IReadOnlyList<ChapterDiagnostic> refusals =
+            ChapterProgressionExporter.CoreRefusals(chapter, json);
+
+        Assert.Contains(refusals, item =>
+            item.Code == ChapterDiagnosticCode.CoreRefusedChapter &&
+            item.Sheet == ChapterSheetNames.Edges && item.Row == 11 &&
+            item.Message.Contains("유일한 간선", StringComparison.Ordinal));
+        Assert.Contains(refusals, item =>
+            item.Code == ChapterDiagnosticCode.CoreRefusedChapter &&
+            item.Sheet == ChapterSheetNames.Edges && item.Row == 12 &&
+            item.Message.Contains("밖에서 들어오는 자리", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void 대본에_CHOICE_OPTION이_남아_있으면_어디로_가야_하는지_말한다()
     {
         // 선택지의 정본은 v9부터 챕터 `선택지`·`간선` 시트다. v10에서 대본 규격에서 아예
