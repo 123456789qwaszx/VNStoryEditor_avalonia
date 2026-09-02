@@ -158,6 +158,22 @@ public static class ChapterWorkbookWriter
             }
         });
 
+    /// <summary>여러 에피소드의 장면ID를 한 번의 파일 저장으로 바꾼다.</summary>
+    public static ChapterWriteResult UpdateEpisodeScenes(
+        string path, IReadOnlyCollection<string> episodeIds, string sceneId) =>
+        Mutate(path, workbook =>
+        {
+            IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Episodes);
+            int sceneColumn = EpisodeColumn(sheet, "장면ID", 4);
+
+            foreach (string episodeId in episodeIds.Distinct(StringComparer.Ordinal))
+            {
+                int row = FindRow(sheet, episodeId)
+                    ?? throw new InvalidOperationException($"에피소드 '{episodeId}' 행이 없습니다.");
+                Set(sheet, row, sceneColumn, sceneId);
+            }
+        });
+
     /// <summary>
     /// EpisodeId 개명. <b>`간선`의 출발·도착과 픽스처 고정 선택은 함께 따라간다</b> — 신원이
     /// 바뀌었는데 참조가 남으면 유령 간선이 된다.

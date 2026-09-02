@@ -63,6 +63,19 @@ public sealed class ChapterSceneAuthoringTests : IDisposable
     }
 
     [Fact]
+    public void 같은_장면의_여러_에피소드를_한_번에_다른_ID로_옮긴다()
+    {
+        Assert.True(ChapterWorkbookWriter.EnsureChapterWorkbook(_directory, "bulk"));
+        string path = Path.Combine(_directory, "bulk.xlsx");
+        Assert.True(ChapterWorkbookWriter.AddEpisode(path, "a", "A", 0, 0).Written);
+        Assert.True(ChapterWorkbookWriter.AddEpisode(path, "b", "B", 100, 0).Written);
+        Assert.True(ChapterWorkbookWriter.UpdateEpisodeScenes(path, ["a", "b"], "scene-new").Written);
+
+        ChapterGraphModel model = ChapterWorkbookReader.Read(path);
+        Assert.All(model.Episodes, episode => Assert.Equal("scene-new", episode.SceneId));
+    }
+
+    [Fact]
     public void 같은_장면ID는_산출물에서도_같고_장면_진입점은_표시할_수_있다()
     {
         ChapterGraphModel chapter = Chapter(

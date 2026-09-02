@@ -210,13 +210,6 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
             }
         };
-        SceneIdBox.LostFocus += (_, _) =>
-        {
-            if (!_fillingPanel && ToolEditable)
-            {
-                UiGuard.Run(_session, "장면ID 저장", ApplyEpisodeFromPanel);
-            }
-        };
         SceneIdBox.KeyDown += (_, e) =>
         {
             if (e.Key == Avalonia.Input.Key.Enter)
@@ -225,6 +218,8 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "장면ID 저장", ApplyEpisodeFromPanel);
             }
         };
+        ApplySceneGroupButton.Click += (_, _) =>
+            UiGuard.Run(_session, "장면ID 일괄 저장", ApplySceneIdToGroup);
         // 판 다루기 — 휠 확대·축소, 가운데 단추 끌어 이동. 휠은 <b>터널</b>로 받는다:
         // 스크롤뷰가 먼저 먹어 버리면 휠이 배율이 아니라 그냥 스크롤이 된다.
         GraphScroll.AddHandler(
@@ -2499,6 +2494,7 @@ public partial class ChapterGraphView : UserControl
 
         IdBox.IsEnabled = editable;
         SceneIdBox.IsEnabled = editable;
+        ApplySceneGroupButton.IsEnabled = editable;
 
         // 잠겨 있으면 **그 자리에서** 이유를 말한다 (2026-08-24). 비활성 칸이 아무 말도
         // 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
@@ -3077,6 +3073,28 @@ public partial class ChapterGraphView : UserControl
             _selectedEpisodeId,
             sceneId: SceneIdBox.Text?.Trim() ?? string.Empty);
         Report(result, $"에피소드 '{_selectedEpisodeId}'의 장면ID를 저장했습니다.");
+    }
+
+    /// <summary>현재 장면을 이루는 모든 에피소드의 안정 ID를 한 저장으로 바꾼다.</summary>
+    internal void ApplySceneIdToGroup()
+    {
+        if (_selectedEpisodeId is null || SelectedChapterPath is null ||
+            SelectedModel?.FindEpisode(_selectedEpisodeId) is not { } selected)
+        {
+            _session?.SetStatus("일괄 변경할 장면의 에피소드를 다시 골라 주세요.");
+            return;
+        }
+
+        string sceneId = SceneIdBox.Text?.Trim() ?? string.Empty;
+        string[] episodeIds = SelectedModel.Episodes
+            .Where(episode => string.Equals(
+                episode.EffectiveSceneId, selected.EffectiveSceneId, StringComparison.Ordinal))
+            .Select(episode => episode.EpisodeId)
+            .ToArray();
+
+        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisodeScenes(
+            SelectedChapterPath, episodeIds, sceneId);
+        Report(result, $"장면 에피소드 {episodeIds.Length}개의 장면ID를 저장했습니다.");
     }
 
     internal void DeleteSelectedEdge()

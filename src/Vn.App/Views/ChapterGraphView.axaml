@@ -253,6 +253,9 @@
 
                         <TextBox x:Name="SceneIdBox" FontSize="11" PlaceholderText="장면ID (비우면 기본 장면)"
                                  ToolTip.Tip="같은 장면ID의 에피소드는 하나의 저장·롤백 구간입니다. 비우면 기존 파일과 호환되게 각 에피소드가 독립 장면이 됩니다." />
+                        <Button x:Name="ApplySceneGroupButton" Content="같은 장면 전체에 적용"
+                                FontSize="10" HorizontalAlignment="Left" Padding="8,2"
+                                ToolTip.Tip="현재 에피소드와 같은 장면ID를 가진 모든 에피소드의 ID를 한 번에 바꿉니다. 이 에피소드만 분리하려면 입력칸에서 새 ID를 적고 Enter를 누르세요." />
 
                         <!-- 표시·해금조건은 v8에서 간선으로 옮겨 갔다 ("보일지 말지는 길이 정한다").
                              컨트롤은 남기되 감춘다 — 후속 정리·테스트가 참조한다. -->
