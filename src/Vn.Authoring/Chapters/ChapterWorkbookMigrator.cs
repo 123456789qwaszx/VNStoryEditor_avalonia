@@ -409,16 +409,8 @@ public static class ChapterWorkbookMigrator
             edges.Column(9).Delete();
         }
 
-        // v12 — 문구 없는 길("보이지 않는 기본")이 폐지됐다. 빈 칸을 그대로 두면 열자마자
-        // 오류 더미가 되므로 넘어가기 버튼의 이름을 넣어 준다. 기획자가 고치면 된다.
-        foreach (IXLRow row in edges.RowsUsed().Skip(1))
-        {
-            if (row.Cell(1).GetString().Trim().Length > 0 &&
-                row.Cell(4).GetString().Trim().Length == 0)
-            {
-                row.Cell(4).SetValue("계속");
-            }
-        }
+        // R2 — 빈 문구를 "계속"이나 Auto로 추측하지 않는다. 옛 데이터의 의도는 이행기가
+        // 알 수 없으므로 그대로 두고, 리더가 사용자의 선택(문구 또는 자동=TRUE)을 요구한다.
     }
 
     /// <summary>
