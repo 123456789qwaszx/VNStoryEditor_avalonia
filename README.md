@@ -85,6 +85,7 @@ powershell -ExecutionPolicy Bypass -File .\publish-windows.ps1
 | 문서 | 무엇이 있나 |
 |---|---|
 | [`docs/external-overview.md`](docs/external-overview.md) | **외부 진입점.** 도구의 책임 · 데이터 흐름 · 런타임 영향 · 자체 점검과 다음 작업 |
+| [`docs/plans/PLAN.md`](docs/plans/PLAN.md) | **런타임 정렬 계획.** R0~R5 순서 · 결정 지점 · 단계별 완료 기준 |
 | [`docs/handoff/current-state.md`](docs/handoff/current-state.md) | **진입점.** 계층 규칙 · 화면 · 코드 지도 · 진행 상태 |
 | [`docs/run-log.md`](docs/run-log.md) | **결정의 정본.** 한 일 · 근거 · 되돌리는 법 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 코드 구조 — "이 기능은 어느 파일" |
