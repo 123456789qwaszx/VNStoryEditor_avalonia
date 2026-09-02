@@ -28,6 +28,19 @@
 > 표본 JSON(`ch01.progression.sample.json`)도 이 모양으로 다시 구웠다(`EventKey` 둘,
 > 엔딩 칸 없음) — 픽스처 사본을 쓰고 있으면 다시 떠야 한다.
 
+> ✅ **추기 (2026-09-02) — 위 부탁 ②는 이행됐고, 이 문서의 상대가 바뀌었다.**
+> `EventKey` 칸은 같은 날(08-26) 저쪽 `EpisodeNodeDto`·`EpisodeNode`에 섰다(`665e47e1`).
+> ①도 저쪽이 더 나갔다 — `EndingRule`·`EndingRuleDto`·`ScenarioAdvance`·`ScenarioTransition`을
+> 폐지했고(`5e424840`·`947d6c9b`), `Option.Kind`는 칸을 세우는 대신 자동 진행 자체를 폐지했다.
+>
+> ⚠ **"`ked-progression` 작업자"라는 상대가 지금은 실물이 아니다.** 진행 코어는 런타임
+> 저장소 `Assets/Scripts/Ked.Progression/`에 **복사 반입**돼 거기서 작업되고, 형제 저장소
+> `ked-progression`은 08-25 커밋 + 08-26 역동기화 미커밋인 채 뒤처져 있다. 저쪽은 그 위에
+> **Scene 수명 계층**을 세우는 중(G0~G5, 09-02 G4)이고 접점 `Nodes[].SceneId`는 확정됐다.
+> **새 부탁은 없다** — 소유자 지시로 저쪽이 굳은 뒤 툴 쪽 계획을 다시 점검한다. 계약 원문은
+> [`runtime-contract.md`](runtime-contract.md) §0-1·§F·§G-10~G-14·§H-8. 아래 본문은 08-23 기준
+> 역사다.
+
 ---
 
 ## 0. 한 장 요약 — 부탁하는 것은 **§6-1의 칸 하나**뿐이다
