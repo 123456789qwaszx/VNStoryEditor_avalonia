@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Ked.Progression;
-using Ked.Progression.Dto;
 using Vn.Authoring.Chapters;
 
 namespace Vn.Authoring.Tests.Chapters;
@@ -149,7 +148,7 @@ public sealed class ChapterReachabilityEquivalenceTests
         // ⛔ "어딘가 잘못됐다"로 떨어지면 실패다 — 기획자가 열 시트와 행까지 짚는다.
         Assert.Equal(ChapterSheetNames.Edges, refusal.Sheet);
         Assert.NotNull(refusal.Row);
-        Assert.Contains("자동 진행", refusal.Message);
+        Assert.Contains("Auto", refusal.Message);
     }
 
     // ── 대조 ────────────────────────────────────────────────────────────────
