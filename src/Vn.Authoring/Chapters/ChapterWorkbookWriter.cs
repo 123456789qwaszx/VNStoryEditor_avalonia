@@ -50,8 +50,8 @@ public static class ChapterWorkbookWriter
             sheet.Cell(row, 1).SetValue(episodeId);
             sheet.Cell(row, 2).SetValue(episodeId);   // 대사엔트리 = EpisodeId (v3 규약)
             sheet.Cell(row, 3).SetValue(title);
-            sheet.Cell(row, 6).SetValue(Math.Round(x, 2));
-            sheet.Cell(row, 7).SetValue(Math.Round(y, 2));
+            sheet.Cell(row, EpisodeColumn(sheet, "X", 6)).SetValue(Math.Round(x, 2));
+            sheet.Cell(row, EpisodeColumn(sheet, "Y", 7)).SetValue(Math.Round(y, 2));
         });
 
     /// <summary>
@@ -87,8 +87,8 @@ public static class ChapterWorkbookWriter
             episodes.Cell(newRow, 1).SetValue(newEpisodeId);
             episodes.Cell(newRow, 2).SetValue(newEpisodeId); // 대사엔트리 = EpisodeId (v3 규약)
             episodes.Cell(newRow, 3).SetValue(title);
-            episodes.Cell(newRow, 6).SetValue(Math.Round(x, 2));
-            episodes.Cell(newRow, 7).SetValue(Math.Round(y, 2));
+            episodes.Cell(newRow, EpisodeColumn(episodes, "X", 6)).SetValue(Math.Round(x, 2));
+            episodes.Cell(newRow, EpisodeColumn(episodes, "Y", 7)).SetValue(Math.Round(y, 2));
 
             // 부모에서 나가는 길 하나 = 선택지 하나 (v9). 문구를 받았으면 그대로 적고,
             // 사전에 없는 낱말이면 사전에도 올려 둔다 — 다음부터 드롭다운에서 고른다.
@@ -121,8 +121,8 @@ public static class ChapterWorkbookWriter
             // v14 열 순서 — 대사엔트리(B) · 제목(C) · 메모(G).
             Set(sheet, row, 2, dialogueEntry);
             Set(sheet, row, 3, title);
-            Set(sheet, row, 4, sceneId);
-            Set(sheet, row, 8, memo);
+            Set(sheet, row, EpisodeColumn(sheet, "장면ID", 4), sceneId);
+            Set(sheet, row, EpisodeColumn(sheet, "메모", 8), memo);
 
             if (allowUnreachable is { } allowed)
             {
@@ -1048,6 +1048,20 @@ public static class ChapterWorkbookWriter
 
     private static int NextRow(IXLWorksheet sheet) =>
         (sheet.LastRowUsed()?.RowNumber() ?? 1) + 1;
+
+    /// <summary>구판을 직접 편집해도 기존 X/Y·메모 열을 덮지 않도록 머리글로 찾는다.</summary>
+    private static int EpisodeColumn(IXLWorksheet sheet, string header, int fallback)
+    {
+        for (int column = 1; column <= 16; column++)
+        {
+            if (string.Equals(sheet.Cell(1, column).GetString().Trim(), header, StringComparison.Ordinal))
+            {
+                return column;
+            }
+        }
+
+        return fallback;
+    }
 
     private static void Set(IXLWorksheet sheet, int row, int column, string? value)
     {

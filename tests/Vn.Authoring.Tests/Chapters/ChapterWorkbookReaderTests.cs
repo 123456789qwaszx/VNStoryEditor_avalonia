@@ -384,13 +384,11 @@ public sealed class ChapterWorkbookReaderTests : IDisposable
     /// <summary>오류가 하나도 없는 최소 챕터(2026-08-16 규격). 각 테스트는 여기서 한 칸만 망가뜨린다.</summary>
     private static (string Name, string?[][] Rows)[] Baseline() =>
     [
-        // v14 (2026-08-26) — 간선의 `엔딩키`가 폐지되고(일곱 칸이 전부다), 에피소드에
-        // `이벤트키`(D — 유니티 전용 패스스루)가 섰다. 같은 날 에피소드 열 순서도
-        // 갈렸다: 신원·내용이 앞, 건네는 열쇠가 가운데, 좌표와 곁말이 뒤.
+        // v15 — `장면ID`가 저장·롤백 경계로 `이벤트키` 앞에 섰다.
         ("에피소드", [
-            ["EpisodeId", "대사엔트리", "제목", "이벤트키", "X", "Y", "메모"],
-            ["ep1", "Story_ep1", "첫 화", null, "0", "0", null, null],
-            ["ep2", "Story_ep2", "둘째 화", null, "200", "0", null, null]
+            ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"],
+            ["ep1", "Story_ep1", "첫 화", null, null, "0", "0", null],
+            ["ep2", "Story_ep2", "둘째 화", null, null, "200", "0", null]
         ]),
         ("간선", [
             ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"],
