@@ -334,7 +334,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
                 new ChapterEpisode("ep1", "첫 화", "", "장면 1", 0, 0, null, 2),
                 new ChapterEpisode("ep2", "둘째", "", "new01", 200, 0, null, 3)
             ],
-            [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
+            [new ChapterEdge("ep1", "ep2", "다음", null, null, 2)],
             [],
             [new ChapterStat("trust", "신뢰", Initial: 0, Minimum: 0, Maximum: 5, SourceRow: 2)],
             [],
@@ -463,7 +463,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
                 new ChapterEpisode("ep1", "첫 화", "", "ep1", 0, 0, null, 2),
                 new ChapterEpisode("ep2", "둘째", "", "ep2", 200, 0, null, 3)
             ],
-            [new ChapterEdge("ep1", "ep2", null, null, null, 2)],
+            [new ChapterEdge("ep1", "ep2", "다음", null, null, 2)],
             [],
             [
                 new ChapterStat("trust", "신뢰", Initial: 1, Minimum: 0, Maximum: 5, SourceRow: 2),
