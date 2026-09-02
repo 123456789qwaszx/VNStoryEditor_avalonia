@@ -35,10 +35,10 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
         IXLWorksheet sheet = book.Worksheet(ChapterSheetNames.Edges);
 
         Assert.Equal(
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"],
-            Enumerable.Range(1, 7).Select(column => sheet.Cell(1, column).GetString().Trim()));
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "자동"],
+            Enumerable.Range(1, 8).Select(column => sheet.Cell(1, column).GetString().Trim()));
 
-        Assert.Equal(string.Empty, sheet.Cell(1, 8).GetString());
+        Assert.Equal(string.Empty, sheet.Cell(1, 9).GetString());
     }
 
     [Fact]

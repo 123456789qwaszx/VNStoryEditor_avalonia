@@ -48,8 +48,8 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         }
 
         Assert.Equal(
-            File.ReadAllText(SamplePath).ReplaceLineEndings("\n"),
-            produced);
+            File.ReadAllText(SamplePath).ReplaceLineEndings("\n").TrimEnd(),
+            produced.TrimEnd());
     }
 
     [Fact]

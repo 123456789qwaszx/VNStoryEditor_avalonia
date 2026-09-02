@@ -107,14 +107,19 @@ public sealed class ChapterAutoAuthoringTests : IDisposable
     [Fact]
     public void 구판_이행은_자동열을_FALSE로_추가하고_공백을_추측하지_않는다()
     {
-        string path = NewChapter();
-        ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "");
-
-        using (var workbook = new XLWorkbook(path))
-        {
-            workbook.Worksheet(ChapterSheetNames.Edges).Column(8).Delete();
-            workbook.SaveAs(path);
-        }
+        string path = XlsxTestWorkbook.Write(_directory, "legacy-auto.xlsx",
+            (ChapterSheetNames.Episodes, [
+                ["EpisodeId", "대사엔트리", "제목", "장면ID", "이벤트키", "X", "Y", "메모"],
+                ["ep1", "ep1", "첫째", "scene-a", null, "0", "0", null],
+                ["ep2", "ep2", "둘째", "scene-a", null, "200", "0", null]
+            ]),
+            (ChapterSheetNames.Edges, [
+                ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"],
+                ["ep1", "ep2", null, null, null, null, null]
+            ]),
+            (ChapterSheetNames.Conditions, [["라벨", "스탯", "연산자", "값", "설명"]]),
+            (ChapterSheetNames.Stats, [["타입", "스탯키", "표시명", "초기값", "최소", "최대"]]),
+            (ChapterSheetNames.Choices, [["인덱스", "대본", "메모"]]));
 
         ChapterWorkbookMigrator.MigrationResult result = ChapterWorkbookMigrator.Migrate(path);
         Assert.True(result.Migrated);

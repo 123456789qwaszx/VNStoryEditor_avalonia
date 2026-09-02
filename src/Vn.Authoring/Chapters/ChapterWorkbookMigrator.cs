@@ -72,10 +72,11 @@ public static class ChapterWorkbookMigrator
             FoldEdgeColumnsV12(workbook);               // v12 — 간선의 `종류`·`연출` 폐지
             DropHideWhenLocked(workbook);               // 2026-08-24 — `잠금시 숨김` 폐지
             DropEpisodeKind(workbook);                  // v13 — `종류` 폐지
-            EnsureAutoColumn(workbook);                 // R2 — 명시적 자동 진행, 구판은 FALSE
             // ⚠ 둘 다 맨 뒤다 — 앞 단계들이 열을 밀고 당기므로, 자리가 다 정해진 뒤에
             //   이름으로 찾아 옮긴다.
             MoveEndingKeyToEventKey(workbook);          // v14 — 엔딩키 → 에피소드 `이벤트키`
+            // 반드시 엔딩키를 옮긴 뒤다. v11~v13의 H/I열을 자동 열로 먼저 덮으면 키를 잃는다.
+            EnsureAutoColumn(workbook);                 // R2 — 명시적 자동 진행, 구판은 FALSE
             MigrateConditions(workbook);
             MigrateStats(workbook);
             // ⚠ 순서 이행은 <b>그 시트를 만지는 모든 단계 뒤</b>다 — 앞이 열을 밀고 당기므로

@@ -69,9 +69,8 @@ public sealed class ChapterWorkbookChromeTests : IDisposable
 
         using var workbook = new XLWorkbook(ChapterPath);
 
-        // 에피소드는 여덟 칸(A~H — v15의 `장면ID`까지), 간선은 일곱 칸(A~G)이다.
+        // 에피소드는 여덟 칸(A~H — v15의 `장면ID`까지), 간선도 여덟 칸(A~H, R2 `자동`)이다.
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Episodes), 9);
-        AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 8);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 9);
         AssertBlank(workbook.Worksheet(ChapterSheetNames.Edges), 10);
     }
