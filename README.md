@@ -15,7 +15,6 @@
 
 | | **① 챕터 그래프** (기획자) | **② 연출 그래프** (연출) |
 |---|---|---|
-| [`docs/external-overview.md`](docs/external-overview.md) | **외부 진입점.** 도구의 책임 · 데이터 흐름 · 런타임 영향 · 자체 점검과 다음 작업 |
 | 만드는 것 | 에피소드 구조 · 선택지 · 조건 · 스탯 | 커맨드 · 무대 · 초상화 |
 | 값이 사는 곳 | **엑셀 워크북** (`chapters/`·`episodes/`) | 프로젝트의 연출 노드 |
 | 도구의 역할 | 읽고 검증하고 그린다 | 편집한다 |
@@ -85,6 +84,7 @@ powershell -ExecutionPolicy Bypass -File .\publish-windows.ps1
 
 | 문서 | 무엇이 있나 |
 |---|---|
+| [`docs/external-overview.md`](docs/external-overview.md) | **외부 진입점.** 도구의 책임 · 데이터 흐름 · 런타임 영향 · 자체 점검과 다음 작업 |
 | [`docs/handoff/current-state.md`](docs/handoff/current-state.md) | **진입점.** 계층 규칙 · 화면 · 코드 지도 · 진행 상태 |
 | [`docs/run-log.md`](docs/run-log.md) | **결정의 정본.** 한 일 · 근거 · 되돌리는 법 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 코드 구조 — "이 기능은 어느 파일" |
