@@ -294,16 +294,17 @@ public static class ChapterWorkbookWriter
     // <b>문구 그 자체</b>가 들어간다. 신원은 (출발, 도착, 문구). `선택지` 시트는 어느
     // 에피소드의 소유물도 아닌 전역 사전이라, 여기서 참조하는 것은 드롭다운 목록뿐이다.
 
-    /// <summary>간선 추가 — 그 길에 붙일 문구를 함께 받는다(비면 보이지 않는 기본).</summary>
+    /// <summary>간선 추가 — 일반 선택지는 문구를, 자동 진행은 <paramref name="auto"/>를 명시한다.</summary>
     public static ChapterWriteResult AddEdge(
         string path,
         string fromEpisodeId,
         string toEpisodeId,
         string? conditionLabel = null,
         string? optionLabel = null,
-        string? statChanges = null) =>
+        string? statChanges = null,
+        bool auto = false) =>
         Mutate(path, workbook =>
-            AppendEdge(workbook, fromEpisodeId, toEpisodeId, conditionLabel, optionLabel, statChanges));
+            AppendEdge(workbook, fromEpisodeId, toEpisodeId, conditionLabel, optionLabel, statChanges, auto));
 
     /// <summary>
     /// 선택지 한 줄의 배선을 고친다 — 문구와 도착을 한 저장으로 (툴 편집 폼의 [수정]).
@@ -316,7 +317,8 @@ public static class ChapterWorkbookWriter
         string? currentOptionLabel,
         string newToEpisodeId,
         string? newOptionLabel,
-        string? statChanges = null) =>
+        string? statChanges = null,
+        bool? auto = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -328,6 +330,10 @@ public static class ChapterWorkbookWriter
             row.Cell(2).SetValue(newToEpisodeId);
             row.Cell(4).SetValue(newOptionLabel ?? string.Empty);
             Set(edges, row.RowNumber(), 3, statChanges); // 배선과 증감을 한 저장으로
+            if (auto is bool autoValue)
+            {
+                edges.Cell(row.RowNumber(), 8).SetValue(autoValue);
+            }
             EnsureChoiceLabel(workbook, newOptionLabel);
         });
 
@@ -365,7 +371,7 @@ public static class ChapterWorkbookWriter
     /// <summary>간선 행 한 줄 붙이기 (AddEdge·AddNextEpisode 공용).</summary>
     private static void AppendEdge(
         XLWorkbook workbook, string fromEpisodeId, string toEpisodeId,
-        string? conditionLabel, string? optionLabel, string? statChanges = null)
+        string? conditionLabel, string? optionLabel, string? statChanges = null, bool auto = false)
     {
         IXLWorksheet edges = RequireSheet(workbook, ChapterSheetNames.Edges);
 
@@ -381,7 +387,7 @@ public static class ChapterWorkbookWriter
         Set(edges, row, 3, statChanges);     // 스탯변화 — 길을 여는 그 저장에 같이 실린다
         Set(edges, row, 4, optionLabel);     // 선택지 = 문구 그대로 (v9)
         Set(edges, row, 6, conditionLabel);  // 해금조건 (v8 — E는 표시조건)
-        edges.Cell(row, 7).SetValue("FALSE");
+        edges.Cell(row, 8).SetValue(auto);
 
         EnsureChoiceLabel(workbook, optionLabel);
     }
@@ -425,7 +431,8 @@ public static class ChapterWorkbookWriter
         string? statChanges = null,
         string? matchOptionLabel = null,
         string? visibleConditionLabel = null,
-        string? optionLabel = null) =>
+        string? optionLabel = null,
+        bool? auto = null) =>
         Mutate(path, workbook =>
         {
             IXLWorksheet sheet = RequireSheet(workbook, ChapterSheetNames.Edges);
@@ -438,6 +445,11 @@ public static class ChapterWorkbookWriter
 
             Set(sheet, row.RowNumber(), 7, lockedMessage);   // 잠금 안내문 (H→G, v12+)
             Set(sheet, row.RowNumber(), 3, statChanges); // 스탯변화(C) — 문법 검사는 리더가 한다
+
+            if (auto is bool autoValue)
+            {
+                sheet.Cell(row.RowNumber(), 8).SetValue(autoValue);
+            }
 
             if (optionLabel is not null)
             {
@@ -650,7 +662,7 @@ public static class ChapterWorkbookWriter
             // v12 (2026-08-24) — `종류`·`연출`·`잠금시 숨김` 폐지.
             // v14 (2026-08-26) — 간선의 `엔딩키` 폐지: 키는 에피소드의 `이벤트키`로 돌아갔다
             // (에피소드에 살면 "같은 도착의 키 충돌"이 구조적으로 없다).
-            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"]);
+            ["출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "자동"]);
         IXLWorksheet conditionSheet =
             AddSheetWithHeaders(workbook, ChapterSheetNames.Conditions, ["라벨", "스탯", "연산자", "값", "설명"]);
         IXLWorksheet statSheet = AddSheetWithHeaders(workbook, ChapterSheetNames.Stats,
@@ -754,6 +766,10 @@ public static class ChapterWorkbookWriter
             edgeChoicePick.ShowErrorMessage = false;
         }
 
+        // R2 — 의도한 자동 진행만 TRUE. 공백 문구에서 추측하지 않는다.
+        edgeSheet.Range(2, 8, DropdownRows, 8).CreateDataValidation()
+            .List("\"TRUE,FALSE\"", inCellDropdown: true);
+
         // ⚠ 스탯키 열은 v14에서 A → <b>B</b>로 갔다(`타입`이 맨 앞으로). 이 참조가 안 따라가면
         //    드롭다운이 <b>타입 목록</b>(int·bool)을 스탯키라고 내민다 — 조용히 틀린 목록이다.
         conditionSheet.Range(2, 2, DropdownRows, 2).CreateDataValidation()
@@ -844,10 +860,10 @@ public static class ChapterWorkbookWriter
         Chrome(workbook, ChapterSheetNames.Episodes, "#333F50",
             [14, 20, 22, 16, 14, 7, 7, 20], reference: [1], note: [8]);
 
-        //    간선: 출발 · 도착 · 스탯변화 · 선택지 · 표시조건 · 해금조건 · 잠금 안내문
+        //    간선: 출발 · 도착 · 스탯변화 · 선택지 · 표시조건 · 해금조건 · 잠금 안내문 · 자동
         //    (`잠금시 숨김`·`종류`·`연출`은 2026-08-24에, `엔딩키`는 v14(2026-08-26)에 폐지됐다)
         Chrome(workbook, ChapterSheetNames.Edges, "#333F50",
-            [14, 14, 14, 26, 26, 14, 26], reference: [1, 2], note: [7]);
+            [14, 14, 14, 26, 26, 14, 26, 9], reference: [1, 2], note: [7]);
 
         Chrome(workbook, ChapterSheetNames.Conditions, "#548235",
             [18, 26, 26, 26, 44], reference: [2], note: [5]);

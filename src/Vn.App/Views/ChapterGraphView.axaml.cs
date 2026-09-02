@@ -249,6 +249,7 @@ public partial class ChapterGraphView : UserControl
         // 글자 칸만 초점을 잃을 때 낸다. 자판 하나마다 워크북을 열면 엑셀 파일을 쉼 없이
         // 두드리고, 그 사이에 들어온 파일 사건이 칸을 다시 채워 쓰던 글을 끊는다.
         EdgeLabelEditBox.SelectionChanged += (_, _) => AutoSaveEdge();
+        EdgeAutoCheck.IsCheckedChanged += (_, _) => AutoSaveEdge();
         EdgeVisibleCombo.SelectionChanged += (_, _) => AutoSaveEdge();
         EdgeConditionCombo.SelectionChanged += (_, _) => AutoSaveEdge();
 
@@ -2000,14 +2001,15 @@ public partial class ChapterGraphView : UserControl
 
             // v12 — 문구가 비면 그것은 길의 종류가 아니라 **고칠 것**이다. 판에서
             // 그 자리를 짚어 주지 않으면 기획자는 엑셀의 빈 칸을 못 찾는다.
-            string option = wired.HasNoOptionLabel ? "⚠ 문구 없음" : wired.OptionLabel!;
+            string option = wired.Auto ? "AUTO" : wired.HasNoOptionLabel ? "⚠ 문구 없음" : wired.OptionLabel!;
             double portY = PortY(y, index);
 
             var label = new TextBlock
             {
                 Text = wired.ConditionLabel is { } gate ? $"{option} [{gate}]" : option,
                 FontSize = 10,
-                Foreground = new SolidColorBrush(Color.Parse(wired.HasNoOptionLabel ? "#C0392B" : "#C06A14")),
+                Foreground = new SolidColorBrush(Color.Parse(
+                    wired.Auto ? "#3D7BD9" : wired.HasNoOptionLabel ? "#C0392B" : "#C06A14")),
                 MaxWidth = CardWidth - 24,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Background = Brushes.Transparent,
@@ -2659,7 +2661,7 @@ public partial class ChapterGraphView : UserControl
     // 문구는 챕터 전체의 사전에서 고른다 — "모든 선택지 중에서 자유자재로."
 
     /// <summary>문구 없는 길(보이지 않는 기본)을 드롭다운에서 가리키는 이름.</summary>
-    private const string PlainAdvanceItem = "(문구 없음 · 보이지 않는 기본)";
+    private const string PlainAdvanceItem = "(문구 없음)";
 
     /// <summary>폼이 붙은 간선의 신원 (도착, 문구). null이면 <b>새 선택지</b>를 여는 중이다.</summary>
     private (string To, string Label)? _edgeFormEdge;
@@ -2714,6 +2716,7 @@ public partial class ChapterGraphView : UserControl
             EdgeLabelBox.SelectedItem = edge is null
                 ? null
                 : edge.HasNoOptionLabel ? PlainAdvanceItem : edge.OptionLabel;
+            EdgeFormAutoCheck.IsChecked = edge?.Auto == true;
 
             // 스탯변화도 여기서 만진다 (2026-08-17) — 새 길이면 빈 목록에서 시작한다.
             _formStats.Editable = ToolEditable;
@@ -2750,18 +2753,24 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        // 문구를 안 고른 것과 "문구 없음"을 고른 것은 같은 뜻으로 본다 — 둘 다 자동 진행.
+        bool auto = EdgeFormAutoCheck.IsChecked == true;
+
+        // 공백만으로 자동을 추측하지 않는다. 자동 체크가 명시된 경우에만 문구를 비운다.
         string label = EdgeLabelBox.SelectedItem as string is { } picked && picked != PlainAdvanceItem
             ? picked
             : string.Empty;
 
         // 배선과 증감이 한 저장으로 나간다 — 두 번 쓰면 그 사이에 엑셀이 파일을 잡을 수 있고,
         // 반쪽만 적힌 길이 남는다.
-        string stats = _formStats.ToSheetText();
+        string stats = auto ? string.Empty : _formStats.ToSheetText();
+        if (auto)
+        {
+            label = string.Empty;
+        }
 
         ChapterWriteResult result = _edgeFormEdge is { } current
-            ? ChapterWorkbookWriter.SetEdgeRoute(path, from, current.To, current.Label, to, label, stats)
-            : ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label, statChanges: stats);
+            ? ChapterWorkbookWriter.SetEdgeRoute(path, from, current.To, current.Label, to, label, stats, auto)
+            : ChapterWorkbookWriter.AddEdge(path, from, to, optionLabel: label, statChanges: stats, auto: auto);
 
         if (result.Written)
         {
@@ -2770,7 +2779,8 @@ public partial class ChapterGraphView : UserControl
 
         Report(result, label.Length > 0
             ? $"'{label}' → {to} 로 이었습니다."
-            : $"{from} → {to} 를 보이지 않는 기본으로 이었습니다.");
+            : auto ? $"{from} → {to} 를 자동 진행으로 이었습니다."
+            : $"{from} → {to} 를 문구 없는 일반 선택지로 이었습니다.");
     }
 
     private void RefreshEdgeList(ChapterGraphModel model, ChapterEpisode episode)
@@ -2859,7 +2869,7 @@ public partial class ChapterGraphView : UserControl
             }
         });
 
-        string label = edge.HasNoOptionLabel ? "(기본 · 보이지 않음)" : edge.OptionLabel!;
+        string label = edge.Auto ? "AUTO · 자동 진행" : edge.HasNoOptionLabel ? "⚠ 문구 없음" : edge.OptionLabel!;
         string condition = edge.ConditionLabel is { } gate ? $"  [{gate}]" : string.Empty;
 
         var text = new TextBlock
@@ -2939,7 +2949,7 @@ public partial class ChapterGraphView : UserControl
 
         if (fill)
         {
-
+            EdgeAutoCheck.IsChecked = edge.Auto;
             EdgeLockedMsgBox.Text = edge.LockedMessage ?? string.Empty;
             _edgeStats.Editable = ToolEditable;
             _edgeStats.Load(model.Stats, edge.StatChanges);
@@ -3019,19 +3029,25 @@ public partial class ChapterGraphView : UserControl
             combo.SelectedItem as string == "(없음)" ? string.Empty : combo.SelectedItem as string;
 
         // 문구도 이 저장에 실린다 (v9) — 신원의 일부라, 찾을 때는 고치기 전 값을 쓴다.
+        bool auto = EdgeAutoCheck.IsChecked == true;
         string pickedLabel = EdgeLabelEditBox.SelectedItem as string is { } picked && picked != PlainAdvanceItem
             ? picked
             : string.Empty;
+        if (auto)
+        {
+            pickedLabel = string.Empty;
+        }
 
         ChapterWriteResult result = ChapterWorkbookWriter.UpdateEdge(
             path, key.From, key.To,
-            visibleConditionLabel: Changed(Gate(EdgeVisibleCombo), edge.VisibleConditionLabel ?? string.Empty),
-            conditionLabel: Changed(Gate(EdgeConditionCombo), edge.ConditionLabel ?? string.Empty),
+            visibleConditionLabel: Changed(auto ? string.Empty : Gate(EdgeVisibleCombo), edge.VisibleConditionLabel ?? string.Empty),
+            conditionLabel: Changed(auto ? string.Empty : Gate(EdgeConditionCombo), edge.ConditionLabel ?? string.Empty),
 
-            lockedMessage: Changed(EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
-            statChanges: Changed(_edgeStats.ToSheetText(), StatChangesText(edge)),
+            lockedMessage: Changed(auto ? string.Empty : EdgeLockedMsgBox.Text, edge.LockedMessage ?? string.Empty),
+            statChanges: Changed(auto ? string.Empty : _edgeStats.ToSheetText(), StatChangesText(edge)),
             matchOptionLabel: EdgeLabelKey(edge),
-            optionLabel: Changed(pickedLabel, EdgeLabelKey(edge)));
+            optionLabel: Changed(pickedLabel, EdgeLabelKey(edge)),
+            auto: auto == edge.Auto ? null : auto);
 
         // 문구를 바꿨으면 신원도 바뀌었다 — 선택이 풀리지 않게 열쇠를 따라 옮긴다.
         if (result.Written)

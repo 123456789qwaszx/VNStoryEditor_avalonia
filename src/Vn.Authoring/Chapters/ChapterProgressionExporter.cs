@@ -266,6 +266,7 @@ public static class ChapterProgressionExporter
                 // 2026-08-25 — `Kind`(PlayerChoice/AutoAdvance)를 세워 달라던 부탁은 철회됐다.
                 // 모든 길이 선택지가 되면서 이쪽이 물을 것이 없어졌고, 코어도 칸을 안 세웠다.
                 ChoiceLabel = edge.OptionLabel ?? string.Empty,
+                Auto = edge.Auto,
                 VisibleConditions = Conditions(chapter, edge.VisibleConditionLabel),
                 Conditions = Conditions(chapter, edge.ConditionLabel),
                 // ⚠ `HideWhenLocked`는 2026-08-25에 계약에서도 사라졌다. 저작에서는 이미
@@ -414,6 +415,9 @@ public static class ChapterProgressionExporter
         /// 데이터로 가를 필요 자체가 없어졌다 — 이쪽이 빈 문구를 먼저 막는다.
         /// </summary>
         public string ChoiceLabel { get; set; } = string.Empty;
+
+        /// <summary>문구 공백 추론을 대신하는 런타임의 명시적 자동 진행 표식.</summary>
+        public bool Auto { get; set; }
 
         /// <summary>
         /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16). 에피소드 노드의

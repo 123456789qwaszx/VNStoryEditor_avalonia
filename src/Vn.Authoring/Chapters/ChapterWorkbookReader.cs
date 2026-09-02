@@ -68,7 +68,7 @@ public static class ChapterWorkbookReader
         // 있다보니 기능적으로 제거하더라도 아무런 차이가 없어"). 실제로 같은 말을 두 번
         // 하는 칸이었다 — <b>해금조건 + 잠기면 숨김</b>은 그 식을 <b>표시조건</b>에 적은
         // 것과 결과가 같다. 옛 워크북은 이행기가 그 열을 걷는다.
-        "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문"
+        "출발", "도착", "스탯변화", "선택지", "표시조건", "해금조건", "잠금 안내문", "자동"
     ];
 
     private static readonly string[] ConditionHeaders = ["라벨", "스탯", "연산자", "값", "설명"];
@@ -147,6 +147,7 @@ public static class ChapterWorkbookReader
             ReadChoiceOptions(workbook, path, diagnostics);
         IReadOnlyList<ChapterEdge> edges =
             ReadEdges(workbook, path, episodeIds, conditionLabels, statKeys, diagnostics);
+        VerifyAutoEdges(episodes, edges, path, diagnostics);
         IReadOnlyList<ChapterFixture> fixtures = ReadFixtures(workbook, path, stats, episodeIds, diagnostics);
         IReadOnlyList<ChapterSpeaker> speakers =
             ReadSpeakers(workbook, path, diagnostics, out bool hasSpeakerSheet);
@@ -371,16 +372,17 @@ public static class ChapterWorkbookReader
             // *"실제 효과는 없고 제작의 복잡성만 높인다."* 이제 **에피소드 사이를 넘는
             // 길은 언제나 선택지 하나**다.
             string? optionLabel = Optional(sheet, row, 4);
+            int autoColumn = HeaderColumn(sheet, "자동");
+            bool auto = autoColumn > 0 && Boolean(sheet, row, autoColumn, path, diagnostics);
 
-            if (string.IsNullOrWhiteSpace(optionLabel))
+            if (string.IsNullOrWhiteSpace(optionLabel) && !auto)
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.OptionLabelBlank,
                     path, sheet.Name, row, 4,
-                    $"'{from}'→'{to}' 길에 선택지 문구가 없습니다. 문구 없이 넘어가는 길은 " +
-                    "폐지됐습니다(2026-08-24) — 플레이어에게 보일 문구를 적으세요. " +
-                    "넘어가기만 하면 되는 자리라면 '계속' 같은 한 낱말이면 됩니다."));
+                    $"'{from}'→'{to}' 길에 선택지 문구가 없습니다. 일반 선택지에는 문구를 " +
+                    "적으세요. 의도한 자동 진행이라면 H열 `자동`을 TRUE로 명시하세요."));
             }
 
             edges.Add(new ChapterEdge(
@@ -391,6 +393,7 @@ public static class ChapterWorkbookReader
                 Optional(sheet, row, 7),
                 row)
             {
+                Auto = auto,
                 StatChanges = deltas.Deltas,
                 VisibleConditionLabel = visibleLabel
             });
@@ -431,6 +434,56 @@ public static class ChapterWorkbookReader
         }
 
         return edges;
+    }
+
+    private static void VerifyAutoEdges(
+        IReadOnlyList<ChapterEpisode> episodes,
+        IReadOnlyList<ChapterEdge> edges,
+        string path,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        var episodeById = episodes.ToDictionary(item => item.EpisodeId, StringComparer.Ordinal);
+        var outgoingCounts = edges.GroupBy(item => item.FromEpisodeId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+        foreach (ChapterEdge edge in edges.Where(item => item.Auto))
+        {
+            void Error(ChapterDiagnosticCode code, int column, string message) => diagnostics.Add(Cell(
+                ChapterDiagnosticSeverity.Error, code, path, ChapterSheetNames.Edges,
+                edge.SourceRow, column, message));
+
+            if (outgoingCounts.GetValueOrDefault(edge.FromEpisodeId) != 1)
+            {
+                Error(ChapterDiagnosticCode.AutoEdgeHasSiblings, 8,
+                    $"자동 길 '{edge.FromEpisodeId}'→'{edge.ToEpisodeId}'은 그 에피소드의 유일한 간선이어야 합니다.");
+            }
+
+            if (edge.HasGate)
+            {
+                Error(ChapterDiagnosticCode.AutoEdgeHasConditions, 8,
+                    "자동 길에는 표시조건·해금조건을 둘 수 없습니다. 자동 진행은 언제나 같은 결과여야 합니다.");
+            }
+
+            if (edge.StatChanges.Count > 0)
+            {
+                Error(ChapterDiagnosticCode.AutoEdgeHasStatChanges, 8,
+                    "자동 길에는 스탯변화를 둘 수 없습니다. 효과가 필요하면 일반 선택지로 바꾸세요.");
+            }
+
+            if (episodeById.TryGetValue(edge.FromEpisodeId, out ChapterEpisode? from) &&
+                episodeById.TryGetValue(edge.ToEpisodeId, out ChapterEpisode? to) &&
+                !string.Equals(from.EffectiveSceneId, to.EffectiveSceneId, StringComparison.Ordinal))
+            {
+                Error(ChapterDiagnosticCode.AutoEdgeCrossesScene, 8,
+                    $"자동 길은 같은 장면 안에서만 이어집니다. 출발은 '{from.EffectiveSceneId}', 도착은 '{to.EffectiveSceneId}'입니다.");
+            }
+
+            if (!edge.HasNoOptionLabel)
+            {
+                Error(ChapterDiagnosticCode.AutoEdgeHasChoiceLabel, 4,
+                    "자동 길의 선택지 문구는 비워야 합니다. 문구가 있으면 플레이어 선택과 자동 진행의 뜻이 충돌합니다.");
+            }
+        }
     }
 
     // ── 조건 ────────────────────────────────────────────────────────────────

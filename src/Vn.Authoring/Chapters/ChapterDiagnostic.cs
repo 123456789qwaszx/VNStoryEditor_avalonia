@@ -93,7 +93,13 @@ public enum ChapterDiagnosticCode
     /// 간선에 `선택지` 문구가 없다 (2026-08-24 규격). **모든 길은 선택지다** —
     /// 문구 없이 넘어가는 "보이지 않는 기본"은 폐지됐다.
     /// </summary>
-    OptionLabelBlank
+    OptionLabelBlank,
+
+    AutoEdgeHasSiblings,
+    AutoEdgeHasConditions,
+    AutoEdgeHasStatChanges,
+    AutoEdgeCrossesScene,
+    AutoEdgeHasChoiceLabel
 }
 
 /// <summary>

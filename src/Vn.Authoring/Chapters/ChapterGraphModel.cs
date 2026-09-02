@@ -72,6 +72,13 @@ public sealed record ChapterEdge(
     int SourceRow)
 {
     /// <summary>
+    /// 플레이어 입력 없이 같은 장면의 다음 에피소드로 잇는 명시적 자동 진행 간선.
+    /// 문구 공백으로 추측하지 않는다. 저작 검증이 유일 간선·무조건·무증감·같은 장면·
+    /// 빈 문구 규칙을 강제한다.
+    /// </summary>
+    public bool Auto { get; init; }
+
+    /// <summary>
     /// <b>표시조건</b> — 이 선택지가 목록에 보이려면 (v8, 2026-08-16 소유자: "보일지 말지는
     /// 이제 간선이 정한다"). 에피소드 시트에 있던 관문 둘이 간선으로 옮겨 온 것이고, 비면
     /// 언제나 보인다. 해금조건(<see cref="ConditionLabel"/>)과는 축이 다르다.
@@ -79,7 +86,7 @@ public sealed record ChapterEdge(
     public string? VisibleConditionLabel { get; init; }
 
     /// <summary>
-    /// 문구가 아직 없다 — <b>v12(2026-08-24)부터 규격 위반</b>이고 리더가 오류로 짚는다.
+    /// 문구가 없다. <see cref="Auto"/>이면 의도한 자동 진행이고, 아니면 규격 위반이다.
     ///
     /// 예전 이름은 <c>IsPlainAdvance</c>였고 "보이지 않는 기본"(문구 없이 자동으로 넘어가는
     /// 길)이라는 <b>정당한 종류</b>를 뜻했다. 그 개념이 폐지됐으므로 이름도 바꾼다 —

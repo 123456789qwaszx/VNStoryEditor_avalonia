@@ -32,6 +32,7 @@
         {
           "TargetEpisodeId": "믿는길",
           "ChoiceLabel": "라루를 믿는다",
+          "Auto": false,
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
@@ -47,6 +48,7 @@
         {
           "TargetEpisodeId": "혼자길",
           "ChoiceLabel": "혼자 간다",
+          "Auto": false,
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
@@ -79,6 +81,7 @@
         {
           "TargetEpisodeId": "좋은끝",
           "ChoiceLabel": "문을 연다",
+          "Auto": false,
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
@@ -105,6 +108,7 @@
         {
           "TargetEpisodeId": "쓸쓸한끝",
           "ChoiceLabel": "문을 연다",
+          "Auto": false,
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",

@@ -315,6 +315,8 @@
                                           PlaceholderText="도착" />
                                 <Button Grid.Column="3" x:Name="AddEdgeButton" Content="수정" FontSize="11" Margin="4,0,0,0" />
                             </Grid>
+                            <CheckBox x:Name="EdgeFormAutoCheck" Content="자동 진행" FontSize="11"
+                                      ToolTip.Tip="플레이어 입력 없이 같은 장면의 다음 에피소드로 진행합니다. 자동 길은 유일해야 하며 문구·조건·스탯변화를 가질 수 없습니다." />
                             <TextBlock Text="스탯변화 — 이 길을 건너면" FontSize="10" Opacity="0.6" />
                             <StackPanel x:Name="EdgeFormStatsHost" Spacing="3" />
                             </StackPanel>
@@ -407,7 +409,10 @@
 
                         <TextBlock Text="선택지 — 이 길에 붙는 문구" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeLabelEditBox" FontSize="11" HorizontalAlignment="Stretch"
-                                  ToolTip.Tip="챕터의 모든 문구 중에서 고릅니다 — 문구는 어느 에피소드에서든 다시 씁니다. 새 문구는 챕터 엑셀 `선택지` 시트에 적으면 여기 목록에 옵니다. 문구가 없으면 보이지 않는 기본(버튼 없이 자동 진행, 에피소드당 하나)입니다." />
+                                  ToolTip.Tip="챕터의 모든 문구 중에서 고릅니다. 일반 선택지는 문구가 필수이며, 자동 진행은 아래 체크로 명시합니다." />
+
+                        <CheckBox x:Name="EdgeAutoCheck" Content="자동 진행" FontSize="11"
+                                  ToolTip.Tip="플레이어 입력 없이 같은 장면의 다음 에피소드로 진행합니다. 자동 길은 유일해야 하며 문구·조건·스탯변화를 가질 수 없습니다." />
 
                         <TextBlock Text="표시조건 — 이 선택지가 보이려면" FontSize="10" Opacity="0.6" />
                         <ComboBox x:Name="EdgeVisibleCombo" FontSize="11" HorizontalAlignment="Stretch"

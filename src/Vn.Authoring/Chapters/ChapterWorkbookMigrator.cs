@@ -72,6 +72,7 @@ public static class ChapterWorkbookMigrator
             FoldEdgeColumnsV12(workbook);               // v12 — 간선의 `종류`·`연출` 폐지
             DropHideWhenLocked(workbook);               // 2026-08-24 — `잠금시 숨김` 폐지
             DropEpisodeKind(workbook);                  // v13 — `종류` 폐지
+            EnsureAutoColumn(workbook);                 // R2 — 명시적 자동 진행, 구판은 FALSE
             // ⚠ 둘 다 맨 뒤다 — 앞 단계들이 열을 밀고 당기므로, 자리가 다 정해진 뒤에
             //   이름으로 찾아 옮긴다.
             MoveEndingKeyToEventKey(workbook);          // v14 — 엔딩키 → 에피소드 `이벤트키`
@@ -132,6 +133,8 @@ public static class ChapterWorkbookMigrator
                // 매번 갈린다</b> — 사람이 되돌릴 자리를 조용히 잃는다(테스트가 그것을 잡는다).
                (Find(workbook, ChapterSheetNames.Edges) is not null &&
                 Header(workbook, ChapterSheetNames.Edges, 7) != "잠금 안내문") ||
+               (Find(workbook, ChapterSheetNames.Edges) is { } edgeSheet &&
+                HeaderColumn(edgeSheet, "자동") == 0) ||
                Header(workbook, ChapterSheetNames.Edges, 8) == "엔딩키" ||
                (Find(workbook, ChapterSheetNames.Episodes) is { } episodes &&
                 (HeaderColumn(episodes, "이벤트키") == 0 ||
@@ -142,6 +145,27 @@ public static class ChapterWorkbookMigrator
                // 겉모습이 안 입혀진 파일 (2026-08-18). 자동 필터 하나로 대표해 본다 —
                // 셋(고정·필터·너비)이 언제나 함께 들어가므로 하나가 없으면 셋 다 없다.
                NeedsChrome(workbook);
+    }
+
+    /// <summary>
+    /// R2 — 구판의 빈 선택지 문구를 자동 진행으로 추측하지 않는다. 열만 끝에 세우고 모든
+    /// 기존 행을 FALSE로 둔다. 의도는 사람이 명시해야 하며 원본은 이행 시작 때 만든 .bak에 남는다.
+    /// </summary>
+    private static void EnsureAutoColumn(XLWorkbook workbook)
+    {
+        if (Find(workbook, ChapterSheetNames.Edges) is not { } sheet ||
+            HeaderColumn(sheet, "자동") > 0)
+        {
+            return;
+        }
+
+        const int column = 8;
+        sheet.Cell(1, column).SetValue("자동");
+
+        foreach (IXLRow row in sheet.RowsUsed().Skip(1))
+        {
+            row.Cell(column).SetValue(false);
+        }
     }
 
     /// <summary>

@@ -156,6 +156,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
                 "TargetEpisodeId": "ep2",
                 "StatChanges": [],
                 "ChoiceLabel": "다음",
+                "Auto": false,
                 "VisibleConditions": [],
                 "Conditions": [],
                 "LockedReasonText": "",
