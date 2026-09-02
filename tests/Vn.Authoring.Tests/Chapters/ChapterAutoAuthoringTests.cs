@@ -126,11 +126,14 @@ public sealed class ChapterAutoAuthoringTests : IDisposable
         Assert.True(File.Exists(path + ".bak"));
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        Assert.False(Assert.Single(model.Edges).Auto);
-        Assert.Contains(model.Errors, item => item.Code == ChapterDiagnosticCode.OptionLabelBlank);
+        ChapterEdge edge = Assert.Single(model.Edges);
+        Assert.False(edge.Auto);
+        Assert.True(edge.HasNoOptionLabel);
 
         using var migrated = new XLWorkbook(path);
-        Assert.Equal("자동", migrated.Worksheet(ChapterSheetNames.Edges).Cell(1, 8).GetString());
-        Assert.Equal("FALSE", migrated.Worksheet(ChapterSheetNames.Edges).Cell(2, 8).GetFormattedString());
+        IXLWorksheet sheet = migrated.Worksheet(ChapterSheetNames.Edges);
+        Assert.Equal(string.Empty, sheet.Cell(2, 4).GetString());
+        Assert.Equal("자동", sheet.Cell(1, 8).GetString());
+        Assert.Equal("FALSE", sheet.Cell(2, 8).GetFormattedString());
     }
 }
