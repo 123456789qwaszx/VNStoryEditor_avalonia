@@ -210,6 +210,21 @@ public partial class ChapterGraphView : UserControl
                 UiGuard.Run(_session, "에피소드 개명", RenameSelectedEpisode);
             }
         };
+        SceneIdBox.LostFocus += (_, _) =>
+        {
+            if (!_fillingPanel && ToolEditable)
+            {
+                UiGuard.Run(_session, "장면ID 저장", ApplyEpisodeFromPanel);
+            }
+        };
+        SceneIdBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter)
+            {
+                e.Handled = true;
+                UiGuard.Run(_session, "장면ID 저장", ApplyEpisodeFromPanel);
+            }
+        };
         // 판 다루기 — 휠 확대·축소, 가운데 단추 끌어 이동. 휠은 <b>터널</b>로 받는다:
         // 스크롤뷰가 먼저 먹어 버리면 휠이 배율이 아니라 그냥 스크롤이 된다.
         GraphScroll.AddHandler(
@@ -1836,7 +1851,7 @@ public partial class ChapterGraphView : UserControl
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
 
         // 시작 에피소드(첫 행)가 곧 Root다 — 도달성의 씨앗이자 분기 저작의 출발점.
-        if (ReferenceEquals(model.StartEpisode, episode))
+        if (model.IsSceneRoot(episode))
         {
             var root = new Border
             {
@@ -1845,15 +1860,35 @@ public partial class ChapterGraphView : UserControl
                 Padding = new Thickness(4, 0),
                 Child = new TextBlock
                 {
-                    Text = "ROOT",
+                    Text = "SCENE ROOT",
                     FontSize = 9,
                     FontWeight = FontWeight.Bold,
                     Foreground = Brushes.White
                 }
             };
-            ToolTip.SetTip(root, "시작 에피소드 — `에피소드` 시트의 첫 행입니다. 도달성 증명과 내보내기의 StartEpisodeId가 됩니다.");
+            ToolTip.SetTip(root, ReferenceEquals(model.StartEpisode, episode)
+                ? "시작 에피소드이자 장면 루트입니다. 도달성 증명과 내보내기의 StartEpisodeId가 됩니다."
+                : "다른 장면에서 들어오는 장면 루트입니다. 이곳부터 저장·롤백 경계가 새로 시작됩니다.");
             header.Children.Add(root);
         }
+
+        var scene = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#6B5CA5")),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(4, 0),
+            Child = new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(episode.SceneId) ? "SCENE · 기본" : $"SCENE · {episode.SceneId.Trim()}",
+                FontSize = 9,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = Brushes.White
+            }
+        };
+        ToolTip.SetTip(scene, string.IsNullOrWhiteSpace(episode.SceneId)
+            ? "장면: 에피소드별 기본 장면(기존 워크북 호환)"
+            : $"장면: {episode.SceneId.Trim()} — 같은 장면ID끼리 저장·롤백 구간을 공유합니다.");
+        header.Children.Add(scene);
 
         // 관문은 v8에서 길(간선)의 것이 됐다 — 카드는 "들어오는 길에 관문이 있다"를 표시한다.
         if (GatedIncoming(model, episode) is { Count: > 0 } gatedPaths)
@@ -2299,6 +2334,7 @@ public partial class ChapterGraphView : UserControl
             if (fill)
             {
                 IdBox.Text = episode.EpisodeId;
+                SceneIdBox.Text = episode.SceneId ?? string.Empty;
             }
 
 
@@ -2462,6 +2498,7 @@ public partial class ChapterGraphView : UserControl
         bool editable = ToolEditable;
 
         IdBox.IsEnabled = editable;
+        SceneIdBox.IsEnabled = editable;
 
         // 잠겨 있으면 **그 자리에서** 이유를 말한다 (2026-08-24). 비활성 칸이 아무 말도
         // 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
@@ -3032,7 +3069,14 @@ public partial class ChapterGraphView : UserControl
         if (_selectedEpisodeId is null || SelectedChapterPath is null)
         {
             _session?.SetStatus("에피소드를 다시 골라 주세요. 선택이 풀렸거나 그 에피소드가 사라졌습니다.");
+            return;
         }
+
+        ChapterWriteResult result = ChapterWorkbookWriter.UpdateEpisode(
+            SelectedChapterPath,
+            _selectedEpisodeId,
+            sceneId: SceneIdBox.Text?.Trim() ?? string.Empty);
+        Report(result, $"에피소드 '{_selectedEpisodeId}'의 장면ID를 저장했습니다.");
     }
 
     internal void DeleteSelectedEdge()
