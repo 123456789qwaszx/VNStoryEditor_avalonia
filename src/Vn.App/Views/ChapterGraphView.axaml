@@ -251,7 +251,7 @@
                         <TextBox x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId"
                                  ToolTip.Tip="이름을 고치고 Enter를 누르면 개명됩니다 — 간선·픽스처·대본 파일·대사 노드가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
 
-                        <TextBox x:Name="SceneIdBox" FontSize="11" PlaceholderText="장면ID (비우면 에피소드별 기본 장면)"
+                        <TextBox x:Name="SceneIdBox" FontSize="11" PlaceholderText="장면ID (비우면 기본 장면)"
                                  ToolTip.Tip="같은 장면ID의 에피소드는 하나의 저장·롤백 구간입니다. 비우면 기존 파일과 호환되게 각 에피소드가 독립 장면이 됩니다." />
 
                         <!-- 표시·해금조건은 v8에서 간선으로 옮겨 갔다 ("보일지 말지는 길이 정한다").
