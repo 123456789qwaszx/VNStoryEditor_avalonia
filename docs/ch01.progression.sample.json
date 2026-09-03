@@ -1,87 +1,73 @@
 {
-  "ChapterId": "ch01",
-  "DisplayName": "ch01",
-  "StartEpisodeId": "시작",
+  "ChapterId": "ch01.contract-sample",
+  "DisplayName": "ch01.contract-sample",
+  "StartEpisodeId": "root",
   "Stats": [
     {
       "Key": "trust",
       "DisplayName": "신뢰",
       "Type": "Number",
-      "Initial": 0,
+      "Initial": 2,
       "Minimum": 0,
       "Maximum": 10
     },
     {
-      "Key": "fatigue",
-      "DisplayName": "피로",
-      "Type": "Number",
+      "Key": "metLaru",
+      "DisplayName": "라루를 만남",
+      "Type": "Bool",
+      "Initial": 1,
+      "Minimum": 0,
+      "Maximum": 1
+    },
+    {
+      "Key": "remembered",
+      "DisplayName": "기억함",
+      "Type": "Bool",
       "Initial": 0,
       "Minimum": 0,
-      "Maximum": 10
+      "Maximum": 1
     }
   ],
   "Nodes": [
     {
-      "EpisodeId": "시작",
-      "Title": "복도",
+      "EpisodeId": "root",
+      "Title": "복도 진입",
       "IndexText": "",
-      "DialogueEntryId": "시작",
+      "DialogueEntryId": "Story_ch01_root",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [
         {
-          "TargetEpisodeId": "믿는길",
-          "ChoiceLabel": "라루를 믿는다",
-          "Auto": false,
+          "TargetEpisodeId": "hall",
+          "ChoiceLabel": "",
+          "Auto": true,
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
           "ViaNodeId": "",
-          "StatChanges": [
-            {
-              "Key": "trust",
-              "Amount": 2,
-              "Op": "Add"
-            }
-          ]
-        },
-        {
-          "TargetEpisodeId": "혼자길",
-          "ChoiceLabel": "혼자 간다",
-          "Auto": false,
-          "VisibleConditions": [],
-          "Conditions": [],
-          "LockedReasonText": "",
-          "ViaNodeId": "",
-          "StatChanges": [
-            {
-              "Key": "fatigue",
-              "Amount": 1,
-              "Op": "Add"
-            }
-          ]
+          "StatChanges": []
         }
       ],
       "EventKey": "",
-      "SceneId": "",
-      "DesignerNote": "",
+      "SceneId": "scene_hall",
+      "DesignerNote": "Scene root",
       "Position": {
         "X": 0,
         "Y": 0
       }
     },
     {
-      "EpisodeId": "믿는길",
-      "Title": "라루를 믿는다",
+      "EpisodeId": "hall",
+      "Title": "닫힌 문 앞",
       "IndexText": "",
-      "DialogueEntryId": "믿는길",
+      "DialogueEntryId": "Story_ch01_hall",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [
         {
-          "TargetEpisodeId": "좋은끝",
-          "ChoiceLabel": "문을 연다",
-          "Auto": false,
+          "TargetEpisodeId": "choice",
+          "ChoiceLabel": "",
+          "Auto": true,
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
@@ -90,23 +76,85 @@
         }
       ],
       "EventKey": "",
-      "SceneId": "",
-      "DesignerNote": "",
+      "SceneId": "scene_hall",
+      "DesignerNote": "Auto 중간 Episode",
       "Position": {
-        "X": 1,
+        "X": 240,
         "Y": 0
       }
     },
     {
-      "EpisodeId": "혼자길",
-      "Title": "혼자 간다",
+      "EpisodeId": "choice",
+      "Title": "누구와 갈지",
       "IndexText": "",
-      "DialogueEntryId": "혼자길",
+      "DialogueEntryId": "Story_ch01_choice",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [
         {
-          "TargetEpisodeId": "쓸쓸한끝",
+          "TargetEpisodeId": "trust_path",
+          "ChoiceLabel": "라루에게 맡긴다",
+          "Auto": false,
+          "VisibleConditions": [
+            {
+              "Kind": "Stat",
+              "Key": "metLaru",
+              "Op": "Equal",
+              "IntValue": 1
+            }
+          ],
+          "Conditions": [
+            {
+              "Kind": "Stat",
+              "Key": "trust",
+              "Op": "GreaterOrEqual",
+              "IntValue": 2
+            }
+          ],
+          "LockedReasonText": "아직 신뢰가 부족하다",
+          "ViaNodeId": "암전_전환",
+          "StatChanges": [
+            {
+              "Key": "trust",
+              "Amount": 1,
+              "Op": "Add"
+            },
+            {
+              "Key": "remembered",
+              "Amount": 1,
+              "Op": "Set"
+            }
+          ]
+        },
+        {
+          "TargetEpisodeId": "alone_path",
+          "ChoiceLabel": "혼자 간다",
+          "Auto": false,
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        }
+      ],
+      "EventKey": "",
+      "SceneId": "scene_hall",
+      "DesignerNote": "Scene 마지막 선택",
+      "Position": {
+        "X": 480,
+        "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "trust_path",
+      "Title": "함께 가는 길",
+      "IndexText": "",
+      "DialogueEntryId": "Story_ch01_trust",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "true_end",
           "ChoiceLabel": "문을 연다",
           "Auto": false,
           "VisibleConditions": [],
@@ -117,43 +165,70 @@
         }
       ],
       "EventKey": "",
-      "SceneId": "",
-      "DesignerNote": "",
+      "SceneId": "scene_trust",
+      "DesignerNote": "Via 이후 도착",
       "Position": {
-        "X": 1,
-        "Y": 1
+        "X": 720,
+        "Y": -120
       }
     },
     {
-      "EpisodeId": "좋은끝",
+      "EpisodeId": "alone_path",
+      "Title": "혼자 가는 길",
+      "IndexText": "",
+      "DialogueEntryId": "Story_ch01_alone",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "alone_end",
+          "ChoiceLabel": "문을 연다",
+          "Auto": false,
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        }
+      ],
+      "EventKey": "",
+      "SceneId": "scene_alone",
+      "DesignerNote": "",
+      "Position": {
+        "X": 720,
+        "Y": 120
+      }
+    },
+    {
+      "EpisodeId": "true_end",
       "Title": "함께 문을 연다",
       "IndexText": "",
-      "DialogueEntryId": "좋은끝",
+      "DialogueEntryId": "Story_ch01_true_end",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
       "EventKey": "ch01_true",
-      "SceneId": "",
+      "SceneId": "scene_true_end",
       "DesignerNote": "",
       "Position": {
-        "X": 2,
-        "Y": 0
+        "X": 960,
+        "Y": -120
       }
     },
     {
-      "EpisodeId": "쓸쓸한끝",
+      "EpisodeId": "alone_end",
       "Title": "혼자 문을 연다",
       "IndexText": "",
-      "DialogueEntryId": "쓸쓸한끝",
+      "DialogueEntryId": "Story_ch01_alone_end",
       "VisibleConditions": [],
       "UnlockConditions": [],
       "NextOptions": [],
       "EventKey": "ch01_alone",
-      "SceneId": "",
+      "SceneId": "scene_alone_end",
       "DesignerNote": "",
       "Position": {
-        "X": 2,
-        "Y": 1
+        "X": 960,
+        "Y": 120
       }
     }
   ]

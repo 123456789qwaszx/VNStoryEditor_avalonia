@@ -1,5 +1,7 @@
+using System.Text.Json;
 using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Model;
 using Path = System.IO.Path;
 
 namespace Vn.Authoring.Tests.Chapters;
@@ -22,6 +24,10 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         AppContext.BaseDirectory, "..", "..", "..", "..", "..",
         "docs", "ch01.progression.sample.json"));
 
+    private static string ContractWorkbookPath => Path.GetFullPath(Path.Combine(
+        AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+        "docs", "ch01.contract-sample.xlsx"));
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))
@@ -33,8 +39,10 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
     [Fact]
     public void 건네는_표본이_지금_나가는_출력과_같다()
     {
-        ChapterExportResult result = ChapterProgressionExporter.Export(
-            BuildChapter(), episodesFolder: null);
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(ContractWorkbookPath);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
+        ChapterExportResult result = ChapterProgressionExporter.ExportValidated(
+            chapter, validation, BuildProject());
 
         Assert.False(result.Refused,
             string.Join(" / ", result.Validation.All.Select(item => item.Message)));
@@ -79,16 +87,38 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
 
         Assert.Equal(["ch01_alone", "ch01_true"], eventKeys);
 
-        // ⚠ `ViaNodeId`가 비는 이유가 2026-08-24에 바뀌었다. 예전에는 저작의 `연출` 칸이
-        // 폐지돼서 아무도 안 채웠고, 지금은 **자유 씬의 원본이 연출 그래프의 배선**이라
-        // 프로젝트 없이 내보내면 채울 것이 없다. 이 표본은 챕터 모델만으로 내보내므로
-        // 여전히 비어야 한다 — 배선이 실리는 쪽은 `ChapterViaSceneTests`가 건다.
-        Assert.All(
-            document.RootElement
-                .GetProperty("Nodes")
-                .EnumerateArray()
-                .SelectMany(node => node.GetProperty("NextOptions").EnumerateArray()),
-            option => Assert.Equal(string.Empty, option.GetProperty("ViaNodeId").GetString()));
+        JsonElement choice = document.RootElement.GetProperty("Nodes").EnumerateArray()
+            .Single(node => node.GetProperty("EpisodeId").GetString() == "choice");
+        JsonElement[] options = choice.GetProperty("NextOptions").EnumerateArray().ToArray();
+        Assert.Equal(["trust_path", "alone_path"],
+            options.Select(option => option.GetProperty("TargetEpisodeId").GetString()).ToArray());
+        Assert.Equal("암전_전환", options[0].GetProperty("ViaNodeId").GetString());
+        Assert.Equal(string.Empty, options[1].GetProperty("ViaNodeId").GetString());
+
+        JsonElement[] nodes = document.RootElement.GetProperty("Nodes").EnumerateArray().ToArray();
+        Assert.Equal("scene_hall", nodes.Single(node => node.GetProperty("EpisodeId").GetString() == "root")
+            .GetProperty("SceneId").GetString());
+        Assert.True(nodes.Single(node => node.GetProperty("EpisodeId").GetString() == "root")
+            .GetProperty("NextOptions")[0].GetProperty("Auto").GetBoolean());
+
+        JsonElement gated = options[0];
+        Assert.Single(gated.GetProperty("VisibleConditions").EnumerateArray());
+        Assert.Single(gated.GetProperty("Conditions").EnumerateArray());
+        Assert.Equal(["Add", "Set"], gated.GetProperty("StatChanges").EnumerateArray()
+            .Select(change => change.GetProperty("Op").GetString()).ToArray());
+    }
+
+    private static StoryProject BuildProject()
+    {
+        var project = new StoryProject();
+        var file = new StoryFile(name: "ch01.contract-sample");
+        var choice = new DialogueNode(name: "Story_ch01_choice") { ExcelEpisodeId = "choice" };
+        var via = new DialogueNode(name: "암전 전환");
+        choice.ChoiceExits["라루에게 맡긴다"] = via.Id;
+        file.Nodes.Add(choice);
+        file.Nodes.Add(via);
+        project.Files.Add(file);
+        return project;
     }
 
     /// <summary>
