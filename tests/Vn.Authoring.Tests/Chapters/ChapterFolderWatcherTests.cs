@@ -126,15 +126,26 @@ public sealed class ChapterFolderWatcherTests : IDisposable
         WriteChapter("ch05.xlsx", episodeTitle: "처음");
 
         string lockFile = Path.Combine(_folder, "~$ch05.xlsx");
-        File.WriteAllText(lockFile, "lock");
-
-        using var locks = new CountdownEvent(1);
+        using var opened = new ManualResetEventSlim(false);
+        using var closed = new ManualResetEventSlim(false);
         using var watcher = new ChapterFolderWatcher(
-            _folder, () => { }, Debounce, onLockChanged: () => Signal(locks));
+            _folder,
+            () => { },
+            Debounce,
+            onLockChanged: () =>
+            {
+                (File.Exists(lockFile) ? opened : closed).Set();
+            });
+
+        // 감시자가 실제 첫 사건을 받은 뒤 삭제한다. Windows의 FileSystemWatcher 등록과
+        // 생성 직후 삭제를 경쟁시키면 삭제 사건 자체가 커널 버퍼에 들어오기 전에 끝나
+        // 제품 규칙이 아니라 테스트 시작 타이밍을 재게 된다.
+        File.WriteAllText(lockFile, "lock");
+        Assert.True(opened.Wait(Patience), "엑셀이 파일을 여는 준비 사건을 감시하지 못했다");
 
         File.Delete(lockFile);
 
-        Assert.True(locks.Wait(Patience), "엑셀이 파일을 닫았는데 잠금 알림이 오지 않았다");
+        Assert.True(closed.Wait(Patience), "엑셀이 파일을 닫았는데 잠금 알림이 오지 않았다");
     }
 
     [Fact]
