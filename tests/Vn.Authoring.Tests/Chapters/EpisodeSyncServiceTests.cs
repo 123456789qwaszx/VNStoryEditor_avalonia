@@ -322,7 +322,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
             published, project: editor.Project);
 
         Vn.Authoring.Rendering.YarnBundleProblem blocked = Assert.Single(
-            bundle.Problems.Where(problem => problem.IsBlocking));
+            bundle.Problems, problem => problem.IsBlocking);
         Assert.Contains("trust", blocked.Message);
         Assert.Contains("진행 스탯", blocked.Message);
 #if false // R4 이전: 진행 스탯을 Yarn 전역 변수로 선언하여 컴파일하던 계약
