@@ -1,10 +1,10 @@
 # VNStoryEditor_avalonia — 외부 작업자용 시스템 안내와 런타임 정합성 점검
 
-기준일: 2026-09-03 (R4 완료, R5 마감 중)
+기준일: 2026-09-03 (R0~R5 완료)
 
 검토 기준:
 
-- 에디터: `VNStoryEditor_avalonia/master@d0c9521`
+- 에디터: `VNStoryEditor_avalonia/master@ac6f93b` (R5 검증 기준)
 - Unity 런타임: `ked-presentation-runtime/server_DB@d53cc2f`
 - 서버: `spring-prepare/dev@5dd6c4c`
 

@@ -1,13 +1,14 @@
 # VnTool 현재 상태 — 이어받는 세션을 위한 인수인계
 
-> **2026-09-03 R5 현행 요약.** 런타임 정렬 R0~R4는 완료됐다.
+> **2026-09-03 R5 현행 요약.** 런타임 정렬 R0~R5는 완료됐다.
 > 진행 코어 기준은 `ked-presentation-runtime/server_DB@d53cc2f`이며, 툴의
 > `src/Ked.Progression` 사본·`SceneId`·명시적 `Auto`·도달성·출력 바이트·프리뷰 판정이
 > 그 계약으로 정렬됐다. 프리뷰는 발행 가능한 모델에서
 > `ChapterTransition.Resolve`/`ProgressionState.FoldChoices`를 직접 쓴다.
 > 진행 스탯은 Yarn 대사 조건·`set`에 쓸 수 없고 간선에서만 판정·변경한다.
-> R4 기준 Windows Release 검증은 **1,826/1,826**. 최신 마감 근거는
-> [`../plans/PLAN.md`](../plans/PLAN.md)와 [`../plans/R4.md`](../plans/R4.md)를 본다.
+> R5 Windows Release 검증은 **1,826/1,826**이며 유효 Yarn 컴파일과 portable EXE·ZIP
+> 생성·기동도 통과했다. 최신 마감 근거는
+> [`../plans/PLAN.md`](../plans/PLAN.md)와 [`../plans/R5.md`](../plans/R5.md)를 본다.
 >
 > 이 문서의 2026-08 세부 본문은 구현 이력과 배경을 보존한다. 위 요약·`runtime-contract.md`·
 > R0~R5 계획과 충돌하면 현행 정본이 우선한다.
