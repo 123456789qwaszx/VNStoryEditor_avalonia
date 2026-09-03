@@ -284,7 +284,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     // ── Gate B 1번 — 컴파일되는 텍스트 ──────────────────────────────────────
 
     [Fact]
-    public void 엑셀_출처_노드가_발행되고_실제로_컴파일된다()
+    public void 엑셀_출처_노드의_진행_스탯_Yarn_참조를_발행_전에_막는다()
     {
         // 파이프라인 전 구간: 워크북 → 평평화 → 파서 → 대사노드 → 발행 → 이미터 → Yarn 컴파일러.
         // 조건 구간이 있는 에피소드다. 선택지로 끝나는 에피소드는 아직 발행할 수 없다 —
@@ -321,6 +321,11 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Vn.Authoring.Rendering.YarnBundle bundle = Vn.Authoring.Rendering.YarnBundleEmitter.Emit(
             published, project: editor.Project);
 
+        Vn.Authoring.Rendering.YarnBundleProblem blocked = Assert.Single(
+            bundle.Problems.Where(problem => problem.IsBlocking));
+        Assert.Contains("trust", blocked.Message);
+        Assert.Contains("진행 스탯", blocked.Message);
+#if false // R4 이전: 진행 스탯을 Yarn 전역 변수로 선언하여 컴파일하던 계약
         string compileDirectory = Path.Combine(_directory, "compile");
         Directory.CreateDirectory(compileDirectory);
         Vn.Authoring.Rendering.YarnBundleEmitter.WriteBundles([bundle], compileDirectory);
@@ -359,6 +364,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
             Environment.NewLine,
             errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
+#endif
     }
 
     [Fact]

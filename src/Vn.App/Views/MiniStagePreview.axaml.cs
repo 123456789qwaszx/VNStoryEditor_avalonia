@@ -355,7 +355,30 @@ public partial class MiniStagePreview : UserControl
         ChapterRunState run = EnsureChapterRunFor(chapter);
         ChapterRunAdvance? advance = run.Resolve(episodeId);
 
-        if (advance is null || advance.Kind == Ked.Progression.ChapterAdvanceKind.ChapterEnded)
+        if (advance is null)
+        {
+            StageChoiceOption[] broken = chapter.Edges
+                .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
+                .Where(edge => !string.IsNullOrWhiteSpace(edge.OptionLabel))
+                .OrderBy(edge => edge.SourceRow)
+                .Select(edge => new StageChoiceOption(
+                    $"🔒 {edge.OptionLabel} 〔조건 해석 불가 · {edge.ConditionLabel}〕",
+                    IsSelected: false,
+                    IsDisabled: true))
+                .ToArray();
+
+            if (broken.Length == 0)
+            {
+                return false;
+            }
+
+            _current = _current with { ChoiceOptions = broken };
+            Render();
+            Playback.WaitForChoiceInput();
+            return true;
+        }
+
+        if (advance.Kind == Ked.Progression.ChapterAdvanceKind.ChapterEnded)
         {
             return false;
         }

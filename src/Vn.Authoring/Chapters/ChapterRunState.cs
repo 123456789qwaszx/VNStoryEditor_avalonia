@@ -127,14 +127,9 @@ public sealed class ChapterRunState
         // 증명기·워커와 같은 시드 — 초기값 그대로(경계 보정 없음. 밖이면 검증이 짚을 일이다).
         _stats = chapter.Stats.Select(stat => stat.Initial).ToArray();
 
-        ChapterExportResult exported = ChapterProgressionExporter.Export(chapter, episodesFolder: null);
-        if (exported.Json is null)
-        {
-            return;
-        }
-
         Contract.ChapterProgressionDto? dto =
-            JsonSerializer.Deserialize<Contract.ChapterProgressionDto>(exported.Json);
+            JsonSerializer.Deserialize<Contract.ChapterProgressionDto>(
+                ChapterProgressionExporter.SerializeUnchecked(chapter));
         Contract.ProgressionLoadResult loaded = dto is null
             ? new Contract.ProgressionLoadResult(null, null)
             : Contract.ProgressionLoader.Load(dto);
@@ -160,6 +155,15 @@ public sealed class ChapterRunState
     /// </summary>
     public ChapterRunAdvance? Resolve(string episodeId)
     {
+        // 편집 중 깨진 라벨은 JSON 투영에서 빈 관문으로 변환되어서는 안 된다.
+        // null을 돌려 UI가 저작 오류 표시 경로를 쓰게 한다.
+        if (Outgoing(episodeId).Any(edge =>
+                !string.IsNullOrEmpty(edge.ConditionLabel) &&
+                _chapter.FindCondition(edge.ConditionLabel) is not { IsValid: true }))
+        {
+            return null;
+        }
+
         if (_runtime is null || _working is null)
         {
             return null;

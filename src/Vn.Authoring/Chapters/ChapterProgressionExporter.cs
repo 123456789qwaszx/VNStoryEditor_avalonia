@@ -70,6 +70,22 @@ public static class ChapterProgressionExporter
             return new ChapterExportResult(null, validation);
         }
 
+        string json = SerializeUnchecked(chapter, project);
+
+        if (CoreRefusals(chapter, json) is { Count: > 0 } refusals)
+        {
+            return new ChapterExportResult(
+                null,
+                validation with { Diagnostics = [.. validation.Diagnostics, .. refusals] });
+        }
+
+        return new ChapterExportResult(json, validation);
+    }
+
+    /// <summary>저작 중 프리뷰를 코어 모델로 투영한다. 최종 발행 검증은 별도로 유지한다.</summary>
+    internal static string SerializeUnchecked(ChapterGraphModel chapter, StoryProject? project = null)
+    {
+        ArgumentNullException.ThrowIfNull(chapter);
         var via = ChapterBoard.For(project);
 
         var payload = new ChapterJson
@@ -87,26 +103,7 @@ public static class ChapterProgressionExporter
                 .Select(episode => Node(chapter, episode, via)).ToList()
         };
 
-        string json = ChapterExportBytes.Normalize(JsonSerializer.Serialize(payload, Options));
-
-        // ⛔ 마지막 관문 — **진짜 소비자에게 먹여 본다** (2026-08-23).
-        //
-        // 검증을 통과해도 코어가 못 싣는 챕터가 있다. 실제로 있었다: 문구 없는 간선
-        // (보이지 않는 기본)에 관문이 걸리면 이쪽은 경고로 넘기는데 코어는 거부한다.
-        // 그대로 내보내면 게임에서 그 챕터가 **시작되지 않는다** — "실을 수 없으면
-        // 내보내지 않는다"를 이쪽이 어기고 있던 자리다.
-        //
-        // 심각도를 손으로 맞추지 않는 이유가 이것이다. 규칙을 둘로 적어 두면 저쪽이
-        // 하나 늘릴 때마다 갈린다. 대신 저쪽 판정을 그대로 받는다 — 산출물 yarn을
-        // 진짜 컴파일러에 거는 것(②-A)과 같은 수다.
-        if (CoreRefusals(chapter, json) is { Count: > 0 } refusals)
-        {
-            return new ChapterExportResult(
-                null,
-                validation with { Diagnostics = [.. validation.Diagnostics, .. refusals] });
-        }
-
-        return new ChapterExportResult(json, validation);
+        return ChapterExportBytes.Normalize(JsonSerializer.Serialize(payload, Options));
     }
 
     /// <summary>
