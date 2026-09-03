@@ -174,7 +174,8 @@ public sealed class ChapterDeterministicExportTests : IDisposable
     private static ChapterGraphModel Chapter(bool orderReversedInMemory) => new(
         "ch", "",
         orderReversedInMemory
-            ? [Episode("ep3", 4), Episode("ep1", 2), Episode("ep2", 3)]
+            // 첫 원소는 StartEpisode라는 모델 계약을 지키고, 나머지만 메모리 순서를 섞는다.
+            ? [Episode("ep1", 2), Episode("ep3", 4), Episode("ep2", 3)]
             : [Episode("ep1", 2), Episode("ep2", 3), Episode("ep3", 4)],
         [
             new ChapterEdge("ep1", "ep3", "B", null, null, 9),
