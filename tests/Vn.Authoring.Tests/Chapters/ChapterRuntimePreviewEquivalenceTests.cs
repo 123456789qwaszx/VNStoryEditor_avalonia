@@ -17,7 +17,7 @@ public sealed class ChapterRuntimePreviewEquivalenceTests
 
         Assert.Equal(ChapterAdvanceKind.AwaitPlayerChoice, advance.Kind);
         Assert.Equal(1, advance.HiddenCount);
-        Assert.Equal(["잠김", "열림"], advance.Options.Select(x => x.Edge.OptionLabel).ToArray());
+        Assert.Equal(["잠김", "열림"], advance.Options.Select(x => x.Edge.OptionLabel!).ToArray());
         Assert.False(advance.Options[0].IsSelectable);
         Assert.Equal("아직 부족함", advance.Options[0].LockedReason);
         Assert.True(advance.Options[1].IsSelectable);
