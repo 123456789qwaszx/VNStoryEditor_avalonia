@@ -91,7 +91,7 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
             .Single(node => node.GetProperty("EpisodeId").GetString() == "choice");
         JsonElement[] options = choice.GetProperty("NextOptions").EnumerateArray().ToArray();
         Assert.Equal(["trust_path", "alone_path"],
-            options.Select(option => option.GetProperty("TargetEpisodeId").GetString()).ToArray());
+            options.Select(option => option.GetProperty("TargetEpisodeId").GetString()!).ToArray());
         Assert.Equal("암전_전환", options[0].GetProperty("ViaNodeId").GetString());
         Assert.Equal(string.Empty, options[1].GetProperty("ViaNodeId").GetString());
 
@@ -105,7 +105,7 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         Assert.Single(gated.GetProperty("VisibleConditions").EnumerateArray());
         Assert.Single(gated.GetProperty("Conditions").EnumerateArray());
         Assert.Equal(["Add", "Set"], gated.GetProperty("StatChanges").EnumerateArray()
-            .Select(change => change.GetProperty("Op").GetString()).ToArray());
+            .Select(change => change.GetProperty("Op").GetString()!).ToArray());
     }
 
     private static StoryProject BuildProject()
