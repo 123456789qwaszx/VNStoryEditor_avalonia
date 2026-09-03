@@ -3640,6 +3640,15 @@ public partial class ChapterGraphView : UserControl
                 DiagnosticLine(exportNotice, Brushes.IndianRed, dim: false, bold: true));
         }
 
+        // 서버는 이 문자열이 아니라 **파일 바이트**를 해시한다. 내보내기와 같은
+        // ChapterExportBytes 경로에서 계산한 값을 보여 줘야 서버 버전 목록과 대조할 수 있다.
+        if (_selectedChapterId is { } selected &&
+            _exportRun.Checksums?.TryGetValue(selected, out string? checksum) == true)
+        {
+            DiagnosticsPanel.Children.Add(DiagnosticLine(
+                $"진행 JSON SHA-256: {checksum}", null, dim: true));
+        }
+
         // 탐색이 상한에서 멈췄으면 "도달 불가"가 단정이 아니라는 사실을 먼저 말한다.
         if (_validation is { Reachability.ExplorationComplete: false })
         {
@@ -3651,7 +3660,8 @@ public partial class ChapterGraphView : UserControl
         // ⚠ 세는 것은 <b>말할 것이 있는</b> 보고뿐이다 (2026-08-24). 예전에는 보고가
         // 하나라도 있으면 여기를 지나쳤는데, 이제 대부분의 보고가 아무 줄도 내지 않으므로
         // 그대로 두면 <b>텅 빈 상자</b>가 선다("보고할 것이 없습니다"조차 없이).
-        if (all.Count == 0 && !_syncReports.Any(HasSomethingToSay))
+        if (all.Count == 0 && !_syncReports.Any(HasSomethingToSay) &&
+            !(_selectedChapterId is { } id && _exportRun.Checksums?.ContainsKey(id) == true))
         {
             DiagnosticsPanel.Children.Add(new TextBlock
             {

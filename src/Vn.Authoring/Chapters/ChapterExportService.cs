@@ -11,11 +11,15 @@ namespace Vn.Authoring.Chapters;
 /// <param name="Failed">쓰기 자체가 실패한 챕터(잠김·권한).</param>
 public sealed record ChapterExportRun(
     IReadOnlyList<string> Refused,
-    IReadOnlyList<string> Failed)
+    IReadOnlyList<string> Failed,
+    IReadOnlyList<string>? DeploymentBlocked = null,
+    IReadOnlyDictionary<string, string>? Checksums = null)
 {
-    public static ChapterExportRun Empty { get; } = new([], []);
+    public static ChapterExportRun Empty { get; } = new([], [], [], new Dictionary<string, string>());
 
-    public bool AllExported => Refused.Count == 0 && Failed.Count == 0;
+    public IReadOnlyList<string> Blocked => DeploymentBlocked ?? [];
+
+    public bool AllExported => Refused.Count == 0 && Failed.Count == 0 && Blocked.Count == 0;
 
     /// <summary>
     /// 검증 보고 맨 위에 세울 결론 — <b>못 나갔을 때만 있다.</b> 잘 나간 것은 말하지 않는다.
@@ -32,7 +36,12 @@ public sealed record ChapterExportRun(
                 ? null
                 : $"진행 JSON을 쓰지 못했습니다: {string.Join(", ", Failed)}" +
                   $" — {ChapterExportService.ExportFolderName}/ 의 파일이 다른 프로그램에 " +
-                  "잡혀 있는지 확인하세요."
+                  "잡혀 있는지 확인하세요.",
+            Blocked.Count == 0
+                ? null
+                : $"출시 기준선 뒤 선택지 순번이 바뀌어 진행 JSON 갱신을 막았습니다: " +
+                  $"{string.Join(", ", Blocked)} — 과거 선택 이력의 OptionIndex가 다른 선택을 " +
+                  $"가리킬 수 있습니다. {ChapterReleaseBaseline.FolderName}/ 기준선과 순서를 확인하세요."
         }.Where(part => part is not null));
 }
 
@@ -138,6 +147,8 @@ public sealed class ChapterExportService
 
         var refused = new List<string>();
         var failed = new List<string>();
+        var blocked = new List<string>();
+        var checksums = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (ChapterEntry entry in entries)
         {
@@ -161,13 +172,47 @@ public sealed class ChapterExportService
                 continue;
             }
 
+            string baselinePath = ChapterReleaseBaseline.PathFor(projectPath, entry.ChapterId);
+            if (File.Exists(baselinePath))
+            {
+                try
+                {
+                    IReadOnlyList<string> moved = ChapterReleaseBaseline.FindOrderChanges(
+                        File.ReadAllText(baselinePath), result.Json!);
+                    if (moved.Count > 0)
+                    {
+                        blocked.Add($"{entry.ChapterId}({string.Join(", ", moved)})");
+                        continue;
+                    }
+                }
+                catch (IOException)
+                {
+                    failed.Add(entry.ChapterId);
+                    continue;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    failed.Add(entry.ChapterId);
+                    continue;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    failed.Add(entry.ChapterId);
+                    continue;
+                }
+            }
+
             if (!TryWrite(ExportPathFor(projectPath, entry.ChapterId), result.Json!))
             {
                 failed.Add(entry.ChapterId);
             }
+            else
+            {
+                checksums[entry.ChapterId] = result.Checksum!;
+            }
         }
 
-        return new ChapterExportRun(refused, failed);
+        return new ChapterExportRun(refused, failed, blocked, checksums);
     }
 
     /// <summary>
@@ -178,14 +223,14 @@ public sealed class ChapterExportService
     {
         try
         {
-            if (File.Exists(path) &&
-                string.Equals(File.ReadAllText(path), json, StringComparison.Ordinal))
+            byte[] bytes = ChapterExportBytes.Encode(json);
+            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
             {
                 return true;
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, json, new UTF8Encoding(false));
+            File.WriteAllBytes(path, bytes);
 
             return true;
         }

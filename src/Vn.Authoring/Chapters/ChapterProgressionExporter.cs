@@ -16,6 +16,7 @@ public sealed record ChapterExportResult(
     ChapterValidationResult Validation)
 {
     public bool Refused => Json is null;
+    public string? Checksum => Json is null ? null : ChapterExportBytes.Sha256(Json);
 }
 
 /// <summary>
@@ -76,11 +77,17 @@ public static class ChapterProgressionExporter
             ChapterId = chapter.ChapterId,
             DisplayName = chapter.ChapterId,
             StartEpisodeId = chapter.StartEpisode?.EpisodeId ?? string.Empty,
-            Stats = chapter.Stats.Select(Stat).ToList(),
-            Nodes = chapter.Episodes.Select(episode => Node(chapter, episode, via)).ToList()
+            Stats = chapter.Stats
+                .OrderBy(stat => stat.SourceRow)
+                .ThenBy(stat => stat.Key, StringComparer.Ordinal)
+                .Select(Stat).ToList(),
+            Nodes = chapter.Episodes
+                .OrderBy(episode => episode.SourceRow)
+                .ThenBy(episode => episode.EpisodeId, StringComparer.Ordinal)
+                .Select(episode => Node(chapter, episode, via)).ToList()
         };
 
-        string json = JsonSerializer.Serialize(payload, Options);
+        string json = ChapterExportBytes.Normalize(JsonSerializer.Serialize(payload, Options));
 
         // ⛔ 마지막 관문 — **진짜 소비자에게 먹여 본다** (2026-08-23).
         //
@@ -256,6 +263,7 @@ public static class ChapterProgressionExporter
         NextOptions = chapter.Edges
             .Where(edge => string.Equals(edge.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal))
             .OrderBy(edge => edge.SourceRow)
+            .ThenBy(edge => edge.ToEpisodeId, StringComparer.Ordinal)
             .Select(edge => new NextOptionJson
             {
                 TargetEpisodeId = edge.ToEpisodeId,
@@ -326,7 +334,13 @@ public static class ChapterProgressionExporter
             return new List<ConditionJson>();
         }
 
-        return condition.Parsed.Select(term => new ConditionJson
+        // AND 조건의 배열 순서는 의미가 없다. 파서/컬렉션 구현의 열거 순서에 기대지 않고
+        // 계약 필드로 정렬해 의미가 같은 조건 묶음의 바이트가 흔들리지 않게 한다.
+        return condition.Parsed
+            .OrderBy(term => term.Key, StringComparer.Ordinal)
+            .ThenBy(term => term.Comparison)
+            .ThenBy(term => term.Value)
+            .Select(term => new ConditionJson
             {
                 Kind = nameof(Contract.ConditionKind.Stat),
                 Key = term.Key,
