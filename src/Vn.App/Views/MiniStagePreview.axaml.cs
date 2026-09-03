@@ -361,10 +361,7 @@ public partial class MiniStagePreview : UserControl
                 .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
                 .Where(edge => !string.IsNullOrWhiteSpace(edge.OptionLabel))
                 .OrderBy(edge => edge.SourceRow)
-                .Select(edge => new StageChoiceOption(
-                    $"🔒 {edge.OptionLabel} 〔조건 해석 불가 · {edge.ConditionLabel}〕",
-                    IsSelected: false,
-                    IsDisabled: true))
+                .Select(edge => BuildAuthoringFallbackOption(run, chapter, file!, source, edge))
                 .ToArray();
 
             if (broken.Length == 0)
@@ -452,6 +449,52 @@ public partial class MiniStagePreview : UserControl
                 ? $"〔해금조건 미달 · {edge.ConditionLabel}〕"
                 : $"— {option.LockedReason}";
 
+            return new StageChoiceOption(
+                $"🔒 {edge.OptionLabel} {reason}", IsSelected: false, IsDisabled: true);
+        }
+
+        return new StageChoiceOption(
+            edge.OptionLabel!,
+            IsSelected: false,
+            Choose: () => ChooseEpisodeEdge(chapter, file, source, edge));
+    }
+
+    /// <summary>
+    /// 코어가 싣을 수 없는 편집 중 모형(예: 아직 Episodes 행이 없음)만을 위한 오류 표시.
+    /// 발행 가능한 모델의 진행 판정에는 이 경로가 쓰이지 않는다.
+    /// </summary>
+    private StageChoiceOption BuildAuthoringFallbackOption(
+        ChapterRunState run,
+        ChapterGraphModel chapter,
+        StoryFile file,
+        DialogueNode source,
+        ChapterEdge edge)
+    {
+        ChapterGateVerdict visible = run.Judge(edge.VisibleConditionLabel);
+        ChapterGateVerdict unlock = run.Judge(edge.ConditionLabel);
+
+        if (visible == ChapterGateVerdict.Broken || unlock == ChapterGateVerdict.Broken)
+        {
+            string broken = visible == ChapterGateVerdict.Broken
+                ? edge.VisibleConditionLabel!
+                : edge.ConditionLabel!;
+            return new StageChoiceOption(
+                $"{edge.OptionLabel} 〔조건 해석 불가 · {broken}〕", IsSelected: false, IsDisabled: true);
+        }
+
+        if (visible == ChapterGateVerdict.Blocked)
+        {
+            return new StageChoiceOption(
+                $"{edge.OptionLabel} 〔표시조건 미달 · {edge.VisibleConditionLabel}〕",
+                IsSelected: false,
+                IsDisabled: true);
+        }
+
+        if (unlock == ChapterGateVerdict.Blocked)
+        {
+            string reason = string.IsNullOrWhiteSpace(edge.LockedMessage)
+                ? $"〔해금조건 미달 · {edge.ConditionLabel}〕"
+                : $"— {edge.LockedMessage}";
             return new StageChoiceOption(
                 $"🔒 {edge.OptionLabel} {reason}", IsSelected: false, IsDisabled: true);
         }
