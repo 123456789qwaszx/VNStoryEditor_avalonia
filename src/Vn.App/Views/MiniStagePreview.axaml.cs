@@ -352,22 +352,23 @@ public partial class MiniStagePreview : UserControl
             return false; // 챕터 판이 아니거나 워크북을 못 읽었다 — 선택지를 지어낼 원천이 없다
         }
 
-        // 문구 없는 간선은 v12부터 규격 오류라 버튼이 못 된다 — 리더가 이미 짚었다.
-        List<ChapterEdge> edges = chapter.Edges
-            .Where(edge =>
-                string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal) &&
-                !edge.HasNoOptionLabel)
-            .ToList();
+        ChapterRunState run = EnsureChapterRunFor(chapter);
+        ChapterRunAdvance? advance = run.Resolve(episodeId);
 
-        if (edges.Count == 0)
+        if (advance is null || advance.Kind == Ked.Progression.ChapterAdvanceKind.ChapterEnded)
         {
             return false;
         }
 
-        ChapterRunState run = EnsureChapterRunFor(chapter);
+        if (advance.Kind == Ked.Progression.ChapterAdvanceKind.AutoAdvance)
+        {
+            ChapterEdge automatic = advance.Options[0].Edge;
+            ChooseEpisodeEdge(chapter, file!, source, automatic);
+            return true;
+        }
 
-        StageChoiceOption[] options = edges
-            .Select(edge => BuildEpisodeOption(run, chapter, file!, source, edge))
+        StageChoiceOption[] options = advance.Options
+            .Select(option => BuildEpisodeOption(chapter, file!, source, option))
             .ToArray();
 
         _current = _current with { ChoiceOptions = options };
@@ -411,46 +412,22 @@ public partial class MiniStagePreview : UserControl
 
     /// <summary>
     /// 간선 하나 → 버튼 하나. 관문은 <b>지금 스탯으로 실제 판정한다</b>(판정은 커밋 전 값) —
-    /// 게임과 같은 규칙 하나(<see cref="ChapterGateJudge"/>, 증명기·워커와 한 벌)다.
-    /// 다만 저작 도구라 숨김·잠김을 지우는 대신 흐리게 두고 사유를 병기한다 — 무엇이 왜
-    /// 안 보이는지가 이 화면의 정보다. 다른 갈래를 억지로 타 보려면 씬 선택기가 뒷길이다.
+    /// 게임과 같은 <c>ChapterTransition.Resolve</c> 결과를 그대로 받는다. 표시조건 미달은
+    /// 목록에서 빠지고 해금조건 미달만 잠긴 채 남는다. 다른 갈래를 억지로 확인하려면
+    /// 씬 선택기가 뒷길이다.
     /// </summary>
     private StageChoiceOption BuildEpisodeOption(
-        ChapterRunState run,
         ChapterGraphModel chapter,
         StoryFile file,
         DialogueNode source,
-        ChapterEdge edge)
+        ChapterRunOption option)
     {
-        ChapterGateVerdict visible = run.Judge(edge.VisibleConditionLabel);
-        ChapterGateVerdict unlock = run.Judge(edge.ConditionLabel);
-
-        if (visible == ChapterGateVerdict.Broken || unlock == ChapterGateVerdict.Broken)
+        ChapterEdge edge = option.Edge;
+        if (!option.IsSelectable)
         {
-            string broken = visible == ChapterGateVerdict.Broken
-                ? edge.VisibleConditionLabel!
-                : edge.ConditionLabel!;
-
-            // 검증이 이미 오류로 짚은 데이터다 — 통과시켜 도달을 부풀리지 않는다(증명기와 같은 결).
-            return new StageChoiceOption(
-                $"{edge.OptionLabel} 〔조건 해석 불가 · {broken}〕", IsSelected: false, IsDisabled: true);
-        }
-
-        if (visible == ChapterGateVerdict.Blocked)
-        {
-            // 런타임이라면 목록에서 아예 빠지는 길이다.
-            return new StageChoiceOption(
-                $"{edge.OptionLabel} 〔표시조건 미달 · {edge.VisibleConditionLabel}〕",
-                IsSelected: false,
-                IsDisabled: true);
-        }
-
-        if (unlock == ChapterGateVerdict.Blocked)
-        {
-            // 런타임이라면 잠긴 채 보이는 길이다 — 잠금 안내문이 있으면 그것이 곧 화면의 말이다.
-            string reason = string.IsNullOrWhiteSpace(edge.LockedMessage)
+            string reason = string.IsNullOrWhiteSpace(option.LockedReason)
                 ? $"〔해금조건 미달 · {edge.ConditionLabel}〕"
-                : $"— {edge.LockedMessage}";
+                : $"— {option.LockedReason}";
 
             return new StageChoiceOption(
                 $"🔒 {edge.OptionLabel} {reason}", IsSelected: false, IsDisabled: true);
@@ -516,7 +493,7 @@ public partial class MiniStagePreview : UserControl
         // 제시 시점의 런이 아니라 지금의 런에 커밋한다 — 제시와 클릭 사이에 새 재생이
         // 런을 되돌렸을 수 있다(그 사이 화면의 선택지는 옛 판의 것이지만, 커밋만은
         // 지금 서 있는 판의 것이어야 잃어버린 스탯이 생기지 않는다).
-        EnsureChapterRunFor(chapter).Commit(edge.StatChanges);
+        EnsureChapterRunFor(chapter).Commit(edge);
 
         if (ViaSceneIdFor(source, edge.OptionLabel!) is { } viaId &&
             _session.Project.FindNode(viaId) is DialogueNode)

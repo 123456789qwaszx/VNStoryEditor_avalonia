@@ -1,4 +1,18 @@
+using System.Text.Json;
+using Contract = Ked.Progression;
+
 namespace Vn.Authoring.Chapters;
+
+public sealed record ChapterRunOption(
+    ChapterEdge Edge,
+    int SourceIndex,
+    bool IsSelectable,
+    string LockedReason);
+
+public sealed record ChapterRunAdvance(
+    Contract.ChapterAdvanceKind Kind,
+    IReadOnlyList<ChapterRunOption> Options,
+    int HiddenCount);
 
 /// <summary>관문 하나의 판정 결과 — 지나갈 수 있는가만이 아니라 <b>왜 못 가는가</b>까지 가른다.</summary>
 public enum ChapterGateVerdict
@@ -101,6 +115,10 @@ public sealed class ChapterRunState
 {
     private readonly ChapterGraphModel _chapter;
     private int[] _stats;
+    private readonly Contract.ChapterProgression? _runtime;
+    private Contract.ProgressionState? _sceneEntry;
+    private Contract.ProgressionState? _working;
+    private readonly List<Contract.EpisodeOption> _pending = [];
 
     public ChapterRunState(ChapterGraphModel chapter)
     {
@@ -108,6 +126,25 @@ public sealed class ChapterRunState
         _chapter = chapter;
         // 증명기·워커와 같은 시드 — 초기값 그대로(경계 보정 없음. 밖이면 검증이 짚을 일이다).
         _stats = chapter.Stats.Select(stat => stat.Initial).ToArray();
+
+        ChapterExportResult exported = ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        if (exported.Json is null)
+        {
+            return;
+        }
+
+        Contract.ChapterProgressionDto? dto =
+            JsonSerializer.Deserialize<Contract.ChapterProgressionDto>(exported.Json);
+        Contract.ProgressionLoadResult loaded = dto is null
+            ? new Contract.ProgressionLoadResult(null, null)
+            : Contract.ProgressionLoader.Load(dto);
+
+        if (loaded.IsValid)
+        {
+            _runtime = loaded.Chapter;
+            _sceneEntry = _runtime.CreateEntryState();
+            _working = _sceneEntry;
+        }
     }
 
     /// <summary>이 판이 어느 챕터의 것인가 — 챕터가 바뀌면 판도 새로 선다.</summary>
@@ -117,11 +154,90 @@ public sealed class ChapterRunState
     public ChapterGateVerdict Judge(string? conditionLabel) =>
         ChapterGateJudge.Judge(_chapter, conditionLabel, _stats);
 
+    /// <summary>
+    /// 현재 에피소드의 표시·잠금·종료·Auto 판정을 런타임 코어에 직접 묻는다.
+    /// SourceIndex를 간선 SourceRow 순서로 되돌려 UI가 같은 선택지를 가리키게 한다.
+    /// </summary>
+    public ChapterRunAdvance? Resolve(string episodeId)
+    {
+        if (_runtime is null || _working is null)
+        {
+            return null;
+        }
+
+        Contract.ProgressionState atEpisode = string.Equals(
+                _working.CurrentEpisodeId, episodeId, StringComparison.Ordinal)
+            ? _working
+            : Contract.ProgressionState.Restore(_runtime, episodeId, _working.Stats);
+        Contract.ChapterAdvance resolved = Contract.ChapterTransition.Resolve(_runtime, atEpisode);
+        List<ChapterEdge> edges = Outgoing(episodeId);
+
+        return new ChapterRunAdvance(
+            resolved.Kind,
+            resolved.Options.Select(option => new ChapterRunOption(
+                edges[option.SourceIndex], option.SourceIndex, option.IsSelectable, option.LockedReason)).ToList(),
+            resolved.HiddenCount);
+    }
+
+    /// <summary>
+    /// 장면 안에서는 선택을 pending에 쌓아 entry에서 다시 fold한다. 장면을 나갈 때만
+    /// working이 다음 장면의 확정 entry가 된다. 롤백 UI는 아직 없지만 상태 수명은 런타임과 같다.
+    /// </summary>
+    public void Commit(ChapterEdge edge)
+    {
+        ArgumentNullException.ThrowIfNull(edge);
+        if (_runtime is null || _sceneEntry is null || _working is null)
+        {
+            Commit(edge.StatChanges);
+            return;
+        }
+
+        List<ChapterEdge> edges = Outgoing(edge.FromEpisodeId);
+        int index = edges.FindIndex(candidate => ReferenceEquals(candidate, edge) || candidate == edge);
+        if (index < 0 || !_runtime.TryGetNode(edge.FromEpisodeId, out Contract.EpisodeNode? node))
+        {
+            throw new ArgumentException("현재 챕터에 없는 간선입니다.", nameof(edge));
+        }
+
+        // 프리뷰가 씬 선택기로 진입했을 수 있으므로 그 에피소드를 현재 위치로 맞춘다.
+        if (!string.Equals(_working.CurrentEpisodeId, edge.FromEpisodeId, StringComparison.Ordinal))
+        {
+            _sceneEntry = Contract.ProgressionState.Restore(_runtime, edge.FromEpisodeId, _working.Stats);
+            _pending.Clear();
+        }
+
+        _pending.Add(node.NextOptions[index]);
+        _working = _sceneEntry.FoldChoices(_runtime, _pending);
+        SyncStatsFromRuntime();
+
+        if (!_runtime.IsSameScene(edge.FromEpisodeId, edge.ToEpisodeId))
+        {
+            _sceneEntry = _working;
+            _pending.Clear();
+        }
+    }
+
+    public int PendingChoiceCount => _pending.Count;
+
     /// <summary>간선을 탔다 — 그 간선의 `스탯변화`를 1회 커밋한다(최소~최대로 잘라낸다).</summary>
     public void Commit(IReadOnlyList<StatDelta> deltas)
     {
         ArgumentNullException.ThrowIfNull(deltas);
         _stats = ChapterReachabilityProver.ApplyDeltas(_chapter, _stats, deltas);
+    }
+
+    private List<ChapterEdge> Outgoing(string episodeId) => _chapter.Edges
+        .Where(edge => string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal))
+        .OrderBy(edge => edge.SourceRow)
+        .ThenBy(edge => edge.ToEpisodeId, StringComparer.Ordinal)
+        .ToList();
+
+    private void SyncStatsFromRuntime()
+    {
+        for (int i = 0; i < _chapter.Stats.Count; i++)
+        {
+            _stats[i] = _working!.GetStat(_chapter.Stats[i].Key);
+        }
     }
 
     /// <summary>HUD가 그릴 현재 값 전부 — `스탯` 시트의 행 순서다.</summary>

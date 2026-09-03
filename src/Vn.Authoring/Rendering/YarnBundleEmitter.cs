@@ -144,6 +144,11 @@ public static class YarnBundleEmitter
         var problems = new List<YarnBundleProblem>();
         var story = new StringBuilder();
 
+        // 진행 스탯([2])은 ChapterTransition만 읽고 쓴다. Yarn 변수 저장소([3])로 새면
+        // 도달성 증명이 보지 못한 숨은 분기가 생긴다. 파일을 쓴 뒤가 아니라 문자열을
+        // 조립하기 전에 막아 낡은 정상 산출물을 보존한다.
+        ValidateProgressionStatReferences(document, statNames, problems);
+
         // 커스텀 곡선 참조 검증 (W67 후속) — `@이름`이 프로젝트에 없으면 막는다.
         // 런타임은 모르는 곡선을 로그만 남기고 OutCubic으로 굴리므로(조용한 어긋남),
         // 저작이 유일한 방어다. "채우면 반드시 동작한다"의 곡선판이다.
@@ -262,6 +267,43 @@ public static class YarnBundleEmitter
         {
             ChapterId = ChapterOf(project, dialogue.SourceNodeId)
         };
+    }
+
+    internal static void ValidateProgressionStatReferences(
+        RenderedDocument document,
+        IReadOnlySet<string> progressionStats,
+        List<YarnBundleProblem> problems)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(progressionStats);
+        ArgumentNullException.ThrowIfNull(problems);
+
+        var leaked = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (RenderedSegment segment in document.Segments)
+        {
+            string variable = (segment.Variable ?? string.Empty).TrimStart('$').Trim();
+            if (progressionStats.Contains(variable))
+            {
+                leaked.Add(variable);
+            }
+
+            foreach (string name in Flow.VariableTokens.Names(segment.Expression))
+            {
+                if (progressionStats.Contains(name))
+                {
+                    leaked.Add(name);
+                }
+            }
+        }
+
+        foreach (string name in leaked.OrderBy(value => value, StringComparer.Ordinal))
+        {
+            problems.Add(new YarnBundleProblem(
+                $"진행 스탯 '{name}'을 Yarn 대사 조건·set에서 사용할 수 없습니다. " +
+                "진행 분기는 챕터 간선의 표시조건·해금조건·스탯변화에 작성하세요.",
+                IsBlocking: true));
+        }
     }
 
     /// <summary>
