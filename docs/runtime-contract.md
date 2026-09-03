@@ -1,5 +1,14 @@
 # VnTool ↔ 런타임 계약서
 
+> **현행 상태 (2026-09-03, R4 완료).** 실제 소비자 기준은
+> `ked-presentation-runtime/server_DB@d53cc2f`. R0~R4에서 툴의 `Ked.Progression` 사본,
+> `SceneId`, 명시적 `Auto`, 장면 진입 불변식, `ChapterReachability`,
+> 결정적 JSON/SHA-256, OptionIndex 기준선, 프리뷰 `Resolve`/`FoldChoices`,
+> Yarn 진행 스탯 격리까지 정렬됐다.
+> 아래의 2026-08~09-02 "미커밋 진행 중"·"착수 금지"·`§G-10~G-14` 미결 표시는
+> 당시 판단을 보존한 **역사 기록**이다. 현재 작업 지시로 읽지 않는다.
+> 완료 증거는 [`plans/PLAN.md`](plans/PLAN.md)와 R0~R4 세부 문서가 정본이다.
+
 **표면이 둘로 갈렸다** (2026-08-17):
 
 | | 상대 | VnTool이 내는 것 |

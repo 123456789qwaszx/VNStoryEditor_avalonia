@@ -1,5 +1,13 @@
 # `ked-progression` 작업자에게 — VnTool 쪽에서 알아야 할 것
 
+> **상태: 역사적 인수인계 + 현행 참조 (2026-09-03).** 별도 `ked-progression`
+> 저장소가 아니라 `ked-presentation-runtime/server_DB@d53cc2f`의
+> `Assets/Scripts/Ked.Progression` 사본이 실제 소비자다. R0~R4는 해당 사본을 툴에
+> 반입하고 Scene·Auto·프리뷰·상태 격리를 정렬해 완료했다.
+> 아래 2026-08-23 본문의 "부탁"과 "새 필드 요청"은 당시 교환 기록이며 현재
+> 작업 대기열이 아니다. 현재 계약은 [`runtime-contract.md`](runtime-contract.md),
+> 실행 상태는 [`plans/PLAN.md`](plans/PLAN.md)를 우선한다.
+
 기준: **2026-08-23 (4차)** · VnTool(`java-start`) 저장소 · 테스트 **1490 통과**
 
 계약 원문은 [`runtime-contract.md`](runtime-contract.md) **2부**이고, 충돌하면 그쪽이 정본이다.

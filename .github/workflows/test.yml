@@ -21,3 +21,28 @@ jobs:
         run: dotnet build VnTool.sln --no-restore --configuration Release
       - name: Test
         run: dotnet test VnTool.sln --no-build --configuration Release --logger "console;verbosity=normal"
+      - name: Yarn sample smoke
+        run: >-
+          dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj
+          --no-build --configuration Release --
+          .\samples\Real\Demo.yarnproject .\samples\Real\game.schema.json
+      - name: Windows portable smoke
+        shell: pwsh
+        run: |
+          .\publish-windows.ps1
+
+          $exe = Join-Path $PWD "artifacts\VnTool-win-x64\Vn.App.exe"
+          $zip = Join-Path $PWD "artifacts\VnTool-win-x64.zip"
+          if (-not (Test-Path $exe)) { throw "portable exe was not produced" }
+          if (-not (Test-Path $zip)) { throw "portable zip was not produced" }
+
+          $process = Start-Process $exe -PassThru
+          try {
+            Start-Sleep -Seconds 5
+            if ($process.HasExited) {
+              throw "portable exe exited during startup (code $($process.ExitCode))"
+            }
+          }
+          finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }

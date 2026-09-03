@@ -79,8 +79,9 @@ powershell -ExecutionPolicy Bypass -File .\publish-windows.ps1
 
 ## 문서
 
-**이어받는 작업은 [`docs/handoff/current-state.md`](docs/handoff/current-state.md)에서
-시작합니다** — 맨 위 계약 박스가 최신 규격의 정본이고, 다른 문서와 충돌하면 그쪽이 이깁니다.
+**처음 보는 사람은 [`docs/external-overview.md`](docs/external-overview.md), 작업을 이어받는
+사람은 [`docs/handoff/current-state.md`](docs/handoff/current-state.md)에서 시작합니다.**
+R0~R5의 순서·체크리스트·완료 근거는 [`docs/plans/PLAN.md`](docs/plans/PLAN.md)가 정본입니다.
 
 | 문서 | 무엇이 있나 |
 |---|---|
@@ -91,7 +92,8 @@ powershell -ExecutionPolicy Bypass -File .\publish-windows.ps1
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 코드 구조 — "이 기능은 어느 파일" |
 | [`docs/handoff/architecture-decisions.md`](docs/handoff/architecture-decisions.md) | 확정된 설계와 **그 이유** |
 | [`docs/runtime-contract.md`](docs/runtime-contract.md) | 유니티 런타임과의 계약 (Gate D) |
-| [`docs/progression-handoff.md`](docs/progression-handoff.md) | **`ked-progression` 작업자용** — 무엇이 바뀌었고 무엇을 믿어도 되는지 (표본 JSON 동봉) |
+| [`docs/progression-handoff.md`](docs/progression-handoff.md) | 진행 코어 교환 이력·현행 상대·표본 JSON 안내 |
+| [`docs/ch01.contract-sample.xlsx`](docs/ch01.contract-sample.xlsx) | Scene·Auto·조건·스탯·Via·EventKey를 담은 현행 계약 표본 |
 | [`docs/work-orders/chapter-graph-orders.md`](docs/work-orders/chapter-graph-orders.md) | 챕터 계층 규격 원본 |
 | [`docs/chapter-layer-guide.md`](docs/chapter-layer-guide.md) | 기획자용 사용 안내 |
 | [`docs/writer-guide.md`](docs/writer-guide.md) | 작가용 사용 안내 |
