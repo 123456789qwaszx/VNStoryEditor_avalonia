@@ -79,9 +79,9 @@ public sealed class ChapterDeterministicExportTests : IDisposable
             ChapterProgressionExporter.Export(Chapter(true), null).Json!);
 
         Assert.Equal(["trust", "flag"], json.RootElement.GetProperty("Stats")
-            .EnumerateArray().Select(x => x.GetProperty("Key").GetString()).ToArray());
+            .EnumerateArray().Select(x => x.GetProperty("Key").GetString()!).ToArray());
         Assert.Equal(["ep1", "ep2", "ep3"], json.RootElement.GetProperty("Nodes")
-            .EnumerateArray().Select(x => x.GetProperty("EpisodeId").GetString()).ToArray());
+            .EnumerateArray().Select(x => x.GetProperty("EpisodeId").GetString()!).ToArray());
     }
 
     [Fact]
