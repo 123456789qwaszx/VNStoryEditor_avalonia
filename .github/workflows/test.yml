@@ -25,7 +25,7 @@ jobs:
         run: >-
           dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj
           --no-build --configuration Release --
-          .\samples\Real\Demo.yarnproject .\samples\Real\game.schema.json
+          .\samples\Valid\Demo.yarnproject .\samples\Valid\game.schema.json
       - name: Windows portable smoke
         shell: pwsh
         run: |

@@ -106,5 +106,5 @@ R0~R5의 순서·체크리스트·완료 근거는 [`docs/plans/PLAN.md`](docs/p
 있습니다.
 
 ```powershell
-dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj -- .\samples\Real\Demo.yarnproject .\samples\Real\game.schema.json
+dotnet run --project .\src\Vn.Cli\Vn.Cli.csproj -- .\samples\Valid\Demo.yarnproject .\samples\Valid\game.schema.json
 ```

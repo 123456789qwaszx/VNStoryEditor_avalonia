@@ -376,4 +376,14 @@ VnTool이 내던 트리오(`Story_*` / `Set_*` / `Pres_*`)가 **`{대사엔트�
 | 결정 기록 | [`docs/run-log.md`](run-log.md) — 2026-08-18 항목들 |
 
 새로 필요한 것이 생기면 `runtime-contract.md` **3부(§G — VnTool이 할 일)**에 적어 주면 된다.
+
+## 현행 표본 (R5)
+
+- 원천 워크북: [`ch01.contract-sample.xlsx`](ch01.contract-sample.xlsx)
+- 결정적 산출물: [`ch01.progression.sample.json`](ch01.progression.sample.json)
+- 재생성·필드·소비자 로더 검증:
+  `ProgressionSampleGoldenTests`
+
+워크북은 같은 Scene 안의 여러 Episode, 명시적 Auto, 표시·해금조건,
+Number Add, Bool Set, 연출 그래프의 ViaNodeId, EventKey, 고정 NextOptions 순서를 한 흐름으로 보여 준다.
 그 절이 이쪽 작업 목록이다.

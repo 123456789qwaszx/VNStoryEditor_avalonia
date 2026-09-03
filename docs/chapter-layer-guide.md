@@ -36,7 +36,8 @@
 | [`handoff/current-state.md`](handoff/current-state.md) | **인수인계 한 장.** 목적·계층 규칙·화면·코드 지도·남은 일 | 새 세션이 작업을 이어받을 때 |
 | [`work-orders/chapter-graph-orders.md`](work-orders/chapter-graph-orders.md) | **규격 원본.** §2 소유자 결정 8건 · §3 엑셀 규격(시트·열·구간 규칙) · §4 기능 G1–G9 | 규격의 정확한 문구가 필요할 때 |
 | [`run-log.md`](run-log.md) | 전 과정의 서술 기록. 스스로 내린 결정과 그 근거, 발견한 함정 | "왜 이렇게 됐나"를 따질 때 |
-| [`chapter-graph-sample.xlsx`](chapter-graph-sample.xlsx) | **실물 견본 워크북.** 시트가 전부 채워진 ch05 (v14로 이행됨) | 새 챕터를 만들기 전에 형태를 볼 때 |
+| [`ch01.contract-sample.xlsx`](ch01.contract-sample.xlsx) | **현행 계약 표본.** Scene·Auto·조건·스탯·Via·EventKey | 새 챕터와 런타임 산출 형태를 볼 때 |
+| [`chapter-graph-sample.xlsx`](chapter-graph-sample.xlsx) | 기존 UI·이행·에피소드 회귀 테스트용 역사 견본 | 구형 데이터 호환과 기존 사례를 볼 때 |
 | [`handoff/io-reference.md`](handoff/io-reference.md) · [`runtime-contract.md`](runtime-contract.md) | 런타임과의 입출력 계약 | 내보낸 JSON을 게임에 넣을 때 |
 | [`writer-guide.md`](writer-guide.md) | **옛 층**(대사 그래프) 작가용 | 대사·연출을 쓸 때 |
 
