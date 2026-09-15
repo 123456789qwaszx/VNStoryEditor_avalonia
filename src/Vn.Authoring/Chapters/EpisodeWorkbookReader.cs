@@ -51,13 +51,10 @@ public static class EpisodeWorkbookReader
             throw new XlsxReadException(path, $"워크북 파일이 없습니다: {path}");
         }
 
-        // 내용이 그대로면 답도 그대로다 (2026-08-24 성능) — 읽기는 순수 함수다.
-        // 대본 하나만 저장해도 그 챕터의 대본을 전부 다시 파고들던 것이, 실측
-        // "변경 없는 동기화"의 91%였다(`WorkbookParseCache`).
-        //
-        // ⚠ v15 — 부가 입력(조건 라벨)이 사라져 열쇠는 내용 해시 하나다. 라벨이 진단을
-        // 가르던 시절에는 그것도 열쇠였는데, 대본이 조건을 모르게 되면서 함께 걷혔다.
-        return WorkbookParseCache.Read(path, variant: string.Empty, () => Parse(path));
+        // ⛔ 파싱 캐시(`WorkbookParseCache`)는 2026-09-16에 걷혔다 (R-D). "대본 하나만
+        //    저장해도 그 챕터의 대본을 전부 다시 판다"가 그 캐시의 존재 이유였는데,
+        //    다시 읽지 않으면 캐시할 것이 없다. 되살리지 말 것.
+        return Parse(path);
     }
 
     private static EpisodeWorkbookModel Parse(string path)
