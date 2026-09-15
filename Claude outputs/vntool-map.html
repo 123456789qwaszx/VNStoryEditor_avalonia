@@ -1,0 +1,488 @@
+<title>VnTool 코드 지도</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#E9EDEB; --surface:#FBFCFB; --surface-2:#F1F4F2;
+  --ink:#131D1A; --ink-2:#384743; --muted:#6B7C77; --line:#D0D8D4; --line-2:#E0E6E3;
+  --excel:#8E5D0C; --excel-bg:#F6EBD8;
+  --tool:#0E6A5E; --tool-bg:#DDEDE9;
+  --runtime:#4F41A0; --runtime-bg:#E6E3F5;
+  --danger:#9A2F2F; --danger-bg:#F6E4E2;
+  --shadow:0 1px 2px rgba(19,29,26,.06), 0 6px 18px -10px rgba(19,29,26,.22);
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans KR",system-ui,-apple-system,"Malgun Gothic",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1513; --surface:#161F1C; --surface-2:#1B2522;
+    --ink:#E4ECE8; --ink-2:#BCC9C5; --muted:#8A9B96; --line:#26312E; --line-2:#202A27;
+    --excel:#DCA64C; --excel-bg:#2B2213;
+    --tool:#4FC6B2; --tool-bg:#12302B;
+    --runtime:#A296EE; --runtime-bg:#211E3A;
+    --danger:#E58B84; --danger-bg:#331D1B;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1513; --surface:#161F1C; --surface-2:#1B2522;
+  --ink:#E4ECE8; --ink-2:#BCC9C5; --muted:#8A9B96; --line:#26312E; --line-2:#202A27;
+  --excel:#DCA64C; --excel-bg:#2B2213;
+  --tool:#4FC6B2; --tool-bg:#12302B;
+  --runtime:#A296EE; --runtime-bg:#211E3A;
+  --danger:#E58B84; --danger-bg:#331D1B;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px; margin:0 auto; padding-inline:20px; padding-block:0 72px}
+h1,h2,h3{text-wrap:balance; margin:0}
+a{color:inherit}
+
+/* ── header ─────────────────────────────────────────── */
+header{padding-block:56px 40px; border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-family:var(--mono); font-size:11.5px; font-weight:600;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+}
+h1{
+  font-size:clamp(34px,6.2vw,52px); font-weight:700; letter-spacing:-.025em;
+  line-height:1.08; margin-top:14px;
+}
+.lede{
+  margin-top:18px; max-width:60ch; color:var(--ink-2); font-size:16.5px;
+}
+.stats{
+  display:flex; flex-wrap:wrap; gap:8px 28px; margin-top:28px;
+  font-family:var(--mono); font-size:12.5px; color:var(--muted);
+}
+.stats b{color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums}
+
+/* ── section shell ──────────────────────────────────── */
+section{padding-block:52px; border-bottom:1px solid var(--line-2)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex; flex-wrap:wrap; align-items:baseline; gap:12px 16px; margin-bottom:8px}
+h2{font-size:25px; font-weight:700; letter-spacing:-.018em}
+.sec-note{color:var(--muted); font-size:14px; max-width:58ch; margin:6px 0 30px}
+
+/* ── ownership legend ───────────────────────────────── */
+.legend{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px}
+.own{
+  background:var(--surface); border:1px solid var(--line); border-radius:3px;
+  padding:16px 18px; border-left:3px solid var(--c);
+}
+.own .k{font-family:var(--mono); font-size:11.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--c)}
+.own .v{font-weight:600; margin-top:5px}
+.own .d{color:var(--muted); font-size:13.5px; margin-top:3px; line-height:1.5}
+.own.excel{--c:var(--excel)} .own.tool{--c:var(--tool)} .own.runtime{--c:var(--runtime)}
+
+/* ── pipeline ───────────────────────────────────────── */
+.pipe{display:flex; flex-wrap:wrap; gap:6px; align-items:stretch; margin-top:4px}
+.pipe .step{
+  flex:1 1 130px; background:var(--surface); border:1px solid var(--line);
+  border-top:2px solid var(--c); border-radius:2px; padding:12px 13px;
+}
+.pipe .step .n{font-family:var(--mono); font-size:10.5px; color:var(--c); font-weight:600; letter-spacing:.1em}
+.pipe .step .t{font-weight:600; font-size:14px; margin-top:4px; line-height:1.35}
+.pipe .step .f{font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:6px; word-break:break-all}
+.pipe .step.excel{--c:var(--excel)} .pipe .step.tool{--c:var(--tool)} .pipe .step.runtime{--c:var(--runtime)}
+
+/* ── reading path ───────────────────────────────────── */
+.stage{margin-top:34px}
+.stage-h{
+  display:flex; align-items:baseline; gap:12px; padding-bottom:10px;
+  border-bottom:1px solid var(--line);
+}
+.stage-h .num{
+  font-family:var(--mono); font-size:12px; font-weight:600; color:var(--tool);
+  letter-spacing:.08em;
+}
+.stage-h .name{font-weight:700; font-size:17px; letter-spacing:-.01em}
+.stage-h .why{color:var(--muted); font-size:13px; margin-left:auto}
+.steps{list-style:none; margin:0; padding:0}
+.steps li{
+  display:grid; grid-template-columns:34px 1fr auto; gap:4px 16px;
+  padding:16px 0; border-bottom:1px solid var(--line-2); align-items:baseline;
+}
+.steps li:last-child{border-bottom:0}
+.steps .idx{
+  font-family:var(--mono); font-size:13px; font-weight:600; color:var(--muted);
+  font-variant-numeric:tabular-nums;
+}
+.steps .path{font-family:var(--mono); font-size:13.5px; font-weight:600; word-break:break-all}
+.steps .path .dir{color:var(--muted); font-weight:400}
+.steps .lines{
+  font-family:var(--mono); font-size:12px; color:var(--muted);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.steps .desc{grid-column:2/4; color:var(--ink-2); font-size:14px; line-height:1.55}
+.steps .desc em{font-style:normal; background:var(--tool-bg); color:var(--tool); padding:0 4px; border-radius:2px; font-weight:500}
+.tip{
+  display:inline-block; font-family:var(--mono); font-size:11px; font-weight:600;
+  padding:1px 6px; border-radius:2px; margin-right:7px; vertical-align:1px;
+}
+.tip.skim{background:var(--excel-bg); color:var(--excel)}
+.tip.core{background:var(--tool-bg); color:var(--tool)}
+.tip.contract{background:var(--runtime-bg); color:var(--runtime)}
+
+/* ── map ────────────────────────────────────────────── */
+.controls{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:22px}
+#q{
+  flex:1 1 220px; min-width:0; font-family:var(--mono); font-size:13px;
+  padding:9px 12px; border:1px solid var(--line); border-radius:3px;
+  background:var(--surface); color:var(--ink);
+}
+#q:focus{outline:2px solid var(--tool); outline-offset:-1px}
+.toggle{
+  font-family:var(--mono); font-size:12px; font-weight:600; cursor:pointer;
+  padding:9px 13px; border:1px solid var(--line); border-radius:3px;
+  background:var(--surface); color:var(--ink-2);
+}
+.toggle[aria-pressed="true"]{background:var(--tool); border-color:var(--tool); color:var(--surface)}
+.toggle:focus-visible{outline:2px solid var(--tool); outline-offset:2px}
+.hit{font-family:var(--mono); font-size:12px; color:var(--muted); margin-left:auto}
+
+.proj{margin-bottom:26px; background:var(--surface); border:1px solid var(--line); border-radius:3px; overflow:hidden}
+.proj-h{
+  display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px;
+  padding:13px 18px; background:var(--surface-2); border-bottom:1px solid var(--line);
+}
+.proj-h .nm{font-family:var(--mono); font-weight:600; font-size:14px}
+.proj-h .role{color:var(--muted); font-size:13px}
+.proj-h .tot{margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+.folder{padding:12px 18px; border-bottom:1px solid var(--line-2)}
+.folder:last-child{border-bottom:0}
+.folder-n{font-family:var(--mono); font-size:12px; font-weight:600; color:var(--muted); letter-spacing:.04em}
+.files{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:2px 18px; margin-top:7px}
+.file{
+  display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
+  font-family:var(--mono); font-size:12.5px; padding:2px 0;
+}
+.file .fn{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2)}
+.file .ln{color:var(--muted); font-variant-numeric:tabular-nums; font-size:11.5px}
+.file.big .fn{color:var(--ink); font-weight:600}
+.file.key{background:var(--tool-bg); margin-inline:-6px; padding-inline:6px; border-radius:2px}
+.file.key .fn{color:var(--tool); font-weight:600}
+.file mark{background:var(--excel-bg); color:var(--excel); border-radius:1px}
+
+/* ── avoid ──────────────────────────────────────────── */
+.avoid{border-left:3px solid var(--danger); background:var(--danger-bg); padding:18px 20px; border-radius:2px}
+.avoid table{width:100%; border-collapse:collapse; margin-top:12px; font-size:13.5px}
+.avoid td{padding:6px 0; border-bottom:1px solid color-mix(in srgb, var(--danger) 18%, transparent); vertical-align:top}
+.avoid tr:last-child td{border-bottom:0}
+.avoid td:first-child{font-family:var(--mono); font-size:12.5px; padding-right:16px; white-space:nowrap}
+.avoid td:last-child{font-family:var(--mono); font-size:12px; color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+.avoid .lead{font-weight:600; color:var(--danger)}
+
+.tablewrap{overflow-x:auto}
+footer{padding-block:40px 0; color:var(--muted); font-size:13px; border-top:1px solid var(--line)}
+footer code{font-family:var(--mono); font-size:12.5px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">VNStoryEditor_avalonia · master@59b08d6</div>
+  <h1>270개 파일 중<br>12개만 먼저 읽는다</h1>
+  <p class="lede">
+    이 저장소는 편집기가 아니라 <strong>컴파일러에 가깝다.</strong> 원본은 엑셀에 있고,
+    코드가 하는 일은 읽고 · 검증하고 · 결정적으로 내보내는 것이다.
+    그 파이프라인을 따라가면 270개가 12개로 줄어든다.
+  </p>
+  <div class="stats">
+    <span><b>270</b> 파일 (src)</span>
+    <span><b>72,119</b> 줄</span>
+    <span><b>6</b> 프로젝트</span>
+    <span>읽을 것 <b>7,347</b> 줄 · 전체의 <b>10%</b></span>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head"><h2>먼저: 값의 주인이 누구인가</h2></div>
+  <p class="sec-note">
+    이 레포 전체를 관통하는 규칙은 하나다 — <strong>각 값의 주인은 한 곳뿐이다.</strong>
+    코드를 읽다 "왜 여기서 이걸 못 고치지?" 싶으면 거의 항상 주인이 다른 곳이기 때문이다.
+    아래 세 색이 이 페이지 전체에서 같은 뜻으로 쓰인다.
+  </p>
+  <div class="legend">
+    <div class="own excel">
+      <div class="k">원본</div>
+      <div class="v">엑셀 워크북</div>
+      <div class="d">챕터 구조 · 대사 본문 · 화자. 기획자와 작가가 여기서 쓴다. 도구는 읽는 쪽이다.</div>
+    </div>
+    <div class="own tool">
+      <div class="k">도구</div>
+      <div class="v">연출 그래프 · 저작 모델</div>
+      <div class="d">Yarn 노드 이름 · 인라인 연출 · 조건 갈래. 이것만이 도구가 소유한다.</div>
+    </div>
+    <div class="own runtime">
+      <div class="k">계약</div>
+      <div class="v">유니티 런타임</div>
+      <div class="d">progression JSON과 Yarn 번들의 형식. 읽어서 맞추되 고치지 않는다.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>파이프라인</h2></div>
+  <p class="sec-note">
+    이 순서가 곧 코드의 순서다. 각 칸이 아래 읽는 순서의 어디에 해당하는지 파일명으로 적었다.
+  </p>
+  <div class="pipe">
+    <div class="step excel"><div class="n">01</div><div class="t">엑셀 읽기</div><div class="f">ChapterWorkbookReader</div></div>
+    <div class="step tool"><div class="n">02</div><div class="t">모델 구성</div><div class="f">ChapterGraphModel</div></div>
+    <div class="step tool"><div class="n">03</div><div class="t">검증 · 도달성 증명</div><div class="f">ChapterReachabilityProver</div></div>
+    <div class="step tool"><div class="n">04</div><div class="t">내보내기</div><div class="f">ChapterProgressionExporter</div></div>
+    <div class="step runtime"><div class="n">05</div><div class="t">오라클 재검증</div><div class="f">Ked.Progression<br>ProgressionLoader</div></div>
+    <div class="step runtime"><div class="n">06</div><div class="t">Yarn 번들 · 컴파일</div><div class="f">YarnBundleEmitter</div></div>
+  </div>
+  <p class="sec-note" style="margin-top:22px">
+    <strong>05번이 이 레포의 성격을 가장 잘 보여 준다.</strong> 검증 규칙을 직접 다시 쓰지 않고,
+    유니티 런타임의 실제 코드를 소스째 복사해 와서 자기가 낸 JSON을 거기에 실어 본다.
+    거부되면 파일을 내지 않고 "엑셀 몇 시트 몇 행"으로 진단을 돌려준다.
+  </p>
+</section>
+
+<section>
+  <div class="sec-head"><h2>읽는 순서</h2></div>
+  <p class="sec-note">
+    네 단계로 나눴다. 한 단계씩 끊어 읽어도 그 단계만으로 말이 된다.
+    <span class="tip skim">훑기</span> 표시는 통독하지 말라는 뜻 — 상단 상수나 메서드 목록만 보면 된다.
+  </p>
+
+  <div class="stage">
+    <div class="stage-h">
+      <span class="num">1단계</span><span class="name">무엇을 다루는가</span>
+      <span class="why">모델 · 895줄</span>
+    </div>
+    <ol class="steps">
+      <li>
+        <span class="idx">01</span>
+        <span class="path"><span class="dir">Vn.Authoring/Model/</span>StoryProject.cs</span>
+        <span class="lines">218줄</span>
+        <span class="desc">aggregate root. 대본 · 파일 · 발행 결과 · 결과 조합을 누가 소유하는지가 여기서 끝난다. <em>가장 먼저 읽을 파일.</em></span>
+      </li>
+      <li>
+        <span class="idx">02</span>
+        <span class="path"><span class="dir">Vn.Authoring/Model/</span>StoryNode.cs</span>
+        <span class="lines">351줄</span>
+        <span class="desc">노드 종류가 전부 한 파일에 있다 — <code>SetNode</code> · <code>DialogueNode</code> · <code>PresentationNode</code> · <code>CommandSupplyNode</code>. 그래프의 어휘집이다.</span>
+      </li>
+      <li>
+        <span class="idx">03</span>
+        <span class="path"><span class="dir">Vn.Authoring/Chapters/</span>ChapterGraphModel.cs</span>
+        <span class="lines">326줄</span>
+        <span class="desc"><span class="tip contract">계약</span>챕터 계층. <code>SceneId</code> · <code>Auto</code> · Scene root 판정이 여기 산다. 런타임 수명 계층의 저작 쪽 얼굴이다.</span>
+      </li>
+    </ol>
+  </div>
+
+  <div class="stage">
+    <div class="stage-h">
+      <span class="num">2단계</span><span class="name">어떻게 들어오는가</span>
+      <span class="why">읽기 · 2,034줄</span>
+    </div>
+    <ol class="steps">
+      <li>
+        <span class="idx">04</span>
+        <span class="path"><span class="dir">Vn.Authoring/Chapters/</span>ChapterWorkbookReader.cs</span>
+        <span class="lines">1,413줄</span>
+        <span class="desc"><span class="tip skim">훑기</span>엑셀 규격 전체가 여기 있다. 통독하지 말고 <strong>파일 맨 위 상수</strong>(시트 이름 · 열 이름 배열)만 봐라 — 그것만으로 워크북 규격 v15가 다 보인다.</span>
+      </li>
+      <li>
+        <span class="idx">05</span>
+        <span class="path"><span class="dir">Vn.Authoring/Script/</span>ScriptSynchronizer.cs</span>
+        <span class="lines">621줄</span>
+        <span class="desc">다시 읽었을 때 기존 <code>LineId</code>를 어디까지 이을지 <strong>계획</strong>한다. <em>애매하면 아무것도 안 바꾼다</em> — 이 레포의 성격이 가장 잘 드러나는 파일.</span>
+      </li>
+    </ol>
+  </div>
+
+  <div class="stage">
+    <div class="stage-h">
+      <span class="num">3단계</span><span class="name">어떻게 나가는가</span>
+      <span class="why">검증 · 출력 · 2,285줄 — 여기가 심장</span>
+    </div>
+    <ol class="steps">
+      <li>
+        <span class="idx">06</span>
+        <span class="path"><span class="dir">Vn.Authoring/Chapters/</span>ChapterProgressionExporter.cs</span>
+        <span class="lines">501줄</span>
+        <span class="desc"><span class="tip core">핵심</span>모델 → <code>progression.json</code>. 저작 어휘가 런타임 DTO로 번역되는 유일한 자리다(저작 <code>Int</code> → 런타임 <code>Number</code> 같은 것).</span>
+      </li>
+      <li>
+        <span class="idx">07</span>
+        <span class="path"><span class="dir">Ked.Progression/Loading/</span>ProgressionLoader.cs</span>
+        <span class="lines">446줄</span>
+        <span class="desc"><span class="tip contract">계약</span>유니티 런타임에서 <strong>소스째 복사해 온 사본</strong>. 06이 낸 JSON을 여기 다시 실어 보고, 거부되면 파일을 안 낸다. 고치지 말 것 — 원본이 다른 저장소다.</span>
+      </li>
+      <li>
+        <span class="idx">08</span>
+        <span class="path"><span class="dir">Vn.Authoring/Chapters/</span>ChapterExportService.cs</span>
+        <span class="lines">339줄</span>
+        <span class="desc">증명 캐시 + 내보내기 정책. <strong>⚠ "동기화는 고른 챕터만, 내보내기는 전 챕터"</strong>라는 비대칭이 <code>ExportAll</code> 주석에 서 있다 — 실제로 한 번 물린 함정이다.</span>
+      </li>
+      <li>
+        <span class="idx">09</span>
+        <span class="path"><span class="dir">Vn.Authoring/Rendering/</span>YarnBundleEmitter.cs</span>
+        <span class="lines">999줄</span>
+        <span class="desc"><span class="tip skim">훑기</span>Yarn 번들. <code>StoryNodeTitleOf</code>가 <strong>노드 이름 규칙의 유일한 주인</strong>이다 — 밖에서 이름을 손으로 조립하면 JSON과 Yarn이 갈린다.</span>
+      </li>
+    </ol>
+  </div>
+
+  <div class="stage">
+    <div class="stage-h">
+      <span class="num">4단계</span><span class="name">어떻게 고치는가</span>
+      <span class="why">편집 · 화면 · 4,033줄</span>
+    </div>
+    <ol class="steps">
+      <li>
+        <span class="idx">10</span>
+        <span class="path"><span class="dir">Vn.Authoring/Editing/</span>ProjectEditor.cs</span>
+        <span class="lines">2,415줄</span>
+        <span class="desc"><span class="tip skim">훑기</span><strong>모델을 바꾸는 유일한 통로.</strong> 되돌리기와 알림을 함께 진다. 통독 금지 — 메서드 목록만 훑어 "무엇을 바꿀 수 있는가"의 목록으로 보면 된다.</span>
+      </li>
+      <li>
+        <span class="idx">11</span>
+        <span class="path"><span class="dir">Vn.Authoring/Flow/</span>ConditionFlowResolver.cs</span>
+        <span class="lines">538줄</span>
+        <span class="desc"><em>이 파일이 조건 모델 그 자체다.</em> <code>if</code>/<code>elseif</code>/<code>endif</code>의 의미가 여기 하나에만 있다. 조건 관련 버그는 전부 여기로 수렴한다.</span>
+      </li>
+      <li>
+        <span class="idx">12</span>
+        <span class="path"><span class="dir">Vn.App/Services/</span>AuthoringSession.cs</span>
+        <span class="lines">1,080줄</span>
+        <span class="desc">열린 프로젝트 · 저장 여부 · 선택 · 활성 파일. <strong>화면 코드는 전부 여기서 시작한다.</strong> View를 읽기 전에 이걸 먼저 읽어야 배선이 보인다.</span>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>처음엔 열지 말 것</h2></div>
+  <p class="sec-note">
+    가장 큰 파일 넷은 전부 Avalonia 코드비하인드다. <strong>규칙이 아니라 배선이 들어 있다.</strong>
+    이 넷만 14,284줄 — 전체 <code>src</code>의 20%다. 규칙을 찾으러 여기 들어가면 못 찾는다.
+  </p>
+  <div class="avoid">
+    <div class="lead">화면 배선 — 규칙은 Vn.Authoring에 있다</div>
+    <div class="tablewrap"><table>
+      <tr><td>Vn.App/Views/StageSceneView.cs</td><td>무대 조절창. 탭 하나가 함수 하나</td><td>4,982줄</td></tr>
+      <tr><td>Vn.App/Views/ChapterGraphView.axaml.cs</td><td>챕터 그래프 화면</td><td>3,860줄</td></tr>
+      <tr><td>Vn.App/Views/GraphEditorView.axaml.cs</td><td>연출 그래프 화면</td><td>2,757줄</td></tr>
+      <tr><td>Vn.App/Views/DialogueNodeEditor.axaml.cs</td><td>대사 카드 편집기</td><td>2,685줄</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>전체 지도</h2></div>
+  <p class="sec-note">
+    폴더별 파일과 줄 수. 검색하면 파일을 바로 찾을 수 있고, [읽는 순서 12개]를 누르면
+    위에서 고른 파일들이 지도 어디에 있는지 표시된다.
+  </p>
+  <div class="controls">
+    <input id="q" type="search" placeholder="파일명 검색 — 예: Workbook, Emitter, Flow" autocomplete="off">
+    <button class="toggle" id="keyBtn" aria-pressed="false" type="button">읽는 순서 12개</button>
+    <span class="hit" id="hit"></span>
+  </div>
+  <div id="map"></div>
+</section>
+
+<footer>
+  <p>
+    저장소의 정본 문서는 <code>docs/external-overview.md</code>(진입점)와
+    <code>ARCHITECTURE.md</code> §5.1(“이 기능은 어느 파일” 빠른 조회)이다.
+    “왜 이렇게 됐지?”는 거의 다 <code>docs/run-log.md</code>에 답이 있다.
+  </p>
+  <p>줄 수는 <code>master@59b08d6</code> 기준. <code>obj/</code>·<code>bin/</code>·에셋 폴더는 제외했다.</p>
+</footer>
+
+</div>
+
+<script id="mapdata" type="application/json">{"Ked.Presentation.Core":{"Ease":[["EaseFunctions.cs",260],["CurveFunctions.cs",131],["OscillationFunctions.cs",75],["CurveKind.cs",70],["EaseKind.cs",49]],"Transforms":[["RectChainMath.cs",169],["SettledFocusMath.cs",127],["RectNodeState.cs",108]],"Tokens":[["UnitToken.cs",101],["DurationToken.cs",86],["NumberToken.cs",14]],"State":[["StageState.cs",302],["RectNodeTree.cs",180],["StageStateComparer.cs",140],["PlacementTargetLedger.cs",123],["ShotIntentState.cs",51]],"Primitives":[["Vec3.cs",65],["Rgba.cs",51],["Vec2.cs",47]],"Tuning":[["PresetTuningDtos.cs",254],["PortraitDimensionsDto.cs",190],["RigSchemaLoader.cs",155],["DepthLevelLabels.cs",92],["RigSchemaDto.cs",90],["RoleAnchorTuningDto.cs",69]],"Reduce":[["StageReducer.cs",316],["YarnCommandTextExtractor.cs",275],["StageReducer.Staging.cs",267],["FocusStageReductions.cs",234],["StageReducer.Slot.cs",134],["SlideMotion.cs",130],["StageReducer.Shot.cs",108],["StageNodeClaim.cs",105],["CharPlacementReductions.cs",97],["StageReducer.Show.cs",92],["SetAnchorReduction.cs",91],["PortraitSizingReduction.cs",72],["StageReducer.Portrait.cs",61],["StageReducer.Placement.cs",60],["ShotReductions.cs",59]]},"Ked.Progression":{"Loading":[["ProgressionLoader.cs",447],["LoadResults.cs",65]],"Loading/Dto":[["EpisodeOptionDto.cs",26],["EpisodeNodeDto.cs",22],["ChapterProgressionDto.cs",16],["ConditionDto.cs",14],["StatChangeDto.cs",14],["StatDto.cs",14]],"Spec":[["ChapterInvariants.cs",429],["ChapterProgression.cs",140],["EpisodeOption.cs",88],["ScenarioInvariants.cs",65],["ScenarioProgression.cs",59],["EpisodeNode.cs",45]],"Vocabulary":[["StatDefinition.cs",70],["ProgressionCondition.cs",69],["ProgressionDiagnostic.cs",50],["ComparisonOp.cs",12]],"Reachability":[["ChapterReachability.cs",455],["ReachabilityResult.cs",40],["StatSpan.cs",28],["UnreachableEpisode.cs",24],["UnreachableCause.cs",10]],"State":[["ProgressionState.cs",126],["StatChange.cs",35]],"Transition":[["ChapterTransition.cs",80],["ConditionEvaluator.cs",47],["ResolvedOption.cs",46],["ChapterAdvance.cs",37]]},"Vn.App":{".":[["MainWindow.axaml.cs",1553],["App.axaml.cs",94],["MainWindow.axaml",91],["Program.cs",73],["App.axaml",26]],"Views":[["StageSceneView.cs",4982],["ChapterGraphView.axaml.cs",3860],["GraphEditorView.axaml.cs",2757],["DialogueNodeEditor.axaml.cs",2685],["PresentationNodeEditor.axaml.cs",1343],["MiniStagePreview.axaml.cs",1291],["SetNodeEditor.axaml.cs",1246],["PresentationScriptPanel.cs",821],["AssetExplorerView.axaml.cs",768],["ChapterGraphView.axaml",591],["EaseCurveEditor.cs",375],["StatChangeEditor.cs",316],["EaseCurveWindow.cs",259],["StageIndicators.cs",259],["StagePlaybackControls.cs",228],["MiniStagePreview.axaml",171],["DialogueNodeEditor.axaml",155],["GraphEditorView.axaml",131],["DetourReturnPlayback.cs",106],["SetNodeEditor.axaml",73],["BranchPalette.cs",62],["AssetExplorerView.axaml",57],["PresentationNodeEditor.axaml",34]],"Services":[["AuthoringSession.cs",1080],["AudioPreview.cs",301],["AppSettingsService.cs",198],["LiveOutputService.cs",197],["YarnOutputVerification.cs",130],["StartupLog.cs",97],["ProjectRefreshPlanner.cs",85],["AudioCueRouter.cs",84],["PreviewImageCache.cs",67],["SpreadsheetAssociation.cs",67],["AssetRootPicker.cs",52],["UiGuard.cs",45]]},"Vn.Authoring":{"Editing":[["ProjectEditor.cs",2415],["ProjectEditor.Scripts.cs",701],["PresentationStageActions.cs",322],["ProjectEditor.Results.cs",313],["EaseCurveCommandActions.cs",104],["ProjectChangedEventArgs.cs",75],["StoryFileImportOutcome.cs",12]],"Flow":[["StageMotionPlan.cs",628],["StagePlayback.cs",610],["ConditionFlowResolver.cs",538],["StageSceneComposer.cs",443],["BranchFlow.cs",442],["MiniStageFold.cs",349],["ConditionChoices.cs",241],["CoreStageFold.cs",240],["PresentationScriptModel.cs",220],["AvailableConditionResolver.cs",205],["ConditionSimulation.cs",180],["MotionInspection.cs",175],["NodeConnections.cs",173],["DialogueScriptResolver.cs",167],["AvailablePresentationCommandResolver.cs",164],["ConditionExpression.cs",156],["DialogueFlow.cs",130],["PlaybackPath.cs",115],["VariableTokens.cs",90],["StatFold.cs",87],["PresentationBindingResolver.cs",85],["StageFades.cs",77],["ChoiceOptionBundle.cs",73],["EaseCurveBaker.cs",66],["StageTransitions.cs",59],["ConnectedSetNodeResolver.cs",48],["BranchAnchor.cs",46]],"Results":[["DialoguePublisher.cs",570],["PresentationPublisher.cs",280],["RuntimeComposition.cs",231],["DialogueResult.cs",156],["ResultRepository.cs",131],["NodeExportResolver.cs",128],["LiveNodeComposer.cs",123],["ResultIdentity.cs",105],["PresentationResult.cs",90]],"Chapters":[["ChapterWorkbookReader.cs",1413],["ChapterWorkbookWriter.cs",1114],["ChapterWorkbookMigrator.cs",1049],["EpisodeSyncService.cs",738],["EpisodeLibrary.cs",678],["ChapterProgressionExporter.cs",501],["EpisodeWorkbookReader.cs",482],["EpisodeWorkbookMigrator.cs",470],["ChapterReachabilityProver.cs",432],["ConditionExpressionParser.cs",351],["ChapterExportService.cs",339],["EpisodeWorkbookWriter.cs",330],["ChapterGraphModel.cs",326],["EpisodeFlattener.cs",266],["ChapterRunState.cs",250],["ChapterValidator.cs",231],["EpisodeSyncRunner.cs",228],["ChapterDeleter.cs",216],["ChapterFolderWatcher.cs",188],["ChapterRenamer.cs",179],["ChapterBoard.cs",170],["SpeakerRenamer.cs",155],["ChapterBranchPlanner.cs",147],["ChapterDiagnostic.cs",144],["StatDeltaParser.cs",139],["EpisodeWorkbookModel.cs",126],["ChapterReleaseBaseline.cs",120],["ChapterLibrary.cs",108],["WorkbookFolderFingerprint.cs",103],["WorkbookParseCache.cs",102],["ChapterFixtureWalker.cs",99],["WorkbookMigrationGate.cs",85],["EpisodeLineEditor.cs",79],["ConditionYarnTranslator.cs",60],["ChapterExportBytes.cs",20],["XlsxReadException.cs",19]],"Graph":[["GraphProjectionBuilder.cs",377],["GraphProjection.cs",166],["OrthogonalEdgeRouter.cs",30]],"Model":[["StoryNode.cs",351],["DialogueLineExtension.cs",229],["StoryProject.cs",218],["PresentationNode.cs",157],["EaseCurve.cs",96],["StageQuickCommand.cs",93],["NodeLink.cs",74],["AssetRootSettings.cs",67],["Identifier.cs",66],["StoryFile.cs",39],["ExportFormatSelection.cs",31],["WriterSpeaker.cs",22]],"Script":[["ScriptSynchronizer.cs",621],["ScenarioTextParser.cs",322],["ScriptParser.cs",200],["ScriptDocument.cs",164]],"Serialization":[["ProjectManifestJson.cs",771],["StoryNodeJson.cs",748],["ResultStoreJson.cs",646],["JsonSupport.cs",384],["ProjectStore.cs",283],["ProjectSnapshotCodec.cs",238],["ScriptDocumentJson.cs",197],["StoryFileJson.cs",93]],"Rendering":[["YarnBundleEmitter.cs",999],["ResultDocumentComposer.cs",678],["CsvBundleExporter.cs",297],["DocumentOutputOptions.cs",247],["DocumentPreviewFormatter.cs",229],["OutputManifest.cs",224],["RenderedDocument.cs",149],["YarnSyntax.cs",143],["YarnPreviewFormatter.cs",138],["Tier1Namespace.cs",126],["WorkingDialoguePreview.cs",108],["ILocalizedLineProvider.cs",10]],"Definition":[["GameDefinition.cs",339],["PresentationCommandCatalog.cs",283],["CommandText.cs",215],["GameDefinitionStore.cs",156],["ArgumentTokenCandidates.cs",54]]},"Vn.Cli":{".":[["Program.cs",261]]},"Vn.Core":{".":[["VnProjectAnalyzer.cs",135]],"Story":[["StoryLine.cs",46],["StoryBranch.cs",39],["StoryBlock.cs",38],["StoryCommand.cs",24],["StoryNode.cs",20],["StoryElement.cs",16],["StoryReference.cs",12],["StoryJump.cs",8]],"Diagnostics":[["VnDiagnosticCodes.cs",126],["VnDiagnostic.cs",14],["DiagnosticSeverity.cs",8]],"Yarn":[["YarnLineIndex.cs",409],["YarnBlockIndex.cs",382],["YarnCompilerAdapter.cs",344],["YarnSymbolIndex.cs",302],["YarnBlockScanner.cs",229],["YarnDiagnosticMapper.cs",164],["YarnPaths.cs",53],["YarnBuiltIns.cs",26],["YarnCompileOutput.cs",10]],"Analysis":[["AnalysisReport.cs",16]],"Schema":[["GameSchemaLoader.cs",254],["SchemaTypeMapper.cs",161],["GameSchema.cs",142]],"Validation":[["WritingConventionValidator.cs",141],["SchemaUsageValidator.cs",137],["NameSuggester.cs",70]],"Reporting":[["ListReportFormatter.cs",99],["StablePath.cs",49]]}}</script>
+<script>
+(function(){
+  var DATA = JSON.parse(document.getElementById('mapdata').textContent);
+  var ROLE = {
+    'Vn.Authoring':  ['저작 도메인 — 제품 핵심. 화면을 모른다','tool'],
+    'Vn.App':        ['Avalonia 화면과 OS 연결. 규칙을 소유하지 않는다','tool'],
+    'Vn.Core':       ['Yarn 파싱·진단. 저작 모델을 모른다','runtime'],
+    'Vn.Cli':        ['Vn.Core의 콘솔 진입점','runtime'],
+    'Ked.Progression':['진행 검증 오라클 — 런타임 복사 반입본','runtime'],
+    'Ked.Presentation.Core':['무대 상태 계산 — 런타임 복사 반입본','runtime']
+  };
+  var ORDER = ['Vn.Authoring','Vn.App','Ked.Progression','Ked.Presentation.Core','Vn.Core','Vn.Cli'];
+  var KEY = ['StoryProject.cs','StoryNode.cs','ChapterGraphModel.cs','ChapterWorkbookReader.cs',
+             'ScriptSynchronizer.cs','ChapterProgressionExporter.cs','ProgressionLoader.cs',
+             'ChapterExportService.cs','YarnBundleEmitter.cs','ProjectEditor.cs',
+             'ConditionFlowResolver.cs','AuthoringSession.cs'];
+
+  var mapEl = document.getElementById('map');
+  var qEl = document.getElementById('q');
+  var keyBtn = document.getElementById('keyBtn');
+  var hitEl = document.getElementById('hit');
+  var showKey = false;
+
+  function esc(s){ return s.replace(/[&<>"]/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function mark(name, q){
+    if(!q) return esc(name);
+    var i = name.toLowerCase().indexOf(q);
+    if(i < 0) return esc(name);
+    return esc(name.slice(0,i)) + '<mark>' + esc(name.slice(i,i+q.length)) + '</mark>' + esc(name.slice(i+q.length));
+  }
+
+  function render(){
+    var q = qEl.value.trim().toLowerCase();
+    var shown = 0, html = '';
+    ORDER.forEach(function(proj){
+      var folders = DATA[proj];
+      if(!folders) return;
+      var body = '', projTotal = 0, projShown = 0;
+      Object.keys(folders).forEach(function(f){
+        var files = folders[f], rows = '';
+        files.forEach(function(it){
+          var name = it[0], n = it[1];
+          projTotal += n;
+          if(q && name.toLowerCase().indexOf(q) < 0) return;
+          var cls = 'file';
+          if(n >= 900) cls += ' big';
+          if(showKey && KEY.indexOf(name) >= 0) cls += ' key';
+          rows += '<div class="' + cls + '"><span class="fn" title="' + esc(name) + '">' +
+                  mark(name, q) + '</span><span class="ln">' + n.toLocaleString() + '</span></div>';
+          projShown++; shown++;
+        });
+        if(rows){
+          body += '<div class="folder"><div class="folder-n">' +
+                  esc(f === '.' ? '(루트)' : f) + '</div><div class="files">' + rows + '</div></div>';
+        }
+      });
+      if(!body) return;
+      var role = ROLE[proj] || ['',''];
+      html += '<div class="proj"><div class="proj-h"><span class="nm">' + esc(proj) +
+              '</span><span class="role">' + esc(role[0]) + '</span><span class="tot">' +
+              projShown + '개 · ' + projTotal.toLocaleString() + '줄</span></div>' + body + '</div>';
+    });
+    mapEl.innerHTML = html || '<p class="sec-note">일치하는 파일이 없다.</p>';
+    hitEl.textContent = q ? shown + '개 일치' : '';
+  }
+
+  qEl.addEventListener('input', render);
+  keyBtn.addEventListener('click', function(){
+    showKey = !showKey;
+    keyBtn.setAttribute('aria-pressed', String(showKey));
+    render();
+  });
+  render();
+})();
+</script>

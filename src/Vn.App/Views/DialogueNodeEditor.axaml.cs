@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
@@ -112,8 +111,6 @@ public partial class DialogueNodeEditor : UserControl
             Rebuild(); // 칸의 읽기 전용은 카드를 다시 만들어야 따라온다
         });
         ApplyScenarioButton.Click += (_, _) => UiGuard.Run(_session, "텍스트 반영", ApplyScenario);
-        ExportNodeButton.Click += async (_, _) => await ExportNodeAsync(csv: false);
-        ExportNodeCsvButton.Click += async (_, _) => await ExportNodeAsync(csv: true);
 
         EditorTabs.SelectionChanged += (_, _) => RefreshPreview();
 
@@ -373,7 +370,6 @@ public partial class DialogueNodeEditor : UserControl
         if (_session is null || _session.Project.FindDialogue(_nodeId) is not { } node)
         {
             LineHost.Children.Clear();
-            ResultHost.Children.Clear();
             ClearPreview();
             return;
         }
@@ -509,8 +505,6 @@ public partial class DialogueNodeEditor : UserControl
             }
 
             AddOrphanCards(node, script);
-            BuildResults(node);
-            RefreshExportState(node);
             ShowProblems(flow);
             RefreshBranchStates(node);
             RefreshPreviewCore(node);
@@ -2431,63 +2425,14 @@ public partial class DialogueNodeEditor : UserControl
         }
     }
 
-    // ── 발행 ────────────────────────────────────────────────────────────────
-
-    private void BuildResults(DialogueNode node)
-    {
-        ResultHost.Children.Clear();
-
-        DialogueDraft draft = _session!.Editor.InspectDialoguePublish(node.Id, _session.Definition);
-        PublishStatusText.Text = draft.CanPublish
-            ? string.Empty
-            : $"자동 발행이 막혀 있습니다: {draft.BlockingSummary()}";
-
-        foreach (DialogueResult result in _session.Project.Results.DialogueResultsOf(node.Id).Reverse())
-        {
-            var content = new StackPanel { Spacing = 2 };
-
-            content.Children.Add(new TextBlock
-            {
-                Text = $"v{result.Identity.Version} · {result.Lines.Count}줄 · {result.Locale}",
-                FontWeight = FontWeight.SemiBold
-            });
-
-            content.Children.Add(new TextBlock
-            {
-                Text = $"{result.Identity.ResultId} · {result.Identity.ContentHash[..19]}…",
-                FontSize = 10,
-                Opacity = 0.6
-            });
-
-            content.Children.Add(new TextBlock
-            {
-                Text = result.PublishedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
-                FontSize = 10,
-                Opacity = 0.6
-            });
-
-            ResultHost.Children.Add(new Border
-            {
-                Padding = new Thickness(10),
-                CornerRadius = new CornerRadius(6),
-                BorderThickness = new Thickness(1),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(45, 128, 128, 128)),
-                Child = content
-            });
-        }
-
-        if (ResultHost.Children.Count == 0)
-        {
-            ResultHost.Children.Add(new TextBlock
-            {
-                Text = "아직 발행한 결과가 없습니다.",
-                Opacity = 0.6
-            });
-        }
-    }
-
-    // Publish()(수동 발행)는 2026-08-21에 사라졌다 — 무대 프리뷰에서 씬을 고르면
-    // 채널이 자동으로 발행한다(ProjectEditor.EnsurePresentationChannel).
+    // ⛔ [발행] 탭과 BuildResults()는 2026-09-15에 사라졌다 (소유자: "저거 솔직히
+    //    필요없어 보이는데"). 그 탭이 보여 주던 것은 발행 상태 문구와 발행 이력
+    //    목록뿐이었고, 둘 다 [이 상태를 발행]이 2026-08-21에 자동이 된 뒤로는
+    //    읽기 전용 현황판이었다 — 현황판은 볼 이유가 사라지면 지운다([편집 자료]
+    //    현황판과 같은 결). ⚠ 발행 자체는 그대로다: 자동 발행
+    //    (ProjectEditor.EnsurePresentationChannel)·Results 층·연출 바인딩·출력은
+    //    한 줄도 안 건드렸다. 사라진 것은 그것을 들여다보던 창 하나다.
+    //    (수동 발행 Publish()는 그보다 앞선 2026-08-21에 이미 없어졌다.)
 
     // ── 출구 후보 ───────────────────────────────────────────────────────────
     //
@@ -2556,117 +2501,11 @@ public partial class DialogueNodeEditor : UserControl
         return 0;
     }
 
-    // ── 노드 단위 내보내기 ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// 이 대사 노드의 내보내기 짝(연출 공급 연결에서 계산) 상태를 보여 준다.
-    /// </summary>
-    private void RefreshExportState(DialogueNode node)
-    {
-        // 발행은 게이트가 아니다 (D-2). 내보내기 상태는 라이브 합성과 같은 계산이다.
-        LiveComposition composition = LiveNodeComposer.Compose(
-            _session!.Project, node.Id, _session.Definition, DateTimeOffset.UtcNow);
-
-        ExportNodeButton.IsEnabled = composition.CanWrite;
-        ExportNodeCsvButton.IsEnabled = composition.CanWrite;
-
-        if (!composition.CanWrite)
-        {
-            ExportPairText.Text = string.Join(" / ", composition.BlockingProblems);
-            return;
-        }
-
-        string pair = composition.WorkingPresentation is not null
-            ? "현재 대사 + 공급된 연출 (작업 중 상태)"
-            : "현재 대사 (연출 공급 없음)";
-        string warnings = composition.Warnings.Count > 0
-            ? " · " + string.Join(" / ", composition.Warnings)
-            : string.Empty;
-        ExportPairText.Text = pair + warnings;
-    }
-
-    /// <summary>이 노드 하나만 폴더로 내보낸다. 전체·라이브 출력과 같은 길(LiveNodeComposer)을 지난다.</summary>
-    private async Task ExportNodeAsync(bool csv)
-    {
-        if (_session is null || _nodeId is null)
-        {
-            return;
-        }
-
-        try
-        {
-            // 선택한 양식만 산출된다 (X13) — 노드 단위 내보내기도 같은 선택을 따른다.
-            if (csv && !_session.Project.ExportFormats.AnyCsv)
-            {
-                _session.SetStatus("양식 선택에서 CSV가 전부 꺼져 있습니다. [양식…]에서 켜세요.");
-                return;
-            }
-
-            if (!csv && !_session.Project.ExportFormats.YarnTrio)
-            {
-                _session.SetStatus("양식 선택에서 Yarn 트리오가 꺼져 있습니다. [양식…]에서 켜세요.");
-                return;
-            }
-
-            // 발행은 게이트가 아니다 (D-2) — 라이브 출력과 같은 합성(현재 작업 상태 Freeze)이다.
-            LiveComposition composition = LiveNodeComposer.Compose(
-                _session.Project, _nodeId, _session.Definition, DateTimeOffset.UtcNow);
-
-            if (!composition.CanWrite)
-            {
-                _session.SetStatus($"내보낼 수 없습니다. {string.Join(" / ", composition.BlockingProblems)}");
-                return;
-            }
-
-            IStorageProvider? storage = TopLevel.GetTopLevel(this)?.StorageProvider;
-
-            if (storage is null || !storage.CanPickFolder)
-            {
-                _session.SetStatus("이 환경에서는 폴더 선택 창을 열 수 없습니다.");
-                return;
-            }
-
-            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(
-                new FolderPickerOpenOptions
-                {
-                    Title = csv ? "이 노드의 CSV를 내보낼 폴더" : "이 노드의 .yarn을 내보낼 폴더",
-                    AllowMultiple = false
-                });
-
-            if (folders.Count == 0)
-            {
-                return;
-            }
-
-            IReadOnlyList<string> written;
-
-            if (csv)
-            {
-                written = CsvBundleExporter.WriteTo(
-                    CsvBundleExporter.Export(
-                        composition.WorkingDialogue!,
-                        composition.WorkingPresentation,
-                        _session.Project,
-                        _session.Definition),
-                    folders[0].Path.LocalPath,
-                    _session.Project.ExportFormats);
-            }
-            else
-            {
-                written = YarnBundleEmitter.WriteBundles(
-                    new[] { composition.Bundle! },
-                    folders[0].Path.LocalPath);
-            }
-
-            _session.SetStatus(
-                $"{written.Count}개 파일을 내보냈습니다: " +
-                string.Join(", ", written.Select(System.IO.Path.GetFileName)));
-        }
-        catch (Exception exception)
-        {
-            _session.SetStatus($"내보내기에 실패했습니다. {exception.Message}");
-        }
-    }
+    // ⛔ 노드 단위 내보내기([이 노드 내보내기…]·[이 노드 CSV…])는 2026-09-15에
+    //    [발행] 탭과 함께 사라졌다. 툴바의 [내보내기…]·[CSV 내보내기…]가 같은
+    //    PickNodeExportsAsync로 노드를 골라 내보내므로 한 일에 창구가 둘이었다
+    //    (MainWindow.OnExportClick·OnCsvExportClick). 계산 경로도 같았다 —
+    //    LiveNodeComposer.Compose 하나를 양쪽이 지났다. 지운 것은 두 번째 창구뿐이다.
 
     private static Button SmallButton(string glyph, Action action)
     {
