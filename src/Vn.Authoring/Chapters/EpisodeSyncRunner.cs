@@ -137,20 +137,22 @@ public static class EpisodeSyncRunner
                 continue;
             }
 
-            // 구판 9열 대본을 v10 블록 규격으로 (2026-08-17). 필요 없는 파일에는 손대지
-            // 않으므로 매 동기화마다 불려도 쓰기는 구판을 처음 만난 그 한 번뿐이다.
+            // 구판 대본을 현행 규격(v15 4열)으로. 필요 없는 파일에는 손대지 않으므로
+            // 매 동기화마다 불려도 쓰기는 구판을 처음 만난 그 한 번뿐이다.
             EpisodeWorkbookMigrator.MigrationResult migration =
                 EpisodeWorkbookMigrator.Migrate(path);
 
-            if (migration.Migrated)
+            // 이행기가 할 말이 있으면(조건 블록 몇 행을 걷었는지) 그 말을 그대로 싣는다 —
+            // 사람의 원고에서 행이 사라진 일이라 수를 밝히지 않으면 조용한 손실이 된다.
+            if (migration.Failure is { } notice)
+            {
+                notices.Add(notice);
+            }
+            else if (migration.Migrated)
             {
                 notices.Add(
-                    $"'{Path.GetFileName(path)}'를 새 대본 규격(IF~END 블록)으로 이행했습니다" +
+                    $"'{Path.GetFileName(path)}'를 새 대본 규격(4열)으로 이행했습니다" +
                     "(이전 상태는 .bak). 엑셀이 열려 있었다면 닫았다 다시 열어 주세요.");
-            }
-            else if (migration.Failure is { } failure)
-            {
-                notices.Add(failure);
             }
 
             reports.Add(EpisodeSyncService.Sync(editor, definition, fileId, path, model));
