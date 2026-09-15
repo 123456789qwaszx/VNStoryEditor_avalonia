@@ -503,10 +503,6 @@ public sealed class ExcelNodeLockTests
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
         File.Copy(SamplePath, workbook);
 
-        // ⚠ 견본은 현행 규격이 아니다 — 앱에서는 동기화 앞에 이행기가 선다
-        // (EpisodeSyncRunner). Sync를 직접 부르는 이 헬퍼도 같은 순서를 밟아야 한다.
-        EpisodeWorkbookMigrator.Migrate(workbook);
-
         EpisodeSyncReport report = EpisodeSyncService.Sync(
             session.Editor, session.Definition, fileId, workbook, chapter);
 

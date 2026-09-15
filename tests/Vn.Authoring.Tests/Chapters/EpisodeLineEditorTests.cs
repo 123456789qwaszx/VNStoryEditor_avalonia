@@ -222,10 +222,6 @@ public sealed class EpisodeLineEditorTests : IDisposable
         string workbook = Path.Combine(folder, EpisodeId + ".xlsx");
         File.Copy(SamplePath, workbook);
 
-        // ⚠ 견본은 현행 규격이 아니다 — 앱에서는 동기화 앞에 이행기가 선다(EpisodeSyncRunner).
-        // 여기서도 같은 순서를 밟아야 리더가 읽는다.
-        EpisodeWorkbookMigrator.Migrate(workbook);
-
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
 
         EpisodeSyncReport report =

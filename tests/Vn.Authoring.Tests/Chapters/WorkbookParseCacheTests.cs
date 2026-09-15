@@ -139,17 +139,11 @@ public sealed class WorkbookParseCacheTests : IDisposable
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// 견본은 챕터 시트와 대본 시트를 함께 갖고 있어 양쪽 리더에 쓴다.
-    ///
-    /// ⚠ 견본은 현행 규격이 아니다 — 대본으로 쓰려면 이행을 태워야 리더가 읽는다.
-    /// 챕터 리더는 그대로 읽으므로 이행이 그쪽을 건드리지 않는다(대본 시트만 고친다).
-    /// </summary>
+    /// <summary>견본은 챕터 시트와 대본 시트를 함께 갖고 있어 양쪽 리더에 쓴다.</summary>
     private string CopySample(string fileName)
     {
         string path = Path.Combine(_root, fileName);
         File.Copy(SamplePath, path, overwrite: true);
-        EpisodeWorkbookMigrator.Migrate(path);
         return path;
     }
 

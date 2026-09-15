@@ -132,10 +132,6 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         string path = Path.Combine(folder, name + ".xlsx");
         File.Copy(SamplePath, path);
 
-        // ⚠ 견본은 현행 규격이 아니다 — 여는 길목마다 이행기가 선다. 여기서도 태워야
-        // 리더가 읽을 수 있고, 그것이 실제 앱이 이 파일을 만나는 모양이다.
-        EpisodeWorkbookMigrator.Migrate(path);
-
         return path;
     }
 

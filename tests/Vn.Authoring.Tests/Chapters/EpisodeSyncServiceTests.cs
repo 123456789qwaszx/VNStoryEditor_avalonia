@@ -514,14 +514,13 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     }
 
     /// <summary>
-    /// 견본을 대본 워크북 자리에 놓는다. ⚠ 견본은 현행 규격이 아니므로 이행을 태운다 —
-    /// 앱에서도 동기화 앞에 이행기가 선다(<c>EpisodeSyncRunner</c>).
+    /// 견본을 대본 워크북 자리에 놓는다. 이행을 태우지 않는다 — 견본이 <b>현행 규격</b>이라
+    /// 그대로 읽혀야 하고, 낡으면 여기서 바로 깨지는 편이 조용히 이행되는 것보다 낫다.
     /// </summary>
     private string CopySampleAs(string fileName)
     {
         string path = Path.Combine(_directory, fileName);
         File.Copy(SamplePath, path);
-        EpisodeWorkbookMigrator.Migrate(path);
         return path;
     }
 
