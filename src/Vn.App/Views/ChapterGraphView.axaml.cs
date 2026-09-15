@@ -11,6 +11,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Definition;
 
 namespace Vn.App.Views;
@@ -1250,35 +1251,21 @@ public partial class ChapterGraphView : UserControl
 
     private void Reload()
     {
-        // 구판 워크북 규격 이행 (2026-08-16) — 필요 없는 파일에는 손대지 않으므로 매번
-        // 불러도 쓰기는 구판을 처음 만난 그 한 번뿐이다. 실패(잠금)는 상태줄로 알리고
-        // 리더가 구판 그대로 읽으며 머리글 경고를 세운다.
-        if (ChapterLibrary.FolderFor(_session?.ProjectPath) is { } chapterFolder &&
-            Directory.Exists(chapterFolder))
-        {
-            foreach (string workbook in Directory.EnumerateFiles(chapterFolder, "*.xlsx")
-                         .Where(file => !IoPath.GetFileName(file).StartsWith("~$", StringComparison.Ordinal)))
-            {
-                ChapterWorkbookMigrator.MigrationResult migration =
-                    ChapterWorkbookMigrator.Migrate(workbook);
+        // 워크북 → 모델은 ChapterImportService 하나를 지난다 (R-A, 2026-09-15).
+        // 이행·읽기의 순서와 규칙은 그쪽이 갖고, 여기 남은 것은 언제 부르나와 그 결과를
+        // 화면에 얹는 일뿐이다.
+        //
+        // ⚠ 아직 매번 부른다 — 감시자를 떼고 명시적 [가져오기] 한 번으로 바꾸는 것이
+        //    R-A의 다음 조각이다. 지금 바뀐 것은 자리이지 횟수가 아니다.
+        ChapterImport import = ChapterImportService.Run(_session?.ProjectPath, _session?.Definition);
 
-                if (migration.Migrated)
-                {
-                    _session?.SetStatus(
-                        $"'{IoPath.GetFileName(workbook)}'를 새 시트 규격으로 이행했습니다" +
-                        "(이전 상태는 .bak). 엑셀이 열려 있었다면 닫았다 다시 열어 주세요.");
-                }
-                else if (migration.Failure is { } failure)
-                {
-                    _session?.SetStatus(failure);
-                }
-            }
+        foreach (string notice in import.Notices)
+        {
+            _session?.SetStatus(notice);
         }
 
         _entries.Clear();
-        _entries.AddRange(ChapterLibrary.Load(
-            ChapterLibrary.FolderFor(_session?.ProjectPath),
-            _session?.Definition));
+        _entries.AddRange(import.Entries);
 
         _updatingCombo = true;
         ChapterCombo.ItemsSource = _entries.Select(entry => entry.ChapterId).ToList();
