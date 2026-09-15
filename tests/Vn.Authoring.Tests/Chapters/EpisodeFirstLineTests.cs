@@ -33,13 +33,13 @@ public sealed class EpisodeFirstLineTests : IDisposable
         using var workbook = new XLWorkbook(EpisodeLibrary.PathFor(_directory, "ep01"));
         IXLWorksheet sheet = workbook.Worksheets.First();
 
-        // v14 6열 — 내용은 F(6). 인덱스는 깔기가 이미 놓은 번호(2행 = 10)를 그대로 쓴다.
-        Assert.Equal(EpisodeLibrary.DefaultFirstLine, sheet.Cell(2, 6).GetString());
-        Assert.Equal(10, sheet.Cell(2, 3).GetValue<int>());
+        // v15 4열 — 내용은 D(4). 인덱스는 깔기가 이미 놓은 번호(2행 = 10)를 그대로 쓴다.
+        Assert.Equal(EpisodeLibrary.DefaultFirstLine, sheet.Cell(2, 4).GetString());
+        Assert.Equal(10, sheet.Cell(2, 1).GetValue<int>());
 
         // 화자는 비워 둔다 — 빈 화자 = 지문. LineId는 첫 동기화가 발급한다.
-        Assert.Equal(string.Empty, sheet.Cell(2, 5).GetString());
-        Assert.Equal(string.Empty, sheet.Cell(2, 4).GetString());
+        Assert.Equal(string.Empty, sheet.Cell(2, 3).GetString());
+        Assert.Equal(string.Empty, sheet.Cell(2, 2).GetString());
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class EpisodeFirstLineTests : IDisposable
 
         using var workbook = new XLWorkbook(EpisodeLibrary.PathFor(_directory, "ep02"));
 
-        Assert.Equal(string.Empty, workbook.Worksheets.First().Cell(2, 6).GetString());
+        Assert.Equal(string.Empty, workbook.Worksheets.First().Cell(2, 4).GetString());
     }
 
     [Fact]
@@ -67,19 +67,19 @@ public sealed class EpisodeFirstLineTests : IDisposable
         Assert.True(seeded);
 
         using var workbook = new XLWorkbook(path);
-        Assert.Equal(EpisodeLibrary.DefaultFirstLine, workbook.Worksheets.First().Cell(2, 6).GetString());
+        Assert.Equal(EpisodeLibrary.DefaultFirstLine, workbook.Worksheets.First().Cell(2, 4).GetString());
     }
 
     [Fact]
     public void 사람의_흔적이_있으면_물러난다()
     {
-        // 유형·화자·내용 어느 칸이든 — 쓰다 만 대본에 툴이 글을 얹으면 "안 쓴 글이 생겼다"가 된다.
+        // 화자·내용 어느 칸이든 — 쓰다 만 대본에 툴이 글을 얹으면 "안 쓴 글이 생겼다"가 된다.
         EpisodeLibrary.EnsureWorkbook(_directory, "ep04");
         string path = EpisodeLibrary.PathFor(_directory, "ep04");
 
         using (var workbook = new XLWorkbook(path))
         {
-            workbook.Worksheets.First().Cell(7, 6).SetValue("사람이 적던 대사");
+            workbook.Worksheets.First().Cell(7, 4).SetValue("사람이 적던 대사");
             workbook.Save();
         }
 
@@ -90,7 +90,7 @@ public sealed class EpisodeFirstLineTests : IDisposable
         Assert.False(seeded);
 
         using var reread = new XLWorkbook(path);
-        Assert.Equal(string.Empty, reread.Worksheets.First().Cell(2, 6).GetString());
-        Assert.Equal("사람이 적던 대사", reread.Worksheets.First().Cell(7, 6).GetString());
+        Assert.Equal(string.Empty, reread.Worksheets.First().Cell(2, 4).GetString());
+        Assert.Equal("사람이 적던 대사", reread.Worksheets.First().Cell(7, 4).GetString());
     }
 }

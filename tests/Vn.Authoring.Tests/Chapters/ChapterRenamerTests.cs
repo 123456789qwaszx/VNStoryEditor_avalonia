@@ -96,6 +96,9 @@ public sealed class ChapterRenamerTests : IDisposable
             EpisodeLibrary.FindExisting(EpisodeLibrary.FolderFor(world.ProjectPath, NewId)!, "main05.02")!,
             chapter);
 
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            world.Editor, GameDefinition.Empty, world.FileId, chapter);
+
         Assert.Single(
             world.Editor.Project.EnumerateNodes().OfType<SetNode>(),
             node => EpisodeSyncService.IsConditionSupplyNodeName(node.Name));
@@ -205,6 +208,11 @@ public sealed class ChapterRenamerTests : IDisposable
             editor, GameDefinition.Empty, board.Id,
             Path.Combine(episodes, "main05.02.xlsx"), chapter);
 
+        // v15 — 조건 공급 노드를 세우는 것은 <b>챕터 쪽</b>이다. 예전에는 대본의 `조건라벨`을
+        // 거두며 Sync가 함께 세웠는데 그 칸이 폐지됐다(EpisodeSyncRunner가 부르는 순서 그대로).
+        EpisodeSyncService.SupplyChapterConditionsToBoard(
+            editor, GameDefinition.Empty, board.Id, chapter);
+
         // 배관이 실제로 섰는지 확인하고 시작한다 — 없으면 위 두 테스트가 헛돈다.
         Assert.Single(
             editor.Project.EnumerateNodes().OfType<SetNode>(),
@@ -242,11 +250,9 @@ public sealed class ChapterRenamerTests : IDisposable
         using var book = new XLWorkbook();
 
         Sheet(book, "대본",
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
+            ["인덱스", "LineId", "화자", "내용"],
             [
-                ["IF", "신뢰높음", null, null, null, null],
-                [null, null, "10", null, "윌로", "복도는 조용했다"],
-                ["ENDIF", null, null, null, null, null]
+                ["10", null, "윌로", "복도는 조용했다"]
             ]);
 
         book.SaveAs(path);

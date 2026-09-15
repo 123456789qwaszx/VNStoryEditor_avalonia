@@ -156,18 +156,15 @@ public sealed class ChapterGraphSyncViewTests
 
         var preview = view.FindControl<SelectableTextBlock>("DialoguePreviewText")!;
 
-        // v10 — 조건 블록은 들여쓰기로 보인다(ENDIF 줄은 안 세운다). 견본은 중첩과
-        // ELSEIF를 한 판에 담으므로 세 겹이 전부 이 한 줄 검사에 걸린다.
+        // v15 — 조건 블록이 폐지되면서 미리보기에서 깊이·들여쓰기가 함께 사라졌다.
+        // 견본의 블록 행은 이행기가 걷었고, 그 안에 있던 대사는 <b>남는다</b>.
         Assert.Equal(
             """
             윌로: 복도는 조용했다.
             라루: 여기서 기다릴까?
-            IF 신뢰높음
-              윌로: 너를 믿어.
-              IF 지쳐있음
-                라루: 다리가 무거워.
-            ELSEIF 분노누적
-              라루: 아직도 화가 나.
+            윌로: 너를 믿어.
+            라루: 다리가 무거워.
+            라루: 아직도 화가 나.
             윌로: 문이 열렸다.
             """.ReplaceLineEndings("\n"),
             preview.Text!.ReplaceLineEndings("\n"));
@@ -248,11 +245,13 @@ public sealed class ChapterGraphSyncViewTests
     private static void WriteFirstLine(string path, string speaker, string text)
     {
         using var workbook = new ClosedXML.Excel.XLWorkbook(path);
-        ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets
-            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형");
 
-        sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
-        sheet.Cell(2, 6).SetValue(text);      // F · 내용
+        // Show가 이미 이행을 태웠으므로 이 파일은 v15 4열이다 — 첫 칸이 `인덱스`다.
+        ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스");
+
+        sheet.Cell(2, 3).SetValue(speaker);   // C · 화자
+        sheet.Cell(2, 4).SetValue(text);      // D · 내용
 
         workbook.SaveAs(path);
     }

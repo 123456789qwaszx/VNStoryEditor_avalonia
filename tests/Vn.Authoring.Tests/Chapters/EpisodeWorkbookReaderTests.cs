@@ -4,19 +4,17 @@ using Vn.Authoring.Chapters;
 namespace Vn.Authoring.Tests.Chapters;
 
 /// <summary>
-/// G2-a — 에피소드 워크북(§3.2 6열, v10)을 정확히 읽고 블록 규칙을 잡는다.
+/// G2-a — 에피소드 워크북(§3.2 4열, v15)을 정확히 읽는다.
 ///
-/// 견본 워크북의 `견본_에피소드 main05.02` 시트가 규격의 실물이다. 그 시트가 챕터 워크북 안에
-/// 들어 있어서, 머리글로 시트를 찾는 방식이 실제로 필요하다(첫 시트를 읽으면 `에피소드` 시트를
-/// 읽는다).
+/// <b>v15에서 구조 규칙이 전부 사라졌다</b> — `유형`·`조건라벨`이 폐지되면서 그 둘이 그리던
+/// 조건 블록(IF~ENDIF 짝·중첩·블록 행 빗장)이 함께 없어졌다. 이제 대본의 모든 행은 대사이고,
+/// 리더가 지키는 규칙은 <b>"인덱스가 줄의 신원이다"</b> 하나뿐이다.
 ///
-/// <b>v10에서 규칙이 하나로 줄었다</b> — 구판의 §3.3 규칙 1·2·4·5·6(구간 대상 존재 · INPUT/OUT
-/// 짝 · 구간 재사용 금지 · 중첩 금지 · OUT 대조)은 <c>IF</c>~<c>ENDIF</c> 짝 하나로 대체됐다.
+/// 시트를 <b>머리글로</b> 찾는 방식은 그대로다 — 대본 시트가 첫 시트가 아닌 워크북이 실제로
+/// 있기 때문이다(설명 시트가 앞에 오는 경우).
 /// </summary>
 public sealed class EpisodeWorkbookReaderTests : IDisposable
 {
-    private static readonly string[] Labels = ["신뢰높음", "분노누적", "지쳐있음", "복도완료"];
-
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(), "vn-episode-tests", Guid.NewGuid().ToString("N"));
 
@@ -30,285 +28,31 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
         }
     }
 
-    private static string SamplePath => Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
-
-    // ── 견본 ────────────────────────────────────────────────────────────────
+    // ── 시트 찾기 ───────────────────────────────────────────────────────────
 
     [Fact]
-    public void 견본_에피소드_시트를_머리글로_찾아_오류_없이_읽는다()
+    public void 대본_시트를_머리글로_찾는다()
     {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
+        // ⚠ 첫 시트를 무조건 읽으면 안 된다 — 설명 시트가 앞에 오는 워크북이 실제로 있다.
+        // 규격의 실물이 필요하면 이미터 산출물을 쓴다(`docs/chapter-graph-sample.xlsx`는
+        // 구판이라 열면 이행된다).
+        string path = Path.Combine(_directory, "앞에딴시트.xlsx");
+
+        using (var workbook = new XLWorkbook())
+        {
+            workbook.AddWorksheet("읽어주세요").Cell(1, 1).SetValue("이 시트는 대본이 아니다");
+
+            IXLWorksheet script = workbook.AddWorksheet("대본");
+            Fill(script, Baseline());
+
+            workbook.SaveAs(path);
+        }
+
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
 
         Assert.Empty(model.Errors);
-        Assert.Equal("견본_에피소드 main05.02", model.SheetName);
-        Assert.Equal(11, model.Rows.Count);
-    }
-
-    [Fact]
-    public void 행_유형이_규격대로_읽힌다()
-    {
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
-
-        // ⚠ v14 — 블록 행은 <b>번호로 못 찾는다</b>. 인덱스가 대사 줄만의 것이 됐기
-        // 때문이다(소유자: "인덱스는 대사 라인 번호이고, 유형/조건은 제어 행의
-        // 메타데이터다"). 그래서 여기서는 <b>읽힌 순서</b>로 짚는다 — 견본의 모양 그대로.
-        Assert.Equal(
-            [
-                EpisodeRowKind.Dialogue,   // 10 복도는 조용했다
-                EpisodeRowKind.Dialogue,   // 20 여기서 기다릴까
-                EpisodeRowKind.If,         //    신뢰높음
-                EpisodeRowKind.Dialogue,   // 40 너를 믿어
-                EpisodeRowKind.If,         //    지쳐있음 (중첩)
-                EpisodeRowKind.Dialogue,   // 60 다리가 무거워
-                EpisodeRowKind.End,
-                EpisodeRowKind.ElseIf,     //    분노누적
-                EpisodeRowKind.Dialogue,   // 90 아직도 화가 나
-                EpisodeRowKind.End,
-                EpisodeRowKind.Dialogue    // 110 문이 열렸다
-            ],
-            model.Rows.Select(row => row.Kind));
-
-        // ⛔ 블록 행에는 번호가 <b>없다</b> — 대사 행에만 있다.
-        Assert.All(model.Rows, row =>
-            Assert.Equal(row.IsLine, row.Index is not null));
-
-        Assert.Equal(EpisodeRowKind.Dialogue, model.FindByIndex(10)!.Kind);
-        Assert.True(model.FindByIndex(10)!.IsLine);
-    }
-
-    [Fact]
-    public void 견본은_중첩과_ELSEIF를_함께_보여_준다()
-    {
-        // 구판에서는 중첩이 금지였다 — 규격의 실물이 그 변화를 담는다.
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(SamplePath, Labels);
-
-        // v14 — 블록 행은 번호가 없으므로 읽힌 순서로 짚는다.
-        List<string?> labels = model.Rows
-            .Where(row => !row.IsLine)
-            .Select(row => row.ConditionLabel)
-            .ToList();
-
-        Assert.Equal(["신뢰높음", "지쳐있음", null, "분노누적", null], labels);
-        Assert.Empty(model.Errors);
-    }
-
-    // ── 블록 짝 (v10의 유일한 구조 규칙) ────────────────────────────────────
-
-    [Fact]
-    public void IF가_ENDIF로_안_닫히면_오류다()
-    {
-        var rows = Baseline();
-        rows[8] = [null, null, "80", null, "윌로", "닫는 줄이었던 자리"];
-
-        ChapterDiagnostic problem = SingleError(rows, "닫히지 않았습니다");
-
-        Assert.Equal("A", problem.Column);
-        Assert.Contains("어디까지가 조건 안인지", problem.Message);
-    }
-
-    [Fact]
-    public void 짝_없는_ENDIF는_오류다()
-    {
-        var rows = Baseline();
-        rows[2] = ["ENDIF", null, null, null, null, null];  // 열린 IF가 없는 자리
-
-        ChapterDiagnostic problem = SingleError(rows, "닫을 IF가 없는");
-
-        Assert.Equal("A", problem.Column);
-    }
-
-    [Fact]
-    public void 블록_둘이_나란히_있으면_문제가_없다()
-    {
-        var rows = Baseline();
-
-        EpisodeWorkbookModel model = Read(rows);
-
-        Assert.Empty(model.Errors);
-        Assert.Equal(2, model.Rows.Count(row => row.Kind == EpisodeRowKind.If));
-        Assert.Equal(2, model.Rows.Count(row => row.Kind == EpisodeRowKind.End));
-    }
-
-    [Fact]
-    public void 중첩된_블록도_문제가_없다()
-    {
-        // 구판 규칙 5(중첩 금지)의 폐지를 고정한다. 작가 판의 줄이 전환 여럿을 담게
-        // 아래층을 고쳐서 열렸다 — 겹쳐 닫는 <<endif>>들이 한 줄 앞에 몰려도 된다.
-        var rows = Baseline();
-        rows[5] = ["IF", "지쳐있음", null, null, null, null];   // 첫 ENDIF 자리에 IF
-        // 이제 IF가 셋이라 닫는 줄도 셋이어야 한다 (v14 — 블록 행에는 번호가 없다).
-        rows = [.. rows, ["ENDIF", null, null, null, null, null], ["ENDIF", null, null, null, null, null]];
-
-        Assert.Empty(Read(rows).Errors);
-    }
-
-    [Fact]
-    public void ELSEIF는_열린_IF가_있어야_한다()
-    {
-        var rows = Baseline();
-        rows[1] = ["ELSEIF", "신뢰높음", null, null, null, null];
-
-        ChapterDiagnostic problem = SingleError(rows, "열린 IF가 없는 ELSEIF");
-
-        Assert.Equal("A", problem.Column);
-    }
-
-    [Fact]
-    public void IF에_조건라벨이_없으면_오류다()
-    {
-        var rows = Baseline();
-        rows[3][1] = null;
-
-        ChapterDiagnostic problem = SingleError(rows, "조건라벨이 없습니다");
-
-        Assert.Equal("B", problem.Column);
-        Assert.Contains("무엇을 가르는지", problem.Message);
-    }
-
-    [Theory]
-    [InlineData(3, "IF")]
-    [InlineData(5, "ENDIF")]
-    public void 블록_행에_대사를_적으면_오류다(int row, string kind)
-    {
-        // 2026-08-24 소유자 — "화자와 내용을 … If,ElseIf,EndIf일 경우 안 적게 막아줘."
-        // ⚠ 예전에는 ENDIF만 막았다. IF·ELSEIF에 적은 글은 평평화가 안 보므로 <b>조용히
-        // 버려졌고</b>, 작가에게는 "썼는데 안 나온다"로 나타났다.
-        var rows = Baseline();
-        rows[row][4] = "윌로";
-        rows[row][5] = "여기 붙이면 어느 쪽인가";
-
-        ChapterDiagnostic problem = SingleError(rows, "블록의 흐름만 그립니다");
-
-        Assert.Equal("F", problem.Column);
-        Assert.Contains(kind, problem.Message);
-    }
-
-    // ── §3.2 구조 ───────────────────────────────────────────────────────────
-
-    [Fact]
-    public void IF_행이_LineId를_가지면_오류다()
-    {
-        var rows = Baseline();
-        rows[3][3] = "ln_9999";
-
-        ChapterDiagnostic problem = SingleError(rows, "라인이 아니므로");
-
-        Assert.Equal("D", problem.Column);
-        Assert.Contains("IF 행", problem.Message);
-    }
-
-    [Fact]
-    public void 미정의_조건라벨은_오류다()
-    {
-        var rows = Baseline();
-        rows[3][1] = "없는라벨";
-
-        ChapterDiagnostic problem = SingleError(rows, "없는라벨");
-
-        Assert.Equal("B", problem.Column);
-        Assert.Contains("`조건` 시트", problem.Message);
-    }
-
-    [Fact]
-    public void 대사_행에_조건라벨을_붙이면_오류다()
-    {
-        var rows = Baseline();
-        rows[1][1] = "신뢰높음";
-
-        ChapterDiagnostic problem = SingleError(rows, "IF 행에만 붙습니다");
-
-        Assert.Equal("B", problem.Column);
-    }
-
-    [Fact]
-    public void 유형_대사는_빈칸과_같은_뜻이다()
-    {
-        // 2026-08-17 소유자 — 드롭다운에서 고를 수 있어야 한다. 빈칸도 그대로 대사다.
-        var rows = Baseline();
-        rows[1][0] = "대사";
-
-        EpisodeWorkbookModel model = Read(rows);
-
-        Assert.Empty(model.Errors);
-        Assert.Equal(EpisodeRowKind.Dialogue, model.FindByIndex(10)!.Kind);
-    }
-
-    [Fact]
-    public void END도_ENDIF와_같은_뜻으로_받는다()
-    {
-        // 정본은 ENDIF지만 사람이 END를 치는 것도 흔하다 — 뜻이 하나뿐이라 받아도 안전하다.
-        var rows = Baseline();
-        rows[5][0] = "END";
-
-        Assert.Empty(Read(rows).Errors);
-    }
-
-    [Fact]
-    public void 폐지된_CHOICE_OPTION은_어디로_가야_하는지까지_말한다()
-    {
-        // v9에서 선택지의 주인이 챕터 시트로 갔다 — 대본에 남은 낱말은 옮기다 만 흔적이다.
-        var rows = Baseline();
-        rows[1][0] = "OPTION";
-
-        ChapterDiagnostic problem = SingleError(rows, "폐지됐습니다");
-
-        Assert.Equal("A", problem.Column);
-        Assert.Contains("`선택지` 시트", problem.Message);
-        Assert.Contains("`간선` 시트", problem.Message);
-    }
-
-    [Fact]
-    public void 인덱스가_정수가_아니면_오류다()
-    {
-        var rows = Baseline();
-        rows[1][2] = "십";
-
-        ChapterDiagnostic problem = SingleError(rows, "정수가 아닙니다");
-
-        Assert.Equal("C", problem.Column);
-        Assert.Contains("10·20·30", problem.Message);
-    }
-
-    [Fact]
-    public void 인덱스_역전은_이제_알림이다()
-    {
-        // v10 — 읽는 순서는 시트의 행 순서다. 인덱스는 줄의 신원일 뿐이라 역전이 동작을
-        // 바꾸지 않는다. 이행기가 구간을 옮기며 번호를 그대로 두는 것도 이 완화 덕이다.
-        var rows = Baseline();
-        rows[2][2] = "5";
-
-        EpisodeWorkbookModel model = Read(rows);
-
-        Assert.Empty(model.Errors);
-        Assert.Contains(model.Diagnostics, item =>
-            item.Severity == ChapterDiagnosticSeverity.Info &&
-            item.Message.Contains("보다 작습니다", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void 인덱스_중복은_여전히_오류다()
-    {
-        // 신원이 겹치면 연출이 어느 줄에 붙는지 정해지지 않는다.
-        var rows = Baseline();
-        rows[2][2] = "10";
-
-        ChapterDiagnostic problem = SingleError(rows, "중복입니다");
-
-        Assert.Equal("C", problem.Column);
-    }
-
-    [Fact]
-    public void 인덱스가_없는_설명_줄은_표의_행으로_읽지_않고_알린다()
-    {
-        var rows = Baseline();
-        rows = [.. rows, [null, null, null, null, null, "이건 설명문입니다"]];
-
-        EpisodeWorkbookModel model = Read(rows);
-
-        Assert.Contains(model.Diagnostics, item =>
-            item.Code == ChapterDiagnosticCode.EpisodeIdBlank &&
-            item.Message.Contains("C열에 번호를 적어", StringComparison.Ordinal));
+        Assert.Equal("대본", model.SheetName);
+        Assert.Equal(4, model.Rows.Count);
     }
 
     [Fact]
@@ -322,10 +66,94 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
             workbook.SaveAs(path);
         }
 
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, Labels);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
 
         ChapterDiagnostic problem = Assert.Single(model.Errors);
         Assert.Equal(ChapterDiagnosticCode.SheetMissing, problem.Code);
+    }
+
+    // ── 모든 행이 대사다 (v15) ──────────────────────────────────────────────
+
+    [Fact]
+    public void 모든_행이_대사로_읽힌다()
+    {
+        EpisodeWorkbookModel model = Read(Baseline());
+
+        Assert.Empty(model.Errors);
+        Assert.All(model.Rows, row => Assert.True(row.IsLine));
+        Assert.Equal([10, 20, 40, 90], model.Rows.Select(row => row.Index));
+        Assert.Equal("윌로", model.FindByIndex(10)!.Speaker);
+    }
+
+    // ── 인덱스가 줄의 신원이다 ──────────────────────────────────────────────
+
+    [Fact]
+    public void 인덱스가_정수가_아니면_오류다()
+    {
+        var rows = Baseline();
+        rows[1][0] = "십";
+
+        ChapterDiagnostic problem = SingleError(rows, "정수가 아닙니다");
+
+        Assert.Equal("A", problem.Column);
+        Assert.Contains("10·20·30", problem.Message);
+    }
+
+    [Fact]
+    public void 인덱스_중복은_오류다()
+    {
+        // 신원이 겹치면 연출이 어느 줄에 붙는지 정해지지 않는다.
+        var rows = Baseline();
+        rows[2][0] = "10";
+
+        ChapterDiagnostic problem = SingleError(rows, "중복입니다");
+
+        Assert.Equal("A", problem.Column);
+    }
+
+    [Fact]
+    public void 인덱스_역전은_알림이다()
+    {
+        // v10 — 읽는 순서는 시트의 행 순서다. 인덱스는 줄의 신원일 뿐이라 역전이 동작을
+        // 바꾸지 않는다. 이행기가 블록 행을 걷으며 번호를 그대로 두는 것도 이 완화 덕이다.
+        var rows = Baseline();
+        rows[2][0] = "5";
+
+        EpisodeWorkbookModel model = Read(rows);
+
+        Assert.Empty(model.Errors);
+        Assert.Contains(model.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Info &&
+            item.Message.Contains("보다 작습니다", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 인덱스가_없는데_대사가_적혀_있으면_경고한다()
+    {
+        // 조용히 넘기면 "여러 줄을 썼는데 안 나온다"가 된다(실사례).
+        var rows = Baseline();
+        rows = [.. rows, [null, null, "윌로", "번호를 안 붙인 줄"]];
+
+        EpisodeWorkbookModel model = Read(rows);
+
+        Assert.Contains(model.Diagnostics, item =>
+            item.Code == ChapterDiagnosticCode.EpisodeIdBlank &&
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("A열에 번호를 적어", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 인덱스만_있고_빈_행은_표의_행이_아니다()
+    {
+        // 템플릿이 미리 깔아 둔 번호 자리 — 대사로 세면 엉뚱한 오류가 난다(실사례).
+        var rows = Baseline();
+        rows = [.. rows, ["100", null, null, null]];
+
+        EpisodeWorkbookModel model = Read(rows);
+
+        Assert.Empty(model.Errors);
+        Assert.Equal(4, model.Rows.Count);
+        Assert.Null(model.FindByIndex(100));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -346,37 +174,34 @@ public sealed class EpisodeWorkbookReaderTests : IDisposable
 
         using (var workbook = new XLWorkbook())
         {
-            IXLWorksheet sheet = workbook.AddWorksheet("본문");
-
-            for (int row = 0; row < rows.Length; row++)
-            {
-                for (int column = 0; column < rows[row].Length; column++)
-                {
-                    if (rows[row][column] is { Length: > 0 } value)
-                    {
-                        sheet.Cell(row + 1, column + 1).SetValue(value);
-                    }
-                }
-            }
-
+            Fill(workbook.AddWorksheet("본문"), rows);
             workbook.SaveAs(path);
         }
 
-        return EpisodeWorkbookReader.Read(path, Labels);
+        return EpisodeWorkbookReader.Read(path);
     }
 
-    /// <summary>견본과 같은 모양의 최소 에피소드(중첩 포함). 각 테스트는 한 칸만 망가뜨린다.</summary>
+    private static void Fill(IXLWorksheet sheet, string?[][] rows)
+    {
+        for (int row = 0; row < rows.Length; row++)
+        {
+            for (int column = 0; column < rows[row].Length; column++)
+            {
+                if (rows[row][column] is { Length: > 0 } value)
+                {
+                    sheet.Cell(row + 1, column + 1).SetValue(value);
+                }
+            }
+        }
+    }
+
+    /// <summary>v15 4열 대본. 각 테스트는 한 칸만 망가뜨린다.</summary>
     private static string?[][] Baseline() =>
     [
-        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-        [null, null, "10", "ln_0001", "윌로", "첫 줄"],
-        [null, null, "20", "ln_0002", "라루", "둘째 줄"],
-        ["IF", "신뢰높음", null, null, null, null],
-        [null, null, "40", "ln_0003", "윌로", "첫 블록 안"],
-        ["ENDIF", null, null, null, null, null],
-        ["IF", "지쳐있음", null, null, null, null],
-        [null, null, "70", "ln_0004", "라루", "둘째 블록 안"],
-        ["ENDIF", null, null, null, null, null],
-        [null, null, "90", "ln_0005", "윌로", "끝 줄"]
+        ["인덱스", "LineId", "화자", "내용"],
+        ["10", "ln_0001", "윌로", "첫 줄"],
+        ["20", "ln_0002", "라루", "둘째 줄"],
+        ["40", "ln_0003", "윌로", "셋째 줄"],
+        ["90", "ln_0005", "윌로", "끝 줄"]
     ];
 }

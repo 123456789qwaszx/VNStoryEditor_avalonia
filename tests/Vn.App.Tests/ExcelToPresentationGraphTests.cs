@@ -59,7 +59,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         Assert.Contains("복도는 조용했다.", world.EditorText());
 
         world.ShowChapterGraph();
-        world.EditWorkbook(sheet => sheet.Cell(2, 6).SetValue("엑셀에서 방금 고친 대사"));
+        world.EditWorkbook(sheet => sheet.Cell(2, 4).SetValue("엑셀에서 방금 고친 대사"));
         world.WaitForWatcher("엑셀에서 방금 고친 대사");
         world.ShowPresentationGraph();
 
@@ -75,7 +75,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         World world = Open();
         world.SelectNodeInPresentationGraph();
 
-        world.EditWorkbook(sheet => sheet.Cell(2, 6).SetValue("붙들린 채로 고친 대사"));
+        world.EditWorkbook(sheet => sheet.Cell(2, 4).SetValue("붙들린 채로 고친 대사"));
 
         File.WriteAllText(Path.Combine(world.EpisodesFolder, "~$main05.02.xlsx"), "excel");
 
@@ -88,32 +88,10 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         Assert.Contains("붙들린 채로 고친 대사", world.EditorText());
     });
 
-    [Fact]
-    public void 엑셀에서_바꾼_갈래가_카드의_포트에_온다() => HeadlessUi.Run(() =>
-    {
-        // 본문만이 아니라 <b>구조</b>도 와야 한다 — IF 갈래의 조건 라벨은 카드의 포트다.
-        World world = Open();
-        world.SelectNodeInPresentationGraph();
-
-        Assert.Contains("신뢰높음", world.PortLabels());
-
-        world.EditWorkbook(sheet =>
-        {
-            foreach (IXLRow row in sheet.RowsUsed())
-            {
-                // v14 — 조건라벨은 B열(2)이다.
-                if (row.Cell(2).GetString().Trim() == "신뢰높음")
-                {
-                    row.Cell(2).SetValue("지쳐있음");
-                }
-            }
-        });
-
-        world.WaitForWatcher(text => !world.PortLabels().Contains("신뢰높음"));
-
-        Assert.Contains("지쳐있음", world.PortLabels());
-        Assert.DoesNotContain("신뢰높음", world.PortLabels());
-    });
+    // ⛔ `엑셀에서_바꾼_갈래가_카드의_포트에_온다`는 2026-09-16에 은퇴했다 (규격 v15 — R-C).
+    //    <b>대본의 조건라벨이 카드의 포트가 된다</b>를 지키던 테스트인데, `조건라벨` 칸과
+    //    조건 블록이 함께 폐지되면서 대본에서 갈래가 생길 길이 없어졌다. 갈래의 주인은
+    //    이제 챕터 `간선` 시트다(표시조건·해금조건).
 
     [Fact]
     public void 연출_그래프_탭을_한_번도_안_열어도_반영된다() => HeadlessUi.Run(() =>
@@ -122,7 +100,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         // 갱신을 놓치면 여기서 옛 글이 뜬다.
         World world = Open();
 
-        world.EditWorkbook(sheet => sheet.Cell(2, 6).SetValue("탭을 열기 전에 고친 대사"));
+        world.EditWorkbook(sheet => sheet.Cell(2, 4).SetValue("탭을 열기 전에 고친 대사"));
         world.WaitForWatcher("탭을 열기 전에 고친 대사");
 
         world.SelectNodeInPresentationGraph();
@@ -148,7 +126,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
 
         world.EditWorkbook(
             Path.Combine(world.EpisodesRoot, "ch06", "main05.02.xlsx"),
-            sheet => sheet.Cell(2, 6).SetValue("안 고른 챕터에서 고친 대사"));
+            sheet => sheet.Cell(2, 4).SetValue("안 고른 챕터에서 고친 대사"));
 
         world.WaitFor(() =>
             world.ProjectTextIn("ch06").Contains("안 고른 챕터에서 고친 대사", StringComparison.Ordinal));
@@ -248,7 +226,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             using var book = new XLWorkbook(path);
 
             edit(book.Worksheets
-                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형"));
+                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스"));
 
             book.SaveAs(path);
         }
@@ -293,7 +271,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             using var book = new XLWorkbook(WorkbookPath);
 
             edit(book.Worksheets
-                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형"));
+                .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스"));
 
             book.SaveAs(WorkbookPath);
         }

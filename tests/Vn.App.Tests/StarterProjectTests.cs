@@ -72,7 +72,7 @@ public sealed class StarterProjectTests : IDisposable
     });
 
     [Fact]
-    public void 씨앗의_대본은_v10_블록으로_읽히고_펴진다() => HeadlessUi.Run(() =>
+    public void 씨앗의_대본은_v15_대사로_읽히고_펴진다() => HeadlessUi.Run(() =>
     {
         string manifest = StarterProject.Create(_directory);
 
@@ -82,19 +82,20 @@ public sealed class StarterProjectTests : IDisposable
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx"));
 
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(
-            script, chapter.Conditions.Select(condition => condition.Label).ToList());
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(script);
 
         Assert.Empty(model.Errors);
-        Assert.Contains(model.Rows, row => row.Kind == EpisodeRowKind.If);
-        Assert.Contains(model.Rows, row => row.Kind == EpisodeRowKind.End);
+        Assert.Equal([10, 20, 30], model.Rows.Select(row => row.Index));
 
         EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(
             model, chapter.Conditions.ToDictionary(item => item.Label, StringComparer.Ordinal));
 
         Assert.Empty(flattened.Errors);
-        Assert.Contains("<<if", flattened.Text, StringComparison.Ordinal);
-        Assert.Contains("<<endif>>", flattened.Text, StringComparison.Ordinal);
+
+        // ⛔ 씨앗이 조건 블록을 심으면 "권하는 자리"가 되살아난다 — 내보내기가 거부할
+        //    모양을 받는 사람의 첫 예제가 가르치는 꼴이다(v15가 없앤 바로 그 어긋남).
+        Assert.DoesNotContain("<<if", flattened.Text, StringComparison.Ordinal);
+        Assert.Contains("라루: 가자.", flattened.Text, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -175,37 +176,34 @@ internal static class StarterProject
         //    여기서는 씨앗을 심는 손이 대신 쓴다.
         string scripts = EpisodeLibrary.FolderFor(manifest, "ch01")!;
         List<string> speakers = ["윌로", "라루"];
-        List<string> labels = ["신뢰높음"];
 
         foreach (string episode in (string[])["시작", "믿는길", "혼자길", "끝"])
         {
-            EpisodeLibrary.EnsureWorkbook(scripts, episode, speakers, labels);
+            EpisodeLibrary.EnsureWorkbook(scripts, episode, speakers);
         }
 
         WriteScript(scripts, "시작",
         [
-            (10, "", "", "윌로", "복도는 조용했다."),
-            (20, "", "", "라루", "같이 갈까?")
+            (10, "윌로", "복도는 조용했다."),
+            (20, "라루", "같이 갈까?")
         ]);
 
-        // 조건 블록이 있는 대본 — IF ~ ENDIF가 어떻게 생겼는지 실물로 보여 준다.
+        // v15 — 대본에는 조건이 없다. 갈래는 챕터 `간선` 시트가 그린다(위 ⑤).
         WriteScript(scripts, "믿는길",
         [
-            (10, "", "", "라루", "고맙다는 말은 안 할래."),
-            (20, "IF", "신뢰높음", "", ""),
-            (30, "", "", "윌로", "알아. 너답네."),
-            (40, "ENDIF", "", "", ""),
-            (50, "", "", "라루", "가자.")
+            (10, "라루", "고맙다는 말은 안 할래."),
+            (20, "윌로", "알아. 너답네."),
+            (30, "라루", "가자.")
         ]);
 
         WriteScript(scripts, "혼자길",
         [
-            (10, "", "", "윌로", "혼자 걷는 복도는 길었다.")
+            (10, "윌로", "혼자 걷는 복도는 길었다.")
         ]);
 
         WriteScript(scripts, "끝",
         [
-            (10, "", "", "윌로", "문이 열렸다.")
+            (10, "윌로", "문이 열렸다.")
         ]);
 
         // ⑦ 받는 사람이 처음 여는 것은 exe가 아니라 폴더다 — 무엇부터 열지 한 장으로 적어 둔다.
@@ -237,21 +235,22 @@ internal static class StarterProject
         [엑셀을 열어 둔 채로는 툴이 그 파일을 고치지 못한다]
         툴에서 편집이 잠기면 대개 그 엑셀이 아직 열려 있어서다. 엑셀을 닫으면 풀린다.
 
-        [대본에서 조건 쓰는 법]  episodes/ch01/믿는길.xlsx 를 열어 보면 실물이 있다.
-          유형 칸에서 IF 를 고르고, 조건라벨 칸에서 챕터가 정해 둔 라벨을 고른다.
-          그 아래 대사들을 쓰고, 끝나는 자리에 ENDIF 를 한 줄 둔다.
-          (중간에 갈래를 더 두고 싶으면 ELSEIF 를 쓴다.)
+        [대본에는 조건을 쓰지 않는다]
+        대본 시트는 네 칸(인덱스 · LineId · 화자 · 내용)이고 모든 행이 대사다.
+        갈래는 chapters/ch01.xlsx 의 `간선` 시트가 그린다 — 그 줄의 표시조건 ·
+        해금조건에 챕터가 정해 둔 조건 라벨을 적는다. 진행 그래프가 볼 수 있는
+        자리에 갈래를 두어야 "닿을 수 없는 에피소드"를 툴이 짚어 줄 수 있다.
 
         [새 스탯 · 새 조건이 필요하면]
         스탯은 chapters/ch01.xlsx 의 `스탯` 시트, 조건은 `조건` 시트에 한 줄 더한다.
-        대본의 드롭다운은 툴이 챕터를 읽을 때 따라온다.
+        대본의 화자 드롭다운은 툴이 챕터를 읽을 때 따라온다.
         """;
 
-    /// <summary>대본 행을 채운다 — v14 6열(유형·조건라벨·인덱스·LineId·화자·내용).</summary>
+    /// <summary>대본 행을 채운다 — v15 4열(인덱스·LineId·화자·내용).</summary>
     private static void WriteScript(
         string folder,
         string episodeId,
-        (int Index, string Kind, string Label, string Speaker, string Text)[] rows)
+        (int Index, string Speaker, string Text)[] rows)
     {
         string path = EpisodeLibrary.FindExisting(folder, episodeId)!;
 
@@ -262,19 +261,11 @@ internal static class StarterProject
         for (int offset = 0; offset < rows.Length; offset++)
         {
             int number = offset + 2;
-            (int index, string kind, string label, string speaker, string text) = rows[offset];
+            (int index, string speaker, string text) = rows[offset];
 
-            Set(sheet, number, 1, kind);    // v14 — 유형·조건라벨이 앞, 대사 넷이 뒤
-            Set(sheet, number, 2, label);
-
-            // 블록 행에는 번호가 없다 (v14) — 인덱스는 대사 줄의 순번이다.
-            if (kind is not ("IF" or "ELSEIF" or "ENDIF"))
-            {
-                sheet.Cell(number, 3).SetValue(index);
-            }
-
-            Set(sheet, number, 5, speaker);
-            Set(sheet, number, 6, text);
+            sheet.Cell(number, 1).SetValue(index);   // LineId(B)는 첫 동기화가 발급한다
+            Set(sheet, number, 3, speaker);
+            Set(sheet, number, 4, text);
         }
 
         workbook.SaveAs(path);

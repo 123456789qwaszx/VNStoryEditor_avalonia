@@ -252,39 +252,10 @@ public sealed class ExcelNodeLockTests
         Assert.Contains("잠김", toggle.Content as string);
     });
 
-    [Fact]
-    public void 엑셀노드의_분기_이후_레일은_표시뿐이다() => HeadlessUi.Run(() =>
-    {
-        // 소유자 보고 (2026-08-23) — "그 아래 → 분기 이후, 이걸 클릭해서도 연결이 끊고
-        // 이어지는 기능이 있는데, 이 기능도 엑셀노드에서는 사용이 안되게 막아줘."
-        // 잇고 떼는 자리는 연출 그래프 카드의 IF 갈래 포트 하나로 모은다.
-        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
-
-        DialogueNode node = session.Project.FindDialogue(nodeId)!;
-        string fileId = session.Project.Files.Single(file => file.Nodes.Contains(node)).Id;
-        DialogueNode scene = session.Editor.AddDialogueNode(fileId, name: "곁가지씬");
-
-        // 갈래 하나에 실제로 씬을 매단다 — 레일은 출구가 있는 줄에만 선다.
-        DialogueFlow flow = ConditionFlowResolver.Resolve(node, session.Project, session.Definition);
-        ConditionBranch branch = flow.Branches.First(candidate => candidate.OpenLineId.Length > 0);
-        session.Editor.SetExitTarget(nodeId, ExitPortKind.Branch, branch.OpenLineId, scene.Id);
-
-        editor.Show(nodeId);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        var host = editor.FindControl<StackPanel>("LineHost")!;
-
-        List<TextBlock> rails = host.GetVisualDescendants().OfType<TextBlock>()
-            .Where(block => block.Text?.StartsWith("→ 분기 이후", StringComparison.Ordinal) == true)
-            .ToList();
-
-        Assert.NotEmpty(rails);
-
-        // 글이지 단추가 아니다 — 잠김이 모양으로 보인다. 어디로 가는지는 계속 읽힌다.
-        Assert.All(rails, block =>
-            Assert.Null(block.FindAncestorOfType<Button>()));
-        Assert.Contains(rails, block => block.Text!.Contains("곁가지씬"));
-    });
+    // ⛔ `엑셀노드의_분기_이후_레일은_표시뿐이다`는 2026-09-16에 은퇴했다 (규격 v15 — R-C).
+    //    그 테스트는 <b>엑셀노드에 조건 갈래가 있다</b>를 전제로 레일이 단추가 아님을 지켰는데,
+    //    대본에서 조건 블록이 폐지되면서 평평화가 `<<if>>`를 더는 내지 않는다 — 엑셀 출처
+    //    노드는 갈래를 가질 길 자체가 없어졌다. 막을 것이 없어진 빗장이라 함께 걷는다.
 
     [Fact]
     public void 출구_후보에_엑셀노드가_없다() => HeadlessUi.Run(() =>
@@ -531,6 +502,10 @@ public sealed class ExcelNodeLockTests
             Path.GetDirectoryName(project.ChapterPath)!, "..", "episodes", "ch05", "main05.02.xlsx");
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
         File.Copy(SamplePath, workbook);
+
+        // ⚠ 견본은 현행 규격이 아니다 — 앱에서는 동기화 앞에 이행기가 선다
+        // (EpisodeSyncRunner). Sync를 직접 부르는 이 헬퍼도 같은 순서를 밟아야 한다.
+        EpisodeWorkbookMigrator.Migrate(workbook);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(
             session.Editor, session.Definition, fileId, workbook, chapter);

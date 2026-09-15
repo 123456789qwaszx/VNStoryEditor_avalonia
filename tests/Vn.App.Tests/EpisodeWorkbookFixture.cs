@@ -31,17 +31,19 @@ internal static class EpisodeWorkbookFixture
             using var book = new XLWorkbook();
             IXLWorksheet sheet = book.AddWorksheet("대본");
 
-            string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
+            // v15 4열 (2026-09-16 — R-C). 리더가 <b>머리글로 시트를 찾으므로</b> 한 글자도
+            // 달라선 안 된다 — 어긋나면 "시트 없음"이 되어 이 워크북이 통째로 안 읽힌다.
+            string[] headers = ["인덱스", "LineId", "화자", "내용"];
 
             for (int column = 0; column < headers.Length; column++)
             {
                 sheet.Cell(1, column + 1).SetValue(headers[column]);
             }
 
-            sheet.Cell(2, 3).SetValue("10");
-            sheet.Cell(2, 4).SetValue($"ln_{episodeId.Replace('.', '_')}");
-            sheet.Cell(2, 5).SetValue("윌로");
-            sheet.Cell(2, 6).SetValue("한 줄");
+            sheet.Cell(2, 1).SetValue("10");
+            sheet.Cell(2, 2).SetValue($"ln_{episodeId.Replace('.', '_')}");
+            sheet.Cell(2, 3).SetValue("윌로");
+            sheet.Cell(2, 4).SetValue("한 줄");
 
             book.SaveAs(path);
         }

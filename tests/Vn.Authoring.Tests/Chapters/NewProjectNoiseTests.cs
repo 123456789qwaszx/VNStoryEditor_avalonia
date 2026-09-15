@@ -115,9 +115,9 @@ public sealed class NewProjectNoiseTests : IDisposable
         using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
         {
             var sheet = workbook.Worksheets.First();
-            sheet.Cell(2, 5).SetValue("라루"); sheet.Cell(2, 6).SetValue("첫 줄");
-            sheet.Cell(3, 5).SetValue("윌로"); sheet.Cell(3, 6).SetValue("둘째 줄");
-            sheet.Cell(4, 5).SetValue("라루"); sheet.Cell(4, 6).SetValue("셋째 줄");
+            sheet.Cell(2, 3).SetValue("라루"); sheet.Cell(2, 4).SetValue("첫 줄");
+            sheet.Cell(3, 3).SetValue("윌로"); sheet.Cell(3, 4).SetValue("둘째 줄");
+            sheet.Cell(4, 3).SetValue("라루"); sheet.Cell(4, 4).SetValue("셋째 줄");
             workbook.Save();
         }
 
@@ -140,8 +140,8 @@ public sealed class NewProjectNoiseTests : IDisposable
         using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
         {
             var sheet = workbook.Worksheets.First();
-            sheet.Cell(3, 3).Clear();                     // 인덱스(C)를 지우고
-            sheet.Cell(3, 6).SetValue("버려질 뻔한 대사"); // 내용만 남긴다
+            sheet.Cell(3, 1).Clear();                     // 인덱스(A)를 지우고
+            sheet.Cell(3, 4).SetValue("버려질 뻔한 대사"); // 내용만 남긴다
             workbook.Save();
         }
 
@@ -149,7 +149,7 @@ public sealed class NewProjectNoiseTests : IDisposable
 
         Assert.Contains(model.Diagnostics, item =>
             item.Severity == ChapterDiagnosticSeverity.Warning &&
-            item.Message.Contains("C열에 번호를 적어 주세요"));
+            item.Message.Contains("A열에 번호를 적어 주세요"));
     }
 
     [Fact]
@@ -173,32 +173,28 @@ public sealed class NewProjectNoiseTests : IDisposable
     }
 
     [Fact]
-    public void 템플릿의_빈_행은_블록_뒤에_있어도_오류가_아니다()
+    public void 템플릿이_깔아_둔_빈_행이_수백_개여도_오류가_아니다()
     {
         // 실사례 — 템플릿이 인덱스를 500행까지 깔아 두자, 그 빈 자리들이 대사로 세어져
         // 멀쩡한 시트에 오류가 났다. 인덱스만 있는 행은 표의 일부가 아니다.
         string episodes = Path.Combine(_directory, "episodes");
-        EpisodeLibrary.EnsureWorkbook(episodes, "ep_block");
-        string path = EpisodeLibrary.PathFor(episodes, "ep_block");
+        EpisodeLibrary.EnsureWorkbook(episodes, "ep_blank");
+        string path = EpisodeLibrary.PathFor(episodes, "ep_blank");
 
         using (var workbook = new ClosedXML.Excel.XLWorkbook(path))
         {
+            // 두 줄만 쓰고 나머지 수백 행은 템플릿 번호만 남은 채로 둔다 — 작가가
+            // 대본을 쓰다 만 상태가 정확히 이 모양이다.
             var sheet = workbook.Worksheets.First();
-            // 대사 → 조건 블록 → (템플릿이 깔아 둔 빈 행 수백 개)
-            // v14 자리 — 유형(1) 조건라벨(2) 인덱스(3) LineId(4) 화자(5) 내용(6).
-            // ⚠ 블록 행의 인덱스는 <b>지우지 않는다</b> — 템플릿이 깔아 둔 그대로 두어
-            //    "남아 있어도 오류가 아니다"까지 이 테스트가 함께 붙든다.
-            sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");   // 10
-            sheet.Cell(3, 1).SetValue("IF"); sheet.Cell(3, 2).SetValue("신뢰높음");  // 20
-            sheet.Cell(4, 5).SetValue("라루"); sheet.Cell(4, 6).SetValue("조건 안"); // 30
-            sheet.Cell(5, 1).SetValue("ENDIF");                                      // 40
+            sheet.Cell(2, 3).SetValue("윌로"); sheet.Cell(2, 4).SetValue("첫 줄");
+            sheet.Cell(3, 3).SetValue("라루"); sheet.Cell(3, 4).SetValue("둘째 줄");
             workbook.Save();
         }
 
-        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path, ["신뢰높음"]);
+        EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
 
         Assert.Empty(model.Errors);
-        Assert.Equal(4, model.Rows.Count);
+        Assert.Equal(2, model.Rows.Count);
     }
 
     private static byte[] ReadTemplateBytes(string folder)

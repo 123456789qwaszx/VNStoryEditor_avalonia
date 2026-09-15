@@ -243,38 +243,11 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             item.Message.Contains("밖에서 들어오는 자리", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void 대본에_CHOICE_OPTION이_남아_있으면_어디로_가야_하는지_말한다()
-    {
-        // 선택지의 정본은 v9부터 챕터 `선택지`·`간선` 시트다. v10에서 대본 규격에서 아예
-        // 빠졌으므로, 이제 리더가 <b>그 행을 짚어</b> 옮길 곳까지 말한다(경고 → 오류).
-        ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
-        string episodes = Path.Combine(_directory, "episodes");
-        Directory.CreateDirectory(episodes);
-
-        WriteRows(Path.Combine(episodes, "main05.02.xlsx"),
-        [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", "ln_0001", "윌로", "한 줄"],
-            ["CHOICE", null, "70", "ln_0006", null, null],
-            ["OPTION", null, "71", "ln_0007", null, "하나뿐인 선택"]
-        ]);
-
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodes);
-
-        List<ChapterDiagnostic> deprecated = validation.Diagnostics
-            .Where(item => item.Message.Contains("대본에서 폐지됐습니다"))
-            .ToList();
-
-        Assert.Equal(2, deprecated.Count);   // CHOICE 한 줄, OPTION 한 줄 — 각자 자기 행에서
-        Assert.All(deprecated, item =>
-        {
-            Assert.Equal(ChapterDiagnosticSeverity.Error, item.Severity);
-            Assert.Equal("A", item.Column);
-            Assert.Contains("`선택지` 시트", item.Message);
-            Assert.Contains("`간선` 시트", item.Message);
-        });
-    }
+    // ⛔ `대본에_CHOICE_OPTION이_남아_있으면_어디로_가야_하는지_말한다`는 2026-09-16에
+    //    은퇴했다 (규격 v15 — R-C). 그 진단은 <b>`유형` 칸에 적힌 CHOICE·OPTION</b>을 짚는
+    //    것이었는데 그 칸이 폐지되어 선언할 자리가 없다. 구판 파일의 그 행은 이행기가
+    //    <b>문구를 살려</b> 대사 행으로 옮긴다 — 사람이 쓴 글이 사라지지 않게
+    //    (`EpisodeColumnOrderV15Tests.CHOICE_OPTION_행의_문구는_남는다`).
 
     [Fact]
     public void 보이지_않는_기본_칸은_보이는_선택지와_공존한다()

@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
 
 namespace Vn.Authoring.Tests.Chapters;
@@ -48,8 +49,8 @@ public sealed class EpisodeWorkbookEmitterTests : IDisposable
 
         EpisodeWorkbookModel model = EpisodeWorkbookReader.Read(path);
 
-        // 머리글 여섯 칸을 그대로 내는 이유가 이것이다 — 하나라도 줄이면 리더가 시트를
-        // 못 찾고, 그 순간 임포트라는 되돌림 경로가 끊긴다.
+        // 머리글 네 칸을 규격 그대로 내는 이유가 이것이다 — 하나라도 어긋나면 리더가
+        // 시트를 못 찾고, 그 순간 임포트라는 되돌림 경로가 끊긴다.
         List<ChapterDiagnostic> errors = model.Diagnostics
             .Where(item => item.Severity == ChapterDiagnosticSeverity.Error)
             .ToList();
@@ -84,16 +85,21 @@ public sealed class EpisodeWorkbookEmitterTests : IDisposable
     }
 
     [Fact]
-    public void 조건_블록은_내지_않는다()
+    public void 낸_파일은_v15_네_칸이다()
     {
+        // 지시서 §3 — 대본 층의 조건은 폐지됐다. 이미터가 `유형`·`조건라벨`을 다시 내면
+        // 이행기가 그 파일을 구판으로 보고 되돌려 깎는다(이미터↔리더 규격 드리프트).
         string path = Path0("main05.02.xlsx");
         EpisodeWorkbookEmitter.Emit(path, Sample);
 
-        // 지시서 §3 — 대본 층의 조건은 폐지 대상이다. 이미터는 유형·조건라벨을 비운 채
-        // 내므로, 낸 파일에는 블록 행이 하나도 없다.
-        Assert.All(
-            EpisodeWorkbookReader.Read(path).Rows,
-            row => Assert.Equal(EpisodeRowKind.Dialogue, row.Kind));
+        using var book = new ClosedXML.Excel.XLWorkbook(path);
+        IXLWorksheet sheet = book.Worksheets.First();
+
+        Assert.Equal(
+            ["인덱스", "LineId", "화자", "내용"],
+            Enumerable.Range(1, 4).Select(column => sheet.Cell(1, column).GetString()));
+
+        Assert.Equal(string.Empty, sheet.Cell(1, 5).GetString());
     }
 
     // ── 번호 매기기 ─────────────────────────────────────────────────────────

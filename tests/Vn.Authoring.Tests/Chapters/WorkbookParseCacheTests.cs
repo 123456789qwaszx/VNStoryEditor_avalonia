@@ -66,39 +66,12 @@ public sealed class WorkbookParseCacheTests : IDisposable
         Assert.Contains(after.Rows, row => row.Text == "고친 대사");
     }
 
-    [Fact]
-    public void 조건_라벨이_다르면_다른_답이_나온다()
-    {
-        // 같은 파일이라도 라벨 목록이 다르면 <b>진단이 다르다</b> — 파일 밖의 입력도
-        // 열쇠에 들어가야 한다. 빠뜨리면 남의 답을 그대로 돌려준다.
-        string path = CopySample("ep1.xlsx");
-
-        EpisodeWorkbookModel known = EpisodeWorkbookReader.Read(path, ["지쳐있음", "신뢰높음"]);
-        EpisodeWorkbookModel unknown = EpisodeWorkbookReader.Read(path, []);
-
-        Assert.NotSame(known, unknown);
-
-        // 라벨을 모르면 그 자리를 오류로 짚는다 — 알면 조용하다.
-        Assert.True(
-            unknown.Diagnostics.Count > known.Diagnostics.Count,
-            "라벨을 모르는 쪽이 더 많이 짚어야 한다");
-    }
-
-    [Fact]
-    public void 서로_다른_부가_입력이_서로를_밀어내지_않는다()
-    {
-        // ⚠ 실제로 이렇게 쓴다: 같은 대본을 <b>대사 미리보기는 라벨 없이</b>, 동기화·검증은
-        // <b>라벨과 함께</b> 읽는다. 경로 하나에 칸 하나만 두면 둘이 번갈아 캐시를 깨서
-        // 고치기 전보다 느려진다(해시 값까지 얹힌다). 재 보고 알았다.
-        string path = CopySample("ep1.xlsx");
-
-        EpisodeWorkbookModel withLabels = EpisodeWorkbookReader.Read(path, ["지쳐있음"]);
-        EpisodeWorkbookModel without = EpisodeWorkbookReader.Read(path);
-
-        // 서로 오간 뒤에도 둘 다 그대로 살아 있다.
-        Assert.Same(withLabels, EpisodeWorkbookReader.Read(path, ["지쳐있음"]));
-        Assert.Same(without, EpisodeWorkbookReader.Read(path));
-    }
+    // ⛔ `조건_라벨이_다르면_다른_답이_나온다`와 `서로_다른_부가_입력이_서로를_밀어내지_않는다`는
+    //    2026-09-16에 은퇴했다 (규격 v15 — R-C). 둘 다 <b>대본 리더가 챕터 조건 라벨을
+    //    부가 입력으로 받는다</b>를 전제로 열쇠 조합을 지켰는데, 대본에서 조건이 폐지되면서
+    //    그 인자 자체가 사라졌다 — 이제 열쇠는 내용 해시 하나다.
+    //    부가 입력이 열쇠에 들어가야 한다는 규칙 자체는 챕터 쪽이 계속 지킨다
+    //    (`정의의_변수가_달라지면_다시_읽는다`).
 
     // ── 챕터 ────────────────────────────────────────────────────────────────
 
@@ -166,11 +139,17 @@ public sealed class WorkbookParseCacheTests : IDisposable
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 
-    /// <summary>견본은 챕터 시트와 대본 시트를 함께 갖고 있어 양쪽 리더에 쓴다.</summary>
+    /// <summary>
+    /// 견본은 챕터 시트와 대본 시트를 함께 갖고 있어 양쪽 리더에 쓴다.
+    ///
+    /// ⚠ 견본은 현행 규격이 아니다 — 대본으로 쓰려면 이행을 태워야 리더가 읽는다.
+    /// 챕터 리더는 그대로 읽으므로 이행이 그쪽을 건드리지 않는다(대본 시트만 고친다).
+    /// </summary>
     private string CopySample(string fileName)
     {
         string path = Path.Combine(_root, fileName);
         File.Copy(SamplePath, path, overwrite: true);
+        EpisodeWorkbookMigrator.Migrate(path);
         return path;
     }
 
@@ -185,10 +164,10 @@ public sealed class WorkbookParseCacheTests : IDisposable
     {
         using var workbook = new XLWorkbook(path);
         IXLWorksheet sheet = workbook.Worksheets
-            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형");
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스");
 
-        sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
-        sheet.Cell(2, 6).SetValue(text);      // F · 내용
+        sheet.Cell(2, 3).SetValue(speaker);   // C · 화자
+        sheet.Cell(2, 4).SetValue(text);      // D · 내용
 
         workbook.SaveAs(path);
     }

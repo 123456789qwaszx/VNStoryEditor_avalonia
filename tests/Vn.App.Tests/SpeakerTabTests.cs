@@ -265,10 +265,10 @@ public sealed class SpeakerTabTests : IDisposable
 
         using var workbook = new XLWorkbook(path);
         IXLWorksheet sheet = workbook.Worksheets.First(candidate =>
-            candidate.Cell(1, 1).GetString().Trim() == "유형");
+            candidate.Cell(1, 1).GetString().Trim() == "인덱스");
 
-        sheet.Cell(2, 5).SetValue(speaker);   // E열 — 화자
-        sheet.Cell(2, 6).SetValue(text);      // F열 — 내용
+        sheet.Cell(2, 3).SetValue(speaker);   // C열 — 화자
+        sheet.Cell(2, 4).SetValue(text);      // D열 — 내용
 
         workbook.SaveAs(path);
     }
@@ -279,8 +279,8 @@ public sealed class SpeakerTabTests : IDisposable
         using var workbook = new XLWorkbook(EpisodePath(chapterId, episodeId));
 
         return workbook.Worksheets
-            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "유형")
-            .Cell(2, 5).GetString().Trim();
+            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스")
+            .Cell(2, 3).GetString().Trim();
     }
 
     private string EpisodePath(string chapterId, string episodeId) =>

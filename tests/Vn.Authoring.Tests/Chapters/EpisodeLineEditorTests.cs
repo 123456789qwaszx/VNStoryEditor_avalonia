@@ -161,53 +161,6 @@ public sealed class EpisodeLineEditorTests : IDisposable
     // ── 열어 준 적 없는 문 ──────────────────────────────────────────────────
 
     [Fact]
-    public void 조건_블록_행에는_쓰지_않는다()
-    {
-        // 화자·내용 두 칸만 열었다. IF·ENDIF 행에 글을 쓰면 리더가 그 블록을 다르게 읽는다.
-        //
-        // ⚠ v14에서 블록 행에는 <b>인덱스가 없으므로</b> 보통은 겨냥할 길조차 없다. 그래도
-        // 이 빗장은 살아 있어야 한다: 템플릿이 미리 깔아 둔 번호가 아직 안 치워진 순간이
-        // 실재하기 때문이다(툴이 지우기 <em>전</em>). 그 순간을 그대로 만들어 겨눈다.
-        World world = Build();
-
-        int stray = StampStrayIndex(world.WorkbookPath, 9999);
-
-        ChapterWriteResult result =
-            EpisodeWorkbookWriter.SetLine(world.WorkbookPath, stray, "라루", "밀어 넣기");
-
-        Assert.False(result.Written);
-        Assert.Contains("조건 블록은 엑셀에서 고칩니다", result.Failure);
-    }
-
-    /// <summary>
-    /// 첫 블록 행(IF·ENDIF)의 인덱스 칸에 번호를 박아 둔다 — 템플릿이 깔아 둔 번호가
-    /// 아직 안 치워진 상태를 손으로 만든다. 박은 번호를 돌려준다.
-    /// </summary>
-    private static int StampStrayIndex(string workbookPath, int index)
-    {
-        EpisodeRow block = EpisodeWorkbookReader.Read(workbookPath).Rows
-            .First(row => row.Kind is not EpisodeRowKind.Dialogue);
-
-        using (var book = new ClosedXML.Excel.XLWorkbook(workbookPath))
-        {
-            book.Worksheets.First(sheet =>
-                    sheet.Cell(1, 1).GetString().Trim() == "유형")
-                .Cell(block.SourceRow, 3)
-                .SetValue(index);
-
-            book.Save();
-        }
-
-        // ⛔ 여기서 `WorkbookParseCache.Clear()`를 부르지 않는다 (2026-08-24). 정적 캐시라
-        //    <b>나란히 도는 다른 테스트 클래스의 기억까지</b> 지우고, 그쪽이 캐시 적중을
-        //    확인하는 순간이면 통째로 실패한다(`WorkbookParseCacheTests`가 간헐로 깨진
-        //    정체다 — 실행 순서에 달려 있어 재현이 들쭉날쭉했다).
-        //    비울 이유도 없다: 캐시 열쇠가 <b>내용 해시</b>라, 방금 파일을 고쳤으므로
-        //    다음 읽기가 저절로 빗나간다.
-        return index;
-    }
-
-    [Fact]
     public void 없는_인덱스에는_쓰지_않고_사유를_말한다()
     {
         // 엑셀에서 그 줄이 지워졌을 수 있다 — 조용히 아무 데나 쓰는 것이 최악이다.
@@ -268,6 +221,10 @@ public sealed class EpisodeLineEditorTests : IDisposable
 
         string workbook = Path.Combine(folder, EpisodeId + ".xlsx");
         File.Copy(SamplePath, workbook);
+
+        // ⚠ 견본은 현행 규격이 아니다 — 앱에서는 동기화 앞에 이행기가 선다(EpisodeSyncRunner).
+        // 여기서도 같은 순서를 밟아야 리더가 읽는다.
+        EpisodeWorkbookMigrator.Migrate(workbook);
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
 

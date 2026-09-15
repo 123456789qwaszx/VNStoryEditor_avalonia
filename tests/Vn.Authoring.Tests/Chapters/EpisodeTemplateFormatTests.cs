@@ -83,7 +83,9 @@ public sealed class EpisodeTemplateFormatTests : IDisposable
     [Fact]
     public void 템플릿이_담은_엑셀_전용_장치를_기록한다()
     {
-        EpisodeLibrary.EnsureWorkbook(_directory, "ep03");
+        // ⚠ v15 — 남은 드롭다운은 <b>화자 하나뿐</b>이라 목록을 줘야 선다(유형 드롭다운과
+        // 블록 행 빗장은 조건 블록과 함께 사라졌다). 목록 없이 만들면 검증이 하나도 없다.
+        EpisodeLibrary.EnsureWorkbook(_directory, "ep03", ["라루", "윌로"]);
 
         string sheet = ReadEntry(EpisodeLibrary.PathFor(_directory, "ep03"), "xl/worksheets/sheet1.xml");
 

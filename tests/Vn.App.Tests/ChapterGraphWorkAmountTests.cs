@@ -273,8 +273,8 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         using var workbook = new ClosedXML.Excel.XLWorkbook(path);
         ClosedXML.Excel.IXLWorksheet sheet = workbook.Worksheets.First();
 
-        sheet.Cell(2, 5).SetValue(speaker);   // E · 화자
-        sheet.Cell(2, 6).SetValue(text);      // F · 내용
+        sheet.Cell(2, 3).SetValue(speaker);   // C · 화자 (v15)
+        sheet.Cell(2, 4).SetValue(text);      // D · 내용
 
         workbook.SaveAs(path);
     }

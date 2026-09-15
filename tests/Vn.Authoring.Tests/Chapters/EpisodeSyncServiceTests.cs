@@ -124,9 +124,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 시트에서 하듯 둘째 줄의 대사만 고친다 (B열은 아무도 안 쓴다).
         WriteRows(workbook,
         [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", "ln_0001", "라루", "첫 줄"],
-            [null, null, "20", null, "윌로", "고친 둘째 줄"]
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", "ln_0001", "라루", "첫 줄"],
+            ["20", null, "윌로", "고친 둘째 줄"]
         ]);
 
         EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -148,8 +148,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "ep_space.xlsx");
         WriteRows(workbook,
         [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", null, "3시 13에 고쳤는데", "3시 10분으로 되있네"]
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", null, "3시 13에 고쳤는데", "3시 10분으로 되있네"]
         ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -176,8 +176,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string workbook = Path.Combine(_directory, "ep_chapter_speaker.xlsx");
         WriteRows(workbook,
         [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", null, "늙은 상인", "어서 오게."]
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", null, "늙은 상인", "어서 오게."]
         ]);
 
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, definition, fileId, workbook, chapter);
@@ -219,13 +219,13 @@ public sealed class EpisodeSyncServiceTests : IDisposable
     {
         (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
 
-        // IF를 열고 안 닫았다 — v10의 유일한 구조 규칙 위반.
+        // 같은 인덱스가 둘 — v15에 남은 유일한 구조 규칙(인덱스가 줄의 신원이다) 위반.
         string workbook = Path.Combine(_directory, "broken.xlsx");
         WriteRows(workbook,
         [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", "ln_0001", "라루", "첫 줄"],
-            ["IF", "신뢰높음", "30", null, null, null]
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", "ln_0001", "라루", "첫 줄"],
+            ["10", "ln_0002", "윌로", "같은 번호를 단 줄"]
         ]);
 
         int nodesBefore = editor.Project.EnumerateNodes().Count();
@@ -237,7 +237,7 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Assert.Contains(report.Problems, problem => problem.Contains("검증 오류"));
         Assert.Contains(report.Diagnostics, item =>
             item.Severity == ChapterDiagnosticSeverity.Error &&
-            item.Message.Contains("ENDIF로 닫히지 않았습니다"));
+            item.Message.Contains("중복입니다"));
         Assert.True(report.RejectionCount > 0);
 
         // 깨진 표는 노드도 만들지 않는다.
@@ -268,8 +268,8 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         // 그 행을 워크북에서 지운다.
         WriteRows(workbook,
         [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", "ln_0001", "라루", "첫 줄"]
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", "ln_0001", "라루", "첫 줄"]
         ]);
 
         EpisodeSyncReport second = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
@@ -281,90 +281,91 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         Assert.Contains("set 1개", pruned.Describe());
     }
 
-    // ── Gate B 1번 — 컴파일되는 텍스트 ──────────────────────────────────────
+    // ── 관문이 앞당겨졌다 (v15 — R-C) ──────────────────────────────────────
 
     [Fact]
-    public void 엑셀_출처_노드의_진행_스탯_Yarn_참조를_발행_전에_막는다()
+    public void 대본에_조건_블록을_적으면_읽는_시점에_막힌다()
     {
-        // 파이프라인 전 구간: 워크북 → 평평화 → 파서 → 대사노드 → 발행 → 이미터 → Yarn 컴파일러.
-        // 조건 구간이 있는 에피소드다. 선택지로 끝나는 에피소드는 아직 발행할 수 없다 —
-        // 툴 모델이 선택 블록을 닫는 후속 줄을 요구하는데 §3.4의 "모든 OUT=END"는 후속 줄이
-        // 없다는 뜻이라, 그 간극은 소유자 결정 대상으로 run-log에 기록돼 있다.
+        // ⚠ 이 테스트의 <b>앞선 판</b>이 지키던 것은 "IF 블록이 [2] 스탯을 참조하면
+        //    <b>내보내기가</b> 막는다"였다. 그 관문이 막는 자리(이미터)와 권하는 자리
+        //    (엑셀 드롭다운)로 갈려 있어서, 작가는 며칠 쓰고 나서야 거부당했다.
+        //
+        //    v15는 그 어긋남을 없앴다 — 조건 블록 자체가 폐지됐고, 관문이 <b>읽는
+        //    시점으로</b> 앞당겨졌다. 그래서 내보내기까지 가지도 않는다.
         (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
 
+        // 손에 익은 사람이 v15 시트에 다시 IF를 치는 길 — 남은 유일한 입구다.
+        string workbook = Path.Combine(_directory, "main05.02.xlsx");
+        WriteRows(workbook,
+        [
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", "ln_0001", "윌로", "복도는 조용했다."],
+            ["30", null, null, "IF"],
+            ["40", "ln_0100", "윌로", "어머니가 같은 말을 했었다."],
+            ["50", null, null, "ENDIF"]
+        ]);
+
+        EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+
+        Assert.False(report.Applied);
+
+        List<ChapterDiagnostic> retired = report.Diagnostics
+            .Where(item => item.Code == ChapterDiagnosticCode.EpisodeConditionBlockRetired)
+            .ToList();
+
+        Assert.Equal(2, retired.Count);
+        Assert.All(retired, item =>
+        {
+            Assert.Equal(ChapterDiagnosticSeverity.Error, item.Severity);
+
+            // 막기만 하지 않고 <b>어디로 가야 하는지</b>까지 말한다.
+            Assert.Contains("간선", item.Message);
+        });
+    }
+
+    [Fact]
+    public void 구판_워크북은_이행이_블록_행을_걷고_대사만_남긴다()
+    {
+        // 위 관문의 짝 — 이미 IF를 쓰고 있던 파일은 <b>막는 것이 아니라 옮겨 준다</b>.
+        // 사람이 쓴 대사는 한 줄도 잃지 않는다.
+        (ProjectEditor editor, string fileId, ChapterGraphModel chapter) = BuildWorld();
+
+        // ⚠ 구판(v14 6열) 그대로다 — 이 테스트의 입력은 <b>이행 전</b>이어야 한다.
         string workbook = Path.Combine(_directory, "main05.02.xlsx");
         WriteRows(workbook,
         [
             ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
             [null, null, "10", "ln_0001", "윌로", "복도는 조용했다."],
-            ["IF", "신뢰높음", "30", null, null, null],
+            ["IF", "신뢰높음", null, null, null, null],
             [null, null, "40", "ln_0100", "윌로", "어머니가 같은 말을 했었다."],
-            ["ENDIF", null, "50", null, null, null],
+            ["ENDIF", null, null, null, null, null],
             [null, null, "60", "ln_0003", "라루", "왜 그런 표정이야?"]
         ]);
 
+        // 앱이 밟는 순서 그대로 — 이행기가 먼저 선다(EpisodeSyncRunner).
+        EpisodeWorkbookMigrator.MigrationResult migration =
+            EpisodeWorkbookMigrator.Migrate(workbook);
+
+        Assert.True(migration.Migrated, migration.Failure);
+        Assert.Contains("2행", migration.Failure);   // 걷은 행 수를 말한다
+
         EpisodeSyncReport report = EpisodeSyncService.Sync(editor, Definition, fileId, workbook, chapter);
+
         Assert.True(report.Applied, string.Join(" / ", report.Problems));
-        Assert.Empty(report.Problems);
+        Assert.DoesNotContain(report.Diagnostics, item =>
+            item.Code == ChapterDiagnosticCode.EpisodeConditionBlockRetired);
 
-        // 조건 갈래가 실제 조건으로 이어졌다 — 챕터 `조건` 시트가 설정노드로 공급됐다.
+        // 블록 안에 있던 대사가 <b>남았다</b> — 그리고 신원(인덱스)도 그대로다.
         DialogueNode node = (DialogueNode)editor.Project.FindNode(report.DialogueNodeId)!;
+        ScriptDocument script = editor.Project.FindScript(node.ScriptId!)!;
+
+        ScriptLocale primary = script.Locales.Single(locale => locale.Locale == script.PrimaryLocale);
+
         Assert.Equal(
-            Vn.Authoring.Model.ConditionTransitionKind.BeginIf,
-            node.FindExtension("ln_0100")!.Transition!.Kind);
-        Assert.Equal(
-            Vn.Authoring.Model.ConditionTransitionKind.EndIf,
-            node.FindExtension("ln_0003")!.Transition!.Kind);
+            ["복도는 조용했다.", "어머니가 같은 말을 했었다.", "왜 그런 표정이야?"],
+            script.ActiveLines.Select(line => primary.Find(line.Id).Text));
 
-        // 발행 → 이미터 → 실컴파일.
-        Vn.Authoring.Results.DialogueResult published = editor.PublishDialogue(node.Id).Result;
-        Vn.Authoring.Rendering.YarnBundle bundle = Vn.Authoring.Rendering.YarnBundleEmitter.Emit(
-            published, project: editor.Project);
-
-        Vn.Authoring.Rendering.YarnBundleProblem blocked = Assert.Single(
-            bundle.Problems, problem => problem.IsBlocking);
-        Assert.Contains("trust", blocked.Message);
-        Assert.Contains("진행 스탯", blocked.Message);
-#if false // R4 이전: 진행 스탯을 Yarn 전역 변수로 선언하여 컴파일하던 계약
-        string compileDirectory = Path.Combine(_directory, "compile");
-        Directory.CreateDirectory(compileDirectory);
-        Vn.Authoring.Rendering.YarnBundleEmitter.WriteBundles([bundle], compileDirectory);
-
-        var utf8 = new System.Text.UTF8Encoding(false);
-        File.WriteAllText(Path.Combine(compileDirectory, "Demo.yarnproject"),
-            """
-            {
-              "projectFileVersion": 3,
-              "baseLanguage": "ko",
-              "sourceFiles": [ "**/*.yarn" ],
-              "excludeFiles": []
-            }
-            """, utf8);
-        // Tier 2 스탯은 게임 전역 변수다 — 실제 게임이 game.schema.json에 선언하는 것을 그대로 흉내낸다.
-        // 브리지(U9)가 대화 전에 $trust를 심는 것과 같은 선언이다.
-        File.WriteAllText(Path.Combine(compileDirectory, "game.schema.json"),
-            """
-            { "schemaVersion": 1,
-              "variables": [
-                { "id": "$trust", "type": "number" },
-                { "id": "$anger", "type": "number" },
-                { "id": "$fatigue", "type": "number" }
-              ],
-              "commands": [] }
-            """, utf8);
-
-        Vn.Core.Analysis.AnalysisReport compiled = new Vn.Core.VnProjectAnalyzer().Analyze(
-            Path.Combine(compileDirectory, "Demo.yarnproject"),
-            Path.Combine(compileDirectory, "game.schema.json"));
-
-        var errors = compiled.Diagnostics
-            .Where(item => item.Severity == Vn.Core.Diagnostics.DiagnosticSeverity.Error)
-            .ToList();
-
-        Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
-            Environment.NewLine,
-            errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
-#endif
+        Assert.Equal([10, 40, 60], node.ExcelLineMap.Keys.Order());
     }
 
     [Fact]
@@ -479,25 +480,21 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         using var workbook = new XLWorkbook(stream);
         IXLWorksheet sheet = workbook.Worksheets.First();
 
-        // v14 머리글 (2026-08-24) — 구조 두 칸이 앞, 대사 네 칸이 뒤.
+        // v15 머리글 (2026-09-16) — 넷 다 대사 줄의 것이다.
         Assert.Equal(
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            Enumerable.Range(1, 6).Select(column => sheet.Cell(1, column).GetString()));
+            ["인덱스", "LineId", "화자", "내용"],
+            Enumerable.Range(1, 4).Select(column => sheet.Cell(1, column).GetString()));
 
-        Assert.Equal(string.Empty, sheet.Cell(1, 7).GetString());
-        Assert.Equal(10, sheet.Cell(2, 3).GetDouble());   // 인덱스 사다리는 C열에 깔린다
+        Assert.Equal(string.Empty, sheet.Cell(1, 5).GetString());
+        Assert.Equal(10, sheet.Cell(2, 1).GetDouble());   // 인덱스 사다리는 A열에 깔린다
 
         // 시트 보호는 없다 (v4) — 툴이 이 파일을 쓰지 않으므로 지킬 셀이 없고,
         // 외부 편집기(구글 시트)가 재저장할 때 깨질 것도 하나 줄었다.
         Assert.False(sheet.Protection.IsProtected);
 
-        // 유형 드롭다운 하나 + 블록 행 빗장 셋 (v14) — 인덱스·LineId·내용에 건다.
-        // 화자·조건라벨 드롭다운은 목록을 받았을 때만 선다.
-        Assert.Equal(4, sheet.DataValidations.Count());
-
-        // 빗장은 "유형이 비었거나 대사일 때만"이다 — 블록 행에는 못 적는다.
-        Assert.Equal(3, sheet.DataValidations
-            .Count(validation => validation.AllowedValues == XLAllowedValues.Custom));
+        // v15 — 검증이 하나도 안 선다. `유형` 드롭다운과 블록 행 빗장 셋이 조건 블록과
+        // 함께 사라졌고, 화자 드롭다운은 목록을 받았을 때만 선다(여기서는 안 줬다).
+        Assert.Empty(sheet.DataValidations);
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -516,10 +513,15 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         return (editor, file.Id, chapter);
     }
 
+    /// <summary>
+    /// 견본을 대본 워크북 자리에 놓는다. ⚠ 견본은 현행 규격이 아니므로 이행을 태운다 —
+    /// 앱에서도 동기화 앞에 이행기가 선다(<c>EpisodeSyncRunner</c>).
+    /// </summary>
     private string CopySampleAs(string fileName)
     {
         string path = Path.Combine(_directory, fileName);
         File.Copy(SamplePath, path);
+        EpisodeWorkbookMigrator.Migrate(path);
         return path;
     }
 
@@ -529,9 +531,9 @@ public sealed class EpisodeSyncServiceTests : IDisposable
         string path = Path.Combine(_directory, fileName);
         WriteRows(path,
         [
-            ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"],
-            [null, null, "10", "ln_0001", "라루", "첫 줄"],
-            [null, null, "20", lineIdForSecondRow, "윌로", "둘째 줄"]
+            ["인덱스", "LineId", "화자", "내용"],
+            ["10", "ln_0001", "라루", "첫 줄"],
+            ["20", lineIdForSecondRow, "윌로", "둘째 줄"]
         ]);
 
         return path;
