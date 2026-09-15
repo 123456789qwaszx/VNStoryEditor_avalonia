@@ -19,11 +19,9 @@ public sealed record EmittedEpisodeLine(int Index, string? Speaker, string Text)
 /// <b>덕분에 난제 둘이 사라진다</b> — 전체를 새로 쓰므로 <b>행 삽입·삭제라는 개념이 없고</b>,
 /// 인덱스 충돌도 없다. 지시서가 0-b로 잡았던 일이 이 성격 변경 하나로 증발했다.
 ///
-/// ⚠ <b>지금은 v14 6열 그대로 낸다</b>(유형·조건라벨·LineId는 비운 채). 규격을 여기서
-/// 줄이지 않는 이유는 <see cref="EpisodeWorkbookReader"/>가 <b>여섯 머리글이 모두 맞아야</b>
-/// 시트를 찾기 때문이다 — 지금 줄이면 이미터가 낸 파일을 리더가 못 읽고, 그러면
-/// <b>임포트라는 안전망이 R-B에서 끊긴다</b>(지시서 §9). 조건 열 폐지는 R-C의 일이고,
-/// 그때 리더·이행기와 함께 움직인다.
+/// <b>v15 4열을 낸다</b>(<c>인덱스 · LineId · 화자 · 내용</c>). R-B 때는 리더가 여섯
+/// 머리글을 다 맞춰야 시트를 찾아서 6열 그대로 냈는데, R-C가 리더·이행기와 함께 규격을
+/// 줄이면서 그 유예가 끝났다. <c>LineId</c>는 유물이라 비운 채 낸다(툴이 쓰지 않는다 — v4).
 ///
 /// ⚠ <b>1행 경고 배너도 R-C로 미뤘다</b>(지시서 §4.4의 둘째 항목). 리더의 머리글 행이
 /// 1행이라, 배너를 넣으려면 머리글이 2행으로 내려가고 그것이 곧 규격 변경이다. 지금은
@@ -38,12 +36,12 @@ public static class EpisodeWorkbookEmitter
     /// <b>한 글자도 달라선 안 된다</b> — 셋 다 이 머리글로 시트를 찾는다.
     /// </summary>
     private static readonly string[] Headers =
-        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
+        ["인덱스", "LineId", "화자", "내용"];
 
-    private const int ColumnIndex = 3;
-    private const int ColumnLineId = 4;
-    private const int ColumnSpeaker = 5;
-    private const int ColumnText = 6;
+    private const int ColumnIndex = 1;
+    private const int ColumnLineId = 2;
+    private const int ColumnSpeaker = 3;
+    private const int ColumnText = 4;
 
     private const string SheetName = "대본";
 

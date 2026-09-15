@@ -1,28 +1,16 @@
 namespace Vn.Authoring.Chapters;
 
-/// <summary>
-/// 에피소드 워크북 한 행의 정체 (§3.2 C열 `유형`).
-///
-/// <b>이 판정은 여기 하나뿐이다.</b> 평평화·검증·G5가 같은 판정을 쓴다 — 행 유형 판정이
-/// 두 곳에 생기면 한쪽만 고쳐지는 날이 오고, 그날 화면과 산출물이 다른 이야기를 한다.
-/// </summary>
-public enum EpisodeRowKind
-{
-    /// <summary>빈칸 = 대사. 라인이다 — LineId를 갖고 연출·세이브 타깃이 된다.</summary>
-    Dialogue,
-
-    /// <summary>
-    /// 조건 블록의 여는 줄 (v10). <b>라인이 아니다</b>(소유자 확정) — LineId가 없고
-    /// 연출·세이브 타깃도 아니다. 조건라벨만 갖는다.
-    /// </summary>
-    If,
-
-    /// <summary>같은 체인의 다른 갈래 — 시트 낱말은 <c>ELSEIF</c>. 깊이는 안 는다.</summary>
-    ElseIf,
-
-    /// <summary>조건 블록의 닫는 줄 — 시트 낱말은 <c>ENDIF</c> (v10). 라인이 아니다.</summary>
-    End
-}
+// ⛔ <b>EpisodeRowKind는 2026-09-16에 사라졌다</b> (규격 v15 — R-C,
+//    docs/work-orders/tool-owns-workbooks-orders.md §3).
+//
+//    대본 시트에 `유형`이 있던 이유는 대사 행과 블록 행(IF·ELSEIF·ENDIF)을 가르기
+//    위해서였다. 블록이 폐지되자 그 열의 값은 `대사` 하나뿐이 되었고, 값이 하나인
+//    칸은 묻지 않는 질문이다. `조건라벨`도 같은 날 함께 걷혔다 — 그 칸이 가리키던
+//    챕터 `조건` 시트의 라벨은 [2] 진행 스탯이고, 런타임이 대사에서 그것을 읽는 것을
+//    금지했다.
+//
+//    ⚠ <b>이제 대본의 모든 행은 대사다.</b> 행 유형을 묻는 코드가 다시 생기려 하면,
+//    그것은 구조가 대본으로 돌아오려는 신호다 — 구조의 주인은 챕터 `간선` 시트다.
 
 /// <summary>
 /// 에피소드 워크북 한 행 (§3.2의 6열 — v10, 2026-08-17 소유자 결정).
@@ -53,32 +41,31 @@ public enum EpisodeRowKind
 public sealed record EpisodeRow(
     int? Index,
     string? LineId,
-    EpisodeRowKind Kind,
-    string? ConditionLabel,
     string Speaker,
     string Text,
     int SourceRow)
 {
-    /// <summary>라인인가 — LineId를 받아 연출·세이브 타깃이 될 수 있는가.</summary>
-    public bool IsLine => Kind is EpisodeRowKind.Dialogue;
+    /// <summary>
+    /// 라인인가 — LineId를 받아 연출·세이브 타깃이 될 수 있는가.
+    ///
+    /// ⚠ <b>v15부터 언제나 참이다</b>(블록 행이 폐지됐다). 이름을 남겨 둔 것은 부르는
+    /// 자리가 많아서이고, <b>뜻이 사라진 것은 아니다</b> — 인덱스 없는 행은 여전히 표의
+    /// 일부가 아니다. 그 판정이 여기 하나로 모여 있어야 다음에 또 갈리지 않는다.
+    /// </summary>
+    public bool IsLine => Index is not null;
 
     /// <summary>
     /// 인덱스만 있고 아무것도 안 쓴 행 — 템플릿이 미리 깔아 둔 자리다.
     /// 표의 일부가 아니므로 검증·평평화 어디에서도 세지 않는다(리더가 걸러 낸다).
     /// </summary>
-    public bool IsBlank =>
-        Kind == EpisodeRowKind.Dialogue &&
-        Speaker.Length == 0 &&
-        Text.Length == 0 &&
-        ConditionLabel is null;
+    public bool IsBlank => Speaker.Length == 0 && Text.Length == 0;
 
     /// <summary>
-    /// 이 줄의 번호 — <b>대사 행에서만 부른다</b>. 블록 행에서 부르면 터진다:
-    /// 조용히 0을 내주면 그 0이 <c>ExcelLineMap</c>·연출·세이브로 흘러 들어가
-    /// "어느 줄인지 모르는 줄"이 생긴다.
+    /// 이 줄의 번호. 인덱스 없는 행에서 부르면 터진다: 조용히 0을 내주면 그 0이
+    /// <c>ExcelLineMap</c>·연출·세이브로 흘러 들어가 "어느 줄인지 모르는 줄"이 생긴다.
     /// </summary>
     public int LineIndex => Index ?? throw new InvalidOperationException(
-        $"{SourceRow}행은 {Kind} 행이라 인덱스가 없습니다 — 인덱스는 대사 줄의 번호입니다(v14).");
+        $"{SourceRow}행에는 인덱스가 없습니다 — 인덱스는 대사 줄의 번호입니다(v15).");
 }
 
 /// <summary>

@@ -62,82 +62,12 @@ public static class EpisodeFlattener
         var builder = new StringBuilder();
         var emitted = new List<EpisodeFlattenedLine>();
 
-        // 지금 몇 겹 안에 있는가. 산출 들여쓰기이자 <<endif>>의 자리다.
-        int depth = 0;
-
-        // 펴지 못한 블록의 깊이 — 조건을 못 세운 IF 안쪽은 통째로 건너뛴다. 그 안에 또
-        // 블록이 있을 수 있으므로 깊이를 세어야 어느 END에서 다시 켜질지 알 수 있다.
-        int? skipFrom = null;
-
+        // v15 (2026-09-16 — R-C) — <b>대본에는 조건이 없다.</b> 모든 행이 대사이므로
+        // 들여쓰기도 깊이도 없고, 평평화는 말 그대로 줄을 순서대로 적는 일이 됐다.
+        // 조건 분기의 주인은 챕터 `간선` 시트다(표시조건·해금조건).
         foreach (EpisodeRow row in model.Rows)
         {
-            if (skipFrom is { } suppressed)
-            {
-                switch (row.Kind)
-                {
-                    case EpisodeRowKind.If:
-                        depth++;
-                        break;
-
-                    case EpisodeRowKind.End:
-                        depth--;
-
-                        if (depth == suppressed)
-                        {
-                            skipFrom = null;
-                        }
-
-                        break;
-                }
-
-                continue;
-            }
-
-            switch (row.Kind)
-            {
-                case EpisodeRowKind.If:
-                    if (Expression(model, row, conditions, diagnostics) is not { } expression)
-                    {
-                        skipFrom = depth;
-                        depth++;
-                        break;
-                    }
-
-                    builder.Append(YarnSyntax.IndentOf(depth));
-                    YarnSyntax.AppendCondition(builder, "if", expression);
-                    builder.Append('\n');
-                    depth++;
-                    break;
-
-                case EpisodeRowKind.ElseIf:
-                    // 같은 체인의 다른 갈래다 — 깊이는 안 변하고 표지만 한 겹 밖에 선다.
-                    if (Expression(model, row, conditions, diagnostics) is { } branch)
-                    {
-                        builder.Append(YarnSyntax.IndentOf(Math.Max(0, depth - 1)));
-                        YarnSyntax.AppendCondition(builder, "elseif", branch);
-                        builder.Append('\n');
-                    }
-
-                    break;
-
-                case EpisodeRowKind.End:
-                    // 짝 없는 END는 리더가 이미 오류로 잡았다 — 여기서는 0 아래로 안 내려간다.
-                    depth = Math.Max(0, depth - 1);
-                    builder.Append(YarnSyntax.IndentOf(depth)).Append("<<endif>>\n");
-                    break;
-
-                default:
-                    EmitDialogue(model, row, builder, emitted, diagnostics, depth, identity);
-                    break;
-            }
-        }
-
-        // 안 닫힌 블록도 리더가 잡았다. 산출물만은 문법이 성립하게 닫아 둔다 —
-        // 반쯤 열린 Yarn을 내보내면 컴파일러의 오류가 진짜 원인을 덮는다.
-        while (depth > 0)
-        {
-            depth--;
-            builder.Append(YarnSyntax.IndentOf(depth)).Append("<<endif>>\n");
+            EmitDialogue(model, row, builder, emitted, diagnostics, indent: 0, identity);
         }
 
         return new EpisodeFlattenResult(builder.ToString(), emitted, diagnostics);
@@ -156,50 +86,6 @@ public static class EpisodeFlattener
     /// `IF` 행이 가리키는 조건식. 라벨은 에피소드가 적고 <b>식의 원천은 챕터 `조건` 시트</b>다(G-7) —
     /// 에피소드 워크북은 식을 모른다.
     /// </summary>
-    private static string? Expression(
-        EpisodeWorkbookModel model,
-        EpisodeRow row,
-        IReadOnlyDictionary<string, ChapterCondition> conditions,
-        List<ChapterDiagnostic> diagnostics)
-    {
-        if (row.ConditionLabel is not { Length: > 0 } label)
-        {
-            // 리더가 이미 "조건라벨이 없다"고 말했다 — 여기서는 결과만 알린다.
-            diagnostics.Add(Diagnostic(
-                model, row.SourceRow, ColumnConditionLabel,
-                $"{(row.Kind == EpisodeRowKind.ElseIf ? "ELSEIF" : "IF")} 행에 조건라벨이 없어 이 블록은 산출물에 나오지 않습니다."));
-
-            return null;
-        }
-
-        if (!conditions.TryGetValue(label, out ChapterCondition? condition))
-        {
-            diagnostics.Add(Diagnostic(
-                model, row.SourceRow, ColumnConditionLabel,
-                $"조건라벨 '{label}'의 식을 챕터 `조건` 시트에서 찾지 못해 이 블록을 펴지 못했습니다."));
-
-            return null;
-        }
-
-        // 시트의 식은 기획자 언어(trust >= 3)이고 대사 안 <<if>>는 Yarn이 평가한다 —
-        // 번역은 ConditionYarnTranslator 한 곳이 한다. 실컴파일이 이 간극을 잡았다.
-        ConditionYarnTranslation translated = ConditionYarnTranslator.Translate(condition);
-
-        if (!translated.IsTranslatable)
-        {
-            diagnostics.Add(Diagnostic(model, row.SourceRow, ColumnConditionLabel, translated.Problem!));
-            return null;
-        }
-
-        return translated.Yarn;
-    }
-
-    // ── 줄 산출 ─────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// <c>화자: 대사 #line:ln_0001</c>. LineId 표기 정본은 Yarn 접미형이다(D8) — 계약서 C1이
-    /// 요구하는 형식이고 이미터가 이미 쓰는 형식이라, 정본을 여기 맞추면 표기가 늘지 않는다.
-    /// </summary>
     private static void EmitDialogue(
         EpisodeWorkbookModel model,
         EpisodeRow row,
@@ -214,21 +100,10 @@ public static class EpisodeFlattener
         // LineId 되쓰기(G5)의 근거라 어긋나면 엉뚱한 행에 ID가 적힌다.
         if (string.IsNullOrWhiteSpace(row.Speaker) && string.IsNullOrWhiteSpace(row.Text))
         {
-            // 인덱스만 있고 나머지가 전부 빈 행은 <b>아직 안 쓴 자리</b>다 — 템플릿이 스스로
-            // 넣어 준 시작 행(인덱스 10)이 그렇다. 사람이 아무것도 하지 않았는데 알림이
-            // 뜨면, 그 알림은 읽을거리가 아니라 소음이 된다. 반쯤 채운 행만 말해 준다.
-            if (!string.IsNullOrWhiteSpace(row.ConditionLabel))
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Info,
-                    ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                    model.SourcePath,
-                    model.SheetName,
-                    row.SourceRow,
-                    null,
-                    $"인덱스 {row.Index} 행은 화자·내용이 모두 비어 있어 산출물에 나오지 않습니다."));
-            }
-
+            // v15 — 빈 행은 조용히 넘긴다. 예전에는 `조건라벨`만 적힌 행을 "반쯤 채운 행"으로
+            // 보고 알렸는데, 그 칸이 사라지면서 <b>반쯤 채울 방법 자체가 없어졌다</b>:
+            // 인덱스만 있는 행은 전부 템플릿이 깔아 둔 빈자리다. 사람이 아무것도 하지
+            // 않았는데 뜨는 알림은 읽을거리가 아니라 소음이다.
             return;
         }
 
@@ -252,7 +127,6 @@ public static class EpisodeFlattener
         emitted.Add(new EpisodeFlattenedLine(row.SourceRow, row.LineIndex, effectiveId));
     }
 
-    private const int ColumnConditionLabel = 4;
 
     private static ChapterDiagnostic Diagnostic(
         EpisodeWorkbookModel model, int row, int column, string message) =>

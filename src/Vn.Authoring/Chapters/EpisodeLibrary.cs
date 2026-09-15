@@ -249,10 +249,6 @@ public static class EpisodeLibrary
     /// 목록은 숨김 시트가 담고, 검증은 조언일 뿐이라 목록 밖 이름도 그대로 적을 수 있다
     /// (편의 기능이 없다고 원고를 못 쓰게 하지 않는다).
     /// </param>
-    /// <param name="conditionLabels">
-    /// 챕터 `조건` 시트의 라벨들 (2026-08-17 소유자). 조건라벨 열(D)에 같은 방식으로 깐다 —
-    /// 이쪽은 <b>오타가 곧 오류</b>라(리더가 미등록 라벨을 잡는다) 드롭다운의 값이 더 크다.
-    /// </param>
     /// <summary>
     /// 에피소드의 대본 워크북을 <c>.bak</c>으로 민다 (2026-08-26 소유자: "에피소드를
     /// 삭제했는데 여전히 폴더에는 남아있는 버그") — 지우는 종류의 작업은 직전 상태를
@@ -304,7 +300,6 @@ public static class EpisodeLibrary
         string folder,
         string episodeId,
         IReadOnlyList<string>? speakers = null,
-        IReadOnlyList<string>? conditionLabels = null,
         string? firstLine = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
@@ -328,7 +323,7 @@ public static class EpisodeLibrary
 
         // 6열 (v14, 2026-08-24) — 왼쪽 두 칸이 <b>제어 행의 메타데이터</b>, 오른쪽 네 칸이
         // <b>대사 줄</b>이다. 리더의 배열과 한 글자도 달라선 안 된다(시트를 찾는 근거다).
-        string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
+        string[] headers = ["인덱스", "LineId", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
@@ -371,7 +366,7 @@ public static class EpisodeLibrary
             sheet.Cell(2, TextColumn).SetValue(firstLine);
         }
 
-        ApplyVocabulary(workbook, sheet, speakers, conditionLabels);
+        ApplyVocabulary(workbook, sheet, speakers);
 
         workbook.SaveAs(path);
         return true;
@@ -393,27 +388,22 @@ public static class EpisodeLibrary
     public const string ConditionListSheetName = "조건목록";
 
     // v14 (2026-08-24) — 구조 두 칸이 앞, 대사 네 칸이 뒤.
-    private const int KindColumn = 1;         // A열 — §3.2의 유형 (v14에서 B→A)
-    private const int ConditionColumn = 2;    // B열 — §3.2의 조건라벨 (v14에서 D→B)
-    private const int IndexColumn = 3;        // C열 — 대사 줄의 번호 (v14에서 A→C)
-    private const int LineIdColumn = 4;       // D열 — 유물. 사람도 툴도 안 쓴다 (v14에서 C→D)
-    private const int SpeakerColumn = 5;      // E열 — §3.2의 화자 (v10에서 H→E)
-    private const int TextColumn = 6;         // F열 — §3.2의 내용
+    // v15 (2026-09-16 — R-C) — `유형`·`조건라벨` 폐지. 남은 넷은 전부 대사 줄의 것이다.
+    private const int IndexColumn = 1;        // A열 — 대사 줄의 번호
+    private const int LineIdColumn = 2;       // B열 — 유물. 사람도 툴도 안 쓴다
+    private const int SpeakerColumn = 3;      // C열 — 화자
+    private const int TextColumn = 4;         // D열 — 내용
     private const int ListRows = 200;         // 드롭다운이 가리키는 범위. 이보다 많으면 나눌 일이다.
 
-    /// <summary>
-    /// `유형` 드롭다운의 정본 낱말. <b>규격이 늘면 옛 파일에도 와야 한다</b> — 2026-08-17
-    /// 소유자 보고("유형이 여전히 IF와 END밖에 없어")의 정체가 이것이었다. 화자·조건라벨은
-    /// 숨김 시트를 갈아 끼우면 따라오는데, 이 목록은 낱말이 파일에 그대로 굳어서 만들 때
-    /// 한 번 박히고 끝이었다. 이제 동기화마다 대조해 다르면 다시 건다.
-    /// </summary>
-    private const string KindList = "\"대사,IF,ELSEIF,ENDIF\"";
+    // ⛔ `유형` 드롭다운(`"대사,IF,ELSEIF,ENDIF"`)은 2026-09-16에 사라졌다 (규격 v15 — R-C).
+    //    <b>여기가 "권하는 자리"였다</b>: 리더가 조건 블록을 막는 동안에도 엑셀은 그것을
+    //    드롭다운으로 내밀고 있었고, 그래서 사람은 며칠 쓰고 나서야 내보내기에서 거부당했다.
+    //    막는 자리와 권하는 자리를 함께 걷는다.
 
     /// <summary>어휘 한 가지 — 숨김 시트 하나와 그것이 조언하는 대본 열 하나.</summary>
     private sealed record Vocabulary(string SheetName, int Column);
 
     private static readonly Vocabulary Speakers = new(SpeakerListSheetName, SpeakerColumn);
-    private static readonly Vocabulary Conditions = new(ConditionListSheetName, ConditionColumn);
 
     /// <summary>
     /// 숨김 목록 시트를 채우고(없으면 만들고) 그 열에 조언 드롭다운을 건다.
@@ -423,109 +413,15 @@ public static class EpisodeLibrary
     private static void ApplyVocabulary(
         XLWorkbook workbook,
         IXLWorksheet scriptSheet,
-        IReadOnlyList<string>? speakers,
-        IReadOnlyList<string>? conditionLabels)
+        IReadOnlyList<string>? speakers)
     {
-        ApplyKindList(scriptSheet);
-
+        // v15 — 어휘는 화자 하나뿐이다. 유형 드롭다운과 조건라벨 목록은 조건 블록과 함께
+        // 사라졌고, 블록 행 빗장도 막을 행이 없어져 함께 걷혔다.
         if (speakers is { Count: > 0 })
         {
             ApplyList(workbook, scriptSheet, Speakers, speakers);
         }
-
-        if (conditionLabels is { Count: > 0 })
-        {
-            ApplyList(workbook, scriptSheet, Conditions, conditionLabels);
-        }
     }
-
-    /// <summary>
-    /// `유형` 드롭다운을 정본 낱말로 다시 건다 — 이미 걸린 것이 있어도 갈아 끼운다.
-    /// 화자·조건라벨과 달리 이 목록은 <b>낱말이 파일에 굳으므로</b>, 규격이 늘 때 옛 파일에
-    /// 오게 하려면 여기서 밀어 넣는 수밖에 없다. v4의 예외(숨김 시트와 검증 정의)에 든다.
-    /// </summary>
-    private static void ApplyKindList(IXLWorksheet sheet)
-    {
-        sheet.DataValidations.Delete(validation => validation.Ranges.Any(range =>
-            range.RangeAddress.FirstAddress.ColumnNumber == KindColumn));
-
-        sheet.Range(2, KindColumn, TemplateRows, KindColumn)
-            .CreateDataValidation()
-            .List(KindList, inCellDropdown: true);
-
-        BlockRowGuard(sheet, IndexColumn,
-            "이 행은 IF·ELSEIF·ENDIF입니다 — 인덱스는 플레이어에게 전달되는 " +
-            "대사의 순번이라 구조를 그리는 행은 갖지 않습니다(v14).");
-
-        BlockRowGuard(sheet, LineIdColumn,
-            "이 행은 IF·ELSEIF·ENDIF입니다 — 라인이 아니라서 LineId를 가질 수 없습니다.");
-
-        BlockRowGuard(sheet, TextColumn,
-            "이 행은 IF·ELSEIF·ENDIF입니다 — 블록의 흐름만 그립니다. " +
-            "대사는 그 위나 아래의 자기 행에 적어 주세요.");
-    }
-
-    /// <summary>
-    /// <b>블록 행에는 못 적게</b> 엑셀이 먼저 막는다 (2026-08-24 소유자: "If,ElseIf,EndIf일
-    /// 경우 LineId가 생성되면 안돼 … 화자와 내용도 안 적게 막아줘").
-    ///
-    /// 유형(B열)이 IF·ELSEIF·ENDIF면 그 행의 이 칸은 비어 있어야 한다. 빈칸은 언제나
-    /// 통과한다(<c>IgnoreBlanks</c>) — 막는 것은 <em>적는 것</em>뿐이다.
-    ///
-    /// 걸리는 칸은 셋 — <b>인덱스(C) · LineId(D) · 내용(F)</b>.
-    ///
-    /// ⚠ <b>화자(E열)에는 못 건다.</b> 엑셀은 한 칸에 검증을 하나만 허용하는데 그 열은
-    /// 이미 화자 드롭다운이 쓰고 있다. 둘 중 하나를 골라야 한다면 <b>드롭다운이 이긴다</b> —
-    /// 그건 대사 줄마다 쓰는 것이고 이 빗장은 어쩌다 한 번이다. 화자는 리더가 오류로
-    /// 짚는다 — 그쪽이 더 센 빗장이다(붙여넣기로도 못 빠져나간다). 여기 검증은
-    /// <b>실수를 손에서 막는</b> 앞잡이일 뿐이고, 규칙의 주인은 언제나 리더다.
-    /// </summary>
-    private static void BlockRowGuard(IXLWorksheet sheet, int column, string message)
-    {
-        sheet.DataValidations.Delete(validation => validation.Ranges.Any(range =>
-            range.RangeAddress.FirstAddress.ColumnNumber == column));
-
-        IXLDataValidation guard = sheet
-            .Range(2, column, TemplateRows, column)
-            .CreateDataValidation();
-
-        // 유형이 비었거나 `대사`일 때만 적을 수 있다. 행 번호는 상대참조라 엑셀이 행마다 민다.
-        guard.Custom($"=OR(${KindLetter}2=\"\",${KindLetter}2=\"대사\")");
-        guard.IgnoreBlanks = true;
-        guard.ErrorStyle = XLErrorStyle.Stop;
-        guard.ErrorTitle = "블록 행입니다";
-        guard.ErrorMessage = message;
-        guard.ShowErrorMessage = true;
-    }
-
-    /// <summary>수식에 쓰는 유형 열의 글자 — 열이 옮겨 가면 여기도 따라온다.</summary>
-    private static string KindLetter => XLHelper.GetColumnLetterFromNumber(KindColumn);
-
-    /// <summary>
-    /// 유형 드롭다운과 <b>블록 행 빗장</b>이 규격대로 걸려 있는가. 하나라도 없으면 옛
-    /// 파일이므로 <see cref="ApplyVocabulary"/>가 다시 건다 — v4의 예외(숨김 시트와 검증
-    /// 정의)에 든다.
-    /// </summary>
-    private static bool KindListMatches(IXLWorksheet sheet) =>
-        sheet.DataValidations.Any(validation =>
-            validation.Ranges.Any(range =>
-                range.RangeAddress.FirstAddress.ColumnNumber == KindColumn) &&
-            string.Equals(validation.Value, KindList, StringComparison.Ordinal)) &&
-        HasBlockRowGuard(sheet, IndexColumn) &&
-        HasBlockRowGuard(sheet, LineIdColumn) &&
-        HasBlockRowGuard(sheet, TextColumn);
-
-    private static bool HasDropdown(IXLWorksheet sheet, int column) =>
-        sheet.DataValidations.Any(validation =>
-            validation.Ranges.Any(range =>
-                range.RangeAddress.FirstAddress.ColumnNumber == column) &&
-            validation.AllowedValues == XLAllowedValues.List);
-
-    private static bool HasBlockRowGuard(IXLWorksheet sheet, int column) =>
-        sheet.DataValidations.Any(validation =>
-            validation.Ranges.Any(range =>
-                range.RangeAddress.FirstAddress.ColumnNumber == column) &&
-            validation.AllowedValues == XLAllowedValues.Custom);
 
     private static void ApplyList(
         XLWorkbook workbook, IXLWorksheet scriptSheet, Vocabulary vocabulary, IReadOnlyList<string> values)
@@ -576,11 +472,9 @@ public static class EpisodeLibrary
     public static VocabularyPush PushVocabulary(
         string folder,
         string episodeId,
-        IReadOnlyList<string> speakers,
-        IReadOnlyList<string> conditionLabels)
+        IReadOnlyList<string> speakers)
     {
         ArgumentNullException.ThrowIfNull(speakers);
-        ArgumentNullException.ThrowIfNull(conditionLabels);
 
         if (FindExisting(folder, episodeId) is not { } path)
         {
@@ -601,9 +495,7 @@ public static class EpisodeLibrary
 
             IXLWorksheet scriptSheet = FindScriptSheet(workbook);
 
-            if (ListMatches(workbook, scriptSheet, Speakers, speakers) &&
-                ListMatches(workbook, scriptSheet, Conditions, conditionLabels) &&
-                KindListMatches(scriptSheet))
+            if (ListMatches(workbook, scriptSheet, Speakers, speakers))
             {
                 return VocabularyPush.Unchanged;
             }
@@ -611,7 +503,7 @@ public static class EpisodeLibrary
             // 원고 파일을 다시 쓰는 유일한 순간 — 직전 상태를 남긴다.
             File.WriteAllBytes(path + ".bak", memory.ToArray());
 
-            ApplyVocabulary(workbook, scriptSheet, speakers, conditionLabels);
+            ApplyVocabulary(workbook, scriptSheet, speakers);
             workbook.SaveAs(path);
 
             return new VocabularyPush(true, null);
@@ -635,6 +527,12 @@ public static class EpisodeLibrary
     /// ⚠ 넣을 낱말이 없으면 드롭다운도 걸지 않는다(<c>ApplyVocabulary</c>). 그때까지
     ///   드롭다운을 요구하면 달라진 것이 없는데도 열 때마다 원고를 다시 쓰고 `.bak`이 갈린다.
     /// </summary>
+    private static bool HasDropdown(IXLWorksheet sheet, int column) =>
+        sheet.DataValidations.Any(validation =>
+            validation.Ranges.Any(range =>
+                range.RangeAddress.FirstAddress.ColumnNumber == column) &&
+            validation.AllowedValues == XLAllowedValues.List);
+
     private static bool ListMatches(
         XLWorkbook workbook,
         IXLWorksheet scriptSheet,

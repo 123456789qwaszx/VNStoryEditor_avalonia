@@ -114,7 +114,7 @@ public static class EpisodeSyncRunner
         string fileId = editor.EnsureChapterBoard(entry.ChapterId);
 
         List<string> speakers = SpeakerNames(definition);
-        List<string> labels = model.Conditions.Select(condition => condition.Label).ToList();
+        // v15 — 대본에 밀어 넣을 조건 라벨이 없다(조건 블록 폐지).
 
         // 대본이 없는 에피소드에는 여기서 만들어 준다 (2026-08-17 소유자 보고). 툴의
         // [＋ 에피소드]는 이미 만들고 있었지만 **엑셀에서 직접 행을 더한 경우**가 남아
@@ -125,7 +125,7 @@ public static class EpisodeSyncRunner
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
-            created |= EpisodeLibrary.EnsureWorkbook(folder, episode.EpisodeId, speakers, labels);
+            created |= EpisodeLibrary.EnsureWorkbook(folder, episode.EpisodeId, speakers);
         }
 
         var reports = new List<EpisodeSyncReport>();

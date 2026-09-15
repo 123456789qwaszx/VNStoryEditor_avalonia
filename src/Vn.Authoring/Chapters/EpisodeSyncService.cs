@@ -92,7 +92,6 @@ public static class EpisodeSyncService
         try
         {
             model = EpisodeWorkbookReader.Read(workbookPath, labels);
-            model = TidyBlockRows(workbookPath, model, labels);
         }
         catch (XlsxReadException exception)
         {
@@ -382,20 +381,11 @@ public static class EpisodeSyncService
             return;
         }
 
-        // 노드에 다는 식은 Yarn 형태다 — <<if>>가 정확 일치로 역조회하는 대상이자, 게임이
-        // 실제로 평가할 식이다. 번역 불가(cleared: 등)는 평평화가 이미 오류로 알렸다.
-        List<(string Label, string Yarn)> used = model.Rows
-            .Where(row => row.ConditionLabel is not null)
-            .Select(row => chapter.FindCondition(row.ConditionLabel!))
-            .Where(condition => condition is not null)
-            .DistinctBy(condition => condition!.Label, StringComparer.Ordinal)
-            .Select(condition => (condition!.Label, ConditionYarnTranslator.Translate(condition)))
-            .Where(pair => pair.Item2.IsTranslatable)
-            .Select(pair => (pair.Label, Yarn: pair.Item2.Yarn!))
-            // 식 기준으로도 한 번 걸러 둔다 — 라벨 둘이 같은 식으로 번역되면 만드는 것은
-            // 어차피 하나인데, 아래의 이름 따라가기가 그 둘 사이를 오가며 흔들린다.
-            .DistinctBy(pair => pair.Yarn, StringComparer.Ordinal)
-            .ToList();
+        // v15 (2026-09-16 — R-C) — <b>대본은 더 이상 조건을 쓰지 않는다.</b> 예전에는
+        // 이 자리에서 대본의 `조건라벨`을 거둬 A계층 공급 노드에 달았는데, 그 칸이 폐지됐다.
+        // 공급할 것이 없으므로 빈 목록이다 — 공급 노드 자체는 남는다(판이 이미 그것을 걸고
+        // 있고, 비워 두면 다음 동기화가 배선을 끊는다).
+        List<(string Label, string Yarn)> used = [];
 
         if (used.Count == 0)
         {
@@ -679,26 +669,9 @@ public static class EpisodeSyncService
     /// ⚠ 엑셀이 그 파일을 잡고 있으면 못 쓴다 — 그때는 <b>그대로 둔다</b>. 인덱스가 남아
     /// 있어도 리더가 이미 무시하므로 산출은 옳고, 다음 동기화가 다시 시도한다.
     /// </summary>
-    private static EpisodeWorkbookModel TidyBlockRows(
-        string workbookPath, EpisodeWorkbookModel model, IReadOnlyCollection<string> labels)
-    {
-        // ⚠ 진단 <b>코드</b>로 찾는다 — 모델의 `Index`는 블록 행에서 언제나 널이라(그것이
-        // v14의 뜻이다) 남은 번호가 거기 안 실린다. 글자로 찾으면 문구를 다듬는 날 조용히
-        // 안 듣는다.
-        if (!model.Diagnostics.Any(item =>
-                item.Code == ChapterDiagnosticCode.BlockRowIndexStray))
-        {
-            return model;
-        }
-
-        (ChapterWriteResult result, int cleared) =
-            EpisodeWorkbookWriter.ClearBlockRowIndexes(workbookPath);
-
-        return result.Written && cleared > 0
-            ? EpisodeWorkbookReader.Read(workbookPath, labels)
-            : model;
-    }
-
+    // ⛔ TidyBlockRows는 2026-09-16에 사라졌다 (규격 v15 — R-C). 블록 행에 남은 템플릿
+    //    번호를 동기화가 치워 주던 자리인데, 블록 행 자체가 없어졌다. 옛 파일의 잔해는
+    //    EpisodeWorkbookMigrator가 v15로 이행하면서 한 번에 걷는다.
     private static IReadOnlyList<EpisodePrunedLogic> CollectPruned(
         ScriptSyncPlan plan,
         IReadOnlyDictionary<string, DialogueLineExtension> extensionsBefore,

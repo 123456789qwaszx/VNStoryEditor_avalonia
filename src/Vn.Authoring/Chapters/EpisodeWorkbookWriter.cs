@@ -29,12 +29,11 @@ public static class EpisodeWorkbookWriter
     // 리더와 같은 6열 (v14). ⚠ 이 배열은 <see cref="EpisodeWorkbookReader"/>의 것과 같아야
     // 한다 — 시트를 찾는 근거가 머리글이라, 한쪽만 바뀌면 여기서 시트를 못 찾는다.
     private static readonly string[] Headers =
-        ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
+        ["인덱스", "LineId", "화자", "내용"];
 
-    private const int ColumnKind = 1;
-    private const int ColumnIndex = 3;
-    private const int ColumnSpeaker = 5;
-    private const int ColumnText = 6;
+    private const int ColumnIndex = 1;
+    private const int ColumnSpeaker = 3;
+    private const int ColumnText = 4;
 
     /// <summary>
     /// 대사 한 줄의 화자·내용을 고친다. 행은 <b>인덱스(A열)로</b> 찾는다 — 줄의 신원이
@@ -55,17 +54,7 @@ public static class EpisodeWorkbookWriter
                 ?? throw new InvalidOperationException(
                     $"인덱스 {index}인 행이 없습니다 — 엑셀에서 그 줄이 지워졌을 수 있습니다.");
 
-            // ⛔ 대사 행만 고친다. IF·ELSEIF·ENDIF 행에 화자·내용을 쓰면 리더가 그 블록을
-            // 다르게 읽는다 — 열어 준 적 없는 문이므로 여기서 막는다(문이 둘이면 빗장도 둘).
-            string kind = Cell(sheet, row, ColumnKind);
-
-            if (kind.Length > 0 &&
-                !string.Equals(kind, "대사", StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"인덱스 {index}는 '{kind}' 행이라 여기서 고칠 수 없습니다 — " +
-                    "조건 블록은 엑셀에서 고칩니다.");
-            }
+            // v15 — 모든 행이 대사다. 블록 행 빗장은 조건 블록과 함께 사라졌다.
 
             Set(sheet, row, ColumnSpeaker, speaker);
             Set(sheet, row, ColumnText, text);
@@ -102,7 +91,6 @@ public static class EpisodeWorkbookWriter
             bool hasContent = sheet.RowsUsed()
                 .Where(row => row.RowNumber() > HeaderRow)
                 .Any(row =>
-                    Cell(sheet, row.RowNumber(), ColumnKind).Length > 0 ||
                     Cell(sheet, row.RowNumber(), ColumnSpeaker).Length > 0 ||
                     Cell(sheet, row.RowNumber(), ColumnText).Length > 0);
 
@@ -125,76 +113,10 @@ public static class EpisodeWorkbookWriter
         return (result, seeded);
     }
 
-    /// <summary>
-    /// 블록 행(IF·ELSEIF·ENDIF)에 남은 인덱스를 비운다 (v14, 2026-08-24 소유자: "툴이
-    /// 지워 준다").
-    ///
-    /// <b>왜 지워 줘야 하나</b> — 템플릿이 2~500행에 10·20·30을 <b>미리 깔아 두기</b>
-    /// 때문이다. 사람이 42행에 IF를 치면 그 칸에는 이미 410이 적혀 있고, 그건 사람의
-    /// 잘못이 아니다. 그래서 리더는 오류로 세우지 않고(빨간 줄은 고칠 것에만 쓴다) 여기서
-    /// 조용히 치운다. <b>다만 조용히 하지는 않는다</b> — 몇 칸을 비웠는지 돌려주고 보고에 싣는다.
-    ///
-    /// ⚠ 비우는 것은 <b>인덱스 한 칸뿐이다.</b> 같은 행의 화자·내용이 잘못 적혀 있어도
-    /// 여기서 지우지 않는다 — 그건 사람이 <b>쓴 글</b>이라, 지우면 "썼는데 사라졌다"가 된다.
-    /// 그쪽은 리더가 오류로 짚어 사람이 고르게 한다(소유자: "잘못된 걸로. 아니면 작성을
-    /// 못하게 막는 것도 좋아" — 손에서 막는 것은 엑셀 빗장이 맡는다).
-    /// </summary>
-    /// <returns>비운 칸 수. 쓸 것이 없으면 0이고 파일에 손대지 않는다.</returns>
-    public static (ChapterWriteResult Result, int Cleared) ClearBlockRowIndexes(string path)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+    // ⛔ ClearBlockRowIndexes는 2026-09-16에 사라졌다 (규격 v15 — R-C). 블록 행에 남은
+    //    템플릿 번호를 치우던 함수인데, 블록 행 자체가 없어졌다. 옛 파일의 잔해는
+    //    EpisodeWorkbookMigrator가 v15로 이행하면서 한 번에 걷는다.
 
-        int cleared = 0;
-
-        ChapterWriteResult result = Mutate(path, workbook =>
-        {
-            IXLWorksheet sheet = FindEpisodeSheet(workbook)
-                ?? throw new InvalidOperationException(
-                    "이 워크북에서 대본 시트를 찾지 못했습니다 — 머리글이 규격과 다릅니다.");
-
-            foreach (IXLRow row in sheet.RowsUsed().Where(item => item.RowNumber() > HeaderRow))
-            {
-                int number = row.RowNumber();
-                string kind = Cell(sheet, number, ColumnKind);
-
-                if (kind.Length == 0 || string.Equals(kind, "대사", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (Cell(sheet, number, ColumnIndex).Length == 0)
-                {
-                    continue;
-                }
-
-                sheet.Cell(number, ColumnIndex).Clear(XLClearOptions.Contents);
-                cleared++;
-            }
-
-            // 지울 것이 없으면 저장 자체를 하지 않는다 — 안 바뀐 파일을 다시 쓰면 감시가
-            // 깨어나고 내용 해시가 바뀌어, 아무 일도 없었는데 전부 다시 읽는다.
-            if (cleared == 0)
-            {
-                throw new NothingToWriteException();
-            }
-        });
-
-        return cleared == 0 ? (ChapterWriteResult.Ok, 0) : (result, cleared);
-    }
-
-    /// <summary>
-    /// 화자 개명을 이 워크북의 화자 칸(E열)까지 끌고 간다 (2026-08-24 소유자 — "화자의 이름을
-    /// 편집한 경우도 연결이 이어지도록").
-    ///
-    /// [화자] 탭이 이름을 갈면 <b>드롭다운 목록만</b> 새것이 되고, 이미 셀에 적힌 옛 이름은
-    /// 그대로 남아 미등록이 된다. 그 칸이 곧 대사 줄의 화자이므로 초상화 매핑이 끊기고,
-    /// 공백 있는 이름은 파서가 산문으로 읽어 대사와 합쳐진다.
-    ///
-    /// <b>여는 것은 여전히 화자 한 칸뿐이다</b> — 줄을 더하거나 지우지 않고, 블록 행(IF·
-    /// ELSEIF·ENDIF)은 건너뛴다(그 행에는 화자가 있을 수 없다). 글자가 <b>정확히</b> 같은
-    /// 칸만 바꾼다: 사람이 손으로 적은 다른 이름을 추측해 고치지 않는다.
-    /// </summary>
-    /// <returns>바꾼 칸 수. 하나도 없으면 파일에 손대지 않는다.</returns>
     public static (ChapterWriteResult Result, int Changed) RenameSpeaker(
         string path, string oldName, string newName)
     {
@@ -220,12 +142,6 @@ public static class EpisodeWorkbookWriter
             foreach (IXLRow row in sheet.RowsUsed().Where(item => item.RowNumber() > HeaderRow))
             {
                 int number = row.RowNumber();
-                string kind = Cell(sheet, number, ColumnKind);
-
-                if (kind.Length > 0 && !string.Equals(kind, "대사", StringComparison.Ordinal))
-                {
-                    continue;   // 블록 행 — 화자 칸이 열려 있지 않은 자리다.
-                }
 
                 if (!string.Equals(Cell(sheet, number, ColumnSpeaker), from, StringComparison.Ordinal))
                 {

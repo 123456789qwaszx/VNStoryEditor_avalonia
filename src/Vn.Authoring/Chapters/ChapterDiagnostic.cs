@@ -95,6 +95,23 @@ public enum ChapterDiagnosticCode
     /// </summary>
     OptionLabelBlank,
 
+    /// <summary>
+    /// ⛔ <b>대본의 조건 블록은 폐지됐다</b> (2026-09-16 소유자 — R-C,
+    /// <c>docs/work-orders/tool-owns-workbooks-orders.md</c> §3).
+    ///
+    /// <b>이미 죽어 있던 기능이다.</b> 대본 워크북의 <c>조건라벨</c>은 챕터 `조건` 시트에서만
+    /// 오고 그 시트는 전부 [2] 진행 스탯인데, 런타임이 <b>대사에서 스탯 분기를 금지</b>했다
+    /// (`ked-presentation-runtime/docs/scene-boundary-plan.md` §4 G0). R4가 그 금지를
+    /// <b>내보내기 관문에만</b> 반영해(<c>CoreRefusedChapter</c>와 같은 결) — 저작 표면은
+    /// 여전히 드롭다운으로 권했다. 그래서 엑셀에서 만들 수 있는 조건 블록은 <b>전부</b>
+    /// 내보내기에서 막혔다: 성공 사례가 테스트에 0건이었다.
+    ///
+    /// ⚠ 막는 자리와 권하는 자리가 다른 말을 하던 것을 여기서 합친다 — <b>읽는 시점에</b>
+    /// 짚어야 며칠 쓰고 나서 "이거 안 나가는데?"를 만나지 않는다.
+    /// 분기가 필요하면 챕터 간선의 표시조건·해금조건으로 올린다.
+    /// </summary>
+    EpisodeConditionBlockRetired,
+
     AutoEdgeHasSiblings,
     AutoEdgeHasConditions,
     AutoEdgeHasStatChanges,

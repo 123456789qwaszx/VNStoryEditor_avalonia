@@ -1096,12 +1096,11 @@ public partial class ChapterGraphView : UserControl
                 continue;
             }
 
-            List<string> labels = model.Conditions.Select(condition => condition.Label).ToList();
-
+            // v15 — 대본에 밀어 넣을 어휘는 화자 하나뿐이다(조건라벨은 폐지).
             foreach (ChapterEpisode episode in model.Episodes)
             {
                 EpisodeLibrary.VocabularyPush push =
-                    EpisodeLibrary.PushVocabulary(folder, episode.EpisodeId, names, labels);
+                    EpisodeLibrary.PushVocabulary(folder, episode.EpisodeId, names);
 
                 if (push.Changed)
                 {
@@ -2590,41 +2589,17 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private static string PreviewText(IReadOnlyList<EpisodeRow> rows)
     {
+        // v15 (2026-09-16 — R-C) — 대본에는 조건이 없다. 들여쓰기도 깊이도 사라지고,
+        // 미리보기는 줄을 순서대로 적는 일이 됐다.
         var lines = new List<string>();
-        int depth = 0;
-
-        static string Indent(int level) => new(' ', Math.Max(0, level) * 2);
 
         foreach (EpisodeRow row in rows.Where(row => !row.IsBlank))
         {
-            switch (row.Kind)
+            string body = row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text;
+
+            if (body.Length > 0)
             {
-                case EpisodeRowKind.End:
-                    // 닫는 줄은 안 세운다 — 들여쓰기가 이미 그 말을 한다.
-                    depth = Math.Max(0, depth - 1);
-                    break;
-
-                case EpisodeRowKind.If:
-                    lines.Add(Indent(depth) + $"IF {row.ConditionLabel}");
-                    depth++;
-                    break;
-
-                // 2026-08-17 소유자 보고 — ELSEIF가 안 보였다. 화자·내용이 비어 있어
-                // 아래 대사 가지에서 빈 줄로 걸러졌다. 표지는 같은 체인의 <b>바깥</b>
-                // 깊이에 서고 깊이는 변하지 않는다(평평화의 <<elseif>>와 같은 자리).
-                case EpisodeRowKind.ElseIf:
-                    lines.Add(Indent(depth - 1) + $"ELSEIF {row.ConditionLabel}");
-                    break;
-
-                default:
-                    string body = row.Speaker.Length > 0 ? $"{row.Speaker}: {row.Text}" : row.Text;
-
-                    if (body.Length > 0)
-                    {
-                        lines.Add(Indent(depth) + body);
-                    }
-
-                    break;
+                lines.Add(body);
             }
         }
 
