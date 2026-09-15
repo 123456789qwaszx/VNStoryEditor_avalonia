@@ -74,65 +74,11 @@ public static class EpisodeWorkbookEmitter
     /// </summary>
     public static ChapterWriteResult Emit(string path, IReadOnlyList<EmittedEpisodeLine> lines)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(lines);
 
-        // 임시 파일은 <b>같은 폴더</b>에 둔다 — File.Move가 볼륨을 넘으면 원자적이지 않다.
-        string temporary = path + ".tmp";
-
-        try
-        {
-            string? folder = Path.GetDirectoryName(path);
-
-            if (!string.IsNullOrEmpty(folder))
-            {
-                Directory.CreateDirectory(folder);
-            }
-
-            // ⚠ <b>ClosedXML의 경로 SaveAs는 확장자를 검사한다</b> — `.tmp`로 끝나는 이름을
-            // 거부한다(`Extension 'tmp' is not supported`). 그렇다고 임시 이름을 `.xlsx`로
-            // 두면 폴더를 훑는 자리들이 그것을 대본으로 센다. 그래서 <b>스트림으로 받아
-            // 바이트로 쓴다</b> — 스트림 오버로드에는 검사할 확장자가 없고, 파일 이름은
-            // 우리가 고를 수 있게 된다.
-            byte[] bytes;
-
-            using (var memory = new MemoryStream())
-            {
-                using (XLWorkbook workbook = Build(lines))
-                {
-                    workbook.SaveAs(memory);
-                }
-
-                bytes = memory.ToArray();
-            }
-
-            File.WriteAllBytes(temporary, bytes);
-
-            // 백업은 교체 직전에 — 임시 파일이 만들어지지 못한 경우까지 .bak을 굴리면
-            // 아무 일도 없었는데 되돌릴 자리만 낡는다.
-            if (File.Exists(path))
-            {
-                File.Copy(path, path + ".bak", overwrite: true);
-            }
-
-            File.Move(temporary, path, overwrite: true);
-
-            return ChapterWriteResult.Ok;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            Discard(temporary);
-
-            return ChapterWriteResult.Locked(
-                $"엑셀이 '{Path.GetFileName(path)}'를 열고 있어 툴이 쓰지 못했습니다 — " +
-                "엑셀에서 그 파일을 닫으면 다시 냅니다.");
-        }
-        catch (Exception exception)
-        {
-            Discard(temporary);
-
-            return ChapterWriteResult.Locked($"대본 워크북을 내지 못했습니다: {exception.Message}");
-        }
+        // 원자성·백업·잠금 판정의 주인은 WorkbookAtomicWrite 하나다 — 두 이미터가 같은
+        // 규칙을 두 벌 갖지 않게 한다.
+        return WorkbookAtomicWrite.Replace(path, () => Build(lines));
     }
 
     private static XLWorkbook Build(IReadOnlyList<EmittedEpisodeLine> lines)
@@ -190,19 +136,4 @@ public static class EpisodeWorkbookEmitter
         }
     }
 
-    /// <summary>임시 파일을 남기지 않는다. 지우다 실패해도 그것 때문에 결과가 바뀌지는 않는다.</summary>
-    private static void Discard(string temporary)
-    {
-        try
-        {
-            if (File.Exists(temporary))
-            {
-                File.Delete(temporary);
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // 원래 실패의 사유를 덮지 않는다.
-        }
-    }
 }
