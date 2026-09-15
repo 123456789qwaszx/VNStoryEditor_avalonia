@@ -41,11 +41,8 @@ public static class EpisodeWorkbookReader
     private const int ColumnSpeaker = 3;
     private const int ColumnText = 4;
 
-    /// <param name="conditionLabels">챕터 `조건` 시트의 라벨 (G-7). 여기 없는 라벨은 오류다.</param>
     /// <exception cref="XlsxReadException">파일을 열 수 없을 때.</exception>
-    public static EpisodeWorkbookModel Read(
-        string path,
-        IReadOnlyCollection<string>? conditionLabels = null)
+    public static EpisodeWorkbookModel Read(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -54,21 +51,16 @@ public static class EpisodeWorkbookReader
             throw new XlsxReadException(path, $"워크북 파일이 없습니다: {path}");
         }
 
-        IReadOnlyCollection<string> labels = conditionLabels ?? Array.Empty<string>();
-
         // 내용이 그대로면 답도 그대로다 (2026-08-24 성능) — 읽기는 순수 함수다.
         // 대본 하나만 저장해도 그 챕터의 대본을 전부 다시 파고들던 것이, 실측
         // "변경 없는 동기화"의 91%였다(`WorkbookParseCache`).
         //
-        // ⚠ 조건 라벨도 열쇠에 넣는다 — 같은 파일이라도 라벨 목록이 다르면 진단이 다르다.
-        return WorkbookParseCache.Read(
-            path,
-            variant: string.Join("|", labels.OrderBy(label => label, StringComparer.Ordinal)),
-            () => Parse(path, labels));
+        // ⚠ v15 — 부가 입력(조건 라벨)이 사라져 열쇠는 내용 해시 하나다. 라벨이 진단을
+        // 가르던 시절에는 그것도 열쇠였는데, 대본이 조건을 모르게 되면서 함께 걷혔다.
+        return WorkbookParseCache.Read(path, variant: string.Empty, () => Parse(path));
     }
 
-    private static EpisodeWorkbookModel Parse(
-        string path, IReadOnlyCollection<string> conditionLabels)
+    private static EpisodeWorkbookModel Parse(string path)
     {
         using XLWorkbook workbook = Open(path);
 
@@ -91,8 +83,7 @@ public static class EpisodeWorkbookReader
                 diagnostics);
         }
 
-        IReadOnlyList<EpisodeRow> rows =
-            ReadRows(sheet, path, conditionLabels, diagnostics);
+        IReadOnlyList<EpisodeRow> rows = ReadRows(sheet, path, diagnostics);
 
         // v15 — 블록 짝 검증(IF~ENDIF)은 조건 블록과 함께 사라졌다. 남은 규칙은
         // "인덱스가 줄의 신원이다" 하나이고, 그것은 행 루프가 지킨다.
@@ -125,7 +116,6 @@ public static class EpisodeWorkbookReader
     private static IReadOnlyList<EpisodeRow> ReadRows(
         IXLWorksheet sheet,
         string path,
-        IReadOnlyCollection<string> conditionLabels,
         List<ChapterDiagnostic> diagnostics)
     {
         var rows = new List<EpisodeRow>();
@@ -206,6 +196,23 @@ public static class EpisodeWorkbookReader
                 Cell(sheet, row, ColumnText),
                 row);
 
+            // v15 — 조건 블록은 폐지됐다. 구판 파일은 이행기가 그 행을 걷지만, <b>손에 익은
+            // 사람이 v15 시트에 다시 `IF`를 치는 길</b>이 남는다. 그것을 그대로 실어 보내면
+            // 플레이어가 "IF"라는 대사를 듣는다 — 읽는 시점에 짚어야 며칠 뒤 내보내기에서
+            // 거부당하는 일이 없다(막는 자리와 권하는 자리를 여기서 합친다).
+            if (BlockWord(parsed.Speaker) ||
+                (parsed.Speaker.Length == 0 && BlockWord(parsed.Text)))
+            {
+                diagnostics.Add(Cell(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnosticCode.EpisodeConditionBlockRetired,
+                    path, sheet.Name, row,
+                    parsed.Speaker.Length > 0 ? ColumnSpeaker : ColumnText,
+                    "조건 블록(IF·ELSEIF·ENDIF)은 폐지됐습니다 — 대본의 모든 행은 대사입니다. " +
+                    "분기가 필요하면 챕터 `간선` 시트의 표시조건·해금조건으로 올려 주세요."));
+                continue;
+            }
+
             // 인덱스만 있고 아무것도 안 쓴 행은 표의 일부가 아니다 — 템플릿이 500행까지
             // 미리 깔아 둔 자리라서, 여기서 거르지 않으면 빈자리가 대사로 세어져 엉뚱한
             // 오류를 낸다(실사례). 인덱스는 위의 중복·오름차순 검사에 이미 참여했다.
@@ -219,6 +226,12 @@ public static class EpisodeWorkbookReader
 
         return rows;
     }
+
+    /// <summary>폐지된 조건 블록 낱말. <see cref="EpisodeWorkbookMigrator"/>의 목록과 같아야 한다.</summary>
+    private static readonly string[] BlockWords = ["IF", "ELSEIF", "ELSE IF", "ENDIF", "END"];
+
+    private static bool BlockWord(string value) =>
+        BlockWords.Contains(value, StringComparer.OrdinalIgnoreCase);
 
     private static IEnumerable<int> DataRows(IXLWorksheet sheet) =>
         sheet.RowsUsed()

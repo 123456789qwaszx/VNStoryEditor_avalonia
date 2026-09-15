@@ -42,7 +42,6 @@ public static class ChapterValidator
         VerifyDialogueEntriesOnBoard(chapter, project, diagnostics);
         VerifyScenesFilled(chapter, project, diagnostics);
 
-        string[] labels = chapter.Conditions.Select(condition => condition.Label).ToArray();
         var conditionsByLabel = chapter.Conditions
             .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
 
@@ -62,7 +61,7 @@ public static class ChapterValidator
 
             try
             {
-                model = EpisodeWorkbookReader.Read(path, labels);
+                model = EpisodeWorkbookReader.Read(path);
             }
             catch (XlsxReadException exception)
             {

@@ -82,16 +82,12 @@ public static class EpisodeSyncService
         // speakers 하나를 본다 — 2026-08-23에 챕터 `화자` 시트가 폐지되면서 합칠 것이
         // 없어졌다(등록부가 원래 하나여야 했던 자리다).
 
-        // 챕터가 없으면 라벨 검사는 빈 목록으로 돈다 — 조건라벨이 전부 미정의 오류가 되므로
-        // 조용히 통과하는 일은 없다.
-        string[] labels = chapter?.Conditions.Select(condition => condition.Label).ToArray()
-            ?? Array.Empty<string>();
-
+        // v15 — 대본은 조건을 모른다. 리더에 라벨을 넘기던 자리가 함께 사라졌다.
         EpisodeWorkbookModel model;
 
         try
         {
-            model = EpisodeWorkbookReader.Read(workbookPath, labels);
+            model = EpisodeWorkbookReader.Read(workbookPath);
         }
         catch (XlsxReadException exception)
         {
