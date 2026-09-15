@@ -1222,8 +1222,7 @@ public partial class ChapterGraphView : UserControl
         if (EpisodeLibrary.EnsureWorkbook(
                 folder,
                 episodeId,
-                ProjectSpeakerNames(),
-                SelectedModel?.Conditions.Select(condition => condition.Label).ToList()))
+                ProjectSpeakerNames()))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
             StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
@@ -3417,7 +3416,6 @@ public partial class ChapterGraphView : UserControl
                         episodesFolder,
                         episodeId,
                         ProjectSpeakerNames(),
-                        model.Conditions.Select(condition => condition.Label).ToList(),
                         firstLine: EpisodeLibrary.DefaultFirstLine))
                 {
                     StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
