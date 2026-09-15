@@ -56,16 +56,25 @@ public sealed class EpisodeWorkbookImporterTests : IDisposable
     }
 
     [Fact]
-    public void 대본이_없는_에피소드는_건너뛴다()
+    public void 대본이_없는_에피소드에도_빈_노드는_선다()
     {
-        // 아직 대본을 안 쓴 에피소드다 — 오류가 아니다.
+        // 아직 대본을 안 쓴 에피소드다 — 오류가 아니고, 노드는 선다 (2026-08-17 소유자:
+        // "빈 노드라도 서 있으면 여기에 쓰면 된다가 보인다").
+        //
+        // ⚠ 대본 <b>파일</b>은 만들지 않는다. 예전에는 동기화가 빈 워크북을 만들어 주었는데,
+        //    워크북이 산출물이 된 뒤로 만드는 자리는 이미터다(§4) — 읽는 길이 쓰는 길을
+        //    겸하면 "임포트 뒤 다시 읽지 않는다"가 성립하지 않는다.
         World world = Build("ep01", "ep02");
         WriteScript("ep01", ("10", "윌로", "한 줄"));
 
         EpisodeImport import = Run(world);
 
         Assert.True(import.Applied, Say(import));
-        Assert.Equal(["ep01"], import.Entries.Select(entry => entry.EpisodeId));
+        Assert.Equal(["ep01", "ep02"], import.Entries.Select(entry => entry.EpisodeId));
+
+        // 대본이 없던 쪽은 줄이 없는 노드다 — 그리고 파일도 안 생겼다.
+        Assert.Empty(TextOf(world, import.Entries[1]));
+        Assert.Null(EpisodeLibrary.FindExisting(EpisodesFolder, "ep02"));
     }
 
     [Fact]

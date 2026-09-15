@@ -63,8 +63,7 @@ public sealed class EpisodeCreationTests : IDisposable
     [Fact]
     public void 엑셀에서_직접_더한_행에도_대본이_생긴다() => HeadlessUi.Run(() =>
     {
-        // 툴의 [＋ 에피소드]는 원래도 만들고 있었다 — 빠진 것은 <b>엑셀에서 직접 행을 더한</b>
-        // 경우다. 원본이 엑셀이라 대부분이 그 길로 들어온다.
+        // 엑셀에서 직접 더한 행도 [대본 가져오기]로 들어온다.
         ChapterWorkbookWriter.AddEpisode(ChapterPath, "손으로적은화", title: string.Empty, 0, 0);
 
         var session = new AuthoringSession();
@@ -76,12 +75,18 @@ public sealed class EpisodeCreationTests : IDisposable
         view.Attach(session);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.NotNull(EpisodeLibrary.FindExisting(EpisodesFolder, "손으로적은화"));
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // 대사가 한 줄도 없어도 작가의 판에 노드가 선다 (2026-08-17).
         Assert.Contains(
             session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.ExcelEpisodeId == "손으로적은화");
+
+        // ⛔ <b>대본 파일이 생기는지는 더 묻지 않는다</b> (R-D · 2026-09-16). 예전에는
+        //    동기화가 빈 워크북을 만들어 주었지만, 워크북은 이제 <b>산출물</b>이라 만드는
+        //    자리는 이미터다(§4). 들여오기는 읽기만 한다 — 읽는 길이 쓰는 길을 겸하면
+        //    "다시 읽지 않는다"가 성립하지 않는다.
 
         window.Close();
     });

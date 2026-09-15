@@ -13,6 +13,7 @@ using Vn.App.Services;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Definition;
+using Vn.Authoring.Model;
 
 namespace Vn.App.Views;
 
@@ -121,9 +122,10 @@ public partial class ChapterGraphView : UserControl
         Validate();
         Draw();
 
-        // 이 챕터의 대본이 자기 판의 노드로 서 있도록 따라잡는다 — 챕터를 처음 고르는
-        // 순간이 곧 그 판을 처음 보는 순간이다.
-        SyncEpisodes();
+        // ⛔ 여기서 대본을 따라잡던 호출은 2026-09-16에 걷혔다 (R-D). 챕터를 고르는 것은
+        //    <b>보는 일</b>이지 들여오는 일이 아니다 — 고를 때마다 워크북을 다시 읽으면
+        //    "임포트 뒤 다시 읽지 않는다"(§5.2)가 성립하지 않는다. 대본은 [대본 가져오기]로
+        //    들어온다.
 
         // 그 챕터의 판을 활성으로 — 왼쪽 목록의 강조가 이 값을 본다.
         ChapterSelected?.Invoke(chapterId);
@@ -239,6 +241,7 @@ public partial class ChapterGraphView : UserControl
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
+        ImportEpisodesButton.Click += (_, _) => UiGuard.Run(_session, "대본 가져오기", ImportEpisodes);
         // 빈 판 한가운데의 [＋ 에피소드]도 같은 길이다 — 선택이 없으니 홀로 선다.
         EmptyAddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
         EdgeDeleteButton.Click += (_, _) => UiGuard.Run(_session, "간선 삭제", DeleteSelectedEdge);
@@ -385,72 +388,17 @@ public partial class ChapterGraphView : UserControl
             StartWatching(folder);
         }
 
-        bool episodesFolderChanged =
-            !string.Equals(_episodeWatcher?.Folder, episodes, StringComparison.OrdinalIgnoreCase);
-
-        if (episodesFolderChanged)
-        {
-            StartWatchingEpisodes(episodes);
-        }
-
         Reload();
 
-        // 켤 때 한 번은 밀린 저장을 따라잡는다 — 감시는 "저장 순간"만 잡으므로, 툴이 꺼진
-        // 사이(시트·엑셀에서) 적힌 대사는 이게 없으면 영원히 안 불려온다. 폴더가 바뀐
-        // 첫 판에만 돈다: 상태줄 갱신이 세션 Changed를 울려 여기로 되돌아와도(같은 폴더)
-        // 다시 돌지 않아 맴돌이가 없다.
+        // ⛔ 여기서 "밀린 저장을 따라잡던" 동기화는 2026-09-16에 걷혔다 (R-D).
         //
-        // <b>감시자가 못 붙었어도 돈다</b> (2026-08-17) — 대본 폴더가 아직 없으면 감시를
-        // 걸 곳이 없어 `_episodeWatcher`가 null인데, 예전에는 그때 동기화까지 건너뛰었다.
-        // 그래서 <b>첫 에피소드가 영영 대본을 못 받았다</b>: 폴더는 대본이 생겨야 나고
-        // 대본은 동기화가 만드는데, 그 동기화가 폴더를 기다린 것이다(서로를 기다리는 매듭).
-        // 이제 동기화가 첫 대본을 만들고, 그 김에 감시도 붙는다.
-        //
-        // ⚠ <b>에피소드 목록이 달라졌으면 폴더가 그대로여도 돈다</b> (2026-08-22 소유자
-        // 보고: "챕터그래프에서 에피소드를 추가했는데 연출그래프에 반영이 안 돼 …
-        // 더블클릭해서 엑셀을 열어야 그제야"). 노드를 세우는 것은 동기화뿐인데 그것이
-        // <b>폴더가 바뀔 때만</b> 돌았다 — 그래서 엑셀 파일이 생겨 감시자가 우는 날에야
-        // 노드가 섰다. 툴의 [＋ 에피소드]도, 엑셀에서 직접 더한 행도 같은 구멍이었다.
-        if (episodesFolderChanged || EpisodeSetChanged())
-        {
-            SyncEpisodes();
-        }
+        //    그 호출은 <b>툴이 꺼진 사이 엑셀에 적힌 대사</b>를 켤 때 한 번 주워 오는
+        //    길이었다. 워크북이 원본이던 시절에는 그것이 없으면 글이 영영 안 들어왔지만,
+        //    이제 원본은 프로젝트다 — 주워 올 것이 없고, 켤 때마다 워크북을 다시 읽으면
+        //    사람이 툴에서 고친 것을 옛 엑셀이 덮는다. 들여오기는 사람이 누른다.
     }
-
-    /// <summary>지난 동기화가 본 에피소드 목록의 지문 — 같은 목록이면 다시 돌지 않는다.</summary>
-    private string? _syncedEpisodeSignature;
 
     /// <summary>
-    /// 고른 챕터의 에피소드 <b>목록</b>이 지난 동기화 이후 달라졌는가. 확인하면서 기록한다.
-    ///
-    /// ⚠ 재읽기마다 무조건 동기화하지 않는 이유: <see cref="SyncEpisodes"/>는 화자·조건
-    /// 어휘를 밀어 넣느라 <b>에피소드 워크북을 전부 열어 본다</b>. 저장 한 번마다 그 값을
-    /// 치르면 §성능 규칙("고정은 시간이 아니라 일의 횟수로 건다")이 무너진다. 값을 부르는
-    /// 것은 <b>달라진 목록</b>뿐이다 — 추가·삭제·개명이 곧 노드가 서고 지고 바뀌는 일이다.
-    /// </summary>
-    private bool EpisodeSetChanged()
-    {
-        ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
-        string signature = MakeEpisodeSignature(entry);
-
-        if (string.Equals(signature, _syncedEpisodeSignature, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        _syncedEpisodeSignature = signature;
-        return true;
-    }
-
-    private string MakeEpisodeSignature(ChapterEntry? entry) =>
-        entry?.Model is null
-            ? $"{_selectedChapterId}:"
-            : $"{_selectedChapterId}:" + string.Join(
-                "|",
-                entry.Model.Episodes
-                    .Select(episode => episode.EpisodeId)
-                    .OrderBy(id => id, StringComparer.Ordinal));
-
     /// <summary>
     /// 엑셀 저장 → 뷰 즉시 갱신 (Gate A). 감시·디바운스는 <see cref="ChapterFolderWatcher"/>가
     /// 하고, 여기서는 그 알림을 UI 스레드로 옮겨 다시 그리기만 한다.
@@ -483,30 +431,14 @@ public partial class ChapterGraphView : UserControl
                 () => UiGuard.Run(_session, "엑셀 잠금 확인", RefreshLockState)));
     }
 
-    /// <summary>
-    /// 에피소드 저장 → 대사노드 반영 (G5). 챕터 감시와 같은 감시자를 episodes/에 하나 더 둔다.
-    /// </summary>
-    private void StartWatchingEpisodes(string? folder)
-    {
-        _episodeWatcher?.Dispose();
-        _episodeWatcher = null;
-
-        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
-        {
-            return;
-        }
-
-        _episodeWatcher = new ChapterFolderWatcher(
-            folder,
-            () => Dispatcher.UIThread.Post(
-                () => UiGuard.Run(_session, "에피소드 반영", SyncEpisodesIfDiskChanged)));
-    }
+    // ⛔ `StartWatchingEpisodes`·`SyncEpisodesIfDiskChanged`는 2026-09-16에 걷혔다 (R-D).
+    //    `episodes/`를 감시해 저장을 0.25초 안에 따라가던 길인데, 그것이 곧 <b>워크북이
+    //    원본이라는 전제</b>였다. 이제 대본은 [대본 가져오기] 한 번으로 들어온다(§5.2:
+    //    "임포트는 명시적 동작이다. 파일 감시가 부르지 않는다").
+    //    되살리지 말 것 — 되살리는 순간 툴과 엑셀이 다시 서로를 덮어쓴다.
 
     /// <summary>감시자가 챕터 폴더에서 깨울 때 도는 길. 테스트가 진짜 파일 사건을 기다리지 않고 이 자리를 친다.</summary>
     internal void ReloadIfDiskChanged() => IfDiskChanged(Reload);
-
-    /// <summary>감시자가 대본 폴더에서 깨울 때 도는 길.</summary>
-    internal void SyncEpisodesIfDiskChanged() => IfDiskChanged(SyncEpisodes);
 
     /// <summary>마지막으로 우리가 읽은 디스크의 지문. 감시자가 깨울 때 이것과 견준다.</summary>
     private string _diskFingerprint = string.Empty;
@@ -557,12 +489,14 @@ public partial class ChapterGraphView : UserControl
         EpisodeLibrary.FolderFor(_session?.ProjectPath));
 
     /// <summary>
-    /// 선택된 챕터의 에피소드 워크북 전부를 대사노드로 반영한다.
+    /// 대본 워크북을 읽어 대사노드로 세운다 — <b>사람이 [대본 가져오기]를 눌렀을 때만</b>
+    /// 돈다 (R-D · 2026-09-16, §5.2).
     ///
-    /// 감시자는 어느 파일이 바뀌었는지 말하지 않으므로(저장 한 번이 이벤트 여러 개라 어차피
-    /// 뭉개진다) 전부 다시 돈다 — 바뀌지 않은 워크북은 "변경 없음"으로 끝나 비용이 잔잔하다.
+    /// ⚠ 예전 이름은 `SyncEpisodes`였고 감시자가 저장마다 불렀다. 이름이 바뀐 것이 곧
+    /// 뜻이 바뀐 것이다: <b>동기화는 양쪽을 맞추는 일이고 임포트는 한쪽에서 가져오는
+    /// 일이다.</b> 맞출 상대가 없어졌으므로 맞춘다는 말도 없앤다.
     /// </summary>
-    internal void SyncEpisodes()
+    internal void ImportEpisodes()
     {
         _syncReports.Clear();
         _boardWarnings.Clear();
@@ -573,9 +507,6 @@ public partial class ChapterGraphView : UserControl
         }
 
         ChapterEntry? entry = _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId);
-
-        // 이 목록으로 돌았다고 적어 둔다 — 뒤이은 재읽기가 같은 목록이면 다시 안 돈다.
-        _syncedEpisodeSignature = MakeEpisodeSignature(entry);
 
         // ⛔ <b>고른 챕터만 돌면 안 된다</b> (2026-08-24 소유자 보고: "챕터그래프에서
         // 대사노드의 엑셀을 열어서 고칠 경우, 연출그래프의 동일한 엑셀노드에 반영이 안 되네").
@@ -658,11 +589,6 @@ public partial class ChapterGraphView : UserControl
         foreach (string notice in run.Notices)
         {
             _session.SetStatus(notice);
-        }
-
-        if (run.WorkbooksCreated)
-        {
-            StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session.ProjectPath));
         }
 
         // 무언가 <b>실제로 바뀌었으면</b> 열려 있는 편집 화면(줄 목록·그래프)을 다시
@@ -1225,7 +1151,6 @@ public partial class ChapterGraphView : UserControl
                 ProjectSpeakerNames()))
         {
             _session?.SetStatus($"에피소드 워크북을 새로 만들었습니다: {EpisodeLibrary.PathFor(folder, episodeId)}");
-            StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
         }
 
         // 이미 있는 파일이면 그 파일을 연다 — 이름이 정규화만 다른 경우에도 같은 파일이다.
@@ -3418,7 +3343,7 @@ public partial class ChapterGraphView : UserControl
                         ProjectSpeakerNames(),
                         firstLine: EpisodeLibrary.DefaultFirstLine))
                 {
-                    StartWatchingEpisodes(EpisodeLibrary.FolderFor(_session?.ProjectPath));
+                    // 만들기만 한다 — 감시는 더 서지 않는다 (R-D).
                 }
                 // 워크북이 이미 있었다 — 에피소드 삭제가 대본 파일을 남기므로, 지운 Id를
                 // 다시 더하면 빈 유물이 재사용된다. 완전히 비어 있을 때만 심는다(사람이
@@ -3434,9 +3359,50 @@ public partial class ChapterGraphView : UserControl
                     }
                 }
             }
+
+            EnsureDialogueNodeFor(episodeId);
         }
 
         Report(result, $"'{episodeId}' 행을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요.");
+    }
+
+    /// <summary>
+    /// 방금 더한 에피소드의 대사노드를 <b>그 자리에서</b> 세운다 (R-D · 2026-09-16).
+    ///
+    /// ⚠ 예전에는 이 노드를 <b>동기화가</b> 세웠다 — 툴이 워크북을 만들고, 감시자가 그
+    /// 파일을 보고, 동기화가 그것을 다시 읽어서 노드를 세우는 왕복이었다. 워크북이
+    /// 원본이던 시절에는 그 길밖에 없었지만, 툴이 원본이 된 뒤로는 <b>에피소드를 더하는
+    /// 것이 툴 안의 일</b>이므로 엑셀을 한 바퀴 돌 이유가 없다.
+    ///
+    /// (그 왕복이 남긴 결함이 실제로 있었다 — 2026-08-22 소유자 보고: "챕터그래프에서
+    /// 에피소드를 추가했는데 연출그래프에 반영이 안 돼 … 더블클릭해서 엑셀을 열어야
+    /// 그제야". 노드가 서는 조건이 <em>파일 사건</em>이었기 때문이다. 이제 아니다.)
+    /// </summary>
+    private void EnsureDialogueNodeFor(string episodeId)
+    {
+        if (_session is null || _selectedChapterId is not { } chapterId)
+        {
+            return;
+        }
+
+        string fileId = _session.EnsureChapterBoard(chapterId);
+
+        // 이름의 원천은 챕터 `에피소드` 시트의 `대사엔트리`인데, 갓 더한 행은 그 칸이
+        // 비어 있다 — 그때는 EpisodeId가 곧 이름이다(임포터의 규칙과 같다).
+        bool alreadyThere = _session.Project.FindFile(fileId)?.Nodes
+            .OfType<DialogueNode>()
+            .Any(node => string.Equals(node.Name, episodeId, StringComparison.Ordinal)) == true;
+
+        if (!alreadyThere)
+        {
+            DialogueNode created = _session.Editor.AddDialogueNode(fileId, name: episodeId);
+
+            // ⚠ 이 표식은 아직 "본문은 엑셀 소유"라는 뜻이라 편집기가 읽기 전용으로 잠근다.
+            //    §6.4가 그 개념 자체를 걷으라고 하지만(뒤집기 뒤에는 모든 노드가 툴 소유다),
+            //    그것은 잠금 배너·편집 관문과 함께 움직일 일이라 따로 둔다. 지금은 임포터와
+            //    <b>같은 표식</b>을 붙여 두 길이 만든 노드가 구별되지 않게만 한다.
+            created.ExcelEpisodeId = episodeId;
+        }
     }
 
     /// <summary>

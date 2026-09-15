@@ -131,7 +131,11 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        // 판은 뷰를 붙이는 순간 이미 섰고 노드도 동기화가 세웠다 — 여기서 또 만들면
+        // 대본은 이제 사람이 들여온다 (R-D) — 유령 노드를 재려면 먼저 서 있어야 한다.
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 판은 뷰를 붙이는 순간 이미 섰고 노드는 들여오기가 세웠다 — 여기서 또 만들면
         // 같은 이름이 둘이 되어 실물이 아니라 사본을 재게 된다.
         DialogueNode ghost = session.Project.EnumerateNodes().OfType<DialogueNode>()
             .Single(node => node.ExcelEpisodeId == "branch05.02A");
@@ -153,7 +157,11 @@ public sealed class ChapterGraphEditingTests
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        // 동기화가 세운 그 노드에 내용을 넣어 둔다 — 사본을 만들지 않는다.
+        // 대본은 이제 사람이 들여온다 (R-D).
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 들여오기가 세운 그 노드에 내용을 넣어 둔다 — 사본을 만들지 않는다.
         DialogueNode kept = session.Project.EnumerateNodes().OfType<DialogueNode>()
             .Single(node => node.ExcelEpisodeId == "branch05.02A");
 
@@ -858,23 +866,26 @@ public sealed class ChapterGraphEditingTests
 
         using var workbook = new ClosedXML.Excel.XLWorkbook();
         ClosedXML.Excel.IXLWorksheet sheet = workbook.AddWorksheet("대본");
-        string[] headers = ["유형", "조건라벨", "인덱스", "LineId", "화자", "내용"];
+        // v15 4열 — 인덱스(1) LineId(2) 화자(3) 내용(4). 모든 행이 대사다.
+        //
+        // ⚠ 이 헬퍼는 v14 6열이었고 `CHOICE`·`OPTION` 행을 세우고 있었다. R-C에서 안
+        //    걸린 이유는 <b>동기화가 읽기 전에 이행을 태워 주고 있었기</b> 때문이다 —
+        //    그 이행이 사라지자(R-D) 비로소 드러났다. 선택지의 주인은 챕터 `간선` 시트이고,
+        //    여기 남는 것은 그 문구가 적힌 <b>대사 줄</b>뿐이다.
+        string[] headers = ["인덱스", "LineId", "화자", "내용"];
 
         for (int column = 1; column <= headers.Length; column++)
         {
             sheet.Cell(1, column).SetValue(headers[column - 1]);
         }
 
-        // v14 자리 — 유형(1) 조건라벨(2) 인덱스(3) LineId(4) 화자(5) 내용(6).
-        sheet.Cell(2, 3).SetValue(10); sheet.Cell(2, 5).SetValue("윌로"); sheet.Cell(2, 6).SetValue("첫 줄");
-        sheet.Cell(3, 3).SetValue(20); sheet.Cell(3, 1).SetValue("CHOICE");
+        sheet.Cell(2, 1).SetValue(10); sheet.Cell(2, 3).SetValue("윌로"); sheet.Cell(2, 4).SetValue("첫 줄");
 
         for (int index = 0; index < options.Length; index++)
         {
-            int row = 4 + index;
-            sheet.Cell(row, 3).SetValue(30 + index * 10);
-            sheet.Cell(row, 1).SetValue("OPTION");
-            sheet.Cell(row, 6).SetValue(options[index]);
+            int row = 3 + index;
+            sheet.Cell(row, 1).SetValue(20 + index * 10);
+            sheet.Cell(row, 4).SetValue(options[index]);
         }
 
         workbook.SaveAs(Path.Combine(episodesFolder, episodeId + ".xlsx"));

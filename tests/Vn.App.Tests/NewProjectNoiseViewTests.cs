@@ -29,7 +29,7 @@ public sealed class NewProjectNoiseViewTests
         view.WorkbookHandlerProbe = () => @"C:\Program Files\Microsoft Office\EXCEL.EXE";
         view.OpenEpisode("new01");
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
         string[] shown = panel.Children.OfType<TextBlock>()

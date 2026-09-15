@@ -60,7 +60,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
 
         world.ShowChapterGraph();
         world.EditWorkbook(sheet => sheet.Cell(2, 4).SetValue("엑셀에서 방금 고친 대사"));
-        world.WaitForWatcher("엑셀에서 방금 고친 대사");
+        world.Import();
         world.ShowPresentationGraph();
 
         Assert.Contains("엑셀에서 방금 고친 대사", world.EditorText());
@@ -82,7 +82,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         using (new FileStream(
                    world.WorkbookPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
         {
-            world.WaitForWatcher("붙들린 채로 고친 대사");
+            world.Import();
         }
 
         Assert.Contains("붙들린 채로 고친 대사", world.EditorText());
@@ -101,7 +101,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         World world = Open();
 
         world.EditWorkbook(sheet => sheet.Cell(2, 4).SetValue("탭을 열기 전에 고친 대사"));
-        world.WaitForWatcher("탭을 열기 전에 고친 대사");
+        world.Import();
 
         world.SelectNodeInPresentationGraph();
 
@@ -121,6 +121,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
 
         world.VisitChapter("ch06");
         world.VisitChapter("ch05");   // ← 지금 고른 챕터는 ch05다
+        world.Import();               // 두 판이 다 선 뒤에 한 번 들여온다
 
         Assert.Contains("복도는 조용했다.", world.ProjectTextIn("ch06"));
 
@@ -128,8 +129,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             Path.Combine(world.EpisodesRoot, "ch06", "main05.02.xlsx"),
             sheet => sheet.Cell(2, 4).SetValue("안 고른 챕터에서 고친 대사"));
 
-        world.WaitFor(() =>
-            world.ProjectTextIn("ch06").Contains("안 고른 챕터에서 고친 대사", StringComparison.Ordinal));
+        world.Import();
 
         Assert.Contains("안 고른 챕터에서 고친 대사", world.ProjectTextIn("ch06"));
 
@@ -181,7 +181,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         window.SessionProbe.Open(manifest);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        window.FindControl<ChapterGraphView>("ChapterGraph")!.SyncEpisodes();
+        window.FindControl<ChapterGraphView>("ChapterGraph")!.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         return new World(window, episodes);
@@ -277,39 +277,25 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         }
 
         /// <summary>
-        /// ⚠ <b>진짜 감시자</b>를 기다린다 — `SyncEpisodesIfDiskChanged`를 직접 치지 않는다.
-        /// 그 자리를 치면 감시자가 죽어 있어도 테스트가 통과한다.
+        /// <b>사람이 [대본 가져오기]를 누른다</b> (R-D · 2026-09-16).
+        ///
+        /// ⚠ 예전 이 자리는 <b>진짜 감시자를 기다리는</b> 40초짜리 루프였고, 그 기다림이
+        /// 이 클래스가 유독 흔들리던 이유였다(UI 스레드 하나를 나눠 쓰면서 그 위에서
+        /// <c>Thread.Sleep</c>을 했다). 감시가 사라지면서 기다릴 것도 없어졌다 —
+        /// 반영의 방아쇠가 파일 사건이 아니라 <b>사람의 손</b>이기 때문이다.
+        ///
+        /// ⚠ 그래도 이 클래스의 값은 그대로다: 워크북에서 편집기까지 <b>끝에서 끝까지</b>
+        /// 가는 사슬을 지킨다. 바뀐 것은 사슬의 시작을 누가 당기는가뿐이다.
         /// </summary>
-        public void WaitForWatcher(string expected) =>
-            WaitForWatcher(_ => ProjectText().Contains(expected, StringComparison.Ordinal));
-
-        public void WaitForWatcher(Func<string, bool> until)
+        /// <remarks>
+        /// ⚠ 탭을 옮기지 않는다 — 옮기면 연출 그래프에 열어 둔 편집기가 화면에서 내려가
+        /// 그 뒤의 단언이 "편집기가 화면에 없다"를 읽는다. 누르는 것은 챕터 탭의 단추지만,
+        /// 여기서 재는 것은 <b>그 뒤에 무엇이 반영됐는가</b>다.
+        /// </remarks>
+        public void Import()
         {
-            // ⚠ 넉넉해야 한다. 감시자는 250ms 디바운스에 파일 사건을 기다리는데, 전체
-            // 스위트가 함께 돌 때는 어셈블리 하나가 <b>디스패처를 나눠 쓰고</b> 디스크도
-            // 붐빈다 — 6초로 뒀더니 혼자서는 늘 통과하면서 전체 실행에서 한 번 넘어졌다.
-            // 20초로 올린 뒤에도 2026-08-24 전체 실행에서 <b>이 클래스 셋이 한꺼번에</b>
-            // 넘어졌다(혼자 돌리면 6/6이 9초, 그때 그 실행은 1분 5초 → 1분 52초로 늘어져
-            // 있었다). 그래서 40초다.
-            //
-            // ⚠ <b>왜 이 클래스가 유독 흔들리나</b> — `HeadlessUi`는 <b>세션 하나(=UI 스레드
-            // 하나)</b>를 모든 테스트가 나눠 쓰는데 xUnit은 <b>클래스를 병렬로</b> 돌린다.
-            // 게다가 이 기다림은 그 UI 스레드 위에서 `Thread.Sleep`을 한다. 진짜 감시자를
-            // 쓰는 것이 이 클래스의 값이므로(가짜로 바꾸면 사슬이 안 지켜진다) 기다림을
-            // 늘리는 쪽을 고른다 — 사슬이 끊기면 어차피 여기서 실패하니 <b>잡는 힘은
-            // 그대로</b>이고, 늘어난 시간은 <b>진짜 실패할 때만</b> 치른다.
-            for (int tick = 0; tick < 400; tick++)
-            {
-                Thread.Sleep(100);
-                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-                if (until(ProjectText()))
-                {
-                    return;
-                }
-            }
-
-            Assert.Fail($"감시자가 변경을 물어오지 않았다 — 지금 대본: {ProjectText()}");
+            window.FindControl<ChapterGraphView>("ChapterGraph")!.ImportEpisodes();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
 
         /// <summary>화면이 아니라 <b>프로젝트</b>의 글 — 반영이 왔는지의 근거.</summary>

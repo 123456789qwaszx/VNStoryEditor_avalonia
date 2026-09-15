@@ -52,7 +52,7 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         // 대사노드가 챕터의 대사엔트리 이름으로 생겼다.
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
@@ -71,7 +71,7 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, _) = Show(project);
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
         Assert.DoesNotContain("반영", (string)expander.Header!);
@@ -106,7 +106,7 @@ public sealed class ChapterGraphSyncViewTests
 
         session.SetStatus("사람이 방금 누른 것의 답");
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         Assert.Equal("사람이 방금 누른 것의 답", session.StatusMessage);
     });
@@ -125,7 +125,7 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, _) = Show(project);
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         List<string> texts = view.FindControl<StackPanel>("DiagnosticsPanel")!
             .Children.OfType<TextBlock>()
@@ -196,16 +196,28 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 툴이_꺼진_사이_적힌_대사도_열면_바로_노드로_선다() => HeadlessUi.Run(() =>
+    public void 열었다고_대본이_저절로_들어오지는_않는다() => HeadlessUi.Run(() =>
     {
-        // 소유자 보고 — 시트에서 대사를 쓰고 프로젝트를 다시 열었더니 시나리오 그래프에
-        // 노드가 없었다. 감시는 "저장 순간"만 잡으므로, 켤 때 한 번 따라잡아야 한다.
+        // ⛔ <b>이 테스트는 뒤집혔다</b> (R-D · 2026-09-16). 앞선 판은
+        //    `툴이_꺼진_사이_적힌_대사도_열면_바로_노드로_선다`였다 — 프로젝트를 열면
+        //    툴이 워크북을 따라잡는다는 계약이었고, 워크북이 원본이던 시절에는 그것이
+        //    없으면 시트에 쓴 글이 영영 안 들어왔다.
+        //
+        //    이제 원본은 프로젝트다. 열 때마다 워크북을 따라잡으면 <b>툴에서 고친 글을
+        //    옛 엑셀이 덮는다</b> — 뒤집기가 막으려는 바로 그 사고다. 들여오기는 사람이
+        //    누른다(§5.2 "임포트는 명시적 동작이다").
         using var project = new TempProject(SamplePath);
         Directory.CreateDirectory(project.EpisodesFolder);
         File.Copy(SamplePath, Path.Combine(project.EpisodesFolder, "main05.02.xlsx"));
 
-        // Show가 곧 "툴을 켠다"다 — SyncEpisodes를 직접 부르지 않는다.
-        (_, AuthoringSession session) = Show(project);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => node.Name == "Story_ch05_02");
+
+        // 누르면 그때 들어온다 — 길이 막힌 것이 아니라 방아쇠가 손으로 옮겨 온 것이다.
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "Story_ch05_02");
@@ -236,7 +248,7 @@ public sealed class ChapterGraphSyncViewTests
         var kinds = new List<ProjectChangeKind>();
         session.Changed += (_, args) => kinds.Add(args.Kind);
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         Assert.Contains(ProjectChangeKind.Structure, kinds);
     });
@@ -268,7 +280,7 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
 
         // ⚠ 2026-08-24 — <b>저절로 펼치지 않는다</b>. 알림은 머리글의 표식이 든다
         // (소유자: "그것까지 꺼줘. 대신에 … 시각적인 이모티콘을 붙여놓기만 해").
@@ -322,6 +334,10 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, _) = Show(project);
 
+        // 대본은 이제 사람이 들여온다 (R-D) — 노드가 서야 검증이 통과한다.
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
         string path = Path.Combine(project.ExportFolder, "ch05.progression.json");
         Assert.True(File.Exists(path));
 
@@ -343,6 +359,10 @@ public sealed class ChapterGraphSyncViewTests
 
         (ChapterGraphView view, _) = Show(project);
 
+        // 대본은 이제 사람이 들여온다 (R-D) — 노드가 서야 검증이 통과한다.
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
         string path = Path.Combine(project.ExportFolder, "ch05.progression.json");
         Assert.DoesNotContain("새로판길", File.ReadAllText(path));
 
@@ -360,6 +380,10 @@ public sealed class ChapterGraphSyncViewTests
         EpisodeWorkbookFixture.Fill(project.EpisodesFolder, "새로판길");
 
         view.RefreshFromDisk();
+
+        // 새 에피소드의 노드도 들여와야 검증이 통과한다 (R-D).
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Contains("새로판길", File.ReadAllText(path));
     });
@@ -381,7 +405,11 @@ public sealed class ChapterGraphSyncViewTests
         EpisodeWorkbookFixture.Fill(
             Path.Combine(Path.GetDirectoryName(project.EpisodesFolder)!, "ch99"));
 
-        (_, AuthoringSession session) = Show(project);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        // 대본은 이제 사람이 들여온다 (R-D) — 노드가 서야 검증이 통과한다.
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.True(File.Exists(Path.Combine(project.ExportFolder, "ch05.progression.json")));
         Assert.True(

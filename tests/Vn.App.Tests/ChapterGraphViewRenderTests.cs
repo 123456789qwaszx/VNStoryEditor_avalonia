@@ -354,6 +354,10 @@ public sealed class ChapterGraphViewRenderTests
 
         view.Attach(session);
 
+        // 대본은 이제 사람이 들여온다 (R-D) — 노드가 없으면 "빈 노드" 오류가 더미로 쌓여
+        // 이 클래스가 재려는 진단이 그 속에 묻힌다.
+        view.ImportEpisodes();
+
         // 배치를 실제로 돌린다 — 이걸 하지 않으면 Bounds가 전부 0이고 "그려졌다"가 거짓이 된다.
         window.Measure(new Avalonia.Size(1280, 800));
         window.Arrange(new Avalonia.Rect(0, 0, 1280, 800));

@@ -159,8 +159,8 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
 
         for (int index = 0; index < 5; index++)
         {
+            // 대본 쪽 감시는 2026-09-16에 걷혔다 (R-D) — 챕터 감시만 남았다.
             view.ReloadIfDiskChanged();
-            view.SyncEpisodesIfDiskChanged();
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
 
@@ -208,7 +208,7 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         // 안 돌아(NotYetWritten) Applied가 0이고, 그러면 옛 눈금으로도 방송이 없다 —
         // 처음 쓴 이 테스트가 그래서 <b>고치기 전에도 통과했다.</b> 빈 판으로 재면
         // 아무것도 안 재는 것이다.
-        view.SyncEpisodes();
+        view.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         WriteFirstLine(
@@ -216,13 +216,13 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
                 EpisodeLibrary.FolderFor(ManifestPath, "ch01")!, "ep0")!,
             "라루", "이미 쓰여 있던 대사");
 
-        view.SyncEpisodes();   // 이 한 번은 진짜로 바뀐다 — 줄이 들어온다
+        view.ImportEpisodes();   // 이 한 번은 진짜로 바뀐다 — 줄이 들어온다
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         // ⚠ 그리고 <b>한 번 더 바뀐다</b>. 방금 그 반영이 LineId를 발급했고, 다음 평평화는
         // 그 신원을 `#line:`으로 실어 내므로 원본 글 자체가 달라진다 — 값이 다르니 반영이
         // 도는 것이 맞다. 새 줄이 들어올 때 한 번 치르는 값이고, 그 다음부터는 고정점이다.
-        view.SyncEpisodes();   // 신원이 자리를 잡는 한 번
+        view.ImportEpisodes();   // 신원이 자리를 잡는 한 번
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         int broadcasts = 0;
@@ -231,7 +231,7 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         // 이제 디스크도 프로젝트도 그대로인 채 다시 돈다 — 감시자가 깨울 때마다의 모습이다.
         for (int index = 0; index < 3; index++)
         {
-            view.SyncEpisodes();
+            view.ImportEpisodes();
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
 
@@ -247,7 +247,7 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         // 삼켜서는 안 되는 것이 이것이다.
         (ChapterGraphView view, AuthoringSession session, Window window) = Show();
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         int broadcasts = 0;
@@ -259,7 +259,7 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
 
         WriteFirstLine(workbook, "라루", "새로 쓴 대사");
 
-        view.SyncEpisodes();
+        view.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.True(broadcasts > 0, "대본이 바뀌었으면 열려 있는 화면이 따라와야 한다");

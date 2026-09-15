@@ -10,7 +10,7 @@ namespace Vn.Authoring.Chapters.Import;
 /// <param name="IssuedLineIds">이 에피소드가 새로 발급받은 줄 신원.</param>
 public sealed record EpisodeImportEntry(
     string EpisodeId,
-    string WorkbookPath,
+    string? WorkbookPath,
     string DialogueNodeId,
     IReadOnlyList<string> IssuedLineIds);
 
@@ -73,7 +73,12 @@ public static class EpisodeWorkbookImporter
         {
             if (EpisodeLibrary.FindExisting(episodesFolder, episode.EpisodeId) is not { } path)
             {
-                continue;   // 아직 대본이 없는 에피소드다 — 오류가 아니다.
+                // 아직 대본이 없는 에피소드다 — 오류가 아니고, <b>노드는 선다</b>
+                // (2026-08-17 소유자: "빈 노드라도 서 있으면 여기에 쓰면 된다가 보인다").
+                // ⚠ 대본 <em>파일</em>은 만들지 않는다 — 워크북은 이제 산출물이라
+                // 만드는 자리는 이미터다(§4).
+                planned.Add(new Planned(episode.EpisodeId, WorkbookPath: null, Text: string.Empty));
+                continue;
             }
 
             // 구판 대본을 현행 규격으로. 임포트는 한 번이므로 이행도 한 번이다.
@@ -130,6 +135,11 @@ public static class EpisodeWorkbookImporter
         {
             DialogueNode node = FindOrCreateNode(editor, fileId, item.EpisodeId, chapter);
 
+            // ⚠ 이 표식은 아직 "본문은 엑셀 소유"라는 뜻이라 편집기가 읽기 전용으로 잠근다.
+            //    §6.4는 뒤집기 뒤에 그 개념 자체가 사라진다고 하지만, 그것은 잠금 배너·편집
+            //    관문과 함께 움직일 일이라 따로 둔다 — 여기서는 붙여만 둔다.
+            node.ExcelEpisodeId = item.EpisodeId;
+
             // 대사를 한 줄도 안 쓴 에피소드에도 <b>노드는 선다</b> (2026-08-17 소유자) —
             // 빈 노드라도 서 있으면 작가에게 "여기에 쓰면 된다"가 보인다. 본문만
             // 건드리지 않는다(빈 글을 밀어 넣으면 지우기로 읽힌다).
@@ -148,7 +158,7 @@ public static class EpisodeWorkbookImporter
                 diagnostics.Add(new ChapterDiagnostic(
                     ChapterDiagnosticSeverity.Error,
                     ChapterDiagnosticCode.SheetMissing,
-                    item.WorkbookPath, null, null, null,
+                    item.WorkbookPath ?? item.EpisodeId, null, null, null,
                     $"'{item.EpisodeId}'의 대사를 반영하지 못했습니다: {outcome.Summary()}"));
 
                 return new EpisodeImport(
@@ -169,7 +179,7 @@ public static class EpisodeWorkbookImporter
     }
 
     /// <summary>1단계가 거둔 것 — 읽고 편 텍스트. 프로젝트와는 아직 무관하다.</summary>
-    private readonly record struct Planned(string EpisodeId, string WorkbookPath, string Text);
+    private readonly record struct Planned(string EpisodeId, string? WorkbookPath, string Text);
 
     /// <summary>
     /// 공백 있는 미등록 화자는 파서가 산문으로 보아 대사와 합친다("화자와 내용이 합쳐진다" —
