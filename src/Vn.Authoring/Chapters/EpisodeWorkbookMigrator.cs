@@ -1,3 +1,4 @@
+using System.Globalization;
 using ClosedXML.Excel;
 
 namespace Vn.Authoring.Chapters;
@@ -232,10 +233,25 @@ public static class EpisodeWorkbookMigrator
 
         // 템플릿 번호를 남은 자리에 다시 깐다 — 인덱스 없는 행은 표의 일부가 아니라서,
         // 시트에서 그냥 아래로 타이핑하면 대사가 조용히 버려지는 함정이 실제로 있었다.
-        // ⚠ 거둔 줄의 번호는 건드리지 않는다(신원이다). 그 아래부터 이어 깐다.
+        //
+        // ⚠ 거둔 줄의 번호는 건드리지 않는다(신원이다). 그래서 새 번호는 <b>행 자리가 아니라
+        // 이미 쓰인 가장 큰 수 위에서</b> 이어 깐다: 블록 행을 걷으면 남은 번호가 뜨문뜨문해지는데
+        // (10·40·90) 행 자리에서 다시 세면 40·50…이 나와 <b>이미 쓰인 번호와 부딪친다</b>.
+        // 그러면 리더가 "인덱스 중복"을 오류로 세워, 이행한 파일이 통째로 안 읽힌다.
+        int next = lines
+            .Select(line => int.TryParse(
+                line.Index, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int value)
+                ? value
+                : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        next = (next / 10 + 1) * 10;
+
         for (int row = target + 1; row <= TemplateRows; row++)
         {
-            sheet.Cell(row, ColumnIndex).SetValue((row - HeaderRow) * 10);
+            sheet.Cell(row, ColumnIndex).SetValue(next);
+            next += 10;
         }
 
         sheet.Column(ColumnLineId).Style.Fill.SetBackgroundColor(XLColor.FromHtml("#F1F3F4"));
