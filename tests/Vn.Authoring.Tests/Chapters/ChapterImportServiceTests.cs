@@ -1,3 +1,4 @@
+using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Chapters.Import;
 
@@ -88,16 +89,41 @@ public sealed class ChapterImportServiceTests : IDisposable
     }
 
     [Fact]
-    public void 구판_견본은_이행되고_그_사실을_알린다()
+    public void 구판_워크북은_이행되고_그_사실을_알린다()
     {
-        // ⚠ <b>견본(`docs/chapter-graph-sample.xlsx`)은 현행 규격이 아니다</b> — 열면
-        //    이행된다(2026-09-16 실측, 이 테스트를 쓰다 알았다). 이행은 조용히 하지
-        //    않는다는 것이 규율이므로, 말이 나오는 것이 옳은 동작이다.
-        ChapterImport import = ChapterImportService.Run(SeedProject("ch01"));
+        // 이행은 <b>조용히 하지 않는다</b>가 규율이다 — 남의 원고를 고쳐 놓고 말이 없으면
+        // 무엇이 바뀌었는지 알 길이 없다.
+        //
+        // ⚠ 구판을 <b>여기서 일부러 만든다.</b> 한때는 견본이 구판이라 그냥 복사하면 됐는데
+        //    (2026-09-16에 견본을 현행 규격으로 옮겼다), 그 방식은 이 테스트를
+        //    "견본이 낡아 있다"에 기대게 만든다 — 견본이 고쳐지는 순간 함께 깨진다.
+        //    실제로 그렇게 깨져서 이 모양이 됐다.
+        string manifest = SeedProject("ch01");
+        StripSceneIdColumn(Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx"));
+
+        ChapterImport import = ChapterImportService.Run(manifest);
 
         string notice = Assert.Single(import.Notices);
         Assert.Contains("이행했습니다", notice, StringComparison.Ordinal);
         Assert.Contains(".bak", notice, StringComparison.Ordinal);
+    }
+
+    /// <summary>`에피소드` 시트에서 `장면ID` 열을 걷어 그 칸이 서기 전 모양으로 되돌린다.</summary>
+    private static void StripSceneIdColumn(string path)
+    {
+        using var book = new XLWorkbook(path);
+        IXLWorksheet sheet = book.Worksheet(ChapterSheetNames.Episodes);
+
+        for (int column = 1; column <= 16; column++)
+        {
+            if (sheet.Cell(1, column).GetString().Trim() == "장면ID")
+            {
+                sheet.Column(column).Delete();
+                break;
+            }
+        }
+
+        book.Save();
     }
 
     [Fact]
