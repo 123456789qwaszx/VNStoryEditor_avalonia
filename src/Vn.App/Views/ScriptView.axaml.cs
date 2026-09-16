@@ -192,6 +192,41 @@ public partial class ScriptView : UserControl
         }
 
         _pendingDeleteText = null;
-        _session.SetStatus(outcome.Applied ? $"글을 반영했습니다. {outcome.Summary()}" : outcome.Summary());
+
+        if (!outcome.Applied)
+        {
+            _session.SetStatus(outcome.Summary());
+            return;
+        }
+
+        _session.SetStatus($"글을 반영했습니다. {outcome.Summary()}{EmitWorkbook(node)}");
+    }
+
+    /// <summary>
+    /// 반영한 글을 <b>워크북으로 다시 낸다</b> (§6.2: "저장 = 프로젝트에 저장 + 워크북 재출력").
+    ///
+    /// ⛔ <b>여기가 뒤집기의 도착점이다</b> — 툴에 쓴 것이 엑셀을 채운다.
+    ///
+    /// ⚠ 못 냈다고 편집을 되돌리지 않는다 (§5.3). 원본은 프로젝트라 글은 이미 안전하고,
+    /// 못 한 것은 <b>그 파일을 지금 갱신하는 일</b>뿐이다. 잠금의 뜻이 "막는다"에서
+    /// "미뤘다"로 바뀐 것이 이 자리다.
+    /// </summary>
+    /// <returns>상태줄에 덧붙일 말. 잘 났으면 빈 문자열이다 — 잘된 일은 조용하다.</returns>
+    private string EmitWorkbook(DialogueNode node)
+    {
+        if (_session is null ||
+            ChapterList.SelectedItem is not string chapterId ||
+            EpisodeLibrary.FolderFor(_session.ProjectPath, chapterId) is not { } folder)
+        {
+            return string.Empty;
+        }
+
+        // 노드가 어느 대본 파일의 것인지 — 표식이 없으면 이름이 곧 에피소드 Id다.
+        string episodeId = node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name;
+
+        ChapterWriteResult written = EpisodeScriptOutput.Write(
+            _session.Project, node, EpisodeLibrary.PathFor(folder, episodeId));
+
+        return written.Written ? string.Empty : $" ⚠ {written.Failure}";
     }
 }

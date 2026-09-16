@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Vn.App.Services;
 using Vn.App.Views;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Model;
 using Vn.Authoring.Script;
@@ -123,7 +124,75 @@ public sealed class ScriptTabTests : IDisposable
         Assert.Equal(["첫 줄"], Texts(session, node));
     });
 
+    // ── 툴에 쓴 것이 엑셀을 채운다 (§6.2) ──────────────────────────────────
+
+    [Fact]
+    public void 반영하면_대본_워크북이_다시_나온다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ <b>뒤집기의 도착점이다.</b> 지시서의 한 문장 — "엑셀에 쓴 것이 툴에 반영되는
+        //    것이 아니라, 툴에 쓴 것이 엑셀을 채운다" — 에서 '채운다'가 여기다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"), ("라루", "둘째 줄"));
+
+        // 한 줄은 그대로 두고 한 줄만 고친다 — 지우기가 아니므로 한 번에 반영된다.
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n라루: 툴에서 고친 대사";
+        Click(view, "ApplyButton");
+
+        EpisodeWorkbookModel written = EpisodeWorkbookReader.Read(WorkbookPath("ch01", "ep01"));
+
+        Assert.Empty(written.Errors);
+        Assert.Equal(["첫 줄", "툴에서 고친 대사"], written.Rows.Select(row => row.Text));
+        Assert.Equal(["윌로", "라루"], written.Rows.Select(row => row.Speaker));
+
+        // 인덱스는 출력 열이라 10·20으로 새로 매겨진다 (§4.2) — 신원은 프로젝트가 갖는다.
+        Assert.Equal([10, 20], written.Rows.Select(row => row.Index));
+    });
+
+    [Fact]
+    public void 화자가_빈_줄은_지문으로_나간다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "문이 열렸다.";
+        Click(view, "ApplyButton");
+
+        EpisodeWorkbookModel written = EpisodeWorkbookReader.Read(WorkbookPath("ch01", "ep01"));
+
+        Assert.Equal(["문이 열렸다."], written.Rows.Select(row => row.Text));
+        Assert.Equal([string.Empty], written.Rows.Select(row => row.Speaker));
+    });
+
+    [Fact]
+    public void 엑셀이_잡고_있으면_글은_남고_출력만_미뤄진다() => HeadlessUi.Run(() =>
+    {
+        // §5.3 — 잠금의 뜻이 "막는다"가 아니라 "그 파일을 지금 갱신하지 못했다"로 바뀌었다.
+        //    원본은 프로젝트라 글은 이미 안전하다.
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        // 한 번 내서 파일을 만들어 두고, 그것을 엑셀처럼 붙든다.
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄";
+        Click(view, "ApplyButton");
+
+        using (new FileStream(
+                   WorkbookPath("ch01", "ep01"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 붙들린 동안 쓴 글";
+            Click(view, "ApplyButton");
+        }
+
+        // 글은 프로젝트에 남았다.
+        Assert.Equal(["붙들린 동안 쓴 글"], Texts(session, node));
+
+        // 그리고 못 냈다는 사실이 사람에게 닿는다 — 조용한 실패가 최악이다.
+        Assert.Contains("⚠", session.StatusMessage);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    private string WorkbookPath(string chapterId, string episodeId) =>
+        EpisodeLibrary.PathFor(EpisodeLibrary.FolderFor(ManifestPath, chapterId)!, episodeId);
 
     private (ScriptView View, AuthoringSession Session) Show()
     {
