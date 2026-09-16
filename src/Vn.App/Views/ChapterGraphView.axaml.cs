@@ -488,6 +488,13 @@ public partial class ChapterGraphView : UserControl
     /// 그래서 엑셀이 쥐고 있는 동안의 저장이 전부 묻혔다(소유자 보고: "엑셀을 닫으니까
     /// 그제서야 반영이 된다"). 화면 안에 있어서 화면 없이는 그 결함을 시험할 수 없었다.
     /// </summary>
+    /// <remarks>
+    /// ⏸ 지시서 §2는 <c>WorkbookFolderFingerprint</c>를 R-D의 삭제 목록에 넣어 두었지만
+    /// <b>아직 지우지 않았다</b>: 대본 감시는 걷혔어도 <b>챕터 감시가 남아 있고</b>(위
+    /// <c>StartWatching</c>), 그 감시가 "정말 바뀌었나"를 묻는 자리가 여기다. 지금 지우면
+    /// 우리가 쓴 저장이 감시자로 되돌아와 판을 다시 만든다 — 사람이 누르고 있던 카드가
+    /// 파괴되던 그 결함이다. 챕터 쪽 재읽기를 걷는 것은 R-F의 몫이고, 이것은 그때 함께 간다.
+    /// </remarks>
     private string DiskFingerprint() => WorkbookFolderFingerprint.Of(
         ChapterLibrary.FolderFor(_session?.ProjectPath),
         EpisodeLibrary.FolderFor(_session?.ProjectPath));
@@ -912,7 +919,6 @@ public partial class ChapterGraphView : UserControl
         }
 
         RebuildSpeakerTab();
-        PushVocabularyToEpisodes();
         _diskFingerprint = DiskFingerprint(); // 우리가 쓴 저장이 감시자로 되돌아오지 않게
 
         return true;
@@ -980,8 +986,13 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    /// <summary>지난 밀기가 본 어휘의 지문 — 같으면 워크북을 하나도 열지 않는다.</summary>
-    private string? _pushedVocabularySignature;
+    // ⛔ `PushVocabularyToEpisodes`와 그 지문(`_pushedVocabularySignature`)은 2026-09-16에
+    //    걷혔다 (R-D, 지시서 §2: "읽기 전용 산출물엔 드롭다운이 없다").
+    //
+    //    챕터의 화자 목록이 바뀔 때마다 <b>대본 워크북을 전부 열어</b> 숨김 시트를 갈아
+    //    끼우던 길이다. 워크북이 원본이던 시절에는 사람이 그 드롭다운에서 골랐으니 값을
+    //    치를 이유가 있었지만, 이제 사람은 툴에서 고른다 — 산출물에 조언을 심을 이유가 없다.
+    //    (새로 만드는 워크북은 만들 때 목록을 받는다: `EpisodeLibrary.EnsureWorkbook`.)
 
     /// <summary>
     /// 새 대본이 받을 화자 — 챕터를 가리지 않는 프로젝트 목록 하나다.
@@ -990,109 +1001,6 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private List<string> ProjectSpeakerNames() =>
         _session is null ? [] : EpisodeLibrary.SpeakerNames(_session.Definition);
-
-    /// <summary>
-    /// 화자·조건 드롭다운을 <b>프로젝트의 모든 챕터</b>의 대본에 반영한다 (2026-08-23).
-    ///
-    /// 화자는 이제 프로젝트의 것이므로(→ [화자] 탭) 어느 챕터의 대본이든 <b>같은 이름
-    /// 목록</b>을 받는다. 예전에는 고른 챕터의 폴더에 그 챕터 시트의 화자만 밀어서, 앱을
-    /// 켜면 첫 챕터의 대본만 갱신됐다(2026-08-23 소유자 보고).
-    /// ⚠ <b>조건 라벨은 챕터의 것</b>이라 그 챕터 것만 간다 — `조건` 시트는 그 챕터 스탯에
-    /// 매인 이름이고, 화자와 달리 챕터가 실제로 쓴다(간선의 표시조건·해금조건).
-    ///
-    /// ⚠ <b>값이 큰 일이다</b> — 대본 워크북을 전부 열어 본다(§성능 규칙). 그래서 어휘의
-    /// 지문을 들고 있다가 <b>달라진 순간에만</b> 한 바퀴 돈다. 밀다가 실패한 워크북이 있으면
-    /// 지문을 적지 않는다: 엑셀이 잡고 있던 파일이 다음 기회를 얻어야 하고, 지문을 미리
-    /// 적으면 그 워크북만 영영 낡은 목록을 들고 남는다.
-    /// </summary>
-    private void PushVocabularyToEpisodes()
-    {
-        if (_session?.ProjectPath is null)
-        {
-            return;
-        }
-
-        List<string> names = _session.Definition.Speakers
-            .Select(speaker => speaker.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .ToList();
-
-        string signature = MakeVocabularySignature(names);
-
-        if (string.Equals(signature, _pushedVocabularySignature, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        var failures = new List<string>();
-        int changed = 0;
-
-        foreach (ChapterEntry entry in _entries)
-        {
-            if (entry.Model is not { } model ||
-                EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId) is not { } folder)
-            {
-                continue;
-            }
-
-            // v15 — 대본에 밀어 넣을 어휘는 화자 하나뿐이다(조건라벨은 폐지).
-            foreach (ChapterEpisode episode in model.Episodes)
-            {
-                EpisodeLibrary.VocabularyPush push =
-                    EpisodeLibrary.PushVocabulary(folder, episode.EpisodeId, names);
-
-                if (push.Changed)
-                {
-                    changed++;
-                }
-                else if (push.Failure is { } failure)
-                {
-                    failures.Add(failure);
-                }
-            }
-        }
-
-        if (failures.Count == 0)
-        {
-            _pushedVocabularySignature = signature;
-        }
-        else
-        {
-            _session.SetStatus(failures[0] +
-                (failures.Count > 1 ? $" (외 {failures.Count - 1}건)" : string.Empty));
-        }
-
-        if (changed > 0)
-        {
-            _session.SetStatus($"화자·조건 드롭다운을 대본 워크북 {changed}개에 반영했습니다.");
-        }
-    }
-
-    /// <summary>
-    /// 어휘의 지문 — 프로젝트 화자 이름들과 챕터마다의 (조건 라벨 · 에피소드 목록).
-    /// 이 셋 중 하나라도 달라져야 워크북을 여는 값을 치른다.
-    /// </summary>
-    private string MakeVocabularySignature(IReadOnlyList<string> names)
-    {
-        var builder = new System.Text.StringBuilder();
-        builder.Append(string.Join("|", names)).Append('\n');
-
-        foreach (ChapterEntry entry in _entries)
-        {
-            builder.Append(entry.ChapterId).Append(':');
-
-            if (entry.Model is { } model)
-            {
-                builder.Append(string.Join("|", model.Conditions.Select(item => item.Label)));
-                builder.Append(':');
-                builder.Append(string.Join("|", model.Episodes.Select(item => item.EpisodeId)));
-            }
-
-            builder.Append('\n');
-        }
-
-        return builder.ToString();
-    }
 
     /// <summary>
     /// 왼쪽 목록의 챕터 클릭 → 챕터 엑셀 열기 (2026-08-16 소유자 — 기본 동작이 "엑셀에서
@@ -1221,7 +1129,6 @@ public partial class ChapterGraphView : UserControl
 
         // 화자 목록이 바뀌는 순간은 [화자] 탭에서 저장한 순간이지만, 챕터가 늘거나 에피소드가
         // 생겨도 밀 곳이 늘어난다 — 지문이 같으면 워크북을 하나도 열지 않으므로 여기서 판다.
-        PushVocabularyToEpisodes();
         RebuildSpeakerTab();
 
         AutoExport();        // 진행 JSON은 사람 손을 기다리지 않는다 (2026-08-17)

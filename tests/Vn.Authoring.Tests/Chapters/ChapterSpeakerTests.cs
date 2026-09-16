@@ -196,92 +196,9 @@ public sealed class ChapterSpeakerTests : IDisposable
             sheet.Name == EpisodeLibrary.SpeakerListSheetName);
     }
 
-    [Fact]
-    public void 목록이_같으면_기존_워크북에_손대지_않는다()
-    {
-        EpisodeLibrary.EnsureWorkbook(_directory, "ep02", ["라루"]);
-        string path = EpisodeLibrary.PathFor(_directory, "ep02");
-        DateTime before = File.GetLastWriteTimeUtc(path);
-
-        EpisodeLibrary.VocabularyPush push =
-            EpisodeLibrary.PushVocabulary(_directory, "ep02", ["라루"]);
-
-        Assert.False(push.Changed);
-        Assert.Null(push.Failure);
-        Assert.Equal(before, File.GetLastWriteTimeUtc(path)); // B7 — 툴은 원고 시각을 안 바꾼다
-        Assert.False(File.Exists(path + ".bak"));             // 안 쓴 파일에 백업도 없다
-    }
-
-    [Fact]
-    public void 목록이_바뀌면_숨김_시트만_갈리고_원고_행은_그대로다()
-    {
-        EpisodeLibrary.EnsureWorkbook(_directory, "ep03", ["라루"]);
-        string path = EpisodeLibrary.PathFor(_directory, "ep03");
-
-        // 작가의 원고를 흉내 낸다 — 갱신 뒤에도 그대로여야 한다.
-        using (var workbook = new XLWorkbook(path))
-        {
-            IXLWorksheet script = workbook.Worksheet("대본");
-            script.Cell(2, 3).SetValue("라루");
-            script.Cell(2, 4).SetValue("첫 줄이다.");
-            workbook.Save();
-        }
-
-        EpisodeLibrary.VocabularyPush push =
-            EpisodeLibrary.PushVocabulary(_directory, "ep03", ["라루", "윌로"]);
-
-        Assert.True(push.Changed);
-        Assert.True(File.Exists(path + ".bak")); // 원고를 다시 쓰는 유일한 순간 — 직전을 남긴다
-
-        using var updated = new XLWorkbook(path);
-        IXLWorksheet list = updated.Worksheet(EpisodeLibrary.SpeakerListSheetName);
-        Assert.Equal("윌로", list.Cell(2, 1).GetString());
-
-        IXLWorksheet after = updated.Worksheet("대본");
-        Assert.Equal("라루", after.Cell(2, 3).GetString());
-        Assert.Equal("첫 줄이다.", after.Cell(2, 4).GetString());
-    }
-
-    [Fact]
-    public void 드롭다운_없이_만든_구판_워크북도_갱신이_목록과_검증을_세운다()
-    {
-        EpisodeLibrary.EnsureWorkbook(_directory, "ep04"); // 화자 기능 전의 워크북
-
-        EpisodeLibrary.VocabularyPush push =
-            EpisodeLibrary.PushVocabulary(_directory, "ep04", ["라루"]);
-
-        Assert.True(push.Changed);
-
-        using var workbook = new XLWorkbook(EpisodeLibrary.PathFor(_directory, "ep04"));
-        Assert.Equal("라루",
-            workbook.Worksheet(EpisodeLibrary.SpeakerListSheetName).Cell(1, 1).GetString());
-        Assert.Contains(workbook.Worksheet("대본").DataValidations, validation =>
-            validation.Ranges.Any(range => range.RangeAddress.FirstAddress.ColumnNumber == 3));
-    }
-
-    [Fact]
-    public void 잠긴_워크북이면_갱신하지_않고_사유를_말한다()
-    {
-        EpisodeLibrary.EnsureWorkbook(_directory, "ep05", ["라루"]);
-        string path = EpisodeLibrary.PathFor(_directory, "ep05");
-
-        // 공유 없는 핸들 — 엑셀의 배타 잠금을 흉내 낸다.
-        using var hold = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-
-        EpisodeLibrary.VocabularyPush push =
-            EpisodeLibrary.PushVocabulary(_directory, "ep05", ["라루", "윌로"]);
-
-        Assert.False(push.Changed);
-        Assert.Contains("넣지 못했습니다", push.Failure);
-    }
-
-    [Fact]
-    public void 워크북이_아직_없으면_갱신은_아무것도_하지_않는다()
-    {
-        EpisodeLibrary.VocabularyPush push =
-            EpisodeLibrary.PushVocabulary(_directory, "ep_none", ["라루"]);
-
-        Assert.False(push.Changed);
-        Assert.Null(push.Failure);
-    }
+    // ⛔ 어휘 <b>갱신</b>(`PushVocabulary`) 테스트 다섯은 2026-09-16에 은퇴했다
+    //    (R-D, 지시서 §2: "읽기 전용 산출물엔 드롭다운이 없다"). 지키던 것은
+    //    `목록이 같으면 손대지 않는다`·`숨김 시트만 갈린다`·`잠기면 사유를 말한다`처럼
+    //    <b>기존 워크북을 다시 여는</b> 규율이었는데, 그 여는 일 자체가 사라졌다.
+    //    위 둘(만들 때 드롭다운이 서는가)은 남는다 — 생성은 여전히 툴의 일이다.
 }

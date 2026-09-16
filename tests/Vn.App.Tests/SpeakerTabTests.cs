@@ -68,9 +68,9 @@ public sealed class SpeakerTabTests : IDisposable
         Assert.Equal("laru", saved.CharacterId);
         Assert.Contains("라루", File.ReadAllText(GameDefinition.PathFor(ManifestPath)));
 
-        // ② 챕터를 가리지 않고 대본 드롭다운에 섰다 — 이것이 이 구조의 요점이다.
-        Assert.Equal(["라루"], SpeakerList("ch01", "ep01"));
-        Assert.Equal(["라루"], SpeakerList("ch02", "ep02"));
+        // ⛔ ②였던 "챕터를 가리지 않고 대본 드롭다운에도 선다"는 2026-09-16에 걷혔다
+        //    (R-D) — 어휘를 기존 워크북에 밀어 넣던 길이 사라졌다. 화자는 이제 툴에서
+        //    고르고, 워크북은 그 결과를 받는 산출물이다.
     });
 
     [Fact]
@@ -89,8 +89,6 @@ public sealed class SpeakerTabTests : IDisposable
         SpeakerSpec left = Assert.Single(session.Definition.Speakers);
         Assert.Equal("윌로", left.Name);
 
-        // 대본 드롭다운도 따라간다 — 툴만 줄고 엑셀이 옛 목록을 들고 있으면 안 된다.
-        Assert.Equal(["윌로"], SpeakerList("ch01", "ep01"));
     });
 
     [Fact]
@@ -130,7 +128,6 @@ public sealed class SpeakerTabTests : IDisposable
         Assert.Equal("떠돌이 상인", SpeakerCell("ch02", "ep02"));
 
         // 그리고 드롭다운도 새 이름을 담는다.
-        Assert.Equal(["떠돌이 상인"], SpeakerList("ch01", "ep01"));
 
         // ⚠ 보고는 저장 뒤에 선다 — 이어지는 어휘 밀기의 메시지가 덮으면 사람은 무엇이
         // 따라갔는지 못 본다.
@@ -172,7 +169,6 @@ public sealed class SpeakerTabTests : IDisposable
         Assert.True(File.Exists(chapter + ".bak"));
 
         // 옮겨 온 이름도 다른 챕터의 대본에서 고를 수 있다.
-        Assert.Equal(["늙은 상인"], SpeakerList("ch02", "ep02"));
 
         // 두 번째 재읽기는 아무것도 안 옮긴다 — 시트가 없으니 옮길 것이 없다.
         view.RefreshFromDisk();
@@ -180,27 +176,9 @@ public sealed class SpeakerTabTests : IDisposable
         Assert.Single(session.Definition.Speakers);
     });
 
-    [Fact]
-    public void 어휘가_그대로면_대본_워크북을_열지_않는다() => HeadlessUi.Run(() =>
-    {
-        // §성능 규칙 — 밀기는 대본 워크북을 전부 열어 본다. 그 값이 프로젝트 전체가 됐으므로
-        // 지문이 같은 동안에는 한 파일도 만지지 않아야 한다.
-        (ChapterGraphView view, _, _) = Show();
-
-        Add(view, "라루", "laru");
-
-        DateTime first = File.GetLastWriteTimeUtc(EpisodePath("ch01", "ep01"));
-        DateTime second = File.GetLastWriteTimeUtc(EpisodePath("ch02", "ep02"));
-
-        for (int index = 0; index < 5; index++)
-        {
-            view.RefreshFromDisk();
-            Dispatcher.RunJobs();
-        }
-
-        Assert.Equal(first, File.GetLastWriteTimeUtc(EpisodePath("ch01", "ep01")));
-        Assert.Equal(second, File.GetLastWriteTimeUtc(EpisodePath("ch02", "ep02")));
-    });
+    // ⛔ `어휘가_그대로면_대본_워크북을_열지_않는다`는 2026-09-16에 은퇴했다 (R-D).
+    //    지문이 같은 동안 밀기가 파일을 안 여는지를 재던 §성능 규칙 테스트인데, <b>여는
+    //    일 자체가 사라져</b> 이제는 무엇을 해도 참이다. 늘 참인 단언은 지키는 힘이 없다.
 
     // ── 기반 ────────────────────────────────────────────────────────────────
 

@@ -55,23 +55,11 @@ public class SerializationTests
         Assert.Equal("ep_hallway", reloaded.FindDialogue(sample.Dialogue.Id)!.ExcelEpisodeId);
     }
 
-    [Fact]
-    public void 엑셀_행_신원_맵이_프로젝트와_함께_왕복한다()
-    {
-        // v4 — 행 신원(인덱스 → LineId)은 대본 파일이 아니라 프로젝트가 갖는다.
-        // 저장을 지나도 그대로여야 다음 동기화가 ID 매칭으로 이어진다.
-        var sample = new Sample();
-        sample.Dialogue.ExcelLineMap[10] = "ln_0001";
-        sample.Dialogue.ExcelLineMap[20] = "ln_0002";
-        sample.Dialogue.ExcelLineMap[900] = "ln_0100";
-
-        StoryProject reloaded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(sample.Project));
-        DialogueNode dialogue = reloaded.FindDialogue(sample.Dialogue.Id)!;
-
-        Assert.Equal(
-            new Dictionary<int, string> { [10] = "ln_0001", [20] = "ln_0002", [900] = "ln_0100" },
-            dialogue.ExcelLineMap);
-    }
+    // ⛔ `엑셀_행_신원_맵이_프로젝트와_함께_왕복한다`는 2026-09-16에 은퇴했다 (R-D).
+    //    v4의 `ExcelLineMap`(인덱스 → LineId)이 저장을 지나 살아남는가를 지키던 테스트인데,
+    //    그 표의 쓸모가 <b>워크북을 다시 읽을 때 줄을 맞추는 것</b>이었다. 다시 읽지 않으므로
+    //    맞출 상대가 없고, 신원은 프로젝트가 그냥 갖는다.
+    //    ⚠ 구판 프로젝트 파일의 `excelLines`는 읽지 않고 지나간다 — 깨지지 않는다.
 
     [Fact]
     public void 줄의_변수_변경은_순서와_연산자를_그대로_왕복한다()

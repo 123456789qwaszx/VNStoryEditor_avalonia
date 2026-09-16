@@ -265,18 +265,8 @@ internal static class StoryNodeJson
             json["choiceExits"] = choiceExits;
         }
 
-        // 에피소드 엑셀의 행 신원 (v4) — 인덱스 → LineId. 대본 파일에 되쓰는 대신 여기 산다.
-        if (node.ExcelLineMap.Count > 0)
-        {
-            var excelLines = new JsonObject();
-
-            foreach ((int index, string lineId) in node.ExcelLineMap.OrderBy(pair => pair.Key))
-            {
-                excelLines[index.ToString(System.Globalization.CultureInfo.InvariantCulture)] = lineId;
-            }
-
-            json["excelLines"] = excelLines;
-        }
+        // ⛔ `excelLines`(인덱스 → LineId)는 2026-09-16에 더 내보내지 않는다 (R-D).
+        //    구판 파일에 남아 있어도 읽지 않고 지나간다 — 뜻이 없는 값이다.
     }
 
     private static void WritePresentationNode(PresentationNode node, JsonObject json)
@@ -598,23 +588,6 @@ internal static class StoryNodeJson
                 node.ChoiceExits[choice] = (string?)value
                     ?? throw new InvalidDataException(
                         $"DialogueNode '{id}'의 choiceExits['{choice}']에 대상 노드가 없습니다.");
-            }
-        }
-
-        if (json["excelLines"] is JsonObject excelLines)
-        {
-            foreach ((string key, JsonNode? value) in excelLines)
-            {
-                if (!int.TryParse(key, System.Globalization.NumberStyles.Integer,
-                        System.Globalization.CultureInfo.InvariantCulture, out int index))
-                {
-                    throw new InvalidDataException(
-                        $"DialogueNode '{id}'의 excelLines 키 '{key}'가 정수 인덱스가 아닙니다.");
-                }
-
-                node.ExcelLineMap[index] = (string?)value
-                    ?? throw new InvalidDataException(
-                        $"DialogueNode '{id}'의 excelLines[{key}]에 LineId가 없습니다.");
             }
         }
 

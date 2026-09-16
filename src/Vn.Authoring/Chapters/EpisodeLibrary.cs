@@ -385,14 +385,16 @@ public static class EpisodeLibrary
         return true;
     }
 
-    // ── 어휘 드롭다운 (2026-08-16 화자 · 2026-08-17 조건라벨) ──────────────
+    // ── 어휘 드롭다운 (2026-08-16 화자) ────────────────────────────────────
     //
-    // 챕터 시트에 등록한 낱말이 대본의 그 열에 드롭다운으로 선다: `화자` 시트 → 화자 열(E),
-    // `조건` 시트의 라벨 → 조건라벨 열(D). 목록은 워크북 안의 숨김 시트가 담는다 — 외부
-    // 파일 참조는 엑셀·구글 시트에서 깨지기 때문이다. 챕터의 목록이 바뀌면
-    // <see cref="PushVocabulary"/>가 숨김 시트만 갈아 끼운다. 이것이 v4("만든 뒤 손대지
-    // 않는다")의 유일한 예외이며, 예외의 폭은 정확히 숨김 시트와 검증 정의까지다 —
-    // <b>대본 행은 절대 쓰지 않는다.</b>
+    // 프로젝트에 등록한 화자가 대본의 화자 열에 드롭다운으로 선다. 목록은 워크북 안의
+    // 숨김 시트가 담는다 — 외부 파일 참조는 엑셀·구글 시트에서 깨지기 때문이다.
+    //
+    // ⛔ <b>만들 때 한 번만 심는다.</b> 목록이 바뀌면 기존 워크북의 숨김 시트를 갈아
+    //    끼우던 `PushVocabulary`는 2026-09-16에 걷혔다 (R-D, 지시서 §2: "읽기 전용
+    //    산출물엔 드롭다운이 없다"). 사람은 이제 툴에서 화자를 고르므로, 산출물에
+    //    조언을 심자고 대본 워크북을 전부 여는 값을 치를 이유가 없다.
+    //    이로써 v4("만든 뒤 손대지 않는다")의 <b>유일한 예외가 사라졌다.</b>
 
     /// <summary>화자 목록을 담는 숨김 시트. 이 이름이 곧 신원이다 — 갱신이 이 시트만 만진다.</summary>
     public const string SpeakerListSheetName = "화자목록";
@@ -465,68 +467,6 @@ public static class EpisodeLibrary
 
         created.List($"='{vocabulary.SheetName}'!$A$1:$A${ListRows}", inCellDropdown: true);
         created.ShowErrorMessage = false; // 조언일 뿐 — 목록 밖 값도 사람이 적을 수 있다.
-    }
-
-    /// <summary><see cref="PushVocabulary"/> 한 번의 결과. 실패는 예외가 아니라 사유다.</summary>
-    public sealed record VocabularyPush(bool Changed, string? Failure)
-    {
-        public static VocabularyPush Unchanged { get; } = new(false, null);
-    }
-
-    /// <summary>
-    /// 챕터의 화자·조건라벨 목록을 기존 워크북의 숨김 시트에 반영한다. <b>둘 다 이미 같으면
-    /// 파일에 손대지 않는다</b>(수정 시각 불변) — 챕터를 열 때마다 불려도 실제 쓰기는 목록이
-    /// 바뀐 그 순간뿐이다. 쓰기 전 원본을 <c>.bak</c>으로 남긴다(원고 파일이므로).
-    /// 워크북이 아직 없으면 할 일이 없다 — 생성 때 목록을 받는다.
-    ///
-    /// 둘을 <b>한 번의 쓰기</b>로 넣는다. 따로 저장하면 원고 파일을 두 번 열고 .bak도 두 번
-    /// 덮인다 — 두 번째 .bak은 첫 번째 저장 직후라 되돌릴 자리로 쓸모가 없다.
-    /// </summary>
-    public static VocabularyPush PushVocabulary(
-        string folder,
-        string episodeId,
-        IReadOnlyList<string> speakers)
-    {
-        ArgumentNullException.ThrowIfNull(speakers);
-
-        if (FindExisting(folder, episodeId) is not { } path)
-        {
-            return VocabularyPush.Unchanged;
-        }
-
-        try
-        {
-            using var memory = new MemoryStream();
-
-            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            {
-                stream.CopyTo(memory);
-            }
-
-            memory.Position = 0;
-            using var workbook = new XLWorkbook(memory);
-
-            IXLWorksheet scriptSheet = FindScriptSheet(workbook);
-
-            if (ListMatches(workbook, scriptSheet, Speakers, speakers))
-            {
-                return VocabularyPush.Unchanged;
-            }
-
-            // 원고 파일을 다시 쓰는 유일한 순간 — 직전 상태를 남긴다.
-            File.WriteAllBytes(path + ".bak", memory.ToArray());
-
-            ApplyVocabulary(workbook, scriptSheet, speakers);
-            workbook.SaveAs(path);
-
-            return new VocabularyPush(true, null);
-        }
-        catch (Exception exception)
-        {
-            return new VocabularyPush(false,
-                $"'{Path.GetFileName(path)}'에 화자·조건 목록을 넣지 못했습니다" +
-                $"(엑셀·시트가 열고 있을 수 있습니다): {exception.Message}");
-        }
     }
 
     /// <summary>
