@@ -35,11 +35,11 @@ namespace Ked.Progression
 
     public sealed class ProgressionLoadResult
     {
-        public ChapterProgression Chapter { get; }
+        public ChapterDefinition Chapter { get; }
         public IReadOnlyList<ProgressionDiagnostic> Diagnostics { get; }
 
         public ProgressionLoadResult(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             IReadOnlyList<ProgressionDiagnostic> diagnostics)
         {
             Chapter = chapter;

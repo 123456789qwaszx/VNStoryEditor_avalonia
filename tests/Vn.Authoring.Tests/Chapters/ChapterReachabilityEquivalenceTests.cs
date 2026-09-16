@@ -17,7 +17,7 @@ namespace Vn.Authoring.Tests.Chapters;
 /// 얻는다:
 ///
 /// <code>
-/// ChapterGraphModel → 내보내기 → JSON → 코어 로더 → ChapterProgression → 코어 증명
+/// ChapterGraphModel → 내보내기 → JSON → 코어 로더 → ChapterDefinition → 코어 증명
 /// ChapterGraphModel → 툴 증명
 /// </code>
 ///

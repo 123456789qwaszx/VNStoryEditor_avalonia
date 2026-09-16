@@ -15,7 +15,7 @@ namespace Ked.Progression
     // - 위와 같은 구조적 무결성은 보장하지만,
     // - 진행 그래프의 유효성을 증명하진 않음.
     // (끊긴 노드, 불가능한 조건 등)
-    public sealed class ChapterProgression
+    public sealed class ChapterDefinition
     {
         private readonly Dictionary<string, EpisodeNode> _nodesById;
         
@@ -40,7 +40,7 @@ namespace Ked.Progression
         // (진행 상태 시스템과 챕터 정의 사이의 공식 경계.)
         public IReadOnlyDictionary<string, StatDefinition> StatsByKey => _statsByKey;
 
-        public ChapterProgression(
+        public ChapterDefinition(
             string chapterId,
             string displayName,
             string startEpisodeId,
@@ -67,13 +67,13 @@ namespace Ked.Progression
             if (diagnostics.Count > 0)
                 throw new ArgumentException(diagnostics[0].ToString());
 
-            _sceneRoots = CollectSceneRoots();
+            _sceneRoots = CollectScenesRootEpisodeIds();
         }
 
         public bool IsSceneRoot(string episodeId) =>
             episodeId != null && _sceneRoots.Contains(episodeId);
 
-        private HashSet<string> CollectSceneRoots()
+        private HashSet<string> CollectScenesRootEpisodeIds()
         {
             var roots = new HashSet<string>(StringComparer.Ordinal) { StartEpisodeId };
 

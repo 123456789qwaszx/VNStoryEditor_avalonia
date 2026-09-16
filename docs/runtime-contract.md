@@ -133,7 +133,7 @@ Stop/New Game/Manual Load는 커밋 금지, Episode Skip은 연출 기능이라 
 | `Ked.Presentation.Core` | **실질 갈림 0** — CRLF를 빼면 `SlideMotion.cs`·`StageReducer.Staging.cs` 79줄, 코드는 삼항식 줄바꿈 1건, 나머지는 이쪽이 더 풍부한 `///` 주석 |
 | 커맨드 어휘 | **차이 0** — 런타임 등록 126(리터럴 125 + `$"{frame}fr"` 동적 1) ↔ 카탈로그 126항목. ⚠ §E1·§G-3의 "179"는 낡은 수치였다 |
 | `ExportedTuning` | 08-22 이후 변화 없음 |
-| **`Ked.Progression`** | ✅ **맞물렸다 (2026-09-16 실측).** 두 사본이 **공유하는 24파일 중 23개가 차이 0**이고(CRLF 무시), 나머지 `Spec/ChapterProgression.cs`도 필드·주석 **위치**만 다르다. `Spec/ChapterInvariants.cs`가 같으므로 `SceneId`·`VerifySceneEntries`·`VerifyAuto`가 **양쪽에서 같은 문장으로 판정한다**. 옛 서술("12파일 821줄 뒤" · "사라진 파일 셋 잔존" · "관문이 느슨하다")은 전부 낡았다 — `EndingRule.cs`·`ScenarioAdvance.cs`·`ScenarioTransition.cs`는 이쪽에도 없다.<br>⚠ **남은 차이는 의도한 것이다**: 이쪽에만 `Reachability/`(도달성 증명 G7 — 저작 전용), 저쪽에만 `Scene/`·`Contracts/`·`ProgressionDriver`(실행 층 — 툴은 실행하지 않는다). **정본은 `ked-progression-runtime/dev`다.** |
+| **`Ked.Progression`** | ✅ **맞물렸다 (2026-09-16 실측).** 두 사본이 **공유하는 24파일 중 23개가 차이 0**이고(CRLF 무시), 나머지 `Spec/ChapterDefinition.cs`도 필드·주석 **위치**만 다르다. `Spec/ChapterInvariants.cs`가 같으므로 `SceneId`·`VerifySceneEntries`·`VerifyAuto`가 **양쪽에서 같은 문장으로 판정한다**. 옛 서술("12파일 821줄 뒤" · "사라진 파일 셋 잔존" · "관문이 느슨하다")은 전부 낡았다 — `EndingRule.cs`·`ScenarioAdvance.cs`·`ScenarioTransition.cs`는 이쪽에도 없다.<br>⚠ **남은 차이는 의도한 것이다**: 이쪽에만 `Reachability/`(도달성 증명 G7 — 저작 전용), 저쪽에만 `Scene/`·`Contracts/`·`ProgressionDriver`(실행 층 — 툴은 실행하지 않는다). **정본은 `ked-progression-runtime/dev`다.** |
 
 ### 이제 사람이 아니라 테스트가 잰다 (T2 · 2026-09-16)
 
@@ -144,12 +144,22 @@ Stop/New Game/Manual Load는 커밋 금지, Episode Skip은 연출 기능이라 
 | **지문** | `src/Ked.Progression/runtime-sync.txt` — 공유 24파일의 <b>코드</b> 해시. 어느 기계에서든 돈다 |
 | **맞대조** | 런타임 저장소가 옆 폴더에 있거나 `KED_PROGRESSION_RUNTIME`이 가리키면 파일 내용을 직접 비교 |
 
-재는 것은 **코드지 글이 아니다** — 주석은 이쪽이 더 두껍고 그건 의도다. 실제로 `ChapterProgression.cs`의
+재는 것은 **코드지 글이 아니다** — 주석은 이쪽이 더 두껍고 그건 의도다. 실제로 `ChapterDefinition.cs`의
 차이는 주석뿐이었고, 필드 위치만 저쪽에 맞춰 옮겼다(2026-09-16).
 
 **옮겨 왔을 때의 절차**: 저쪽을 고친다 → 파일을 이쪽으로 복사한다 → 테스트를 돌린다 →
 나온 `runtime-sync.txt.actual`을 확인하고 `runtime-sync.txt`로 바꾼다. ⛔ **지문을 갱신하는 것은
 "옮겨 왔다"는 선언**이다 — 사본을 이쪽에서 고쳐 놓고 지문만 맞추면 관문과 게임이 갈린다.
+
+#### 첫 실전 (2026-09-16 · 저쪽 `534f6c2`)
+
+만든 그날 바로 울렸다 — 런타임이 **`ChapterProgression` → `ChapterDefinition`**으로 개명하고
+`LoadResults`·`ProgressionLoader`를 따라 고쳤다. 손으로 재던 시절이었으면 **다음 실측 때까지
+몰랐을** 종류의 갈림이다(툴은 컴파일이 되니 아무 일도 안 일어난 것처럼 보인다).
+
+옮겨 온 것: 파일 개명(`Spec/ChapterDefinition.cs`) · 타입 이름 42자리 ·
+`CollectSceneRoots` → `CollectScenesRootEpisodeIds`. ⚠ **`ChapterProgressionDto`와
+`ChapterProgressionExporter`는 그대로다** — 앞은 JSON 계약의 이름이고 뒤는 이쪽 것이다.
 
 ---
 
@@ -359,8 +369,8 @@ Option : { TargetEpisodeId, ChoiceLabel, VisibleConditions[], Conditions[],
 
 | JSON | 모델 | 비고 |
 |---|---|---|
-| `ChapterId` · `DisplayName` · `StartEpisodeId` | `ChapterProgression` | 시작은 실재 검사됨 |
-| **`Stats[]`** | `ChapterProgression.Stats` | ✅ 2026-08-18부터 나간다. ⚠ `Type`은 **`"Number"`**다(이쪽 `Int`를 번역) |
+| `ChapterId` · `DisplayName` · `StartEpisodeId` | `ChapterDefinition` | 시작은 실재 검사됨 |
+| **`Stats[]`** | `ChapterDefinition.Stats` | ✅ 2026-08-18부터 나간다. ⚠ `Type`은 **`"Number"`**다(이쪽 `Int`를 번역) |
 | `Nodes[]` | `EpisodeNode` | |
 | `NextOptions[]` | `EpisodeOption` | **배열 순서 = 화면 순서 = 서버 이력의 `OptionIndex`**(§C3). 정렬 금지 |
 | **`Node.EventKey`** | `EpisodeNode.EventKey` | ✅ **양쪽 다 섰다** — 이쪽 v14(08-26)부터 내고, 저쪽 DTO 칸도 같은 날(`665e47e1`). 해석 없이 실어 나르고, 장면 끝 fold에서 시청 보고(`PendingEvent`)의 열쇠가 된다. "칸 부탁 중"은 끝 |
@@ -385,7 +395,7 @@ Option : { TargetEpisodeId, ChoiceLabel, VisibleConditions[], Conditions[],
 
 **F3. bool 스탯은 0/1 + `Equal`뿐이다.** 경계 0·1 고정, **크기 비교와 증감은 오류**.
 양쪽이 같은 자리에서 막는다(`ChapterWorkbookReader.VerifyBoolStatUsage` ↔
-`ChapterProgression`). `== false`는 F1 때문에 `IntValue` 키가 없는 모양으로 나간다.
+`ChapterDefinition`). `== false`는 F1 때문에 `IntValue` 키가 없는 모양으로 나간다.
 
 **F4. 관문은 간선의 것이다** (v8). `Option.VisibleConditions` 미달 → **목록에 만들지
 않는다**(`ChapterAdvance.HiddenCount`로 개수만 센다 — 디버그용). `Option.Conditions` 미달 →
@@ -436,7 +446,7 @@ bool 어휘 준수 · **장면마다 밖에서 들어오는 자리가 하나**(`
 고정: `스탯_정의가_최상위로_실려_나간다`. 아래는 그때의 사정 기록이다.
 
 `ChapterJson`이 `ChapterId · DisplayName · StartEpisodeId · Nodes · EndingRules`뿐이라
-`Stats`가 없다. 그래서 **스탯 관문이 있는 실데이터로는 `ChapterProgression`을 만들 수
+`Stats`가 없다. 그래서 **스탯 관문이 있는 실데이터로는 `ChapterDefinition`을 만들 수
 없다** — "정의되지 않은 스탯"으로 거부된다. 저쪽이 **의도적으로** 막아 둔 것이고(F7),
 그 압력이 이 항목을 가리킨다.
 

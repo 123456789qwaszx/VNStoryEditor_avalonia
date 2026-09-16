@@ -46,7 +46,7 @@ namespace Ked.Progression
             if (HasError(diagnostics))
                 return new ProgressionLoadResult(null, diagnostics);
 
-            var chapter = new ChapterProgression(
+            var chapter = new ChapterDefinition(
                 dto.ChapterId, dto.DisplayName, dto.StartEpisodeId, stats, nodes);
 
             return new ProgressionLoadResult(chapter, diagnostics);
@@ -71,7 +71,7 @@ namespace Ked.Progression
             if (string.IsNullOrEmpty(scenarioId))
                 diagnostics.Add(ProgressionDiagnostic.Error("ScenarioId", "시나리오 ID가 비어 있다."));
             
-            var chapters = new List<ChapterProgression>();
+            var chapters = new List<ChapterDefinition>();
             int count = chapterDtos == null ? 0 : chapterDtos.Count;
 
             for (int i = 0; i < count; i++)

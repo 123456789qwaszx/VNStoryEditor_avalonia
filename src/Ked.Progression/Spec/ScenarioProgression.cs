@@ -7,7 +7,7 @@ namespace Ked.Progression
     // [1] 현재 영구 계층을 다루지 않기에, 사실상 껍데기.
     public sealed class ScenarioProgression
     {
-        private readonly Dictionary<string, ChapterProgression> _chaptersById;
+        private readonly Dictionary<string, ChapterDefinition> _chaptersById;
 
         public string ScenarioId { get; }
         public string DisplayName { get; }
@@ -15,13 +15,13 @@ namespace Ked.Progression
         // 새 게임이 시작하는 챕터.
         public string StartChapterId { get; }
 
-        public IReadOnlyList<ChapterProgression> Chapters { get; }
+        public IReadOnlyList<ChapterDefinition> Chapters { get; }
 
         public ScenarioProgression(
             string scenarioId,
             string displayName,
             string startChapterId,
-            IReadOnlyList<ChapterProgression> chapters)
+            IReadOnlyList<ChapterDefinition> chapters)
         {
             if (string.IsNullOrEmpty(scenarioId))
                 throw new ArgumentException("시나리오 ID가 비어 있다.", nameof(scenarioId));
@@ -29,7 +29,7 @@ namespace Ked.Progression
             ScenarioId = scenarioId;
             DisplayName = displayName ?? string.Empty;
             StartChapterId = startChapterId ?? string.Empty;
-            Chapters = chapters ?? Array.Empty<ChapterProgression>();
+            Chapters = chapters ?? Array.Empty<ChapterDefinition>();
 
             var diagnostics = new List<ProgressionDiagnostic>();
 
@@ -40,7 +40,7 @@ namespace Ked.Progression
                 throw new ArgumentException(diagnostics[0].ToString());
         }
 
-        public bool TryGetChapter(string chapterId, out ChapterProgression chapter)
+        public bool TryGetChapter(string chapterId, out ChapterDefinition chapter)
         {
             if (chapterId == null)
             {
@@ -52,7 +52,7 @@ namespace Ked.Progression
         }
 
         // 시작 챕터. 생성자에서 존재 보장.
-        public ChapterProgression StartChapter => _chaptersById[StartChapterId];
+        public ChapterDefinition StartChapter => _chaptersById[StartChapterId];
 
         public override string ToString() => $"{ScenarioId}(챕터 {Chapters.Count})";
     }

@@ -115,7 +115,7 @@ public sealed class ChapterRunState
 {
     private readonly ChapterGraphModel _chapter;
     private int[] _stats;
-    private readonly Contract.ChapterProgression? _runtime;
+    private readonly Contract.ChapterDefinition? _runtime;
     private Contract.ProgressionState? _sceneEntry;
     private Contract.ProgressionState? _working;
     private readonly List<Contract.EpisodeOption> _pending = [];

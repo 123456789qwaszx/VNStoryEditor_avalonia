@@ -9,7 +9,7 @@ namespace Ked.Progression
     // [3]데이터 표현의 자유는 제한.
     // [4]런타임 암묵적 결정 제거.
     
-    // ChapterProgression, ProgressionLoader가 사용.
+    // ChapterDefinition, ProgressionLoader가 사용.
     // - 챕터 그래프와 스탯 간 모순을 찾아서 차단.
     internal static class ChapterInvariants
     {

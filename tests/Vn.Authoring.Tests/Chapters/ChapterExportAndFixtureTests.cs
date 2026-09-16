@@ -426,7 +426,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
     {
         // 계약서 §G-1 (2026-08-18) — 이 칸이 비어 있어서 Gate D가 막혀 있었다.
         // 초기값·최소·최대가 어느 런타임 입력에도 없었고, 툴의 도달성 증명만 clamp하며
-        // 걸었다. `Ked.Progression.ChapterProgression`은 정의되지 않은 스탯을 가리키는
+        // 걸었다. `Ked.Progression.ChapterDefinition`은 정의되지 않은 스탯을 가리키는
         // 조건을 만나면 생성을 거부하므로, 이것이 없으면 실데이터를 아예 못 싣는다.
         // 시트에는 경계를 쓰는 writer 경로가 없어(사람이 엑셀에서 적는다) 모델을 직접
         // 세운다 — 겨누는 것은 내보내기이지 리더가 아니다.

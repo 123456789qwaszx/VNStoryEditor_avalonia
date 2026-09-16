@@ -11,7 +11,7 @@ namespace Vn.Authoring.Tests;
 /// 거부한다</b> — 그것도 작가가 다 쓴 다음에.
 ///
 /// 재는 것은 <b>코드</b>지 글이 아니다. 주석은 이 저장소 쪽이 더 두껍고 그건 의도다
-/// (실제로 2026-09-16 대조에서 <c>ChapterProgression.cs</c>의 차이는 주석·빈 줄뿐이었다).
+/// (실제로 2026-09-16 대조에서 <c>ChapterDefinition.cs</c>의 차이는 주석·빈 줄뿐이었다).
 /// 글까지 같아야 한다고 하면 설명을 못 붙인다.
 ///
 /// 두 겹이다:
@@ -177,7 +177,7 @@ public sealed class CoreCopyInStepTests
     /// 공백을 <b>토큰을 갈라 놓는 자리에만</b> 남긴다.
     ///
     /// ⛔ 한 칸으로 줄이기만 해서는 모자랐다(2026-09-16에 잡혔다): 저쪽이 인자 목록을
-    /// 여러 줄로 편 것만으로 <c>Resolve(ChapterProgression</c> ↔ <c>Resolve( ChapterProgression</c>이
+    /// 여러 줄로 편 것만으로 <c>Resolve(ChapterDefinition</c> ↔ <c>Resolve( ChapterDefinition</c>이
     /// 되어 <b>서식 고침이 코드 변경으로 읽혔다</b>. 그러면 이 테스트는 곧 아무도 안 믿는다.
     ///
     /// ⚠ 문자열 리터럴 안의 앞뒤 공백도 함께 사라진다 — 양쪽에 같은 규칙이라 엉뚱한 실패는

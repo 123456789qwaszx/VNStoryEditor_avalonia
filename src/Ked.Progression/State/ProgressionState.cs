@@ -49,7 +49,7 @@ namespace Ked.Progression
         // - 이후 선택지의 조건 판정에 사용.
         // - 롤백 시 pending을 줄여 다시 계산.
         // - Scene이 끝나면 최종 상태로 확정.
-        public ProgressionState FoldChoices(ChapterProgression chapter, IReadOnlyList<EpisodeOption> choices)
+        public ProgressionState FoldChoices(ChapterDefinition chapter, IReadOnlyList<EpisodeOption> choices)
         {
             ProgressionState state = this;
 
@@ -62,7 +62,7 @@ namespace Ked.Progression
         // 유일한 스탯 입력 자리.
         // 간선의 StatChange를 순서대로 반영하고,
         // 도착 에피소드로 이동한 새 ProgressionState를 반환.
-        public ProgressionState ApplyChoice(ChapterProgression chapter, EpisodeOption choices)
+        public ProgressionState ApplyChoice(ChapterDefinition chapter, EpisodeOption choices)
         {
             RequireOutgoingEdge(chapter, choices);
 
@@ -88,7 +88,7 @@ namespace Ked.Progression
         // 챕터 생성자는 "모든 간선이 실재하는 노드에 착지한다"까지만 보장한다. 호출자가 엉뚱한 노드의
         // 간선을 넘기면 그래프에 없는 경로로 이동한 상태가 생기고, 도달성 증명이 보증한 것과 실제
         // 플레이가 갈린다. 상태가 챕터 ID를 들지 않으므로 챕터가 짝이 맞는지도 여기서 함께 걸린다.
-        private void RequireOutgoingEdge(ChapterProgression chapter, EpisodeOption chosen)
+        private void RequireOutgoingEdge(ChapterDefinition chapter, EpisodeOption chosen)
         {
             if (!chapter.TryGetNode(CurrentEpisodeId, out EpisodeNode node))
                 throw new ArgumentException(
@@ -107,7 +107,7 @@ namespace Ked.Progression
         }
 
         public static ProgressionState Restore(
-            ChapterProgression chapter, 
+            ChapterDefinition chapter, 
             string currentEpisodeId, 
             IReadOnlyDictionary<string, int> savedStats)
         {

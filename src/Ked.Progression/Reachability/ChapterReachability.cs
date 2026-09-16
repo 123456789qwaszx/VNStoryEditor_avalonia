@@ -14,7 +14,7 @@ namespace Ked.Progression
         // 완전 탐색 상한. 스탯 5개 × 범위 0~10정도로 가정.
         public const int StateLimit = 250_000;
 
-        public static ReachabilityResult Prove(ChapterProgression chapter)
+        public static ReachabilityResult Prove(ChapterDefinition chapter)
         {
             if (chapter == null)
                 throw new ArgumentNullException(nameof(chapter));
@@ -49,7 +49,7 @@ namespace Ked.Progression
         // ── 탐색 ────────────────────────────────────────────────────────────
 
         private static void Explore(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             int[] maxSeen,
             int[] minSeen,
             Dictionary<string, (int[] Min, int[] Max)> spans,
@@ -127,7 +127,7 @@ namespace Ked.Progression
         /// 폭만 들고 걸으면 Set이 지나간 뒤의 값이 틀린다.
         /// </summary>
         private static int[] ApplyChanges(
-            ChapterProgression chapter, int[] stats, IReadOnlyList<StatChange> changes)
+            ChapterDefinition chapter, int[] stats, IReadOnlyList<StatChange> changes)
         {
             if (changes.Count == 0)
             {
@@ -152,7 +152,7 @@ namespace Ked.Progression
         }
 
         private static bool Satisfied(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             IReadOnlyList<ProgressionCondition> conditions,
             int[] stats)
         {
@@ -168,7 +168,7 @@ namespace Ked.Progression
         }
 
         private static bool CompareStat(
-            ChapterProgression chapter, ProgressionCondition condition, int[] stats)
+            ChapterDefinition chapter, ProgressionCondition condition, int[] stats)
         {
             int index = IndexOfStat(chapter.Stats, condition.Key);
 
@@ -199,7 +199,7 @@ namespace Ked.Progression
         /// 판정된 에피소드에 대해 <b>어느 조건을 짚어 줄지</b> 고르는 진단 재료다.
         /// </summary>
         private static bool SatisfiableWithinEnvelope(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             IReadOnlyList<ProgressionCondition> conditions,
             int[] maxSeen,
             int[] minSeen)
@@ -246,7 +246,7 @@ namespace Ked.Progression
         /// 여기서 문장까지 만들면 규약 사본이 둘이 된다.
         /// </summary>
         private static List<UnreachableEpisode> CollectUnreachable(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             HashSet<string> reachable,
             int[] maxSeen,
             int[] minSeen)
@@ -291,7 +291,7 @@ namespace Ked.Progression
         }
 
         private static ProgressionCondition FindBlocking(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             List<EpisodeOption> incoming,
             int[] maxSeen,
             int[] minSeen)
@@ -313,7 +313,7 @@ namespace Ked.Progression
         }
 
         private static ProgressionCondition FirstUnsatisfiable(
-            ChapterProgression chapter,
+            ChapterDefinition chapter,
             IReadOnlyList<ProgressionCondition> conditions,
             int[] maxSeen,
             int[] minSeen)
@@ -333,7 +333,7 @@ namespace Ked.Progression
 
         // ── 잔손 ────────────────────────────────────────────────────────────
 
-        private static List<EpisodeOption> IncomingTo(ChapterProgression chapter, string episodeId)
+        private static List<EpisodeOption> IncomingTo(ChapterDefinition chapter, string episodeId)
         {
             var incoming = new List<EpisodeOption>();
 
@@ -354,7 +354,7 @@ namespace Ked.Progression
         }
 
         private static bool AnySourceReachable(
-            ChapterProgression chapter, string episodeId, HashSet<string> reachable)
+            ChapterDefinition chapter, string episodeId, HashSet<string> reachable)
         {
             foreach (EpisodeNode node in chapter.Nodes)
             {

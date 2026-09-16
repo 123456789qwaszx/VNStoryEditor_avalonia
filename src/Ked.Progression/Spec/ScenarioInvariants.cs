@@ -7,24 +7,24 @@ namespace Ked.Progression
     internal static class ScenarioInvariants
     {
         public static void Collect(
-            IReadOnlyList<ChapterProgression> chapters,
+            IReadOnlyList<ChapterDefinition> chapters,
             string startChapterId,
             ICollection<ProgressionDiagnostic> into,
-            out Dictionary<string, ChapterProgression> chaptersById)
+            out Dictionary<string, ChapterDefinition> chaptersById)
         {
             chaptersById = IndexChapters(chapters, into);
 
             VerifyStart(startChapterId, chaptersById, into);
         }
 
-        private static Dictionary<string, ChapterProgression> IndexChapters(
-            IReadOnlyList<ChapterProgression> chapters, ICollection<ProgressionDiagnostic> into)
+        private static Dictionary<string, ChapterDefinition> IndexChapters(
+            IReadOnlyList<ChapterDefinition> chapters, ICollection<ProgressionDiagnostic> into)
         {
-            var byId = new Dictionary<string, ChapterProgression>(StringComparer.Ordinal);
+            var byId = new Dictionary<string, ChapterDefinition>(StringComparer.Ordinal);
 
             for (int i = 0; i < chapters.Count; i++)
             {
-                ChapterProgression chapter = chapters[i];
+                ChapterDefinition chapter = chapters[i];
 
                 if (chapter == null)
                 {
@@ -47,7 +47,7 @@ namespace Ked.Progression
 
         private static void VerifyStart(
             string startChapterId,
-            Dictionary<string, ChapterProgression> chaptersById,
+            Dictionary<string, ChapterDefinition> chaptersById,
             ICollection<ProgressionDiagnostic> into)
         {
             if (!string.IsNullOrEmpty(startChapterId) && chaptersById.ContainsKey(startChapterId))
