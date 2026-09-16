@@ -253,7 +253,8 @@ dotnet test
   터지는 자리는 Avalonia의 `TextFormatterImpl.FormatLineFromCache`였다 — 원인을 제품
   코드로 짚지 못했다. 다시 해 보려면 `DOTNET_GCHeapHardLimit=20000000`을 걸어 512MB에서
   먼저 죽게 하라.
-- **`current-state.md` 재작성** — 966줄짜리 2026-08 이력 문서이고 머리글 경고로 버티는
-  중이다. R-A~R-F가 끝났으므로 이제 다시 쓸 수 있다.
+- ✅ **`current-state.md`** — 2026-09-16에 제목을 "구현 이력"으로 갈았다. 본문을 지우지
+  않은 것은 **왜 그렇게 만들었는가**가 거기밖에 없어서다; 머리글의 표가 무엇이 뒤집혔는지
+  짚고, §2.1 소유권 표에 "뒤집힘" 표시를 달았다.
 - 지시서 §8 *"하지 않는 것"*은 그대로다 — 챕터 `조건` 시트, `progression.json`·Yarn 계약,
   런타임·서버, xlsx 결정적 바이트.
