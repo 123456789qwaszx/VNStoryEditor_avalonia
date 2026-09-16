@@ -544,7 +544,7 @@ public partial class GraphEditorView : UserControl
 
         _railVisuals.Clear();
 
-        if (_session is null || _projection is null || _chapters.Count == 0)
+        if (_session is null || _projection is null)
         {
             return;
         }
@@ -557,9 +557,19 @@ public partial class GraphEditorView : UserControl
                 .FirstOrDefault(file => string.Equals(file.Id, group.Key, StringComparison.Ordinal))
                 ?.Name ?? string.Empty;
 
-            ChapterGraphModel? chapter = _chapters
-                .FirstOrDefault(entry => string.Equals(entry.ChapterId, boardName, StringComparison.Ordinal))
-                ?.Model;
+            // ⛔ <b>살아 있는 프로젝트를 먼저 본다</b> (R7 · 2026-09-16). 예전에는 셸이 공급한
+            //    <c>_chapters</c> 스냅샷만 봤는데, 이제 이 화면이 <b>간선을 직접 긋는다</b> —
+            //    스냅샷은 셸이 다시 읽어 줄 때까지 낡아 있어 <b>방금 그은 길이 안 비친다</b>.
+            //
+            // ⚠ 스냅샷은 <b>뒷받침</b>으로 남는다: 프로젝트에 그 챕터가 없고 공급만 받은
+            //    상태(셸이 아직 들여오기 전)에서도 철도는 보여야 한다. 둘 다 같은 값을
+            //    말하므로 정본이 둘이 되는 것은 아니다 — 먼저 보는 쪽이 정해져 있다.
+            ChapterGraphModel? chapter =
+                _session.Editor.FindChapter(boardName)?.ToGraphModel(boardName, _session.Definition)
+                ?? _chapters
+                    .FirstOrDefault(entry =>
+                        string.Equals(entry.ChapterId, boardName, StringComparison.Ordinal))
+                    ?.Model;
 
             if (chapter is null)
             {
@@ -658,7 +668,10 @@ public partial class GraphEditorView : UserControl
         List<ExitPort> optionPorts = ports.Where(port => port.IsChoice).ToList();
         ExitPort? defaultPort = ports.FirstOrDefault(port => port.Kind == ExitPortKind.Default);
 
-        var branches = new List<(ChapterEdge? Edge, ExitPort? Port, Rect? Target)>();
+        // 이 에피소드의 선택지 칸들 (R7) — 가지마다 제 칸을 얹어 <b>철도 위에서</b> 고치고 잇는다.
+        IReadOnlyList<GraphChoicePort> slots = SlotsOf(source.Id);
+
+        var branches = new List<(ChapterEdge? Edge, ExitPort? Port, Rect? Target, GraphChoicePort? Slot)>();
 
         // 가지 순서 = <b>읽는 순서</b>: ① 문구 있는 길들(간선 시트 행 순서 그대로 — 그것이
         // 화면에 뜨는 순서다) ② 대본에만 남은 구판 OPTION 스텁 ③ 문구 없는 진행.
@@ -673,7 +686,7 @@ public partial class GraphEditorView : UserControl
                 ? spot.Rect
                 : null;
 
-            branches.Add((edge, PortFor(source, edge, optionPorts, defaultPort), target));
+            branches.Add((edge, PortFor(source, edge, optionPorts, defaultPort), target, SlotFor(slots, edge)));
         }
 
         foreach (ChapterEdge edge in edges.Where(edge => !edge.HasNoOptionLabel))
@@ -687,7 +700,7 @@ public partial class GraphEditorView : UserControl
                      !edges.Any(edge =>
                          string.Equals(edge.OptionLabel, port.ChoiceText, StringComparison.Ordinal))))
         {
-            branches.Add((null, orphan, null));
+            branches.Add((null, orphan, null, null));
         }
 
         foreach (ChapterEdge edge in edges.Where(edge => edge.HasNoOptionLabel))
@@ -698,7 +711,13 @@ public partial class GraphEditorView : UserControl
         // 나가는 간선이 하나도 없는 에피소드(엔딩) — 기본 출구의 종료 스텁 (에필로그 자유 씬 자리).
         if (edges.Count == 0 && optionPorts.Count == 0 && defaultPort is not null)
         {
-            branches.Add((null, defaultPort, null));
+            branches.Add((null, defaultPort, null, null));
+        }
+
+        // 빈 칸은 맨 아래에 — 이미 그은 길 다음에 "여기에 더 놓을 수 있다"가 온다.
+        foreach (GraphChoicePort empty in slots.Where(item => item.IsEmpty))
+        {
+            branches.Add((null, null, null, empty));
         }
 
         if (branches.Count == 0)
@@ -709,9 +728,9 @@ public partial class GraphEditorView : UserControl
         double trunkX = sourceRect.X + RailTrunkInset;
         double branchY = sourceRect.Bottom + RailFirstDrop;
 
-        foreach ((ChapterEdge? edge, ExitPort? port, Rect? target) in branches)
+        foreach ((ChapterEdge? edge, ExitPort? port, Rect? target, GraphChoicePort? slot) in branches)
         {
-            DrawRailBranch(source, edge, port, trunkX, branchY, target, nodeRects, freeNodes);
+            DrawRailBranch(source, edge, port, trunkX, branchY, target, nodeRects, freeNodes, slot);
 
             if (edge is not null && target is not null)
             {
@@ -829,18 +848,93 @@ public partial class GraphEditorView : UserControl
             ChoiceText: edge.OptionLabel);
     }
 
-    private void DrawRailBranch(
-        DialogueNode source,
-        ChapterEdge? edge,
-        ExitPort? port,
-        double trunkX,
-        double y,
-        Rect? target,
-        IReadOnlyDictionary<string, Rect> nodeRects,
-        IReadOnlyList<DialogueNode> freeNodes)
+    /// <summary>
+    /// <b>철도 가지 위의 선택지 칸</b> (R7 · 2026-09-16 소유자: "아래쪽으로 3개").
+    ///
+    /// 점 하나와 문구 하나. 점은 세 색으로 자리를 말하고(회색·붉은색·초록색), 문구를 누르면
+    /// 그 자리에서 고치며, 점을 끌면 이어진다. 카드 <b>아래</b>에 서는 이유는 선택지가
+    /// 실제로 뻗어 나가는 자리가 거기이기 때문이다 — 카드 안에 두면 이야기가 어디로
+    /// 갈라지는지 한눈에 안 보인다.
+    /// </summary>
+    private Control SlotChip(GraphChoicePort slot, string nodeId)
     {
-        double cursorX = trunkX;
+        IReadOnlyList<GraphChoicePort> ports = SlotsOf(nodeId);
+        bool live = IsLive(slot, ports);
+        bool auto = IsAutoSlot(slot, ports);
+        string text = LabelOf(slot);
+        IBrush dot = SlotDot(slot, ports);
 
+        var knob = new Ellipse
+        {
+            Width = PortRadius * 2,
+            Height = PortRadius * 2,
+            Fill = live ? dot : Brushes.Transparent,
+            Stroke = dot,
+            StrokeThickness = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = new Cursor(live ? StandardCursorType.Hand : StandardCursorType.No),
+            [ToolTip.TipProperty] = slot.IsEmpty
+                ? live ? "끌어서 다음 에피소드에 놓으세요." : "문구를 적어야 끌 수 있습니다."
+                : "이어져 있습니다. 빈 곳에 끌어다 놓으면 끊깁니다."
+        };
+
+        var label = new TextBlock
+        {
+            Text = auto ? "자동" : text.Length > 0 ? text : "＋ 선택지",
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = live ? dot : null,
+            Opacity = live ? 1 : 0.45,
+            FontStyle = text.Length > 0 || auto ? FontStyle.Normal : FontStyle.Italic,
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = new Cursor(StandardCursorType.Ibeam),
+            [ToolTip.TipProperty] = auto
+                ? "자동 길 — 문구 없이 다음으로 갑니다. 선택지 문구를 하나라도 적으면 이 자리가 닫힙니다."
+                : "눌러서 선택지 문구를 적습니다. 적어야 끌어서 이을 수 있습니다."
+        };
+
+        if (!slot.IsAuto)
+        {
+            label.PointerPressed += (_, args) => UiGuard.Run(_session, "선택지 문구", () =>
+            {
+                args.Handled = true;
+                _editingSlot = SlotKey(slot);
+                Rebuild();
+            });
+        }
+
+        var line = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Background = Brushes.Transparent,
+
+            // 어느 에피소드의 몇 번 칸인지 — 검증이 그 줄을 찾는 자리다.
+            Tag = SlotKey(slot)
+        };
+
+        line.Children.Add(knob);
+
+        line.Children.Add(string.Equals(_editingSlot, SlotKey(slot), StringComparison.Ordinal)
+            ? SlotEditor(slot)
+            : label);
+
+        if (live)
+        {
+            knob.PointerPressed += (_, args) => UiGuard.Run(_session, "선택지 잇기", () =>
+            {
+                args.Handled = true;
+                BeginSlotDrag(slot, knob, nodeId);
+            });
+        }
+
+        return line;
+    }
+
+    /// <summary>철도 가지의 옛 칩 — 아직 칸이 없는 가지(구판 OPTION 스텁·종료)가 쓴다.</summary>
+    private Control LegacyChip(
+        DialogueNode source, ChapterEdge? edge, ExitPort? port, IReadOnlyList<DialogueNode> freeNodes)
+    {
         string chipText = edge is { HasNoOptionLabel: true } || (edge is null && port?.Kind == ExitPortKind.Default)
             ? "○ 진행"
             : $"● {edge?.OptionLabel ?? port?.ChoiceText}";
@@ -855,22 +949,79 @@ public partial class GraphEditorView : UserControl
             Background = Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.Hand)
         };
+
         ToolTip.SetTip(chip, "누르면 상세와 자유 씬 배선이 열립니다. 값 편집은 챕터 그래프에서.");
+
+        chip.PointerPressed += (_, args) =>
+        {
+            args.Handled = true;
+            ShowRailChip(chip, source, edge, port, freeNodes);
+        };
+
+        return chip;
+    }
+
+    /// <summary>그 에피소드의 노드가 낸 포트들 — 칸의 활성 판정이 이웃 칸을 봐야 한다.</summary>
+    /// <summary>그 노드의 선택지 칸들 — 챕터 간선 순서 그대로.</summary>
+    private IReadOnlyList<GraphChoicePort> SlotsOf(string nodeId) =>
+        _projection?.Items.OfType<ExpandedNodeProjection>()
+            .FirstOrDefault(node => string.Equals(node.NodeId, nodeId, StringComparison.Ordinal))
+            ?.OutputPorts
+            .Select(port => port.ChoicePort)
+            .Where(choice => choice is not null)
+            .Select(choice => choice!)
+            .ToList() ?? [];
+
+    private static GraphChoicePort? SlotFor(IReadOnlyList<GraphChoicePort> slots, ChapterEdge edge) =>
+        slots.FirstOrDefault(slot =>
+            string.Equals(slot.ToEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal) &&
+            string.Equals(slot.Label, edge.OptionLabel ?? string.Empty, StringComparison.Ordinal));
+
+    /// <summary>철도 위의 점에서 끌기를 시작한다 — 선은 그 점에서 나간다.</summary>
+    private void BeginSlotDrag(GraphChoicePort slot, Control knob, string nodeId)
+    {
+        _connectingFrom = new GraphOutputPortProjection(
+            $"choice:{slot.Slot}", GraphOutputPortKind.Choice, nodeId,
+            slot.Label, slot.Slot, !slot.IsEmpty, ExecutionPort: null, slot);
+
+        Point start = knob.TranslatePoint(new Point(PortRadius, PortRadius), GraphCanvas)
+            ?? new Point(0, 0);
+
+        _connectingLine = new Line
+        {
+            StartPoint = start,
+            EndPoint = start,
+            Stroke = new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)),
+            StrokeThickness = 2,
+            StrokeDashArray = new AvaloniaList<double> { 4, 3 }
+        };
+
+        GraphCanvas.Children.Add(_connectingLine);
+        SetHint("이을 에피소드 노드 위에서 놓으세요. 빈 곳에 놓으면 길이 걷힙니다.");
+    }
+
+    private void DrawRailBranch(
+        DialogueNode source,
+        ChapterEdge? edge,
+        ExitPort? port,
+        double trunkX,
+        double y,
+        Rect? target,
+        IReadOnlyDictionary<string, Rect> nodeRects,
+        IReadOnlyList<DialogueNode> freeNodes,
+        GraphChoicePort? slot = null)
+    {
+        double cursorX = trunkX;
+
+        Control chip = slot is not null
+            ? SlotChip(slot, source.Id)
+            : LegacyChip(source, edge, port, freeNodes);
 
         chip.Measure(Size.Infinity);
 
         _railVisuals.Add(RailLine(trunkX, y, trunkX + 10, y));
         Canvas.SetLeft(chip, trunkX + 14);
         Canvas.SetTop(chip, y - chip.DesiredSize.Height / 2);
-
-        DialogueNode capturedSource = source;
-        ChapterEdge? capturedEdge = edge;
-        ExitPort? capturedPort = port;
-        chip.PointerPressed += (_, args) =>
-        {
-            args.Handled = true;
-            ShowRailChip(chip, capturedSource, capturedEdge, capturedPort, freeNodes);
-        };
 
         _railVisuals.Add(chip);
         cursorX = trunkX + 14 + chip.DesiredSize.Width + 6;
@@ -1501,11 +1652,18 @@ public partial class GraphEditorView : UserControl
             Tag = node.NodeId
         };
 
-        var visual = new NodeCard(node.NodeId, node.NodeKind, card, node.OutputPorts, style);
+        // ⛔ <b>선택지 칸은 카드 안에 없다</b> (2026-09-16 소유자: "아래쪽으로 3개").
+        //    카드 아래 철도 가지에 선다 — 그 자리가 선택지가 실제로 뻗어 나가는 자리이고,
+        //    카드 안에 두면 이야기가 어디로 갈라지는지 한눈에 안 보인다.
+        IReadOnlyList<GraphOutputPortProjection> inCard = node.OutputPorts
+            .Where(port => port.Kind != GraphOutputPortKind.Choice)
+            .ToList();
 
-        for (int index = 0; index < node.OutputPorts.Count; index++)
+        var visual = new NodeCard(node.NodeId, node.NodeKind, card, inCard, style);
+
+        for (int index = 0; index < inCard.Count; index++)
         {
-            body.Children.Add(BuildPortRow(node.OutputPorts[index], visual, index));
+            body.Children.Add(BuildPortRow(inCard[index], visual, index));
         }
 
         Canvas.SetLeft(card, node.Position.X);
@@ -1806,20 +1964,20 @@ public partial class GraphEditorView : UserControl
     /// <b>유일한 간선</b>이어야 하므로(<c>AutoEdgeHasSiblings</c>), 선택지가 하나라도
     /// 서면 자동일 수가 없다 — 규칙을 화면이 미리 지킨다.
     /// </summary>
-    private bool IsLive(GraphChoicePort choice, IReadOnlyList<GraphOutputPortProjection> ports)
+    private bool IsLive(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots)
     {
         if (!choice.IsEmpty || LabelOf(choice).Length > 0)
         {
             return true;
         }
 
-        return choice.Slot == 0 && ports.All(port =>
-            port.ChoicePort is { } other && other.IsEmpty && LabelOf(other).Length == 0);
+        return choice.Slot == 0 && slots.All(other =>
+            other.IsEmpty && LabelOf(other).Length == 0);
     }
 
     /// <summary>이 칸을 끌면 <b>자동 길</b>이 되는가 — 문구 없이 잇는 그 자리다.</summary>
-    private bool IsAutoSlot(GraphChoicePort choice, IReadOnlyList<GraphOutputPortProjection> ports) =>
-        choice.IsAuto || (choice.IsEmpty && IsLive(choice, ports));
+    private bool IsAutoSlot(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
+        choice.IsAuto || (choice.IsEmpty && IsLive(choice, slots));
 
     /// <summary>지금 문구를 적고 있는 칸 — <b>테스트의 손잡이</b>이자 실제 입력칸이다.</summary>
     internal TextBox? SlotLabelBox { get; private set; }
@@ -1840,16 +1998,11 @@ public partial class GraphEditorView : UserControl
     /// | 붉은색 | 살아났다 — 끌어다 놓을 수 있다 |
     /// | 초록색 | 이어졌다 |
     /// </summary>
-    private IBrush SlotDot(GraphChoicePort choice, IReadOnlyList<GraphOutputPortProjection> ports) =>
-        !choice.IsEmpty ? SlotJoined : IsLive(choice, ports) ? SlotLive : SlotAsleep;
+    private IBrush SlotDot(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
+        !choice.IsEmpty ? SlotJoined : IsLive(choice, slots) ? SlotLive : SlotAsleep;
 
     private Control BuildPortRow(GraphOutputPortProjection port, NodeCard card, int index)
     {
-        if (port.ChoicePort is { } choice)
-        {
-            return BuildChoiceRow(port, choice, card, index);
-        }
-
         bool branch = port.Kind == GraphOutputPortKind.ExecutionBranch;
         bool settings = port.Kind == GraphOutputPortKind.Settings;
         bool presentation = port.Kind == GraphOutputPortKind.PublishedResult;
@@ -1905,93 +2058,6 @@ public partial class GraphEditorView : UserControl
         Grid.SetColumn(label, 0);
         Grid.SetColumn(knob, 1);
         row.Children.Add(label);
-        row.Children.Add(knob);
-
-        return row;
-    }
-
-    /// <summary>
-    /// <b>선택지 슬롯 한 줄</b> (R7 P-2) — 문구를 눌러 적고, 적힌 것만 끌 수 있다.
-    ///
-    /// 죽은 칸은 흐리고 손잡이도 비어 있다. 거기서 끌리면 <b>놓을 데가 없는 선</b>이 나가는데,
-    /// 문구 없는 간선은 규격 위반이라(v9 — 문구가 곧 선택지다) 애초에 만들 수가 없다.
-    /// </summary>
-    private Control BuildChoiceRow(
-        GraphOutputPortProjection port, GraphChoicePort choice, NodeCard card, int index)
-    {
-        bool live = IsLive(choice, card.Ports);
-        bool auto = IsAutoSlot(choice, card.Ports);
-        string text = LabelOf(choice);
-
-        var label = new TextBlock
-        {
-            Text = auto ? "자동" : text.Length > 0 ? text : "＋ 선택지",
-            FontSize = 10,
-            Opacity = live ? 1 : 0.4,
-            Foreground = live ? SlotDot(choice, card.Ports) : null,
-            FontWeight = live ? FontWeight.SemiBold : FontWeight.Normal,
-            FontStyle = text.Length > 0 || auto ? FontStyle.Normal : FontStyle.Italic,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Cursor = new Cursor(StandardCursorType.Ibeam),
-            [ToolTip.TipProperty] = auto
-                ? "자동 길 — 문구 없이 다음으로 갑니다. 선택지 문구를 하나라도 적으면 이 자리가 닫힙니다."
-                : "눌러서 선택지 문구를 적습니다. 적어야 끌어서 이을 수 있습니다."
-        };
-
-        // ⚠ 막는 것은 <b>이미 이어진 자동 길</b>뿐이다. 아직 안 이은 자동 자리는 눌러서
-        //    문구를 적을 수 있어야 한다 — 그 자리에 선택지를 두는 것이 가장 흔한 첫 손짓이고,
-        //    적는 순간 자동 예외가 닫히며 보통 선택지가 된다.
-        if (!choice.IsAuto)
-        {
-            label.PointerPressed += (_, args) => UiGuard.Run(_session, "선택지 문구", () =>
-            {
-                // 카드까지 올라가면 끌기로 잡힌다 — 여기서 삼킨다.
-                args.Handled = true;
-                _editingSlot = SlotKey(choice);
-                Rebuild();
-            });
-        }
-
-        IBrush dot = SlotDot(choice, card.Ports);
-
-        var knob = new Ellipse
-        {
-            Width = PortRadius * 2,
-            Height = PortRadius * 2,
-            Margin = new Thickness(6, 0, -CardPadding - PortRadius, 0),
-
-            // 세 자리를 색으로 가른다 (2026-09-16 소유자): 빈 칸은 <b>텅 빈</b> 동그라미,
-            // 살아났지만 아직 안 이은 것은 <b>붉게</b>, 이어진 것은 <b>초록</b>.
-            Fill = live ? dot : Brushes.Transparent,
-            Stroke = dot,
-            StrokeThickness = 2,
-            VerticalAlignment = VerticalAlignment.Center,
-            Cursor = new Cursor(live ? StandardCursorType.Hand : StandardCursorType.No),
-            [ToolTip.TipProperty] = choice.IsEmpty
-                ? live ? "끌어서 다음 에피소드에 놓으세요." : "문구를 적어야 끌 수 있습니다."
-                : "이어져 있습니다. 빈 곳에 끌어다 놓으면 끊깁니다."
-        };
-
-        if (live)
-        {
-            knob.PointerPressed += (_, args) => OnPortPressed(port, card, index, args);
-        }
-
-        var row = new Grid
-        {
-            Height = PortRowHeight,
-            ColumnDefinitions = new ColumnDefinitions("*,Auto")
-        };
-
-        Control front = string.Equals(_editingSlot, SlotKey(choice), StringComparison.Ordinal)
-            ? SlotEditor(choice)
-            : label;
-
-        Grid.SetColumn(front, 0);
-        Grid.SetColumn(knob, 1);
-        row.Children.Add(front);
         row.Children.Add(knob);
 
         return row;

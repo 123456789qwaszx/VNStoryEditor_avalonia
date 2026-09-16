@@ -284,25 +284,29 @@ public sealed class ChoiceSlotTests : IDisposable
         graph.FindControl<Canvas>("GraphCanvas")!.Children.OfType<Border>()
             .FirstOrDefault(card => card.Tag as string == NodeId(session, nodeName));
 
-    /// <summary>그 노드의 선택지 칸 머리점들 — 그린 차례대로.</summary>
-    private static IReadOnlyList<IBrush> Dots(GraphEditorView graph, AuthoringSession session, string nodeName) =>
-        Rows(graph, session, nodeName)
+    /// <summary>그 에피소드의 선택지 칸 머리점들 — 칸 번호 차례대로.</summary>
+    private static IReadOnlyList<IBrush> Dots(GraphEditorView graph, AuthoringSession session, string episodeId) =>
+        Rows(graph, session, episodeId)
             .Select(row => row.Children.OfType<Ellipse>().Single().Stroke!)
             .ToList();
 
-    private static IReadOnlyList<TextBlock> Labels(GraphEditorView graph, AuthoringSession session, string nodeName) =>
-        Rows(graph, session, nodeName)
+    private static IReadOnlyList<TextBlock> Labels(
+        GraphEditorView graph, AuthoringSession session, string episodeId) =>
+        Rows(graph, session, episodeId)
             .Select(row => row.Children.OfType<TextBlock>().SingleOrDefault())
             .Where(label => label is not null)
             .Select(label => label!)
             .ToList();
 
-    /// <summary>선택지 칸 = 머리점(<see cref="Ellipse"/>)이 있는 줄.</summary>
-    private static IReadOnlyList<Grid> Rows(GraphEditorView graph, AuthoringSession session, string nodeName) =>
-        graph.FindControl<Canvas>("GraphCanvas")!.Children.OfType<Border>()
-            .First(card => card.Tag as string == NodeId(session, nodeName))
-            .GetVisualDescendants().OfType<Grid>()
-            .Where(row => row.Children.OfType<Ellipse>().Any())
+    /// <summary>
+    /// 선택지 칸들 — <b>카드 아래 철도 위</b>에 선다 (2026-09-16 소유자: "아래쪽으로 3개").
+    /// 줄은 Tag에 <c>{에피소드}#{칸}</c>을 진다.
+    /// </summary>
+    private static IReadOnlyList<StackPanel> Rows(
+        GraphEditorView graph, AuthoringSession session, string episodeId) =>
+        graph.FindControl<Canvas>("GraphCanvas")!.Children.OfType<StackPanel>()
+            .Where(row => (row.Tag as string)?.StartsWith(episodeId + "#", StringComparison.Ordinal) == true)
+            .OrderBy(row => (row.Tag as string)![(episodeId.Length + 1)..], StringComparer.Ordinal)
             .ToList();
 
     /// <summary>카드는 Tag에 NodeId를 진다 — 이름으로 찾으면 헤더 글월에 매인다.</summary>
