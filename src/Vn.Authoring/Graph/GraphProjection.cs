@@ -142,7 +142,44 @@ public enum GraphOutputPortKind
     Settings,
 
     /// <summary>이 대사 노드가 발행한 결과. 연출 노드가 그 결과를 입력으로 읽는다.</summary>
-    PublishedResult
+    PublishedResult,
+
+    /// <summary>
+    /// <b>챕터 간선 슬롯</b> — 이 에피소드에서 나가는 선택지 하나 (R7 P-1 · 2026-09-16).
+    ///
+    /// ⛔ 다른 포트와 달리 <b>연출 층의 것이 아니다.</b> 이어 붙는 순간 고쳐지는 것은
+    /// <c>ChapterDocument.Edges</c>이고, 그것이 내보내기·도달성 증명·런타임이 보는 그 값이다
+    /// (<c>docs/plans/R7.md</c> §2 ①ᅳ 정본을 늘리지 않는다).
+    /// </summary>
+    Choice
+}
+
+/// <summary>
+/// 선택지 슬롯 하나가 지고 있는 챕터 쪽 신원 (R7 P-1).
+/// </summary>
+/// <param name="Slot">
+/// 화면의 몇 번째 칸인가. <b>간선의 신원이 아니다</b> — 신원은 (출발, 도착, 문구)다(v9).
+/// 자리는 챕터에 적힌 간선 순서를 따른다.
+/// </param>
+/// <param name="Label">
+/// 선택지 문구. <b>빈 슬롯도, 자동 길도 빈 문자열</b>이다 — 가르는 것은 <see cref="IsEmpty"/>다.
+/// </param>
+/// <param name="ToEpisodeId">이어진 곳. null이면 <b>아직 빈 칸</b>이다.</param>
+/// <param name="ToNodeId">
+/// 그 에피소드의 대사 노드. 에피소드는 있는데 아직 아무도 안 쓴 자리면 null일 수 있다 —
+/// 그때도 간선은 있다(<b>대본이 없는 것과 길이 없는 것은 다르다</b>).
+/// </param>
+public sealed record GraphChoicePort(
+    string ChapterId,
+    string FromEpisodeId,
+    int Slot,
+    string Label,
+    string? ToEpisodeId,
+    string? ToNodeId,
+    bool IsAuto)
+{
+    /// <summary>아직 아무 데도 안 이은 칸 — 라벨을 적어야 살아난다(R7 §2 ③).</summary>
+    public bool IsEmpty => ToEpisodeId is null;
 }
 
 /// <summary>펼쳐진 노드 카드가 표시할 출력 포트.</summary>
@@ -153,7 +190,10 @@ public sealed record GraphOutputPortProjection(
     string Label,
     int PaletteIndex,
     bool IsConnected,
-    ExitPort? ExecutionPort);
+    ExitPort? ExecutionPort,
+
+    /// <summary><see cref="GraphOutputPortKind.Choice"/>일 때만 있다 (R7 P-1).</summary>
+    GraphChoicePort? ChoicePort = null);
 
 public enum GraphConnectionKind
 {

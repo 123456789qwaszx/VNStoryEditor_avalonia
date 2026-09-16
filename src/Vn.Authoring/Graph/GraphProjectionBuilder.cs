@@ -54,7 +54,7 @@ public static class GraphProjectionBuilder
                 fileByNodeId[node.Id] = file;
                 rowIndexByNodeId[node.Id] = index;
                 kindByNodeId[node.Id] = KindOf(node);
-                portsByNodeId[node.Id] = BuildPorts(node, project, definition);
+                portsByNodeId[node.Id] = BuildPorts(node, file, project, definition);
 
                 if (node is PresentationNode or CommandSupplyNode ||
                     Chapters.ChapterBoardSupply.IsConditionSupplyNode(node, file))
@@ -205,6 +205,7 @@ public static class GraphProjectionBuilder
 
     private static IReadOnlyList<GraphOutputPortProjection> BuildPorts(
         StoryNode node,
+        StoryFile file,
         StoryProject project,
         GameDefinition? definition)
     {
@@ -240,8 +241,92 @@ public static class GraphProjectionBuilder
         // 발행·배선이 자동이 되면서(EnsurePresentationChannel) 그 카드들이 배관으로 숨었고,
         // 끌어서 잇던 포트들은 이을 주체가 없다.
 
+        ports.AddRange(ChoiceSlots(node, file, project));
+
         return ports;
     }
+
+    /// <summary>화면이 <b>새로</b> 낼 수 있는 선택지 칸 수 (R7 §2 ③ — 소유자: "딱 3개").</summary>
+    private const int ChoiceSlots3 = 3;
+
+    /// <summary>
+    /// <b>챕터 간선 슬롯</b> — 이 에피소드에서 나가는 선택지들 (R7 P-1 · 2026-09-16).
+    ///
+    /// 앞칸부터 <b>이미 있는 간선</b>, 남은 칸은 빈 슬롯이다. 라벨을 적어야 살아나고
+    /// (§2 ③), 이어 붙는 순간 고쳐지는 것은 <c>ChapterDocument.Edges</c>다(§2 ①).
+    ///
+    /// ⚠ <b>간선이 셋을 넘으면 넘는 대로 전부 낸다.</b> 3은 <b>새로 만드는 칸</b>의 수이지
+    /// 상한이 아니다 — 엑셀에서 넷을 만든 챕터의 넷째를 화면이 숨기면 사람은 <b>사라진 줄</b>
+    /// 안다. 상한을 모델에 박는 것은 v9가 없앤 `선택지수` 칸을 되살리는 일이다.
+    ///
+    /// ⚠ <b>에피소드 노드만</b> — 자유 씬은 챕터의 진행에 안 실리므로 놓을 자리가 없다
+    /// (R6의 `장면 밖`과 같은 규율).
+    /// </summary>
+    private static IEnumerable<GraphOutputPortProjection> ChoiceSlots(
+        StoryNode node, StoryFile file, StoryProject project)
+    {
+        if (node is not DialogueNode dialogue ||
+            project.Chapters.FirstOrDefault(item =>
+                string.Equals(item.ChapterId, file.Name, StringComparison.Ordinal)) is not { } chapter)
+        {
+            yield break;
+        }
+
+        // 노드 → 에피소드는 표식이 먼저고 없으면 이름이다 — 대본 탭·장면 묶기와 같은 규칙이다.
+        string episodeId = dialogue.ExcelEpisodeId is { Length: > 0 } marked ? marked : dialogue.Name;
+
+        if (!chapter.Episodes.Any(episode =>
+                string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal)))
+        {
+            yield break;
+        }
+
+        int slot = 0;
+
+        foreach (ChapterEdge edge in chapter.Edges.Where(item =>
+                     string.Equals(item.FromEpisodeId, episodeId, StringComparison.Ordinal)))
+        {
+            yield return Choice(new GraphChoicePort(
+                chapter.ChapterId,
+                episodeId,
+                slot++,
+                edge.OptionLabel ?? string.Empty,
+                edge.ToEpisodeId,
+                NodeOf(file, edge.ToEpisodeId),
+                edge.Auto), dialogue.Id);
+        }
+
+        for (; slot < ChoiceSlots3; slot++)
+        {
+            yield return Choice(new GraphChoicePort(
+                chapter.ChapterId, episodeId, slot,
+                Label: string.Empty, ToEpisodeId: null, ToNodeId: null, IsAuto: false), dialogue.Id);
+        }
+    }
+
+    private static GraphOutputPortProjection Choice(GraphChoicePort choice, string nodeId) =>
+        new($"choice:{choice.Slot}",
+            GraphOutputPortKind.Choice,
+            nodeId,
+            choice.Label,
+            choice.Slot,
+            !choice.IsEmpty,
+            ExecutionPort: null,
+            choice);
+
+    /// <summary>
+    /// 그 에피소드의 대사 노드 — <b>같은 판에서만</b> 찾는다.
+    ///
+    /// ⚠ 프로젝트 전체를 이름으로 훑으면 다른 챕터의 같은 Id가 걸린다(개명이 그 함정을
+    /// 이미 한 번 밟았다 — 2026-08-25). 못 찾아도 간선은 있다: <b>대본이 없는 것과 길이
+    /// 없는 것은 다르다.</b>
+    /// </summary>
+    private static string? NodeOf(StoryFile file, string episodeId) =>
+        file.Nodes.OfType<DialogueNode>().FirstOrDefault(node =>
+            string.Equals(
+                node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name,
+                episodeId,
+                StringComparison.Ordinal))?.Id;
 
     /// <summary>
     /// 카드에 붙는 짧은 부가 정보. 발행 버전과 읽는 버전을 즉시 알 수 있게 한다.
