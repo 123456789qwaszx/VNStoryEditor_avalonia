@@ -119,22 +119,20 @@ public partial class ScriptView : UserControl
         ShowSelected();
     }
 
-    /// <summary>`chapters/`의 워크북 이름들 — 파싱하지 않는다.</summary>
-    private IReadOnlyList<string> ChapterIds()
-    {
-        if (ChapterLibrary.FolderFor(_session?.ProjectPath) is not { } folder ||
-            !Directory.Exists(folder))
-        {
-            return [];
-        }
-
-        return Directory.EnumerateFiles(folder, "*.xlsx")
-            .Select(Path.GetFileNameWithoutExtension)
-            .OfType<string>()
-            .Where(name => !name.StartsWith("~$", StringComparison.Ordinal))   // 엑셀 잠금 파일
-            .OrderBy(name => name, StringComparer.Ordinal)
-            .ToList();
-    }
+    /// <summary>
+    /// 프로젝트가 든 챕터들.
+    ///
+    /// ⛔ <b>2026-09-16에 여기가 바뀌었다</b> (R-F). 예전에는 <c>chapters/</c> 폴더의 파일
+    /// 이름을 훑었고, 그 코드 옆에는 <i>"이것이 §5.2와 어긋나지 않는 이유는 그 규율이 막는
+    /// 것이 <b>대본</b>을 다시 읽는 일이고 챕터 구조의 주인은 아직 기획자의 엑셀이기
+    /// 때문"</i>이라는 해명이 붙어 있었다. 그 해명의 전제가 사라졌다 — 챕터의 주인도
+    /// 프로젝트다. 폴더를 훑는 길은 이제 임포터 하나뿐이다.
+    /// </summary>
+    private IReadOnlyList<string> ChapterIds() =>
+        _session?.Project.Chapters
+            .Select(chapter => chapter.ChapterId)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList() ?? [];
 
     /// <summary>
     /// 고른 챕터의 에피소드들 — <b>노드가 아직 없는 것도 포함</b>한다.
@@ -145,17 +143,15 @@ public partial class ScriptView : UserControl
     /// </summary>
     private IReadOnlyList<string> EpisodeIds()
     {
-        if (_session is null ||
-            ChapterList.SelectedItem is not string chapterId ||
-            ChapterLibrary.FolderFor(_session.ProjectPath) is not { } folder)
+        if (_session is null || ChapterList.SelectedItem is not string chapterId)
         {
             return [];
         }
 
-        ChapterEntry entry = ChapterLibrary.Read(
-            Path.Combine(folder, chapterId + ".xlsx"), _session.Definition);
-
-        return entry.Model?.Episodes
+        // ⛔ 예전에는 그 챕터의 워크북을 <b>열어 읽었다</b> (R-F 전). 한 번에 하나만 여는
+        //    조심까지 했는데 — 전부 파고들면 노드 60개에서 첫 화면이 58초였다(2026-08-18) —
+        //    이제 파일을 아예 안 연다.
+        return _session.Editor.FindChapter(chapterId)?.Episodes
             .Select(episode => episode.EpisodeId)
             .ToList() ?? [];
     }

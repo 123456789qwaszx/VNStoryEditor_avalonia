@@ -3,6 +3,7 @@ using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Definition;
+using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
 using Vn.Authoring.Script;
 using Vn.Authoring.Serialization;
@@ -472,32 +473,56 @@ public sealed class ScriptTabTests : IDisposable
     /// <summary>에피소드 몇 개짜리 챕터 워크북 — 기획자가 만들어 둔 판의 최소 모양.</summary>
     private void WriteChapter(string chapterId, params string[] episodeIds)
     {
-        string chapters = Path.Combine(_directory, ChapterLibrary.FolderName);
-        ChapterWorkbookWriter.EnsureChapterWorkbook(chapters, chapterId, [("trust", "신뢰")]);
-
-        string path = Path.Combine(chapters, chapterId + ".xlsx");
-        string previous = string.Empty;
-
-        foreach (string id in episodeIds)
+        // ⛔ 2026-09-16까지 이 헬퍼는 <b>워크북 파일</b>을 만들었다 (R-F 전). [대본] 탭이
+        //    `chapters/*.xlsx`를 훑어 목록을 세웠기 때문이다. 이제 챕터의 주인이 프로젝트라
+        //    픽스처도 그쪽에 세운다.
+        if (_session is { } open)
         {
-            ChapterWorkbookWriter.AddEpisode(path, id, title: id, 0, 0);
+            Build(open.Editor);
+            return;
+        }
 
-            if (previous.Length > 0)
+        // 아직 세션이 없다 — 저장물에 직접 심어 두면 Show()가 열 때 함께 들어온다.
+        StoryProject project = ProjectStore.Load(ManifestPath).Project;
+        Build(new ProjectEditor(project));
+        ProjectStore.Save(ManifestPath, project);
+
+        void Build(ProjectEditor editor)
+        {
+            ChapterDocument chapter = editor.EnsureChapter(chapterId);
+
+            if (chapter.Stats.Count == 0)
             {
-                ChapterWorkbookWriter.AddEdge(path, previous, id, optionLabel: "다음");
+                chapter.Stats.Add(new ChapterStat("trust", "신뢰", 0, 0, 100, SourceRow: 0));
             }
 
-            previous = id;
+            string previous = string.Empty;
+
+            foreach (string id in episodeIds)
+            {
+                editor.AddEpisode(chapterId, id, title: id, 0, 0);
+
+                if (previous.Length > 0)
+                {
+                    editor.AddEdge(chapterId, previous, id, optionLabel: "다음");
+                }
+
+                previous = id;
+            }
         }
     }
 
     private string WorkbookPath(string chapterId, string episodeId) =>
         EpisodeLibrary.PathFor(EpisodeLibrary.FolderFor(ManifestPath, chapterId)!, episodeId);
 
+    /// <summary>열려 있는 세션 — <see cref="WriteChapter"/>가 저장물과 세션 중 어디에 심을지 고른다.</summary>
+    private AuthoringSession? _session;
+
     private (ScriptView View, AuthoringSession Session) Show()
     {
         var session = new AuthoringSession();
         session.Open(ManifestPath);
+        _session = session;
 
         var view = new ScriptView();
         var window = new Window { Width = 1100, Height = 700, Content = view };
