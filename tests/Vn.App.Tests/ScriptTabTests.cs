@@ -189,7 +189,86 @@ public sealed class ScriptTabTests : IDisposable
         Assert.Contains("⚠", session.StatusMessage);
     });
 
+    // ── 작가가 글을 쓰면 노드가 생긴다 (§6.2) ─────────────────────────────
+
+    [Fact]
+    public void 노드가_없는_에피소드도_목록에_선다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 노드 있는 것만 보이면 <b>아직 아무도 안 쓴 에피소드에는 글을 쓸 자리가 없다</b> —
+        //    글을 쓰면 노드가 생기는데, 쓰려면 노드가 있어야 하는 매듭이 된다.
+        WriteChapter("ch01", "ep01", "ep02");
+
+        (ScriptView view, _) = Show();
+
+        Assert.Equal(["ep01", "ep02"], view.FindControl<ListBox>("EpisodeList")!
+            .ItemsSource!.Cast<string>());
+
+        // 아직 빈 대본이라고 말해 준다 — 빈 화면에 아무 말이 없으면 고장으로 읽힌다.
+        Assert.Contains("아직 빈 대본", view.FindControl<TextBlock>("HintText")!.Text!);
+    });
+
+    [Fact]
+    public void 빈_에피소드에_쓰면_그때_노드가_선다() => HeadlessUi.Run(() =>
+    {
+        WriteChapter("ch01", "ep01");
+
+        (ScriptView view, AuthoringSession session) = Show();
+
+        // 누르기 전에는 판에 아무 노드도 없다 — 훑어보기만으로 빈 노드가 쌓이면 안 된다.
+        Assert.Empty(session.Project.EnumerateNodes().OfType<DialogueNode>());
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 작가가 처음 쓴 줄";
+        Click(view, "ApplyButton");
+
+        DialogueNode created = Assert.Single(
+            session.Project.EnumerateNodes().OfType<DialogueNode>());
+
+        Assert.Equal("ep01", created.Name);
+        Assert.Equal(["작가가 처음 쓴 줄"], Texts(session, created));
+
+        // 그리고 워크북도 함께 나갔다 — 툴에 쓴 것이 엑셀을 채운다.
+        Assert.Equal(
+            ["작가가 처음 쓴 줄"],
+            EpisodeWorkbookReader.Read(WorkbookPath("ch01", "ep01")).Rows.Select(row => row.Text));
+    });
+
+    [Fact]
+    public void 빈_글로는_노드를_만들지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 잘못 누른 것까지 판에 남기지 않는다.
+        WriteChapter("ch01", "ep01");
+
+        (ScriptView view, AuthoringSession session) = Show();
+
+        Click(view, "ApplyButton");
+
+        Assert.Empty(session.Project.EnumerateNodes().OfType<DialogueNode>());
+        Assert.Contains("빈 글은", session.StatusMessage);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>에피소드 몇 개짜리 챕터 워크북 — 기획자가 만들어 둔 판의 최소 모양.</summary>
+    private void WriteChapter(string chapterId, params string[] episodeIds)
+    {
+        string chapters = Path.Combine(_directory, ChapterLibrary.FolderName);
+        ChapterWorkbookWriter.EnsureChapterWorkbook(chapters, chapterId, [("trust", "신뢰")]);
+
+        string path = Path.Combine(chapters, chapterId + ".xlsx");
+        string previous = string.Empty;
+
+        foreach (string id in episodeIds)
+        {
+            ChapterWorkbookWriter.AddEpisode(path, id, title: id, 0, 0);
+
+            if (previous.Length > 0)
+            {
+                ChapterWorkbookWriter.AddEdge(path, previous, id, optionLabel: "다음");
+            }
+
+            previous = id;
+        }
+    }
 
     private string WorkbookPath(string chapterId, string episodeId) =>
         EpisodeLibrary.PathFor(EpisodeLibrary.FolderFor(ManifestPath, chapterId)!, episodeId);
@@ -209,10 +288,13 @@ public sealed class ScriptTabTests : IDisposable
     }
 
     /// <summary>판 하나와 그 위의 대사노드 하나를 세우고 줄을 채운다.</summary>
-    private static DialogueNode Seed(
+    private DialogueNode Seed(
         AuthoringSession session, string chapterId, string episodeId,
         params (string Speaker, string Text)[] lines)
     {
+        // ⚠ 챕터 워크북도 있어야 한다 — 에피소드 목록의 출처가 그쪽이다(기획자의 것).
+        WriteChapter(chapterId, episodeId);
+
         string fileId = session.Editor.EnsureChapterBoard(chapterId);
         DialogueNode node = session.Editor.AddDialogueNode(fileId, name: episodeId);
         string scriptId = session.Editor.EnsureDialogueScript(node.Id).Id;
