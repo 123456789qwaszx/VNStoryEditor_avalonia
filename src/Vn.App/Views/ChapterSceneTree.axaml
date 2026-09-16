@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.ChapterSceneTree">
+
+    <!-- Chapter → Scene → Episode 탐색기 (R6 S-2 · docs/plans/R6-explorer.md).
+
+         ⛔ TreeView를 쓰지 않는다. 고를 수 있는 것은 <b>에피소드뿐</b>이고 챕터·장면 줄은
+            접기/펼치기인데, TreeView의 선택은 모든 마디를 고를 수 있다고 전제한다 —
+            그것과 싸우느니 줄을 직접 세운다. 이 저장소가 카드를 손으로 세우는 것과 같은 결이다. -->
+    <ScrollViewer x:Name="TreeScroll"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel x:Name="RowHost" Margin="2,4" />
+    </ScrollViewer>
+</UserControl>

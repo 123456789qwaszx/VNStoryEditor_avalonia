@@ -47,12 +47,12 @@ public sealed class ScriptTabTests : IDisposable
         (ScriptView view, AuthoringSession session) = Show();
         Seed(session, "ch01", "ep01", ("윌로", "복도는 조용했다."), ("라루", "같이 갈까?"));
 
-        var chapters = view.FindControl<ListBox>("ChapterList")!;
-        var episodes = view.FindControl<ListBox>("EpisodeList")!;
         var box = view.FindControl<TextBox>("ScriptBox")!;
 
-        Assert.Equal(["ch01"], chapters.ItemsSource!.Cast<string>());
-        Assert.Equal(["ep01"], episodes.ItemsSource!.Cast<string>());
+        // ⛔ 2026-09-16에 목록 둘이 트리 하나가 됐다 (R6 S-2) — 챕터와 에피소드 사이에
+        //    장면이 설 자리를 내려고. 구조는 줄 목록으로 잰다(`docs/plans/R6-explorer.md` §8).
+        Assert.Equal(["ch01"], Rows(view, SceneTreeRowKind.Chapter));
+        Assert.Equal(["ep01"], Rows(view, SceneTreeRowKind.Episode));
 
         Assert.Contains("윌로: 복도는 조용했다.", box.Text!);
         Assert.Contains("라루: 같이 갈까?", box.Text!);
@@ -204,8 +204,7 @@ public sealed class ScriptTabTests : IDisposable
 
         (ScriptView view, _) = Show();
 
-        Assert.Equal(["ep01", "ep02"], view.FindControl<ListBox>("EpisodeList")!
-            .ItemsSource!.Cast<string>());
+        Assert.Equal(["ep01", "ep02"], Rows(view, SceneTreeRowKind.Episode));
     });
 
     [Fact]
@@ -447,6 +446,16 @@ public sealed class ScriptTabTests : IDisposable
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 탐색기에 <b>보이는</b> 줄들 — 접힌 것은 안 나온다. 구조를 재는 자리다
+    /// (<c>docs/plans/R6-explorer.md</c> §8).
+    /// </summary>
+    private static IReadOnlyList<string> Rows(ScriptView view, SceneTreeRowKind kind) =>
+        view.FindControl<ChapterSceneTree>("EpisodeTree")!.Rows
+            .Where(row => row.Kind == kind)
+            .Select(row => row.EpisodeId ?? row.SceneId ?? row.ChapterId)
+            .ToList();
 
     /// <summary>화자 등록부 — 원천은 <c>game.definition.json</c> 하나다.</summary>
     private void Register(params (string Name, string CharacterId)[] speakers) =>

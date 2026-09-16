@@ -49,8 +49,7 @@ public partial class ScriptView : UserControl
     {
         InitializeComponent();
 
-        ChapterList.SelectionChanged += (_, _) => UiGuard.Run(_session, "챕터 고르기", RebuildEpisodes);
-        EpisodeList.SelectionChanged += (_, _) => UiGuard.Run(_session, "에피소드 고르기", ShowSelected);
+        EpisodeTree.EpisodeSelected += _ => UiGuard.Run(_session, "에피소드 고르기", ShowSelected);
         ApplyButton.Click += (_, _) => UiGuard.Run(_session, "글 반영", Apply);
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
         SpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 고르기", PickSpeaker);
@@ -69,15 +68,15 @@ public partial class ScriptView : UserControl
     }
 
     /// <summary>
-    /// 고를 수 있는 챕터 = <c>chapters/</c>의 워크북들.
+    /// 탐색기를 다시 세운다 — 챕터가 늘거나 에피소드가 생기면 고를 것이 달라진다.
     ///
-    /// ⚠ <b>여기서 챕터 워크북을 읽는 것은 §5.2와 어긋나지 않는다.</b> 그 규율이 막는 것은
-    /// <b>대본</b>을 다시 읽는 일이고, 챕터 구조(어떤 에피소드가 있는가)의 주인은 아직
-    /// 기획자의 엑셀이다 — 그것을 툴로 옮기는 것은 R-F다. 작가에게 "이 챕터에 어떤
-    /// 에피소드가 있는가"를 보여 주려면 지금은 그쪽을 봐야 한다.
+    /// ⛔ <b>2026-09-16에 목록 둘이 트리 하나가 됐다</b> (R6 S-2). 예전에는 챕터 목록과
+    /// 에피소드 목록이 따로 있었고, 그 구조에는 <b>장면이 설 자리가 없었다</b> — 챕터와
+    /// 에피소드 사이가 비어 있었기 때문이다.
     ///
-    /// ⚠ 목록은 <b>파일 이름만</b> 본다(파싱하지 않는다). 챕터를 고른 그 하나만 연다 —
-    /// 전부 파고들면 노드 60개에서 첫 화면이 58초이던 그 값을 다시 치른다(2026-08-18).
+    /// ⚠ <b>"고른 챕터"라는 상태가 사라졌다.</b> 이제 챕터는 고른 에피소드에서 나오는
+    /// 파생이다(<c>docs/plans/R6-explorer.md</c> §1) — 따로 들면 트리의 선택과 어긋날
+    /// 자리가 생긴다.
     /// </summary>
     private void Rebuild()
     {
@@ -86,75 +85,39 @@ public partial class ScriptView : UserControl
             return;
         }
 
-        object? keep = ChapterList.SelectedItem;
+        EpisodeTree.Rebuild(_session.Project, HasScript);
 
-        ChapterList.ItemsSource = ChapterIds();
-        ChapterList.SelectedItem = keep;
-
-        if (ChapterList.SelectedItem is null && ChapterList.ItemCount > 0)
+        // 아직 아무것도 안 골랐으면 첫 에피소드를 고른다 — 빈 오른쪽 화면으로 시작하면
+        // 작가는 무엇부터 눌러야 하는지 모른다.
+        if (EpisodeTree.Selection is null && FirstEpisode() is { } first)
         {
-            ChapterList.SelectedIndex = 0;
-        }
-
-        RebuildEpisodes();
-    }
-
-    private void RebuildEpisodes()
-    {
-        if (_session is null || ScriptBox.IsFocused)
-        {
-            return;
-        }
-
-        object? keep = EpisodeList.SelectedItem;
-
-        EpisodeList.ItemsSource = EpisodeIds();
-        EpisodeList.SelectedItem = keep;
-
-        if (EpisodeList.SelectedItem is null && EpisodeList.ItemCount > 0)
-        {
-            EpisodeList.SelectedIndex = 0;
+            EpisodeTree.Select(first.ChapterId, first.EpisodeId);
         }
 
         ShowSelected();
     }
 
     /// <summary>
-    /// 프로젝트가 든 챕터들.
-    ///
-    /// ⛔ <b>2026-09-16에 여기가 바뀌었다</b> (R-F). 예전에는 <c>chapters/</c> 폴더의 파일
-    /// 이름을 훑었고, 그 코드 옆에는 <i>"이것이 §5.2와 어긋나지 않는 이유는 그 규율이 막는
-    /// 것이 <b>대본</b>을 다시 읽는 일이고 챕터 구조의 주인은 아직 기획자의 엑셀이기
-    /// 때문"</i>이라는 해명이 붙어 있었다. 그 해명의 전제가 사라졌다 — 챕터의 주인도
-    /// 프로젝트다. 폴더를 훑는 길은 이제 임포터 하나뿐이다.
+    /// 그 에피소드에 대본이 있는가 — 트리가 <b>아직 아무도 안 쓴 자리</b>를 흐리게 그린다.
     /// </summary>
-    private IReadOnlyList<string> ChapterIds() =>
+    private bool HasScript(string chapterId, string episodeId) =>
+        NodeIn(chapterId, episodeId) is not null;
+
+    /// <summary>첫 챕터의 첫 에피소드. 아무 데도 없으면 null이다.</summary>
+    private ChapterEpisodePick? FirstEpisode() =>
         _session?.Project.Chapters
-            .Select(chapter => chapter.ChapterId)
-            .OrderBy(id => id, StringComparer.Ordinal)
-            .ToList() ?? [];
+            .OrderBy(chapter => chapter.ChapterId, StringComparer.OrdinalIgnoreCase)
+            .Where(chapter => chapter.Episodes.Count > 0)
+            .Select(chapter => new ChapterEpisodePick(chapter.ChapterId, chapter.Episodes[0].EpisodeId))
+            .FirstOrDefault();
 
-    /// <summary>
-    /// 고른 챕터의 에피소드들 — <b>노드가 아직 없는 것도 포함</b>한다.
-    ///
-    /// ⛔ 그것이 요점이다. 노드가 있는 것만 보이면 <b>아직 아무도 안 쓴 에피소드에는 작가가
-    /// 글을 쓸 자리가 없다</b> — 노드를 만드는 것이 곧 글을 쓰는 일인데, 글을 쓰려면 노드가
-    /// 있어야 하는 매듭이 된다. 노드는 <see cref="Apply"/>가 만든다(§6.2).
-    /// </summary>
-    private IReadOnlyList<string> EpisodeIds()
-    {
-        if (_session is null || ChapterList.SelectedItem is not string chapterId)
-        {
-            return [];
-        }
-
-        // ⛔ 예전에는 그 챕터의 워크북을 <b>열어 읽었다</b> (R-F 전). 한 번에 하나만 여는
-        //    조심까지 했는데 — 전부 파고들면 노드 60개에서 첫 화면이 58초였다(2026-08-18) —
-        //    이제 파일을 아예 안 연다.
-        return _session.Editor.FindChapter(chapterId)?.Episodes
-            .Select(episode => episode.EpisodeId)
-            .ToList() ?? [];
-    }
+    // ⛔ `ChapterIds()`·`EpisodeIds()`는 2026-09-16에 걷혔다 (R6 S-2). 목록 둘을 채우던
+    //    함수들이고, 그 둘 사이에는 <b>장면이 설 자리가 없었다</b>. 이제 트리가 프로젝트를
+    //    직접 읽고 `ChapterSceneGrouping`으로 묶는다.
+    //
+    //    ⚠ 그때 지킨 규율은 트리가 이어받았다: <b>노드가 아직 없는 에피소드도 선다</b>.
+    //    노드 있는 것만 보이면 아직 아무도 안 쓴 에피소드에 글 쓸 자리가 없고, 노드를
+    //    만드는 것이 곧 글을 쓰는 일이라 매듭이 된다 — 트리는 그런 줄을 흐리게 그린다.
 
     /// <summary>
     /// 고른 에피소드의 대사노드. <b>없을 수 있다</b> — 아직 아무도 안 쓴 에피소드다.
@@ -162,9 +125,13 @@ public partial class ScriptView : UserControl
     /// 이름의 원천은 챕터 `에피소드` 시트의 `대사엔트리`이고, 비어 있으면 EpisodeId다
     /// (임포터와 [＋ 에피소드]가 쓰는 규칙과 같아야 한다 — 아니면 노드가 둘이 된다).
     /// </summary>
-    private DialogueNode? FindNode(string episodeId)
+    private DialogueNode? FindNode(string episodeId) =>
+        EpisodeTree.Selection is { } pick ? NodeIn(pick.ChapterId, episodeId) : null;
+
+    /// <summary>그 챕터의 판에서 그 에피소드의 대사노드를 찾는다.</summary>
+    private DialogueNode? NodeIn(string chapterId, string episodeId)
     {
-        if (_session is null || ChapterList.SelectedItem is not string chapterId)
+        if (_session is null)
         {
             return null;
         }
@@ -178,7 +145,7 @@ public partial class ScriptView : UserControl
     }
 
     private DialogueNode? SelectedNode() =>
-        EpisodeList.SelectedItem is string episodeId ? FindNode(episodeId) : null;
+        EpisodeTree.Selection is { } pick ? NodeIn(pick.ChapterId, pick.EpisodeId) : null;
 
     /// <summary>
     /// 지금 고른 것에 맞춰 화면을 세운다 — 그리고 <b>고를 것이 없으면 만들 자리를 세운다</b>.
@@ -198,19 +165,17 @@ public partial class ScriptView : UserControl
         EmptyPanel.IsVisible = false;
         EmptyAddScriptButton.IsVisible = false;
 
-        if (_session is null || EpisodeList.SelectedItem is not string episodeId)
+        if (_session is null || EpisodeTree.Selection is not { } picked)
         {
-            bool noChapter = ChapterList.ItemCount == 0;
+            bool noChapter = _session?.Project.Chapters.Count is null or 0;
 
             HeaderText.Text = noChapter ? "아직 챕터가 없습니다." : "에피소드를 고르세요.";
 
             EmptyPanel.IsVisible = true;
             EmptyText.Text = noChapter
                 ? "아직 챕터가 없습니다.\n[챕터 그래프]에서 챕터를 세우면 여기에 글 쓸 자리가 생깁니다."
-                : ChapterList.SelectedItem is null
-                    ? "왼쪽에서 챕터를 고르세요."
-                    : "이 챕터에는 아직 에피소드가 없습니다.\n" +
-                      "[챕터 그래프]에서 첫 에피소드를 세우면 여기에 섭니다.";
+                : "이 챕터에는 아직 에피소드가 없습니다.\n" +
+                  "[챕터 그래프]에서 첫 에피소드를 세우면 여기에 섭니다.";
 
             ScriptBox.Text = string.Empty;
             ScriptBox.IsEnabled = false;
@@ -219,6 +184,8 @@ public partial class ScriptView : UserControl
             HintText.Text = string.Empty;
             return;
         }
+
+        string episodeId = picked.EpisodeId;
 
         HeaderText.Text = episodeId;
         ScriptBox.IsEnabled = true;
@@ -421,10 +388,12 @@ public partial class ScriptView : UserControl
     /// </summary>
     private void AddScript()
     {
-        if (_session is null || EpisodeList.SelectedItem is not string episodeId)
+        if (_session is null || EpisodeTree.Selection is not { } pick)
         {
             return;
         }
+
+        string episodeId = pick.EpisodeId;
 
         if (FindNode(episodeId) is null)
         {
@@ -448,10 +417,12 @@ public partial class ScriptView : UserControl
     /// </summary>
     private void Apply()
     {
-        if (_session is null || EpisodeList.SelectedItem is not string episodeId)
+        if (_session is null || EpisodeTree.Selection is not { } pick)
         {
             return;
         }
+
+        string episodeId = pick.EpisodeId;
 
         string text = ScriptBox.Text ?? string.Empty;
 
@@ -511,7 +482,7 @@ public partial class ScriptView : UserControl
     /// </summary>
     private DialogueNode CreateNodeFor(string episodeId)
     {
-        string fileId = _session!.Editor.EnsureChapterBoard((string)ChapterList.SelectedItem!);
+        string fileId = _session!.Editor.EnsureChapterBoard(EpisodeTree.Selection!.ChapterId);
         DialogueNode created = _session.Editor.AddDialogueNode(fileId, name: episodeId);
 
         created.ExcelEpisodeId = episodeId;
@@ -539,7 +510,7 @@ public partial class ScriptView : UserControl
     private string EmitWorkbook(DialogueNode node)
     {
         if (_session is null ||
-            ChapterList.SelectedItem is not string chapterId ||
+            EpisodeTree.Selection is not { ChapterId: { } chapterId } ||
             EpisodeLibrary.FolderFor(_session.ProjectPath, chapterId) is not { } folder)
         {
             return string.Empty;
