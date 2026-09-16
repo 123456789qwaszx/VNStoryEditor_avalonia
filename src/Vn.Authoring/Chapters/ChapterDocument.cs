@@ -89,7 +89,11 @@ public sealed class ChapterDocument
     /// 챕터에서 조용히 안 돈다</b> — V1이 정확히 그 사고였다(자동 길 다섯이 그렇게 빠졌다).
     /// </summary>
     private IReadOnlyList<ChapterDiagnostic> ModelDiagnostics(string path, GameDefinition? definition) =>
-        [.. StatDiagnostics(path, definition), .. ChapterAutoEdgeCheck.Of(Episodes, Edges, path)];
+    [
+        .. StatDiagnostics(path, definition),
+        .. ChapterAutoEdgeCheck.Of(Episodes, Edges, path),
+        .. ChapterSceneEntryCheck.Of(Episodes, Edges, path)
+    ];
 
     private IReadOnlyList<ChapterDiagnostic> StatDiagnostics(string path, GameDefinition? definition)
     {

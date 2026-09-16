@@ -119,6 +119,15 @@ public enum ChapterDiagnosticCode
     AutoEdgeHasChoiceLabel,
 
     /// <summary>
+    /// 한 장면에 밖에서 들어오는 자리가 둘 이상이다 (V2 · 2026-09-16).
+    ///
+    /// 그 자리가 롤백이 되돌아갈 곳이고 이어하기가 재개할 곳이라, 둘이면 어느 쪽으로
+    /// 되돌아갈지가 정해지지 않는다. 코어의 <c>VerifySceneEntries</c>와 같은 규칙이고
+    /// 내보내기 관문도 같은 이유로 거부한다 — 여기서는 <b>더 일찍</b> 말할 뿐이다.
+    /// </summary>
+    SceneHasManyEntries,
+
+    /// <summary>
     /// 파일을 <b>열지</b> 못했다 (R-F · 2026-09-16). 데이터의 흠이 아니라 접근 실패다 —
     /// 엑셀이 붙들고 있거나, 파일이 깨졌거나, 권한이 없다.
     ///

@@ -140,6 +140,7 @@ public static class ChapterWorkbookReader
         IReadOnlyList<ChapterEdge> edges =
             ReadEdges(workbook, path, episodeIds, conditionLabels, statKeys, diagnostics);
         VerifyAutoEdges(episodes, edges, path, diagnostics);
+        VerifySceneEntries(episodes, edges, path, diagnostics);
         IReadOnlyList<ChapterFixture> fixtures = ReadFixtures(workbook, path, stats, episodeIds, diagnostics);
         IReadOnlyList<ChapterSpeaker> speakers =
             ReadSpeakers(workbook, path, diagnostics, out bool hasSpeakerSheet);
@@ -439,6 +440,16 @@ public static class ChapterWorkbookReader
         string path,
         List<ChapterDiagnostic> diagnostics) =>
         diagnostics.AddRange(ChapterAutoEdgeCheck.Of(episodes, edges, path));
+
+    /// <summary>
+    /// 장면의 단일 진입. ⛔ 규칙은 <see cref="ChapterSceneEntryCheck"/>가 갖는다 (V2).
+    /// </summary>
+    private static void VerifySceneEntries(
+        IReadOnlyList<ChapterEpisode> episodes,
+        IReadOnlyList<ChapterEdge> edges,
+        string path,
+        List<ChapterDiagnostic> diagnostics) =>
+        diagnostics.AddRange(ChapterSceneEntryCheck.Of(episodes, edges, path));
 
     // ── 조건 ────────────────────────────────────────────────────────────────
 

@@ -245,14 +245,15 @@ public sealed class ChapterGraphModel
 
     public IReadOnlyList<ChapterEpisode> Episodes { get; }
 
-    /// <summary>챕터 시작점 또는 다른 장면에서 처음 들어오는 에피소드는 장면 루트다.</summary>
+    /// <summary>
+    /// 챕터 시작점 또는 다른 장면에서 처음 들어오는 에피소드는 장면 루트다.
+    ///
+    /// ⛔ <b>판정은 여기 없다</b> — <see cref="ChapterSceneEntryCheck.IsEntry"/>가 갖는다
+    /// (V2 · 2026-09-16). 화면의 ⌂ 표식과 진단이 <b>같은 것</b>을 불러야 사람이 어느 쪽을
+    /// 믿을지 묻지 않는다.
+    /// </summary>
     public bool IsSceneRoot(ChapterEpisode episode) =>
-        ReferenceEquals(StartEpisode, episode) ||
-        Edges.Any(edge => string.Equals(edge.ToEpisodeId, episode.EpisodeId, StringComparison.Ordinal) &&
-                          Episodes.FirstOrDefault(candidate =>
-                              string.Equals(candidate.EpisodeId, edge.FromEpisodeId, StringComparison.Ordinal))
-                              is { } source &&
-                          !string.Equals(source.EffectiveSceneId, episode.EffectiveSceneId, StringComparison.Ordinal));
+        ChapterSceneEntryCheck.IsEntry(Episodes, Edges, episode);
 
     public IReadOnlyList<ChapterEdge> Edges { get; }
 
