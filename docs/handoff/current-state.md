@@ -2,8 +2,9 @@
 
 > ## ⛔ 2026-09-16 — 저작의 주인이 툴로 넘어갔다. 이 문서보다 먼저 읽을 것.
 >
-> [`tool-owns-workbooks-orders.md`](../work-orders/tool-owns-workbooks-orders.md)의 R-A~R-D가
-> 끝났다. **엑셀은 이제 원본이 아니라 산출물이다.** 아래 본문의 2026-08 서술 중 다음은
+> [`tool-owns-workbooks-orders.md`](../work-orders/tool-owns-workbooks-orders.md)의 R-A~R-E가
+> 끝났다. **남은 것은 R-F 하나**다.
+> **엑셀은 이제 원본이 아니라 산출물이다.** 아래 본문의 2026-08 서술 중 다음은
 > **더 이상 사실이 아니다**:
 >
 > - "엑셀에서 저장하면 툴에 반영된다" — **아니다.** [대본 가져오기]를 눌러야 한다
@@ -13,8 +14,12 @@
 >   조건 공급·가드레일은 `ChapterBoardSupply`가 갖는다.
 > - 대본 워크북은 **4열**(인덱스·LineId·화자·내용)이고 `유형`·`조건라벨`과 조건 블록은
 >   폐지됐다 — 분기의 주인은 챕터 `간선` 시트다.
+> - "대사노드의 본문·화자는 엑셀 소유라 읽기 전용" — **아니다.** `_excelOwned` 잠금과
+>   [🔒 대사 잠김] 토글은 R-E에서 은퇴했다. 작가는 **[대본] 탭**(셋째 탭)에서 쓰고,
+>   쓴 글이 워크북을 채운다.
 >
-> 현행 정본: [`r-d-handoff.md`](r-d-handoff.md) → [`r-c-v15-handoff.md`](r-c-v15-handoff.md).
+> 현행 정본: [`r-e-handoff.md`](r-e-handoff.md) → [`r-d-handoff.md`](r-d-handoff.md) →
+> [`r-c-v15-handoff.md`](r-c-v15-handoff.md).
 > 아래 본문은 **그 이전의 구현 이력**으로 읽을 것.
 
 > **2026-09-03 R5 현행 요약.** 런타임 정렬 R0~R5는 완료됐다.
