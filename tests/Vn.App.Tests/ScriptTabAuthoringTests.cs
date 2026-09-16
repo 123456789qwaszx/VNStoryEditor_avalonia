@@ -194,7 +194,168 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         Assert.Equal(["ch02"], Rows(view, SceneTreeRowKind.Chapter));
     });
 
+    // ── 이름 고치기 (줄을 더블클릭) ────────────────────────────────────────
+
+    [Fact]
+    public void 에피소드_이름을_고치면_대본과_대사_노드가_따라간다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 규율은 `EpisodeRenamer` 하나다 — [챕터 그래프]의 이름 칸과 같은 길을 지난다.
+        //    사본을 뜨면 한쪽만 노드를 따라가게 되고, 그러면 원고가 고아가 된다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+
+        string fileId = session.EnsureChapterBoard("ch01");
+        DialogueNode node = session.Editor.AddDialogueNode(fileId, name: "ep01");
+        node.ExcelEpisodeId = "ep01";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Rename(view, SceneTreeRowKind.Episode, "prologue");
+
+        Assert.Equal(["prologue"], session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
+        Assert.Equal("prologue", node.ExcelEpisodeId);
+        Assert.Equal("prologue", node.Name);
+    });
+
+    [Fact]
+    public void 장면_이름을_고치면_그_장면의_에피소드가_전부_따라간다() => HeadlessUi.Run(() =>
+    {
+        // 장면에는 고칠 제 칸이 없다 — 이름표이기 때문이다. 붙은 것을 한 번에 바꾼다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01", "ep02");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep01", "ep02"], "opening");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Rename(view, SceneTreeRowKind.Scene, "classroom");
+
+        Assert.All(
+            session.Editor.FindChapter("ch01")!.Episodes,
+            episode => Assert.Equal("classroom", episode.SceneId));
+    });
+
+    [Fact]
+    public void 이름을_비우거나_Esc를_누르면_없던_일이_된다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+
+        ChapterSceneTree tree = Tree(view);
+        int index = tree.Rows.Select((row, at) => (row, at))
+            .First(item => item.row.Kind == SceneTreeRowKind.Episode).at;
+
+        tree.GetVisualDescendants().OfType<Button>().ElementAt(index)
+            .RaiseEvent(new Avalonia.Input.TappedEventArgs(
+                Avalonia.Controls.Control.DoubleTappedEvent, null!));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        tree.RenameBox!.Text = "안바꿈";
+        tree.RenameBox.RaiseEvent(new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+            Key = Avalonia.Input.Key.Escape
+        });
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(["ep01"], session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
+        Assert.Null(tree.RenameBox);
+    });
+
+    // ── 끌어다 놓기 ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 장면을_다른_챕터에_놓으면_에피소드째_간다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01", "ep02");
+        Chapter(session, "ch02");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep01", "ep02"], "opening");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterSceneTree tree = Tree(view);
+
+        tree.Drag(
+            tree.Rows.Single(row => row.Kind == SceneTreeRowKind.Scene && row.SceneId == "opening"),
+            tree.Rows.Single(row => row.Kind == SceneTreeRowKind.Chapter && row.ChapterId == "ch02"));
+
+        Assert.Empty(session.Editor.FindChapter("ch01")!.Episodes);
+        Assert.Equal(
+            ["ep01", "ep02"],
+            session.Editor.FindChapter("ch02")!.Episodes.Select(episode => episode.EpisodeId));
+
+        // 장면 이름이 따라갔다 — 장면째 옮긴 것이니 다른 장면이 되면 안 된다.
+        Assert.All(
+            session.Editor.FindChapter("ch02")!.Episodes,
+            episode => Assert.Equal("opening", episode.SceneId));
+    });
+
+    [Fact]
+    public void 에피소드를_다른_장면에_놓으면_그_장면이_된다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01", "ep02");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep01"], "opening");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep02"], "classroom");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterSceneTree tree = Tree(view);
+
+        tree.Drag(
+            tree.Rows.Single(row => row.EpisodeId == "ep02"),
+            tree.Rows.Single(row => row.Kind == SceneTreeRowKind.Scene && row.SceneId == "opening"));
+
+        Assert.All(
+            session.Editor.FindChapter("ch01")!.Episodes,
+            episode => Assert.Equal("opening", episode.SceneId));
+    });
+
+    [Fact]
+    public void 놓을_수_없는_자리에는_안_받는다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 에피소드를 챕터에 놓는 것은 안 받는다 — 장면을 안 정한 채로 남는데, 그것은
+        //   "미지정"이라는 뜻이 되어 사람이 의도한 것과 다를 수 있다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+        Chapter(session, "ch02");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep01"], "opening");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterSceneTree tree = Tree(view);
+
+        SceneTreeRow episode = tree.Rows.Single(row => row.EpisodeId == "ep01");
+        SceneTreeRow chapter = tree.Rows.Single(row =>
+            row.Kind == SceneTreeRowKind.Chapter && row.ChapterId == "ch02");
+
+        Assert.False(ChapterSceneTree.Accepts(episode, chapter));
+
+        tree.Drag(episode, chapter);
+
+        Assert.Single(session.Editor.FindChapter("ch01")!.Episodes);
+        Assert.Empty(session.Editor.FindChapter("ch02")!.Episodes);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>그 줄을 더블클릭하고 새 이름을 적어 Enter — 사람이 하는 길 그대로다.</summary>
+    private static void Rename(ScriptView view, SceneTreeRowKind kind, string wanted)
+    {
+        ChapterSceneTree tree = Tree(view);
+
+        int index = tree.Rows.Select((row, at) => (row, at))
+            .First(item => item.row.Kind == kind).at;
+
+        tree.GetVisualDescendants().OfType<Button>().ElementAt(index)
+            .RaiseEvent(new Avalonia.Input.TappedEventArgs(
+                Avalonia.Controls.Control.DoubleTappedEvent, null!));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        tree.RenameBox!.Text = wanted;
+        tree.RenameBox.RaiseEvent(new Avalonia.Input.KeyEventArgs
+        {
+            RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent,
+            Key = Avalonia.Input.Key.Enter
+        });
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
 
     private static ChapterSceneTree Tree(ScriptView view) =>
         view.FindControl<ChapterSceneTree>("EpisodeTree")!;

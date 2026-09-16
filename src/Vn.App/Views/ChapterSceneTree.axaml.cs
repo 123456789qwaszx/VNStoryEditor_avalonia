@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
@@ -46,6 +47,13 @@ internal sealed record SceneTreeRow(
     bool HasSplitEntry,
     bool IsEmptyScript,
     bool IsDraft = false);
+
+/// <summary>
+/// 무엇을 어디로 끌어다 놓았다 (2026-09-16 소유자).
+/// </summary>
+/// <param name="Source">끌어 온 줄 — 장면이거나 에피소드다.</param>
+/// <param name="Target">놓은 줄 — 장면을 놓았으면 챕터, 에피소드를 놓았으면 장면이다.</param>
+internal sealed record SceneTreeDrop(SceneTreeRow Source, SceneTreeRow Target);
 
 /// <summary>줄을 우클릭했을 때 할 수 있는 일 — <b>하는 것은 이 컨트롤이 아니다</b>.</summary>
 internal enum SceneTreeCommand
@@ -126,6 +134,18 @@ public partial class ChapterSceneTree : UserControl
     /// </summary>
     internal event Action<SceneTreeCommand, SceneTreeRow>? CommandRequested;
 
+    /// <summary>
+    /// 이름을 고쳐 달라고 했다 (줄을 더블클릭해 새 이름을 적고 Enter).
+    ///
+    /// ⛔ 여기서도 <b>고치지 않는다</b> — 챕터 개명은 워크북·대본 폴더·판 이름을 함께 끌고
+    /// 가는 일이고(<c>ChapterRenamer</c>), 에피소드 개명은 간선·픽스처·대사 노드를 함께 끌고
+    /// 간다(<c>EpisodeRenamer</c>). 트리가 그것을 알면 규율이 두 벌이 된다.
+    /// </summary>
+    internal event Action<SceneTreeRow, string>? RenameRequested;
+
+    /// <summary>끌어다 놓았다 — 장면을 챕터에, 또는 에피소드를 장면에.</summary>
+    internal event Action<SceneTreeDrop>? Dropped;
+
     internal ChapterEpisodePick? Selection { get; private set; }
 
     /// <summary>지금 보이는 줄들 — 검증이 구조를 재는 자리.</summary>
@@ -196,8 +216,21 @@ public partial class ChapterSceneTree : UserControl
     /// 빈 장면 자리를 하나 연다. 겹치지 않는 Id를 골라 돌려준다 — 사람이 나중에 고친다
     /// ([챕터 그래프]의 `장면ID` 칸이 그 자리다. 여기서 안 고치는 이유는 규격 §5).
     /// </summary>
-    internal string AddDraftScene(string chapterId)
+    /// <param name="wanted">
+    /// 정해진 이름. 주면 그대로 쓴다(빈 장면의 이름을 고치거나 다른 챕터로 옮길 때).
+    /// </param>
+    internal string AddDraftScene(string chapterId, string? wanted = null)
     {
+        if (wanted is { Length: > 0 })
+        {
+            _drafts.Add(Draft(chapterId, wanted));
+            _expanded.Add("ch:" + chapterId);
+            _collapsed.Remove("ch:" + chapterId);
+            Draw();
+
+            return wanted;
+        }
+
         var taken = new HashSet<string>(StringComparer.Ordinal);
 
         if (_project?.Chapters.FirstOrDefault(item =>
@@ -298,10 +331,18 @@ public partial class ChapterSceneTree : UserControl
             _cursorKey = _rows[CursorIndex()].Key;
         }
 
+        RenameBox = null;
+
         foreach (SceneTreeRow row in _rows)
         {
-            RowHost.Children.Add(Build(row));
+            RowHost.Children.Add(
+                string.Equals(_renamingKey, row.Key, StringComparison.Ordinal)
+                    ? RenameRow(row)
+                    : Build(row));
         }
+
+        RenameBox?.Focus();
+        RenameBox?.SelectAll();
 
         if (_cursorKey is not null && _rows.Count > 0)
         {
@@ -536,7 +577,176 @@ public partial class ChapterSceneTree : UserControl
             button.ContextMenu = menu;
         }
 
+        // 두 번 눌러 이름 고치기.
+        //
+        // ⚠ <b>Tunnel로 달면 영영 안 온다</b> — DoubleTapped는 올라가는(Bubble) 이벤트라
+        //   내려가는 차례가 아예 없다. 2026-09-16에 테스트가 그 자리에서 잡았다.
+        button.DoubleTapped += (_, args) => UiGuard.Run(null, "이름 고치기", () =>
+        {
+            args.Handled = true;
+            BeginRename(row);
+        });
+
+        button.AddHandler(PointerPressedEvent, (_, _) => _dragKey = Draggable(row) ? row.Key : null,
+            RoutingStrategies.Tunnel);
+
+        button.AddHandler(PointerReleasedEvent, (_, _) => UiGuard.Run(null, "옮기기", () => Release(row)),
+            RoutingStrategies.Tunnel);
+
+        // 끌고 지나가는 동안 <b>받아 줄 자리</b>만 테두리를 낸다 — 아무 표시가 없으면
+        // 사람은 놓아도 되는지 모른 채로 손을 놓는다.
+        button.PointerEntered += (_, _) =>
+        {
+            if (DragSource() is { } source && Accepts(source, row))
+            {
+                button.BorderThickness = new Thickness(1);
+                button.BorderBrush = new SolidColorBrush(Color.FromArgb(200, 61, 123, 217));
+            }
+        };
+
+        button.PointerExited += (_, _) =>
+        {
+            if (!cursor)
+            {
+                button.BorderThickness = new Thickness(0);
+                button.BorderBrush = Brushes.Transparent;
+            }
+        };
+
         return button;
+    }
+
+    // ── 이름 고치기 ─────────────────────────────────────────────────────────
+
+    /// <summary>지금 이름을 고치고 있는 줄. 없으면 null.</summary>
+    private string? _renamingKey;
+
+    /// <summary>그 줄이 지고 있는 이름 — 화면 글월이 아니라 <b>Id</b>다(꼬리말이 붙어 있다).</summary>
+    internal static string NameOf(SceneTreeRow row) => row.Kind switch
+    {
+        SceneTreeRowKind.Chapter => row.ChapterId,
+        SceneTreeRowKind.Scene => row.SceneId ?? string.Empty,
+        _ => row.EpisodeId ?? string.Empty
+    };
+
+    private void BeginRename(SceneTreeRow row)
+    {
+        _renamingKey = row.Key;
+        Draw();
+    }
+
+    /// <summary>고치는 중인 칸 — <b>테스트의 손잡이</b>이자 실제 입력칸이다.</summary>
+    internal TextBox? RenameBox { get; private set; }
+
+    private Control RenameRow(SceneTreeRow row)
+    {
+        var box = new TextBox
+        {
+            Text = NameOf(row),
+            FontSize = 11,
+            Padding = new Thickness(4, 1),
+            Margin = new Thickness(row.Depth * 14 + 13, 0, 0, 0)
+        };
+
+        void Commit(bool keep)
+        {
+            _renamingKey = null;
+            RenameBox = null;
+
+            string wanted = box.Text?.Trim() ?? string.Empty;
+
+            if (keep && wanted.Length > 0 &&
+                !string.Equals(wanted, NameOf(row), StringComparison.Ordinal))
+            {
+                RenameRequested?.Invoke(row, wanted);
+            }
+
+            Draw();
+        }
+
+        box.KeyDown += (_, args) => UiGuard.Run(null, "이름 고치기", () =>
+        {
+            if (args.Key is Key.Enter or Key.Escape)
+            {
+                args.Handled = true;
+                Commit(args.Key == Key.Enter);
+            }
+        });
+
+        // 딴 데를 누르면 없던 일로 — 고치다 만 이름이 남아 있으면 무엇이 진짜인지 흐려진다.
+        box.LostFocus += (_, _) => UiGuard.Run(null, "이름 고치기", () =>
+        {
+            if (string.Equals(_renamingKey, row.Key, StringComparison.Ordinal))
+            {
+                Commit(keep: false);
+            }
+        });
+
+        RenameBox = box;
+        return box;
+    }
+
+    // ── 끌어다 놓기 ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 끌고 있는 줄. ⛔ <b>Avalonia의 DragDrop을 안 쓴다</b> — 창 밖으로 나가는 끌기가 아니라
+    /// 한 컨트롤 안에서 줄을 옮기는 일이고, 눌림·놓임만으로 충분하다. 그 편이 화면 없이도
+    /// 그대로 잴 수 있다(끌기 이벤트는 헤드리스에서 만들 수가 없다).
+    /// </summary>
+    private string? _dragKey;
+
+    /// <summary>지금 끌고 있는 줄. 없으면 null.</summary>
+    private SceneTreeRow? DragSource() =>
+        _dragKey is null
+            ? null
+            : _rows.FirstOrDefault(row => string.Equals(row.Key, _dragKey, StringComparison.Ordinal));
+
+    /// <summary>끌 수 있는 줄 — 장면과 에피소드. 챕터는 담는 자리라 끌지 않는다.</summary>
+    private static bool Draggable(SceneTreeRow row) =>
+        row.Kind is SceneTreeRowKind.Scene or SceneTreeRowKind.Episode;
+
+    private void Release(SceneTreeRow target)
+    {
+        if (_dragKey is not { } key)
+        {
+            return;
+        }
+
+        _dragKey = null;
+
+        if (string.Equals(key, target.Key, StringComparison.Ordinal) ||
+            _rows.FirstOrDefault(row => string.Equals(row.Key, key, StringComparison.Ordinal))
+                is not { } source ||
+            !Accepts(source, target))
+        {
+            return;
+        }
+
+        Dropped?.Invoke(new SceneTreeDrop(source, target));
+    }
+
+    /// <summary>
+    /// 놓을 수 있는 자리인가 — <b>장면은 챕터에, 에피소드는 장면에</b>.
+    ///
+    /// ⚠ 에피소드를 챕터에 놓는 것은 안 받는다: 장면을 안 정한 채로 남는데, 그것은
+    /// <b>미지정</b>이라는 뜻이 되어 사람이 의도한 것과 다를 수 있다. 갈 곳을 짚게 한다.
+    /// </summary>
+    internal static bool Accepts(SceneTreeRow source, SceneTreeRow target) => source.Kind switch
+    {
+        SceneTreeRowKind.Scene => target.Kind == SceneTreeRowKind.Chapter &&
+                                  !string.Equals(source.ChapterId, target.ChapterId, StringComparison.Ordinal),
+
+        SceneTreeRowKind.Episode => target.Kind == SceneTreeRowKind.Scene &&
+                                    !string.Equals(source.SceneId, target.SceneId, StringComparison.Ordinal),
+
+        _ => false
+    };
+
+    /// <summary>화면 없이 끌기를 재는 자리 — 눌림·놓임 두 번을 대신한다.</summary>
+    internal void Drag(SceneTreeRow source, SceneTreeRow target)
+    {
+        _dragKey = Draggable(source) ? source.Key : null;
+        Release(target);
     }
 
     /// <summary>

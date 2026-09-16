@@ -62,6 +62,12 @@ public partial class ScriptView : UserControl
         EpisodeTree.CommandRequested += (command, row) =>
             UiGuard.Run(_session, "탐색기 차림표", () => RunTreeCommand(command, row));
 
+        EpisodeTree.RenameRequested += (row, wanted) =>
+            UiGuard.Run(_session, "이름 고치기", () => Rename(row, wanted));
+
+        EpisodeTree.Dropped += drop =>
+            UiGuard.Run(_session, "옮기기", () => Move(drop));
+
         ChapterAddButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", () =>
         {
             if (_session is not null)
@@ -150,6 +156,145 @@ public partial class ScriptView : UserControl
                 break;
         }
     }
+
+    // ── 이름 고치기 (줄을 더블클릭) ────────────────────────────────────────
+
+    /// <summary>
+    /// 트리에서 고친 이름을 <b>그 이름을 지고 있는 것들</b>과 함께 옮긴다.
+    ///
+    /// ⛔ 규율은 셋 다 밖에 있다 — <see cref="ChapterRenamer"/>(워크북·대본 폴더·판) ·
+    /// <see cref="EpisodeRenamer"/>(간선·픽스처·대본 파일·대사 노드) ·
+    /// <see cref="ProjectEditor.UpdateEpisodeScenes"/>(장면은 이름표라 붙은 것들을 한 번에).
+    /// 여기서 하는 일은 <b>어느 규율을 부를지 고르는 것</b>뿐이다.
+    /// </summary>
+    private void Rename(SceneTreeRow row, string wanted)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        switch (row.Kind)
+        {
+            case SceneTreeRowKind.Chapter:
+                ChapterRenamer.Result chapter =
+                    ChapterRenamer.Rename(_session.Editor, _session.ProjectPath, row.ChapterId, wanted);
+
+                _session.SetStatus(chapter.Renamed
+                    ? $"챕터 '{row.ChapterId}' → '{wanted}'. 워크북·대본 폴더·판이 함께 갔습니다."
+                    : chapter.Failure!);
+                break;
+
+            case SceneTreeRowKind.Episode:
+                EpisodeRenamer.Result episode = EpisodeRenamer.Rename(
+                    _session.Editor, _session.ProjectPath, row.ChapterId, row.EpisodeId!, wanted);
+
+                if (episode.Renamed)
+                {
+                    EpisodeTree.Select(row.ChapterId, wanted);
+                    ShowSelected();
+                }
+
+                _session.SetStatus(episode.Renamed
+                    ? $"에피소드 '{row.EpisodeId}' → '{wanted}'. 간선·픽스처·대본·대사 노드가 함께 갔습니다."
+                    : episode.Failure!);
+                break;
+
+            case SceneTreeRowKind.Scene:
+                RenameScene(row, wanted);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 장면 이름 고치기 = 그 장면을 지고 있던 <b>에피소드들의 <c>SceneId</c>를 한 번에</b> 바꾸기.
+    /// 장면에는 고칠 제 칸이 없다 — 이름표이기 때문이다.
+    ///
+    /// ⚠ 빈 장면은 프로젝트에 없으므로 자리표시만 갈아 끼운다.
+    /// </summary>
+    private void RenameScene(SceneTreeRow row, string wanted)
+    {
+        if (row.IsDraft)
+        {
+            EpisodeTree.DropDraftScene(row.ChapterId, row.SceneId!);
+            EpisodeTree.AddDraftScene(row.ChapterId, wanted);
+            _session!.SetStatus($"빈 장면 자리를 '{wanted}'로 바꿨습니다.");
+            return;
+        }
+
+        List<string> episodes = _session!.Editor.FindChapter(row.ChapterId)?.Episodes
+            .Where(episode =>
+                string.Equals(episode.EffectiveSceneId, row.SceneId, StringComparison.Ordinal))
+            .Select(episode => episode.EpisodeId)
+            .ToList() ?? [];
+
+        _session.Editor.UpdateEpisodeScenes(row.ChapterId, episodes, wanted);
+
+        _session.SetStatus(
+            $"장면 '{row.SceneId}' → '{wanted}'. 에피소드 {episodes.Count}개가 함께 갔습니다.");
+    }
+
+    // ── 끌어다 놓기 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 장면을 다른 챕터로, 에피소드를 다른 장면으로 (2026-09-16 소유자).
+    ///
+    /// ⚠ <b>가로지르게 된 간선은 걷힌다</b> — 간선은 챕터 안의 길이라 두 챕터를 이을 수 없다.
+    /// 몇 개가 걷혔는지 <b>말해 준다</b>: 조용히 지우면 다음에 판을 열었을 때 길이 없어진
+    /// 이유를 알 수가 없다.
+    /// </summary>
+    private void Move(SceneTreeDrop drop)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        (SceneTreeRow source, SceneTreeRow target) = (drop.Source, drop.Target);
+
+        if (source.Kind == SceneTreeRowKind.Scene)
+        {
+            MoveScene(source, target.ChapterId);
+            return;
+        }
+
+        int cut = _session.Editor.MoveEpisodesToChapter(
+            source.ChapterId, [source.EpisodeId!], target.ChapterId, target.SceneId);
+
+        EpisodeTree.Select(target.ChapterId, source.EpisodeId!);
+        ShowSelected();
+
+        _session.SetStatus(
+            $"에피소드 '{source.EpisodeId}'를 장면 '{target.SceneId}'으로 옮겼습니다." + Cut(cut));
+    }
+
+    private void MoveScene(SceneTreeRow scene, string toChapterId)
+    {
+        // 빈 장면은 프로젝트에 없다 — 자리표시를 저쪽 챕터로 옮기는 것이 전부다.
+        if (scene.IsDraft)
+        {
+            EpisodeTree.DropDraftScene(scene.ChapterId, scene.SceneId!);
+            EpisodeTree.AddDraftScene(toChapterId);
+            _session!.SetStatus($"빈 장면 자리를 '{toChapterId}'로 옮겼습니다.");
+            return;
+        }
+
+        List<string> episodes = _session!.Editor.FindChapter(scene.ChapterId)?.Episodes
+            .Where(episode =>
+                string.Equals(episode.EffectiveSceneId, scene.SceneId, StringComparison.Ordinal))
+            .Select(episode => episode.EpisodeId)
+            .ToList() ?? [];
+
+        int cut = _session.Editor.MoveEpisodesToChapter(scene.ChapterId, episodes, toChapterId);
+
+        _session.SetStatus(
+            $"장면 '{scene.SceneId}'을 '{toChapterId}'로 옮겼습니다 " +
+            $"(에피소드 {episodes.Count}개)." + Cut(cut));
+    }
+
+    private static string Cut(int edges) => edges == 0
+        ? string.Empty
+        : $" ⚠ 챕터를 가로지르게 된 길 {edges}개는 걷었습니다 — 간선은 챕터 안에서만 잇습니다.";
 
     /// <summary>
     /// 그 장면에 에피소드 하나. <b>간선이 함께 선다</b> — 챕터 그래프의 [＋ 에피소드]가 세운

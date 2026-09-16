@@ -215,6 +215,127 @@ public sealed partial class ProjectEditor
         });
     }
 
+    /// <summary>
+    /// <b>에피소드 몇을 다른 챕터로 옮긴다</b> — 탐색기에서 장면을 통째로 끌어다 놓는 일이
+    /// 여기로 온다 (2026-09-16 소유자).
+    ///
+    /// 함께 가는 것: <b>장면ID</b>(그대로 두면 장면 이름이 따라간다) · <b>안쪽 간선</b> ·
+    /// <b>연출 그래프의 대사 노드</b>(그래야 글이 따라간다 — 노드가 대본을 들고 있다).
+    ///
+    /// ⛔ <b>가로지르게 된 간선은 걷는다.</b> 간선은 챕터 안의 길이라 두 챕터를 이을 수 없다.
+    /// 조용히 지우지 않고 <b>몇 개였는지 돌려준다</b> — 부르는 쪽이 사람에게 말한다.
+    ///
+    /// ⚠ 도착 챕터에 같은 Id가 있으면 <b>하나도 안 옮긴다</b>. 겹치는 것만 빼고 옮기면
+    /// 그 장면이 두 챕터에 갈려 앉는다.
+    /// </summary>
+    /// <param name="sceneId">
+    /// 도착에서의 장면. null이면 <b>지금 장면을 그대로</b> 들고 간다(장면째 옮기기).
+    /// </param>
+    /// <returns>걷힌 간선 수.</returns>
+    public int MoveEpisodesToChapter(
+        string fromChapterId,
+        IReadOnlyCollection<string> episodeIds,
+        string toChapterId,
+        string? sceneId = null)
+    {
+        ArgumentNullException.ThrowIfNull(episodeIds);
+
+        ChapterDocument from = RequireChapter(fromChapterId);
+        ChapterDocument to = RequireChapter(toChapterId);
+
+        var wanted = new HashSet<string>(episodeIds, StringComparer.Ordinal);
+
+        List<ChapterEpisode> moving = from.Episodes
+            .Where(episode => wanted.Contains(episode.EpisodeId))
+            .ToList();
+
+        if (moving.Count == 0)
+        {
+            return 0;
+        }
+
+        if (ReferenceEquals(from, to))
+        {
+            // 같은 챕터 안이면 옮길 것이 없다 — 장면만 다시 긋는다.
+            if (sceneId is not null)
+            {
+                UpdateEpisodeScenes(fromChapterId, moving.Select(episode => episode.EpisodeId).ToList(), sceneId);
+            }
+
+            return 0;
+        }
+
+        if (moving.Where(episode => FindEpisode(to, episode.EpisodeId) is not null)
+                .Select(episode => episode.EpisodeId).ToList() is { Count: > 0 } clash)
+        {
+            throw new InvalidOperationException(
+                $"'{toChapterId}'에 같은 Id가 이미 있습니다: {string.Join(", ", clash)}. " +
+                "이름을 먼저 바꿔 주세요.");
+        }
+
+        var ids = new HashSet<string>(
+            moving.Select(episode => episode.EpisodeId), StringComparer.Ordinal);
+
+        List<ChapterEdge> inside = from.Edges
+            .Where(edge => ids.Contains(edge.FromEpisodeId) && ids.Contains(edge.ToEpisodeId))
+            .ToList();
+
+        List<ChapterEdge> cut = from.Edges
+            .Where(edge => ids.Contains(edge.FromEpisodeId) ^ ids.Contains(edge.ToEpisodeId))
+            .ToList();
+
+        // 도착 판의 오른쪽에 붙인다 — 그대로 두면 남의 카드 위에 겹쳐 앉는다.
+        double shift = to.Episodes.Count == 0
+            ? 0
+            : to.Episodes.Max(episode => episode.X) + 260 - moving.Min(episode => episode.X);
+
+        StoryFile? fromBoard = BoardOf(fromChapterId);
+
+        List<DialogueNode> nodes = fromBoard?.Nodes.OfType<DialogueNode>()
+            .Where(node => ids.Contains(
+                node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name))
+            .ToList() ?? [];
+
+        // ⚠ Mutate 밖에서 보장한다 — 안에서 부르면 변경이 겹쳐 쌓인다.
+        StoryFile? toBoard = nodes.Count > 0 ? RequireFile(EnsureChapterBoard(toChapterId)) : null;
+
+        Mutate(() =>
+        {
+            foreach (ChapterEpisode episode in moving)
+            {
+                from.Episodes.Remove(episode);
+            }
+
+            foreach (ChapterEdge edge in inside.Concat(cut))
+            {
+                from.Edges.Remove(edge);
+            }
+
+            foreach (ChapterEpisode episode in moving)
+            {
+                to.Episodes.Add(episode with
+                {
+                    X = Math.Round(episode.X + shift, 2),
+                    SceneId = sceneId ?? episode.SceneId
+                });
+            }
+
+            to.Edges.AddRange(inside);
+
+            foreach (DialogueNode node in nodes)
+            {
+                fromBoard!.Nodes.Remove(node);
+                toBoard!.Nodes.Add(node);
+            }
+        });
+
+        return cut.Count;
+    }
+
+    private StoryFile? BoardOf(string chapterId) =>
+        Project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+
     /// <summary>여러 에피소드의 장면ID를 한 번에 — 장면 경계는 묶어서 긋는 값이다.</summary>
     public void UpdateEpisodeScenes(
         string chapterId, IReadOnlyCollection<string> episodeIds, string sceneId)
