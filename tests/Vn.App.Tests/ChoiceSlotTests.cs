@@ -127,18 +127,45 @@ public sealed class ChoiceSlotTests : IDisposable
     });
 
     [Fact]
-    public void 꺼진_점을_누르면_켜지고_문구_칸이_열린다() => HeadlessUi.Run(() =>
+    public void 꺼진_점을_눌러도_켜지지_않고_문구_칸만_열린다() => HeadlessUi.Run(() =>
     {
-        // ⛔ 처음에는 "문구를 적으면 살아난다"였는데 <b>적을 칸을 여는 손짓이 없었다</b>
-        //    (2026-09-16 소유자). 순서가 뒤집혔다: 점을 눌러 켜고, 그다음에 적는다.
+        // ⛔ <b>살리는 것은 적는 행위다</b> (2026-09-17 소유자). 점을 눌러 켜는 길을 잠깐
+        //    뒀다가 물렸다 — 켜기와 적기가 갈라지면 손짓이 둘이 되고, 켜 두고 안 적은 칸이
+        //    뜻 없이 붉게 남는다. 점은 <b>적을 자리로 데려가기만</b> 한다.
         (GraphEditorView graph, AuthoringSession session) = Show();
-
-        Assert.Equal(GraphEditorView.SlotAsleep, Dots(graph, session, "root")[1]);
 
         Press(Rows(graph, session, "root")[1].Children.OfType<Ellipse>().Single());
 
         Assert.NotNull(graph.SlotLabelBox);
+        Assert.Equal(GraphEditorView.SlotAsleep, Dots(graph, session, "root")[1]);
+    });
+
+    [Fact]
+    public void 문구를_비우면_도로_꺼진다() => HeadlessUi.Run(() =>
+    {
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Write(graph, session, "root", slot: 1, "왼쪽으로");
         Assert.Equal(GraphEditorView.SlotLive, Dots(graph, session, "root")[1]);
+
+        Write(graph, session, "root", slot: 1, string.Empty);
+        Assert.Equal(GraphEditorView.SlotAsleep, Dots(graph, session, "root")[1]);
+    });
+
+    [Fact]
+    public void 길을_끊어도_문구는_칸에_남는다() => HeadlessUi.Run(() =>
+    {
+        // 길을 끊는 것과 <b>무엇을 물을지 정한 것</b>은 다른 일이다 — 다시 이을 때 안 친다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        session.Editor.AddEdge("ch01", "root", "a", optionLabel: "왼쪽으로");
+        graph.Rebuild();
+
+        Drag(graph, session, "root", slot: 0, onto: null);
+
+        Assert.Empty(session.Editor.FindChapter("ch01")!.Edges);
+        Assert.Equal("왼쪽으로", Labels(graph, session, "root")[0].Text);
+        Assert.Equal(GraphEditorView.SlotLive, Dots(graph, session, "root")[0]);
     });
 
     [Fact]

@@ -852,7 +852,7 @@ public partial class GraphEditorView : UserControl
         IReadOnlyList<GraphChoicePort> ports = SlotsOf(nodeId);
         bool live = IsLive(slot, ports);
         bool auto = IsAutoSlot(slot, ports);
-        string text = LabelOf(slot);
+        string text = LabelOf(slot, ports);
         IBrush dot = SlotDot(slot, ports);
 
         var knob = new Ellipse
@@ -865,7 +865,7 @@ public partial class GraphEditorView : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = new Cursor(StandardCursorType.Hand),
             [ToolTip.TipProperty] = slot.IsEmpty
-                ? live ? "끌어서 다음 에피소드에 놓으세요." : "눌러서 선택지를 하나 켭니다."
+                ? live ? "끌어서 다음 에피소드에 놓으세요." : "선택지 문구를 적으면 끌 수 있습니다."
                 : "이어져 있습니다. 빈 곳에 끌어다 놓으면 끊깁니다."
         };
 
@@ -911,7 +911,7 @@ public partial class GraphEditorView : UserControl
         line.Children.Add(knob);
 
         line.Children.Add(string.Equals(_editingSlot, SlotKey(slot), StringComparison.Ordinal)
-            ? SlotEditor(slot)
+            ? SlotEditor(slot, ports)
             : label);
 
         // 꺼진 점을 누르면 <b>켠다</b>, 켜진 점을 누르면 <b>끈다</b> — 손짓 하나가 한 가지 뜻이다.
@@ -925,9 +925,8 @@ public partial class GraphEditorView : UserControl
                 return;
             }
 
-            _armedSlots.Add(SlotKey(slot));
-
-            // 켜자마자 문구를 적게 연다 — 켜 두고 아무것도 안 적는 자리는 뜻이 없다.
+            // 꺼진 점을 누르면 <b>문구 칸을 연다</b> — 살리는 것은 적는 행위이지 누르는
+            // 행위가 아니다(2026-09-17 소유자). 점도 문구도 같은 자리로 데려간다.
             _editingSlot = SlotKey(slot);
             Rebuild();
         });
@@ -1946,58 +1945,95 @@ public partial class GraphEditorView : UserControl
     // ── 선택지 슬롯 (R7 P-2) ────────────────────────────────────────────────
 
     /// <summary>
-    /// 아직 안 이은 슬롯에 적어 둔 문구 — <c>{노드}#{칸}</c>.
+    /// <b>아직 안 이은 칸에 적어 둔 문구들</b> — 에피소드마다 <b>차례대로</b>. `null`은 아직
+    /// 아무것도 안 적은 칸이다(= 꺼진 칸).
     ///
-    /// ⛔ <b>저장할 자리가 없다.</b> 간선은 도착이 있어야 존재하므로 도착 없는 문구를 담을
-    /// 칸이 챕터에 없다(R6의 빈 장면과 같은 부류 · <c>docs/plans/R7.md</c> §3-3). 그래서
-    /// 다시 열면 없다 — 다만 <b>문구 자체는 안 잃는다</b>: 적는 즉시 챕터의 선택지 사전에
-    /// 배워 두므로(<c>AddChoiceLabel</c>) 다음에 고를 수 있다.
+    /// ⛔ <b>자리 번호로 들지 않는다</b> (2026-09-16에 고쳤다). 간선이 하나 늘거나 줄면 빈 칸의
+    /// 자리 번호가 통째로 밀리는데, 번호를 열쇠로 쓰면 적어 둔 문구가 <b>엉뚱한 칸에 붙거나
+    /// 사라진다</b>. 차례로 들면 밀림이 저절로 맞는다 — 이은 길이 늘면 앞에서 하나 빠지고,
+    /// 끊으면 그 문구가 앞에 하나 들어온다.
+    ///
+    /// ⚠ 저장하지 않는다. 간선은 도착이 있어야 존재하므로 도착 없는 문구를 담을 칸이 챕터에
+    /// 없다(R6의 빈 장면과 같은 부류). 문구 자체는 적는 즉시 챕터의 선택지 사전에 배운다.
     /// </summary>
-    private readonly Dictionary<string, string> _slotLabels = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<string?>> _pending = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// <b>켜 둔 빈 칸들</b> — 점을 눌러 살린 자리 (2026-09-16 소유자).
-    ///
-    /// 처음에는 "문구를 적으면 살아난다"였는데 <b>적을 칸을 여는 손짓이 없었다</b>.
-    /// 이제 순서가 뒤집혔다: <b>점을 눌러 켜고</b>(회색 → 붉은색) 그 다음에 문구를 적는다.
-    /// 켜는 것과 적는 것이 갈라져 있어야 "무엇을 눌러야 하나"가 안 생긴다.
-    /// </summary>
-    private readonly HashSet<string> _armedSlots = new(StringComparer.Ordinal);
+    /// <summary>그 칸이 <b>빈 칸들 중 몇 번째</b>인가. 이은 칸이면 음수다.</summary>
+    private static int PendingAt(GraphChoicePort slot, IReadOnlyList<GraphChoicePort> slots) =>
+        slot.Slot - slots.Count(item => !item.IsEmpty);
+
+    private string? PendingText(GraphChoicePort slot, IReadOnlyList<GraphChoicePort> slots)
+    {
+        if (!_pending.TryGetValue(slot.FromEpisodeId, out List<string?>? list))
+        {
+            return null;
+        }
+
+        int at = PendingAt(slot, slots);
+
+        return at >= 0 && at < list.Count ? list[at] : null;
+    }
+
+    private void SetPending(GraphChoicePort slot, IReadOnlyList<GraphChoicePort> slots, string? text)
+    {
+        int at = PendingAt(slot, slots);
+
+        if (at < 0)
+        {
+            return;
+        }
+
+        if (!_pending.TryGetValue(slot.FromEpisodeId, out List<string?>? list))
+        {
+            _pending[slot.FromEpisodeId] = list = [];
+        }
+
+        while (list.Count <= at)
+        {
+            list.Add(null);
+        }
+
+        list[at] = text;
+
+        // 꼬리의 꺼진 칸은 들고 있을 이유가 없다.
+        while (list.Count > 0 && list[^1] is null)
+        {
+            list.RemoveAt(list.Count - 1);
+        }
+    }
 
     private static string SlotKey(GraphChoicePort choice) => choice.FromEpisodeId + "#" + choice.Slot;
 
-    /// <summary>그 슬롯이 지금 지고 있는 문구 — 이은 것은 간선에서, 안 이은 것은 적어 둔 데서.</summary>
-    private string LabelOf(GraphChoicePort choice) =>
-        choice.IsEmpty
-            ? _slotLabels.GetValueOrDefault(SlotKey(choice), string.Empty)
-            : choice.Label;
+    /// <summary>그 칸이 지금 지고 있는 문구 — 이은 것은 간선에서, 안 이은 것은 적어 둔 데서.</summary>
+    private string LabelOf(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
+        choice.IsEmpty ? PendingText(choice, slots) ?? string.Empty : choice.Label;
 
     /// <summary>
-    /// 살아 있는 슬롯인가 — <b>문구를 적어야 끌 수 있다</b> (R7 §2 ③, 소유자).
+    /// 살아난 칸인가 — <b>문구를 적으면</b> 살아나고 비우면 도로 꺼진다 (2026-09-17 소유자).
     ///
-    /// ⭐ <b>예외가 하나</b> (2026-09-16 소유자): 세 칸이 <b>전부 비어 있으면 첫 칸은
-    /// 문구가 없어도 살아 있다</b> — 그것이 <b>자동 길</b>이다. 묻지 않고 다음으로 가는
-    /// 길에는 고를 것이 없으니 문구도 없는 것이 맞고(<c>AutoEdgeHasChoiceLabel</c>),
-    /// 그래서 가장 흔한 "그냥 다음" 잇기에 타이핑이 필요 없다.
-    ///
-    /// ⚠ <b>어느 칸에든 문구가 생기면 그 예외가 닫힌다.</b> 자동 길은 그 에피소드의
-    /// <b>유일한 간선</b>이어야 하므로(<c>AutoEdgeHasSiblings</c>), 선택지가 하나라도
-    /// 서면 자동일 수가 없다 — 규칙을 화면이 미리 지킨다.
+    /// ⚠ 점을 눌러 켜는 길도 잠깐 있었는데 소유자가 물렸다 — 켜기와 적기가 갈라져 있으면
+    /// 손짓이 둘이 되고, 켜 두고 안 적은 칸이 <b>뜻 없이</b> 붉게 남는다.
     /// </summary>
-    private bool IsLive(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots)
-    {
-        if (!choice.IsEmpty || LabelOf(choice).Length > 0 || _armedSlots.Contains(SlotKey(choice)))
-        {
-            return true;
-        }
+    private bool IsArmed(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
+        choice.IsEmpty && PendingText(choice, slots) is not null;
 
-        return choice.Slot == 0 && slots.All(other =>
-            other.IsEmpty && LabelOf(other).Length == 0 && !_armedSlots.Contains(SlotKey(other)));
-    }
-
-    /// <summary>이 칸을 끌면 <b>자동 길</b>이 되는가 — 문구 없이 잇는 그 자리다.</summary>
+    /// <summary>
+    /// <b>자동 길 자리</b>인가 — 세 칸이 전부 꺼져 있을 때의 첫 칸 (R7 §2 ③-a).
+    ///
+    /// 자동 길은 문구가 없어야 하고(<c>AutoEdgeHasChoiceLabel</c>) 그 에피소드의 <b>유일한
+    /// 간선</b>이어야 한다(<c>AutoEdgeHasSiblings</c>) — 그래서 이 조건이 정확히 자동 길이
+    /// 설 수 있는 유일한 자리다. <b>화면이 규칙을 미리 지킨다.</b>
+    /// </summary>
     private bool IsAutoSlot(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
-        choice.IsAuto || (choice.IsEmpty && IsLive(choice, slots));
+        choice.IsAuto ||
+        (choice.IsEmpty && choice.Slot == 0 &&
+         slots.All(other => other.IsEmpty && PendingText(other, slots) is null));
+
+    /// <summary>
+    /// 살아 있는 칸인가 — 이어졌거나, 켰거나, 자동 길 자리다.
+    /// </summary>
+    private bool IsLive(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
+        !choice.IsEmpty || IsArmed(choice, slots) || IsAutoSlot(choice, slots);
 
     /// <summary>지금 문구를 적고 있는 칸 — <b>테스트의 손잡이</b>이자 실제 입력칸이다.</summary>
     internal TextBox? SlotLabelBox { get; private set; }
@@ -2014,8 +2050,8 @@ public partial class GraphEditorView : UserControl
     /// <summary>
     /// 그 칸의 색 — <b>세 자리를 한눈에</b> 가른다 (2026-09-16 소유자).
     ///
-    /// | 텅 빈 회색 | 문구가 없어 아직 못 끈다 |
-    /// | 붉은색 | 살아났다 — 끌어다 놓을 수 있다 |
+    /// | 텅 빈 회색 | 아직 꺼져 있다 — 눌러서 켠다 |
+    /// | 붉은색 | 켜졌다 — 끌어다 놓을 수 있다 |
     /// | 초록색 | 이어졌다 |
     /// </summary>
     private IBrush SlotDot(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots) =>
@@ -2092,11 +2128,11 @@ public partial class GraphEditorView : UserControl
     /// 이미 이어진 길이면 <b>그 간선의 문구를 고치고</b>, 아직 안 이었으면 적어만 둔다.
     /// 어느 쪽이든 <b>챕터의 선택지 사전에 배운다</b> — 문구의 주인은 챕터다(v9).
     /// </summary>
-    private Control SlotEditor(GraphChoicePort choice)
+    private Control SlotEditor(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots)
     {
         var box = new TextBox
         {
-            Text = LabelOf(choice),
+            Text = LabelOf(choice, slots),
             FontSize = 10,
             Padding = new Thickness(3, 0),
             MinHeight = 0,
@@ -2110,9 +2146,9 @@ public partial class GraphEditorView : UserControl
 
             string wanted = box.Text?.Trim() ?? string.Empty;
 
-            if (keep && !string.Equals(wanted, LabelOf(choice), StringComparison.Ordinal))
+            if (keep && !string.Equals(wanted, LabelOf(choice, slots), StringComparison.Ordinal))
             {
-                Relabel(choice, wanted);
+                Relabel(choice, slots, wanted);
             }
 
             Rebuild();
@@ -2139,7 +2175,7 @@ public partial class GraphEditorView : UserControl
         return box;
     }
 
-    private void Relabel(GraphChoicePort choice, string wanted)
+    private void Relabel(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots, string wanted)
     {
         if (_session is null)
         {
@@ -2149,16 +2185,11 @@ public partial class GraphEditorView : UserControl
         if (choice.IsEmpty)
         {
             // 담을 간선이 아직 없다 — 화면이 들고, 문구만 챕터의 어휘집에 남긴다.
-            if (wanted.Length == 0)
-            {
-                // 비우면 그 칸은 도로 꺼진다 — 켜 두고 아무것도 안 적은 자리는 뜻이 없다.
-                _slotLabels.Remove(SlotKey(choice));
-                _armedSlots.Remove(SlotKey(choice));
-            }
-            else
-            {
-                _slotLabels[SlotKey(choice)] = wanted;
+            // ⚠ <b>비우면 도로 꺼진다</b> (2026-09-17 소유자) — 문구가 곧 그 칸의 생사다.
+            SetPending(choice, slots, wanted.Length > 0 ? wanted : null);
 
+            if (wanted.Length > 0)
+            {
                 // ⚠ <b>이미 있으면 안 배운다.</b> 사전은 <b>어휘집</b>이라 같은 말이 두 번 들어갈
                 //    자리가 없고, `AddChoiceLabel`은 [선택지 사전] 화면을 위해 중복을 거절한다 —
                 //    여기서 그대로 부르면 <b>흔한 문구를 다시 쓰는 것만으로 실패한다</b>
@@ -2986,7 +3017,7 @@ public partial class GraphEditorView : UserControl
             // ⚠ <b>UiGuard로 받는다.</b> 규칙 위반은 편집기가 예외로 거절하는데(신원 겹침 ·
             //    없는 에피소드), 놓임 처리기는 Avalonia가 부르는 자리라 그대로 터진다.
             //    거절은 상태줄로 가야 한다 — 이 저장소의 모든 편집 창구가 그 규약을 쓴다.
-            UiGuard.Run(_session, "선택지 잇기", () => JoinChoice(choice, target));
+            UiGuard.Run(_session, "선택지 잇기", () => JoinChoice(choice, SlotsOf(port.NodeId), target));
             return;
         }
 
@@ -3003,7 +3034,7 @@ public partial class GraphEditorView : UserControl
     /// [챕터 그래프]에도 그대로 보이고, 내보내기·도달성 증명·V1/V2 진단이 <b>하나도 안 바뀐
     /// 채</b> 그 값을 본다.
     /// </summary>
-    private void JoinChoice(GraphChoicePort choice, string? targetNodeId)
+    private void JoinChoice(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots, string? targetNodeId)
     {
         if (_session is null)
         {
@@ -3031,7 +3062,7 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
-        string label = LabelOf(choice);
+        string label = LabelOf(choice, slots);
 
         // 문구가 없는 채로 살아 있는 칸은 <b>자동 길</b> 자리다 (§2 ③-a).
         bool auto = choice.IsEmpty && label.Length == 0;
@@ -3065,12 +3096,13 @@ public partial class GraphEditorView : UserControl
             optionLabel: label.Length > 0 ? label : null,
             auto: auto);
 
-        // 그 칸의 적어 둔 문구는 이제 간선이 들고 있다.
-        //
-        // ⚠ <b>다른 칸의 것은 안 건드린다.</b> 새 간선은 목록 끝에 붙으므로 빈 칸의 자리
-        //    번호가 안 밀린다 — 이 칸 하나만 지우는 것이 맞다.
-        _slotLabels.Remove(SlotKey(choice));
-        _armedSlots.Remove(SlotKey(choice));
+        // 그 칸의 적어 둔 문구는 이제 간선이 들고 있다 — 차례에서 하나 뺀다. 뒤엣것들이
+        // 한 칸씩 앞으로 오는데, 간선이 하나 늘어 빈 칸도 한 칸씩 밀리므로 자리가 맞는다.
+        if (_pending.TryGetValue(choice.FromEpisodeId, out List<string?>? pending) &&
+            PendingAt(choice, slots) is var at and >= 0 && at < pending.Count)
+        {
+            pending.RemoveAt(at);
+        }
 
         _session.SetStatus(auto
             ? $"'{choice.FromEpisodeId}' → '{episodeId}' 자동으로 이었습니다(문구 없이 지나갑니다)."
@@ -3082,9 +3114,11 @@ public partial class GraphEditorView : UserControl
     /// <summary>
     /// 빈 곳에 놓았다 — 이어져 있던 길을 걷는다.
     ///
-    /// ⚠ 이때는 그 에피소드의 <b>적어 둔 문구를 전부 놓는다</b>. 간선이 줄면 빈 칸의 자리
-    /// 번호가 한 칸씩 내려와 적어 둔 것이 엉뚱한 칸에 붙기 때문이다 — 잘못된 자리에 남기느니
-    /// 비우는 편이 낫다(문구 자체는 챕터의 사전에 남아 있다).
+    /// ⚠ <b>문구는 안 잃는다</b> (2026-09-16 소유자: "연결을 끊더라도 사라지지 않고 유지").
+    /// 길을 끊는 것과 무엇을 물을지 정한 것은 다른 일이다 — 문구는 켜진 빈 칸으로 돌아와
+    /// 다시 이을 수 있다. 칸이 하나 비므로 차례의 <b>맨 앞</b>에 들어간다.
+    ///
+    /// ⚠ 자동 길은 문구가 없으니 칸도 꺼진 채로 돌아온다.
     /// </summary>
     private void Unjoin(GraphChoicePort choice)
     {
@@ -3096,17 +3130,20 @@ public partial class GraphEditorView : UserControl
         _session!.Editor.RemoveEdge(
             choice.ChapterId, choice.FromEpisodeId, choice.ToEpisodeId!, choice.Label);
 
-        _armedSlots.RemoveWhere(key =>
-            key.StartsWith(choice.FromEpisodeId + "#", StringComparison.Ordinal));
-
-        foreach (string key in _slotLabels.Keys
-                     .Where(key => key.StartsWith(choice.FromEpisodeId + "#", StringComparison.Ordinal))
-                     .ToList())
+        if (choice.Label.Length > 0)
         {
-            _slotLabels.Remove(key);
+            if (!_pending.TryGetValue(choice.FromEpisodeId, out List<string?>? pending))
+            {
+                _pending[choice.FromEpisodeId] = pending = [];
+            }
+
+            pending.Insert(0, choice.Label);
         }
 
-        _session.SetStatus($"'{choice.FromEpisodeId}' → '{choice.ToEpisodeId}' 길을 걷었습니다.");
+        _session.SetStatus(
+            $"'{choice.FromEpisodeId}' → '{choice.ToEpisodeId}' 길을 걷었습니다." +
+            (choice.Label.Length > 0 ? $" 문구 '{choice.Label}'은 칸에 남겨 뒀습니다." : string.Empty));
+
         Rebuild();
     }
 
