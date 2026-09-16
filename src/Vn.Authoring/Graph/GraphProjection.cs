@@ -43,13 +43,48 @@ public sealed record ExpandedNodeProjection(
     : GraphItemProjection(FileId, Position);
 
 /// <summary>접힌 StoryFile 하나를 대신하는 회색 프록시.</summary>
+/// <param name="Nodes">
+/// 행 전부를 순서대로. <b><see cref="Scenes"/>를 평평하게 편 것과 같다</b> — 화면은 묶음으로
+/// 그리고 간선·검증은 이 목록으로 센다.
+/// </param>
+/// <param name="Scenes">
+/// 장면 묶음 (R6 S-3 · 2026-09-16). 판이 어느 챕터인지 알 때만 갈린다 — 이름이 챕터와 맞는
+/// 판이 아니거나 <b>장면ID를 하나도 안 적은 챕터</b>면 묶음 하나로 온다(대본 탭 트리와 같은
+/// 규칙 — <c>docs/plans/R6-explorer.md</c> §2).
+/// </param>
 public sealed record CollapsedFileProjection(
     string FileId,
     string FileName,
     string RelativePath,
     GraphPosition Position,
-    IReadOnlyList<CollapsedNodeEntry> Nodes)
+    IReadOnlyList<CollapsedNodeEntry> Nodes,
+    IReadOnlyList<CollapsedSceneGroup> Scenes)
     : GraphItemProjection(FileId, Position);
+
+/// <summary>
+/// 접힌 판 안의 장면 묶음 하나.
+/// </summary>
+/// <param name="SceneId">
+/// 비교의 열쇠. <b>장면에 안 속한 노드</b>(에피소드가 아닌 자유 씬)는 빈 문자열이다 —
+/// 그쪽은 챕터의 진행에 안 실리므로 장면 경계도 없다.
+/// </param>
+/// <param name="DisplayName">
+/// 사람에게 보일 이름. 묶음이 하나뿐이면 <b>머리글을 안 그린다</b>(그릴 이유가 없다).
+/// </param>
+public sealed record CollapsedSceneGroup(
+    string SceneId,
+    string DisplayName,
+    IReadOnlyList<CollapsedNodeEntry> Entries)
+{
+    /// <summary>
+    /// 머리글 줄을 그리는가 — 이름이 있을 때만.
+    ///
+    /// ⛔ <b>이 규칙이 한 자리에 있어야 한다.</b> 머리글은 프록시에서 <b>한 행을 차지</b>하고,
+    /// 간선 끝점의 Y는 <c>머리글높이 + 행번호 × 행높이</c>로 계산된다 — 그리는 쪽과 행 번호를
+    /// 매기는 쪽이 이 판단을 따로 하면 <b>간선이 허공에 붙는다</b>.
+    /// </summary>
+    public bool HasHeader => DisplayName.Length > 0;
+}
 
 /// <summary>
 /// FileProxy 안의 실제 노드 행. 행을 눌렀을 때 선택할 대상과 간선 anchor를 NodeId로 유지한다.

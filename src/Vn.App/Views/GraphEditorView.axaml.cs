@@ -1404,6 +1404,10 @@ public partial class GraphEditorView : UserControl
     {
         var content = new StackPanel { Spacing = 0 };
 
+        // 화면에 실제로 선 행 수 — 장면 머리글을 포함한다. 프록시 높이와 간선 끝점이
+        // 이 수를 쓴다(노드 행 수만 쓰면 머리글만큼 짧아진다).
+        int visualRows = 0;
+
         var headerDot = new Ellipse
         {
             Width = 11,
@@ -1466,12 +1470,23 @@ public partial class GraphEditorView : UserControl
         }
         else
         {
-            for (int index = 0; index < file.Nodes.Count; index++)
+            // ⛔ <b>판 → 장면 → 노드</b> (R6 S-3). 장면 머리글도 <b>한 행을 차지한다</b> —
+            //    간선 끝점의 Y가 `머리글높이 + 행번호 × 행높이`라, 안 세면 그 아래 노드의
+            //    간선이 한 칸씩 위로 붙는다. 세는 규칙의 주인은 `CollapsedSceneGroup.HasHeader`다.
+            foreach (CollapsedSceneGroup scene in file.Scenes)
             {
-                CollapsedNodeEntry entry = file.Nodes[index];
-                ProxyNodeRow row = BuildProxyRow(entry, index);
-                rows.Add(row);
-                content.Children.Add(row.Visual);
+                if (scene.HasHeader)
+                {
+                    content.Children.Add(BuildProxySceneHeader(scene));
+                    visualRows++;
+                }
+
+                foreach (CollapsedNodeEntry entry in scene.Entries)
+                {
+                    ProxyNodeRow row = BuildProxyRow(entry, visualRows++);
+                    rows.Add(row);
+                    content.Children.Add(row.Visual);
+                }
             }
         }
 
@@ -1524,8 +1539,33 @@ public partial class GraphEditorView : UserControl
             _session?.SetFileExpanded(file.FileId, expanded: true);
         };
 
-        return new FileProxyVisual(file.FileId, visual, rows);
+        return new FileProxyVisual(file.FileId, visual, rows, Math.Max(1, visualRows));
     }
+
+    /// <summary>
+    /// 접힌 판 안의 <b>장면 머리글</b> 한 줄 (R6 S-3).
+    ///
+    /// ⚠ 누를 수 없다 — 장면은 담는 자리이고, 고르는 것은 노드다(대본 탭 트리와 같은 규율,
+    /// <c>docs/plans/R6-explorer.md</c> §1). 여기서 누르면 판 끌기가 된다.
+    /// </summary>
+    private static Border BuildProxySceneHeader(CollapsedSceneGroup scene) =>
+        new()
+        {
+            Height = ProxyRowHeight,
+            Background = new SolidColorBrush(Color.FromArgb(26, 107, 114, 128)),
+            Child = new TextBlock
+            {
+                Text = scene.SceneId.Length == 0 ? scene.DisplayName : "▸ " + scene.DisplayName,
+                Margin = new Thickness(14, 0),
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.7,
+                VerticalAlignment = VerticalAlignment.Center,
+                [ToolTip.TipProperty] = scene.SceneId.Length == 0
+                    ? "이 챕터의 진행에 안 실리는 노드들입니다 — 장면 경계가 없습니다."
+                    : $"장면 '{scene.DisplayName}' — 같은 장면끼리 저장·롤백 구간을 공유합니다."
+            }
+        };
 
     private ProxyNodeRow BuildProxyRow(CollapsedNodeEntry entry, int index)
     {
@@ -1975,7 +2015,7 @@ public partial class GraphEditorView : UserControl
         {
             var rect = new Rect(
                 Canvas.GetLeft(proxy.Visual), Canvas.GetTop(proxy.Visual),
-                ProxyWidth, ProxyHeaderHeight + (Math.Max(1, proxy.Rows.Count) * ProxyRowHeight));
+                ProxyWidth, ProxyHeaderHeight + (proxy.VisualRowCount * ProxyRowHeight));
             bounds = bounds is { } current ? current.Union(rect) : rect;
         }
 
@@ -2148,7 +2188,7 @@ public partial class GraphEditorView : UserControl
                 Canvas.GetLeft(proxy.Visual),
                 Canvas.GetTop(proxy.Visual),
                 ProxyWidth,
-                ProxyHeaderHeight + (Math.Max(1, proxy.Rows.Count) * ProxyRowHeight),
+                ProxyHeaderHeight + (proxy.VisualRowCount * ProxyRowHeight),
                 Color.FromRgb(0x6B, 0x72, 0x80));
         }
 
@@ -2511,10 +2551,11 @@ public partial class GraphEditorView : UserControl
 
             int rowIndex = (int)((point.Y - top - ProxyHeaderHeight) / ProxyRowHeight);
 
-            if (rowIndex >= 0 && rowIndex < proxy.Rows.Count)
+            // ⚠ 행 번호는 <b>장면 머리글을 포함한</b> 화면 순서다 (R6 S-3) — 자리로 세지 않고
+            //    각 행이 든 제 번호로 찾는다. 머리글을 누르면 아무 노드도 안 맞는다(맞다).
+            if (proxy.Rows.FirstOrDefault(row => row.Index == rowIndex) is { } hit)
             {
-                ProxyNodeRow row = proxy.Rows[rowIndex];
-                return new GraphNodeHit(row.NodeId, row.NodeKind);
+                return new GraphNodeHit(hit.NodeId, hit.NodeKind);
             }
         }
 
@@ -2726,16 +2767,26 @@ public partial class GraphEditorView : UserControl
 
     private sealed class FileProxyVisual
     {
-        public FileProxyVisual(string fileId, Border visual, IReadOnlyList<ProxyNodeRow> rows)
+        public FileProxyVisual(
+            string fileId, Border visual, IReadOnlyList<ProxyNodeRow> rows, int visualRowCount)
         {
             FileId = fileId;
             Visual = visual;
             Rows = rows;
+            VisualRowCount = visualRowCount;
         }
 
         public string FileId { get; }
         public Border Visual { get; }
         public IReadOnlyList<ProxyNodeRow> Rows { get; }
+
+        /// <summary>
+        /// 화면에 선 행 수 — <b>장면 머리글을 포함한다</b> (R6 S-3).
+        ///
+        /// ⚠ 높이·미니맵이 이것을 쓴다. <c>Rows.Count</c>(노드 행만)를 쓰면 머리글만큼
+        /// 짧아져 아래 행이 상자 밖으로 삐져나온다.
+        /// </summary>
+        public int VisualRowCount { get; }
     }
 
     private sealed record ProxyNodeRow(

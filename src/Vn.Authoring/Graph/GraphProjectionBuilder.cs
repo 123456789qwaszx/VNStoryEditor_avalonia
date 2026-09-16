@@ -1,4 +1,5 @@
-﻿using Vn.Authoring.Definition;
+﻿using Vn.Authoring.Chapters;
+using Vn.Authoring.Definition;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
@@ -105,23 +106,43 @@ public static class GraphProjectionBuilder
                     outgoing.GetValueOrDefault(node.Id)))
                 .ToList();
 
+            IReadOnlyList<CollapsedSceneGroup> scenes = SceneGroups(project, file, entries);
+
             items.Add(new CollapsedFileProjection(
                 file.Id,
                 file.Name,
                 file.RelativePath,
                 ProxyPosition(file, fileIndex),
-                entries));
+                // ⚠ 묶음을 평평하게 편 것이 곧 행 순서다 — 묶으면서 순서가 바뀌므로
+                //   `entries`를 그대로 두면 행 번호와 화면이 어긋난다.
+                scenes.SelectMany(scene => scene.Entries).ToList(),
+                scenes));
         }
 
         // 접힌 파일의 행 번호는 필터로 남은 항목 기준이다. 원본 인덱스를 쓰면 간선 끝이
         // 숨은 행을 가리켜 허공에 붙는다.
+        //
+        // ⚠ <b>장면 머리글도 한 행을 차지한다</b> (R6 S-3). 머리글을 안 세면 그 아래 노드의
+        //    간선이 한 칸씩 위로 붙는다 — 화면과 기하가 같은 셈법을 써야 한다.
         foreach (GraphItemProjection item in items)
         {
-            if (item is CollapsedFileProjection proxy)
+            if (item is not CollapsedFileProjection proxy)
             {
-                for (int row = 0; row < proxy.Nodes.Count; row++)
+                continue;
+            }
+
+            int row = 0;
+
+            foreach (CollapsedSceneGroup scene in proxy.Scenes)
+            {
+                if (scene.HasHeader)
                 {
-                    rowIndexByNodeId[proxy.Nodes[row].NodeId] = row;
+                    row++;
+                }
+
+                foreach (CollapsedNodeEntry entry in scene.Entries)
+                {
+                    rowIndexByNodeId[entry.NodeId] = row++;
                 }
             }
         }
@@ -343,6 +364,84 @@ public static class GraphProjectionBuilder
             _ => throw new NotSupportedException($"지원하지 않는 노드 타입입니다: {node.GetType().Name}")
         };
     }
+
+    /// <summary>
+    /// 접힌 판의 행들을 <b>장면으로 묶는다</b> (R6 S-3 · 2026-09-16).
+    ///
+    /// ⛔ <b>장면은 여기서도 엔티티가 아니다</b> — 노드에서 에피소드로, 에피소드에서
+    /// <c>SceneId</c>로 가는 투영이다. 판 이름이 챕터 Id와 같은 것이 그 다리이고, 그것이
+    /// <c>EnsureChapterBoard</c>가 세우는 규약이다.
+    ///
+    /// ⚠ <b>묶지 않는 경우 둘</b>: ① 챕터를 못 찾는 판(작가의 자유 판) ② 장면ID를 하나도
+    /// 안 적은 챕터. ②는 대본 탭 트리와 <b>같은 규칙</b>이다 — 그대로 묶으면 에피소드 수만큼
+    /// 장면 머리글이 생겨 프록시가 통째로 노이즈가 된다(<c>docs/plans/R6-explorer.md</c> §2).
+    ///
+    /// ⚠ <b>자유 씬은 장면 밖이다.</b> 에피소드가 아닌 대사노드·설정·연출 노드는 챕터의
+    /// 진행에 안 실리므로 장면 경계도 없다 — 맨 뒤 묶음으로 모은다.
+    /// </summary>
+    private static IReadOnlyList<CollapsedSceneGroup> SceneGroups(
+        StoryProject project, StoryFile file, IReadOnlyList<CollapsedNodeEntry> entries)
+    {
+        ChapterDocument? chapter = project.Chapters.FirstOrDefault(item =>
+            string.Equals(item.ChapterId, file.Name, StringComparison.Ordinal));
+
+        if (chapter is null)
+        {
+            return [Single(entries)];
+        }
+
+        IReadOnlyList<ChapterScene> scenes = ChapterSceneGrouping.Of(
+            chapter.ToGraphModel(chapter.ChapterId));
+
+        if (scenes.Count == 0 || scenes.All(scene => scene.IsDefault))
+        {
+            return [Single(entries)];
+        }
+
+        // 노드 → 에피소드는 이름이나 엑셀 표식으로 잇는다 — 대본 탭이 쓰는 규칙과 같아야
+        // 한다(아니면 같은 에피소드를 두 화면이 다르게 짚는다).
+        var sceneOf = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (ChapterScene scene in scenes)
+        {
+            foreach (ChapterEpisode episode in scene.Episodes)
+            {
+                sceneOf[episode.EpisodeId] = scene.SceneId;
+            }
+        }
+
+        string? SceneFor(CollapsedNodeEntry entry) =>
+            project.FindNode(entry.NodeId) is DialogueNode { ExcelEpisodeId: { } episodeId } &&
+            sceneOf.TryGetValue(episodeId, out string? sceneId)
+                ? sceneId
+                : sceneOf.TryGetValue(entry.NodeName, out string? byName) ? byName : null;
+
+        var groups = new List<CollapsedSceneGroup>();
+
+        foreach (ChapterScene scene in scenes)
+        {
+            List<CollapsedNodeEntry> inScene = entries
+                .Where(entry => string.Equals(SceneFor(entry), scene.SceneId, StringComparison.Ordinal))
+                .ToList();
+
+            if (inScene.Count > 0)
+            {
+                groups.Add(new CollapsedSceneGroup(scene.SceneId, scene.DisplayName, inScene));
+            }
+        }
+
+        List<CollapsedNodeEntry> outside = entries.Where(entry => SceneFor(entry) is null).ToList();
+
+        if (outside.Count > 0)
+        {
+            groups.Add(new CollapsedSceneGroup(string.Empty, "장면 밖", outside));
+        }
+
+        return groups;
+    }
+
+    private static CollapsedSceneGroup Single(IReadOnlyList<CollapsedNodeEntry> entries) =>
+        new(string.Empty, string.Empty, entries);
 
     private static GraphPosition ProxyPosition(StoryFile file, int fileIndex)
     {
