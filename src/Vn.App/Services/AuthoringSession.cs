@@ -34,6 +34,14 @@ internal sealed class AuthoringSession
 
     public ProjectEditor Editor { get; }
 
+    /// <summary>
+    /// 챕터 워크북을 내는 자리 (R-F · 2026-09-16).
+    ///
+    /// ⚠ <b>세션이 든다.</b> 화면이 들면 화면을 지나지 않는 편집에서 파일이 낡는다 —
+    /// 되돌리기가 실제 사례다. 미룬 목록(§5.3)도 여기 함께 산다.
+    /// </summary>
+    public ChapterOutput ChapterOutput { get; } = new();
+
     public StoryProject Project => Editor.Project;
 
     /// <summary>현재 프로젝트 manifest 경로. 아직 저장하지 않았으면 null이다.</summary>
@@ -649,9 +657,17 @@ internal sealed class AuthoringSession
 
         bool provisioned = EnsureProjectFolders();
 
+        // ⛔ <b>저장 = 프로젝트에 저장 + 워크북 재출력</b> (지시서 §6.2 · R-F).
+        //
+        //    편집마다 내는 빠른 길이 따로 있지만, 그것만으로는 <b>화면을 지나지 않는
+        //    편집</b>에서 파일이 낡는다 — 되돌리기가 그렇다. 저장 때 전부 내는 것이
+        //    어느 길로 고쳤든 파일이 따라오게 하는 그물이다.
+        ChapterEmitRun emitted = ChapterOutput.EmitAll(Project, ProjectPath, Definition);
+
         StatusMessage = $"{Path.GetFileName(ProjectPath)}에 저장했습니다." +
             (carried > 0 ? $" 이전 폴더의 챕터·대본·정의·에셋 {carried}개 파일을 함께 복사했습니다." : string.Empty) +
-            (provisioned ? " 없던 에셋 폴더·기본 튜닝을 준비했습니다." : string.Empty);
+            (provisioned ? " 없던 에셋 폴더·기본 튜닝을 준비했습니다." : string.Empty) +
+            emitted.Notice();
         Changed?.Invoke(this, new ProjectChangedEventArgs(ProjectChangeKind.Content));
     }
 

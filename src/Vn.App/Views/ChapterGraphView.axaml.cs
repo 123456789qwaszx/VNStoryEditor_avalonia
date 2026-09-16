@@ -989,67 +989,13 @@ public partial class ChapterGraphView : UserControl
         return true;
     }
 
-    /// <summary>
-    /// 구판 챕터 워크북의 `화자` 시트를 정의 파일로 옮기고 시트를 지운다 (2026-08-23 이행).
-    ///
-    /// <b>순서가 규격이다</b>: 시트를 지우는 데 성공한 뒤에 정의 파일에 저장한다. 반대로 하면
-    /// 엑셀이 잡고 있어 못 지운 워크북이 다음 재읽기에서 <b>사람이 방금 지운 이름을 되살린다</b>.
-    /// 지우기가 막히면 이번엔 아무것도 안 하고 다음 기회를 기다린다(원본은 `.bak`에 남는다).
-    /// </summary>
-    private void ImportLegacySpeakerSheets()
-    {
-        if (_session?.ProjectPath is null)
-        {
-            return;
-        }
-
-        List<SpeakerSpec> merged = _session.Definition.Speakers.ToList();
-        bool changed = false;
-
-        foreach (ChapterEntry entry in _entries)
-        {
-            if (entry.Model is not { HasSpeakerSheet: true } model)
-            {
-                continue;
-            }
-
-            if (ChapterWorkbookWriter.RemoveSpeakerSheet(entry.Path).Result.Failure is not null)
-            {
-                continue; // 잠겨 있다 — 다음 재읽기가 다시 시도한다.
-            }
-
-            foreach (ChapterSpeaker speaker in model.Speakers)
-            {
-                string name = speaker.Name.Trim();
-
-                if (name.Length == 0 ||
-                    merged.Any(item => string.Equals(item.Name, name, StringComparison.Ordinal)))
-                {
-                    continue;
-                }
-
-                merged.Add(new SpeakerSpec
-                {
-                    Name = name,
-                    CharacterId = speaker.CharacterId?.Trim() ?? string.Empty
-                });
-
-                changed = true;
-            }
-        }
-
-        if (!changed)
-        {
-            return;
-        }
-
-        if (_session.SaveSpeakers(merged))
-        {
-            _session.SetStatus(
-                $"챕터 엑셀의 `화자` 시트를 프로젝트 화자 목록으로 옮겼습니다({merged.Count}명) — " +
-                "이제 [화자] 탭에서 편집합니다. 시트는 사라졌고 이전 상태는 .bak에 있습니다.");
-        }
-    }
+    // ⛔ `ImportLegacySpeakerSheets`는 2026-09-16에 걷혔다 (R-F). 구판 `화자` 시트를 정의
+    //    파일로 옮기고 <b>그 시트를 지우던</b> 길인데, 둘 다 자리가 바뀌었다: 옮기는 일은
+    //    워크북을 읽는 그 한 번(임포터)의 것이 됐고, 지우는 일은 <b>안 해도 된다</b> —
+    //    다음 출력이 워크북을 통째로 갈아 끼우며 시트째 사라진다.
+    //
+    //    옛 규율("시트를 지운 뒤에 정의 파일에 저장한다")도 함께 사라졌다. 그것이 지키던
+    //    것은 <em>다음 재읽기</em>가 지운 이름을 되살리는 일이었는데, 재읽기가 없다.
 
     // ⛔ `PushVocabularyToEpisodes`와 그 지문(`_pushedVocabularySignature`)은 2026-09-16에
     //    걷혔다 (R-D, 지시서 §2: "읽기 전용 산출물엔 드롭다운이 없다").
@@ -2329,9 +2275,25 @@ public partial class ChapterGraphView : UserControl
 
         RefreshLockBanner();
 
-        if (_excelHoldsChapter != before)
+        if (_excelHoldsChapter == before)
         {
-            RefreshPropertyPanel(preserveTyping: true);
+            return;
+        }
+
+        RefreshPropertyPanel(preserveTyping: true);
+
+        // ⛔ <b>미룬 것을 잊지 않는다</b> (§5.3). 엑셀이 파일을 놓은 그 순간이 다시 낼
+        //    자리다 — 사람이 아무것도 안 눌러도 파일이 프로젝트를 따라잡는다.
+        if (!_excelHoldsChapter && _session is { } session)
+        {
+            ChapterEmitRun caught = session.ChapterOutput.Retry(
+                session.Project, session.ProjectPath, session.Definition);
+
+            if (caught.Written.Count > 0)
+            {
+                session.SetStatus(
+                    $"엑셀이 닫혀 미뤄 둔 워크북 {caught.Written.Count}개를 다시 냈습니다.");
+            }
         }
     }
 
@@ -3168,11 +3130,11 @@ public partial class ChapterGraphView : UserControl
             session.Editor.RenameNode(dialogueNode.Id, newId);
         }
 
-        ChapterWriteResult emitted = EmitSelectedChapter();
+        ChapterEmitRun emitted = EmitSelectedChapter();
 
         _session?.SetStatus(
             $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처·대본 파일·대사 노드가 함께 따라갔습니다." +
-            (emitted.Written ? string.Empty : $" ⚠ {emitted.Failure}"));
+            emitted.Notice());
     }
 
     /// <summary>도착만 주고 잇기 — 문구 없는 길(보이지 않는 기본)이 선다.</summary>
@@ -3238,7 +3200,7 @@ public partial class ChapterGraphView : UserControl
         _selectedEpisodeId = null;
 
         string detached = DetachBoardNode(episodeId);
-        ChapterWriteResult emitted = EmitSelectedChapter();
+        ChapterEmitRun emitted = EmitSelectedChapter();
 
         _session?.SetStatus(
             $"'{episodeId}'과 그 간선·픽스처 참조를 지웠습니다." +
@@ -3246,7 +3208,7 @@ public partial class ChapterGraphView : UserControl
                 ? $" 대본 파일은 {IoPath.GetFileName(backup)}으로 밀어 두었습니다."
                 : string.Empty) +
             detached +
-            (emitted.Written ? string.Empty : $" ⚠ {emitted.Failure}"));
+            emitted.Notice());
     }
 
     /// <summary>
@@ -3378,11 +3340,11 @@ public partial class ChapterGraphView : UserControl
             EnsureDialogueNodeFor(episodeId);
         }
 
-        ChapterWriteResult emitted = EmitSelectedChapter();
+        ChapterEmitRun emitted = EmitSelectedChapter();
 
         _session?.SetStatus(
             $"'{episodeId}'을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요." +
-            (emitted.Written ? string.Empty : $" ⚠ {emitted.Failure}"));
+            emitted.Notice());
     }
 
     /// <summary>
@@ -3445,10 +3407,8 @@ public partial class ChapterGraphView : UserControl
     {
         change();
 
-        ChapterWriteResult emitted = EmitSelectedChapter();
-
         // 잘된 일은 조용하다 — 못 냈을 때만 그 사실이 성공 문구 뒤에 붙는다.
-        _session?.SetStatus(emitted.Written ? success : $"{success} ⚠ {emitted.Failure}");
+        _session?.SetStatus(success + EmitSelectedChapter().Notice());
 
         // 못 냈다면 대개 엑셀이 잡고 있어서다 — 그 사실을 배너로도 세운다(상태줄은 묻힌다).
         RefreshLockState();
@@ -3459,22 +3419,15 @@ public partial class ChapterGraphView : UserControl
     ///
     /// ⚠ 셀 하나를 고치지 않는다 — 전체를 새로 쓰므로 행 삽입·삭제와 인덱스 충돌이라는
     /// 난제가 이 경계에서 사라진다.
+    ///
+    /// ⚠ 내는 장치는 <b>세션의 것</b>이다 — 미룬 목록(§5.3)이 화면마다 갈리면 안 되고,
+    /// 화면을 지나지 않는 편집(되돌리기)도 같은 자리를 지나야 한다.
     /// </summary>
-    private ChapterWriteResult EmitSelectedChapter()
-    {
-        if (_session is null ||
-            _selectedChapterId is not { } chapterId ||
-            _session.Editor.FindChapter(chapterId) is not { } chapter ||
-            ChapterLibrary.FolderFor(_session.ProjectPath) is not { } folder)
-        {
-            return ChapterWriteResult.Ok;
-        }
-
-        Directory.CreateDirectory(folder);
-
-        string path = IoPath.Combine(folder, chapterId + ".xlsx");
-        return ChapterWorkbookEmitter.Emit(path, chapter.ToGraphModel(path));
-    }
+    private ChapterEmitRun EmitSelectedChapter() =>
+        _session is { } session && _selectedChapterId is { } chapterId
+            ? session.ChapterOutput.Emit(
+                session.Project, session.ProjectPath, chapterId, session.Definition)
+            : ChapterEmitRun.Empty;
 
     /// <summary>
     /// 옛 <c>Report</c> — 워크북에 <b>직접</b> 쓰던 시절의 창구다. 아직 파일을 직접 만지는
