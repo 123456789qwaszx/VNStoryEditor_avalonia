@@ -698,6 +698,14 @@ public partial class ChapterGraphView : UserControl
                 $"'{lifted.ViaEpisodeId}'을(를) 길 가운데 에피소드로 폈습니다.");
         }
 
+        // 판에 남은 옛 자유 씬을 에피소드로 올린다 (같은 결정 ⑤). ⚠ 위의 펴기 <b>다음</b>이다 —
+        // 간선에 매달렸던 씬은 거기서 진짜 간선을 받으므로 `도달불가 허용`이 필요 없다.
+        if (_session.Editor.LiftFreeScenes(entry.ChapterId) is { Count: > 0 } raised)
+        {
+            _session.SetStatus(
+                $"자유 씬 {raised.Count}개를 에피소드로 올렸습니다 — {string.Join(", ", raised)}.");
+        }
+
         // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
         _boardWarnings.AddRange(
             ChapterBoardSupply.WarnFreeNodeStatWrites(_session.Editor, fileId, model));

@@ -897,6 +897,106 @@ public sealed partial class ProjectEditor
         board.Nodes.OfType<DialogueNode>().FirstOrDefault(node =>
             EpisodeNaming.EpisodeFor(chapter, node) is { } found &&
             string.Equals(found.EpisodeId, episode.EpisodeId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// <b>판에 남은 옛 자유 씬을 에피소드로 올린다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17).
+    ///
+    /// ⛔ 자유 씬은 <b>종류가 아니라 빈자리</b>였다 — 에피소드가 없는 대사 노드. 종류가
+    /// 없어졌으므로 그 빈자리도 없어진다: 챕터 판의 대사 노드는 전부 에피소드다.
+    ///
+    /// ⚠ <b>들어오는 간선이 없다.</b> 이것들은 대본의 갈래가 <c>&lt;&lt;detour&gt;&gt;</c>로
+    /// 부르던 곁가지라 챕터 진행에는 안 실려 있었다. 그래서 <c>도달불가 허용</c>을 켜서
+    /// 올린다 — 도달성 증명은 <b>한 줄도 안 건드린다</b>(저쪽 런타임의 오라클이다).
+    ///
+    /// ⚠ <b>부른 쪽의 장면</b>에 둔다. 곁가지는 제 본줄 옆에 있어야 판에서 읽힌다.
+    ///
+    /// ⚠ <see cref="LiftViaScenes"/> <b>다음에</b> 부른다 — 간선에 매달렸던 씬은 그쪽이
+    /// 진짜 간선을 달아 주므로 <c>도달불가 허용</c>이 필요 없다. 순서를 뒤집으면 멀쩡히
+    /// 이어질 씬에 허용 표가 붙는다.
+    /// </summary>
+    /// <returns>올린 에피소드Id들. 올릴 것이 없으면 빈 목록이고 프로젝트를 안 건드린다.</returns>
+    public IReadOnlyList<string> LiftFreeScenes(string chapterId)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+
+        if (Project.Files.FirstOrDefault(item =>
+                string.Equals(item.Name, chapterId, StringComparison.Ordinal)) is not { } board)
+        {
+            return [];
+        }
+
+        var taken = new HashSet<string>(
+            chapter.Episodes.Select(episode => episode.EpisodeId), StringComparer.Ordinal);
+        var plans = new List<(DialogueNode Node, string EpisodeId)>();
+
+        foreach (DialogueNode node in board.Nodes.OfType<DialogueNode>())
+        {
+            // ⚠ 설정노드(A계층 조건 배관)는 애초에 `DialogueNode`가 아니라 여기 안 걸린다.
+            if (EpisodeNaming.EpisodeFor(chapter, node) is not null || !taken.Add(node.Name))
+            {
+                // 이름이 겹치면 건드리지 않는다 — 조용히 개명하면 어느 씬이 어디로 갔는지
+                // 아무도 모른다. 사람이 판에서 고치면 다음 번에 올라간다.
+                continue;
+            }
+
+            plans.Add((node, node.Name));
+        }
+
+        if (plans.Count == 0)
+        {
+            return [];
+        }
+
+        Mutate(() =>
+        {
+            foreach ((DialogueNode node, string episodeId) in plans)
+            {
+                node.ExcelEpisodeId = episodeId;
+
+                chapter.Episodes.Add(new ChapterEpisode(
+                    episodeId,
+                    episodeId,
+                    Index: string.Empty,
+                    DialogueEntry: episodeId,
+                    Math.Round(node.Layout.X, 2),
+                    Math.Round(node.Layout.Y, 2),
+                    Memo: null,
+                    SourceRow: 0,
+                    AllowUnreachable: true)
+                {
+                    SceneId = SceneOfCaller(board, chapter, node)
+                });
+            }
+        });
+
+        return plans.Select(plan => plan.EpisodeId).ToList();
+    }
+
+    /// <summary>
+    /// 이 곁가지를 <c>&lt;&lt;detour&gt;&gt;</c>로 부르는 카드의 <b>장면</b>.
+    /// 아무도 안 부르면 <c>null</c>이다 — 그때는 장면 밖에 선다.
+    /// </summary>
+    private static string? SceneOfCaller(
+        StoryFile board, ChapterDocument chapter, DialogueNode target)
+    {
+        foreach (DialogueNode caller in board.Nodes.OfType<DialogueNode>())
+        {
+            bool calls =
+                caller.BranchExits.Values.Any(id =>
+                    string.Equals(id, target.Id, StringComparison.Ordinal)) ||
+                caller.LineExtensions.Any(extension =>
+                    string.Equals(extension.DetourTargetNodeId, target.Id, StringComparison.Ordinal)) ||
+                caller.ChoiceExits.Values.Any(id =>
+                    string.Equals(id, target.Id, StringComparison.Ordinal));
+
+            if (calls && EpisodeNaming.EpisodeFor(chapter, caller) is { } episode)
+            {
+                return episode.SceneId;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>
