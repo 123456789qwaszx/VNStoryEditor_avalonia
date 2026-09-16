@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.ScriptView">
+
+    <!-- [대본] — 작가의 자리 (R-E · 지시서 §6).
+         ⛔ 노드도 포트도 없다. 이 화면이 보여 주는 것은 <b>글</b>뿐이고, 그것이
+            이 탭이 연출 그래프 안이 아니라 밖에 선 이유다(§6.1). -->
+    <Grid ColumnDefinitions="220,*">
+
+        <!-- 왼쪽 — 챕터 → 에피소드 -->
+        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto,2*" Margin="8">
+            <TextBlock Grid.Row="0" Text="챕터" FontWeight="SemiBold" Margin="2,0,0,4" />
+            <ListBox Grid.Row="1" x:Name="ChapterList" />
+
+            <TextBlock Grid.Row="2" Text="에피소드" FontWeight="SemiBold" Margin="2,10,0,4" />
+            <ListBox Grid.Row="3" x:Name="EpisodeList" />
+        </Grid>
+
+        <!-- 오른쪽 — 글 -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto" Margin="0,8,8,8">
+
+            <TextBlock Grid.Row="0"
+                       x:Name="HeaderText"
+                       FontWeight="SemiBold"
+                       Margin="2,0,0,6" />
+
+            <!-- AcceptsReturn — 여기는 글을 쓰는 자리다. Tab은 넘기지 않는다(들여쓰기 없음). -->
+            <TextBox Grid.Row="1"
+                     x:Name="ScriptBox"
+                     AcceptsReturn="True"
+                     AcceptsTab="False"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas,D2Coding,monospace"
+                     VerticalContentAlignment="Top" />
+
+            <TextBlock Grid.Row="2"
+                       x:Name="ProblemsText"
+                       IsVisible="False"
+                       Foreground="IndianRed"
+                       TextWrapping="Wrap"
+                       Margin="2,6,0,0" />
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                <Button x:Name="ApplyButton"
+                        Content="글 반영"
+                        ToolTip.Tip="쓴 글을 이 에피소드의 대사로 반영합니다. 기존 줄의 신원(LineId)은 내용이 바뀌어도 보존됩니다 — 연출·세이브가 그 신원에 매달려 있습니다." />
+
+                <TextBlock x:Name="HintText"
+                           VerticalAlignment="Center"
+                           Opacity="0.65"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

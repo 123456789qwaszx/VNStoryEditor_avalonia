@@ -21,7 +21,9 @@ namespace Vn.App.Tests;
 public sealed class PresentationGraphStageJumpTests
 {
     private const int GraphTab = 1;
-    private const int StageTab = 2;
+    /// <summary>무대 프리뷰 탭의 자리. ⚠ 인덱스는 탭이 늘 때마다 낡는다 — 이름으로 찾는다.</summary>
+    private static TabItem StageTab(Window window) =>
+        window.FindControl<TabItem>("StageTabItem")!;
 
     [Fact]
     public void 대사_노드를_더블클릭하면_그_씬이_무대에_오른다() => HeadlessUi.Run(() =>
@@ -30,7 +32,7 @@ public sealed class PresentationGraphStageJumpTests
 
         DoubleClick(window, CardCenter(window, dialogue.Id));
 
-        Assert.Equal(StageTab, Tabs(window).SelectedIndex);
+        Assert.Same(StageTab(window), Tabs(window).SelectedItem);
 
         // "더블클릭한 노드가 선택된 채" — 무대가 그리는 것은 <b>그 대사의 씬</b>이다.
         // 대사 노드를 고른 채로 두면 발행본이 그려져 잠긴 화면이 되므로, 선택은
@@ -67,7 +69,7 @@ public sealed class PresentationGraphStageJumpTests
 
         DoubleClick(window, CardCenter(window, second.Id));
 
-        Assert.Equal(StageTab, Tabs(window).SelectedIndex);
+        Assert.Same(StageTab(window), Tabs(window).SelectedItem);
         Assert.True(StageIsShowing(session, second.Id));
 
         window.Close();
@@ -112,7 +114,7 @@ public sealed class PresentationGraphStageJumpTests
         Assert.False(IsCentered(window, dialogue.Id), "시작부터 가운데면 이 시험은 아무것도 안 잰다");
 
         DoubleClick(window, CardCenter(window, dialogue.Id));
-        Assert.Equal(StageTab, Tabs(window).SelectedIndex);
+        Assert.Same(StageTab(window), Tabs(window).SelectedItem);
 
         Tabs(window).SelectedIndex = GraphTab;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -140,7 +142,7 @@ public sealed class PresentationGraphStageJumpTests
             .FindControl<ScrollViewer>("GraphScroll")!;
         Vector before = scroll.Offset;
 
-        Tabs(window).SelectedIndex = 0; // 챕터 그래프
+        Tabs(window).SelectedItem = window.FindControl<TabItem>("ChapterTabItem")!; // 챕터 그래프
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Tabs(window).SelectedIndex = GraphTab;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();

@@ -254,9 +254,9 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         private DialogueNode Node => Session.Project.EnumerateNodes().OfType<DialogueNode>()
             .Single(item => item.ExcelEpisodeId == "main05.02");
 
-        public void ShowChapterGraph() => SelectTab(0);
+        public void ShowChapterGraph() => SelectTab("ChapterTabItem");
 
-        public void ShowPresentationGraph() => SelectTab(1);
+        public void ShowPresentationGraph() => SelectTab("GraphTabItem");
 
         public void SelectNodeInPresentationGraph()
         {
@@ -325,9 +325,12 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
                 .GetVisualDescendants().OfType<TextBlock>()
                 .Select(block => block.Text ?? string.Empty));
 
-        private void SelectTab(int index)
+        /// <summary>탭은 <b>이름으로</b> 고른다 — 인덱스는 탭이 늘 때마다 낡는다.</summary>
+        private void SelectTab(string tabName)
         {
-            window.FindControl<TabControl>("MainTabs")!.SelectedIndex = index;
+            window.FindControl<TabControl>("MainTabs")!.SelectedItem =
+                window.FindControl<TabItem>(tabName)!;
+
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
     }

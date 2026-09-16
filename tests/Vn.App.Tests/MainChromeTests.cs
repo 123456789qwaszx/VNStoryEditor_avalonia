@@ -50,9 +50,15 @@ public sealed class MainChromeTests
     private static T[] Live<T>(MainWindow window) where T : Control =>
         window.GetVisualDescendants().OfType<T>().ToArray();
 
-    private static void SelectTab(MainWindow window, int index)
+    /// <summary>
+    /// 탭을 <b>이름으로</b> 고른다. ⚠ 인덱스로 고르면 탭이 하나 늘 때마다 이 클래스가
+    /// 통째로 낡는다 — 2026-09-16에 [대본] 탭이 서면서 실제로 그랬다.
+    /// </summary>
+    private static void SelectTab(MainWindow window, string tabName)
     {
-        window.FindControl<TabControl>("MainTabs")!.SelectedIndex = index;
+        window.FindControl<TabControl>("MainTabs")!.SelectedItem =
+            window.FindControl<TabItem>(tabName)!;
+
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
@@ -83,10 +89,10 @@ public sealed class MainChromeTests
 
         var export = window.FindControl<Button>("ExportButton")!;
 
-        SelectTab(window, 1); // 연출 그래프
+        SelectTab(window, "GraphTabItem"); // 연출 그래프
         Assert.True(export.IsVisible);
 
-        SelectTab(window, 0); // 챕터 그래프
+        SelectTab(window, "ChapterTabItem"); // 챕터 그래프
         Assert.False(export.IsVisible);
 
         window.Close();
@@ -106,7 +112,7 @@ public sealed class MainChromeTests
         Assert.Null(window.FindControl<ScrollViewer>("ResourceScroll"));
         Assert.Null(window.FindControl<ToggleButton>("ResourceCollapseToggle"));
 
-        SelectTab(window, 2);
+        SelectTab(window, "StageTabItem");
         var stage = window.FindControl<MiniStagePreview>("StagePreview")!;
         Assert.Contains(stage, Assert.Single(Live<AssetExplorerView>(window)).GetVisualAncestors());
 
@@ -123,17 +129,17 @@ public sealed class MainChromeTests
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        SelectTab(window, 0); // 챕터 그래프 — 없다
+        SelectTab(window, "ChapterTabItem"); // 챕터 그래프 — 없다
         Assert.Empty(Live<DialogueNodeEditor>(window));
         Assert.Empty(Live<AssetExplorerView>(window));
 
-        SelectTab(window, 1); // 연출 그래프 — 편집기 셋이 선다 (탐색기는 2026-08-26에 무대로)
+        SelectTab(window, "GraphTabItem"); // 연출 그래프 — 편집기 셋이 선다 (탐색기는 2026-08-26에 무대로)
         Assert.Single(Live<DialogueNodeEditor>(window));
         Assert.Single(Live<SetNodeEditor>(window));
         Assert.Single(Live<PresentationNodeEditor>(window));
         Assert.Empty(Live<AssetExplorerView>(window));
 
-        SelectTab(window, 2); // 무대 프리뷰 — 편집기는 없고 탐색기가 선다
+        SelectTab(window, "StageTabItem"); // 무대 프리뷰 — 편집기는 없고 탐색기가 선다
         Assert.Empty(Live<DialogueNodeEditor>(window));
         Assert.Empty(Live<PresentationNodeEditor>(window));
         Assert.Single(Live<AssetExplorerView>(window));

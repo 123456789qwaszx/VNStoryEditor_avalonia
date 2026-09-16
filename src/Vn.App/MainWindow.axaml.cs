@@ -124,6 +124,7 @@ public partial class MainWindow : Window
         ApplyTabChrome();
 
         ChapterGraph.Attach(_session);
+        Script.Attach(_session);
         DialogueEditor.Attach(_session);
         SetEditor.Attach(_session);
         PresentationEditor.Attach(_session);

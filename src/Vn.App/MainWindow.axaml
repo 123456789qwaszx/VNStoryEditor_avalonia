@@ -83,6 +83,11 @@
             </TabItem>
             <!-- 무대 프리뷰 승격 (2026-08-20 소유자) — 우측 아래 조그만 패널이 아니라
                  그래프들과 같은 급의 판이다. 분리 창(창으로 열기)은 이 탭이 대체한다. -->
+            <!-- 작가의 자리 (R-E · 지시서 §6.1: "탭은 곧 역할이다 … 작가만 제 탭이 없었다").
+                 ⚠ 앞 둘의 순서는 건드리지 않는다 — `MainChromeTests`가 고정하고 있다. -->
+            <TabItem x:Name="ScriptTabItem" Header="대본">
+                <views:ScriptView x:Name="Script" />
+            </TabItem>
             <TabItem x:Name="StageTabItem" Header="무대 프리뷰">
                 <views:MiniStagePreview x:Name="StagePreview" />
             </TabItem>

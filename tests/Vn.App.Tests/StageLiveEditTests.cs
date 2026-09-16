@@ -22,7 +22,9 @@ namespace Vn.App.Tests;
 /// </summary>
 public sealed class StageLiveEditTests
 {
-    private const int StageTab = 2;
+    /// <summary>무대 프리뷰 탭의 자리. ⚠ 인덱스는 탭이 늘 때마다 낡는다 — 이름으로 찾는다.</summary>
+    private static TabItem StageTab(Window window) =>
+        window.FindControl<TabItem>("StageTabItem")!;
 
     [Fact]
     public void 무대에서_더한_조작은_씬을_다시_고르지_않아도_무대에_선다() => HeadlessUi.Run(() =>
@@ -40,7 +42,7 @@ public sealed class StageLiveEditTests
 
         // 무대 탭 진입 = 씬 선택 (2026-08-22) — 고른 대사의 연출 채널이 선다.
         session.Select(dialogue.Id);
-        window.FindControl<TabControl>("MainTabs")!.SelectedIndex = StageTab;
+        window.FindControl<TabControl>("MainTabs")!.SelectedItem = StageTab(window);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         PresentationNode presentation = Assert.IsType<PresentationNode>(session.SelectedNode);
