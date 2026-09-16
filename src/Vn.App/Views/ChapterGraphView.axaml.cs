@@ -683,6 +683,21 @@ public partial class ChapterGraphView : UserControl
         ChapterBoardSupply.SupplyChapterConditionsToBoard(
             _session.Editor, _session.Definition, fileId, model);
 
+        // 간선에 매달렸던 옛 연출 씬을 길 가운데로 편다 (R7 P-6 · 결정 ⑤ · 2026-09-17) —
+        // `A —문구→ Via —자동→ B`. 재생 순서는 그대로고, `ViaNodeId`라는 <b>두 번째 표현
+        // 방법</b>이 쓰이지 않게 되어 저절로 빈 문자열로 나간다.
+        //
+        // ⚠ 여기가 맞는 자리인 이유: 멱등이고(올릴 것이 없으면 프로젝트를 한 글자도 안
+        //    건드린다), 내보내기보다 <b>먼저</b> 돈다. 반대로 이미터에서 곁칸을 그냥 비우면
+        //    아직 안 올라온 씬이 산출물에서 <b>조용히 사라진다</b> — 그래서 이미터는 그대로
+        //    두고, 안 올라온 것(이름이 겹치는 자리)은 옛 길로 계속 나간다.
+        foreach (Vn.Authoring.Editing.LiftedViaScene lifted in _session.Editor.LiftViaScenes(entry.ChapterId))
+        {
+            _session.SetStatus(
+                $"'{lifted.FromEpisodeId}'→'{lifted.ToEpisodeId}' 길에 매달렸던 연출 " +
+                $"'{lifted.ViaEpisodeId}'을(를) 길 가운데 에피소드로 폈습니다.");
+        }
+
         // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
         _boardWarnings.AddRange(
             ChapterBoardSupply.WarnFreeNodeStatWrites(_session.Editor, fileId, model));
