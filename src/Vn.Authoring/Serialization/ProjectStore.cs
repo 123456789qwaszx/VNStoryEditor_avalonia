@@ -237,6 +237,10 @@ public static class ProjectStore
         }
 
         project.Links.AddRange(manifest.Links.Select(link => link.Clone()));
+
+        // ⚠ 복제하지 않는다 — 리더가 부를 때마다 새 객체를 만들고 매니페스트는 재사용되지
+        //    않는다(WriterSpeaker는 가변이라 복제한다).
+        project.Chapters.AddRange(manifest.Chapters);
         project.WriterSpeakers.AddRange(manifest.WriterSpeakers.Select(speaker => speaker.Clone()));
         project.EaseCurves.AddRange(manifest.EaseCurves.Select(curve => curve.Clone()));
         project.Compositions.AddRange(manifest.Compositions.Select(item => item.Clone()));

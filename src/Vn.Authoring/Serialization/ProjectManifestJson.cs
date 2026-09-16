@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Model;
 using Vn.Authoring.Results;
 
@@ -104,6 +105,14 @@ public static class ProjectManifestJson
         if (links.Count > 0)
         {
             root["links"] = links;
+        }
+
+        // 기획자의 챕터 — 에피소드 구조·간선·선택지·조건·스탯 (R-F). 대본(scripts)이 따로
+        // 파일로 나가는 것과 달리 여기 그대로 산다: 한 챕터가 수십 행이라 파일을 가를 만한
+        // 부피가 아니고, 가르면 매니페스트만 보고는 판이 몇 개인지도 모른다.
+        if (ChapterDocumentJson.Write(project.Chapters) is { } chapters)
+        {
+            root["chapters"] = chapters;
         }
 
         // 작가가 더한 화자 (2026-08-17) — 정의 파일이 아니라 여기 산다(정의 파일은 기획자 전용).
@@ -262,6 +271,7 @@ public static class ProjectManifestJson
             compositions.Add(composition);
         }
 
+        List<ChapterDocument> chapters = ChapterDocumentJson.Read(root["chapters"]);
         List<WriterSpeaker> writerSpeakers = ReadWriterSpeakers(root["writerSpeakers"]);
         List<EaseCurve> easeCurves = ReadEaseCurves(root["easeCurves"]);
 
@@ -276,6 +286,7 @@ public static class ProjectManifestJson
             scripts,
             references,
             links,
+            chapters,
             writerSpeakers,
             easeCurves,
             compositions,
@@ -755,6 +766,7 @@ public sealed record ProjectManifest(
     IReadOnlyList<ScriptFileReference> Scripts,
     IReadOnlyList<ProjectStoryFileReference> Files,
     IReadOnlyList<NodeLink> Links,
+    IReadOnlyList<ChapterDocument> Chapters,
     IReadOnlyList<WriterSpeaker> WriterSpeakers,
     IReadOnlyList<EaseCurve> EaseCurves,
     IReadOnlyList<RuntimeComposition> Compositions,

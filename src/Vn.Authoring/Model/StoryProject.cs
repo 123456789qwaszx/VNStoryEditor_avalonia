@@ -1,3 +1,4 @@
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Results;
 using Vn.Authoring.Script;
 
@@ -39,6 +40,18 @@ public sealed class StoryProject
     public List<ScriptDocument> Scripts { get; init; } = new();
 
     public List<StoryFile> Files { get; init; } = new();
+
+    /// <summary>
+    /// <b>기획자의 챕터 — 에피소드 구조·간선·선택지·조건·스탯</b> (R-F · 2026-09-16,
+    /// 지시서 §1.1).
+    ///
+    /// ⛔ 이 목록이 서기 전까지 그 값들의 주인은 <c>chapters/{Id}.xlsx</c>였다 — 툴은
+    /// 셀을 고치고 파일을 다시 읽었다. 이제 주인이 여기이고 워크북은 <b>산출물</b>이다.
+    ///
+    /// ⚠ <b>대본과 짝을 이룬다.</b> <see cref="Scripts"/>가 대사 본문의 원본이듯 이쪽이
+    /// 구조의 원본이고, 둘을 잇는 것은 <c>DialogueNode.ExcelEpisodeId</c>다.
+    /// </summary>
+    public List<ChapterDocument> Chapters { get; init; } = new();
 
     /// <summary>
     /// 실행 출구가 아닌 조건 공급 관계.
