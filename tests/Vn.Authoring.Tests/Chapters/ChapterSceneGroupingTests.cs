@@ -63,8 +63,28 @@ public sealed class ChapterSceneGroupingTests
 
         Assert.True(scene.IsDefault);
         Assert.Equal("__scene_solo", scene.SceneId);              // 비교의 열쇠는 그대로
-        Assert.Equal(ChapterSceneGrouping.DefaultSceneName, scene.DisplayName);
+        Assert.Equal("미지정 · solo", scene.DisplayName);
         Assert.DoesNotContain("__scene_", scene.DisplayName);
+    }
+
+    [Fact]
+    public void 섞인_챕터에서_미지정_장면끼리_이름이_안_겹친다()
+    {
+        // ⛔ 규격을 쓰다 드러난 구멍(2026-09-16). 표시명이 하나뿐이면 미지정 장면이 여럿일 때
+        //    <b>똑같은 줄이 여럿 서서</b> 어느 것이 어느 에피소드인지 알 수 없다.
+        //    (장면ID를 하나도 안 적은 챕터는 화면이 장면 단을 생략하므로 이 이름이 안 보인다 —
+        //     이 이름이 실제로 서는 자리는 <b>섞인 챕터</b>뿐이다.)
+        ChapterGraphModel chapter = Chapter(
+            [Episode("a", "opening", 2), Episode("b", null, 3), Episode("c", null, 4)],
+            [Edge("a", "b"), Edge("b", "c")]);
+
+        List<string> names = ChapterSceneGrouping.Of(chapter)
+            .Where(scene => scene.IsDefault)
+            .Select(scene => scene.DisplayName)
+            .ToList();
+
+        Assert.Equal(["미지정 · b", "미지정 · c"], names);
+        Assert.Equal(names.Count, names.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]

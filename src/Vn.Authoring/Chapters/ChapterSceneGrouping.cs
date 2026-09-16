@@ -50,8 +50,17 @@ public sealed record ChapterScene(
 /// </summary>
 public static class ChapterSceneGrouping
 {
-    /// <summary>장면ID를 안 적은 장면의 이름 — 내부 발급값을 사람에게 보이지 않는다.</summary>
-    public const string DefaultSceneName = "에피소드별 장면(기본)";
+    /// <summary>
+    /// 장면ID를 안 적은 장면의 이름 — 내부 발급값(<c>__scene_*</c>)을 사람에게 보이지 않는다.
+    ///
+    /// ⛔ <b>에피소드 Id를 붙이는 이유</b>: 장면ID가 섞인 챕터에서는 미지정 장면이 여럿일 수
+    /// 있고, 전부 같은 이름이면 <b>똑같은 줄이 여럿 서서</b> 어느 것이 어느 에피소드인지 알 수
+    /// 없다. 미지정 장면에는 에피소드가 하나뿐이므로 그 Id가 곧 구분이다.
+    ///
+    /// ⚠ 장면ID를 <b>하나도</b> 안 적은 챕터에서는 화면이 장면 단을 통째로 생략하므로
+    /// 이 이름이 안 보인다 (<c>docs/plans/R6-explorer.md</c> §2).
+    /// </summary>
+    public static string DefaultSceneName(string episodeId) => $"미지정 · {episodeId}";
 
     /// <summary>
     /// 장면 순서는 <b>루트의 깊이</b>다 — 챕터 시작에서 먼 순서가 곧 이야기 순서다.
@@ -107,7 +116,7 @@ public static class ChapterSceneGrouping
 
             scenes.Add(new ChapterScene(
                 group.Key,
-                isDefault ? DefaultSceneName : group.Key,
+                isDefault ? DefaultSceneName(root.EpisodeId) : group.Key,
                 isDefault,
                 root.EpisodeId,
                 episodes,
