@@ -916,6 +916,49 @@ internal sealed class AuthoringSession
     /// </summary>
     internal string EnsureChapterBoard(string chapterId) => Editor.EnsureChapterBoard(chapterId);
 
+    /// <summary>
+    /// <b>챕터 하나를 세운다</b> — 이름을 받고, 스탯을 정의 파일에서 깔고, 판을 만들어 고른다.
+    ///
+    /// ⛔ <b>부르는 자리가 둘이다</b>: [챕터 그래프]의 [＋ 챕터]와 [대본] 탭 탐색기의 [＋].
+    /// 규칙이 두 벌이면 어느 쪽으로 만들었느냐에 따라 챕터가 달라진다 — 실제로 스탯을
+    /// 한쪽만 깔면 그 챕터는 도달성 증명의 탐색 경계가 없다.
+    ///
+    /// ⚠ <b>워크북을 만들지 않는다</b>(R-F). 챕터는 프로젝트가 들고, 파일은 첫 출력이 낸다.
+    /// </summary>
+    /// <returns>못 만든 이유. null이면 만들었다.</returns>
+    internal string? CreateChapter(string chapterId)
+    {
+        chapterId = (chapterId ?? string.Empty).Trim();
+
+        if (chapterId.Length == 0)
+        {
+            return "챕터 Id를 적어 주세요.";
+        }
+
+        if (ProjectPath is null)
+        {
+            return "프로젝트를 먼저 저장해야 챕터 폴더 자리가 정해집니다.";
+        }
+
+        if (Editor.FindChapter(chapterId) is not null)
+        {
+            return $"챕터 '{chapterId}'가 이미 있습니다.";
+        }
+
+        // 스탯은 정의 파일의 변수에서 온다 — 옛 워크북 생성이 `스탯` 시트를 채우던 자리다.
+        ChapterDocument chapter = Editor.EnsureChapter(chapterId);
+
+        foreach (Vn.Authoring.Definition.VariableSpec variable in Definition.Variables)
+        {
+            chapter.Stats.Add(new ChapterStat(
+                variable.Name, variable.Name, Initial: 0, Minimum: 0, Maximum: 100, SourceRow: 0));
+        }
+
+        SelectFile(EnsureChapterBoard(chapterId));
+
+        return null;
+    }
+
     internal void SelectFile(string? fileId)
     {
         if (fileId is not null && Project.FindFile(fileId) is null)

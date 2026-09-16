@@ -1,0 +1,253 @@
+using Avalonia.Controls;
+using Avalonia.VisualTree;
+using Vn.App.Services;
+using Vn.App.Views;
+using Vn.Authoring.Chapters;
+using Vn.Authoring.Model;
+using Vn.Authoring.Serialization;
+using Path = System.IO.Path;
+
+namespace Vn.App.Tests;
+
+/// <summary>
+/// <b>[대본] 탭에서 구조를 세운다</b> (2026-09-16 소유자) — 머리글의 [＋]로 챕터,
+/// 트리 우클릭으로 장면과 에피소드.
+///
+/// ⛔ <b>장면은 여기서도 엔티티가 아니다.</b> [장면 추가]는 프로젝트에 아무것도 안 쓴다 —
+/// <b>빈 자리</b>를 하나 여는 것뿐이고, 에피소드가 들어와야 비로소 장면이 된다(R6 §3-1).
+/// 그래서 [장면 삭제]도 에피소드를 지우지 않는다: 이름표를 떼면 미지정이 될 뿐이다.
+/// </summary>
+public sealed class ScriptTabAuthoringTests : IDisposable
+{
+    private readonly string _directory = Path.Combine(
+        Path.GetTempPath(), "vn-script-authoring", Guid.NewGuid().ToString("N"));
+
+    private string ManifestPath => Path.Combine(_directory, "p" + ProjectManifestJson.FileExtension);
+
+    public ScriptTabAuthoringTests()
+    {
+        Directory.CreateDirectory(_directory);
+        ProjectStore.Save(ManifestPath, new StoryProject { Title = "작가가 세우는 자리" });
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_directory))
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void 머리글의_더하기로_만든_챕터가_곧바로_트리에_선다() => HeadlessUi.Run(() =>
+    {
+        // 작가가 [챕터 그래프]로 건너갔다 오지 않아도 첫 칸을 밟을 수 있어야 한다.
+        (ScriptView view, AuthoringSession session) = Show();
+
+        Assert.Empty(Rows(view, SceneTreeRowKind.Chapter));
+
+        Assert.Null(session.CreateChapter("ch01"));   // [＋]의 창구가 부르는 그 길
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(["ch01"], Rows(view, SceneTreeRowKind.Chapter));
+        Assert.NotNull(session.Editor.FindChapter("ch01"));
+    });
+
+    [Fact]
+    public void 챕터_그래프와_대본_탭이_같은_길로_챕터를_만든다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 창구가 두 벌이면 어느 쪽으로 만들었느냐에 따라 챕터가 달라진다. 스탯이 그
+        //    증거다 — 정의 파일의 변수가 깔려야 도달성 증명에 탐색 경계가 있다.
+        (_, AuthoringSession session) = Show();
+
+        Assert.Null(session.CreateChapter("ch01"));
+
+        Assert.Equal(
+            session.Definition.Variables.Select(variable => variable.Name),
+            session.Editor.FindChapter("ch01")!.Stats.Select(stat => stat.Key));
+    });
+
+    [Fact]
+    public void 챕터를_우클릭해_장면을_더하면_자식으로_붙는다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+
+        Menu(view, SceneTreeRowKind.Chapter, "장면 추가");
+
+        SceneTreeRow draft = Assert.Single(Tree(view).Rows, row => row.IsDraft);
+
+        Assert.Equal(SceneTreeRowKind.Scene, draft.Kind);
+        Assert.Equal("ch01", draft.ChapterId);
+        Assert.Equal(1, draft.Depth);   // 챕터의 자식이다
+
+        // ⚠ 아직 프로젝트에는 아무것도 안 썼다 — 장면은 에피소드가 있어야 있는 것이다.
+        Assert.DoesNotContain(
+            session.Editor.FindChapter("ch01")!.Episodes,
+            episode => string.Equals(episode.SceneId, draft.SceneId, StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 빈_장면에_에피소드를_넣으면_그때_진짜가_된다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+
+        Menu(view, SceneTreeRowKind.Chapter, "장면 추가");
+        string sceneId = Assert.Single(Tree(view).Rows, row => row.IsDraft).SceneId!;
+
+        Menu(view, SceneTreeRowKind.Scene, "에피소드 추가", sceneId);
+
+        // 프로젝트에 실렸다 — 이제 자리표시가 아니다.
+        ChapterEpisode made = Assert.Single(
+            session.Editor.FindChapter("ch01")!.Episodes,
+            episode => string.Equals(episode.SceneId, sceneId, StringComparison.Ordinal));
+
+        Assert.DoesNotContain(Tree(view).Rows, row => row.IsDraft);
+        Assert.Contains(Tree(view).Rows, row =>
+            row.Kind == SceneTreeRowKind.Episode &&
+            row.SceneId == sceneId &&
+            row.EpisodeId == made.EpisodeId);
+    });
+
+    [Fact]
+    public void 새_장면의_첫_에피소드는_섬으로_두지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 챕터 그래프의 [＋ 에피소드]가 세운 규율 그대로다(v12) — 간선이 함께 선다.
+        // 그 간선 하나가 이 장면의 <b>들어오는 자리</b>가 된다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+
+        Menu(view, SceneTreeRowKind.Chapter, "장면 추가");
+        string sceneId = Assert.Single(Tree(view).Rows, row => row.IsDraft).SceneId!;
+        Menu(view, SceneTreeRowKind.Scene, "에피소드 추가", sceneId);
+
+        ChapterDocument chapter = session.Editor.FindChapter("ch01")!;
+        ChapterEpisode made = chapter.Episodes.Last();
+
+        Assert.Contains(chapter.Edges, edge =>
+            edge.FromEpisodeId == "ep01" && edge.ToEpisodeId == made.EpisodeId);
+
+        // 그리고 그 자리는 하나뿐이다 — 저작 시점 진단이 조용해야 한다.
+        Assert.DoesNotContain(
+            chapter.ToGraphModel("chapters/ch01.xlsx").Errors,
+            item => item.Code == ChapterDiagnosticCode.SceneHasManyEntries);
+    });
+
+    [Fact]
+    public void 장면을_지워도_에피소드와_글은_남는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 장면은 담는 그릇이 아니라 에피소드에 붙은 이름표다. 이름표를 뗀다고 작가가
+        //    쓴 글이 사라질 이유가 없다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+        session.Editor.UpdateEpisode("ch01", "ep01", sceneId: "opening");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Menu(view, SceneTreeRowKind.Scene, "장면 삭제…", "opening");
+        view.ConfirmButton!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterEpisode kept = Assert.Single(session.Editor.FindChapter("ch01")!.Episodes);
+
+        Assert.Equal("ep01", kept.EpisodeId);
+        Assert.True(string.IsNullOrEmpty(kept.SceneId));
+        Assert.DoesNotContain(Tree(view).Rows, row => row.SceneId == "opening");
+    });
+
+    [Fact]
+    public void 빈_장면_닫기는_아무것도_안_지운다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
+
+        Menu(view, SceneTreeRowKind.Chapter, "장면 추가");
+        string sceneId = Assert.Single(Tree(view).Rows, row => row.IsDraft).SceneId!;
+
+        Menu(view, SceneTreeRowKind.Scene, "빈 장면 닫기", sceneId);
+
+        // 확인을 묻지 않는다 — 지울 것이 없다.
+        Assert.Null(view.ConfirmButton);
+        Assert.DoesNotContain(Tree(view).Rows, row => row.IsDraft);
+        Assert.Single(session.Editor.FindChapter("ch01")!.Episodes);
+    });
+
+    [Fact]
+    public void 챕터_삭제는_한_번_더_눌러야_지운다() => HeadlessUi.Run(() =>
+    {
+        (ScriptView view, AuthoringSession session) = Show();
+
+        // ⚠ 둘을 세운다 — <b>마지막 판은 지울 수 없다</b>(새 노드가 갈 자리가 없어진다).
+        Chapter(session, "ch01", "ep01");
+        Chapter(session, "ch02", "ep01");
+
+        Menu(view, SceneTreeRowKind.Chapter, "챕터 삭제…");
+
+        // 차림표를 누른 것은 첫 걸음일 뿐이다 — 아직 그대로다.
+        Assert.NotNull(session.Editor.FindChapter("ch01"));
+        Assert.NotNull(view.ConfirmButton);
+
+        view.ConfirmButton!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Null(session.Editor.FindChapter("ch01"));
+        Assert.Equal(["ch02"], Rows(view, SceneTreeRowKind.Chapter));
+    });
+
+    // ── 기반 ────────────────────────────────────────────────────────────────
+
+    private static ChapterSceneTree Tree(ScriptView view) =>
+        view.FindControl<ChapterSceneTree>("EpisodeTree")!;
+
+    private static IReadOnlyList<string> Rows(ScriptView view, SceneTreeRowKind kind) =>
+        Tree(view).Rows.Where(row => row.Kind == kind)
+            .Select(row => row.EpisodeId ?? row.SceneId ?? row.ChapterId)
+            .ToList();
+
+    /// <summary>그 줄을 우클릭해 차림표의 그 항목을 누른다 — 사람이 하는 길 그대로다.</summary>
+    private static void Menu(
+        ScriptView view, SceneTreeRowKind kind, string header, string? sceneId = null)
+    {
+        ChapterSceneTree tree = Tree(view);
+
+        int index = tree.Rows
+            .Select((row, at) => (row, at))
+            .First(item => item.row.Kind == kind &&
+                           (sceneId is null || item.row.SceneId == sceneId)).at;
+
+        ContextMenu menu = tree.GetVisualDescendants().OfType<Button>().ElementAt(index).ContextMenu!;
+
+        menu.ItemsSource!.OfType<MenuItem>()
+            .Single(item => string.Equals(item.Header as string, header, StringComparison.Ordinal))
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>[＋]가 지나는 그 길로 챕터를 세운다 — 판까지 함께 서야 실제와 같다.</summary>
+    private static void Chapter(AuthoringSession session, string chapterId, params string[] episodeIds)
+    {
+        Assert.Null(session.CreateChapter(chapterId));
+
+        foreach (string episodeId in episodeIds)
+        {
+            session.Editor.AddEpisode(chapterId, episodeId, title: episodeId, 0, 0);
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    private (ScriptView View, AuthoringSession Session) Show()
+    {
+        var session = new AuthoringSession();
+        session.Open(ManifestPath);
+
+        var view = new ScriptView();
+        var window = new Window { Width = 1100, Height = 700, Content = view };
+        window.Show();
+        view.Attach(session);
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (view, session);
+    }
+}

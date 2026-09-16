@@ -1,3 +1,4 @@
+using Vn.Authoring.Model;
 using Vn.Authoring.Chapters;
 
 namespace Vn.Authoring.Editing;
@@ -45,7 +46,51 @@ public sealed partial class ProjectEditor
         return chapter;
     }
 
-    /// <summary>챕터 하나를 통째로 걷는다 — 워크북 삭제와 짝이다.</summary>
+    /// <summary>
+    /// 챕터와 <b>그 판</b>을 한 번의 변경으로 걷는다 — 되돌리기 한 번에 둘 다 돌아온다.
+    /// </summary>
+    /// <returns>판과 함께 걷힌 노드 수. 지울 것이 없었으면 0.</returns>
+    /// <remarks>
+    /// ⛔ <b>R-F가 남긴 구멍을 메운다</b> (2026-09-16). 뒤집기 전에는 챕터가 곧 워크북이라
+    /// 판만 걷으면 됐는데, 이제 챕터는 <c>Project.Chapters</c>에 산다 — 판만 걷으면
+    /// <b>목록·트리·검증에 그대로 남고 다음 저장이 워크북을 되살린다</b>.
+    /// </remarks>
+    public int RemoveChapterWithBoard(string chapterId)
+    {
+        ChapterDocument? chapter = FindChapter(chapterId);
+        StoryFile? board = Project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+
+        if (chapter is null && board is null)
+        {
+            return 0;
+        }
+
+        if (board is not null && Project.Files.Count <= 1)
+        {
+            throw new InvalidOperationException(
+                "마지막 시나리오 파일은 제거할 수 없습니다 — 새 노드가 갈 곳이 없어집니다.");
+        }
+
+        int nodes = board?.Nodes.Count ?? 0;
+
+        Mutate(() =>
+        {
+            if (chapter is not null)
+            {
+                Project.Chapters.Remove(chapter);
+            }
+
+            if (board is not null)
+            {
+                RemoveFileCore(board);
+            }
+        });
+
+        return nodes;
+    }
+
+    /// <summary>챕터 하나를 걷는다. ⚠ <b>판은 남는다</b> — 둘 다면 <see cref="RemoveChapterWithBoard"/>.</summary>
     public void RemoveChapter(string chapterId)
     {
         if (FindChapter(chapterId) is not { } chapter)
@@ -77,7 +122,12 @@ public sealed partial class ProjectEditor
     /// 그 규칙이고, 임포터·[대본] 탭의 노드 이름 규칙도 같은 값을 본다. 어긋나면 같은
     /// 에피소드에 대사노드가 둘이 된다.
     /// </summary>
-    public ChapterEpisode AddEpisode(string chapterId, string episodeId, string title, double x, double y)
+    /// <param name="sceneId">
+    /// 어느 장면에 놓을지. ⚠ <b>만들면서 함께 정한다</b> — 만든 뒤에 <see cref="UpdateEpisode"/>로
+    /// 옮기면 되돌리기가 두 걸음이 되고, 그 사이 상태(장면 없는 에피소드)가 잠깐 진짜가 된다.
+    /// </param>
+    public ChapterEpisode AddEpisode(
+        string chapterId, string episodeId, string title, double x, double y, string? sceneId = null)
     {
         ChapterDocument chapter = RequireChapter(chapterId);
 
@@ -88,7 +138,10 @@ public sealed partial class ProjectEditor
 
         var episode = new ChapterEpisode(
             episodeId, title, Index: string.Empty, DialogueEntry: episodeId,
-            Math.Round(x, 2), Math.Round(y, 2), Memo: null, SourceRow: 0);
+            Math.Round(x, 2), Math.Round(y, 2), Memo: null, SourceRow: 0)
+        {
+            SceneId = sceneId
+        };
 
         Mutate(() => chapter.Episodes.Add(episode));
         return episode;
@@ -105,7 +158,8 @@ public sealed partial class ProjectEditor
         string title,
         double x,
         double y,
-        string? optionLabel = null)
+        string? optionLabel = null,
+        string? sceneId = null)
     {
         ChapterDocument chapter = RequireChapter(chapterId);
 
@@ -121,7 +175,10 @@ public sealed partial class ProjectEditor
 
         var episode = new ChapterEpisode(
             newEpisodeId, title, Index: string.Empty, DialogueEntry: newEpisodeId,
-            Math.Round(x, 2), Math.Round(y, 2), Memo: null, SourceRow: 0);
+            Math.Round(x, 2), Math.Round(y, 2), Memo: null, SourceRow: 0)
+        {
+            SceneId = sceneId
+        };
 
         ChapterEdge edge = NewEdge(chapter, parentEpisodeId, newEpisodeId, optionLabel);
 

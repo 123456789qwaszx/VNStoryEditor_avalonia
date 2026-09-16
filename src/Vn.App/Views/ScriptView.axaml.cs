@@ -59,6 +59,17 @@ public partial class ScriptView : UserControl
 
             ShowSelected();
         });
+        EpisodeTree.CommandRequested += (command, row) =>
+            UiGuard.Run(_session, "탐색기 차림표", () => RunTreeCommand(command, row));
+
+        ChapterAddButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", () =>
+        {
+            if (_session is not null)
+            {
+                ChapterAddFlyout.ShowAt(ChapterAddButton, _session);
+            }
+        });
+
         ApplyButton.Click += (_, _) => UiGuard.Run(_session, "글 반영", Apply);
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
         SpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 고르기", PickSpeaker);
@@ -98,6 +109,207 @@ public partial class ScriptView : UserControl
         EpisodeTree.Select(pick.ChapterId, pick.EpisodeId);
         ShowSelected();
     }
+
+    // ── 탐색기 차림표 (2026-09-16 소유자) ──────────────────────────────────
+
+    /// <summary>
+    /// 트리에서 시킨 일을 한다. ⛔ <b>트리는 하지 않는다</b> — 그쪽은 투영이고 편집기를
+    /// 모른다(두 화면이 그 컨트롤 하나를 쓴다).
+    /// </summary>
+    private void RunTreeCommand(SceneTreeCommand command, SceneTreeRow row)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        switch (command)
+        {
+            case SceneTreeCommand.AddScene:
+                string opened = EpisodeTree.AddDraftScene(row.ChapterId);
+                _session.SetStatus(
+                    $"'{row.ChapterId}'에 장면 '{opened}' 자리를 열었습니다 — " +
+                    "우클릭해 에피소드를 넣으면 그때 저장됩니다.");
+                break;
+
+            case SceneTreeCommand.AddEpisode:
+                AddEpisodeToScene(row);
+                break;
+
+            case SceneTreeCommand.DeleteScene when row.IsDraft:
+                EpisodeTree.DropDraftScene(row.ChapterId, row.SceneId!);
+                _session.SetStatus($"빈 장면 '{row.SceneId}' 자리를 닫았습니다.");
+                break;
+
+            case SceneTreeCommand.DeleteScene:
+                ConfirmSceneDelete(row);
+                break;
+
+            case SceneTreeCommand.DeleteChapter:
+                ConfirmChapterDelete(row);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 그 장면에 에피소드 하나. <b>간선이 함께 선다</b> — 챕터 그래프의 [＋ 에피소드]가 세운
+    /// 규율 그대로다(v12): 떨어진 섬을 만들지 않는다.
+    ///
+    /// 이을 곳은 <b>같은 장면의 마지막 에피소드</b>이고, 장면이 아직 비어 있으면 <b>챕터의
+    /// 마지막 에피소드</b>다 — 그것이 이 장면의 <b>들어오는 자리 하나</b>가 된다
+    /// (<c>ChapterSceneEntryCheck</c>가 재는 그 자리다). 챕터가 통째로 비어 있을 때만
+    /// 간선 없이 첫 카드가 선다.
+    ///
+    /// ⚠ Id는 자리표시다 — 자동으로 <b>발명</b>하지 않고 겹치지 않는 이름만 주며, 사람이
+    /// [챕터 그래프]의 이름 칸에서 정한다.
+    /// </summary>
+    private void AddEpisodeToScene(SceneTreeRow row)
+    {
+        if (_session!.Editor.FindChapter(row.ChapterId) is not { } chapter)
+        {
+            return;
+        }
+
+        int number = 1;
+
+        while (chapter.Episodes.Any(episode =>
+                   string.Equals(episode.EpisodeId, $"new{number:D2}", StringComparison.Ordinal)))
+        {
+            number++;
+        }
+
+        string episodeId = $"new{number:D2}";
+        string sceneId = row.SceneId!;
+
+        ChapterEpisode? parent =
+            chapter.Episodes.LastOrDefault(episode =>
+                string.Equals(episode.EffectiveSceneId, sceneId, StringComparison.Ordinal))
+            ?? chapter.Episodes.LastOrDefault();
+
+        if (parent is null)
+        {
+            _session.Editor.AddEpisode(row.ChapterId, episodeId, title: string.Empty, 0, 0, sceneId);
+        }
+        else
+        {
+            _session.Editor.AddNextEpisode(
+                row.ChapterId, parent.EpisodeId, episodeId, title: string.Empty,
+                parent.X + 220, parent.Y, optionLabel: "다음", sceneId);
+        }
+
+        EpisodeTree.Select(row.ChapterId, episodeId);
+        ShowSelected();
+
+        _session.SetStatus(
+            $"장면 '{sceneId}'에 에피소드 '{episodeId}'를 넣었습니다 — " +
+            "이름은 [챕터 그래프]에서 정합니다.");
+    }
+
+    /// <summary>
+    /// [장면 삭제] — <b>장면만 걷고 에피소드는 남긴다</b>.
+    ///
+    /// ⛔ 장면은 담는 그릇이 아니라 에피소드에 붙은 <b>이름표</b>다(R6 §3-1). 이름표를 떼면
+    /// 그 에피소드들은 제각기 미지정 장면이 된다 — 작가가 쓴 글이 사라질 이유가 없다.
+    /// 글을 지우려면 에피소드를 지우는 것이고, 그 자리는 [챕터 그래프]다.
+    /// </summary>
+    private void ConfirmSceneDelete(SceneTreeRow row)
+    {
+        string sceneId = row.SceneId!;
+
+        List<string> episodes = _session!.Editor.FindChapter(row.ChapterId)?.Episodes
+            .Where(episode => string.Equals(episode.EffectiveSceneId, sceneId, StringComparison.Ordinal))
+            .Select(episode => episode.EpisodeId)
+            .ToList() ?? [];
+
+        Confirm(
+            $"장면 '{sceneId}'을 걷습니다. 에피소드 {episodes.Count}개는 남고 " +
+            "장면 미지정이 됩니다 — 글은 그대로입니다.",
+            "장면 걷기",
+            () =>
+            {
+                // 빈 값이 곧 미지정이다 — `__scene_{EpisodeId}`로 퇴화한다.
+                _session.Editor.UpdateEpisodeScenes(row.ChapterId, episodes, sceneId: string.Empty);
+                _session.SetStatus($"장면 '{sceneId}'을 걷었습니다. 에피소드 {episodes.Count}개는 남았습니다.");
+            });
+    }
+
+    /// <summary>
+    /// [챕터 삭제] — 되돌릴 자리를 <b>이름으로</b> 말한다. 규칙은
+    /// <see cref="ChapterDeleter"/>가 갖는다([챕터 그래프]의 [챕터 제거]와 같은 길).
+    /// </summary>
+    private void ConfirmChapterDelete(SceneTreeRow row)
+    {
+        Confirm(
+            $"'{row.ChapterId}'의 대본과 연출 그래프의 노드가 함께 사라집니다. " +
+            "원고는 .bak으로 남고, 판은 되돌리기로 돌아옵니다.",
+            "정말 제거",
+            () =>
+            {
+                ChapterDeleter.Result result =
+                    ChapterDeleter.Delete(_session!.Editor, _session.ProjectPath, row.ChapterId);
+
+                if (!result.Deleted)
+                {
+                    _session.SetStatus(result.Failure!);
+                    return;
+                }
+
+                string kept = string.Join(" · ",
+                    new[] { result.WorkbookBackup, result.EpisodesBackup }.Where(item => item is not null));
+
+                _session.SetStatus(
+                    $"챕터 '{row.ChapterId}'를 지웠습니다(연출 노드 {result.NodesRemoved}개도 함께)." +
+                    (kept.Length > 0 ? $" 원고는 남겨 뒀습니다: {kept}" : string.Empty));
+            });
+    }
+
+    /// <summary>
+    /// 지우는 일 앞의 한 걸음. 차림표를 누른 것이 첫 걸음이고(이름 끝의 `…`가 그 뜻이다),
+    /// 여기가 <b>무엇이 사라지는지 읽고 누르는</b> 두 번째다.
+    ///
+    /// ⚠ 확인 창을 띄우지 않는다 — 창은 방금 읽던 트리를 덮는다. 트리 옆에 붙어 뜨는
+    /// 쪽이 어느 줄을 지우는 것인지 더 분명하다([챕터 그래프]가 세운 그 규율).
+    /// </summary>
+    private void Confirm(string caution, string confirmText, Action act)
+    {
+        var panel = new StackPanel { Spacing = 6, MaxWidth = 260 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = caution,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.85
+        });
+
+        var flyout = new Flyout { Content = panel };
+
+        var confirm = new Button
+        {
+            Content = confirmText,
+            FontSize = 11,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Foreground = new SolidColorBrush(Color.FromRgb(190, 60, 60))
+        };
+
+        confirm.Click += (_, _) => UiGuard.Run(_session, confirmText, () =>
+        {
+            flyout.Hide();
+            ConfirmButton = null;
+            act();
+        });
+
+        panel.Children.Add(confirm);
+        flyout.ShowAt(EpisodeTree);
+
+        ConfirmButton = confirm;
+    }
+
+    /// <summary>
+    /// 지금 떠 있는 확인 단추 — <b>테스트의 손잡이</b>다([화자 ▾]의 <see cref="SpeakerMenuItems"/>와
+    /// 같은 뜻). 플라이아웃의 팝업은 창 밖에 살아 나무를 타고 내려가 찾을 수 없다.
+    /// </summary>
+    internal Button? ConfirmButton { get; private set; }
 
     /// <summary>
     /// 그 노드가 선 자리 — 판 이름이 챕터고, 표식이 먼저고 없으면 이름이 에피소드다

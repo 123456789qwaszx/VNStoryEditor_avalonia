@@ -547,70 +547,16 @@ public partial class MainWindow : Window
     // ── 파일 ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// 새 챕터 (챕터 v2, G-1 v2) — chapters/ 폴더에 §3.1 규격 워크북을 만들고 그 판을 연다.
-    /// 스탯 시트는 game.definition의 변수로 채운다. Id는 사람이 정한다(자동 발명 금지).
+    /// [＋ 챕터]. ⛔ <b>창구도 규칙도 여기 없다</b> — <see cref="ChapterAddFlyout"/>와
+    /// <see cref="AuthoringSession.CreateChapter"/>가 갖는다 (2026-09-16에 [대본] 탭에도
+    /// 같은 단추가 서면서 한 벌로 모았다). 여기 남은 것은 <b>만든 뒤 이 화면이 할 일</b>뿐이다.
     /// </summary>
-    private void ShowAddChapterFlyout(Control anchor)
-    {
-        var panel = new StackPanel { Spacing = 4, MinWidth = 220 };
-
-        var name = new TextBox
+    private void ShowAddChapterFlyout(Control anchor) =>
+        ChapterAddFlyout.ShowAt(anchor, _session, chapterId =>
         {
-            PlaceholderText = "챕터 Id (예: ch06) — 파일 이름이 됩니다",
-            FontSize = 11
-        };
-        panel.Children.Add(name);
-
-        var flyout = new Flyout { Content = panel };
-
-        var create = new Button { Content = "만들기", HorizontalAlignment = HorizontalAlignment.Stretch };
-        create.Click += (_, _) => UiGuard.Run(_session, "새 챕터", () =>
-        {
-            string chapterId = name.Text?.Trim() ?? string.Empty;
-
-            if (chapterId.Length == 0)
-            {
-                _session.SetStatus("챕터 Id를 적어 주세요.");
-                return;
-            }
-
-            string? folder = ChapterLibrary.FolderFor(_session.ProjectPath);
-
-            if (folder is null)
-            {
-                _session.SetStatus("프로젝트를 먼저 저장해야 챕터 폴더 자리가 정해집니다.");
-                return;
-            }
-
-            // ⛔ <b>R-F로 뒤집힌 자리다</b> (2026-09-16). 예전에는 여기서 규격 워크북을
-            //    만들었고(`EnsureChapterWorkbook`) 그 파일이 곧 챕터였다. 이제 챕터는
-            //    프로젝트가 들고, 워크북은 첫 출력이 낸다.
-            if (_session.Editor.FindChapter(chapterId) is not null)
-            {
-                _session.SetStatus($"챕터 '{chapterId}'가 이미 있습니다.");
-                return;
-            }
-
-            // 스탯은 정의 파일의 변수에서 온다 — 옛 워크북 생성이 `스탯` 시트를 채우던 자리다.
-            ChapterDocument chapter = _session.Editor.EnsureChapter(chapterId);
-
-            foreach (Vn.Authoring.Definition.VariableSpec variable in _session.Definition.Variables)
-            {
-                chapter.Stats.Add(new ChapterStat(
-                    variable.Name, variable.Name, Initial: 0, Minimum: 0, Maximum: 100, SourceRow: 0));
-            }
-
-            _session.SelectFile(_session.EnsureChapterBoard(chapterId));
             ChapterGraph.RefreshFromDisk();
             ChapterGraph.SelectChapter(chapterId);
-            flyout.Hide();
-            _session.SetStatus($"챕터 '{chapterId}'를 만들었습니다: {System.IO.Path.Combine(folder, chapterId + ".xlsx")}");
         });
-        panel.Children.Add(create);
-
-        flyout.ShowAt(anchor);
-        name.Focus();
-    }
 
     /// <summary>
     /// 왼쪽 챕터 목록 (챕터 v2). 챕터 클릭 = 그 챕터의 판을 활성으로 + 챕터 그래프 선택.

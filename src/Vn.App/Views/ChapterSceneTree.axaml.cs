@@ -26,6 +26,14 @@ internal enum SceneTreeRowKind
 /// 찾는 자리다. 줄 번호가 아니라 열쇠인 이유: 편집 한 번이 판을 다시 그리고 그때 줄이
 /// 늘거나 준다.
 /// </param>
+/// <param name="IsDraft">
+/// <b>아직 아무 에피소드도 안 든 장면</b>인가 (2026-09-16).
+///
+/// ⛔ <b>장면은 엔티티가 아니다</b> — 프로젝트에 장면 표가 없고, 장면은 에피소드가
+/// <c>SceneId</c>를 들고 있어야 <b>비로소 있다</b>. 그래서 빈 장면은 저장할 자리가 없고,
+/// 이 줄은 <b>작업 중인 자리표시</b>다: 에피소드가 하나 들어오면 진짜가 되고, 그 전에
+/// 프로젝트를 다시 열면 없다. 그 사실을 줄이 직접 말한다(아래 <c>Text</c>).
+/// </param>
 internal sealed record SceneTreeRow(
     SceneTreeRowKind Kind,
     string Key,
@@ -36,7 +44,24 @@ internal sealed record SceneTreeRow(
     int Depth,
     bool IsSceneRoot,
     bool HasSplitEntry,
-    bool IsEmptyScript);
+    bool IsEmptyScript,
+    bool IsDraft = false);
+
+/// <summary>줄을 우클릭했을 때 할 수 있는 일 — <b>하는 것은 이 컨트롤이 아니다</b>.</summary>
+internal enum SceneTreeCommand
+{
+    /// <summary>챕터 줄에서 — 빈 장면 자리를 하나 연다.</summary>
+    AddScene,
+
+    /// <summary>챕터 줄에서.</summary>
+    DeleteChapter,
+
+    /// <summary>장면 줄에서 — 장면을 걷는다(에피소드는 남는다).</summary>
+    DeleteScene,
+
+    /// <summary>장면 줄에서 — 그 장면에 에피소드를 하나 더한다.</summary>
+    AddEpisode
+}
 
 /// <summary>고른 에피소드. <b>챕터는 상태가 아니라 파생</b>이다 — 그 에피소드가 속한 챕터다.</summary>
 internal sealed record ChapterEpisodePick(string ChapterId, string EpisodeId);
@@ -80,8 +105,26 @@ public partial class ChapterSceneTree : UserControl
 
     public ChapterSceneTree() => InitializeComponent();
 
+    /// <summary>
+    /// <b>빈 장면 자리들</b> — <c>{챕터}/{장면}</c>. 에피소드가 들어오면 진짜 장면이 되고
+    /// 이 목록에서 저절로 빠진다(<see cref="DraftsOf"/>).
+    ///
+    /// ⛔ <b>저장하지 않는다.</b> 프로젝트에 장면 표가 없어서가 아니라, 없는 것이 옳아서다
+    /// (R6 §3-1) — 장면은 에피소드가 <c>SceneId</c>를 들어야 있는 것이고, 빈 장면을 저장하면
+    /// 그 순간 정본이 둘이 된다.
+    /// </summary>
+    private readonly HashSet<string> _drafts = new(StringComparer.Ordinal);
+
     /// <summary>에피소드를 골랐다. 챕터는 파생이므로 함께 실어 보낸다.</summary>
     internal event Action<ChapterEpisodePick>? EpisodeSelected;
+
+    /// <summary>
+    /// 줄에서 무엇을 하자고 했다 (우클릭 차림표).
+    ///
+    /// ⛔ <b>이 컨트롤은 하지 않는다.</b> 트리는 투영이고 편집기를 모른다 — 알게 하면
+    /// 같은 명령이 화면마다 조금씩 달라진다(두 화면이 이 컨트롤 하나를 쓴다).
+    /// </summary>
+    internal event Action<SceneTreeCommand, SceneTreeRow>? CommandRequested;
 
     internal ChapterEpisodePick? Selection { get; private set; }
 
@@ -147,6 +190,80 @@ public partial class ChapterSceneTree : UserControl
         _collapsed.UnionWith(collapsed);
     }
 
+    // ── 빈 장면 자리 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 빈 장면 자리를 하나 연다. 겹치지 않는 Id를 골라 돌려준다 — 사람이 나중에 고친다
+    /// ([챕터 그래프]의 `장면ID` 칸이 그 자리다. 여기서 안 고치는 이유는 규격 §5).
+    /// </summary>
+    internal string AddDraftScene(string chapterId)
+    {
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+
+        if (_project?.Chapters.FirstOrDefault(item =>
+                string.Equals(item.ChapterId, chapterId, StringComparison.Ordinal)) is { } chapter)
+        {
+            foreach (ChapterEpisode episode in chapter.Episodes)
+            {
+                taken.Add(episode.EffectiveSceneId);
+            }
+        }
+
+        int number = 1;
+
+        while (taken.Contains($"scene{number:D2}") || _drafts.Contains(Draft(chapterId, $"scene{number:D2}")))
+        {
+            number++;
+        }
+
+        string sceneId = $"scene{number:D2}";
+
+        _drafts.Add(Draft(chapterId, sceneId));
+        _expanded.Add("ch:" + chapterId);
+        _collapsed.Remove("ch:" + chapterId);
+        Draw();
+
+        return sceneId;
+    }
+
+    /// <summary>빈 장면 자리를 닫는다 — 에피소드가 없으니 지울 것도 없다.</summary>
+    internal void DropDraftScene(string chapterId, string sceneId)
+    {
+        if (_drafts.Remove(Draft(chapterId, sceneId)))
+        {
+            Draw();
+        }
+    }
+
+    private static string Draft(string chapterId, string sceneId) => chapterId + "/" + sceneId;
+
+    /// <summary>
+    /// 이 챕터에 남아 있는 빈 장면들. <b>진짜가 된 것은 빠진다</b> — 에피소드가 들어오면
+    /// 그 장면은 이제 투영에서 나오므로, 자리표시를 겹쳐 두면 같은 줄이 둘이 선다.
+    /// </summary>
+    private List<string> DraftsOf(string chapterId, IReadOnlyList<ChapterScene> scenes)
+    {
+        var real = new HashSet<string>(scenes.Select(scene => scene.SceneId), StringComparer.Ordinal);
+
+        foreach (string key in _drafts.ToList())
+        {
+            int slash = key.IndexOf('/', StringComparison.Ordinal);
+
+            if (slash > 0 &&
+                string.Equals(key[..slash], chapterId, StringComparison.Ordinal) &&
+                real.Contains(key[(slash + 1)..]))
+            {
+                _drafts.Remove(key);
+            }
+        }
+
+        return _drafts
+            .Where(key => key.StartsWith(chapterId + "/", StringComparison.Ordinal))
+            .Select(key => key[(chapterId.Length + 1)..])
+            .OrderBy(sceneId => sceneId, StringComparer.Ordinal)
+            .ToList();
+    }
+
     /// <summary>밖에서 고르게 한다(복원·이어 고르기). 가는 길의 마디를 함께 편다.</summary>
     internal void Select(string chapterId, string episodeId)
     {
@@ -200,7 +317,11 @@ public partial class ChapterSceneTree : UserControl
         // ⛔ <b>장면ID를 하나도 안 적은 챕터는 장면 단을 생략한다</b> (규격 §2). 안 그러면
         //    구판 프로젝트에서 에피소드 수만큼 장면 마디가 생겨 트리가 통째로 노이즈가 된다.
         //    하나라도 적혀 있으면 전부 장면 단으로 본다 — 섞으면 한 화면에 두 규칙이 선다.
-        bool flat = scenes.All(scene => scene.IsDefault);
+        List<string> drafts = DraftsOf(chapter.ChapterId, scenes);
+
+        // ⚠ 빈 장면 자리가 하나라도 있으면 <b>장면 단을 편다</b>. 안 그러면 방금 만든 장면이
+        //   어디에도 안 보이고, 사람은 [장면 추가]가 아무 일도 안 한 줄로 안다.
+        bool flat = scenes.All(scene => scene.IsDefault) && drafts.Count == 0;
 
         string key = "ch:" + chapter.ChapterId;
 
@@ -258,6 +379,23 @@ public partial class ChapterSceneTree : UserControl
             {
                 AddEpisode(chapter, scene, episode, depth: 2);
             }
+        }
+
+        // 빈 장면 자리는 진짜 장면들 뒤에 — 방금 만든 것이 맨 아래 있는 편이 눈에 띈다.
+        foreach (string sceneId in drafts)
+        {
+            _rows.Add(new SceneTreeRow(
+                SceneTreeRowKind.Scene,
+                "sc:" + chapter.ChapterId + "/" + sceneId,
+                chapter.ChapterId,
+                sceneId,
+                EpisodeId: null,
+                sceneId + "   빈 장면 — 에피소드를 넣어야 저장됩니다",
+                Depth: 1,
+                IsSceneRoot: false,
+                HasSplitEntry: false,
+                IsEmptyScript: false,
+                IsDraft: true));
         }
     }
 
@@ -322,7 +460,8 @@ public partial class ChapterSceneTree : UserControl
         // 접기 표식 — 에피소드는 담는 것이 없어 자리만 비운다(줄이 들쭉날쭉하지 않게).
         line.Children.Add(new TextBlock
         {
-            Text = row.Kind == SceneTreeRowKind.Episode
+            // 빈 장면도 자리를 비운다 — 접었다 펼 자식이 아직 없다.
+            Text = row.Kind == SceneTreeRowKind.Episode || row.IsDraft
                 ? " "
                 : IsExpanded(row.Key, row.ChapterId, null) ? "▾" : "▸",
             FontSize = 9,
@@ -349,8 +488,8 @@ public partial class ChapterSceneTree : UserControl
             Text = row.Text,
             FontSize = 11,
             FontWeight = row.Kind == SceneTreeRowKind.Chapter ? FontWeight.SemiBold : FontWeight.Normal,
-            // 대본이 없는 에피소드는 흐리게 — 아직 아무도 안 쓴 자리다.
-            Opacity = row.IsEmptyScript ? 0.45 : 1,
+            // 대본이 없는 에피소드와 빈 장면은 흐리게 — 아직 아무것도 안 든 자리다.
+            Opacity = row.IsEmptyScript || row.IsDraft ? 0.45 : 1,
             VerticalAlignment = VerticalAlignment.Center
         });
 
@@ -392,7 +531,51 @@ public partial class ChapterSceneTree : UserControl
             Press(row);
         });
 
+        if (Menu(row) is { } menu)
+        {
+            button.ContextMenu = menu;
+        }
+
         return button;
+    }
+
+    /// <summary>
+    /// 줄의 우클릭 차림표 (2026-09-16 소유자). <b>담는 줄에만</b> 붙는다 — 에피소드는
+    /// 이 탭에서 만드는 것이 글이지 구조가 아니고, 지우는 자리는 [챕터 그래프]에 있다.
+    /// </summary>
+    private ContextMenu? Menu(SceneTreeRow row)
+    {
+        MenuItem Item(string header, SceneTreeCommand command)
+        {
+            var item = new MenuItem { Header = header, FontSize = 11 };
+            item.Click += (_, _) => UiGuard.Run(null, "탐색기 차림표",
+                () => CommandRequested?.Invoke(command, row));
+
+            return item;
+        }
+
+        return row.Kind switch
+        {
+            SceneTreeRowKind.Chapter => new ContextMenu
+            {
+                ItemsSource = new[]
+                {
+                    Item("장면 추가", SceneTreeCommand.AddScene),
+                    Item("챕터 삭제…", SceneTreeCommand.DeleteChapter)
+                }
+            },
+
+            SceneTreeRowKind.Scene => new ContextMenu
+            {
+                ItemsSource = new[]
+                {
+                    Item("에피소드 추가", SceneTreeCommand.AddEpisode),
+                    Item(row.IsDraft ? "빈 장면 닫기" : "장면 삭제…", SceneTreeCommand.DeleteScene)
+                }
+            },
+
+            _ => null
+        };
     }
 
     /// <summary>줄을 누르면 — 에피소드는 고르고, 담는 줄은 접거나 편다 (규격 §1).</summary>
