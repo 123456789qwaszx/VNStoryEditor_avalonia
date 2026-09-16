@@ -67,6 +67,41 @@ public sealed class ChapterSceneTreeTests
     });
 
     [Fact]
+    public void 이름_쪽을_눌러도_안_접힌다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 2026-09-16 소유자: 줄 전체가 접기 손잡이라 <b>끌기와 이름 고치기가 물리적으로
+        //    막혔다</b>. 누를 때마다 접혔다 펴지고, 그때 줄이 통째로 다시 서서 더블클릭의
+        //    두 번째 누름이 <b>새 컨트롤</b>에 떨어졌다. 손잡이는 삼각형뿐이다.
+        ChapterSceneTree tree = Show(Chapter("ch01", ("opening", "ep01")));
+
+        int before = tree.Rows.Count;
+
+        PressName(tree, SceneTreeRowKind.Chapter);
+        Assert.Equal(before, tree.Rows.Count);
+
+        PressName(tree, SceneTreeRowKind.Scene);
+        Assert.Equal(before, tree.Rows.Count);
+
+        // 그리고 삼각형은 여전히 접는다.
+        Press(tree, SceneTreeRowKind.Chapter);
+        Assert.True(tree.Rows.Count < before);
+    });
+
+    [Fact]
+    public void 에피소드를_골라도_줄이_다시_서지_않는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 같은 사고의 다른 얼굴이다 — 고를 때마다 <see cref="Draw"/>를 부르면 컨트롤이
+        //    갈려서 더블클릭이 성립하지 않는다. 구조가 안 바뀌는 변화는 칠만 한다.
+        ChapterSceneTree tree = Show(Chapter("ch01", ("opening", "ep01"), ("opening", "ep02")));
+
+        Button before = tree.GetVisualDescendants().OfType<Button>().Last();
+
+        PressName(tree, SceneTreeRowKind.Episode);
+
+        Assert.Same(before, tree.GetVisualDescendants().OfType<Button>().Last());
+    });
+
+    [Fact]
     public void 접은_것은_다시_그려도_안_펴진다() => HeadlessUi.Run(() =>
     {
         // ⛔ 규격 §4 — 편집 한 번이 판을 다시 그리는데 그때마다 펴지면 접는 행위 자체가
@@ -265,8 +300,31 @@ public sealed class ChapterSceneTreeTests
     private static SceneTreeRow Row(ChapterSceneTree tree, string episodeId) =>
         tree.Rows.Single(row => row.EpisodeId == episodeId);
 
-    /// <summary>그 종류의 첫 줄을 누른다 — 사람이 누르는 것과 같은 길이다.</summary>
+    /// <summary>
+    /// 그 종류의 첫 줄을 <b>삼각형에서</b> 접었다 편다 — 사람이 누르는 그 자리다.
+    ///
+    /// ⛔ 이름 쪽이 아니다 (2026-09-16 소유자). 줄 전체가 접기 손잡이였을 때 끌기와 이름
+    /// 고치기가 물리적으로 막혔다 — 누를 때마다 줄이 다시 서서 더블클릭이 성립하지 않았다.
+    /// </summary>
     private static void Press(ChapterSceneTree tree, SceneTreeRowKind kind)
+    {
+        int index = tree.Rows
+            .Select((row, at) => (row, at))
+            .First(item => item.row.Kind == kind).at;
+
+        Border arrow = tree.GetVisualDescendants().OfType<DockPanel>().ElementAt(index)
+            .Children.OfType<Border>().First();
+
+        arrow.RaiseEvent(new PointerPressedEventArgs(
+            arrow, new Pointer(0, PointerType.Mouse, true), arrow, default, 0,
+            new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
+            KeyModifiers.None));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>이름 쪽을 누른다 — 고르기만 하고 <b>접히지 않아야</b> 한다.</summary>
+    private static void PressName(ChapterSceneTree tree, SceneTreeRowKind kind)
     {
         int index = tree.Rows
             .Select((row, at) => (row, at))

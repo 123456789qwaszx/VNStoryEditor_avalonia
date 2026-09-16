@@ -344,6 +344,8 @@ public partial class ChapterSceneTree : UserControl
         RenameBox?.Focus();
         RenameBox?.SelectAll();
 
+        Paint();
+
         if (_cursorKey is not null && _rows.Count > 0)
         {
             RowHost.Children[CursorIndex()].BringIntoView();
@@ -484,32 +486,22 @@ public partial class ChapterSceneTree : UserControl
 
     // ── 그리기 ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// 줄 하나 = <b>[삼각형][이름 단추]</b>.
+    ///
+    /// ⛔ <b>접기는 삼각형만 한다</b> (2026-09-16 소유자). 줄 전체가 접기 손잡이였을 때
+    /// <b>끌기와 이름 고치기가 물리적으로 막혔다</b>: 누를 때마다 접혔다 펴지고, 그때
+    /// <see cref="Draw"/>가 줄을 통째로 다시 세우는 바람에 <b>두 번째 누름이 새 컨트롤에
+    /// 떨어져</b> 더블클릭이 성립하지 않았다. 손잡이를 삼각형으로 좁히니 이름 쪽은
+    /// 끌기·더블클릭만 받는다.
+    /// </summary>
     private Control Build(SceneTreeRow row)
     {
-        bool selected = row.Kind == SceneTreeRowKind.Episode &&
-                        Selection is { } pick &&
-                        string.Equals(pick.EpisodeId, row.EpisodeId, StringComparison.Ordinal) &&
-                        string.Equals(pick.ChapterId, row.ChapterId, StringComparison.Ordinal);
-
         var line = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 3,
-            Margin = new Thickness(row.Depth * 14, 0, 0, 0)
+            Spacing = 3
         };
-
-        // 접기 표식 — 에피소드는 담는 것이 없어 자리만 비운다(줄이 들쭉날쭉하지 않게).
-        line.Children.Add(new TextBlock
-        {
-            // 빈 장면도 자리를 비운다 — 접었다 펼 자식이 아직 없다.
-            Text = row.Kind == SceneTreeRowKind.Episode || row.IsDraft
-                ? " "
-                : IsExpanded(row.Key, row.ChapterId, null) ? "▾" : "▸",
-            FontSize = 9,
-            Width = 10,
-            Opacity = 0.7,
-            VerticalAlignment = VerticalAlignment.Center
-        });
 
         if (row.IsSceneRoot)
         {
@@ -548,22 +540,17 @@ public partial class ChapterSceneTree : UserControl
             });
         }
 
-        // 커서는 선택과 <b>다르게</b> 보여야 한다 — 훑는 중인 자리와 열어 둔 글은 다른 것이다.
-        bool cursor = string.Equals(row.Key, _cursorKey, StringComparison.Ordinal);
-
         var button = new Button
         {
             Content = line,
-            Background = selected ? new SolidColorBrush(Color.FromArgb(40, 61, 123, 217)) : Brushes.Transparent,
-            BorderThickness = new Thickness(cursor ? 1 : 0),
-            BorderBrush = cursor ? new SolidColorBrush(Color.FromArgb(150, 61, 123, 217)) : Brushes.Transparent,
             Padding = new Thickness(4, 2),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
 
             // 키는 트리가 받는다 — 줄마다 포커스를 두면 Avalonia의 기본 방향 이동이 먼저
             // 먹어 규격 §7의 ←/→(접기·펼치기)가 설 자리가 없다.
-            Focusable = false
+            Focusable = false,
+            Tag = row.Key
         };
 
         button.Click += (_, _) => UiGuard.Run(null, "탐색기", () =>
@@ -604,16 +591,98 @@ public partial class ChapterSceneTree : UserControl
             }
         };
 
-        button.PointerExited += (_, _) =>
+        button.PointerExited += (_, _) => Paint();
+
+        var host = new DockPanel { Margin = new Thickness(row.Depth * 14, 0, 0, 0) };
+        Control arrow = Arrow(row);
+
+        DockPanel.SetDock(arrow, Dock.Left);
+        host.Children.Add(arrow);
+        host.Children.Add(button);
+
+        return host;
+    }
+
+    /// <summary>
+    /// 접기 손잡이. 에피소드와 빈 장면은 <b>펼 자식이 없어</b> 자리만 비운다(줄이 들쭉날쭉하지
+    /// 않게). ⚠ 단추가 아니라 <see cref="Border"/>다 — 눌림을 여기서 삼켜야 이름 단추의
+    /// 더블클릭·끌기와 안 엉킨다.
+    /// </summary>
+    private Control Arrow(SceneTreeRow row)
+    {
+        bool leaf = row.Kind == SceneTreeRowKind.Episode || row.IsDraft;
+
+        var arrow = new Border
         {
-            if (!cursor)
+            Width = 14,
+            Background = Brushes.Transparent,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Child = new TextBlock
             {
-                button.BorderThickness = new Thickness(0);
-                button.BorderBrush = Brushes.Transparent;
+                Text = leaf ? " " : IsExpanded(row.Key, row.ChapterId, null) ? "▾" : "▸",
+                FontSize = 9,
+                Opacity = 0.7,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
             }
         };
 
-        return button;
+        if (leaf)
+        {
+            return arrow;
+        }
+
+        arrow[ToolTip.TipProperty] = "접었다 폅니다";
+
+        // ⚠ 삼각형은 이름 단추의 <b>형제</b>라 여기서 받은 눌림은 그쪽에 안 간다 —
+        //   가로채는 장치가 필요 없다(그래서 Tunnel도 아니다).
+        arrow.PointerPressed += (_, args) => UiGuard.Run(null, "접기", () =>
+        {
+            args.Handled = true;
+            _dragKey = null;
+            _cursorKey = row.Key;
+            Fold(row, collapse: IsExpanded(row.Key, row.ChapterId, null));
+        });
+
+        return arrow;
+    }
+
+    /// <summary>
+    /// 고른 줄·커서만 다시 칠한다 — <b>줄을 다시 세우지 않는다</b>.
+    ///
+    /// ⛔ 고를 때마다 <see cref="Draw"/>를 부르면 컨트롤이 통째로 갈려서 <b>더블클릭의 두 번째
+    /// 누름이 새 컨트롤에 떨어진다</b>(= 이름 고치기가 영영 안 열린다). 구조가 안 바뀌는
+    /// 변화는 칠만 한다.
+    /// </summary>
+    private void Paint()
+    {
+        for (int index = 0; index < _rows.Count && index < RowHost.Children.Count; index++)
+        {
+            if (RowHost.Children[index] is not DockPanel host ||
+                host.Children.OfType<Button>().FirstOrDefault() is not { } button)
+            {
+                continue;
+            }
+
+            SceneTreeRow row = _rows[index];
+
+            bool selected = row.Kind == SceneTreeRowKind.Episode &&
+                            Selection is { } pick &&
+                            string.Equals(pick.EpisodeId, row.EpisodeId, StringComparison.Ordinal) &&
+                            string.Equals(pick.ChapterId, row.ChapterId, StringComparison.Ordinal);
+
+            // 커서는 선택과 <b>다르게</b> 보여야 한다 — 훑는 중인 자리와 열어 둔 글은 다르다.
+            bool cursor = string.Equals(row.Key, _cursorKey, StringComparison.Ordinal);
+
+            button.Background = selected
+                ? new SolidColorBrush(Color.FromArgb(40, 61, 123, 217))
+                : Brushes.Transparent;
+
+            button.BorderThickness = new Thickness(cursor ? 1 : 0);
+            button.BorderBrush = cursor
+                ? new SolidColorBrush(Color.FromArgb(150, 61, 123, 217))
+                : Brushes.Transparent;
+        }
     }
 
     // ── 이름 고치기 ─────────────────────────────────────────────────────────
@@ -788,7 +857,12 @@ public partial class ChapterSceneTree : UserControl
         };
     }
 
-    /// <summary>줄을 누르면 — 에피소드는 고르고, 담는 줄은 접거나 편다 (규격 §1).</summary>
+    /// <summary>
+    /// 이름 쪽을 누르면 — 에피소드는 고르고, 담는 줄은 <b>커서만 옮긴다</b>.
+    ///
+    /// ⛔ <b>여기서 접지 않는다</b> (2026-09-16 소유자). 접기는 삼각형의 일이다 —
+    /// 줄 전체가 접기 손잡이면 이름을 두 번 누를 수도, 끌 수도 없다(<see cref="Build"/>).
+    /// </summary>
     private void Press(SceneTreeRow row)
     {
         _cursorKey = row.Key;
@@ -799,14 +873,17 @@ public partial class ChapterSceneTree : UserControl
             return;
         }
 
-        // 지금 보이는 대로 뒤집는다 — 저절로 펴진 마디를 누르면 접히고, 그 접힘이 남는다.
-        Fold(row, collapse: IsExpanded(row.Key, row.ChapterId, null));
+        Paint();
     }
 
     private void Choose(SceneTreeRow row)
     {
         Selection = new ChapterEpisodePick(row.ChapterId, row.EpisodeId!);
-        Draw();
+
+        // ⚠ <b>칠만 한다.</b> 여기서 다시 세우면 더블클릭의 두 번째 누름이 새 컨트롤에
+        //   떨어져 이름 고치기가 영영 안 열린다. 고른 에피소드는 이미 보이는 줄이므로
+        //   구조는 안 바뀐다.
+        Paint();
         EpisodeSelected?.Invoke(Selection);
     }
 
@@ -942,7 +1019,10 @@ public partial class ChapterSceneTree : UserControl
         }
 
         _cursorKey = _rows[index].Key;
-        Draw();
+
+        // 커서만 옮기는 것은 구조가 안 바뀌는 변화다 — 칠만 하고 보이는 자리로 끌어온다.
+        Paint();
+        RowHost.Children[index].BringIntoView();
     }
 
     /// <summary>
