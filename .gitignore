@@ -29,3 +29,6 @@ artifacts/
 
 ### 제출 패키징 산출물 ###
 dist/
+
+# 코어 사본 지문 대조가 낸 실측값 — 확인 뒤 runtime-sync.txt로 바꾸는 임시 파일 (T2)
+src/Ked.Progression/runtime-sync.txt.actual

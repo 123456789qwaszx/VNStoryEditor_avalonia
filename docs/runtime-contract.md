@@ -135,6 +135,22 @@ Stop/New Game/Manual Load는 커밋 금지, Episode Skip은 연출 기능이라 
 | `ExportedTuning` | 08-22 이후 변화 없음 |
 | **`Ked.Progression`** | ✅ **맞물렸다 (2026-09-16 실측).** 두 사본이 **공유하는 24파일 중 23개가 차이 0**이고(CRLF 무시), 나머지 `Spec/ChapterProgression.cs`도 필드·주석 **위치**만 다르다. `Spec/ChapterInvariants.cs`가 같으므로 `SceneId`·`VerifySceneEntries`·`VerifyAuto`가 **양쪽에서 같은 문장으로 판정한다**. 옛 서술("12파일 821줄 뒤" · "사라진 파일 셋 잔존" · "관문이 느슨하다")은 전부 낡았다 — `EndingRule.cs`·`ScenarioAdvance.cs`·`ScenarioTransition.cs`는 이쪽에도 없다.<br>⚠ **남은 차이는 의도한 것이다**: 이쪽에만 `Reachability/`(도달성 증명 G7 — 저작 전용), 저쪽에만 `Scene/`·`Contracts/`·`ProgressionDriver`(실행 층 — 툴은 실행하지 않는다). **정본은 `ked-progression-runtime/dev`다.** |
 
+### 이제 사람이 아니라 테스트가 잰다 (T2 · 2026-09-16)
+
+위 표는 **그날의 실측**이고, 실측은 아무도 다시 안 한다. `CoreCopyInStepTests`가 두 겹으로 지킨다:
+
+| | |
+|---|---|
+| **지문** | `src/Ked.Progression/runtime-sync.txt` — 공유 24파일의 <b>코드</b> 해시. 어느 기계에서든 돈다 |
+| **맞대조** | 런타임 저장소가 옆 폴더에 있거나 `KED_PROGRESSION_RUNTIME`이 가리키면 파일 내용을 직접 비교 |
+
+재는 것은 **코드지 글이 아니다** — 주석은 이쪽이 더 두껍고 그건 의도다. 실제로 `ChapterProgression.cs`의
+차이는 주석뿐이었고, 필드 위치만 저쪽에 맞춰 옮겼다(2026-09-16).
+
+**옮겨 왔을 때의 절차**: 저쪽을 고친다 → 파일을 이쪽으로 복사한다 → 테스트를 돌린다 →
+나온 `runtime-sync.txt.actual`을 확인하고 `runtime-sync.txt`로 바꾼다. ⛔ **지문을 갱신하는 것은
+"옮겨 왔다"는 선언**이다 — 사본을 이쪽에서 고쳐 놓고 지문만 맞추면 관문과 게임이 갈린다.
+
 ---
 
 # 1부 — 연출 런타임 (`.yarn` 텍스트)
