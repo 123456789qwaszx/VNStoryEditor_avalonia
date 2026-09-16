@@ -1,4 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Vn.App.Services;
 using Vn.Authoring.Chapters;
 using Vn.Authoring.Editing;
@@ -30,6 +34,17 @@ public partial class ScriptView : UserControl
     /// <summary>삭제 확인 대기 중인 글 — 같은 글로 한 번 더 누르면 적용한다.</summary>
     private string? _pendingDeleteText;
 
+    /// <summary>[화자 ▾]가 여는 목록의 몸통. 열 때마다 다시 채운다 — 등록부는 변한다.</summary>
+    private readonly StackPanel _speakerMenu = new();
+
+    /// <summary>
+    /// 지금 화자 목록에 선 이름들 — <b>테스트의 손잡이</b>다(챕터 그래프의
+    /// <c>ChapterAddCenterButton</c>과 같은 뜻). 플라이아웃의 팝업은 창 밖에 살아
+    /// 나무를 타고 내려가 찾을 수 없다.
+    /// </summary>
+    internal IReadOnlyList<Button> SpeakerMenuItems =>
+        _speakerMenu.Children.OfType<Button>().ToList();
+
     public ScriptView()
     {
         InitializeComponent();
@@ -38,6 +53,7 @@ public partial class ScriptView : UserControl
         EpisodeList.SelectionChanged += (_, _) => UiGuard.Run(_session, "에피소드 고르기", ShowSelected);
         ApplyButton.Click += (_, _) => UiGuard.Run(_session, "글 반영", Apply);
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
+        SpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 고르기", PickSpeaker);
     }
 
 
@@ -182,6 +198,7 @@ public partial class ScriptView : UserControl
     {
         _pendingDeleteText = null;
         ProblemsText.IsVisible = false;
+        UnknownSpeakerText.IsVisible = false;
         EmptyPanel.IsVisible = false;
         EmptyAddScriptButton.IsVisible = false;
 
@@ -202,6 +219,7 @@ public partial class ScriptView : UserControl
             ScriptBox.Text = string.Empty;
             ScriptBox.IsEnabled = false;
             ApplyButton.IsEnabled = false;
+            SpeakerButton.IsEnabled = false;
             HintText.Text = string.Empty;
             return;
         }
@@ -209,12 +227,14 @@ public partial class ScriptView : UserControl
         HeaderText.Text = episodeId;
         ScriptBox.IsEnabled = true;
         ApplyButton.IsEnabled = true;
+        SpeakerButton.IsEnabled = true;
 
         // 사다리의 마지막 칸 — 에피소드는 있는데 아직 아무도 안 썼다.
         if (FindNode(episodeId) is not { } node)
         {
             ScriptBox.Text = string.Empty;
             ApplyButton.IsEnabled = false;
+            SpeakerButton.IsEnabled = false;
 
             EmptyPanel.IsVisible = true;
             EmptyAddScriptButton.IsVisible = true;
@@ -230,6 +250,171 @@ public partial class ScriptView : UserControl
             _session.Project, node.Id, OutputPresetCatalog.ScenarioOnly, _session.Definition));
 
         HintText.Text = "고친 뒤 [글 반영] — 줄의 신원은 보존됩니다.";
+
+        ShowUnknownSpeakers(Speakers(node));
+    }
+
+    /// <summary>그 노드가 실제로 쓰고 있는 화자명들 — 프로젝트가 원본이라 글이 아니라 줄에서 센다.</summary>
+    private IEnumerable<string> Speakers(DialogueNode node)
+    {
+        if (_session is null ||
+            node.ScriptId is not { } scriptId ||
+            _session.Project.FindScript(scriptId) is not { } script)
+        {
+            return [];
+        }
+
+        ScriptLocale primary = script.Locales.Single(
+            locale => string.Equals(locale.Locale, script.PrimaryLocale, StringComparison.Ordinal));
+
+        return script.ActiveLines.Select(line => primary.Find(line.Id).Speaker ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 등록부에 없는 화자를 <b>짚어만 준다</b> (§6.2: "미등록 이름은 오류가 아니라 표시 대상").
+    ///
+    /// ⚠ 막지 않는 이유 — 작가가 등록부보다 앞서 쓰는 것은 정상이고, 등록은 기획자의 일이다.
+    /// 그래도 조용히 넘어가지 않는 이유 — 미등록은 <b>초상화가 안 붙는다</b>는 뜻이고,
+    /// 그것을 알아채는 자리가 여기가 아니면 프리뷰에서 얼굴이 빈 것을 보고서야 안다.
+    ///
+    /// ⚠ 비어 있는 화자는 <b>지문</b>이라 세지 않는다.
+    /// </summary>
+    private void ShowUnknownSpeakers(IEnumerable<string> speakers)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        List<string> unknown = speakers
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Where(name => _session.Definition.FindSpeakerCharacterId(name) is null)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        UnknownSpeakerText.IsVisible = unknown.Count > 0;
+        UnknownSpeakerText.Text = unknown.Count == 0
+            ? string.Empty
+            : $"등록부에 없는 화자: {string.Join(", ", unknown)} — 오류는 아닙니다. " +
+              "[챕터 그래프]의 [화자]에서 등록하면 초상화가 붙습니다.";
+    }
+
+    /// <summary>
+    /// <b>화자 드롭다운</b> (§6.2). 지금 커서가 선 줄의 앞에 등록된 이름을 붙인다.
+    ///
+    /// ⚠ 칸이 아니라 <b>글</b>을 고치는 화면이라 콤보박스가 설 자리가 없다 — 대신
+    /// 연출 그래프의 화자 고르기와 같은 <b>플라이아웃</b>이고, 원천도 같은 등록부다.
+    /// </summary>
+    private void PickSpeaker()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        List<string> candidates = _session.Definition.Speakers
+            .Select(speaker => speaker.Name)
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            _session.SetStatus(
+                "등록된 화자가 없습니다 — [챕터 그래프]의 [화자]에서 더하면 여기 목록에 옵니다. " +
+                "그때까지는 '이름: 대사'로 직접 쓰면 됩니다.");
+            return;
+        }
+
+        _speakerMenu.Children.Clear();
+
+        var flyout = new Flyout
+        {
+            Content = new ScrollViewer { MaxHeight = 260, Content = _speakerMenu },
+            Placement = PlacementMode.Top
+        };
+
+        foreach (string name in candidates)
+        {
+            var item = new Button
+            {
+                Content = name,
+                FontSize = 11,
+                Padding = new Thickness(10, 4),
+                MinWidth = 140,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Background = Brushes.Transparent
+            };
+
+            item.Click += (_, _) =>
+            {
+                flyout.Hide();
+                UiGuard.Run(_session, "화자 붙이기", () => SetSpeakerOnCaretLine(name));
+            };
+
+            _speakerMenu.Children.Add(item);
+        }
+
+        flyout.ShowAt(SpeakerButton);
+    }
+
+    /// <summary>
+    /// 커서가 선 줄의 화자를 <paramref name="name"/>으로 만든다.
+    ///
+    /// ⚠ 이미 화자가 적힌 줄이면 <b>갈아 끼운다</b> — 앞에 붙이기만 하면 "라루: 윌로: …"가
+    /// 되고, 그것은 파서에게 화자 '라루'에 내용 "윌로: …"인 한 줄이다(조용히 망가진다).
+    /// 무엇이 화자인지는 파서의 규칙과 같아야 한다: <b>첫 콜론 앞, 공백 없음</b>
+    /// (공백 있는 등록명은 예외 — <c>ScenarioTextParser.SplitSpeaker</c>).
+    /// </summary>
+    private void SetSpeakerOnCaretLine(string name)
+    {
+        string text = ScriptBox.Text ?? string.Empty;
+        int caret = Math.Clamp(ScriptBox.CaretIndex, 0, text.Length);
+
+        int start = text.LastIndexOf('\n', Math.Max(caret - 1, 0)) + 1;
+
+        if (caret == 0)
+        {
+            start = 0;
+        }
+
+        int end = text.IndexOf('\n', start);
+        end = end < 0 ? text.Length : end;
+
+        string line = text[start..end];
+        string body = SplitBody(line);
+
+        string replacement = $"{name}: {body}";
+
+        ScriptBox.Text = text[..start] + replacement + text[end..];
+        ScriptBox.CaretIndex = start + replacement.Length;
+        ScriptBox.Focus();
+    }
+
+    /// <summary>화자 접두를 뗀 나머지. 접두가 없으면 줄 그대로다.</summary>
+    private string SplitBody(string line)
+    {
+        int colon = line.IndexOf(':');
+
+        if (colon <= 0)
+        {
+            return line;
+        }
+
+        string prefix = line[..colon];
+
+        // 파서와 같은 규칙 — 접두에 공백이 있으면 산문이라 화자가 아니다. 등록된 이름과
+        // 정확히 같을 때만 공백 있는 접두도 이름으로 본다.
+        if (prefix.Any(char.IsWhiteSpace) &&
+            _session?.Definition.Speakers.Any(speaker =>
+                string.Equals(speaker.Name, prefix, StringComparison.Ordinal)) != true)
+        {
+            return line;
+        }
+
+        return line[(colon + 1)..].TrimStart();
     }
 
     /// <summary>
@@ -307,6 +492,11 @@ public partial class ScriptView : UserControl
         }
 
         _pendingDeleteText = null;
+
+        // 방금 쓴 이름이야말로 미등록이기 쉽다 — 파서가 이미 가려 놓은 것을 그대로 쓴다.
+        ShowUnknownSpeakers(outcome.Parsed.Lines
+            .Where(line => line.SpeakerUnregistered)
+            .Select(line => line.Speaker));
 
         if (!outcome.Applied)
         {

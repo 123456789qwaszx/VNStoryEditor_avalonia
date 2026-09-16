@@ -314,7 +314,160 @@ public sealed class ScriptTabTests : IDisposable
         Assert.Contains("에피소드가 없습니다", view.FindControl<TextBlock>("EmptyText")!.Text!);
     });
 
+    // ── 화자는 등록부에서 (§6.2) ────────────────────────────────────────────
+
+    [Fact]
+    public void 화자를_고르면_커서가_선_줄에_붙는다() => HeadlessUi.Run(() =>
+    {
+        // 칸이 아니라 글을 고치는 화면이라 콤보박스가 설 자리가 없다 — 드롭다운은
+        // 커서가 선 줄에 이름을 붙여 준다. 손으로 쳐도 되지만, 그러면 오타가 곧 미등록이다.
+        Register(("윌로", "willo"), ("라루", "laru"));
+
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        var box = view.FindControl<TextBox>("ScriptBox")!;
+        box.Text = "윌로: 첫 줄\n아직 화자가 없는 줄";
+        box.CaretIndex = box.Text.Length;
+
+        PickSpeaker(view, "라루");
+
+        Assert.Equal("윌로: 첫 줄\n라루: 아직 화자가 없는 줄", box.Text);
+    });
+
+    [Fact]
+    public void 이미_화자가_있는_줄이면_갈아_끼운다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 앞에 붙이기만 하면 "라루: 윌로: …"가 되고, 파서는 그것을 화자 '라루'에
+        //    내용 "윌로: …"인 한 줄로 읽는다 — 조용히 망가지는 자리다.
+        Register(("윌로", "willo"), ("라루", "laru"));
+
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        var box = view.FindControl<TextBox>("ScriptBox")!;
+        box.Text = "윌로: 첫 줄";
+        box.CaretIndex = 3;
+
+        PickSpeaker(view, "라루");
+
+        Assert.Equal("라루: 첫 줄", box.Text);
+    });
+
+    [Fact]
+    public void 콜론이_있어도_산문이면_화자로_보지_않는다() => HeadlessUi.Run(() =>
+    {
+        // 파서의 규칙과 같아야 한다 — 접두에 공백이 있으면 산문이다("그는 말했다: …").
+        Register(("라루", "laru"));
+
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        var box = view.FindControl<TextBox>("ScriptBox")!;
+        box.Text = "그는 말했다: 다시는 오지 않겠다고";
+        box.CaretIndex = 0;
+
+        PickSpeaker(view, "라루");
+
+        Assert.Equal("라루: 그는 말했다: 다시는 오지 않겠다고", box.Text);
+    });
+
+    [Fact]
+    public void 미등록_화자는_오류가_아니라_표시된다() => HeadlessUi.Run(() =>
+    {
+        // §6.2 — 막지 않는다. 작가가 등록부보다 앞서 쓰는 것은 정상이고 등록은 기획자의
+        // 일이다. 그래도 짚어는 준다: 미등록은 초상화가 안 붙는다는 뜻이라서다.
+        Register(("윌로", "willo"));
+
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n문지기: 어서 오시오";
+        Click(view, "ApplyButton");
+
+        // 반영은 됐다 — 오류가 아니다.
+        Assert.Equal(["첫 줄", "어서 오시오"], Texts(session, node));
+
+        var unknown = view.FindControl<TextBlock>("UnknownSpeakerText")!;
+
+        Assert.True(unknown.IsVisible);
+        Assert.Contains("문지기", unknown.Text!);
+        Assert.DoesNotContain("윌로", unknown.Text!);
+
+        // 붉은 문제 줄이 아니다 — 색이 뜻을 나른다.
+        Assert.False(view.FindControl<TextBlock>("ProblemsText")!.IsVisible);
+    });
+
+    [Fact]
+    public void 공백_있는_미등록_이름은_화자가_아니라_지문이_된다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ <b>작가가 밟는 함정이다.</b> 파서는 접두에 공백이 있으면 산문으로 본다
+        //    ("그는 말했다: …"를 화자로 삼지 않으려고) — 등록된 이름만 예외다. 그래서
+        //    "늙은 상인: 어서 오시오"는 <b>화자 없는 한 줄</b>이 되고, 화자가 없으니
+        //    [미등록] 표시도 안 뜬다. 조용하다는 것이 이 자리의 위험이다.
+        //
+        //    막지 않는 이유는 규칙이 파서의 것이고 저 산문 규칙에도 이유가 있어서다.
+        //    작가에게 주는 답은 <b>[화자 ▾]로 고르는 것</b>이다 — 등록된 이름은 공백이
+        //    있어도 화자로 읽힌다(아래 두 번째 대목).
+        Register(("윌로", "willo"));
+
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n늙은 상인: 어서 오시오";
+        Click(view, "ApplyButton");
+
+        Assert.Equal(["첫 줄", "늙은 상인: 어서 오시오"], Texts(session, node));
+        Assert.False(view.FindControl<TextBlock>("UnknownSpeakerText")!.IsVisible);
+
+        // 등록만 해 두면 같은 글이 화자로 읽힌다 — 공백은 문제가 아니었다.
+        // (실제 창구를 지난다 — 파일만 갈면 열려 있는 세션의 등록부는 안 바뀐다.)
+        Assert.True(session.SaveSpeakers([
+            new SpeakerSpec { Name = "윌로", CharacterId = "willo" },
+            new SpeakerSpec { Name = "늙은 상인", CharacterId = "merchant" }
+        ]));
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n늙은 상인: 어서 오시오";
+        Click(view, "ApplyButton");
+
+        Assert.Equal(["첫 줄", "어서 오시오"], Texts(session, node));
+    });
+
+    [Fact]
+    public void 전부_등록된_화자면_아무_말도_안_한다() => HeadlessUi.Run(() =>
+    {
+        // 잘된 일은 조용하다 — 늘 서 있는 안내문은 곧 아무도 안 읽는 안내문이다.
+        Register(("윌로", "willo"));
+
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        Assert.False(view.FindControl<TextBlock>("UnknownSpeakerText")!.IsVisible);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>화자 등록부 — 원천은 <c>game.definition.json</c> 하나다.</summary>
+    private void Register(params (string Name, string CharacterId)[] speakers) =>
+        GameDefinitionStore.SaveSpeakers(
+            ManifestPath,
+            speakers.Select(item => new SpeakerSpec
+            {
+                Name = item.Name,
+                CharacterId = item.CharacterId
+            }).ToList());
+
+    /// <summary>[화자 ▾]를 열고 그 이름을 고른다 — 목록 안의 단추가 실제 창구다.</summary>
+    private static void PickSpeaker(ScriptView view, string name)
+    {
+        Click(view, "SpeakerButton");
+
+        view.SpeakerMenuItems
+            .Single(button => string.Equals(button.Content as string, name, StringComparison.Ordinal))
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
 
     /// <summary>에피소드 몇 개짜리 챕터 워크북 — 기획자가 만들어 둔 판의 최소 모양.</summary>
     private void WriteChapter(string chapterId, params string[] episodeIds)
