@@ -11,22 +11,44 @@ public sealed record ChapterWriteResult(bool Written, string? Failure)
 }
 
 /// <summary>
-/// 챕터 워크북에 쓰는 유일한 자리 (G-2 v2, 2026-08-12 소유자 개정).
+/// 챕터 워크북에 <b>셀 단위로</b> 쓰는 자리 (G-2 v2, 2026-08-12 소유자 개정).
 ///
-/// <b>엑셀이 계속 원본이다.</b> 툴의 그래프 편집은 전부 여기로 모여 해당 셀만 고친다 —
-/// 셀 단위 외과수술이며, 시트 전체를 다시 만들지 않으므로 서식·드롭다운·사람이 적어 둔
-/// 다른 칸이 그대로 남는다. 대량 작업(대사)은 계속 엑셀에서 하고, 구조·조건 같은 소량
-/// 작업만 이 경로를 지난다.
+/// ⛔ <b>2026-09-16에 이 클래스의 절반이 제품에서 손을 놓았다</b> (R-F,
+/// <c>docs/work-orders/tool-owns-workbooks-orders.md</c> §4.1). 옛 머리글은
+/// <i>"엑셀이 계속 원본이다 — 툴의 그래프 편집은 전부 여기로 모여 해당 셀만 고친다"</i>로
+/// 시작했다. 그 전제가 뒤집혔다: 편집은 <see cref="Vn.Authoring.Editing.ProjectEditor"/>가
+/// 모델에 하고, 파일은 <see cref="ChapterWorkbookEmitter"/>가 통째로 낸다.
 ///
-/// <b>자동 레이아웃·자동 재번호는 없다.</b> 사람이(또는 사람의 드래그가) 준 값만 그대로 쓴다.
+/// <b>지금 이 클래스에 사는 것은 두 부류다.</b>
 ///
-/// 쓰기는 LineId 되쓰기와 같은 규칙이다: 메모리 사본으로 열고(경로 생성자는 실패 시 핸들을
-/// 놓지 않는다), 엑셀이 잠갔으면 쓰지 않고 사유를 돌려준다. 저장이 끝나면 폴더 감시가
-/// 다시 읽어 화면이 따라온다 — 쓰는 쪽이 화면을 직접 고칠 필요가 없다.
+/// <list type="number">
+/// <item><b>제품이 아직 쓰는 셋</b> — <see cref="IsLockedByAnotherApp"/>(잠금 확인, §5.3),
+///   <see cref="RenameChapterWorkbook"/>(파일 이름 바꾸기), 그리고 겉모습을 입히는
+///   <see cref="ApplyChapterChrome"/>·<see cref="ApplyChapterDropdowns"/>·
+///   <see cref="CreateChoiceSheet"/>(이미터와 이행기가 부른다).</item>
+/// <item><b>셀 편집 열여섯 — 제품에는 부르는 곳이 하나도 없다.</b>
+///   <see cref="AddEpisode"/>·<see cref="AddEdge"/>·<see cref="UpdateEdge"/>·
+///   <see cref="EnsureChapterWorkbook"/> 따위. <b>테스트 픽스처만 쓴다.</b></item>
+/// </list>
+///
+/// <b>왜 안 지웠나</b> — 지울 수 없어서가 아니라, 그 픽스처가 <b>없어지지 않을 필요</b>이기
+/// 때문이다: 임포터·이행기·리더는 구판 워크북을 계속 읽어야 하고, 그것을 시험하려면 워크북을
+/// 지어야 한다.
+///
+/// <b>왜 테스트 프로젝트로 안 옮겼나</b> — 위 두 부류가 <b>같은 사설 헬퍼를 나눠 쓴다</b>
+/// (<c>AddSheetWithHeaders</c>·<c>CreateChoiceSheet</c>·<c>ApplyChapterChrome</c>).
+/// 옮기려면 그것들을 복제하거나 밖으로 열어야 하는데, 복제하면 픽스처가 짓는 워크북이
+/// <b>진짜 규격에서 조용히 갈라진다</b> — 그 순간 임포트 테스트 전부가 힘을 잃는다.
+/// 규격을 한 벌로 두는 값이 "제품 어셈블리가 깨끗하다"보다 크다.
+///
+/// ⚠ <b>새 편집 경로를 여기에 만들지 말 것.</b> 챕터를 고치는 자리는
+/// <c>ProjectEditor.Chapters.cs</c> 하나다.
 /// </summary>
 public static class ChapterWorkbookWriter
 {
     // ── 에피소드 ────────────────────────────────────────────────────────────
+    // ⚠ 아래부터 조건 편집까지 — <b>제품에는 부르는 곳이 없다</b>. 테스트 픽스처 전용이다
+    //    (위 머리글 참조). 고치는 자리는 `ProjectEditor.Chapters.cs`다.
 
     /// <summary>
     /// 새 에피소드 행을 `에피소드` 시트 끝에 더한다. Id는 호출자가 정한다(자동 발명 금지).
