@@ -217,13 +217,29 @@ public sealed class DialogueLineExtension
     /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 목록 순서가 곧 실행 순서다.</summary>
     public List<SetOperation> SetOperations { get; init; } = new();
 
+    /// <summary>
+    /// <b>여기서 갈라진다</b> — 이 줄에서 다녀올 노드 (R7 P-5 · 2026-09-17 소유자).
+    ///
+    /// ⛔ <b>조건이 아니다.</b> 연출 그래프는 "어디서 갈라지는가"만 짚고, 갈지 말지와 그
+    /// 조건이 무엇인지는 <b>다녀온 곳</b>과 이후의 다른 탭이 정한다. 그래서 이 표식은
+    /// 아무 조건 없이 <c>&lt;&lt;detour {노드}&gt;&gt;</c> 한 줄로 나간다 — 성립하든 말든
+    /// 다녀오고, 다녀온 자유 씬이 제 첫머리에서 보고 아니면 곧바로 <c>&lt;&lt;return&gt;&gt;</c> 한다.
+    ///
+    /// ⚠ <b>전환(<see cref="Transitions"/>)이 아니다.</b> 전환은 전부 <b>구역</b>이고
+    /// (<c>Begin…</c>/<c>End…</c> 쌍이 줄들을 감싼다), 이것은 <b>줄 사이에 끼는 카드 한 장</b>
+    /// 이다. 구역이 아닌 것을 구역으로 적으면 닫는 자리가 없다.
+    /// </summary>
+    public string? DetourTargetNodeId { get; set; }
+
     /// <summary>이 확장이 아무것도 담고 있지 않은지. 빈 확장은 저장하지 않는다.</summary>
-    public bool IsEmpty => Transitions.Count == 0 && SetOperations.Count == 0;
+    public bool IsEmpty =>
+        Transitions.Count == 0 && SetOperations.Count == 0 && DetourTargetNodeId is null;
 
     public DialogueLineExtension Clone() =>
         new(LineId)
         {
             Transitions = Transitions.Select(transition => transition.Clone()).ToList(),
-            SetOperations = SetOperations.Select(operation => operation.Clone()).ToList()
+            SetOperations = SetOperations.Select(operation => operation.Clone()).ToList(),
+            DetourTargetNodeId = DetourTargetNodeId
         };
 }

@@ -619,6 +619,20 @@ public sealed partial class ProjectEditor
             return;
         }
 
+        // 「조건 분기」 표식의 목표는 <b>그 줄</b>이 진다 (R7 P-5) — 갈래 출구 장부에 적으면
+        // 여는 전환이 없는 고아가 되고, 저장할 때 그 칸이 전환 안에 있어 통째로 사라진다.
+        if (kind == ExitPortKind.Detour)
+        {
+            DialogueLineExtension extension = dialogue.RequireExtension(branchOpenLineId);
+
+            if (!string.Equals(extension.DetourTargetNodeId, targetNodeId, StringComparison.Ordinal))
+            {
+                Mutate(() => extension.DetourTargetNodeId = targetNodeId);
+            }
+
+            return;
+        }
+
         // 선택지 출구(v9)는 문구가 열쇠다 — 대본의 줄에 매이지 않는다.
         Dictionary<string, string> exits =
             kind == ExitPortKind.Choice ? dialogue.ChoiceExits : dialogue.BranchExits;

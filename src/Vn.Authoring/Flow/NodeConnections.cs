@@ -17,7 +17,16 @@ public enum ExitPortKind
     ///
     /// 대본의 줄에 매이지 않으므로 대본을 고쳐도 사라지지 않는다(문구의 주인은 챕터다).
     /// </summary>
-    Choice
+    Choice,
+
+    /// <summary>
+    /// <b>「조건 분기」 표식</b>이 뚫은 출구 (R7 P-5 · 2026-09-17). 열쇠는 그 줄의 LineId다.
+    ///
+    /// ⛔ <b>조건이 아니다.</b> 연출 그래프는 "어디서 갈라지는가"만 짚는다 — 성립하든 말든
+    /// 다녀오고, 다녀온 자유 씬이 제 첫머리에서 보고 아니면 곧바로 돌아온다. 그래서 갈래와
+    /// 달리 여는 전환도 닫는 전환도 없다: <b>줄 하나가 곧 포트 하나</b>다.
+    /// </summary>
+    Detour
 }
 
 /// <summary>
@@ -99,6 +108,21 @@ public static class NodeConnections
                     branch.PaletteIndex,
                     IsChoice: branch.IsChoice,
                     ChoiceText: branch.IsChoice ? flow.Script.Find(branch.OpenLineId)?.Text : null));
+            }
+
+            // 「조건 분기」 표식 — 줄 하나가 곧 포트 하나다 (R7 P-5). 대본에 적힌 순서
+            // 그대로 선다: 판에서 읽는 차례와 카드에서 보는 차례가 같아야 한다.
+            foreach (DialogueLine line in flow.Script.Lines)
+            {
+                if (dialogue.LineExtensions.FirstOrDefault(extension =>
+                        string.Equals(extension.LineId, line.LineId, StringComparison.Ordinal))
+                    is not { DetourTargetNodeId: { Length: > 0 } detour })
+                {
+                    continue;
+                }
+
+                ports.Add(new ExitPort(
+                    ExitPortKind.Detour, dialogue.Id, line.LineId, "분기", detour, ports.Count));
             }
 
             // 기본 출구는 엑셀노드만 가진다 (2026-08-21 소유자) — 커스텀(자유) 노드는

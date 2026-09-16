@@ -202,6 +202,12 @@ internal static class StoryNodeJson
                 lineJson["set"] = operations;
             }
 
+            // 「조건 분기」 표식 (R7 P-5) — 이 줄에서 다녀올 노드. 조건이 아니다.
+            if (extension.DetourTargetNodeId is { Length: > 0 } detour)
+            {
+                lineJson["detour"] = detour;
+            }
+
             lines.Add(lineJson);
         }
 
@@ -553,6 +559,11 @@ internal static class StoryNodeJson
                         Value = (string?)operationJson["value"] ?? string.Empty
                     });
                 }
+            }
+
+            if ((string?)lineJson["detour"] is { Length: > 0 } detour)
+            {
+                extension.DetourTargetNodeId = detour;
             }
 
             node.LineExtensions.Add(extension);

@@ -318,6 +318,20 @@ public sealed class DialogueNode : StoryNode
     /// </summary>
     public string? EffectiveDefaultExit => ExcelEpisodeId is null ? null : DefaultExitTargetNodeId;
 
+    /// <summary>그 줄의 확장 — 없으면 만들어 붙인다. 빈 확장은 저장 때 알아서 빠진다.</summary>
+    public DialogueLineExtension RequireExtension(string lineId)
+    {
+        if (FindExtension(lineId) is { } found)
+        {
+            return found;
+        }
+
+        var made = new DialogueLineExtension(lineId);
+        LineExtensions.Add(made);
+
+        return made;
+    }
+
     public DialogueLineExtension? FindExtension(string? lineId)
     {
         return lineId is null
