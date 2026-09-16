@@ -21,7 +21,13 @@ public sealed record DialogueResultLine(
     DialogueResultTransition? Transition = null,
     string? BranchExitTargetNodeId = null,
     IReadOnlyList<DialogueResultSetOperation>? SetOperations = null,
-    IReadOnlyList<DialogueResultTransition>? ExtraTransitions = null)
+    IReadOnlyList<DialogueResultTransition>? ExtraTransitions = null,
+
+    /// <summary>
+    /// 「조건 분기」 표식이 가리키는 노드 (R7 P-5) — <b>이 줄 앞에서</b> 다녀온다.
+    /// 조건이 아니다: 성립하든 말든 다녀오고, 다녀온 곳이 제 첫머리에서 판단한다.
+    /// </summary>
+    string? DetourTargetNodeId = null)
 {
     public IReadOnlyList<DialogueResultSetOperation> Sets =>
         SetOperations ?? Array.Empty<DialogueResultSetOperation>();

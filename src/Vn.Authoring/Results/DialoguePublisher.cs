@@ -232,7 +232,8 @@ public static class DialoguePublisher
                         .Skip(1)
                         .Select(transition => Freeze(transition, project, definition, available))
                         .OfType<DialogueResultTransition>()
-                        .ToArray()));
+                        .ToArray(),
+                line.DetourTargetNodeId));
         }
 
         AddFlowProblems(flow, problems);

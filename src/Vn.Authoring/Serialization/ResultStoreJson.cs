@@ -78,7 +78,9 @@ internal static class DialogueResultJson
                 (string?)lineJson["text"] ?? string.Empty,
                 ReadTransition(lineJson["condition"] as JsonObject),
                 (string?)lineJson["branchExit"],
-                ReadSetOperations(lineJson["set"] as JsonArray)));
+                ReadSetOperations(lineJson["set"] as JsonArray),
+                ExtraTransitions: null,
+                DetourTargetNodeId: (string?)lineJson["detour"]));
         }
 
         var assignments = new List<DialogueResultAssignment>();
@@ -147,6 +149,11 @@ internal static class DialogueResultJson
             if (line.BranchExitTargetNodeId is not null)
             {
                 item["branchExit"] = line.BranchExitTargetNodeId;
+            }
+
+            if (line.DetourTargetNodeId is { Length: > 0 } detour)
+            {
+                item["detour"] = detour;   // 「조건 분기」 표식 (R7 P-5)
             }
 
             if (line.Sets.Count > 0)

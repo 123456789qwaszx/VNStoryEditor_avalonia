@@ -1,4 +1,5 @@
 using Vn.Authoring.Editing;
+using Vn.Authoring.Rendering;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Script;
@@ -117,4 +118,33 @@ public sealed class BranchMarkerTests
 
         return (editor, node, lineId);
     }
+
+    // ── 대본에 나가는 모양 (R7 P-5, 이미터) ────────────────────────────────
+
+    [Fact]
+    public void 표식은_조건_없이_detour_한_줄로_나간다()
+    {
+        // ⛔ `<<if>>`로 감싸지 않는다 — 연출 그래프는 "어디서 갈라지는가"만 짚고, 갈지
+        //    말지는 다녀온 곳이 제 첫머리에서 정한다.
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+        node.RequireExtension(lineId).DetourTargetNodeId = Target(editor).Id;
+
+        string yarn = Preview(editor, node);
+
+        // ⚠ 미리보기는 노드 <b>Id</b>로 낸다 — 번들 이미터가 제 이름 규칙으로 옮긴다.
+        Assert.Contains($"<<detour {Target(editor).Id}>>", yarn, StringComparison.Ordinal);
+        Assert.DoesNotContain("<<if", yarn, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 표식이_없으면_아무것도_안_나간다()
+    {
+        (ProjectEditor editor, DialogueNode node, _) = World();
+
+        Assert.DoesNotContain("<<detour", Preview(editor, node), StringComparison.Ordinal);
+    }
+
+    private static string Preview(ProjectEditor editor, DialogueNode node) =>
+        DocumentPreviewFormatter.Format(
+            WorkingDialoguePreview.Compose(editor.Project, node.Id));
 }

@@ -17,7 +17,10 @@ public sealed record DialogueLine(
     string Text,
     LineConditionTransition? Transition,
     IReadOnlyList<SetOperation>? SetOperations = null,
-    IReadOnlyList<LineConditionTransition>? ExtraTransitions = null)
+    IReadOnlyList<LineConditionTransition>? ExtraTransitions = null,
+
+    /// <summary>「조건 분기」 표식이 가리키는 노드 (R7 P-5) — 이 줄 앞에서 다녀온다.</summary>
+    string? DetourTargetNodeId = null)
 {
     /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 없으면 빈 목록이다.</summary>
     public IReadOnlyList<SetOperation> Sets => SetOperations ?? Array.Empty<SetOperation>();
@@ -143,7 +146,8 @@ public static class DialogueScriptResolver
                 text.Text,
                 extension?.Transition,
                 extension?.SetOperations,
-                extension is { Transitions.Count: > 1 } ? extension.Transitions.Skip(1).ToList() : null));
+                extension is { Transitions.Count: > 1 } ? extension.Transitions.Skip(1).ToList() : null,
+                extension?.DetourTargetNodeId));
         }
 
         var orphans = new List<OrphanLineExtension>();
