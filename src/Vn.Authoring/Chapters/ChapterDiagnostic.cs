@@ -116,7 +116,17 @@ public enum ChapterDiagnosticCode
     AutoEdgeHasConditions,
     AutoEdgeHasStatChanges,
     AutoEdgeCrossesScene,
-    AutoEdgeHasChoiceLabel
+    AutoEdgeHasChoiceLabel,
+
+    /// <summary>
+    /// 파일을 <b>열지</b> 못했다 (R-F · 2026-09-16). 데이터의 흠이 아니라 접근 실패다 —
+    /// 엑셀이 붙들고 있거나, 파일이 깨졌거나, 권한이 없다.
+    ///
+    /// ⚠ 그래도 <b>오류</b>다. 목록 화면에서는 한 파일을 못 읽어도 나머지를 보여 주는 것이
+    /// 옳지만(<see cref="ChapterLibrary"/>), 임포트는 부분 성공하지 않는다(§5.2) — 무엇이
+    /// 안 들어왔는지 모르는 채로 절반만 들이면 어느 챕터가 원본인지 사람이 알 수 없다.
+    /// </summary>
+    ChapterFileUnreadable
 }
 
 /// <summary>

@@ -1,3 +1,4 @@
+using Vn.Authoring.Chapters;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Rendering;
@@ -2237,6 +2238,28 @@ public sealed partial class ProjectEditor
     }
 
     /// <summary>파일에서 새로 읽었을 때처럼, 기록을 버리고 통째로 갈아 끼운다.</summary>
+    /// <summary>
+    /// 프로젝트가 든 챕터를 통째로 갈아 끼운다 — <b>임포트의 마지막 한 걸음</b>
+    /// (R-F · 2026-09-16, 지시서 §5).
+    ///
+    /// ⛔ <b>합치지 않는다.</b> 같은 Id를 행 단위로 맞추려면 신원 매칭이 필요하고, 그것이 곧
+    /// <c>EpisodeSyncService</c>가 하던 일이다(R-D에서 철거한 그 기계). 임포트는 <b>한 번</b>이라
+    /// 맞출 상대가 없어야 맞다.
+    ///
+    /// ⚠ 되돌리기에 실린다 — 잘못 들여온 것을 되돌릴 길이 그것뿐이다(워크북은 곧 산출물이라
+    /// 거기서 다시 가져오는 것은 되돌리기가 아니다).
+    /// </summary>
+    public void ReplaceChapters(IReadOnlyList<ChapterDocument> chapters)
+    {
+        ArgumentNullException.ThrowIfNull(chapters);
+
+        Mutate(() =>
+        {
+            Project.Chapters.Clear();
+            Project.Chapters.AddRange(chapters);
+        });
+    }
+
     public void Replace(StoryProject project)
     {
         Project = project ?? throw new ArgumentNullException(nameof(project));
