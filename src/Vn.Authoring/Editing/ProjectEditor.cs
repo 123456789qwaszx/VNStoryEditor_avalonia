@@ -267,7 +267,12 @@ public sealed partial class ProjectEditor
     /// 세우는 것이 곧 에피소드를 만드는 일이고, 그래서 어긋난 이름이 애초에 안 생긴다.
     /// </summary>
     private (DialogueNode Created, Action Attach) NewDialogueNodeCore(
-        string fileId, double x, double y, string? name, string? sceneId = null)
+        string fileId,
+        double x,
+        double y,
+        string? name,
+        string? sceneId = null,
+        bool allowUnreachable = false)
     {
         StoryFile file = RequireFile(fileId);
         var created = new DialogueNode(name: name ?? NextName("장면"))
@@ -284,7 +289,8 @@ public sealed partial class ProjectEditor
         var firstLine = new ScriptLine(_newLineId());
         created.ScriptId = script.Id;
 
-        (ChapterDocument? chapter, ChapterEpisode? episode) = NewEpisodeFor(file, created, sceneId);
+        (ChapterDocument? chapter, ChapterEpisode? episode) =
+            NewEpisodeFor(file, created, sceneId, allowUnreachable);
 
         return (created, () =>
         {
@@ -327,7 +333,7 @@ public sealed partial class ProjectEditor
     /// 따로 적힌 챕터마다 에피소드가 <b>두 배로 불어난다</b>(2026-09-17에 겪었다).
     /// </summary>
     private (ChapterDocument? Chapter, ChapterEpisode? Episode) NewEpisodeFor(
-        StoryFile file, DialogueNode created, string? sceneId)
+        StoryFile file, DialogueNode created, string? sceneId, bool allowUnreachable)
     {
         if (ChapterOfBoard(file) is not { } chapter)
         {
@@ -352,7 +358,8 @@ public sealed partial class ProjectEditor
             Math.Round(created.Layout.X, 2),
             Math.Round(created.Layout.Y, 2),
             Memo: null,
-            SourceRow: 0)
+            SourceRow: 0,
+            AllowUnreachable: allowUnreachable)
         {
             SceneId = sceneId
         });
@@ -404,7 +411,14 @@ public sealed partial class ProjectEditor
             source.Layout.X,
             source.Layout.Y + Graph.NodePlacement.SceneRow,
             name ?? NextName("분기"),
-            SceneOfNode(file, source));
+            SceneOfNode(file, source),
+            // ⛔ 들어오는 간선이 없다 — 챕터 진행이 아니라 대본의 `<<detour>>`로 들어간다.
+            //    그래서 도달성 증명은 이것을 <b>정확히 도달 불가로</b> 판정하고, 그 판정이
+            //    맞다. 증명기를 고치지 않는 이유는 그것이 저쪽 런타임의 <b>오라클</b>이기
+            //    때문이다(코퍼스로 고정돼 있어 여기서 답을 바꾸면 둘이 조용히 갈린다).
+            //    이미 있는 `도달불가 허용`이 정확히 이 자리를 위한 칸이다 — 오류가 알림으로
+            //    낮아지고, 그래도 판에는 표시된다.
+            allowUnreachable: true);
 
         Mutate(() =>
         {

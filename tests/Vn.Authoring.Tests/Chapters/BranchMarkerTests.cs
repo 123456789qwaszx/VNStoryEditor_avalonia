@@ -191,6 +191,37 @@ public sealed class BranchMarkerTests
     }
 
     [Fact]
+    public void 다녀오는_에피소드는_도달_불가로_울지_않는다()
+    {
+        // ⛔ 들어오는 간선이 없는 것이 맞다 — 챕터 진행이 아니라 대본의 `<<detour>>`로
+        //    들어간다. 그래서 도달성 증명의 판정은 <b>옳고, 고치지 않는다</b>: 그 증명기는
+        //    저쪽 런타임의 오라클이고 코퍼스로 고정돼 있어 여기서 답을 바꾸면 둘이 조용히
+        //    갈린다. 이미 있는 `도달불가 허용`이 정확히 이 자리를 위한 칸이다.
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+
+        DialogueNode made = editor.AddBranchMarker(node.Id, lineId);
+
+        Assert.True(editor.Project.Chapters.Single().Episodes
+            .Single(episode => string.Equals(episode.EpisodeId, made.Name, StringComparison.Ordinal))
+            .AllowUnreachable);
+    }
+
+    [Fact]
+    public void 손으로_세운_카드는_도달_불가로_운다()
+    {
+        // ⚠ 「분기 추가」와 가르는 자리다. 작가가 판에 그냥 세운 카드는 <b>아직 안 이은 것</b>
+        //    이므로 짚어 줘야 한다 — 허용을 기본값으로 두면 고아 에피소드가 조용히 쌓인다.
+        (ProjectEditor editor, _, _) = World();
+
+        DialogueNode made = editor.AddDialogueNode(
+            editor.Project.Files[0].Id, name: "혼자선카드");
+
+        Assert.False(editor.Project.Chapters.Single().Episodes
+            .Single(episode => string.Equals(episode.EpisodeId, made.Name, StringComparison.Ordinal))
+            .AllowUnreachable);
+    }
+
+    [Fact]
     public void 다녀오는_에피소드도_아래에_선택지_세_칸을_가진다()
     {
         // 소유자: "이 자유씬 역시 에피소드 노드이기에 아래쪽으로 선택지 3개가 뚫려 있는 상태" —
