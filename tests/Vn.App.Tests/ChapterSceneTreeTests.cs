@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
@@ -163,7 +164,90 @@ public sealed class ChapterSceneTreeTests
         Assert.Contains(tree.Rows, row => row.Kind == SceneTreeRowKind.Episode);
     });
 
+    [Fact]
+    public void 커서가_지나가는_것만으로는_글이_안_열린다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 커서와 선택은 <b>다른 것</b>이다(규격 §7 — 고르는 것은 Enter). ↑↓로 훑을 때마다
+        //    오른쪽 글이 바뀌면 목록을 훑어볼 수가 없다.
+        ChapterSceneTree tree = Show(Chapter("ch01", ("opening", "ep01"), ("opening", "ep02")));
+
+        Stroke(tree, Key.Down);   // 고른 줄(ep01)에서 한 칸
+
+        Assert.Equal("ep02", tree.CursorRow!.EpisodeId);
+        Assert.Equal("ep01", tree.Selection!.EpisodeId);
+
+        Stroke(tree, Key.Enter);
+
+        Assert.Equal("ep02", tree.Selection!.EpisodeId);
+    });
+
+    [Fact]
+    public void 왼쪽은_접고_이미_접혔으면_부모로_간다() => HeadlessUi.Run(() =>
+    {
+        // 규격 §7. 유니티 하이어라키와 같은 손버릇이라 설명 없이 손이 먼저 안다.
+        ChapterSceneTree tree = Show(Chapter("ch01", ("opening", "ep01")));
+
+        Stroke(tree, Key.Up);   // ep01 → 장면 줄
+        Assert.Equal(SceneTreeRowKind.Scene, tree.CursorRow!.Kind);
+
+        Stroke(tree, Key.Left);   // 접는다
+        Assert.DoesNotContain(tree.Rows, row => row.Kind == SceneTreeRowKind.Episode);
+        Assert.Equal(SceneTreeRowKind.Scene, tree.CursorRow!.Kind);
+
+        Stroke(tree, Key.Left);   // 이미 접혔으니 부모로
+        Assert.Equal(SceneTreeRowKind.Chapter, tree.CursorRow!.Kind);
+    });
+
+    [Fact]
+    public void 오른쪽은_펼치고_이미_펼쳤으면_첫_자식으로_간다() => HeadlessUi.Run(() =>
+    {
+        ChapterSceneTree tree = Show(Chapter("ch01", ("opening", "ep01")));
+
+        Stroke(tree, Key.Up);
+        Stroke(tree, Key.Up);   // 챕터 줄
+        Assert.Equal(SceneTreeRowKind.Chapter, tree.CursorRow!.Kind);
+
+        Stroke(tree, Key.Left);   // 접는다
+        Assert.DoesNotContain(tree.Rows, row => row.Kind == SceneTreeRowKind.Scene);
+
+        Stroke(tree, Key.Right);   // 편다
+        Assert.Contains(tree.Rows, row => row.Kind == SceneTreeRowKind.Scene);
+        Assert.Equal(SceneTreeRowKind.Chapter, tree.CursorRow!.Kind);
+
+        Stroke(tree, Key.Right);   // 이미 펴졌으니 첫 자식으로
+        Assert.Equal(SceneTreeRowKind.Scene, tree.CursorRow!.Kind);
+    });
+
+    [Fact]
+    public void 키보드로_접은_것도_기억한다() => HeadlessUi.Run(() =>
+    {
+        // 누른 것과 키로 접은 것이 <b>같은 길</b>을 지나야 한다 — 하나만 기억되면
+        // 사람은 어느 쪽이 남는지 알 수 없다.
+        string project = TempProject();
+        ChapterDocument chapter = Chapter("ch01", ("opening", "ep01"));
+
+        ChapterSceneTree tree = Show(chapter, project);
+        Stroke(tree, Key.Up);
+        Stroke(tree, Key.Up);
+        Stroke(tree, Key.Left);
+
+        Assert.DoesNotContain(tree.Rows, row => row.Kind == SceneTreeRowKind.Scene);
+        Assert.DoesNotContain(Show(chapter, project).Rows, row => row.Kind == SceneTreeRowKind.Scene);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>키 한 번 — 사람이 누르는 것과 같은 길이다.</summary>
+    private static void Stroke(ChapterSceneTree tree, Key key)
+    {
+        tree.RaiseEvent(new KeyEventArgs
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Key = key
+        });
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
 
     /// <summary>진짜 파일이어야 한다 — 없는 프로젝트의 접힘은 저장할 때 버려진다(가지치기).</summary>
     private static string TempProject()

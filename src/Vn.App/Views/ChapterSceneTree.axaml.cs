@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Vn.App.Services;
@@ -20,7 +21,11 @@ internal enum SceneTreeRowKind
 /// 트리에 보이는 줄 하나. <b>검증의 손잡이</b>이기도 하다 — 화면 없이 구조를 재려면
 /// 그려진 컨트롤이 아니라 이 목록을 봐야 한다.
 /// </summary>
-/// <param name="Key">접힘을 기억하는 열쇠. 에피소드 줄은 접히지 않아 빈 문자열이다.</param>
+/// <param name="Key">
+/// 그 줄의 <b>신원</b> — 접힘을 기억하고(챕터·장면) 키보드 커서가 다시 그린 뒤에도 같은 줄을
+/// 찾는 자리다. 줄 번호가 아니라 열쇠인 이유: 편집 한 번이 판을 다시 그리고 그때 줄이
+/// 늘거나 준다.
+/// </param>
 internal sealed record SceneTreeRow(
     SceneTreeRowKind Kind,
     string Key,
@@ -82,6 +87,11 @@ public partial class ChapterSceneTree : UserControl
 
     /// <summary>지금 보이는 줄들 — 검증이 구조를 재는 자리.</summary>
     internal IReadOnlyList<SceneTreeRow> Rows => _rows;
+
+    /// <summary>키보드가 짚고 있는 줄. 아직 아무도 키를 안 눌렀으면 없다.</summary>
+    internal SceneTreeRow? CursorRow => _cursorKey is null
+        ? null
+        : _rows.FirstOrDefault(row => string.Equals(row.Key, _cursorKey, StringComparison.Ordinal));
 
     /// <summary>
     /// 프로젝트를 읽어 트리를 세운다.
@@ -162,9 +172,23 @@ public partial class ChapterSceneTree : UserControl
             DrawChapter(chapter);
         }
 
+        // 커서가 접힌 자리로 사라졌으면 끌어온다 — 그래야 다음 ↑↓가 보이는 자리에서 뜬다.
+        // ⚠ <b>줄을 세우기 전에</b> 한다: 그려 놓고 옮기면 그 한 번은 테두리가 딴 줄에 선다.
+        // ⚠ 아직 아무도 키를 안 눌렀으면(_cursorKey가 null) 그대로 둔다 — 안 쓰는 테두리가
+        //   첫 줄에 늘 떠 있으면 그것대로 노이즈다.
+        if (_cursorKey is not null && _rows.Count > 0)
+        {
+            _cursorKey = _rows[CursorIndex()].Key;
+        }
+
         foreach (SceneTreeRow row in _rows)
         {
             RowHost.Children.Add(Build(row));
+        }
+
+        if (_cursorKey is not null && _rows.Count > 0)
+        {
+            RowHost.Children[CursorIndex()].BringIntoView();
         }
     }
 
@@ -241,7 +265,7 @@ public partial class ChapterSceneTree : UserControl
         ChapterDocument chapter, ChapterScene scene, ChapterEpisode episode, int depth) =>
         _rows.Add(new SceneTreeRow(
             SceneTreeRowKind.Episode,
-            Key: string.Empty,
+            "ep:" + chapter.ChapterId + "/" + episode.EpisodeId,
             chapter.ChapterId,
             scene.SceneId,
             episode.EpisodeId,
@@ -344,17 +368,29 @@ public partial class ChapterSceneTree : UserControl
             });
         }
 
+        // 커서는 선택과 <b>다르게</b> 보여야 한다 — 훑는 중인 자리와 열어 둔 글은 다른 것이다.
+        bool cursor = string.Equals(row.Key, _cursorKey, StringComparison.Ordinal);
+
         var button = new Button
         {
             Content = line,
             Background = selected ? new SolidColorBrush(Color.FromArgb(40, 61, 123, 217)) : Brushes.Transparent,
-            BorderThickness = new Thickness(0),
+            BorderThickness = new Thickness(cursor ? 1 : 0),
+            BorderBrush = cursor ? new SolidColorBrush(Color.FromArgb(150, 61, 123, 217)) : Brushes.Transparent,
             Padding = new Thickness(4, 2),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+
+            // 키는 트리가 받는다 — 줄마다 포커스를 두면 Avalonia의 기본 방향 이동이 먼저
+            // 먹어 규격 §7의 ←/→(접기·펼치기)가 설 자리가 없다.
+            Focusable = false
         };
 
-        button.Click += (_, _) => UiGuard.Run(null, "탐색기", () => Press(row));
+        button.Click += (_, _) => UiGuard.Run(null, "탐색기", () =>
+        {
+            Focus();
+            Press(row);
+        });
 
         return button;
     }
@@ -362,16 +398,34 @@ public partial class ChapterSceneTree : UserControl
     /// <summary>줄을 누르면 — 에피소드는 고르고, 담는 줄은 접거나 편다 (규격 §1).</summary>
     private void Press(SceneTreeRow row)
     {
+        _cursorKey = row.Key;
+
         if (row.Kind == SceneTreeRowKind.Episode)
         {
-            Selection = new ChapterEpisodePick(row.ChapterId, row.EpisodeId!);
-            Draw();
-            EpisodeSelected?.Invoke(Selection);
+            Choose(row);
             return;
         }
 
         // 지금 보이는 대로 뒤집는다 — 저절로 펴진 마디를 누르면 접히고, 그 접힘이 남는다.
-        if (IsExpanded(row.Key, row.ChapterId, null))
+        Fold(row, collapse: IsExpanded(row.Key, row.ChapterId, null));
+    }
+
+    private void Choose(SceneTreeRow row)
+    {
+        Selection = new ChapterEpisodePick(row.ChapterId, row.EpisodeId!);
+        Draw();
+        EpisodeSelected?.Invoke(Selection);
+    }
+
+    /// <summary>담는 줄 하나를 접거나 편다. <b>기억까지가 한 동작</b>이다(규격 §4).</summary>
+    private void Fold(SceneTreeRow row, bool collapse)
+    {
+        if (row.Kind == SceneTreeRowKind.Episode)
+        {
+            return;
+        }
+
+        if (collapse)
         {
             _expanded.Remove(row.Key);
             _collapsed.Add(row.Key);
@@ -388,5 +442,139 @@ public partial class ChapterSceneTree : UserControl
         }
 
         Draw();
+    }
+
+    // ── 키보드 (규격 §7) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// <b>커서</b> — 키보드가 짚고 있는 줄. <b>선택과 다른 것</b>이다: ↑↓로 지나가는 것만으로
+    /// 오른쪽 글이 바뀌면 훑어볼 수가 없다. 고르는 것은 Enter다(규격 §7).
+    /// </summary>
+    private string? _cursorKey;
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        if (e.Handled || _rows.Count == 0)
+        {
+            return;
+        }
+
+        int at = CursorIndex();
+
+        switch (e.Key)
+        {
+            case Key.Up:
+                MoveTo(at - 1);
+                break;
+
+            case Key.Down:
+                MoveTo(at + 1);
+                break;
+
+            case Key.Left:
+                Leftward(at);
+                break;
+
+            case Key.Right:
+                Rightward(at);
+                break;
+
+            case Key.Enter or Key.Space:
+                if (_rows[at].Kind == SceneTreeRowKind.Episode)
+                {
+                    Choose(_rows[at]);
+                }
+                else
+                {
+                    Press(_rows[at]);
+                }
+
+                break;
+
+            default:
+                return;
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>← 접기 · 이미 접혔으면 부모로 (규격 §7).</summary>
+    private void Leftward(int at)
+    {
+        SceneTreeRow row = _rows[at];
+
+        if (row.Kind != SceneTreeRowKind.Episode && IsExpanded(row.Key, row.ChapterId, null))
+        {
+            _cursorKey = row.Key;
+            Fold(row, collapse: true);
+            return;
+        }
+
+        // 부모 = 뒤로 올라가며 처음 만나는 더 얕은 줄.
+        for (int index = at - 1; index >= 0; index--)
+        {
+            if (_rows[index].Depth < row.Depth)
+            {
+                MoveTo(index);
+                return;
+            }
+        }
+    }
+
+    /// <summary>→ 펼치기 · 이미 펼쳤으면 첫 자식으로 (규격 §7).</summary>
+    private void Rightward(int at)
+    {
+        SceneTreeRow row = _rows[at];
+
+        if (row.Kind != SceneTreeRowKind.Episode && !IsExpanded(row.Key, row.ChapterId, null))
+        {
+            _cursorKey = row.Key;
+            Fold(row, collapse: false);
+            return;
+        }
+
+        if (at + 1 < _rows.Count && _rows[at + 1].Depth > row.Depth)
+        {
+            MoveTo(at + 1);
+        }
+    }
+
+    private void MoveTo(int index)
+    {
+        if (index < 0 || index >= _rows.Count)
+        {
+            return;
+        }
+
+        _cursorKey = _rows[index].Key;
+        Draw();
+    }
+
+    /// <summary>
+    /// 커서가 짚은 줄의 번호. 그 줄이 사라졌으면(접혀서·지워져서) <b>고른 에피소드</b>로,
+    /// 그것도 없으면 첫 줄로 돌아간다 — 커서가 허공에 있으면 ↑↓가 아무 데서나 시작한다.
+    /// </summary>
+    private int CursorIndex()
+    {
+        int at = _cursorKey is null
+            ? -1
+            : _rows.FindIndex(row => string.Equals(row.Key, _cursorKey, StringComparison.Ordinal));
+
+        if (at >= 0)
+        {
+            return at;
+        }
+
+        if (Selection is { } pick)
+        {
+            at = _rows.FindIndex(row =>
+                row.Kind == SceneTreeRowKind.Episode &&
+                string.Equals(row.ChapterId, pick.ChapterId, StringComparison.Ordinal) &&
+                string.Equals(row.EpisodeId, pick.EpisodeId, StringComparison.Ordinal));
+        }
+
+        return at >= 0 ? at : 0;
     }
 }
