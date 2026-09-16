@@ -170,10 +170,46 @@ public sealed class CoreCopyInStepTests
             builder.Append(source[index]);
         }
 
-        // 남은 공백은 한 칸으로 — 줄바꿈·들여쓰기가 달라도 같은 코드다.
-        return string.Join(' ', builder.ToString()
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return Squeeze(builder.ToString());
     }
+
+    /// <summary>
+    /// 공백을 <b>토큰을 갈라 놓는 자리에만</b> 남긴다.
+    ///
+    /// ⛔ 한 칸으로 줄이기만 해서는 모자랐다(2026-09-16에 잡혔다): 저쪽이 인자 목록을
+    /// 여러 줄로 편 것만으로 <c>Resolve(ChapterProgression</c> ↔ <c>Resolve( ChapterProgression</c>이
+    /// 되어 <b>서식 고침이 코드 변경으로 읽혔다</b>. 그러면 이 테스트는 곧 아무도 안 믿는다.
+    ///
+    /// ⚠ 문자열 리터럴 안의 앞뒤 공백도 함께 사라진다 — 양쪽에 같은 규칙이라 엉뚱한 실패는
+    /// 안 나고, 차이가 정확히 그 자리일 때만 못 보고 지나간다.
+    /// </summary>
+    private static string Squeeze(string source)
+    {
+        var builder = new StringBuilder(source.Length);
+        bool pending = false;
+
+        foreach (char letter in source)
+        {
+            if (char.IsWhiteSpace(letter))
+            {
+                pending = builder.Length > 0;
+                continue;
+            }
+
+            if (pending && IsWord(builder[^1]) && IsWord(letter))
+            {
+                builder.Append(' ');
+            }
+
+            pending = false;
+            builder.Append(letter);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>붙이면 한 낱말이 되어 버리는 글자인가 — 그 사이에만 칸이 필요하다.</summary>
+    private static bool IsWord(char letter) => char.IsLetterOrDigit(letter) || letter == '_';
 
     private static string RepoRoot =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

@@ -18,7 +18,8 @@ namespace Ked.Progression
             
             if (!chapter.TryGetNode(state.CurrentEpisodeId, out EpisodeNode node))
                 throw new ArgumentException(
-                    $"지금 에피소드 '{state.CurrentEpisodeId}'가 챕터 '{chapter.ChapterId}'에 없다.", nameof(state));
+                    $"지금 에피소드 '{state.CurrentEpisodeId}'가" +
+                    $" 챕터 '{chapter.ChapterId}'에 없다.", nameof(state));
             
             IReadOnlyList<EpisodeOption> options = node.NextOptions;
 
