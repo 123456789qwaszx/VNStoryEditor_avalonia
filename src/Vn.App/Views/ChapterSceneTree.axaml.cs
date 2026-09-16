@@ -574,24 +574,39 @@ public partial class ChapterSceneTree : UserControl
             BeginRename(row);
         });
 
-        button.AddHandler(PointerPressedEvent, (_, _) => _dragKey = Draggable(row) ? row.Key : null,
-            RoutingStrategies.Tunnel);
-
-        button.AddHandler(PointerReleasedEvent, (_, _) => UiGuard.Run(null, "옮기기", () => Release(row)),
-            RoutingStrategies.Tunnel);
-
-        // 끌고 지나가는 동안 <b>받아 줄 자리</b>만 테두리를 낸다 — 아무 표시가 없으면
-        // 사람은 놓아도 되는지 모른 채로 손을 놓는다.
-        button.PointerEntered += (_, _) =>
+        button.AddHandler(PointerPressedEvent, (_, _) =>
         {
-            if (DragSource() is { } source && Accepts(source, row))
-            {
-                button.BorderThickness = new Thickness(1);
-                button.BorderBrush = new SolidColorBrush(Color.FromArgb(200, 61, 123, 217));
-            }
-        };
+            _dragKey = Draggable(row) ? row.Key : null;
+            _hoverKey = null;
+        }, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
 
-        button.PointerExited += (_, _) => Paint();
+        // ⛔ <b>놓은 자리는 좌표로 찾는다, 이벤트가 온 컨트롤로 찾지 않는다</b>
+        //    (2026-09-16 소유자: "여전히 드래그 기능은 안돼").
+        //
+        //    Button은 눌리는 순간 <b>포인터를 잡는다</b>(캡처). 그래서 손을 어디서 떼든
+        //    놓임 이벤트는 <b>누른 그 단추</b>로 온다 — 출발과 도착이 늘 같아 보여 드롭이
+        //    한 번도 성립하지 않았다. 같은 이유로 도착 줄의 PointerEntered도 안 온다.
+        button.AddHandler(PointerMovedEvent, (_, args) => UiGuard.Run(null, "옮기기", () =>
+        {
+            if (_dragKey is null)
+            {
+                return;
+            }
+
+            string? wanted = RowAt(args.GetPosition(RowHost))?.Key;
+
+            if (!string.Equals(_hoverKey, wanted, StringComparison.Ordinal))
+            {
+                _hoverKey = wanted;
+                Paint();
+            }
+        }), RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+
+        button.AddHandler(PointerReleasedEvent, (_, args) => UiGuard.Run(null, "옮기기", () =>
+        {
+            _hoverKey = null;
+            Release(RowAt(args.GetPosition(RowHost)) ?? row);
+        }), RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
 
         var host = new DockPanel { Margin = new Thickness(row.Depth * 14, 0, 0, 0) };
         Control arrow = Arrow(row);
@@ -678,11 +693,34 @@ public partial class ChapterSceneTree : UserControl
                 ? new SolidColorBrush(Color.FromArgb(40, 61, 123, 217))
                 : Brushes.Transparent;
 
-            button.BorderThickness = new Thickness(cursor ? 1 : 0);
-            button.BorderBrush = cursor
-                ? new SolidColorBrush(Color.FromArgb(150, 61, 123, 217))
-                : Brushes.Transparent;
+            // 끌고 지나가는 동안 <b>받아 줄 자리</b>에 테두리를 낸다 — 아무 표시가 없으면
+            // 사람은 놓아도 되는지 모른 채로 손을 놓는다.
+            bool landing = string.Equals(row.Key, _hoverKey, StringComparison.Ordinal) &&
+                           DragSource() is { } dragged && Accepts(dragged, row);
+
+            button.BorderThickness = new Thickness(landing || cursor ? 1 : 0);
+            button.BorderBrush = landing
+                ? new SolidColorBrush(Color.FromArgb(220, 61, 123, 217))
+                : cursor
+                    ? new SolidColorBrush(Color.FromArgb(150, 61, 123, 217))
+                    : Brushes.Transparent;
         }
+    }
+
+    /// <summary>
+    /// 그 자리에 있는 줄 — 좌표는 <see cref="RowHost"/> 기준이다. 없으면 null.
+    /// </summary>
+    private SceneTreeRow? RowAt(Point point)
+    {
+        for (int index = 0; index < RowHost.Children.Count && index < _rows.Count; index++)
+        {
+            if (RowHost.Children[index].Bounds.Contains(point))
+            {
+                return _rows[index];
+            }
+        }
+
+        return null;
     }
 
     // ── 이름 고치기 ─────────────────────────────────────────────────────────
@@ -764,6 +802,9 @@ public partial class ChapterSceneTree : UserControl
     /// </summary>
     private string? _dragKey;
 
+    /// <summary>끌고 지나가는 중인 줄 — 받아 줄 자리면 테두리가 뜬다.</summary>
+    private string? _hoverKey;
+
     /// <summary>지금 끌고 있는 줄. 없으면 null.</summary>
     private SceneTreeRow? DragSource() =>
         _dragKey is null
@@ -810,6 +851,7 @@ public partial class ChapterSceneTree : UserControl
 
         _ => false
     };
+
 
     /// <summary>화면 없이 끌기를 재는 자리 — 눌림·놓임 두 번을 대신한다.</summary>
     internal void Drag(SceneTreeRow source, SceneTreeRow target)

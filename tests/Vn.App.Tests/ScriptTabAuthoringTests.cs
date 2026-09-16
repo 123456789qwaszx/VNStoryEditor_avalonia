@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.App.Views;
@@ -308,6 +310,53 @@ public sealed class ScriptTabAuthoringTests : IDisposable
     });
 
     [Fact]
+    public void 손을_뗀_자리로_놓는다_누른_단추가_아니라() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 2026-09-16 소유자: "여전히 드래그 기능은 안돼".
+        //
+        //    Button은 눌리는 순간 <b>포인터를 잡는다</b>. 그래서 손을 어디서 떼든 놓임
+        //    이벤트는 <b>누른 그 단추</b>로 온다 — 도착을 "이벤트가 온 컨트롤"로 찾으면
+        //    출발과 도착이 늘 같아 보여 드롭이 한 번도 성립하지 않는다. 좌표로 찾는다.
+        //
+        //    이 테스트는 그 상황을 그대로 만든다: 놓임을 <b>출발 단추에</b> 보내되 자리는
+        //    도착 줄 위다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01", "ep02");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep01"], "opening");
+        session.Editor.UpdateEpisodeScenes("ch01", ["ep02"], "classroom");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterSceneTree tree = Tree(view);
+
+        int from = Index(tree, row => row.EpisodeId == "ep02");
+        int onto = Index(tree, row => row.Kind == SceneTreeRowKind.Scene && row.SceneId == "opening");
+
+        Button source = tree.GetVisualDescendants().OfType<Button>().ElementAt(from);
+        Control landing = tree.GetVisualDescendants().OfType<DockPanel>().ElementAt(onto);
+
+        // ⚠ 포인터 이벤트의 자리는 <b>최상위 기준</b>이다 — 진짜 포인터가 그렇게 온다.
+        //   트리 기준으로 주면 좌표가 통째로 어긋나 엉뚱한 줄을 짚는다.
+        var root = (Visual)TopLevel.GetTopLevel(tree)!;
+        Point at = landing.TranslatePoint(new Point(20, 4), root)!.Value;
+
+        source.RaiseEvent(new PointerPressedEventArgs(
+            source, new Pointer(0, PointerType.Mouse, true), root, default, 0,
+            new PointerPointProperties(RawInputModifiers.LeftMouseButton, PointerUpdateKind.LeftButtonPressed),
+            KeyModifiers.None));
+
+        source.RaiseEvent(new PointerReleasedEventArgs(
+            source, new Pointer(0, PointerType.Mouse, true), root, at, 0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonReleased),
+            KeyModifiers.None, MouseButton.Left));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.All(
+            session.Editor.FindChapter("ch01")!.Episodes,
+            episode => Assert.Equal("opening", episode.SceneId));
+    });
+
+    [Fact]
     public void 놓을_수_없는_자리에는_안_받는다() => HeadlessUi.Run(() =>
     {
         // ⚠ 에피소드를 챕터에 놓는 것은 안 받는다 — 장면을 안 정한 채로 남는데, 그것은
@@ -356,6 +405,10 @@ public sealed class ScriptTabAuthoringTests : IDisposable
 
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
+
+    /// <summary>그 줄이 몇 번째인가 — 그려진 컨트롤과 줄 목록은 같은 순서다.</summary>
+    private static int Index(ChapterSceneTree tree, Func<SceneTreeRow, bool> match) =>
+        tree.Rows.Select((row, at) => (row, at)).First(item => match(item.row)).at;
 
     private static ChapterSceneTree Tree(ScriptView view) =>
         view.FindControl<ChapterSceneTree>("EpisodeTree")!;
