@@ -258,14 +258,21 @@ public partial class ScriptView : UserControl
             return;
         }
 
-        int cut = _session.Editor.MoveEpisodesToChapter(
+        EpisodeMover.Result moved = EpisodeMover.Move(
+            _session.Editor, _session.ProjectPath,
             source.ChapterId, [source.EpisodeId!], target.ChapterId, target.SceneId);
+
+        if (!moved.Moved)
+        {
+            _session.SetStatus(moved.Failure!);
+            return;
+        }
 
         EpisodeTree.Select(target.ChapterId, source.EpisodeId!);
         ShowSelected();
 
         _session.SetStatus(
-            $"에피소드 '{source.EpisodeId}'를 장면 '{target.SceneId}'으로 옮겼습니다." + Cut(cut));
+            $"에피소드 '{source.EpisodeId}'를 장면 '{target.SceneId}'으로 옮겼습니다." + Notice(moved));
     }
 
     private void MoveScene(SceneTreeRow scene, string toChapterId)
@@ -285,16 +292,33 @@ public partial class ScriptView : UserControl
             .Select(episode => episode.EpisodeId)
             .ToList() ?? [];
 
-        int cut = _session.Editor.MoveEpisodesToChapter(scene.ChapterId, episodes, toChapterId);
+        EpisodeMover.Result moved = EpisodeMover.Move(
+            _session.Editor, _session.ProjectPath, scene.ChapterId, episodes, toChapterId);
+
+        if (!moved.Moved)
+        {
+            _session.SetStatus(moved.Failure!);
+            return;
+        }
 
         _session.SetStatus(
             $"장면 '{scene.SceneId}'을 '{toChapterId}'로 옮겼습니다 " +
-            $"(에피소드 {episodes.Count}개)." + Cut(cut));
+            $"(에피소드 {episodes.Count}개)." + Notice(moved));
     }
 
-    private static string Cut(int edges) => edges == 0
-        ? string.Empty
-        : $" ⚠ 챕터를 가로지르게 된 길 {edges}개는 걷었습니다 — 간선은 챕터 안에서만 잇습니다.";
+    /// <summary>
+    /// 옮기면서 <b>사람이 알아야 할 것</b> — 걷힌 길과 밀어 둔 원고.
+    ///
+    /// 둘 다 조용히 하면 나중에 "선택지가 왜 없지" · "원고가 어디 갔지"가 되고, 그때는
+    /// 폴더를 열어 봐야만 풀린다.
+    /// </summary>
+    private static string Notice(EpisodeMover.Result moved) =>
+        (moved.EdgesCut == 0
+            ? string.Empty
+            : $" ⚠ 챕터를 가로지르게 된 길 {moved.EdgesCut}개는 걷었습니다 — 간선은 챕터 안에서만 잇습니다.") +
+        (moved.Backups.Count == 0
+            ? string.Empty
+            : $" 옛 자리의 대본은 밀어 뒀습니다: {string.Join(" · ", moved.Backups)}");
 
     /// <summary>
     /// 그 장면에 에피소드 하나. <b>간선이 함께 선다</b> — 챕터 그래프의 [＋ 에피소드]가 세운
