@@ -49,7 +49,16 @@ public partial class ScriptView : UserControl
     {
         InitializeComponent();
 
-        EpisodeTree.EpisodeSelected += _ => UiGuard.Run(_session, "에피소드 고르기", ShowSelected);
+        EpisodeTree.EpisodeSelected += _ => UiGuard.Run(_session, "에피소드 고르기", () =>
+        {
+            // 고른 것을 세션에 올린다 — 여기가 두 화면이 같은 것을 가리키는 자리다 (R6 S-4).
+            if (SelectedNode() is { } node)
+            {
+                _session?.Select(node.Id);
+            }
+
+            ShowSelected();
+        });
         ApplyButton.Click += (_, _) => UiGuard.Run(_session, "글 반영", Apply);
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
         SpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 고르기", PickSpeaker);
@@ -63,8 +72,52 @@ public partial class ScriptView : UserControl
         // 판이 늘거나 줄면 고를 것이 달라진다. ⚠ 글을 쓰는 중에는 다시 그리지 않는다 —
         // 저장 한 번이 알림 여러 개를 내므로, 그때마다 덮으면 타이핑이 씹힌다.
         session.Changed += (_, _) => UiGuard.Run(_session, "대본 탭 갱신", Rebuild);
+        session.SelectionChanged += (_, _) => UiGuard.Run(_session, "선택 따라가기", Follow);
 
         Rebuild();
+    }
+
+    /// <summary>
+    /// [연출 그래프]에서 고른 것을 따라간다 (R6 S-4 · 규격 §5).
+    ///
+    /// ⛔ <b>정본은 세션의 <c>SelectedNodeId</c> 하나다.</b> 두 화면이 제 선택을 따로 들면
+    /// 같은 에피소드를 두 자리에서 고르게 되고, 어느 쪽이 지금 열린 글인지 사람이 못 가린다.
+    ///
+    /// ⚠ <b>챕터 판의 에피소드 노드일 때만</b> 따라간다. 작가의 자유 판에서 고른 노드는 대본
+    /// 탭에 설 자리가 없으니 <b>가만히 둔다</b> — 엉뚱한 글로 튀는 것보다 낫다.
+    /// </summary>
+    private void Follow()
+    {
+        if (_session?.SelectedNode is not DialogueNode node ||
+            PickOf(node) is not { } pick ||
+            pick == EpisodeTree.Selection)
+        {
+            return;
+        }
+
+        EpisodeTree.Select(pick.ChapterId, pick.EpisodeId);
+        ShowSelected();
+    }
+
+    /// <summary>
+    /// 그 노드가 선 자리 — 판 이름이 챕터고, 표식이 먼저고 없으면 이름이 에피소드다
+    /// (<see cref="NodeIn"/>의 뒤집힌 짝이라 규칙이 같아야 한다).
+    /// </summary>
+    private ChapterEpisodePick? PickOf(DialogueNode node)
+    {
+        if (_session?.Project.FindFileContainingNode(node.Id) is not { } file)
+        {
+            return null;
+        }
+
+        string episodeId = node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name;
+
+        return _session.Project.Chapters.Any(chapter =>
+            string.Equals(chapter.ChapterId, file.Name, StringComparison.Ordinal) &&
+            chapter.Episodes.Any(episode =>
+                string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal)))
+            ? new ChapterEpisodePick(file.Name, episodeId)
+            : null;
     }
 
     /// <summary>

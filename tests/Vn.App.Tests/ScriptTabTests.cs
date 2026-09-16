@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
@@ -451,6 +452,90 @@ public sealed class ScriptTabTests : IDisposable
     /// 탐색기에 <b>보이는</b> 줄들 — 접힌 것은 안 나온다. 구조를 재는 자리다
     /// (<c>docs/plans/R6-explorer.md</c> §8).
     /// </summary>
+    [Fact]
+    public void 대본에서_고른_것이_세션의_선택이_된다() => HeadlessUi.Run(() =>
+    {
+        // R6 S-4 — 두 화면이 제 선택을 따로 들면 같은 에피소드를 두 자리에서 고르게 되고,
+        // 어느 쪽이 지금 열린 글인지 사람이 못 가린다. 정본은 세션 하나다.
+        WriteChapter("ch01", "ep01", "ep02");
+
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode second = Board(session, "ch01", "ep01", "ep02");
+
+        Pick(view, "ep02");
+
+        Assert.Equal(second.Id, session.SelectedNodeId);
+    });
+
+    [Fact]
+    public void 연출_그래프에서_고르면_대본이_따라온다() => HeadlessUi.Run(() =>
+    {
+        WriteChapter("ch01", "ep01", "ep02");
+
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode second = Board(session, "ch01", "ep01", "ep02");
+
+        session.Select(second.Id);   // 저쪽 판에서 카드를 누른 것과 같은 길이다
+
+        Assert.Equal("ep02", Tree(view).Selection!.EpisodeId);
+        Assert.Equal("ep02", view.FindControl<TextBlock>("HeaderText")!.Text);
+    });
+
+    [Fact]
+    public void 챕터_밖_노드를_고르면_대본은_가만히_있는다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 작가의 자유 판에서 고른 노드는 대본 탭에 설 자리가 없다 — 엉뚱한 글로 튀는 것보다
+        //   가만히 있는 편이 낫다.
+        WriteChapter("ch01", "ep01");
+
+        (ScriptView view, AuthoringSession session) = Show();
+        Board(session, "ch01", "ep01");
+
+        DialogueNode loose = session.Editor.AddDialogueNode(
+            session.Editor.EnsureChapterBoard("자유판"), name: "곁가지");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        ChapterEpisodePick? before = Tree(view).Selection;
+        session.Select(loose.Id);
+
+        Assert.Equal(before, Tree(view).Selection);
+    });
+
+    private static ChapterSceneTree Tree(ScriptView view) =>
+        view.FindControl<ChapterSceneTree>("EpisodeTree")!;
+
+    /// <summary>그 챕터의 판에 에피소드 노드들을 세운다 — 마지막 것을 돌려준다.</summary>
+    private static DialogueNode Board(
+        AuthoringSession session, string chapterId, params string[] episodeIds)
+    {
+        string fileId = session.Editor.EnsureChapterBoard(chapterId);
+
+        DialogueNode? last = null;
+
+        foreach (string episodeId in episodeIds)
+        {
+            last = session.Editor.AddDialogueNode(fileId, name: episodeId);
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return last!;
+    }
+
+    /// <summary>트리에서 그 에피소드를 누른다 — 사람이 고르는 길 그대로다.</summary>
+    private static void Pick(ScriptView view, string episodeId)
+    {
+        ChapterSceneTree tree = Tree(view);
+
+        int index = tree.Rows
+            .Select((row, at) => (row, at))
+            .First(item => string.Equals(item.row.EpisodeId, episodeId, StringComparison.Ordinal)).at;
+
+        tree.GetVisualDescendants().OfType<Button>().ElementAt(index)
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
     private static IReadOnlyList<string> Rows(ScriptView view, SceneTreeRowKind kind) =>
         view.FindControl<ChapterSceneTree>("EpisodeTree")!.Rows
             .Where(row => row.Kind == kind)
