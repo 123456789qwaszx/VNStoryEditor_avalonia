@@ -39,6 +39,35 @@ public sealed class ChapterDeleterTests : IDisposable
     // ── 요청 그 자체 ────────────────────────────────────────────────────────
 
     [Fact]
+    public void 챕터_자체도_프로젝트에서_걷힌다()
+    {
+        // ⛔ R-F가 남긴 구멍 (2026-09-16). 뒤집기 전에는 챕터가 곧 워크북이라 판만 걷으면
+        //    됐다. 이제 챕터는 `Project.Chapters`에 살고, 목록·트리·검증이 전부 그것을 본다 —
+        //    안 걷으면 <b>지웠다고 말한 챕터가 그대로 보이고 다음 저장이 워크북을 되살린다</b>.
+        World world = Build();
+
+        Assert.True(ChapterDeleter.Delete(world.Editor, world.ProjectPath, Doomed).Deleted);
+
+        Assert.Null(world.Editor.FindChapter(Doomed));
+        Assert.NotNull(world.Editor.FindChapter(Kept));
+    }
+
+    [Fact]
+    public void 되돌리기_한_번에_챕터와_판이_함께_돌아온다()
+    {
+        // 둘이 한 번의 변경이어야 한다 — 갈라 두면 되돌린 뒤 챕터는 있는데 판이 없는
+        // (또는 그 반대) 상태가 남고, 그 상태에서는 새 노드가 갈 자리가 없다.
+        World world = Build();
+
+        ChapterDeleter.Delete(world.Editor, world.ProjectPath, Doomed);
+        world.Editor.Undo();
+
+        Assert.NotNull(world.Editor.FindChapter(Doomed));
+        Assert.Contains(world.Editor.Project.Files, file =>
+            string.Equals(file.Name, Doomed, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void 판과_그_위의_노드가_함께_걷힌다()
     {
         // "연출그래프에 있던 것도 모두 자동으로 제거되도록" — 에피소드 노드도, 조건 공급
@@ -230,9 +259,14 @@ public sealed class ChapterDeleterTests : IDisposable
         var board = new StoryFile("sf_ch05", Doomed, "story/ch05.vnstory.json");
         project.Files.Add(board);
 
+        // ⚠ R-F 뒤에는 챕터가 <b>프로젝트</b>에 산다 — 판만 세우면 실제와 다른 세상이 된다
+        //   (2026-09-16에 그 차이 때문에 제거가 절반만 되는 것을 놓치고 있었다).
+        project.Chapters.Add(new ChapterDocument { ChapterId = Doomed });
+
         if (secondBoard)
         {
             project.Files.Add(new StoryFile("sf_ch06", Kept, "story/ch06.vnstory.json"));
+            project.Chapters.Add(new ChapterDocument { ChapterId = Kept });
         }
 
         ProjectStore.Save(projectPath, project);

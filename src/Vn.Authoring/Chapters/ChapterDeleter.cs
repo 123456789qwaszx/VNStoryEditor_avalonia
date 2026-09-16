@@ -143,16 +143,15 @@ public static class ChapterDeleter
             return Result.Fail(failure);
         }
 
-        int nodesRemoved = 0;
-
-        if (board is not null)
-        {
-            // 판이 걷히면 그 위의 노드가 전부 걷힌다 — 에피소드 노드도, 자유 씬도,
-            // 조건 공급 배관(`챕터 {Id} 조건`)도 이 판에 서 있다. 그것이 소유자가 말한
-            // "연출그래프에 있던 것도 모두 자동으로 제거"다.
-            nodesRemoved = board.Nodes.Count;
-            editor.RemoveStoryFile(board.Id);
-        }
+        // 판이 걷히면 그 위의 노드가 전부 걷힌다 — 에피소드 노드도, 자유 씬도,
+        // 조건 공급 배관(`챕터 {Id} 조건`)도 이 판에 서 있다. 그것이 소유자가 말한
+        // "연출그래프에 있던 것도 모두 자동으로 제거"다.
+        //
+        // ⛔ <b>챕터 자체도 함께 걷는다</b> (2026-09-16). R-F 전에는 챕터가 곧 워크북이라
+        //    판만 걷으면 끝이었는데, 지금 챕터는 `Project.Chapters`에 산다 — 안 걷으면
+        //    <b>지웠다고 말한 챕터가 목록·트리·검증에 그대로 남고, 다음 저장이 워크북을
+        //    되살린다</b>. 둘이 한 번의 변경이라 되돌리기 한 번에 함께 돌아온다.
+        int nodesRemoved = editor.RemoveChapterWithBoard(chapterId);
 
         string stale = ChapterExportService.ExportPathFor(projectManifestPath!, chapterId);
 

@@ -160,23 +160,32 @@ public sealed partial class ProjectEditor
                 "마지막 시나리오 파일은 제거할 수 없습니다 — 새 노드가 갈 곳이 없어집니다.");
         }
 
-        Mutate(() =>
+        Mutate(() => RemoveFileCore(file));
+    }
+
+    /// <summary>
+    /// 판 하나를 걷는 <b>알맹이</b> — <see cref="Mutate"/> 밖이다.
+    ///
+    /// ⚠ 챕터를 지울 때 판과 챕터가 <b>한 번의 변경</b>이어야 해서 갈라 뒀다
+    /// (<see cref="RemoveChapterWithBoard"/>). 되돌리기 한 번에 둘 중 하나만 돌아오면
+    /// 챕터는 있는데 판이 없는(또는 그 반대) 상태가 남는다.
+    /// </summary>
+    private void RemoveFileCore(StoryFile file)
+    {
+        Project.Files.Remove(file);
+
+        foreach (StoryNode node in file.Nodes)
         {
-            Project.Files.Remove(file);
+            RemoveReferencesToNode(node.Id);
+        }
 
-            foreach (StoryNode node in file.Nodes)
-            {
-                RemoveReferencesToNode(node.Id);
-            }
-
-            if (file.Nodes.Any(node =>
-                string.Equals(Project.StartNodeId, node.Id, StringComparison.Ordinal)))
-            {
-                Project.StartNodeId = Project.EnumerateNodes()
-                    .FirstOrDefault(candidate => candidate is not PresentationNode)
-                    ?.Id;
-            }
-        });
+        if (file.Nodes.Any(node =>
+            string.Equals(Project.StartNodeId, node.Id, StringComparison.Ordinal)))
+        {
+            Project.StartNodeId = Project.EnumerateNodes()
+                .FirstOrDefault(candidate => candidate is not PresentationNode)
+                ?.Id;
+        }
     }
 
     public void RenameStoryFile(string fileId, string name)
