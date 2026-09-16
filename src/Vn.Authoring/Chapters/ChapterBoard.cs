@@ -81,7 +81,7 @@ internal sealed class ChapterBoard
             return tagged;
         }
 
-        string name = episode.DialogueEntry is { Length: > 0 } entry ? entry : episode.EpisodeId;
+        string name = EpisodeNaming.NodeNameOf(episode);
 
         return _project.EnumerateNodes().OfType<DialogueNode>()
             .FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.Ordinal));

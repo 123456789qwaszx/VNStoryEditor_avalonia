@@ -293,7 +293,7 @@ public sealed partial class ProjectEditor
 
         List<DialogueNode> nodes = fromBoard?.Nodes.OfType<DialogueNode>()
             .Where(node => ids.Contains(
-                node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name))
+                EpisodeNaming.EpisodeIdOf(node)))
             .ToList() ?? [];
 
         // ⚠ Mutate 밖에서 보장한다 — 안에서 부르면 변경이 겹쳐 쌓인다.

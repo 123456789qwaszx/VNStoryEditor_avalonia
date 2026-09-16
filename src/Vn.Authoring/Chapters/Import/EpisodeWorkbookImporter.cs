@@ -218,8 +218,8 @@ public static class EpisodeWorkbookImporter
     private static DialogueNode FindOrCreateNode(
         ProjectEditor editor, string fileId, string episodeId, ChapterGraphModel chapter)
     {
-        string name = chapter.FindEpisode(episodeId)?.DialogueEntry is { Length: > 0 } entry
-            ? entry
+        string name = chapter.FindEpisode(episodeId) is { } episode
+            ? EpisodeNaming.NodeNameOf(episode)
             : episodeId;
 
         if (editor.Project.FindFile(fileId)?.Nodes.OfType<DialogueNode>()

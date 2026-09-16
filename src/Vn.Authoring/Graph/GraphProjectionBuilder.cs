@@ -259,8 +259,10 @@ public static class GraphProjectionBuilder
     /// 상한이 아니다 — 엑셀에서 넷을 만든 챕터의 넷째를 화면이 숨기면 사람은 <b>사라진 줄</b>
     /// 안다. 상한을 모델에 박는 것은 v9가 없앤 `선택지수` 칸을 되살리는 일이다.
     ///
-    /// ⚠ <b>에피소드 노드만</b> — 자유 씬은 챕터의 진행에 안 실리므로 놓을 자리가 없다
-    /// (R6의 `장면 밖`과 같은 규율).
+    /// ⚠ <b>챕터 판의 대사 노드는 전부 낸다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는
+    /// 에피소드 노드만 냈지만 자유 씬이라는 종류가 없어졌다 — 카드를 세우는 것이 곧
+    /// 에피소드를 만드는 일이라 칸을 못 낼 노드가 없다. 챕터가 아닌 판(작가의 낙서판)에는
+    /// 여전히 칸이 없다.
     /// </summary>
     private static IEnumerable<GraphOutputPortProjection> ChoiceSlots(
         StoryNode node, StoryFile file, StoryProject project)
@@ -273,7 +275,7 @@ public static class GraphProjectionBuilder
         }
 
         // 노드 → 에피소드는 표식이 먼저고 없으면 이름이다 — 대본 탭·장면 묶기와 같은 규칙이다.
-        string episodeId = dialogue.ExcelEpisodeId is { Length: > 0 } marked ? marked : dialogue.Name;
+        string episodeId = EpisodeNaming.EpisodeIdOf(dialogue);
 
         if (!chapter.Episodes.Any(episode =>
                 string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal)))
@@ -324,7 +326,7 @@ public static class GraphProjectionBuilder
     private static string? NodeOf(StoryFile file, string episodeId) =>
         file.Nodes.OfType<DialogueNode>().FirstOrDefault(node =>
             string.Equals(
-                node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name,
+                EpisodeNaming.EpisodeIdOf(node),
                 episodeId,
                 StringComparison.Ordinal))?.Id;
 

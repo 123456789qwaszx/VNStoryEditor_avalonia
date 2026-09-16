@@ -83,7 +83,6 @@ public static class NodePlacement
             ? 0
             : board.Nodes.Max(node => node.Layout.X) + Column;
 
-    /// <summary>그 노드가 대신하는 에피소드 — 표식이 먼저고, 없으면 이름이다.</summary>
-    private static string EpisodeOf(DialogueNode node) =>
-        node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name;
+    /// <summary>그 노드가 대신하는 에피소드 — 규약은 <see cref="Chapters.EpisodeNaming"/> 한 벌이다.</summary>
+    private static string EpisodeOf(DialogueNode node) => Chapters.EpisodeNaming.EpisodeIdOf(node);
 }

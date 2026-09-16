@@ -62,13 +62,16 @@ public sealed class ChoiceSlotProjectionTests
     }
 
     [Fact]
-    public void 자유_씬에는_칸이_없다()
+    public void 판에_세운_노드는_곧_에피소드라_칸이_선다()
     {
-        // 에피소드가 아닌 대사 노드는 챕터의 진행에 안 실린다 — 놓을 자리가 없다.
+        // ⚠ 뒤집힌 자리다 (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는 `자유_씬에는_칸이_없다`로,
+        //    에피소드가 아닌 대사 노드에는 칸을 안 줬다. 자유 씬이라는 종류가 없어졌으므로
+        //    그 규칙은 지킬 것이 없다 — 챕터 판의 대사 노드는 <b>전부</b> 에피소드다.
         ProjectEditor editor = World();
-        editor.AddDialogueNode(BoardOf(editor), name: "곁가지");
+        DialogueNode made = editor.AddDialogueNode(BoardOf(editor), name: "곁가지");
 
-        Assert.Empty(SlotsOf(editor, "곁가지"));
+        Assert.Equal("곁가지", made.ExcelEpisodeId);
+        Assert.Equal(3, SlotsOf(editor, "곁가지").Count);
     }
 
     [Fact]

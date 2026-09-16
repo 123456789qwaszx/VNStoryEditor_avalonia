@@ -491,7 +491,7 @@ public partial class ScriptView : UserControl
             return null;
         }
 
-        string episodeId = node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name;
+        string episodeId = EpisodeNaming.EpisodeIdOf(node);
 
         return _session.Project.Chapters.Any(chapter =>
             string.Equals(chapter.ChapterId, file.Name, StringComparison.Ordinal) &&
@@ -958,7 +958,7 @@ public partial class ScriptView : UserControl
         }
 
         // 노드가 어느 대본 파일의 것인지 — 표식이 없으면 이름이 곧 에피소드 Id다.
-        string episodeId = node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name;
+        string episodeId = EpisodeNaming.EpisodeIdOf(node);
 
         ChapterWriteResult written = EpisodeScriptOutput.Write(
             _session.Project, node, EpisodeLibrary.PathFor(folder, episodeId));

@@ -234,11 +234,12 @@ public sealed partial class ProjectEditor
         double x = 0,
         double y = 0,
         string? name = null,
-        string? scriptId = null)
+        string? scriptId = null,
+        string? sceneId = null)
     {
         if (scriptId is null)
         {
-            (DialogueNode created, Action attach) = NewDialogueNodeCore(fileId, x, y, name);
+            (DialogueNode created, Action attach) = NewDialogueNodeCore(fileId, x, y, name, sceneId);
             Mutate(attach);
 
             return created;
@@ -260,9 +261,13 @@ public sealed partial class ProjectEditor
     /// 동작이라 되돌리기 한 번에 셋이 함께 돌아와야 한다). <c>Mutate</c> 안에서 다른 명령을
     /// 부르면 변경이 겹쳐 쌓여 되돌리기가 반쪽이 된다 — 그래서 <b>짓는 것</b>과 <b>붙이는
     /// 것</b>을 갈라 둔다.
+    ///
+    /// ⭐ <b>챕터 판에 세우면 에피소드도 함께 선다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17).
+    /// 자유 씬이라는 종류가 없어졌으므로 <b>판의 대사 노드는 전부 에피소드</b>다 — 카드를
+    /// 세우는 것이 곧 에피소드를 만드는 일이고, 그래서 어긋난 이름이 애초에 안 생긴다.
     /// </summary>
     private (DialogueNode Created, Action Attach) NewDialogueNodeCore(
-        string fileId, double x, double y, string? name)
+        string fileId, double x, double y, string? name, string? sceneId = null)
     {
         StoryFile file = RequireFile(fileId);
         var created = new DialogueNode(name: name ?? NextName("장면"))
@@ -279,6 +284,8 @@ public sealed partial class ProjectEditor
         var firstLine = new ScriptLine(_newLineId());
         created.ScriptId = script.Id;
 
+        (ChapterDocument? chapter, ChapterEpisode? episode) = NewEpisodeFor(file, created, sceneId);
+
         return (created, () =>
         {
             script.Lines.Add(firstLine);
@@ -286,6 +293,68 @@ public sealed partial class ProjectEditor
             Project.Scripts.Add(script);
             file.Nodes.Add(created);
             Project.StartNodeId ??= created.Id;
+
+            if (chapter is not null && episode is not null)
+            {
+                chapter.Episodes.Add(episode);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 이 노드가 선 <b>장면</b>. 챕터 판이 아니거나 아직 에피소드가 없으면 <c>null</c>이다.
+    /// </summary>
+    private string? SceneOfNode(StoryFile file, DialogueNode node) =>
+        ChapterOfBoard(file) is { } chapter && EpisodeNaming.EpisodeFor(chapter, node) is { } episode
+            ? episode.SceneId
+            : null;
+
+    /// <summary>이 판이 곧 챕터라면 그 챕터. 작가의 낙서판이면 <c>null</c>이다.</summary>
+    private ChapterDocument? ChapterOfBoard(StoryFile file) =>
+        Project.Chapters.FirstOrDefault(item =>
+            string.Equals(item.ChapterId, file.Name, StringComparison.Ordinal));
+
+    /// <summary>
+    /// 이 노드가 질 <b>에피소드</b>를 짓는다 (R7 P-6). 챕터 판이 아니면 둘 다 <c>null</c>이다 —
+    /// 작가의 낙서판에는 챕터가 없고, 거기 세운 노드는 진행에 안 실린다.
+    ///
+    /// ⚠ <b>이미 있는 에피소드면 짓지 않고 표식만 붙인다.</b> 챕터 그래프에서 먼저 만든
+    /// 에피소드에 대본을 다는 것이(그리고 워크북 임포터가 노드를 세우는 것이) 정확히 그
+    /// 자리다 — 거기서 또 지으면 에피소드 하나에 카드가 둘 선다.
+    ///
+    /// ⚠ 임포터는 노드를 <b>EpisodeId가 아니라 `대사엔트리`로</b> 짓는다. 그래서 찾는 일은
+    /// <see cref="EpisodeNaming.EpisodeFor"/>에 맡긴다 — 여기서 이름만 맞춰 보면 `대사엔트리`가
+    /// 따로 적힌 챕터마다 에피소드가 <b>두 배로 불어난다</b>(2026-09-17에 겪었다).
+    /// </summary>
+    private (ChapterDocument? Chapter, ChapterEpisode? Episode) NewEpisodeFor(
+        StoryFile file, DialogueNode created, string? sceneId)
+    {
+        if (ChapterOfBoard(file) is not { } chapter)
+        {
+            return (null, null);
+        }
+
+        if (EpisodeNaming.EpisodeFor(chapter, created) is { } standing)
+        {
+            // 표식이 신원이다 — 이름은 사람이 고치는 글자라 개명 때마다 끊긴다(P-6 결정).
+            created.ExcelEpisodeId = standing.EpisodeId;
+
+            return (null, null);
+        }
+
+        created.ExcelEpisodeId = created.Name;
+
+        return (chapter, new ChapterEpisode(
+            created.Name,
+            created.Name,
+            Index: string.Empty,
+            DialogueEntry: created.Name,
+            Math.Round(created.Layout.X, 2),
+            Math.Round(created.Layout.Y, 2),
+            Memo: null,
+            SourceRow: 0)
+        {
+            SceneId = sceneId
         });
     }
 
@@ -297,8 +366,9 @@ public sealed partial class ProjectEditor
     /// 말든 다녀오고, 다녀온 씬이 제 첫머리에서 보고 아니면 곧바로 돌아온다. 조건을 채우는
     /// 창구는 이후의 다른 탭이다.
     ///
-    /// ⚠ <b>자유 씬이다</b>(<c>ExcelEpisodeId</c>가 없다) — 대본 탭 트리에 안 나오고 진행
-    /// JSON에도 안 실린다. 대사는 [대사 편집]에서만 쓴다.
+    /// ⚠ <b>그냥 에피소드다</b> (R7 P-6 · 결정 ⑤가 2026-09-17에 뒤집었다 — 전에는 자유 씬).
+    /// 대본 탭 트리에 나오고 진행에도 실리며, 아래에 선택지 3칸이 뚫린다. <b>출발과 같은
+    /// 장면</b>에 둔다 — 곁가지는 제 본줄 옆에 있어야 판에서 읽힌다.
     ///
     /// ⚠ 노드·대본·표식이 <b>한 번의 변경</b>이다. 갈라 두면 되돌리기 한 번에 표식만 사라져
     /// <b>아무도 안 부르는 씬</b>이 판에 남는다.
@@ -333,7 +403,8 @@ public sealed partial class ProjectEditor
             file.Id,
             source.Layout.X,
             source.Layout.Y + Graph.NodePlacement.SceneRow,
-            name ?? NextName("분기"));
+            name ?? NextName("분기"),
+            SceneOfNode(file, source));
 
         Mutate(() =>
         {

@@ -473,7 +473,7 @@ public partial class GraphEditorView : UserControl
     /// <summary>그 노드가 대신하는 에피소드 — 표식이 먼저고, 없으면 이름이다(대본 탭과 같은 규칙).</summary>
     private string? EpisodeOf(ExpandedNodeProjection node) =>
         _session?.Project.FindNode(node.NodeId) is DialogueNode dialogue
-            ? dialogue.ExcelEpisodeId is { Length: > 0 } marked ? marked : dialogue.Name
+            ? EpisodeNaming.EpisodeIdOf(dialogue)
             : null;
 
     private static Border SceneFrame(Rect area)
@@ -731,7 +731,7 @@ public partial class GraphEditorView : UserControl
                     arrivals[edge.ToEpisodeId] = list = new List<(string, string)>();
                 }
 
-                list.Add((source.ExcelEpisodeId ?? source.Name,
+                list.Add((EpisodeNaming.EpisodeIdOf(source),
                     edge.HasNoOptionLabel ? "(진행)" : edge.OptionLabel!));
             }
 
@@ -3169,7 +3169,7 @@ public partial class GraphEditorView : UserControl
             return null;
         }
 
-        string episodeId = dialogue.ExcelEpisodeId is { Length: > 0 } marked ? marked : dialogue.Name;
+        string episodeId = EpisodeNaming.EpisodeIdOf(dialogue);
 
         return chapter.Episodes.Any(episode =>
             string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal))

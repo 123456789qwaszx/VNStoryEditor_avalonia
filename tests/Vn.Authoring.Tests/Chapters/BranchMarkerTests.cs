@@ -151,7 +151,7 @@ public sealed class BranchMarkerTests
     // ── 「분기 추가」 (R7 P-5, 편집 명령) ───────────────────────────────────
 
     [Fact]
-    public void 한_번에_표식과_자유_씬이_함께_선다()
+    public void 한_번에_표식과_에피소드가_함께_선다()
     {
         (ProjectEditor editor, DialogueNode node, string lineId) = World();
 
@@ -160,13 +160,49 @@ public sealed class BranchMarkerTests
         Assert.Equal(made.Id, node.FindExtension(lineId)!.DetourTargetNodeId);
         Assert.Single(Ports(editor, node), port => port.Kind == ExitPortKind.Detour);
 
-        // ⚠ 자유 씬이다 — 대본 탭 트리에 안 나오고 진행 JSON에도 안 실린다.
-        Assert.Null(made.ExcelEpisodeId);
+        // ⚠ 뒤집힌 자리다 (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는 자유 씬이라 표식이 없었다 —
+        //    이제 자유 씬이라는 종류가 없으므로 다녀오는 곳도 <b>그냥 에피소드</b>다.
+        Assert.Equal(made.Name, made.ExcelEpisodeId);
+        Assert.Contains(
+            editor.Project.Chapters.Single().Episodes,
+            episode => string.Equals(episode.EpisodeId, made.Name, StringComparison.Ordinal));
 
         // 같은 판에 선다 — 다녀오는 길이 판을 넘지 않는다.
         Assert.Equal(
             editor.Project.FindFileContainingNode(node.Id)!.Id,
             editor.Project.FindFileContainingNode(made.Id)!.Id);
+    }
+
+    [Fact]
+    public void 다녀오는_에피소드는_출발과_같은_장면에_선다()
+    {
+        // 곁가지는 제 본줄 옆에 있어야 판에서 읽힌다 — 장면을 안 주면 `장면 밖`으로 밀려
+        // 챕터 프레임 바깥에 혼자 선다.
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+        editor.UpdateEpisode("ch01", "root", sceneId: "sc_아침");
+
+        DialogueNode made = editor.AddBranchMarker(node.Id, lineId);
+
+        Assert.Equal(
+            "sc_아침",
+            editor.Project.Chapters.Single().Episodes
+                .Single(episode => string.Equals(episode.EpisodeId, made.Name, StringComparison.Ordinal))
+                .SceneId);
+    }
+
+    [Fact]
+    public void 다녀오는_에피소드도_아래에_선택지_세_칸을_가진다()
+    {
+        // 소유자: "이 자유씬 역시 에피소드 노드이기에 아래쪽으로 선택지 3개가 뚫려 있는 상태" —
+        // 별도 기계가 아니라 <b>에피소드 선택지 3칸 바로 그것</b>이다(결정 ⑤).
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+        DialogueNode made = editor.AddBranchMarker(node.Id, lineId);
+
+        Assert.Equal(3, Graph.GraphProjectionBuilder
+            .Build(editor.Project, new HashSet<string>(editor.Project.Files.Select(file => file.Id)))
+            .Items.OfType<Graph.ExpandedNodeProjection>()
+            .Single(item => string.Equals(item.NodeId, made.Id, StringComparison.Ordinal))
+            .OutputPorts.Count(port => port.Kind == Graph.GraphOutputPortKind.Choice));
     }
 
     [Fact]
