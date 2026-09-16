@@ -1274,12 +1274,16 @@ public partial class GraphEditorView : UserControl
     /// <summary>
     /// 종별 시각 체계 (2026-08-15 소유자 — "대본노드와 엑셀노드가 똑같이 생겨서 구분이 어렵다").
     /// 색 하나에 기대지 않고 세 채널을 겹친다: 등뼈 색 + 아이콘 + 카드 형태.
-    /// 엑셀노드만 <b>각진 미색 서류</b>다(기획의 공식 문서, 본문 잠김) — 작가의 자유 씬은
-    /// 둥근 흰 원고(✎)라서 섞여 있어도 한눈에 갈린다. 미니맵·접힌 목록도 같은 언어를 쓴다.
+    /// 챕터의 에피소드만 <b>각진 미색 서류</b>다 — 작가의 자유 씬은 둥근 흰 원고(✎)라서
+    /// 섞여 있어도 한눈에 갈린다. 미니맵·접힌 목록도 같은 언어를 쓴다.
+    ///
+    /// ⚠ <b>모양이 잠김을 뜻하지는 않는다</b>(2026-09-16 · R-E). 서류 모양이던 시절에는
+    /// 본문이 실제로 읽기 전용이었지만 이제 대본은 어느 노드든 열린다 — 이 모양이 말하는
+    /// 것은 <b>소속</b>뿐이다: 챕터의 에피소드인가, 아니면 자유 씬인가.
     /// </summary>
-    private static CardStyle CardStyleFor(GraphNodeKind kind, bool excelOwned) => kind switch
+    private static CardStyle CardStyleFor(GraphNodeKind kind, bool chapterEpisode) => kind switch
     {
-        GraphNodeKind.Dialogue when excelOwned => new CardStyle(
+        GraphNodeKind.Dialogue when chapterEpisode => new CardStyle(
             Color.FromRgb(0xD9, 0x77, 0x06), Color.FromRgb(0xFB, 0xF6, 0xEA),
             Color.FromRgb(0xE3, 0xD5, 0xB7), 4, "📄"),
         GraphNodeKind.Dialogue => new CardStyle(
@@ -1296,12 +1300,13 @@ public partial class GraphEditorView : UserControl
             Color.FromArgb(90, 128, 128, 128), 10, "🧰")
     };
 
-    private bool IsExcelOwned(string nodeId) =>
+    /// <summary>챕터의 에피소드인가 — 소속을 묻는 것이지 잠금을 묻는 것이 아니다.</summary>
+    private bool IsChapterEpisode(string nodeId) =>
         _session?.Project.FindNode(nodeId) is DialogueNode { ExcelEpisodeId: not null };
 
     private NodeCard BuildCard(ExpandedNodeProjection node)
     {
-        CardStyle style = CardStyleFor(node.NodeKind, IsExcelOwned(node.NodeId));
+        CardStyle style = CardStyleFor(node.NodeKind, IsChapterEpisode(node.NodeId));
 
         var body = new StackPanel { Spacing = 0 };
 
@@ -1540,7 +1545,7 @@ public partial class GraphEditorView : UserControl
         var name = new TextBlock
         {
             // 접힌 목록에도 종 아이콘 — 카드와 같은 시각 언어.
-            Text = $"{CardStyleFor(entry.NodeKind, IsExcelOwned(entry.NodeId)).Icon} {entry.NodeName}",
+            Text = $"{CardStyleFor(entry.NodeKind, IsChapterEpisode(entry.NodeId)).Icon} {entry.NodeName}",
             FontSize = 10,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center

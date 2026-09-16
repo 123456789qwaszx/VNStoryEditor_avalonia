@@ -13,167 +13,115 @@ using Vn.Authoring.Serialization;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// 2단계 무대 1번 — 엑셀노드 배지 + 본문 잠금. 엑셀 소유 대본이 툴에서 고쳐지는 척하다
-/// 다음 동기화에 증발하는 사고를 화면 단에서 막는다. 자유 노드는 그대로 편집된다.
+/// <b>챕터의 에피소드로 선 대사노드</b> — 자유 씬과 무엇이 다르고 무엇이 같은가.
+///
+/// ⛔ <b>이 묶음의 절반은 2026-09-16에 은퇴했다</b> (R-E · 지시서 §6.4). 옛 이름은
+/// <c>ExcelNodeLockTests</c>였고, 지키던 것은 <i>"엑셀 소유 대본이 툴에서 고쳐지는 척하다
+/// 다음 동기화에 증발하는 사고"</i>를 막는 잠금이었다. 그 동기화가 R-D에서 철거되면서
+/// 잠금이 지킬 것이 없어졌다 — <b>대본은 어느 노드에서든 열린다</b>.
+///
+/// 남은 다름은 셋이고, 셋 다 대본이 아니라 <b>챕터</b>가 쥔 것이다:
+/// ① 이름(챕터 `대사엔트리`가 원천 — R-F에서 뒤집힌다)
+/// ② 스탯변화(챕터 간선의 것 — 2026-08-14 결정)
+/// ③ 갈래 출구(연출 그래프 카드의 IF 포트 하나 — 2026-08-23 결정)
 /// </summary>
-public sealed class ExcelNodeLockTests
+public sealed class ChapterEpisodeNodeTests
 {
     private static string SamplePath => Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
     [Fact]
-    public void 엑셀노드는_이름과_줄_추가가_잠긴다() => HeadlessUi.Run(() =>
+    public void 대사_잠금은_사라졌다() => HeadlessUi.Run(() =>
     {
-        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
+        // ⛔ <b>은퇴의 표지다</b> (R-E · §6.4). [🔒 대사 잠김] 토글이 하던 말은 "이 대본의
+        //    원본은 엑셀이라 여기서 고쳐도 다음 동기화가 되돌린다"였고, 그 동기화가
+        //    R-D에서 철거됐다. 되돌릴 것이 없으므로 잠글 것도 없다.
+        //
+        //    이름으로 못을 박아 두는 이유 — 지운 것을 무심코 되살리는 일을 막는다.
+        (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
 
-        Assert.True(editor.FindControl<TextBox>("NameBox")!.IsReadOnly);
-        Assert.False(editor.FindControl<Button>("AddLineButton")!.IsEnabled);
-
-        // ⚠ 안내 띠는 2026-08-22에 사라졌다 (소유자) — 카드가 이미 잠겨 있고 손대려 하면
-        // 상태줄이 같은 말을 하므로, 목록 맨 위의 세 줄은 매번 되풀이되는 소음이었다.
-        var host = editor.FindControl<StackPanel>("LineHost")!;
-        Assert.DoesNotContain(host.Children.OfType<Border>(), border =>
-            (border.Child as TextBlock)?.Text?.Contains("엑셀노드") == true);
-
-        // 줄 추가를 우회 호출해도 막힌다 — 대본 줄 수가 그대로다.
-        DialogueNode node = session.Project.FindDialogue(nodeId)!;
-        int before = session.Project.FindScript(node.ScriptId)!.ActiveLines.Count();
-        editor.FindControl<Button>("AddLineButton")!.Command?.Execute(null);
-        Assert.Equal(before, session.Project.FindScript(node.ScriptId)!.ActiveLines.Count());
+        Assert.Null(editor.FindControl<ToggleButton>("ExcelTextLockToggle"));
     });
 
     [Fact]
-    public void 엑셀노드는_본문_칸과_조건_set_태그까지_잠긴다() => HeadlessUi.Run(() =>
+    public void 챕터_에피소드도_줄을_더하고_텍스트를_반영한다() => HeadlessUi.Run(() =>
     {
-        // 소유자 보고 — 화자는 잠겼는데 본문 칸은 클릭하면 열려 보이고, 조건·set 태그는
-        // 눌러서 편집 플라이아웃이 열렸다. 읽기 전용이어도 "고쳐질 것 같은 모양"이면 실패다.
+        // ⛔ 지시서 §6.4가 이름으로 짚은 두 줄이다 —
+        //    `AddLineButton.IsEnabled = !_excelOwned` · `ApplyScenarioButton.IsEnabled = !_excelOwned`.
+        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
+
+        Assert.True(editor.FindControl<Button>("AddLineButton")!.IsEnabled);
+        Assert.True(editor.FindControl<Button>("ApplyScenarioButton")!.IsEnabled);
+
+        DialogueNode node = session.Project.FindDialogue(nodeId)!;
+        int before = session.Project.FindScript(node.ScriptId)!.ActiveLines.Count();
+
+        editor.FindControl<Button>("AddLineButton")!
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before + 1, session.Project.FindScript(node.ScriptId)!.ActiveLines.Count());
+    });
+
+    [Fact]
+    public void 챕터_에피소드의_본문과_화자가_열렸다() => HeadlessUi.Run(() =>
+    {
+        // 옛 판은 이 셋이 <b>잠겼음</b>을 지켰다. 잠긴 이유가 사라졌으니 지킬 것이 뒤집힌다.
         (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
         var host = editor.FindControl<StackPanel>("LineHost")!;
 
-        // 본문 칸 — 캐럿조차 안 선다. (화자 자동완성 내부의 TextBox는 부모 비활성으로 이미 잠겨 제외.)
+        // 본문 칸 — 캐럿이 선다. (화자 자동완성 내부의 TextBox는 제외.)
         List<TextBox> bodies = host.GetVisualDescendants().OfType<TextBox>()
             .Where(box => box.FindAncestorOfType<AutoCompleteBox>() is null)
             .ToList();
         Assert.NotEmpty(bodies);
-        Assert.All(bodies, box => Assert.False(box.IsHitTestVisible));
+        Assert.All(bodies, box => Assert.False(box.IsReadOnly));
+        Assert.All(bodies, box => Assert.True(box.IsHitTestVisible));
 
-        // 조건·선택·set 태그 — 버튼이 아니라 표시 전용 칩이다. 눌러 열 편집 길이 없다.
-        List<string> tagButtons = host.GetVisualDescendants().OfType<Button>()
-            .Select(button => (button.Content as TextBlock)?.Text ?? string.Empty)
-            .Where(text =>
-                text.StartsWith("set ", StringComparison.Ordinal) ||
-                text.StartsWith("선택 ", StringComparison.Ordinal) ||
-                text is "조건 종료" or "선택지 끝" or "신뢰높음")
-            .ToList();
-        Assert.Empty(tagButtons);
-    });
-
-    [Fact]
-    public void 엑셀노드는_화자_고르기_단추까지_잠긴다() => HeadlessUi.Run(() =>
-    {
-        // 소유자 보고 (2026-08-23) — "대사편집에서 화자가 선택가능하고, 실제 반영은 안되더라도
-        // 표기상으로 바꿔지는 것처럼 보이는데." 화자 칸은 잠겨 있었지만 옆의 ▾가 살아 있어서,
-        // 거기서 고른 이름이 잠긴 칸에 써졌다(프로그램이 넣는 값은 IsEnabled를 안 본다).
-        (DialogueNodeEditor editor, AuthoringSession session, _) = ShowSyncedNode();
-        var host = editor.FindControl<StackPanel>("LineHost")!;
-
-        // 화자 칸과 ▾가 함께 잠긴다 — 문이 둘이면 빗장도 둘이어야 한다.
+        // 화자 칸과 그 옆 ▾ — 함께 열린다.
         List<AutoCompleteBox> speakers = host.GetVisualDescendants().OfType<AutoCompleteBox>().ToList();
         Assert.NotEmpty(speakers);
-        Assert.All(speakers, box => Assert.False(box.IsEnabled));
+        Assert.All(speakers, box => Assert.True(box.IsEnabled));
 
         List<Button> picks = host.GetVisualDescendants().OfType<Button>()
             .Where(button => button.Content as string == "▾")
             .ToList();
         Assert.NotEmpty(picks);
-        Assert.All(picks, button => Assert.False(button.IsEnabled));
-
-        // 우회 호출로도 목록이 열리지 않고, 화자 글자가 그대로다.
-        string before = speakers[0].Text ?? string.Empty;
-        picks[0].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.Equal(before, speakers[0].Text ?? string.Empty);
-
-        // 2026-08-24 — 말이 바뀌었다. 이제 잠금은 풀 수 있는 것이라, "엑셀에서 합니다"로
-        // 끝내면 <b>여기서는 못 한다</b>는 거짓말이 된다. 어디서 푸는지를 말한다.
-        Assert.Contains("읽기 전용", session.StatusMessage);
-        Assert.Contains("대사 잠김", session.StatusMessage);
-    });
-
-    // ── 잠금을 풀 수 있다 (2026-08-24 소유자) ───────────────────────────────
-
-    [Fact]
-    public void 자물쇠_토글은_엑셀노드에만_선다() => HeadlessUi.Run(() =>
-    {
-        // 자유 노드는 늘 열려 있어 잠글 것이 없다 — 단추가 있으면 "여기도 잠기나" 싶다.
-        (DialogueNodeEditor editor, AuthoringSession session, _) = ShowSyncedNode();
-
-        var toggle = editor.FindControl<ToggleButton>("ExcelTextLockToggle")!;
-
-        Assert.True(toggle.IsVisible);
-        Assert.True(toggle.IsEnabled, "되쓸 엑셀 자리를 찾았어야 열 수 있다");
-        Assert.False(toggle.IsChecked);
-
-        string fileId = session.EnsureChapterBoard("ch05");
-        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "자유씬");
-
-        editor.Show(free.Id);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.False(toggle.IsVisible);
+        Assert.All(picks, button => Assert.True(button.IsEnabled));
     });
 
     [Fact]
-    public void 풀면_본문과_화자가_열린다() => HeadlessUi.Run(() =>
+    public void 이름만은_아직_챕터의_것이다() => HeadlessUi.Run(() =>
     {
-        (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
-
-        Unlock(editor);
-
-        var host = editor.FindControl<StackPanel>("LineHost")!;
-
-        List<TextBox> bodies = host.GetVisualDescendants().OfType<TextBox>()
-            .Where(box => box.FindAncestorOfType<AutoCompleteBox>() is null)
-            .ToList();
-
-        Assert.NotEmpty(bodies);
-        Assert.All(bodies, box => Assert.False(box.IsReadOnly));
-        Assert.All(bodies, box => Assert.True(box.IsHitTestVisible));
-
-        List<AutoCompleteBox> speakers =
-            host.GetVisualDescendants().OfType<AutoCompleteBox>().ToList();
-
-        Assert.NotEmpty(speakers);
-        Assert.All(speakers, box => Assert.True(box.IsEnabled));
-    });
-
-    [Fact]
-    public void 풀어도_줄_추가와_이름은_잠긴_채다() => HeadlessUi.Run(() =>
-    {
-        // ⛔ 푼 것은 화자·내용 두 칸뿐이다. 표의 구조와 노드의 신원은 엑셀 소유 그대로다 —
-        // 그쪽까지 열면 인덱스 재배치를 두 곳이 갖는다.
-        (DialogueNodeEditor editor, _, _) = ShowSyncedNode();
-
-        Unlock(editor);
+        // ⚠ 잠긴 이유가 바뀌었다 — 엑셀이 대본을 쥐어서가 아니라, <b>이름의 원천이 챕터
+        //    `대사엔트리`</b>이고 그 워크북의 주인이 아직 기획자이기 때문이다(R-F까지).
+        //    개명은 [챕터 그래프]의 [이름] 칸에서 하고, 그쪽은 워크북과 노드를 함께 간다.
+        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
 
         Assert.True(editor.FindControl<TextBox>("NameBox")!.IsReadOnly);
-        Assert.False(editor.FindControl<Button>("AddLineButton")!.IsEnabled);
+
+        // 우회로도 안 바뀐다 — 문이 둘이면 빗장도 둘이어야 한다.
+        string before = session.Project.FindDialogue(nodeId)!.Name;
+
+        editor.FindControl<TextBox>("NameBox")!.Text = "손으로 고친 이름";
+        editor.FindControl<Button>("AddLineButton")!.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(before, session.Project.FindDialogue(nodeId)!.Name);
     });
 
     [Fact]
-    public void 풀고_고친_대사가_프로젝트에_남는다() => HeadlessUi.Run(() =>
+    public void 고친_대사가_프로젝트에_남는다() => HeadlessUi.Run(() =>
     {
-        // ⚠ <b>이 테스트는 뒤집혔다</b> (R-D · 2026-09-16). 앞선 판은
+        // ⚠ <b>이 테스트는 두 번 뒤집혔다</b>. 첫 판은
         //    `풀고_고친_대사가_엑셀_셀까지_간다`였다 — 고친 글을 엑셀 셀에 먼저 쓰고
         //    성공했을 때만 노드를 고치는 순서였고, 그 이유가 <i>"노드만 고치면 다음
         //    동기화가 지운다"</i>였다.
         //
         //    다시 읽는 동기화가 없어졌으므로 지울 것이 없다. 고친 글은 프로젝트에 남고,
         //    엑셀은 산출물이라 다음 출력이 프로젝트를 따라간다.
+        //    그리고 2026-09-16에 <b>잠금을 푸는 절차가 사라졌다</b>(R-E) — 그냥 고친다.
         (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
-
-        Unlock(editor);
 
         var host = editor.FindControl<StackPanel>("LineHost")!;
         TextBox body = host.GetVisualDescendants().OfType<TextBox>()
@@ -201,8 +149,6 @@ public sealed class ExcelNodeLockTests
         //    "그 파일을 지금 갱신하지 못했다"일 뿐이다.
         (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
 
-        Unlock(editor);
-
         var host = editor.FindControl<StackPanel>("LineHost")!;
         TextBox body = host.GetVisualDescendants().OfType<TextBox>()
             .First(box => box.FindAncestorOfType<AutoCompleteBox>() is null);
@@ -223,31 +169,9 @@ public sealed class ExcelNodeLockTests
     });
 
 
-    [Fact]
-    public void 다른_노드로_옮기면_다시_잠긴다() => HeadlessUi.Run(() =>
-    {
-        // ⚠ 열어 둔 것을 잊고 다음 노드에서 무심코 고치는 길을 없앤다 —
-        // 원본은 여전히 엑셀이고, 여는 것은 잠깐의 예외여야 한다.
-        (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
-
-        Unlock(editor);
-
-        var toggle = editor.FindControl<ToggleButton>("ExcelTextLockToggle")!;
-        Assert.True(toggle.IsChecked);
-
-        string fileId = session.EnsureChapterBoard("ch05");
-        DialogueNode other = session.Editor.AddDialogueNode(fileId, name: "다른 씬");
-
-        editor.Show(other.Id);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        // 그리고 돌아와도 잠겨 있다.
-        editor.Show(nodeId);
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        Assert.False(toggle.IsChecked);
-        Assert.Contains("잠김", toggle.Content as string);
-    });
+    // ⛔ `다른_노드로_옮기면_다시_잠긴다`는 2026-09-16에 은퇴했다 (R-E). 노드를 옮길 때마다
+    //    다시 잠그던 규율은 "여는 것은 잠깐의 예외여야 한다"에서 나왔는데, 이제 예외가
+    //    아니라 기본이다 — 다시 잠글 상태가 없다.
 
     // ⛔ `엑셀노드의_분기_이후_레일은_표시뿐이다`는 2026-09-16에 은퇴했다 (규격 v15 — R-C).
     //    그 테스트는 <b>엑셀노드에 조건 갈래가 있다</b>를 전제로 레일이 단추가 아님을 지켰는데,
@@ -334,7 +258,7 @@ public sealed class ExcelNodeLockTests
     });
 
     [Fact]
-    public void 그래프_카드_배지에_엑셀_표식이_붙는다() => HeadlessUi.Run(() =>
+    public void 그래프_카드_배지에_에피소드_표식이_붙는다() => HeadlessUi.Run(() =>
     {
         (_, AuthoringSession session, string nodeId) = ShowSyncedNode();
 
@@ -346,7 +270,8 @@ public sealed class ExcelNodeLockTests
             .OfType<Vn.Authoring.Graph.ExpandedNodeProjection>()
             .Single(item => item.NodeId == nodeId);
 
-        Assert.StartsWith("📄 엑셀", card.Badge);
+        // ⚠ 옛 문구는 "📄 엑셀"이었다 — 뜻이 "엑셀 소유라 잠김"에서 <b>소속</b>으로 바뀌었다(R-E).
+        Assert.StartsWith("📄 에피소드", card.Badge);
     });
 
     [Fact]
@@ -455,8 +380,8 @@ public sealed class ExcelNodeLockTests
     });
 
     /// <summary>
-    /// 칸에 글을 치고 <b>초점을 진짜로 옮긴다</b> — 엑셀노드는 그때 낸다. 이름 칸으로
-    /// 옮기는 것은 그것이 늘 있고 읽기 전용이라 아무 일도 안 일으키기 때문이다.
+    /// 칸에 글을 치고 <b>초점을 진짜로 옮긴다</b>. 이름 칸으로 옮기는 것은 그것이 늘 있고
+    /// 읽기 전용이라 아무 일도 안 일으키기 때문이다.
     /// </summary>
     private static void Type(DialogueNodeEditor editor, TextBox box, string text)
     {
@@ -466,13 +391,6 @@ public sealed class ExcelNodeLockTests
         box.Text = text;
 
         editor.FindControl<TextBox>("NameBox")!.Focus();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-    }
-
-    /// <summary>대사 잠금을 푼다 — 사람이 토글을 누르는 것과 같은 길이다.</summary>
-    private static void Unlock(DialogueNodeEditor editor)
-    {
-        editor.FindControl<ToggleButton>("ExcelTextLockToggle")!.IsChecked = true;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
