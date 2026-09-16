@@ -3047,92 +3047,42 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>속성 패널의 [적용]. 모델의 현재 값과 다른 필드만 셀에 쓴다.</summary>
+    /// <summary>
+    /// 속성 패널의 [적용] — 에피소드 개명.
+    ///
+    /// ⛔ <b>규율은 여기 없다</b> — <see cref="EpisodeRenamer"/>가 갖는다 (2026-09-16에
+    /// [대본] 탭 탐색기에서도 이름을 고치게 되면서 한 벌로 모았다). 여기 남은 것은
+    /// <b>이 화면이 그 뒤에 할 일</b>뿐이다: 선택을 새 이름으로 옮기고, 챕터를 다시 낸다.
+    /// </summary>
     internal void RenameSelectedEpisode()
     {
         string oldId = _selectedEpisodeId ?? string.Empty;
         string newId = IdBox.Text?.Trim() ?? string.Empty;
 
-        if (oldId.Length == 0 || newId.Length == 0 ||
-            string.Equals(oldId, newId, StringComparison.Ordinal) ||
-            _selectedChapterId is not { } chapterId)
+        if (_session is null || _selectedChapterId is not { } chapterId)
         {
             return;
         }
 
-        string? episodesFolder = SelectedEpisodesFolder;
+        EpisodeRenamer.Result result =
+            EpisodeRenamer.Rename(_session.Editor, _session.ProjectPath, chapterId, oldId, newId);
 
-        // 새 이름의 대본 파일이 이미 있으면 시작도 하지 않는다 — 챕터만 개명된 채
-        // 원고가 옛 이름에 남는 어중간한 상태를 만들지 않는다.
-        if (episodesFolder is not null &&
-            EpisodeLibrary.FindExisting(episodesFolder, oldId) is not null &&
-            EpisodeLibrary.FindExisting(episodesFolder, newId) is not null)
+        if (!result.Renamed)
         {
-            _session?.SetStatus(
-                $"'{newId}' 이름의 대본 파일이 이미 있어 개명하지 않았습니다. 파일을 먼저 정리해 주세요.");
-            return;
-        }
-
-        // 대본 파일을 <b>먼저</b> 옮긴다 — 엑셀이 잠그고 있으면 여기서 전부 멈춘다. 챕터만
-        // 개명된 채 원고가 옛 이름에 남으면, 새 이름을 여는 순간 빈 워크북이 생겨 원고가
-        // 고아가 된다(실사례 2026-08-15: new02 원고가 남고 빈 rrr.xlsx가 생겼다).
-        string? moveFailure = episodesFolder is null
-            ? null
-            : EpisodeLibrary.RenameWorkbook(episodesFolder, oldId, newId);
-
-        if (moveFailure is not null)
-        {
-            _session?.SetStatus($"개명하지 않았습니다 — {moveFailure}");
-            return;
-        }
-
-        try
-        {
-            _session!.Editor.RenameEpisode(chapterId, oldId, newId);
-        }
-        catch
-        {
-            // 챕터 쪽이 막혔다(같은 Id·폐지된 cleared: 참조) — 옮긴 대본 파일을 되돌린다.
-            //
-            // ⚠ 예전에는 "엑셀이 잠가서"가 거부의 흔한 이유였다. 이제 개명은 프로젝트
-            //    안의 일이라 잠금으로 막히지 않는다 — 남은 거부는 전부 규칙 위반이다.
-            if (episodesFolder is not null)
+            // "바뀐 이름이 없습니다"는 사람이 아무것도 안 한 것이라 말할 것이 없다.
+            if (!string.Equals(oldId, newId, StringComparison.Ordinal) && oldId.Length > 0)
             {
-                EpisodeLibrary.RenameWorkbook(episodesFolder, newId, oldId);
+                _session.SetStatus(result.Failure!);
             }
 
-            throw;
+            return;
         }
 
         _selectedEpisodeId = newId;
 
-        // 대사 노드도 따라간다 — 규약(대사엔트리 = Id)을 따르던 노드만. 노드를 새로 만들지
-        // 않고 이름만 바꾸므로 줄·연출·행 신원(ExcelLineMap)이 전부 보존된다. 엑셀 표식
-        // (ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 연출 그래프가 챕터 밖 노드로
-        // 보고 레일을 끊는다.
-        // ⚠ <b>이 챕터의 판에서만</b> 찾는다 (2026-08-25). 프로젝트 전체를 이름으로 훑으면
-        // 다른 챕터에 같은 Id가 있을 때 남의 노드를 개명한다 — 그쪽 판에서는 에피소드와
-        // 이름이 갈려 유령이 되고, 그 유령이 이름 중복으로 내보내기를 막는다.
-        if (_session is { } session &&
-            session.Project.Files
-                .FirstOrDefault(file =>
-                    string.Equals(file.Name, SelectedModel?.ChapterId, StringComparison.Ordinal))
-                ?.Nodes.OfType<Vn.Authoring.Model.DialogueNode>()
-                .FirstOrDefault(node =>
-                    string.Equals(node.ExcelEpisodeId, oldId, StringComparison.Ordinal) ||
-                    string.Equals(node.Name, oldId, StringComparison.Ordinal))
-            is { } dialogueNode)
-        {
-            if (dialogueNode.ExcelEpisodeId is not null)
-            {
-                dialogueNode.ExcelEpisodeId = newId;
-            }
-
-            session.Editor.RenameNode(dialogueNode.Id, newId);
-        }
-
         ChapterEmitRun emitted = EmitSelectedChapter();
 
-        _session?.SetStatus(
+        _session.SetStatus(
             $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처·대본 파일·대사 노드가 함께 따라갔습니다." +
             emitted.Notice());
     }
