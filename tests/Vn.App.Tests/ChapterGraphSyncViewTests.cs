@@ -355,13 +355,20 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 엑셀을_고치면_JSON도_따라_갱신된다() => HeadlessUi.Run(() =>
+    public void 툴에서_고치면_JSON도_따라_갱신된다() => HeadlessUi.Run(() =>
     {
+        // ⛔ <b>이 테스트는 2026-09-16에 뒤집혔다</b> (R-F). 옛 이름은
+        //    `엑셀을_고치면_JSON도_따라_갱신된다`였고, 워크북에 행을 더한 뒤
+        //    <c>RefreshFromDisk()</c>로 다시 읽혀 JSON이 따라오는지를 봤다.
+        //
+        //    이제 읽는 길이 없다 — 엑셀을 고쳐도 아무 일도 안 일어난다(아래 짝 테스트).
+        //    그러니 재야 할 것은 <b>반대쪽</b>이다: 툴에서 고친 것이 JSON까지 가는가.
+        //    자동 내보내기(2026-08-17)가 사람 손을 기다리지 않는다는 규율은 그대로다.
         using var project = new TempProject(SamplePath);
         AllowUnreachable(project.ChapterPath, "branch05.02A");
         EpisodeWorkbookFixture.Fill(project.EpisodesFolder);   // 빈 노드는 이제 오류다
 
-        (ChapterGraphView view, _) = Show(project);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
 
         // 대본은 이제 사람이 들여온다 (R-D) — 노드가 서야 검증이 통과한다.
         view.ImportEpisodes();
@@ -370,26 +377,38 @@ public sealed class ChapterGraphSyncViewTests
         string path = Path.Combine(project.ExportFolder, "ch05.progression.json");
         Assert.DoesNotContain("새로판길", File.ReadAllText(path));
 
-        ChapterWorkbookWriter.AddEpisode(project.ChapterPath, "새로판길", title: "", 3, 1);
-
-        // ⚠ 문구를 준다 (2026-08-23). 문구 없는 간선은 "보이지 않는 기본"이고 에피소드당
-        // 하나뿐인데, main05.01에는 이미 하나가 있다. 둘이 되면 **진행 코어가 그 챕터를
-        // 못 싣고**, 내보내기가 그것을 옳게 거부한다 — 예전에는 그대로 나가서 게임에서만
-        // 안 되던 자리다. 이 테스트가 재려는 것은 "엑셀을 고치면 JSON이 따라오는가"이지
-        // 잘못된 데이터가 나가는가가 아니다.
-        ChapterWorkbookWriter.AddEdge(
-            project.ChapterPath, "main05.01", "새로판길", optionLabel: "새로 판 길로");
+        // ⚠ 문구를 준다 (2026-08-23). 문구 없는 간선은 에피소드당 하나뿐인데 main05.01에
+        //    이미 있다. 둘이 되면 진행 코어가 그 챕터를 못 싣고 내보내기가 옳게 거부한다 —
+        //    이 테스트가 재려는 것은 "고치면 JSON이 따라오는가"이지 그쪽이 아니다.
+        session.Editor.AddEpisode("ch05", "새로판길", title: string.Empty, 3, 1);
+        session.Editor.AddEdge("ch05", "main05.01", "새로판길", optionLabel: "새로 판 길로");
 
         // 새 에피소드도 대본이 있어야 노드가 살아남는다 — 빈 노드는 오류다.
         EpisodeWorkbookFixture.Fill(project.EpisodesFolder, "새로판길");
-
-        view.RefreshFromDisk();
-
-        // 새 에피소드의 노드도 들여와야 검증이 통과한다 (R-D).
         view.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.Contains("새로판길", File.ReadAllText(path));
+    });
+
+    [Fact]
+    public void 엑셀을_고쳐도_아무_일도_일어나지_않는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ <b>뒤집기의 반대편이다</b> (R-F · §5.2). 워크북은 산출물이라 툴이 다시 읽지
+        //    않는다 — 읽는 길이 하나라도 남으면 툴과 엑셀이 서로를 덮어쓰던 자리로 돌아간다.
+        using var project = new TempProject(SamplePath);
+        AllowUnreachable(project.ChapterPath, "branch05.02A");
+        EpisodeWorkbookFixture.Fill(project.EpisodesFolder);
+
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        int episodes = session.Project.Chapters.Single().Episodes.Count;
+
+        ChapterWorkbookWriter.AddEpisode(project.ChapterPath, "밖에서온것", title: "", 3, 1);
+        view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(episodes, session.Project.Chapters.Single().Episodes.Count);
     });
 
     [Fact]

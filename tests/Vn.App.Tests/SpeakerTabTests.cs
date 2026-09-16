@@ -153,8 +153,12 @@ public sealed class SpeakerTabTests : IDisposable
     [Fact]
     public void 구판_화자_시트는_한_번_옮겨지고_사라진다() => HeadlessUi.Run(() =>
     {
-        // 이행 — 이미 시트에 적어 둔 이름을 잃지 않는다. 순서가 규격이다: 시트를 지운 뒤에
-        // 정의 파일에 쓴다(반대로 하면 잠긴 워크북이 지운 이름을 되살린다).
+        // 이행 — 이미 시트에 적어 둔 이름을 잃지 않는다.
+        //
+        // ⛔ <b>순서 규격이 2026-09-16에 사라졌다</b> (R-F). 옛 규율은 <i>"시트를 지운 뒤에
+        //    정의 파일에 쓴다"</i>였다 — 반대로 하면 잠겨서 못 지운 워크북이 다음
+        //    <b>재읽기</b>에서 지운 이름을 되살렸기 때문이다. 이제 재읽기가 없다.
+        //    시트는 다음 출력이 워크북을 통째로 갈아 끼울 때 함께 사라진다.
         WriteLegacySpeakerSheet("ch01", ("늙은 상인", "merchant"));
 
         (ChapterGraphView view, AuthoringSession session, _) = Show();
@@ -163,17 +167,21 @@ public sealed class SpeakerTabTests : IDisposable
         Assert.Equal("늙은 상인", moved.Name);
         Assert.Equal("merchant", moved.CharacterId);
 
-        // 시트는 사라졌고, 원본은 .bak에 있다.
-        string chapter = Path.Combine(ChaptersFolder, "ch01.xlsx");
-        Assert.False(ChapterWorkbookReader.Read(chapter).HasSpeakerSheet);
-        Assert.True(File.Exists(chapter + ".bak"));
-
-        // 옮겨 온 이름도 다른 챕터의 대본에서 고를 수 있다.
-
-        // 두 번째 재읽기는 아무것도 안 옮긴다 — 시트가 없으니 옮길 것이 없다.
+        // 옮기는 일은 <b>들여오는 그 한 번</b>뿐이다 — 다시 그려도 늘지 않는다.
         view.RefreshFromDisk();
         Dispatcher.RunJobs();
         Assert.Single(session.Definition.Speakers);
+
+        // 그리고 툴이 그 챕터를 한 번 내면 시트가 사라진다 — 이미터가 안 내기 때문이다.
+        //
+        // ⚠ <b>편집을 화면의 길로 한다.</b> 에디터를 바로 부르면 프로젝트만 바뀌고 출력이
+        //    안 난다 — 출력은 아직 화면이 들고 있다(R-F 남은 조각: "저장 = 프로젝트 저장 +
+        //    재출력"이 서면 그때는 어느 길로 고쳐도 따라온다).
+        view.SelectChapter("ch01");
+        view.AddEpisodeFromToolbar();
+        Dispatcher.RunJobs();
+
+        Assert.False(ChapterWorkbookReader.Read(Path.Combine(ChaptersFolder, "ch01.xlsx")).HasSpeakerSheet);
     });
 
     // ⛔ `어휘가_그대로면_대본_워크북을_열지_않는다`는 2026-09-16에 은퇴했다 (R-D).

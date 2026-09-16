@@ -76,30 +76,35 @@ public sealed class ChapterWorkbookImporterTests : IDisposable
     }
 
     [Fact]
-    public void 하나가_깨지면_아무것도_안_들여온다()
+    public void 저작_오류는_들여오기를_막지_않고_짚어만_준다()
     {
-        // ⛔ §5.2 — "임포트가 부분 성공하지 않는다". 절반만 들어온 프로젝트는 어느 챕터가
-        //    원본인지 사람이 알 수 없게 만들고, 되돌릴 길인 워크북은 곧 산출물이 된다.
+        // ⛔ <b>§5.2를 한 번 잘못 읽었다</b> (2026-09-16). "하나라도 해석 못 하면 아무것도
+        //    들여오지 않는다"를 <i>오류 진단이 하나라도 있으면</i>으로 읽어, 도달 불가·없는
+        //    도착 같은 <b>저작 오류</b>까지 관문으로 막았다. 그러면 <b>작업 중인 프로젝트는
+        //    영영 못 들어온다</b> — 리더가 <i>"오류가 있어도 모델은 만든다, 조용히 빈 화면을
+        //    주지 않는다"</i>를 규격으로 삼는 바로 그 이유를 임포트가 뒤집는 셈이다(규칙 14).
+        //
+        //    잃을 위험도 없다: 임포트는 <b>아무것도 쓰지 않는다</b>. 워크북이 덮이는 것은
+        //    사람이 그 챕터를 고쳤을 때뿐이고, 그때는 오류가 이미 검증 보고에 서 있다.
         Write("ch01", ("ep01", "ep02"));
-        Write("ch02", ("ep01", "없는에피소드"));   // 도착이 없는 간선 = 오류
+        Write("ch02", ("ep01", "없는에피소드"));   // 도착이 없는 간선 = 저작 오류
 
         var editor = new ProjectEditor(new StoryProject());
         ChapterProjectImport import = ChapterWorkbookImporter.Run(editor, ManifestPath);
 
-        Assert.False(import.Applied);
-        Assert.Empty(import.ChapterIds);
+        Assert.True(import.Applied);
+        Assert.Equal(["ch01", "ch02"], import.ChapterIds);
+        Assert.Equal(2, editor.Project.Chapters.Count);
 
-        // 멀쩡했던 ch01조차 안 들어왔다 — 그것이 "부분 성공하지 않는다"의 뜻이다.
-        Assert.Empty(editor.Project.Chapters);
-
+        // 그래도 조용하지 않다 — 무엇이 잘못됐는지는 함께 실려 온다.
         Assert.Contains(import.Errors, item => item.Code == ChapterDiagnosticCode.EdgeEndpointUnknown);
     }
 
     [Fact]
-    public void 못_연_파일도_같은_관문을_지난다()
+    public void 못_연_파일_하나가_전부를_막는다()
     {
-        // 데이터의 흠이 아니라 접근 실패지만 관문은 같다 — 무엇이 안 들어왔는지 모르는 채로
-        // 절반을 들이지 않는다.
+        // ⛔ <b>이것만이 관문을 닫는다</b> (§5.2). 데이터의 흠이 아니라 접근 실패라,
+        //    무엇이 안 들어왔는지 알 길조차 없다 — 그 상태로 절반을 들이지 않는다.
         Write("ch01", ("ep01", "ep02"));
 
         var editor = new ProjectEditor(new StoryProject());

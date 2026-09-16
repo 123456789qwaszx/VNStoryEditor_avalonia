@@ -1,3 +1,5 @@
+using Vn.Authoring.Definition;
+
 namespace Vn.Authoring.Chapters;
 
 /// <summary>
@@ -13,7 +15,8 @@ namespace Vn.Authoring.Chapters;
 /// 결과</i>이고 이쪽은 <i>저작한 값</i>이다. 그래서 읽기의 부산물 셋이 여기 없다:
 /// <list type="bullet">
 /// <item><c>SourcePath</c> — 어느 파일에서 읽었나. 이제 낼 자리이지 읽은 자리가 아니다.</item>
-/// <item><c>Diagnostics</c> — 그 파일에 대한 리더의 불평. 저작한 값에 붙일 것이 아니다.</item>
+/// <item><c>Diagnostics</c> — 그 파일에 대한 리더의 불평. 저작한 값에 붙일 것이 아니다.
+///   ⚠ 단, <b>값</b>을 보던 검사는 따라왔다 — <see cref="StatDiagnostics"/>.</item>
 /// <item><c>Speakers</c>·<c>HasSpeakerSheet</c> — 폐지된 `화자` 시트를 정의 파일로 흡수하는
 ///   <b>일회성 이행</b>에서만 쓴다(2026-08-23). 임포터의 것이지 프로젝트의 것이 아니다.</item>
 /// </list>
@@ -49,7 +52,11 @@ public sealed class ChapterDocument
     /// <see cref="ChapterGraphModel"/>을 받으므로, 주인이 바뀌어도 그쪽은 그대로다.
     /// </summary>
     /// <param name="sourcePath">이 챕터를 <b>낼</b> 워크북 경로. 이제 읽은 자리가 아니다.</param>
-    public ChapterGraphModel ToGraphModel(string sourcePath) => new(
+    /// <param name="definition">
+    /// 주면 <b>모델 검사</b>를 함께 돌린다(<see cref="StatDiagnostics"/>). 리더의 불평과는
+    /// 다른 것이다 — 파일의 흠이 아니라 <b>값의 흠</b>이라, 주인이 프로젝트가 된 뒤에도 남는다.
+    /// </param>
+    public ChapterGraphModel ToGraphModel(string sourcePath, GameDefinition? definition = null) => new(
         ChapterId,
         sourcePath,
         Episodes,
@@ -57,11 +64,67 @@ public sealed class ChapterDocument
         Conditions.Select(Reparse).ToList(),
         Stats,
         Fixtures,
-        // 저작한 값에는 리더의 불평이 없다 — 검증은 저작 검증이 따로 한다.
-        diagnostics: [],
+        StatDiagnostics(sourcePath, definition),
         speakers: [],
         hasSpeakerSheet: false,
         ChoiceOptions);
+
+    /// <summary>
+    /// 스탯에 대한 <b>모델 검사</b> — 옛 <see cref="ChapterWorkbookReader"/>가 `스탯` 시트를
+    /// 읽으며 하던 그 검사다 (R-F · 2026-09-16에 여기로 옮겨 왔다).
+    ///
+    /// ⚠ <b>왜 따라와야 했나</b>: 리더에 있었던 것은 <i>거기가 유일한 문이어서</i>였지 파일의
+    /// 성질을 봐서가 아니다. 둘 다 <b>값</b>을 본다 — 범위가 뒤집혔는가, 정의 파일이 그 스탯을
+    /// 아는가. 안 옮기면 뒤집기와 함께 <b>조용히 사라지는</b> 검사가 된다(실제로 그랬다:
+    /// 검증 보고의 경고 4건이 통째로 없어졌고 테스트가 그것을 잡았다).
+    ///
+    /// ⚠ 행 번호는 <see cref="ChapterStat.SourceRow"/>다 — 들여온 값이면 원래 자리를 짚고,
+    /// 툴에서 만든 것이면 0이다(짚을 행이 아직 없다).
+    /// </summary>
+    private IReadOnlyList<ChapterDiagnostic> StatDiagnostics(string path, GameDefinition? definition)
+    {
+        var diagnostics = new List<ChapterDiagnostic>();
+
+        foreach (ChapterStat stat in Stats)
+        {
+            if (stat.Minimum > stat.Maximum)
+            {
+                diagnostics.Add(Stat(
+                    ChapterDiagnosticSeverity.Error, ChapterDiagnosticCode.StatRangeInvalid, path, stat,
+                    $"스탯 '{stat.Key}'의 최소({stat.Minimum})가 최대({stat.Maximum})보다 큽니다. " +
+                    "이 범위는 도달성 증명(G7)의 탐색 경계라 비어 있으면 안 됩니다."));
+            }
+            else if (stat.Initial < stat.Minimum || stat.Initial > stat.Maximum)
+            {
+                diagnostics.Add(Stat(
+                    ChapterDiagnosticSeverity.Error, ChapterDiagnosticCode.StatRangeInvalid, path, stat,
+                    $"스탯 '{stat.Key}'의 초기값({stat.Initial})이 " +
+                    $"최소~최대({stat.Minimum}~{stat.Maximum}) 밖입니다."));
+            }
+
+            if (definition is not null &&
+                !definition.Variables.Any(variable =>
+                    string.Equals(variable.Name, stat.Key, StringComparison.Ordinal)))
+            {
+                diagnostics.Add(Stat(
+                    ChapterDiagnosticSeverity.Warning,
+                    ChapterDiagnosticCode.StatMissingFromGameDefinition, path, stat,
+                    $"스탯 '{stat.Key}'가 game.definition.json에 없습니다. " +
+                    "스탯의 원천은 정의 파일입니다(§3.1)."));
+            }
+        }
+
+        return diagnostics;
+    }
+
+    private static ChapterDiagnostic Stat(
+        ChapterDiagnosticSeverity severity,
+        ChapterDiagnosticCode code,
+        string path,
+        ChapterStat stat,
+        string message) =>
+        new(severity, code, path, ChapterSheetNames.Stats,
+            stat.SourceRow > 0 ? stat.SourceRow : null, Column: null, message);
 
     /// <summary>
     /// 워크북에서 읽어 온 모델을 저작 값으로 받아들인다 — <b>임포트의 마지막 한 걸음</b>.

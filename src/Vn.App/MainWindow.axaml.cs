@@ -582,14 +582,22 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var stats = _session.Definition.Variables
-                .Select(variable => (variable.Name, variable.Name))
-                .ToList();
-
-            if (!ChapterWorkbookWriter.EnsureChapterWorkbook(folder, chapterId, stats))
+            // ⛔ <b>R-F로 뒤집힌 자리다</b> (2026-09-16). 예전에는 여기서 규격 워크북을
+            //    만들었고(`EnsureChapterWorkbook`) 그 파일이 곧 챕터였다. 이제 챕터는
+            //    프로젝트가 들고, 워크북은 첫 출력이 낸다.
+            if (_session.Editor.FindChapter(chapterId) is not null)
             {
                 _session.SetStatus($"챕터 '{chapterId}'가 이미 있습니다.");
                 return;
+            }
+
+            // 스탯은 정의 파일의 변수에서 온다 — 옛 워크북 생성이 `스탯` 시트를 채우던 자리다.
+            ChapterDocument chapter = _session.Editor.EnsureChapter(chapterId);
+
+            foreach (Vn.Authoring.Definition.VariableSpec variable in _session.Definition.Variables)
+            {
+                chapter.Stats.Add(new ChapterStat(
+                    variable.Name, variable.Name, Initial: 0, Minimum: 0, Maximum: 100, SourceRow: 0));
             }
 
             _session.SelectFile(_session.EnsureChapterBoard(chapterId));

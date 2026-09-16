@@ -147,47 +147,39 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         window.Close();
     });
 
+    /// <summary>
+    /// ⛔ <b>두 테스트가 2026-09-16에 하나로 뒤집혔다</b> (R-F · 지시서 §5.2).
+    ///
+    /// 옛 짝은 `우리가_쓴_저장으로는_감시자가_판을_다시_만들지_않는다`와
+    /// `남이_엑셀에서_저장하면_감시자가_판을_다시_만든다`였다. 둘은 한 물음의 양면이었다 —
+    /// <i>"감시자가 깨웠는데 이게 남의 저장인가 우리 저장인가"</i>. 그 물음에 답하려고
+    /// 디스크 지문이 있었고, 그 지문이 있었던 이유는 <b>화면이 파일을 읽어 섰기</b> 때문이다.
+    ///
+    /// 이제 판은 프로젝트에서 온다. 그래서 답이 하나로 합쳐진다: <b>남이 저장해도 아무 일도
+    /// 없다.</b> 구별할 필요가 없어진 것이지, 구별을 못 하게 된 것이 아니다.
+    ///
+    /// ⚠ 지시서가 미리 적어 둔 그대로다 — <i>"ChapterGraphWorkAmountTests가 지키던 '일의
+    /// 횟수' 고정도 함께 의미가 바뀐다"</i>(§2).
+    /// </summary>
     [Fact]
-    public void 우리가_쓴_저장으로는_감시자가_판을_다시_만들지_않는다() => HeadlessUi.Run(() =>
+    public void 남이_엑셀에서_저장해도_판이_안_바뀐다() => HeadlessUi.Run(() =>
     {
-        // 감시자는 남의 저장과 우리 저장을 구별하지 못한다. 툴이 쓴 자리는 그 자리에서
-        // 이미 화면을 맞췄으므로, 250ms 뒤 오는 알림은 같은 그림을 한 번 더 그리라는
-        // 주문이다 — 그 순간 사람이 누르고 있던 카드가 파괴된다.
-        (ChapterGraphView view, _, Window window) = Show();
+        (ChapterGraphView view, AuthoringSession session, Window window) = Show();
 
         int before = view.CanvasDrawCount;
-
-        for (int index = 0; index < 5; index++)
-        {
-            // 대본 쪽 감시는 2026-09-16에 걷혔다 (R-D) — 챕터 감시만 남았다.
-            view.ReloadIfDiskChanged();
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        }
-
-        Assert.Equal(before, view.CanvasDrawCount);
-
-        window.Close();
-    });
-
-    [Fact]
-    public void 남이_엑셀에서_저장하면_감시자가_판을_다시_만든다() => HeadlessUi.Run(() =>
-    {
-        // 지문이 남의 저장까지 삼키면 "엑셀에서 고쳤는데 툴이 그대로"가 된다 — Gate A가
-        // 지키던 바로 그것이다.
-        (ChapterGraphView view, _, Window window) = Show();
+        int episodes = session.Project.Chapters.Single().Episodes.Count;
 
         ChapterWorkbookWriter.AddEpisode(
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx"),
             "밖에서온것", title: "남의 저장", 9, 9);
 
-        int before = view.CanvasDrawCount;
-
-        view.ReloadIfDiskChanged();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.True(
-            view.CanvasDrawCount > before,
-            "디스크가 실제로 바뀌었으면 판을 다시 만들어야 한다");
+        // 그림도 그대로고 — 사람이 누르고 있던 카드가 파괴되지 않는다.
+        Assert.Equal(before, view.CanvasDrawCount);
+
+        // 값도 그대로다. 엑셀에 쓴 것은 더 이상 툴로 들어오지 않는다.
+        Assert.Equal(episodes, session.Project.Chapters.Single().Episodes.Count);
 
         window.Close();
     });

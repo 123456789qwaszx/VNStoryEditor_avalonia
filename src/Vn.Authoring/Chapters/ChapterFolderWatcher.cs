@@ -12,6 +12,9 @@ namespace Vn.Authoring.Chapters;
 /// <b>알림은 워커 스레드에서 온다.</b> UI가 쓰려면 스스로 UI 스레드로 옮겨야 한다 —
 /// 이 클래스는 화면을 모른다.
 ///
+/// ⚠ <b>R-F 뒤로 챕터 그래프는 저장을 안 듣는다</b> (2026-09-16). 워크북이 산출물이 되어
+/// 되읽을 이유가 사라졌기 때문이다 — 그쪽은 <c>onChanged: null</c>로 만들고 잠금만 듣는다.
+///
 /// <b>알림은 둘이다</b> (2026-08-24) — <em>저장</em>과 <em>잠금</em>. 엑셀이 워크북을 열면
 /// 곁에 <c>~$이름.xlsx</c>를 만들고 닫을 때 지운다. 그것은 저장이 아니라서 저장 알림에
 /// 섞으면 안 되지만(내용은 한 글자도 안 바뀐다), <b>그 순간 툴은 그 파일에 아무것도 못 쓴다.</b>
@@ -27,13 +30,20 @@ public sealed class ChapterFolderWatcher : IDisposable
     private readonly Timer _debounce;
     private readonly Timer _lockDebounce;
     private readonly TimeSpan _delay;
-    private readonly Action _onChanged;
+    private readonly Action? _onChanged;
     private readonly Action? _onLockChanged;
     private readonly Lock _gate = new();
 
     private bool _disposed;
 
-    /// <param name="onChanged">디바운스가 끝난 뒤 한 번 호출된다. 워커 스레드에서 온다.</param>
+    /// <param name="onChanged">
+    /// 디바운스가 끝난 뒤 한 번 호출된다. 워커 스레드에서 온다.
+    ///
+    /// ⚠ <b>null이면 저장을 안 듣는다</b> (R-F · 2026-09-16). 워크북이 산출물이 된 뒤로
+    /// 챕터 그래프가 그렇게 쓴다 — 방금 우리가 낸 파일을 되읽을 이유가 없다. 남은 것은
+    /// <paramref name="onLockChanged"/> 하나이고, 그것은 §5.3이 여전히 쓴다: 잠겨서
+    /// 못 낸 파일을 언제 다시 낼 수 있는지 알려면 열고 닫는 순간을 알아야 한다.
+    /// </param>
     /// <param name="onLockChanged">
     /// 엑셀의 잠금 파일(<c>~$…</c>)이 생기거나 사라졌을 때. <b>"잠겼다"가 아니라 "잠금이
     /// 움직였으니 다시 물어보라"</b>는 뜻이다 — 잠금 파일은 <em>증거</em>일 뿐이고 답은
@@ -42,12 +52,11 @@ public sealed class ChapterFolderWatcher : IDisposable
     /// </param>
     public ChapterFolderWatcher(
         string folder,
-        Action onChanged,
+        Action? onChanged,
         TimeSpan? debounce = null,
         Action? onLockChanged = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
-        ArgumentNullException.ThrowIfNull(onChanged);
 
         if (!Directory.Exists(folder))
         {
@@ -105,7 +114,11 @@ public sealed class ChapterFolderWatcher : IDisposable
                 return;
             }
 
-            _debounce.Change(_delay, Timeout.InfiniteTimeSpan);
+            // 저장을 안 듣는 감시자면 타이머를 깨우지도 않는다 (R-F) — 깨워 봐야 할 일이 없다.
+            if (_onChanged is not null)
+            {
+                _debounce.Change(_delay, Timeout.InfiniteTimeSpan);
+            }
         }
     }
 
@@ -121,7 +134,7 @@ public sealed class ChapterFolderWatcher : IDisposable
 
         try
         {
-            _onChanged();
+            _onChanged?.Invoke();
         }
         catch (Exception)
         {
