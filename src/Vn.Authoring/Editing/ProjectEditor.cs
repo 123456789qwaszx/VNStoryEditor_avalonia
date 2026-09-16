@@ -1866,7 +1866,7 @@ public sealed partial class ProjectEditor
 
         // 챕터 조건 공급 노드(A계층 배관)는 세지 않는다 — 그건 기획자 자료를 나르는 자리다.
         SetNode? existing = file.Nodes.OfType<SetNode>()
-            .FirstOrDefault(node => !Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file));
+            .FirstOrDefault(node => !Chapters.ChapterBoardSupply.IsConditionSupplyNode(node, file));
 
         return existing ?? AddSetNode(fileId, name: ChapterSettingsNodeName(file.Name));
     }
@@ -2106,7 +2106,7 @@ public sealed partial class ProjectEditor
 
         foreach (SetNode node in file.Nodes.OfType<SetNode>())
         {
-            if (Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file))
+            if (Chapters.ChapterBoardSupply.IsConditionSupplyNode(node, file))
             {
                 continue;
             }
@@ -2273,7 +2273,7 @@ public sealed partial class ProjectEditor
     ///
     /// <b>왜 필요했나</b> — 에피소드 동기화는 워크북을 반영할 때마다 셸에 "다시 그려라"고
     /// 알렸는데, 그 근거로 쓰던 <c>EpisodeSyncReport.Applied</c>는 <b>"반영을 돌렸다"</b>는
-    /// 뜻이지 <b>"뭔가 달라졌다"</b>는 뜻이 아니다(`EpisodeSyncServiceTests`의
+    /// 뜻이지 <b>"뭔가 달라졌다"</b>는 뜻이 아니다(`ChapterBoardSupplyTests`의
     /// `같은_워크북을_두_번_동기화하면_두_번째는_변경이_없다`가 그 사실을 이미 못 박아
     /// 두었다 — 두 번째도 <c>Applied</c>가 참이다). 그래서 아무것도 안 바뀐 동기화가
     /// 매번 전체 다시 그리기를 방송했고, 그 순간 사람이 <b>타이핑하던 칸이 파괴됐다.</b>

@@ -4,6 +4,7 @@ using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Graph;
 using Vn.Authoring.Model;
@@ -180,9 +181,11 @@ public sealed class ChapterRailTests
                 ("EP00", "EP01", "의심한다", null)
             ]);
 
-        EpisodeSyncReport report = EpisodeSyncService.Sync(
-            session.Editor, session.Definition, fileId, workbook, entry.Model);
-        Assert.True(report.Applied, string.Join(" / ", report.Problems));
+        EpisodeImport import = EpisodeWorkbookImporter.Run(
+            session.Editor, session.Definition, fileId,
+            Path.GetDirectoryName(workbook)!, entry.Model!);
+
+        Assert.True(import.Applied, string.Join(" / ", import.Diagnostics.Select(item => item.Message)));
 
         DialogueNode ep01 = AddExcelNode(session, fileId, "EP01");
         ep01.Layout.X = 1200;

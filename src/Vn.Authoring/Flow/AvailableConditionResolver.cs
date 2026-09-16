@@ -104,7 +104,7 @@ public static class AvailableConditionResolver
 
         // A계층 공급 노드가 나른 조건은 종류를 달리 매긴다 — 작가의 목록에서 빠지고,
         // 이미 쓰인 것을 읽을 때만 이름이 나온다.
-        HashSet<string> chapterSupplyIds = Chapters.EpisodeSyncService.ConditionSupplyNodeIds(project);
+        HashSet<string> chapterSupplyIds = Chapters.ChapterBoardSupply.ConditionSupplyNodeIds(project);
 
         foreach (ConnectedSetNode connected in ConnectedSetNodeResolver.Resolve(project, dialogueNodeId))
         {
@@ -160,7 +160,7 @@ public static class AvailableConditionResolver
                 SourceNodeId: null);
         }
 
-        HashSet<string> chapterSupplyIds = Chapters.EpisodeSyncService.ConditionSupplyNodeIds(project);
+        HashSet<string> chapterSupplyIds = Chapters.ChapterBoardSupply.ConditionSupplyNodeIds(project);
 
         foreach (SetNode setNode in project.EnumerateNodes().OfType<SetNode>())
         {

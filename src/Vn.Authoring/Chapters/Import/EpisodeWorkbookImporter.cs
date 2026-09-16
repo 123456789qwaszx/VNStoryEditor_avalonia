@@ -30,7 +30,7 @@ public sealed record EpisodeImport(
 /// <b>대본 워크북 → 대사노드는 여기를 지난다</b> (R-D · 2026-09-16 —
 /// <c>docs/work-orders/tool-owns-workbooks-orders.md</c> §5).
 ///
-/// <b>이것은 <see cref="EpisodeSyncService"/>의 후신이 아니라 그 <em>축소판</em>이다.</b>
+/// <b>이것은 옛 <c>EpisodeSyncService.Sync</c>의 후신이 아니라 그 <em>축소판</em>이다.</b>
 /// 동기화는 "워크북이 바뀔 때마다 다시 읽고 프로젝트와 맞춘다"였기 때문에 신원 매칭
 /// (<c>ExcelLineMap</c>) · 가지치기 보고 · 되쓰기가 필요했다. 임포트는 <b>한 번</b>이므로
 /// 맞출 상대가 없다 — 읽어서 노드를 세우면 그걸로 끝이고, 그 뒤로 이 워크북은 산출물이다.

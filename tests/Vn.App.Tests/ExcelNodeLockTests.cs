@@ -5,6 +5,7 @@ using Path = System.IO.Path;
 using Vn.App.Services;
 using Vn.App.Views;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Flow;
 using Vn.Authoring.Model;
 using Vn.Authoring.Serialization;
@@ -161,10 +162,15 @@ public sealed class ExcelNodeLockTests
     });
 
     [Fact]
-    public void 풀고_고친_대사가_엑셀_셀까지_간다() => HeadlessUi.Run(() =>
+    public void 풀고_고친_대사가_프로젝트에_남는다() => HeadlessUi.Run(() =>
     {
-        // ⛔ 이 기능의 전부다. 노드만 고치면 다음 동기화가 지운다
-        // (`EpisodeLineEditorTests.노드만_고치면_다음_동기화가_지운다`).
+        // ⚠ <b>이 테스트는 뒤집혔다</b> (R-D · 2026-09-16). 앞선 판은
+        //    `풀고_고친_대사가_엑셀_셀까지_간다`였다 — 고친 글을 엑셀 셀에 먼저 쓰고
+        //    성공했을 때만 노드를 고치는 순서였고, 그 이유가 <i>"노드만 고치면 다음
+        //    동기화가 지운다"</i>였다.
+        //
+        //    다시 읽는 동기화가 없어졌으므로 지울 것이 없다. 고친 글은 프로젝트에 남고,
+        //    엑셀은 산출물이라 다음 출력이 프로젝트를 따라간다.
         (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
 
         Unlock(editor);
@@ -173,32 +179,26 @@ public sealed class ExcelNodeLockTests
         TextBox body = host.GetVisualDescendants().OfType<TextBox>()
             .First(box => box.FindAncestorOfType<AutoCompleteBox>() is null);
 
-        // 엑셀노드는 초점을 잃을 때 낸다 — 자판마다 워크북을 두드리지 않는다.
-        // ⚠ 초점을 진짜로 옮긴다: LostFocus는 FocusChangedEventArgs를 요구해서
-        // RaiseEvent로 흉내내면 캐스트에서 터진다(`ChapterEditGateTests`가 같은 것을 배웠다).
         Type(editor, body, "연출 그래프에서 고친 대사");
 
         DialogueNode node = session.Project.FindDialogue(nodeId)!;
-        string workbook = EpisodeLibrary.FindExisting(
-            EpisodeLibrary.FolderFor(session.ProjectPath, "ch05")!, "main05.02")!;
 
-        Assert.Contains(
-            EpisodeWorkbookReader.Read(workbook).Rows,
-            row => row.Text == "연출 그래프에서 고친 대사");
-
-        // 그리고 노드도 같은 말을 한다 — 둘이 어긋나면 다음 동기화가 사람의 글을 지운다.
         Assert.Contains(
             session.Project.FindScript(node.ScriptId)!.Locales
-                .Single(locale => locale.Locale == session.Project.FindScript(node.ScriptId)!.PrimaryLocale)
-                .Entries.Values,
+                .SelectMany(locale => locale.Entries.Values),
             line => line.Text == "연출 그래프에서 고친 대사");
     });
 
     [Fact]
-    public void 엑셀이_잡고_있으면_노드도_안_고친다() => HeadlessUi.Run(() =>
+    public void 엑셀이_잡고_있어도_노드는_고쳐진다() => HeadlessUi.Run(() =>
     {
-        // ⛔ 순서가 곧 규칙이다. 셀에 못 썼는데 노드만 고치면 화면과 파일이 다른 말을 하고,
-        // 다음 동기화가 사람이 방금 쓴 글을 지운다.
+        // ⚠ 이것도 뒤집혔다 (R-D). 앞선 판은 `엑셀이_잡고_있으면_노드도_안_고친다`로,
+        //    셀에 못 쓰면 노드도 안 고치는 것이 규칙이었다 — 둘이 어긋나면 다음 동기화가
+        //    사람의 글을 지웠기 때문이다.
+        //
+        //    이제 툴이 대본 파일에 쓸 일이 없으므로 엑셀이 붙들고 있든 말든 상관없다.
+        //    §5.3이 말한 <b>잠금의 뜻이 바뀐다</b>가 이것이다 — 막는 것이 아니라
+        //    "그 파일을 지금 갱신하지 못했다"일 뿐이다.
         (DialogueNodeEditor editor, AuthoringSession session, string nodeId) = ShowSyncedNode();
 
         Unlock(editor);
@@ -216,15 +216,12 @@ public sealed class ExcelNodeLockTests
             Type(editor, body, "엑셀이 잡고 있는 동안 쓴 글");
         }
 
-        // 침묵 금지 — 안 써졌다는 사실이 사람에게 닿는다.
-        Assert.Contains("엑셀이", session.StatusMessage);
-
-        // 노드는 그대로다.
-        Assert.DoesNotContain(
+        Assert.Contains(
             session.Project.FindScript(node.ScriptId)!.Locales
                 .SelectMany(locale => locale.Entries.Values),
             line => line.Text == "엑셀이 잡고 있는 동안 쓴 글");
     });
+
 
     [Fact]
     public void 다른_노드로_옮기면_다시_잠긴다() => HeadlessUi.Run(() =>
@@ -306,7 +303,7 @@ public sealed class ExcelNodeLockTests
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
 
-        var warnings = EpisodeSyncService.WarnExitsIntoExcelNodes(session.Editor, fileId, chapter);
+        var warnings = ChapterBoardSupply.WarnExitsIntoExcelNodes(session.Editor, fileId, chapter);
 
         ChapterDiagnostic warning = Assert.Single(warnings);
         Assert.Equal(ChapterDiagnosticSeverity.Warning, warning.Severity);
@@ -365,7 +362,7 @@ public sealed class ExcelNodeLockTests
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
 
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             session.Editor, session.Definition, fileId, chapter);
 
         Vn.Authoring.Flow.AvailableConditionCatalog available =
@@ -375,7 +372,7 @@ public sealed class ExcelNodeLockTests
         Assert.Contains(available.Conditions, condition => condition.Name == "신뢰높음");
 
         // 멱등 — 두 번 불러도 공급 노드·조건이 늘지 않는다.
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             session.Editor, session.Definition, fileId, chapter);
 
         Assert.Single(session.Project.EnumerateNodes().OfType<SetNode>(),
@@ -396,7 +393,7 @@ public sealed class ExcelNodeLockTests
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
 
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             session.Editor, session.Definition, fileId, chapter);
 
         SetNode supply = session.Project.EnumerateNodes().OfType<SetNode>()
@@ -446,7 +443,7 @@ public sealed class ExcelNodeLockTests
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
 
-        var warnings = EpisodeSyncService.WarnFreeNodeStatWrites(session.Editor, fileId, chapter);
+        var warnings = ChapterBoardSupply.WarnFreeNodeStatWrites(session.Editor, fileId, chapter);
 
         Assert.Contains(warnings, warning =>
             warning.Severity == ChapterDiagnosticSeverity.Warning &&
@@ -503,19 +500,25 @@ public sealed class ExcelNodeLockTests
         Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
         File.Copy(SamplePath, workbook);
 
-        EpisodeSyncReport report = EpisodeSyncService.Sync(
-            session.Editor, session.Definition, fileId, workbook, chapter);
+        EpisodeImport import = EpisodeWorkbookImporter.Run(
+            session.Editor, session.Definition, fileId,
+            Path.GetDirectoryName(workbook)!, chapter);
 
-        Assert.True(report.Applied, string.Join(" / ", report.Problems));
+        Assert.True(import.Applied, string.Join(" / ", import.Diagnostics.Select(item => item.Message)));
 
         var editor = new DialogueNodeEditor();
         var window = new Window { Width = 1200, Height = 800, Content = editor };
         window.Show();
         editor.Attach(session);
-        editor.Show(report.DialogueNodeId);
+        // ⚠ Id로 고른다 — 들여오기는 <b>대본이 없는 에피소드에도</b> 빈 노드를 세우므로
+        //    첫 항목이 우리가 찾는 그 에피소드라는 보장이 없다.
+        string nodeId = import.Entries
+            .Single(entry => entry.EpisodeId == "main05.02").DialogueNodeId;
+
+        editor.Show(nodeId);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        return (editor, session, report.DialogueNodeId!);
+        return (editor, session, nodeId);
     }
 
     private sealed class TempProject : IDisposable

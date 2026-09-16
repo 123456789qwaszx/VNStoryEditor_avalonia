@@ -145,7 +145,7 @@ public static class ChapterRenamer
     /// A계층 조건 배관(<c>챕터 {Id} 조건</c>)의 이름을 따라 바꾼다.
     ///
     /// 안 바꾸면 옛 이름의 노드가 판에 남고, 다음 동기화가
-    /// <see cref="EpisodeSyncService.ConditionSupplyNodeName"/>으로 <b>새것을 하나 더</b>
+    /// <see cref="ChapterBoardSupply.ConditionSupplyNodeName"/>으로 <b>새것을 하나 더</b>
     /// 만든다. 그러면 같은 챕터의 조건이 노드 둘에 갈려 앉고, 작가 화면에는 옛 챕터의
     /// 라벨이 그대로 보인다(소유자 보고의 그 화면이다).
     ///
@@ -155,8 +155,8 @@ public static class ChapterRenamer
     /// </summary>
     private static bool RenameConditionSupply(ProjectEditor editor, string oldId, string newId)
     {
-        string oldName = EpisodeSyncService.ConditionSupplyNodeName(oldId);
-        string newName = EpisodeSyncService.ConditionSupplyNodeName(newId);
+        string oldName = ChapterBoardSupply.ConditionSupplyNodeName(oldId);
+        string newName = ChapterBoardSupply.ConditionSupplyNodeName(newId);
 
         List<SetNode> supplies = editor.Project.EnumerateNodes().OfType<SetNode>().ToList();
 

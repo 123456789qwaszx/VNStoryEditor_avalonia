@@ -65,7 +65,7 @@ public sealed class Tier1NamespaceTests
             Build("sf_a1", "ch01");
 
         // 챕터 조건 공급 노드가 쓰는 이름이 곧 스탯이다 — 추측이 아니라 명시 목록이다.
-        SetNode supply = editor.AddSetNode(file.Id, name: EpisodeSyncService.ConditionSupplyNodeName("ch01"));
+        SetNode supply = editor.AddSetNode(file.Id, name: ChapterBoardSupply.ConditionSupplyNodeName("ch01"));
         editor.AddCondition(supply.Id, "신뢰높음", "$trust >= 3");
 
         HashSet<string> stats = Tier1Namespace.StatNames(project, node.Id);

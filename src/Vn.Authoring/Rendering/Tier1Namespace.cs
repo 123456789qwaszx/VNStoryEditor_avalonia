@@ -71,7 +71,7 @@ public static class Tier1Namespace
         }
 
         foreach (SetNode supply in file.Nodes.OfType<SetNode>()
-                     .Where(node => Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file)))
+                     .Where(node => Chapters.ChapterBoardSupply.IsConditionSupplyNode(node, file)))
         {
             foreach (ConditionDefinition condition in supply.Conditions)
             {

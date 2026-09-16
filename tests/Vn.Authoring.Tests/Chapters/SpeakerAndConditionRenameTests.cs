@@ -77,11 +77,11 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         ScriptLine line = editor.InsertScriptLine(script.Id);
         DialogueNode dialogue = editor.AddDialogueNode(file.Id, name: "본문", scriptId: script.Id);
 
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             editor, Definition, file.Id, ChapterWith("신뢰 높음"));
 
         SetNode supply = file.Nodes.OfType<SetNode>()
-            .Single(node => EpisodeSyncService.IsConditionSupplyNode(node, file));
+            .Single(node => ChapterBoardSupply.IsConditionSupplyNode(node, file));
         string conditionId = supply.Conditions.Single().Id;
 
         editor.SetLineTransitions(dialogue.Id, line.Id, [
@@ -90,7 +90,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         ]);
 
         // 기획자가 엑셀에서 라벨을 고쳤다 — 식은 그대로다.
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             editor, Definition, file.Id, ChapterWith("신뢰가 높다"));
 
         ConditionDefinition condition = Assert.Single(supply.Conditions);
@@ -111,12 +111,12 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         project.Files.Add(file);
         var editor = new ProjectEditor(project);
 
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             editor, Definition, file.Id, ChapterWith("신뢰 높음"));
 
         long revision = editor.Revision;
 
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             editor, Definition, file.Id, ChapterWith("신뢰 높음"));
 
         Assert.Equal(revision, editor.Revision);

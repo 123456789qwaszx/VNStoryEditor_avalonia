@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
@@ -73,11 +74,11 @@ public sealed class ChapterRenamerTests : IDisposable
         Assert.True(ChapterRenamer.Rename(world.Editor, world.ProjectPath, OldId, NewId).Renamed);
 
         List<string> supplies = world.Editor.Project.EnumerateNodes().OfType<SetNode>()
-            .Where(node => EpisodeSyncService.IsConditionSupplyNodeName(node.Name))
+            .Where(node => ChapterBoardSupply.IsConditionSupplyNodeName(node.Name))
             .Select(node => node.Name)
             .ToList();
 
-        Assert.Equal([EpisodeSyncService.ConditionSupplyNodeName(NewId)], supplies);
+        Assert.Equal([ChapterBoardSupply.ConditionSupplyNodeName(NewId)], supplies);
     }
 
     [Fact]
@@ -91,17 +92,16 @@ public sealed class ChapterRenamerTests : IDisposable
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(ChapterLibrary.FolderFor(world.ProjectPath)!, NewId + ".xlsx"));
 
-        EpisodeSyncService.Sync(
+        EpisodeWorkbookImporter.Run(
             world.Editor, GameDefinition.Empty, world.FileId,
-            EpisodeLibrary.FindExisting(EpisodeLibrary.FolderFor(world.ProjectPath, NewId)!, "main05.02")!,
-            chapter);
+            EpisodeLibrary.FolderFor(world.ProjectPath, NewId)!, chapter);
 
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             world.Editor, GameDefinition.Empty, world.FileId, chapter);
 
         Assert.Single(
             world.Editor.Project.EnumerateNodes().OfType<SetNode>(),
-            node => EpisodeSyncService.IsConditionSupplyNodeName(node.Name));
+            node => ChapterBoardSupply.IsConditionSupplyNodeName(node.Name));
     }
 
     [Fact]
@@ -204,19 +204,18 @@ public sealed class ChapterRenamerTests : IDisposable
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(Path.Combine(chapters, OldId + ".xlsx"));
 
-        EpisodeSyncService.Sync(
-            editor, GameDefinition.Empty, board.Id,
-            Path.Combine(episodes, "main05.02.xlsx"), chapter);
+        EpisodeWorkbookImporter.Run(
+            editor, GameDefinition.Empty, board.Id, episodes, chapter);
 
         // v15 — 조건 공급 노드를 세우는 것은 <b>챕터 쪽</b>이다. 예전에는 대본의 `조건라벨`을
         // 거두며 Sync가 함께 세웠는데 그 칸이 폐지됐다(EpisodeSyncRunner가 부르는 순서 그대로).
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             editor, GameDefinition.Empty, board.Id, chapter);
 
         // 배관이 실제로 섰는지 확인하고 시작한다 — 없으면 위 두 테스트가 헛돈다.
         Assert.Single(
             editor.Project.EnumerateNodes().OfType<SetNode>(),
-            node => EpisodeSyncService.IsConditionSupplyNodeName(node.Name));
+            node => ChapterBoardSupply.IsConditionSupplyNodeName(node.Name));
 
         return new World(editor, projectPath, board.Id);
     }

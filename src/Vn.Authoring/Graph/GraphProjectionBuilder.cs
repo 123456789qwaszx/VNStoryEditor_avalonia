@@ -56,7 +56,7 @@ public static class GraphProjectionBuilder
                 portsByNodeId[node.Id] = BuildPorts(node, project, definition);
 
                 if (node is PresentationNode or CommandSupplyNode ||
-                    Chapters.EpisodeSyncService.IsConditionSupplyNode(node, file))
+                    Chapters.ChapterBoardSupply.IsConditionSupplyNode(node, file))
                 {
                     hiddenPlumbingNodeIds.Add(node.Id);
                 }

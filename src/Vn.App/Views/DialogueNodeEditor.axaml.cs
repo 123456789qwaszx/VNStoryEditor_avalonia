@@ -151,75 +151,19 @@ public partial class DialogueNodeEditor : UserControl
             return;
         }
 
-        // 줄 하나라도 되쓸 자리가 있으면 연다 — 첫 줄로 대표해서 묻는다.
-        bool writable = _session is { } session &&
-            FirstWritableLineTarget(session, node) is not null;
-
-        ExcelTextLockToggle.IsEnabled = writable;
+        // ⛔ <b>되쓸 자리가 있는가</b>를 묻던 관문은 2026-09-16에 걷혔다 (R-D). 그 물음은
+        //    고친 글이 갈 엑셀 셀을 찾을 수 있느냐였는데, 이제 고친 글은 프로젝트에 남는다 —
+        //    갈 곳을 못 찾는 경우가 없다.
+        ExcelTextLockToggle.IsEnabled = true;
         ExcelTextLockToggle.IsChecked = ExcelTextUnlocked;
         ExcelTextLockToggle.Content = ExcelTextUnlocked ? "✏ 대사 편집 중" : "🔒 대사 잠김";
 
-        ToolTip.SetTip(ExcelTextLockToggle, !writable
-            ? "이 노드의 대사를 되쓸 엑셀 자리를 찾지 못했습니다 — 프로젝트를 저장했는지, " +
-              "그 에피소드의 대본 파일이 있는지 확인해 주세요."
-            : ExcelTextUnlocked
-                ? "잠그면 다시 읽기 전용이 됩니다. 여는 동안 고친 글은 에피소드 엑셀 셀에 " +
-                  "바로 써집니다 — 화자와 내용만 열립니다."
-                : "이 대본의 원본은 에피소드 엑셀입니다. 풀면 화자·내용을 여기서도 고칠 수 " +
-                  "있고, 고친 값은 그 엑셀 셀에 바로 저장됩니다.\n" +
-                  "줄 추가·삭제·조건 블록은 엑셀에서 합니다.");
-    }
-
-    /// <summary>
-    /// 이 노드에서 되쓸 수 있는 줄이 하나라도 있는가 — 토글을 열지 말지의 근거다.
-    /// </summary>
-    private EpisodeLineTarget? FirstWritableLineTarget(AuthoringSession session, DialogueNode node)
-    {
-        foreach (string lineId in node.ExcelLineMap.Values)
-        {
-            if (EpisodeLineEditor.Locate(session.Project, session.ProjectPath, node, lineId)
-                is { } target)
-            {
-                return target;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// 고친 화자·내용을 <b>엑셀 셀로 내보내고</b>, 성공했을 때만 노드도 맞춘다 (2026-08-24).
-    ///
-    /// ⛔ 순서가 곧 규칙이다. 노드를 먼저 고치면, 엑셀이 그 파일을 잡고 있어 쓰기가 거부된
-    /// 순간 화면과 파일이 다른 말을 하고 <b>다음 동기화가 사람이 방금 쓴 글을 지운다.</b>
-    /// </summary>
-    /// <returns>노드에도 반영해도 되는가.</returns>
-    private bool WriteLineToWorkbook(string lineId, string? speaker, string? text)
-    {
-        if (_session is not { } session ||
-            session.Project.FindDialogue(_nodeId) is not { } node)
-        {
-            return false;
-        }
-
-        if (EpisodeLineEditor.Locate(session.Project, session.ProjectPath, node, lineId)
-            is not { } target)
-        {
-            session.SetStatus(
-                "이 줄을 되쓸 엑셀 자리를 찾지 못했습니다 — 고친 글을 저장하지 않았습니다.");
-            return false;
-        }
-
-        ChapterWriteResult result = EpisodeLineEditor.Write(target, speaker, text);
-
-        if (!result.Written)
-        {
-            // 침묵 금지 (규율 1) — 안 써졌다는 사실이 반드시 사람에게 닿아야 한다.
-            session.SetStatus(result.Failure!);
-            return false;
-        }
-
-        return true;
+        ToolTip.SetTip(ExcelTextLockToggle, ExcelTextUnlocked
+            ? "잠그면 다시 읽기 전용이 됩니다. 여는 동안 고친 글은 프로젝트에 저장됩니다 — " +
+              "화자와 내용만 열립니다."
+            : "이 대본은 엑셀에서 들여온 것입니다. 풀면 화자·내용을 여기서 고칠 수 있고, " +
+              "고친 값은 프로젝트에 저장됩니다.\n" +
+              "⚠ 엑셀 파일은 산출물이라 다시 [대본 가져오기]를 누르면 이 글을 덮습니다.");
     }
 
     /// <summary>
@@ -1386,14 +1330,10 @@ public partial class DialogueNodeEditor : UserControl
             string nextSpeaker = speaker?.Text ?? resolved.Line.Speaker;
             string nextText = text.Text ?? string.Empty;
 
-            // 엑셀노드는 <b>엑셀이 먼저다.</b> 셀에 못 쓰면 노드도 안 고친다 — 안 그러면
-            // 화면과 파일이 다른 말을 하고 다음 동기화가 사람의 글을 지운다.
-            if (_excelOwned &&
-                !WriteLineToWorkbook(resolved.Line.LineId, nextSpeaker, nextText))
-            {
-                return;
-            }
-
+            // ⛔ 여기 있던 "엑셀이 먼저다"는 2026-09-16에 걷혔다 (R-D). 고친 글을 <b>엑셀
+            //    셀에 먼저 쓰고</b> 성공했을 때만 노드를 고치던 순서였는데, 그 순서의 이유가
+            //    <i>"안 그러면 다음 동기화가 사람의 글을 지운다"</i>였다. 다시 읽는 동기화가
+            //    없어졌으므로 지울 것도 없다 — 원본은 프로젝트다.
             _session!.Editor.SetScriptLineText(
                 scriptId, resolved.Line.LineId, nextSpeaker, nextText, script.Locale);
         }

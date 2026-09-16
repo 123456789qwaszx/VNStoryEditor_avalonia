@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using ClosedXML.Excel;
 using System.Text;
 using Vn.Authoring.Chapters;
 
@@ -103,5 +104,41 @@ public sealed class EpisodeTemplateFormatTests : IDisposable
 
         using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
         return reader.ReadToEnd();
+    }
+
+    /// <summary>
+    /// 빈 워크북의 규격 (2026-09-16에 `EpisodeSyncServiceTests`에서 옮겨 왔다 — R-D).
+    /// 그 파일은 역방향 동기화의 것이라 걷혔는데, 이것은 <b>템플릿의 모양</b>을 재는 것이라
+    /// 여기가 제자리다.
+    /// </summary>
+    [Fact]
+    public void 없는_에피소드_워크북은_규격대로_생성된다()
+    {
+        string folder = Path.Combine(_directory, "episodes");
+
+        Assert.True(EpisodeLibrary.EnsureWorkbook(folder, "main05.03"));
+        Assert.False(EpisodeLibrary.EnsureWorkbook(folder, "main05.03")); // 두 번째는 그대로 둔다
+
+        string path = EpisodeLibrary.PathFor(folder, "main05.03");
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var workbook = new XLWorkbook(stream);
+        IXLWorksheet sheet = workbook.Worksheets.First();
+
+        // v15 머리글 (2026-09-16) — 넷 다 대사 줄의 것이다.
+        Assert.Equal(
+            ["인덱스", "LineId", "화자", "내용"],
+            Enumerable.Range(1, 4).Select(column => sheet.Cell(1, column).GetString()));
+
+        Assert.Equal(string.Empty, sheet.Cell(1, 5).GetString());
+        Assert.Equal(10, sheet.Cell(2, 1).GetDouble());   // 인덱스 사다리는 A열에 깔린다
+
+        // 시트 보호는 없다 (v4) — 툴이 이 파일을 쓰지 않으므로 지킬 셀이 없고,
+        // 외부 편집기(구글 시트)가 재저장할 때 깨질 것도 하나 줄었다.
+        Assert.False(sheet.Protection.IsProtected);
+
+        // v15 — 검증이 하나도 안 선다. `유형` 드롭다운과 블록 행 빗장 셋이 조건 블록과
+        // 함께 사라졌고, 화자 드롭다운은 목록을 받았을 때만 선다(여기서는 안 줬다).
+        Assert.Empty(sheet.DataValidations);
     }
 }

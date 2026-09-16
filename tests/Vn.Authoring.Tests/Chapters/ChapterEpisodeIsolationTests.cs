@@ -1,4 +1,5 @@
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
@@ -105,9 +106,9 @@ public sealed class ChapterEpisodeIsolationTests : IDisposable
     // ── 대사노드 조회 ───────────────────────────────────────────────────────
 
     [Fact]
-    public void 동기화는_그_챕터의_판_안에서만_노드를_찾는다()
+    public void 들여오기는_그_챕터의_판_안에서만_노드를_찾는다()
     {
-        // 두 판(챕터)에 같은 이름의 대사노드가 있어도, 동기화는 자기 판의 노드만 채운다.
+        // 두 판(챕터)에 같은 이름의 대사노드가 있어도, 들여오기는 자기 판의 노드만 채운다.
         var project = new StoryProject();
         var boardA = new StoryFile("sf_a", "ch00", "story/a.vnstory.json");
         var boardB = new StoryFile("sf_b", "ch01", "story/b.vnstory.json");
@@ -123,21 +124,38 @@ public sealed class ChapterEpisodeIsolationTests : IDisposable
         string workbook = Path.Combine(_directory, "new01.xlsx");
         WriteEpisode(workbook, "라루", "ch01의 대사다.");
 
-        EpisodeSyncReport report = EpisodeSyncService.Sync(
-            editor, GameDefinition.Empty, boardB.Id, workbook, chapter: null);
+        var chapter = new ChapterGraphModel(
+            chapterId: "ch01",
+            sourcePath: "chapters/ch01.xlsx",
+            episodes: [new ChapterEpisode(
+                EpisodeId: "new01", Title: "new01", Index: string.Empty,
+                DialogueEntry: "new01", X: 0, Y: 0, Memo: null, SourceRow: 2)],
+            edges: [], conditions: [], stats: [], fixtures: [], diagnostics: []);
 
-        Assert.True(report.Applied);
+        EpisodeImport import = EpisodeWorkbookImporter.Run(
+            editor, GameDefinition.Empty, boardB.Id, _directory, chapter);
+
+        Assert.True(import.Applied, string.Join(" / ", import.Diagnostics.Select(item => item.Message)));
 
         // ch01 판에 새 노드가 섰고, ch00의 노드는 건드리지 않았다.
-        DialogueNode created = (DialogueNode)project.FindNode(report.DialogueNodeId!)!;
+        var created = (DialogueNode)project.FindNode(
+            Assert.Single(import.Entries).DialogueNodeId)!;
+
         Assert.Equal(boardB.Id, project.FindFileContainingNode(created.Id)!.Id);
         Assert.NotEqual(standing.Id, created.Id);
 
-        // ch00 노드에는 엑셀에서 온 줄이 하나도 없다(신원 맵이 비어 있다) — 남의 원고가
-        // 쏟아지지 않았다는 뜻이다. 새 노드에는 그 줄이 있다.
-        Assert.Empty(standing.ExcelLineMap);
-        Assert.Equal(10, Assert.Single(created.ExcelLineMap).Key);
+        // ch00 노드에는 그 대사가 안 들어갔다 — 남의 원고가 쏟아지지 않았다는 뜻이다.
+        // (노드를 만들 때 딸려 오는 빈 줄은 그대로 있다.)
+        Assert.DoesNotContain("ch01의 대사다.", TextOf(project, standing));
+        Assert.Contains("ch01의 대사다.", TextOf(project, created));
     }
+
+    /// <summary>그 노드가 들고 있는 글 전부 — 어느 원고가 들어갔는지의 근거.</summary>
+    private static string TextOf(StoryProject project, DialogueNode node) => string.Join(
+        " | ",
+        project.FindScript(node.ScriptId!)!.Locales
+            .SelectMany(locale => locale.Entries.Values)
+            .Select(line => line.Text));
 
     private static void WriteEpisode(string path, string speaker, string text)
     {

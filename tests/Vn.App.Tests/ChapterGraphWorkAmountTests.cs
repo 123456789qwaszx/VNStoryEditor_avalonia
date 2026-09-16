@@ -201,13 +201,16 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         //
         // 근거가 `run.Applied > 0`이었는데 <b>틀린 눈금이었다</b> (2026-08-24):
         // `Applied`는 "반영을 돌렸다"는 뜻이지 "뭔가 달라졌다"가 아니다. 같은 워크북을
-        // 두 번 돌려도 참이다(`EpisodeSyncServiceTests`가 이미 못 박아 둔 사실이다).
+        // 두 번 돌려도 참이다(`ChapterBoardSupplyTests`가 이미 못 박아 둔 사실이다).
         (ChapterGraphView view, AuthoringSession session, Window window) = Show();
 
         // ⚠ <b>대본에 글이 있어야 이 자리에 닿는다.</b> 갓 만든 빈 워크북은 반영 자체가
         // 안 돌아(NotYetWritten) Applied가 0이고, 그러면 옛 눈금으로도 방송이 없다 —
         // 처음 쓴 이 테스트가 그래서 <b>고치기 전에도 통과했다.</b> 빈 판으로 재면
         // 아무것도 안 재는 것이다.
+        // 대본 파일은 이제 들여오기가 만들지 않는다 (R-D) — 워크북은 산출물이다.
+        EpisodeLibrary.EnsureWorkbook(EpisodeLibrary.FolderFor(ManifestPath, "ch01")!, "ep0");
+
         view.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -254,6 +257,8 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
         session.Changed += (_, _) => broadcasts++;
 
         // 대본에 실제로 한 줄을 적는다 — 엑셀에서 작가가 쓴 것과 같은 자리다.
+        EpisodeLibrary.EnsureWorkbook(EpisodeLibrary.FolderFor(ManifestPath, "ch01")!, "ep0");
+
         string workbook = EpisodeLibrary.FindExisting(
             EpisodeLibrary.FolderFor(ManifestPath, "ch01")!, "ep0")!;
 

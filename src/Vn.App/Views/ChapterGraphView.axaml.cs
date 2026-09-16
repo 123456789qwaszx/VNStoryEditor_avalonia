@@ -34,7 +34,11 @@ public partial class ChapterGraphView : UserControl
     private const double CanvasMargin = 60;
 
     private readonly List<ChapterEntry> _entries = new();
-    private readonly List<EpisodeSyncReport> _syncReports = new();
+    /// <summary>이번 들여오기가 낸 진단. 거부면 그 사유가 여기 전부 있다.</summary>
+    private readonly List<ChapterDiagnostic> _importDiagnostics = new();
+
+    /// <summary>들여오기를 거부당한 챕터 — 전부 아니면 전무라 챕터 단위다 (§5.2).</summary>
+    private readonly List<string> _importRefusals = new();
 
     /// <summary>판 수준 경고 (2단계 가드레일) — 자유 노드의 Tier 2 스탯 set 등.</summary>
     private readonly List<ChapterDiagnostic> _boardWarnings = new();
@@ -498,7 +502,8 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     internal void ImportEpisodes()
     {
-        _syncReports.Clear();
+        _importDiagnostics.Clear();
+        _importRefusals.Clear();
         _boardWarnings.Clear();
 
         if (_session is null)
@@ -520,7 +525,7 @@ public partial class ChapterGraphView : UserControl
         // 도는 값이 예전의 한 챕터보다 싸다. 그 전이었다면 이 고침은 못 했다.
         foreach (ChapterEntry other in SyncTargets(entry))
         {
-            RunEpisodeSync(other);
+            RunEpisodeImport(other);
         }
 
         // 아래는 <b>화면</b>의 몫이다 — 고른 챕터가 없어도 내보내기·검증·그리기는 돈다.
@@ -562,52 +567,60 @@ public partial class ChapterGraphView : UserControl
         }
     }
 
-    /// <summary>챕터 하나를 반영하고 그 결과를 보고 더미에 쌓는다.</summary>
-    private void RunEpisodeSync(ChapterEntry entry)
+    /// <summary>챕터 하나를 들여오고 그 결과를 보고 더미에 쌓는다.</summary>
+    private void RunEpisodeImport(ChapterEntry entry)
     {
-        if (_session is null)
+        if (_session is null ||
+            entry.Model is not { } model ||
+            EpisodeLibrary.FolderFor(_session.ProjectPath, entry.ChapterId) is not { } folder)
         {
             return;
         }
 
-        // 화자·조건 드롭다운을 대본 워크북에 (2026-08-16 → 2026-08-23). 지문이 같으면
-        // 파일을 하나도 열지 않으므로 매 동기화마다 불러도 값이 없다. ⚠ 반영보다 **앞**이다 —
-        // 이미 있는 워크북이 새 어휘를 받은 뒤에 읽혀야 한다(새로 만드는 것은 만들 때 받는다).
-        PushVocabularyToEpisodes();
-
         // 프로젝트가 실제로 바뀌었는지 재는 눈금 (2026-08-24 성능) — 아래 방송의 근거다.
         long revisionBefore = _session.Editor.Revision;
 
-        // 순서와 정책은 저작이 갖는다 (2026-08-23에 이 파일에서 나갔다). 여기 남은 것은
-        // **결과를 화면에 옮기는 일**뿐이다 — 상태줄·감시자·다시 그리기.
-        EpisodeSyncRun run = EpisodeSyncRunner.Run(
-            _session.Editor, _session.Definition, _session.ProjectPath, entry, _entries);
+        // 새 노드가 들어갈 판 = 그 챕터의 판 (챕터=판 1:1, G-1 v2).
+        string fileId = _session.Editor.EnsureChapterBoard(entry.ChapterId);
 
-        _syncReports.AddRange(run.Reports);
-        _boardWarnings.AddRange(run.BoardWarnings);
+        EpisodeImport import = EpisodeWorkbookImporter.Run(
+            _session.Editor, _session.Definition, fileId, folder, model);
 
-        foreach (string notice in run.Notices)
+        _importDiagnostics.AddRange(import.Diagnostics);
+
+        if (!import.Applied)
+        {
+            _importRefusals.Add(entry.ChapterId);
+        }
+
+        foreach (string notice in import.Notices)
         {
             _session.SetStatus(notice);
         }
 
+        // 챕터 조건을 판의 모든 대사 노드에 공급한다 — 작가가 조건 드롭다운에서 A 계층
+        // 라벨을 바로 고른다. 멱등이라 매번 불러도 안전하다.
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
+            _session.Editor, _session.Definition, fileId, model);
+
+        // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
+        _boardWarnings.AddRange(
+            ChapterBoardSupply.WarnFreeNodeStatWrites(_session.Editor, fileId, model));
+        _boardWarnings.AddRange(
+            ChapterBoardSupply.WarnExitsIntoExcelNodes(_session.Editor, fileId, model));
+
         // 무언가 <b>실제로 바뀌었으면</b> 열려 있는 편집 화면(줄 목록·그래프)을 다시
         // 만들게 알린다 — 대사 수정은 "타이핑 보호" 경로로 전달되어 화면이 옛 줄을 그대로
         // 들고 있었다(실사례).
-        //
-        // ⚠ 근거가 `run.Applied > 0`이었는데 <b>틀린 눈금이었다</b> (2026-08-24).
-        // `Applied`는 "반영을 돌렸다"는 뜻이지 "뭔가 달라졌다"가 아니다 — 같은 워크북을
-        // 두 번 돌려도 참이다(`EpisodeSyncServiceTests`가 그것을 못 박아 두었다).
-        // 그래서 아무것도 안 바뀐 동기화가 <b>매번</b> 전체 다시 그리기를 방송했고,
-        // 감시자가 250ms 뒤 깨어날 때마다 사람이 타이핑하던 칸이 파괴됐다.
         if (_session.Editor.Revision != revisionBefore)
         {
             _session.NotifyExternalScriptChange();
         }
 
-        if (run.StatusMessage is { } message)
+        if (!import.Applied)
         {
-            _session.SetStatus(message);
+            _session.SetStatus(
+                $"'{entry.ChapterId}'의 대본을 들여오지 못했습니다 — 아래 검증 보고를 확인하세요.");
         }
     }
 
@@ -972,11 +985,11 @@ public partial class ChapterGraphView : UserControl
 
     /// <summary>
     /// 새 대본이 받을 화자 — 챕터를 가리지 않는 프로젝트 목록 하나다.
-    /// 규칙은 <see cref="EpisodeSyncRunner.SpeakerNames"/>가 갖는다(동기화가 새 워크북을
+    /// 규칙은 <see cref="EpisodeLibrary.SpeakerNames"/>가 갖는다(동기화가 새 워크북을
     /// 만들 때 쓰는 것과 <b>같은 목록</b>이어야 한다).
     /// </summary>
     private List<string> ProjectSpeakerNames() =>
-        _session is null ? [] : EpisodeSyncRunner.SpeakerNames(_session.Definition);
+        _session is null ? [] : EpisodeLibrary.SpeakerNames(_session.Definition);
 
     /// <summary>
     /// 화자·조건 드롭다운을 <b>프로젝트의 모든 챕터</b>의 대본에 반영한다 (2026-08-23).
@@ -3511,7 +3524,7 @@ public partial class ChapterGraphView : UserControl
 
         int errors = all.Count(item => item.Severity == ChapterDiagnosticSeverity.Error);
         int warnings = all.Count(item => item.Severity == ChapterDiagnosticSeverity.Warning);
-        int rejected = _syncReports.Sum(report => report.RejectionCount);
+        int rejected = _importRefusals.Count;
 
         string? exportNotice = ExportNotice();
 
@@ -3533,7 +3546,7 @@ public partial class ChapterGraphView : UserControl
         // 거부·경고는 그대로 든다: 조용한 무반영이 최악이다(G3-1).
         if (rejected > 0)
         {
-            header.Append($" · {WarningMark} 동기화 거부·경고 {rejected}건");
+            header.Append($" · {WarningMark} 대본 가져오기 거부 {rejected}건");
         }
 
         if (exportNotice is not null)
@@ -3586,7 +3599,7 @@ public partial class ChapterGraphView : UserControl
         // ⚠ 세는 것은 <b>말할 것이 있는</b> 보고뿐이다 (2026-08-24). 예전에는 보고가
         // 하나라도 있으면 여기를 지나쳤는데, 이제 대부분의 보고가 아무 줄도 내지 않으므로
         // 그대로 두면 <b>텅 빈 상자</b>가 선다("보고할 것이 없습니다"조차 없이).
-        if (all.Count == 0 && !_syncReports.Any(HasSomethingToSay) &&
+        if (all.Count == 0 && _importRefusals.Count == 0 && _importDiagnostics.Count == 0 &&
             !(_selectedChapterId is { } id && _exportRun.Checksums?.ContainsKey(id) == true))
         {
             DiagnosticsPanel.Children.Add(new TextBlock
@@ -3599,7 +3612,7 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        DrawSyncReports();
+        DrawImportReport();
 
         foreach (ChapterDiagnostic diagnostic in all
                      .OrderByDescending(item => item.Severity)
@@ -3703,73 +3716,36 @@ public partial class ChapterGraphView : UserControl
     }
 
     /// <summary>
-    /// 에피소드 동기화 결과. 거부·삭제·함께 접힌 논리를 <b>목록으로</b> 보인다 —
-    /// 조용한 무반영이 최악이다(G3-1·G3-2).
+    /// 대본 들여오기 결과. 거부와 그 사유를 <b>목록으로</b> 보인다 —
+    /// 조용한 무반영이 최악이다(G3-1).
+    ///
+    /// ⚠ <b>잘된 것은 아무 말도 하지 않는다</b> (2026-08-24 소유자: "몇개 반영됬는지
+    /// 표기할 필요는 없어"). 잘된 일의 개수가 목록을 채우면 정작 봐야 할 줄이 그 사이에
+    /// 묻힌다 — 이 상자의 존재 이유가 그 반대다("숫자는 2개라는데 볼 방법이 없어").
+    ///
+    /// ⚠ 거부가 <b>챕터 단위</b>인 것은 들여오기가 전부 아니면 전무이기 때문이다(§5.2).
+    /// 에피소드마다 성패가 갈리던 동기화 시절의 보고와 모양이 다른 이유가 그것이다.
     /// </summary>
-    private void DrawSyncReports()
+    private void DrawImportReport()
     {
-        foreach (EpisodeSyncReport report in _syncReports.Where(HasSomethingToSay))
+        foreach (string chapterId in _importRefusals)
         {
-            // 반영된 것에는 <b>제목만 적고 넘어가지 않는다</b> — 아래에 짚을 것이 있어서
-            // 여기 왔으므로, 그 줄들이 어느 에피소드의 것인지 이름표가 필요하다.
-            string summary = report.Applied
-                ? $"에피소드 {report.EpisodeId}"
-                : $"에피소드 {report.EpisodeId} — 반영 거부";
-
             DiagnosticsPanel.Children.Add(DiagnosticLine(
-                summary, report.Applied ? null : Brushes.IndianRed, dim: false, bold: true));
-
-            foreach (string problem in report.Problems)
-            {
-                DiagnosticsPanel.Children.Add(DiagnosticLine($"  {problem}", Brushes.IndianRed, dim: false));
-            }
-
-            foreach (ChapterDiagnostic diagnostic in report.Diagnostics
-                         .Where(item => item.Severity != ChapterDiagnosticSeverity.Info))
-            {
-                DiagnosticsPanel.Children.Add(DiagnosticLine(
-                    $"  {diagnostic.Describe()}",
-                    diagnostic.Severity == ChapterDiagnosticSeverity.Error
-                        ? Brushes.IndianRed
-                        : Brushes.DarkGoldenrod,
-                    dim: false));
-            }
-
-            foreach (EpisodePrunedLogic pruned in report.Pruned)
-            {
-                DiagnosticsPanel.Children.Add(DiagnosticLine(
-                    $"  {pruned.Describe()}", Brushes.DarkGoldenrod, dim: false));
-            }
-
+                $"대본 가져오기 거부 — {chapterId} (아무것도 들여오지 않았습니다)",
+                Brushes.IndianRed, dim: false, bold: true));
         }
-    }
 
-    /// <summary>
-    /// 이 보고가 <b>검증 보고에 낄 자격이 있는가</b> (2026-08-24 소유자: "동기화가 몇개
-    /// 반영됬는지 표기할 필요는 없어. 그런 동기화 문구들은 굳이 표시가 안 되도록").
-    ///
-    /// 가르는 선은 <b>문제인가 아닌가</b>다. 잘된 일의 개수는 검증할 것이 아니고, 그것이
-    /// 목록을 채우면 정작 봐야 할 줄이 그 사이에 묻힌다 — 이 상자의 존재 이유가 그
-    /// 반대다("숫자는 2개라는데 볼 방법이 없어").
-    ///
-    /// ⛔ <b>거부는 언제나 남는다.</b> 조용한 무반영이 최악이다(G3-1) — 여기서 거부까지
-    /// 걸러 내면 작가는 자기 대사가 왜 안 나오는지 영영 모른다.
-    ///
-    /// 함께 사라진 것: <c>새 줄 N개에 LineId를 발급했습니다</c>. 문제가 아니라 툴이 제
-    /// 장부를 적었다는 말이고, 새 줄을 쓸 때마다 떴다.
-    /// </summary>
-    private static bool HasSomethingToSay(EpisodeSyncReport report)
-    {
-        // 아직 대사를 안 쓴 워크북은 아예 말하지 않는다 — 잘못한 것이 없다.
-        if (report.NotYetWritten)
+        foreach (ChapterDiagnostic diagnostic in _importDiagnostics
+                     .Where(item => item.Severity != ChapterDiagnosticSeverity.Info)
+                     .Distinct())
         {
-            return false;
+            DiagnosticsPanel.Children.Add(DiagnosticLine(
+                $"  {diagnostic.Describe()}",
+                diagnostic.Severity == ChapterDiagnosticSeverity.Error
+                    ? Brushes.IndianRed
+                    : Brushes.DarkGoldenrod,
+                dim: false));
         }
-
-        return !report.Applied ||
-            report.Problems.Count > 0 ||
-            report.Pruned.Count > 0 ||
-            report.Diagnostics.Any(item => item.Severity != ChapterDiagnosticSeverity.Info);
     }
 
     // SelectableTextBlock — [보고 복사]가 전체를 들고 가고, 드래그는 한 줄만 집어 간다.

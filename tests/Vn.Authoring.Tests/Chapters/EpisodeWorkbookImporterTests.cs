@@ -127,7 +127,102 @@ public sealed class EpisodeWorkbookImporterTests : IDisposable
             item.Code == ChapterDiagnosticCode.EpisodeConditionBlockRetired);
     }
 
+    // ── 화자 (옛 EpisodeSyncServiceTests에서 옮겨 왔다 — R-D) ──────────────
+
+    [Fact]
+    public void 공백_있는_미등록_화자는_합쳐지기_전에_경고한다()
+    {
+        // 실사례 — 화자 칸에 문장을 적자 대사와 합쳐져 지문이 됐는데, 아무도 왜인지
+        // 말해 주지 않았다. 조용한 병합이 가장 나쁘다.
+        World world = Build("ep01");
+        WriteScript("ep01", ("10", "3시 13에 고쳤는데", "3시 10분으로 되있네"));
+
+        EpisodeImport import = Run(world);
+
+        Assert.Contains(import.Diagnostics, item =>
+            item.Severity == ChapterDiagnosticSeverity.Warning &&
+            item.Message.Contains("합쳐져 지문이 됩니다", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 등록된_공백_이름은_화자로_통과한다()
+    {
+        // 등록된 이름이면 공백이 있어도 경고가 없고 화자로 파싱된다. 등록 창구는
+        // 정의 파일 하나다 (2026-08-23에 챕터 `화자` 시트가 폐지됐다).
+        World world = Build("ep01");
+        WriteScript("ep01", ("10", "늙은 상인", "어서 오게."));
+
+        GameDefinition definition = GameDefinition.Parse("""
+            { "speakers": [ { "name": "늙은 상인", "characterId": "" } ] }
+            """)!;
+
+        EpisodeImport import = EpisodeWorkbookImporter.Run(
+            world.Editor, definition, world.FileId, EpisodesFolder, world.Chapter);
+
+        Assert.True(import.Applied, Say(import));
+        Assert.DoesNotContain(import.Diagnostics, item =>
+            item.Message.Contains("합쳐져 지문이 됩니다", StringComparison.Ordinal));
+
+        var node = (DialogueNode)world.Editor.Project.FindNode(import.Entries[0].DialogueNodeId)!;
+        ScriptDocument script = world.Editor.Project.FindScript(node.ScriptId!)!;
+        ScriptLine line = script.ActiveLines.Single();
+
+        Assert.Equal("늙은 상인",
+            script.Locales.Single(locale => locale.Locale == script.PrimaryLocale)
+                .Find(line.Id).Speaker);
+    }
+
     // ── 한 번뿐이다 ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 엑셀이_읽기_공유로_붙들고_있어도_끝까지_들여온다()
+    {
+        // 엑셀은 저장했다고 파일을 놓지 않는다. v4 이후 툴이 대본에 쓸 것이 없으므로
+        // 붙들려 있어도 읽기는 끝까지 간다 — "되쓰기 실패"라는 상태 자체가 없다.
+        World world = Build("ep01");
+        WriteScript("ep01", ("10", "윌로", "붙들린 채로도 읽힌다"));
+
+        using var hold = new FileStream(
+            Path.Combine(EpisodesFolder, "ep01.xlsx"),
+            FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        EpisodeImport import = Run(world);
+
+        Assert.True(import.Applied, Say(import));
+        Assert.Equal(["붙들린 채로도 읽힌다"], TextOf(world, import.Entries[0]));
+    }
+
+    [Fact]
+    public void 들여와도_워크북은_바이트_그대로다()
+    {
+        // ⛔ v4의 수용 기준 — 어떤 경로도 대본 파일을 건드리지 않는다. 구글 드라이브
+        //    .xlsm 사건의 재발 방지: writer가 하나면 형식이 뒤집힐 수 없다.
+        World world = Build("ep01");
+        WriteScript("ep01", ("10", "윌로", "한 줄"));
+
+        string path = Path.Combine(EpisodesFolder, "ep01.xlsx");
+        byte[] before = File.ReadAllBytes(path);
+
+        Assert.True(Run(world).Applied);
+
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void 노드_이름은_챕터의_대사엔트리에서_온다()
+    {
+        // 런타임이 재생할 엔트리와 툴의 노드가 같은 이름을 쓴다 — 챕터 `에피소드` 시트의
+        // `대사엔트리`가 그 원천이다.
+        World world = Build(("ep01", "Story_ch01_01"));
+        WriteScript("ep01", ("10", "윌로", "한 줄"));
+
+        EpisodeImport import = Run(world);
+
+        Assert.True(import.Applied, Say(import));
+
+        var node = (DialogueNode)world.Editor.Project.FindNode(import.Entries[0].DialogueNodeId)!;
+        Assert.Equal("Story_ch01_01", node.Name);
+    }
 
     [Fact]
     public void 들여온_뒤_워크북을_고쳐도_프로젝트는_안_변한다()
@@ -163,7 +258,11 @@ public sealed class EpisodeWorkbookImporterTests : IDisposable
 
     private string EpisodesFolder => Path.Combine(_directory, "episodes", "ch01");
 
-    private World Build(params string[] episodeIds)
+    private World Build(params string[] episodeIds) =>
+        Build([.. episodeIds.Select(id => (id, id))]);
+
+    /// <summary>에피소드 Id와 그 `대사엔트리`(노드 이름의 원천)를 따로 준다.</summary>
+    private World Build(params (string EpisodeId, string DialogueEntry)[] episodes)
     {
         var project = new StoryProject();
         var file = new StoryFile("sf_ch01", "ch01", "story/ch01.vnstory.json");
@@ -175,11 +274,11 @@ public sealed class EpisodeWorkbookImporterTests : IDisposable
         var chapter = new ChapterGraphModel(
             chapterId: "ch01",
             sourcePath: "chapters/ch01.xlsx",
-            episodes: [.. episodeIds.Select((id, index) => new ChapterEpisode(
-                EpisodeId: id,
-                Title: id,
+            episodes: [.. episodes.Select((episode, index) => new ChapterEpisode(
+                EpisodeId: episode.EpisodeId,
+                Title: episode.EpisodeId,
                 Index: string.Empty,
-                DialogueEntry: id,
+                DialogueEntry: episode.DialogueEntry,
                 X: index,
                 Y: 0,
                 Memo: null,

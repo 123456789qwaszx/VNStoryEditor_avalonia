@@ -233,7 +233,7 @@ public sealed class RenameCarriesReferencesTests
         World world = Build();
 
         SetNode supply = world.Editor.AddSetNode(
-            world.File.Id, name: EpisodeSyncService.ConditionSupplyNodeName("ch01"));
+            world.File.Id, name: ChapterBoardSupply.ConditionSupplyNodeName("ch01"));
         ConditionDefinition planner =
             world.Editor.AddCondition(supply.Id, "신뢰 높음", "$열쇠 >= 3");
 

@@ -112,11 +112,14 @@ public sealed class ChapterGraphSyncViewTests
     });
 
     [Fact]
-    public void 짚을_것이_있는_에피소드는_이름표와_함께_맨_위에_선다() => HeadlessUi.Run(() =>
+    public void 거부는_이름표와_함께_맨_위에_선다() => HeadlessUi.Run(() =>
     {
         // 잘된 것을 지웠다고 <b>짚을 것까지 지우면 안 된다.</b> 그리고 그 줄들은 여전히
         // 목록 맨 위다 — 사람이 방금 한 행동의 결과를 알림 더미 아래 스크롤 밖에 묻지
         // 않는다(실사례: "숫자는 2개라는데 볼 방법이 없어").
+        //
+        // ⚠ 이름표가 <b>챕터</b>인 것은 들여오기가 전부 아니면 전무이기 때문이다(§5.2).
+        //    에피소드마다 성패가 갈리던 동기화 시절에는 에피소드 이름이 붙었다.
         using var project = new TempProject(SamplePath);
         Directory.CreateDirectory(project.EpisodesFolder);
 
@@ -132,12 +135,13 @@ public sealed class ChapterGraphSyncViewTests
             .Select(block => block.Text ?? string.Empty)
             .ToList();
 
-        int syncIndex = texts.FindIndex(text => text.Contains("에피소드 main05.01"));
-        Assert.True(syncIndex >= 0, "짚을 것이 있으면 어느 에피소드인지 이름표가 있어야 한다");
+        int refusalIndex = texts.FindIndex(text => text.Contains("대본 가져오기 거부"));
+        Assert.True(refusalIndex >= 0, "거부했으면 어느 챕터인지 이름표가 있어야 한다");
+        Assert.Contains("ch05", texts[refusalIndex]);
 
         int firstDiagnosticIndex = texts.FindIndex(text => text.Contains(".xlsx ·"));
-        Assert.True(firstDiagnosticIndex < 0 || syncIndex < firstDiagnosticIndex,
-            $"동기화 줄({syncIndex})이 진단({firstDiagnosticIndex})보다 아래에 있습니다.");
+        Assert.True(firstDiagnosticIndex < 0 || refusalIndex < firstDiagnosticIndex,
+            $"거부 줄({refusalIndex})이 진단({firstDiagnosticIndex})보다 아래에 있습니다.");
     });
 
     [Fact]
@@ -285,13 +289,13 @@ public sealed class ChapterGraphSyncViewTests
         // ⚠ 2026-08-24 — <b>저절로 펼치지 않는다</b>. 알림은 머리글의 표식이 든다
         // (소유자: "그것까지 꺼줘. 대신에 … 시각적인 이모티콘을 붙여놓기만 해").
         var expander = view.FindControl<Expander>("DiagnosticsExpander")!;
-        Assert.Contains("동기화 거부·경고", (string)expander.Header!);
+        Assert.Contains("대본 가져오기 거부", (string)expander.Header!);
         Assert.Contains("🟡", (string)expander.Header!);   // 경고 = 노랑
         Assert.False(expander.IsExpanded);
 
         var panel = view.FindControl<StackPanel>("DiagnosticsPanel")!;
         Assert.Contains(panel.Children.OfType<TextBlock>(),
-            block => block.Text?.Contains("반영 거부") == true);
+            block => block.Text?.Contains("대본 가져오기 거부") == true);
 
         // 깨진 표는 노드를 만들지 않는다.
         Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),

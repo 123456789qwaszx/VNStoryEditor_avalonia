@@ -290,6 +290,19 @@ public static class EpisodeLibrary
     /// </summary>
     public const string DefaultFirstLine = "(대사를 적어 주세요)";
 
+    /// <summary>
+    /// 새 대본이 받을 화자 — 챕터를 가리지 않는 <b>프로젝트 목록 하나</b>다 (2026-08-23에
+    /// 챕터 `화자` 시트가 폐지되면서 등록 창구가 정의 파일 하나가 됐다).
+    ///
+    /// ⚠ 2026-09-16에 `EpisodeSyncRunner`에서 여기로 옮겨 왔다 (R-D) — 그 클래스는
+    /// 역방향 기계라 걷혔는데, 이 목록은 <b>워크북을 만들 때</b> 쓰는 것이라 남는다.
+    /// </summary>
+    public static List<string> SpeakerNames(Vn.Authoring.Definition.GameDefinition definition) =>
+        definition.Speakers
+            .Select(speaker => speaker.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
     /// <param name="firstLine">
     /// 새 워크북의 2행 `내용`에 심을 첫 대사 (2026-08-26). null이면 예전처럼 빈 템플릿이다 —
     /// 기본을 바꾸지 않는 이유는, 이 함수는 동기화도 부르는 자리라(엑셀에서 더한 에피소드의

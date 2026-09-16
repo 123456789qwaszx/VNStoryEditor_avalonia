@@ -11,7 +11,7 @@ namespace Vn.Authoring.Tests.Chapters;
 /// "시나리오 설정노드의 조건·변수·화자와 챕터 엑셀의 그것은 서로 완전히 다른 계층이야").
 ///
 /// 조건은 <b>작가가 고르는 목록에서 빠지되 이미 쓰인 것은 읽힌다</b>. 가르는 규칙은
-/// <see cref="EpisodeSyncService.IsConditionSupplyNode"/> 하나뿐이다.
+/// <see cref="ChapterBoardSupply.IsConditionSupplyNode"/> 하나뿐이다.
 /// </summary>
 public sealed class ChapterLayerSeparationTests
 {
@@ -29,7 +29,7 @@ public sealed class ChapterLayerSeparationTests
         DialogueNode dialogue = editor.AddDialogueNode(file.Id, name: "EP00");
 
         // A계층 — 동기화가 만드는 공급 노드(이름이 곧 신원).
-        SetNode supply = editor.AddSetNode(file.Id, name: EpisodeSyncService.ConditionSupplyNodeName("ch01"));
+        SetNode supply = editor.AddSetNode(file.Id, name: ChapterBoardSupply.ConditionSupplyNodeName("ch01"));
         editor.AddCondition(supply.Id, "신뢰높음", "$trust >= 3");
         editor.AddSettingsLink(supply.Id, dialogue.Id);
 
@@ -110,7 +110,7 @@ public sealed class ChapterLayerSeparationTests
             fixtures: [],
             diagnostics: []);
 
-        IReadOnlyList<ChapterDiagnostic> warnings = EpisodeSyncService.WarnFreeNodeStatWrites(
+        IReadOnlyList<ChapterDiagnostic> warnings = ChapterBoardSupply.WarnFreeNodeStatWrites(
             board.Editor, board.Project.Files.Single().Id, chapter);
 
         ChapterDiagnostic warning = Assert.Single(warnings);
@@ -144,7 +144,7 @@ public sealed class ChapterLayerSeparationTests
             diagnostics: []);
 
         int linksBefore = board.Project.Links.Count;
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             board.Editor, GameDefinition.Empty, file.Id, chapter);
 
         Assert.Equal(linksBefore, board.Project.Links.Count);
@@ -177,7 +177,7 @@ public sealed class ChapterLayerSeparationTests
         // 있는 판에도 작가의 설정 노드가 따로 선다.
         var other = new StoryFile("sf_ch02", "ch02");
         project.Files.Add(other);
-        editor.AddSetNode(other.Id, name: EpisodeSyncService.ConditionSupplyNodeName("ch02"));
+        editor.AddSetNode(other.Id, name: ChapterBoardSupply.ConditionSupplyNodeName("ch02"));
 
         SetNode writerNode = editor.EnsureChapterSettingsNode(other.Id);
         Assert.Equal("ch02 설정", writerNode.Name);
@@ -190,10 +190,10 @@ public sealed class ChapterLayerSeparationTests
         Board board = BuildBoard();
         StoryFile file = board.Project.Files.Single();
 
-        Assert.True(EpisodeSyncService.IsConditionSupplyNode(board.Supply, file));
-        Assert.False(EpisodeSyncService.IsConditionSupplyNode(board.Own, file));
-        Assert.False(EpisodeSyncService.IsConditionSupplyNode(board.Dialogue, file));
+        Assert.True(ChapterBoardSupply.IsConditionSupplyNode(board.Supply, file));
+        Assert.False(ChapterBoardSupply.IsConditionSupplyNode(board.Own, file));
+        Assert.False(ChapterBoardSupply.IsConditionSupplyNode(board.Dialogue, file));
 
-        Assert.Equal([board.Supply.Id], EpisodeSyncService.ConditionSupplyNodeIds(board.Project));
+        Assert.Equal([board.Supply.Id], ChapterBoardSupply.ConditionSupplyNodeIds(board.Project));
     }
 }

@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using Vn.Authoring.Chapters;
+using Vn.Authoring.Chapters.Import;
 using Vn.Authoring.Definition;
 using Vn.Authoring.Editing;
 using Vn.Authoring.Model;
@@ -57,7 +58,7 @@ public sealed class ChapterDeleterTests : IDisposable
         Assert.DoesNotContain(
             world.Editor.Project.EnumerateNodes().OfType<SetNode>(),
             node => string.Equals(
-                node.Name, EpisodeSyncService.ConditionSupplyNodeName(Doomed), StringComparison.Ordinal));
+                node.Name, ChapterBoardSupply.ConditionSupplyNodeName(Doomed), StringComparison.Ordinal));
 
         // 남긴 챕터는 안 건드린다.
         Assert.Contains(world.Editor.Project.Files, file =>
@@ -253,19 +254,18 @@ public sealed class ChapterDeleterTests : IDisposable
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(Path.Combine(chapters, Doomed + ".xlsx"));
 
-        EpisodeSyncService.Sync(
-            editor, GameDefinition.Empty, board.Id,
-            Path.Combine(episodes, "main05.02.xlsx"), chapter);
+        EpisodeWorkbookImporter.Run(
+            editor, GameDefinition.Empty, board.Id, episodes, chapter);
 
         // v15 — 조건 공급 노드를 세우는 것은 <b>챕터 쪽</b>이다. 예전에는 대본의 `조건라벨`을
         // 거두며 Sync가 함께 세웠는데 그 칸이 폐지됐다(EpisodeSyncRunner가 부르는 순서 그대로).
-        EpisodeSyncService.SupplyChapterConditionsToBoard(
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
             editor, GameDefinition.Empty, board.Id, chapter);
 
         // 배관이 실제로 섰는지 확인하고 시작한다 — 없으면 첫 테스트가 헛돈다.
         Assert.Single(
             editor.Project.EnumerateNodes().OfType<SetNode>(),
-            node => EpisodeSyncService.IsConditionSupplyNodeName(node.Name));
+            node => ChapterBoardSupply.IsConditionSupplyNodeName(node.Name));
 
         return new World(editor, projectPath, board.Id);
     }
