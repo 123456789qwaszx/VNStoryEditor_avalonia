@@ -126,6 +126,41 @@ public sealed class ChoiceSlotTests : IDisposable
         Assert.Equal(GraphEditorView.SlotAsleep, Dots(graph, session, "root")[1]);
     });
 
+    [Fact]
+    public void 꺼진_점을_누르면_켜지고_문구_칸이_열린다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 처음에는 "문구를 적으면 살아난다"였는데 <b>적을 칸을 여는 손짓이 없었다</b>
+        //    (2026-09-16 소유자). 순서가 뒤집혔다: 점을 눌러 켜고, 그다음에 적는다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Assert.Equal(GraphEditorView.SlotAsleep, Dots(graph, session, "root")[1]);
+
+        Press(Rows(graph, session, "root")[1].Children.OfType<Ellipse>().Single());
+
+        Assert.NotNull(graph.SlotLabelBox);
+        Assert.Equal(GraphEditorView.SlotLive, Dots(graph, session, "root")[1]);
+    });
+
+    [Fact]
+    public void 사람이_안_만든_점은_안_선다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 대본에서 파생되던 "진행"·구판 OPTION 스텁을 걷었다 (결정 ②) — 선택지를 긋는
+        //    자리가 이 화면이 된 지금은 사람이 만들지 않은 점이 섞여 혼란스럽다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Assert.Equal(3, Rows(graph, session, "root").Count);
+        Assert.DoesNotContain(Texts(graph), text => text.Contains("진행", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 안_이은_칸_옆에는_종료가_안_붙는다() => HeadlessUi.Run(() =>
+    {
+        // 갈 곳이 없는 것과 거기서 끝나는 것은 다르다 — 빈 칸은 아직 아무 말도 안 한다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Assert.DoesNotContain(Texts(graph), text => text.Contains("종료", StringComparison.Ordinal));
+    });
+
     // ── 끌어 잇기 (R7 P-3) ─────────────────────────────────────────────────
 
     [Fact]
@@ -307,6 +342,13 @@ public sealed class ChoiceSlotTests : IDisposable
         graph.FindControl<Canvas>("GraphCanvas")!.Children.OfType<StackPanel>()
             .Where(row => (row.Tag as string)?.StartsWith(episodeId + "#", StringComparison.Ordinal) == true)
             .OrderBy(row => (row.Tag as string)![(episodeId.Length + 1)..], StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>판 위의 모든 글월 — 서면 안 되는 것이 섰는지 재는 자리.</summary>
+    private static IReadOnlyList<string> Texts(GraphEditorView graph) =>
+        graph.FindControl<Canvas>("GraphCanvas")!
+            .GetVisualDescendants().OfType<TextBlock>()
+            .Select(text => text.Text ?? string.Empty)
             .ToList();
 
     /// <summary>카드는 Tag에 NodeId를 진다 — 이름으로 찾으면 헤더 글월에 매인다.</summary>

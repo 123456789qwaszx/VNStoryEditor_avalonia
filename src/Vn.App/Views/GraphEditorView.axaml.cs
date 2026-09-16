@@ -694,24 +694,15 @@ public partial class GraphEditorView : UserControl
             AddEdgeBranch(edge);
         }
 
-        // 대본에만 남은 OPTION 줄(구판) — 짝할 간선이 없으니 그 길은 여기서 끝난다(Gate B).
-        // 배선은 살아 있으므로 스텁으로 세워 둔다: 지우려면 대본에서 그 줄을 뺀다.
-        foreach (ExitPort orphan in optionPorts.Where(port =>
-                     !edges.Any(edge =>
-                         string.Equals(edge.OptionLabel, port.ChoiceText, StringComparison.Ordinal))))
-        {
-            branches.Add((null, orphan, null, null));
-        }
+        // ⛔ <b>대본에서 파생되던 가지는 걷었다</b> (R7 결정 ② · 2026-09-16 소유자).
+        //    구판 OPTION 스텁과 "진행"(기본 출구) 스텁이 여기 섰는데, 선택지를 긋는 자리가
+        //    이 화면이 된 지금은 <b>사람이 만들지 않은 점</b>이 섞여 혼란스럽다
+        //    (소유자: "붉은 점 하나만 있을 때 자동으로 그 위로 '진행' 점이 생긴다").
+        //    ⚠ 데이터는 그대로 산다 — 차후 「분기」 탭이 그것을 다시 화면에 올린다.
 
         foreach (ChapterEdge edge in edges.Where(edge => edge.HasNoOptionLabel))
         {
             AddEdgeBranch(edge);
-        }
-
-        // 나가는 간선이 하나도 없는 에피소드(엔딩) — 기본 출구의 종료 스텁 (에필로그 자유 씬 자리).
-        if (edges.Count == 0 && optionPorts.Count == 0 && defaultPort is not null)
-        {
-            branches.Add((null, defaultPort, null, null));
         }
 
         // 빈 칸은 맨 아래에 — 이미 그은 길 다음에 "여기에 더 놓을 수 있다"가 온다.
@@ -872,9 +863,9 @@ public partial class GraphEditorView : UserControl
             Stroke = dot,
             StrokeThickness = 2,
             VerticalAlignment = VerticalAlignment.Center,
-            Cursor = new Cursor(live ? StandardCursorType.Hand : StandardCursorType.No),
+            Cursor = new Cursor(StandardCursorType.Hand),
             [ToolTip.TipProperty] = slot.IsEmpty
-                ? live ? "끌어서 다음 에피소드에 놓으세요." : "문구를 적어야 끌 수 있습니다."
+                ? live ? "끌어서 다음 에피소드에 놓으세요." : "눌러서 선택지를 하나 켭니다."
                 : "이어져 있습니다. 빈 곳에 끌어다 놓으면 끊깁니다."
         };
 
@@ -887,6 +878,10 @@ public partial class GraphEditorView : UserControl
             Opacity = live ? 1 : 0.45,
             FontStyle = text.Length > 0 || auto ? FontStyle.Normal : FontStyle.Italic,
             VerticalAlignment = VerticalAlignment.Center,
+
+            // ⚠ 배경이 없으면 <b>눌림이 안 온다</b> — 투명한 TextBlock은 히트 대상이 아니다.
+            //   2026-09-16에 "문구를 적을 칸이 안 열린다"의 진짜 원인이 이것이었다.
+            Background = Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.Ibeam),
             [ToolTip.TipProperty] = auto
                 ? "자동 길 — 문구 없이 다음으로 갑니다. 선택지 문구를 하나라도 적으면 이 자리가 닫힙니다."
@@ -919,14 +914,23 @@ public partial class GraphEditorView : UserControl
             ? SlotEditor(slot)
             : label);
 
-        if (live)
+        // 꺼진 점을 누르면 <b>켠다</b>, 켜진 점을 누르면 <b>끈다</b> — 손짓 하나가 한 가지 뜻이다.
+        knob.PointerPressed += (_, args) => UiGuard.Run(_session, "선택지", () =>
         {
-            knob.PointerPressed += (_, args) => UiGuard.Run(_session, "선택지 잇기", () =>
+            args.Handled = true;
+
+            if (live)
             {
-                args.Handled = true;
                 BeginSlotDrag(slot, knob, nodeId);
-            });
-        }
+                return;
+            }
+
+            _armedSlots.Add(SlotKey(slot));
+
+            // 켜자마자 문구를 적게 연다 — 켜 두고 아무것도 안 적는 자리는 뜻이 없다.
+            _editingSlot = SlotKey(slot);
+            Rebuild();
+        });
 
         return line;
     }
@@ -1025,6 +1029,13 @@ public partial class GraphEditorView : UserControl
 
         _railVisuals.Add(chip);
         cursorX = trunkX + 14 + chip.DesiredSize.Width + 6;
+
+        // 아직 안 이은 칸은 <b>여기서 끝</b>이다 — 갈 곳이 없으니 선도 없고 "종료"도 아니다
+        // (2026-09-16 소유자: "연결되지 않은 상태라면 '종료'라는 글자가 표시됩니다").
+        if (slot is { IsEmpty: true })
+        {
+            return;
+        }
 
         // 배선된 자유 씬이 있으면 레일은 <b>첫 씬의 입구까지만</b> 댄다 (소유자 보고
         // 2026-08-15 — 레일이 체인을 관통해 그리니 작가의 실행 배선과 평행으로 겹쳐
@@ -1944,6 +1955,15 @@ public partial class GraphEditorView : UserControl
     /// </summary>
     private readonly Dictionary<string, string> _slotLabels = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// <b>켜 둔 빈 칸들</b> — 점을 눌러 살린 자리 (2026-09-16 소유자).
+    ///
+    /// 처음에는 "문구를 적으면 살아난다"였는데 <b>적을 칸을 여는 손짓이 없었다</b>.
+    /// 이제 순서가 뒤집혔다: <b>점을 눌러 켜고</b>(회색 → 붉은색) 그 다음에 문구를 적는다.
+    /// 켜는 것과 적는 것이 갈라져 있어야 "무엇을 눌러야 하나"가 안 생긴다.
+    /// </summary>
+    private readonly HashSet<string> _armedSlots = new(StringComparer.Ordinal);
+
     private static string SlotKey(GraphChoicePort choice) => choice.FromEpisodeId + "#" + choice.Slot;
 
     /// <summary>그 슬롯이 지금 지고 있는 문구 — 이은 것은 간선에서, 안 이은 것은 적어 둔 데서.</summary>
@@ -1966,13 +1986,13 @@ public partial class GraphEditorView : UserControl
     /// </summary>
     private bool IsLive(GraphChoicePort choice, IReadOnlyList<GraphChoicePort> slots)
     {
-        if (!choice.IsEmpty || LabelOf(choice).Length > 0)
+        if (!choice.IsEmpty || LabelOf(choice).Length > 0 || _armedSlots.Contains(SlotKey(choice)))
         {
             return true;
         }
 
         return choice.Slot == 0 && slots.All(other =>
-            other.IsEmpty && LabelOf(other).Length == 0);
+            other.IsEmpty && LabelOf(other).Length == 0 && !_armedSlots.Contains(SlotKey(other)));
     }
 
     /// <summary>이 칸을 끌면 <b>자동 길</b>이 되는가 — 문구 없이 잇는 그 자리다.</summary>
@@ -2131,7 +2151,9 @@ public partial class GraphEditorView : UserControl
             // 담을 간선이 아직 없다 — 화면이 들고, 문구만 챕터의 어휘집에 남긴다.
             if (wanted.Length == 0)
             {
+                // 비우면 그 칸은 도로 꺼진다 — 켜 두고 아무것도 안 적은 자리는 뜻이 없다.
                 _slotLabels.Remove(SlotKey(choice));
+                _armedSlots.Remove(SlotKey(choice));
             }
             else
             {
@@ -3048,6 +3070,7 @@ public partial class GraphEditorView : UserControl
         // ⚠ <b>다른 칸의 것은 안 건드린다.</b> 새 간선은 목록 끝에 붙으므로 빈 칸의 자리
         //    번호가 안 밀린다 — 이 칸 하나만 지우는 것이 맞다.
         _slotLabels.Remove(SlotKey(choice));
+        _armedSlots.Remove(SlotKey(choice));
 
         _session.SetStatus(auto
             ? $"'{choice.FromEpisodeId}' → '{episodeId}' 자동으로 이었습니다(문구 없이 지나갑니다)."
@@ -3072,6 +3095,9 @@ public partial class GraphEditorView : UserControl
 
         _session!.Editor.RemoveEdge(
             choice.ChapterId, choice.FromEpisodeId, choice.ToEpisodeId!, choice.Label);
+
+        _armedSlots.RemoveWhere(key =>
+            key.StartsWith(choice.FromEpisodeId + "#", StringComparison.Ordinal));
 
         foreach (string key in _slotLabels.Keys
                      .Where(key => key.StartsWith(choice.FromEpisodeId + "#", StringComparison.Ordinal))
