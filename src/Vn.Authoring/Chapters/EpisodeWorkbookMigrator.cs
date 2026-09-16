@@ -71,7 +71,11 @@ public static class EpisodeWorkbookMigrator
                 return MigrationResult.NotNeeded;
             }
 
-            if (IsCurrent(FindScriptSheet(probe)!))
+            // ⛔ <b>툴이 낸 것은 이행 대상이 아니다</b> (§4.4 · 2026-09-16) — 챕터 쪽과 같은
+            //    이유다. 산출물은 1행이 안내문이라 머리글이 2행인데, 이행 검사는 머리글이
+            //    1행이라는 구판 전제 위에 있다.
+            if (WorkbookOutputNotice.HeaderRowOf(FindScriptSheet(probe)!) == 2 ||
+                IsCurrent(FindScriptSheet(probe)!))
             {
                 return MigrationResult.NotNeeded;
             }

@@ -24,7 +24,8 @@ namespace Vn.Authoring.Chapters;
 /// </summary>
 public static class ChapterWorkbookReader
 {
-    private const int HeaderRow = 1;
+    // ⛔ 머리글 행은 상수가 아니다 (§4.4 · 2026-09-16) — 구판은 1행, 산출물은 2행이다.
+    //    `WorkbookOutputNotice.HeaderRowOf`가 시트를 보고 가른다.
 
     // 2026-08-16 소유자 개정 — 인덱스 열 폐지(안 쓰임), 간선의 스탯변화가 C열로,
     // `선택지 라벨`은 `선택지`로, 조건식은 스탯·연산자·값 세 칸으로, 스탯에 타입(선택 꼬리).
@@ -260,7 +261,7 @@ public static class ChapterWorkbookReader
 
             for (int column = EpisodeHeaders.Length + 1; column <= EpisodeHeaders.Length + 5; column++)
             {
-                if (string.Equals(Text(sheet, HeaderRow, column), "도달불가 허용", StringComparison.Ordinal))
+                if (string.Equals(Text(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), column), "도달불가 허용", StringComparison.Ordinal))
                 {
                     allowColumn = column;
                     break;
@@ -731,7 +732,7 @@ public static class ChapterWorkbookReader
 
         for (int column = 3; column <= width; column++)
         {
-            string header = Text(sheet, HeaderRow, column);
+            string header = Text(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), column);
 
             if (header.StartsWith("고정 선택", StringComparison.Ordinal))
             {
@@ -750,7 +751,7 @@ public static class ChapterWorkbookReader
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Warning,
                     ChapterDiagnosticCode.FixtureStatColumnUnknown,
-                    path, sheet.Name, HeaderRow, column,
+                    path, sheet.Name, WorkbookOutputNotice.HeaderRowOf(sheet), column,
                     $"'{header}'는 `스탯` 시트에 없는 스탯키입니다. 이 열은 읽지 않았습니다."));
             }
         }
@@ -1070,11 +1071,11 @@ public static class ChapterWorkbookReader
     private static int DataWidth(IXLWorksheet sheet)
     {
         int width = 0;
-        int last = sheet.Row(HeaderRow).LastCellUsed()?.Address.ColumnNumber ?? 0;
+        int last = sheet.Row(WorkbookOutputNotice.HeaderRowOf(sheet)).LastCellUsed()?.Address.ColumnNumber ?? 0;
 
         for (int column = 1; column <= last; column++)
         {
-            if (Text(sheet, HeaderRow, column).Length == 0)
+            if (Text(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), column).Length == 0)
             {
                 break;
             }
@@ -1093,7 +1094,7 @@ public static class ChapterWorkbookReader
     {
         for (int column = 1; column <= DataWidth(sheet); column++)
         {
-            if (string.Equals(Text(sheet, HeaderRow, column), header, StringComparison.Ordinal))
+            if (string.Equals(Text(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), column), header, StringComparison.Ordinal))
             {
                 return column;
             }
@@ -1147,7 +1148,7 @@ public static class ChapterWorkbookReader
         for (int index = 0; index < expected.Count; index++)
         {
             int column = index + 1;
-            string actual = Text(sheet, HeaderRow, column);
+            string actual = Text(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), column);
 
             if (string.Equals(actual, expected[index], StringComparison.Ordinal))
             {
@@ -1162,7 +1163,7 @@ public static class ChapterWorkbookReader
             diagnostics.Add(Cell(
                 ChapterDiagnosticSeverity.Warning,
                 ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheet.Name, HeaderRow, column,
+                path, sheet.Name, WorkbookOutputNotice.HeaderRowOf(sheet), column,
                 $"머리글이 '{expected[index]}'가 아니라 '{(actual.Length == 0 ? "(빈칸)" : actual)}'입니다. " +
                 "값은 규격의 자리대로 읽었으므로, 열이 밀렸다면 아래 값들이 어긋납니다."));
         }
@@ -1175,7 +1176,7 @@ public static class ChapterWorkbookReader
 
             for (int column = expected.Count + 1; column <= width; column++)
             {
-                string extra = Text(sheet, HeaderRow, column);
+                string extra = Text(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), column);
 
                 // `도달불가 허용`(D3)은 규격이 아는 선택 열이다 — 지나친 것이 아니다.
                 if (string.Equals(extra, "도달불가 허용", StringComparison.Ordinal))
@@ -1194,7 +1195,7 @@ public static class ChapterWorkbookReader
             diagnostics.Add(Diagnostic(
                 ChapterDiagnosticSeverity.Info,
                 ChapterDiagnosticCode.ColumnHeaderUnexpected,
-                path, sheet.Name, HeaderRow, null,
+                path, sheet.Name, WorkbookOutputNotice.HeaderRowOf(sheet), null,
                 $"규격 밖의 열을 읽지 않았습니다: {string.Join(", ", ignored)}"));
         }
     }
@@ -1206,7 +1207,7 @@ public static class ChapterWorkbookReader
     private static IEnumerable<int> DataRows(IXLWorksheet sheet) =>
         sheet.RowsUsed()
             .Select(row => row.RowNumber())
-            .Where(row => row > HeaderRow && RowHasText(sheet, row))
+            .Where(row => row > WorkbookOutputNotice.HeaderRowOf(sheet) && RowHasText(sheet, row))
             .OrderBy(row => row);
 
     private static bool RowHasText(IXLWorksheet sheet, int row)

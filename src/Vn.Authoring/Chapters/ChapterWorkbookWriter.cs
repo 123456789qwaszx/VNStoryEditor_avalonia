@@ -941,13 +941,18 @@ public static class ChapterWorkbookWriter
         //    ⚠ <b>글꼴은 안 건드린다.</b> 사람이 규격 오른쪽에 적어 둔 곁말이 있고(견본의
         //    규격 안내가 그렇다), 그것까지 씻으면 설명이 맨몸이 된다. 지우려는 것은
         //    "칸처럼 보이는 것"이지 글이 아니다.
-        IXLRange beyond = sheet.Range(1, widths.Length + 1, ChromeRows, widths.Length + 6);
+        // ⚠ 머리글이 몇 행인지는 <b>시트에게 묻는다</b> (§4.4 · 2026-09-16) — 산출물은 1행이
+        //    안내문이라 머리글이 2행이고, 사람이 만든 구판은 1행이다. 이 함수는 이미터도
+        //    이행기도 부르므로, 인자로 받으면 부르는 쪽마다 틀릴 자리가 생긴다.
+        int head = WorkbookOutputNotice.HeaderRowOf(sheet);
+
+        IXLRange beyond = sheet.Range(head, widths.Length + 1, ChromeRows, widths.Length + 6);
 
         beyond.Style.Fill.SetBackgroundColor(XLColor.NoColor);
         beyond.Style.Border.SetOutsideBorder(XLBorderStyleValues.None);
         beyond.Style.Border.SetInsideBorder(XLBorderStyleValues.None);
 
-        IXLRange table = sheet.Range(1, 1, ChromeRows, widths.Length);
+        IXLRange table = sheet.Range(head, 1, ChromeRows, widths.Length);
 
         table.Style.Font.SetFontName(BodyFont);
         table.Style.Font.SetFontSize(10);
@@ -969,14 +974,14 @@ public static class ChapterWorkbookWriter
 
         foreach (int column in note ?? [])
         {
-            IXLStyle style = sheet.Range(2, column, ChromeRows, column).Style;
+            IXLStyle style = sheet.Range(head + 1, column, ChromeRows, column).Style;
             style.Font.SetItalic(true);
             style.Font.SetFontSize(9);
             style.Font.SetFontColor(XLColor.FromHtml("#7F7F7F"));
         }
 
-        // 머리글은 맨 마지막에 — 위의 열 단위 서식이 1행까지 훑고 지나간다.
-        IXLRange header = sheet.Range(1, 1, 1, widths.Length);
+        // 머리글은 맨 마지막에 — 위의 열 단위 서식이 머리글 행까지 훑고 지나간다.
+        IXLRange header = sheet.Range(head, 1, head, widths.Length);
         header.Style.Font.SetBold(true);
         header.Style.Font.SetItalic(false);
         header.Style.Font.SetFontSize(10);
@@ -990,13 +995,13 @@ public static class ChapterWorkbookWriter
 
         // 머리글 고정 — 아래로 내려가도 어느 칸인지 보인다. 열이 열한 개까지 늘어난
         // `간선` 시트에서는 이게 없으면 무슨 칸에 적는지 알 수 없다.
-        sheet.SheetView.FreezeRows(1);
+        sheet.SheetView.FreezeRows(head);
 
         // 자동 필터 — 기획자가 "이 에피소드에서 나가는 것만" 추려 보는 손잡이다.
         // 이미 걸려 있으면 그대로 둔다(사람이 걸어 둔 조건을 지우지 않는다).
         if (!sheet.AutoFilter.IsEnabled)
         {
-            sheet.Range(1, 1, Math.Max(sheet.LastRowUsed()?.RowNumber() ?? 1, 1), widths.Length)
+            sheet.Range(head, 1, Math.Max(sheet.LastRowUsed()?.RowNumber() ?? head, head), widths.Length)
                  .SetAutoFilter();
         }
     }

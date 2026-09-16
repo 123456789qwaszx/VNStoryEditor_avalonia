@@ -103,26 +103,27 @@ public sealed class InvertedRoundTripTests : IDisposable
     });
 
     /// <summary>
-    /// §4.4 — 읽기 전용임을 <b>파일이 말한다</b>.
+    /// §4.4 — 읽기 전용임을 <b>파일이 말한다</b>. 셋이 함께 서야 한다.
     ///
-    /// ⚠ <b>지시서가 셋을 요구하는데 둘만 있다</b> (2026-09-16에 이 테스트가 찾았다).
-    /// ①시트 보호와 ③파일 속성은 서 있지만, ②<i>"각 시트 1행에 머리글보다 위로 한 줄:
-    /// ⚠ 이 파일은 VnTool이 만든 산출물입니다…"</i>는 <b>없다</b> — 두 이미터 다 머리글을
-    /// 1행에 쓴다.
-    ///
-    /// ⛔ 여기서 고치지 않은 이유: 안내문 한 줄을 넣으면 머리글이 2행으로 밀리는데,
-    /// 두 리더가 <c>HeaderRow = 1</c>을 <b>상수로</b> 박아 두었다. 이행기·픽스처까지
-    /// 함께 가는 규격 변경이라 따로 다뤄야 한다(`r-f-handoff.md` §6).
+    /// ⚠ 이 테스트가 처음 돌았을 때 ②가 <b>없었다</b>(2026-09-16). 규격에 적혀 있었지만
+    /// 두 이미터 다 머리글을 1행에 쓰고 있었고, 아무도 알아채지 못한 채 R-B부터 살아 있었다.
+    /// 한 바퀴를 걸어 보지 않으면 "각자 제 조각은 맞는데 합이 규격이 아닌" 자리는 안 보인다.
     /// </summary>
     private static void AssertIsOutput(string path)
     {
         using var workbook = new XLWorkbook(path);
 
+        // ③ 파일 속성.
         Assert.Contains("산출물", workbook.Properties.Comments);
 
         foreach (IXLWorksheet sheet in workbook.Worksheets)
         {
+            // ① 시트 보호 — 막는 것이 아니라 알리는 것이라 암호가 없다.
             Assert.True(sheet.Protection.IsProtected, $"'{sheet.Name}' 시트가 보호돼 있어야 한다");
+
+            // ② 머리글보다 위 한 줄 — 잠긴 이유가 파일 안에서 보인다.
+            Assert.Contains("산출물", sheet.Cell(1, 1).GetString());
+            Assert.Equal(2, WorkbookOutputNotice.HeaderRowOf(sheet));
         }
     }
 

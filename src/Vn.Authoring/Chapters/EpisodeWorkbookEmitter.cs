@@ -29,7 +29,9 @@ public sealed record EmittedEpisodeLine(int Index, string? Speaker, string Text)
 /// </summary>
 public static class EpisodeWorkbookEmitter
 {
-    private const int HeaderRow = 1;
+    // ⚠ 1행은 안내문이다 (§4.4) — 머리글이 2행으로 내려간다. 리더는 상수로 들지 않고
+    //    `WorkbookOutputNotice.HeaderRowOf`로 찾으므로 구판 파일도 그대로 읽힌다.
+    private const int HeaderRow = 2;
 
     /// <summary>
     /// ⚠ <see cref="EpisodeWorkbookReader"/>·<see cref="EpisodeWorkbookWriter"/>의 배열과
@@ -45,8 +47,7 @@ public static class EpisodeWorkbookEmitter
 
     private const string SheetName = "대본";
 
-    private const string OutputNotice =
-        "이 파일은 VnTool이 만든 산출물입니다. 여기서 고친 것은 반영되지 않고 다음 저장에 덮어쓰입니다.";
+    // 문구의 주인은 `WorkbookOutputNotice` 하나다 — 두 이미터가 같은 말을 해야 한다.
 
     /// <summary>줄 순서만 있을 때 인덱스를 매긴다 — 10·20·30(G-5). 사이에 끼울 자리를 남긴다.</summary>
     public static IReadOnlyList<EmittedEpisodeLine> Number(
@@ -85,11 +86,14 @@ public static class EpisodeWorkbookEmitter
 
         try
         {
-            workbook.Properties.Comments = OutputNotice;
+            workbook.Properties.Comments = WorkbookOutputNotice.Property;
 
             // 시트 이름은 고정 "대본" — 에피소드 Id로 지으면 개명 때 탭 이름만 낡는다
             // (EnsureWorkbook과 같은 이유). 리더는 머리글로 찾으므로 이름은 아무래도 좋다.
             IXLWorksheet sheet = workbook.AddWorksheet(SheetName);
+
+            // ⛔ 안내문이 먼저다 (§4.4) — 사람이 열었을 때 왜 잠겼는지가 파일 안에 있어야 한다.
+            WorkbookOutputNotice.Write(sheet);
 
             for (int column = 1; column <= Headers.Length; column++)
             {

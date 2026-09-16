@@ -95,9 +95,13 @@ public sealed class EpisodeWorkbookEmitterTests : IDisposable
         using var book = new ClosedXML.Excel.XLWorkbook(path);
         IXLWorksheet sheet = book.Worksheets.First();
 
+        // ⚠ 머리글이 2행이다 (§4.4 · 2026-09-16) — 1행은 "이 파일은 산출물입니다" 안내문이고,
+        //    리더는 행 번호를 상수로 들지 않고 `WorkbookOutputNotice.HeaderRowOf`로 찾는다.
+        Assert.StartsWith("⚠ 이 파일은 VnTool", sheet.Cell(1, 1).GetString());
+
         Assert.Equal(
             ["인덱스", "LineId", "화자", "내용"],
-            Enumerable.Range(1, 4).Select(column => sheet.Cell(1, column).GetString()));
+            Enumerable.Range(1, 4).Select(column => sheet.Cell(2, column).GetString()));
 
         Assert.Equal(string.Empty, sheet.Cell(1, 5).GetString());
     }

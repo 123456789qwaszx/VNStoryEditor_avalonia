@@ -22,7 +22,9 @@ namespace Vn.Authoring.Chapters;
 /// </summary>
 public static class ChapterWorkbookEmitter
 {
-    private const int HeaderRow = 1;
+    // ⚠ 1행은 안내문이다 (§4.4) — 머리글이 2행으로 내려간다. 리더는 상수로 들지 않고
+    //    `WorkbookOutputNotice.HeaderRowOf`로 찾으므로 구판 파일도 그대로 읽힌다.
+    private const int HeaderRow = 2;
 
     // ⚠ 아래 다섯 배열은 <see cref="ChapterWorkbookReader"/>의 것과 같아야 한다 —
     //    리더가 머리글로 시트의 데이터 블록을 찾는다.
@@ -38,8 +40,7 @@ public static class ChapterWorkbookEmitter
 
     private static readonly string[] ChoiceHeaders = ["인덱스", "대본", "메모"];
 
-    private const string OutputNotice =
-        "이 파일은 VnTool이 만든 산출물입니다. 여기서 고친 것은 반영되지 않고 다음 저장에 덮어쓰입니다.";
+    // 문구의 주인은 `WorkbookOutputNotice` 하나다 — 두 이미터가 같은 말을 해야 한다.
 
     /// <summary>챕터 워크북 한 벌을 <paramref name="path"/>에 낸다. 이미 있으면 통째로 갈아 끼운다.</summary>
     public static ChapterWriteResult Emit(string path, ChapterGraphModel chapter)
@@ -55,7 +56,7 @@ public static class ChapterWorkbookEmitter
 
         try
         {
-            workbook.Properties.Comments = OutputNotice;
+            workbook.Properties.Comments = WorkbookOutputNotice.Property;
 
             // 시트 순서가 곧 작업 순서다 — 구조(에피소드·간선)가 앞, 사전(선택지·조건)이
             // 가운데, 값(스탯)이 뒤. 리더는 이름으로 찾으므로 순서는 사람을 위한 것이다.
@@ -194,6 +195,9 @@ public static class ChapterWorkbookEmitter
 
     private static void Header(IXLWorksheet sheet, string[] headers)
     {
+        // ⛔ 안내문이 먼저다 (§4.4) — 겉모습을 입히는 쪽이 이 줄을 보고 머리글 행을 가른다.
+        WorkbookOutputNotice.Write(sheet);
+
         for (int column = 1; column <= headers.Length; column++)
         {
             sheet.Cell(HeaderRow, column).SetValue(headers[column - 1]);

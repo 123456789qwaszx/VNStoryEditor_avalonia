@@ -98,6 +98,15 @@ public static class ChapterWorkbookMigrator
 
     private static bool NeedsMigration(XLWorkbook workbook)
     {
+        // ⛔ <b>툴이 낸 것은 이행 대상이 아니다</b> (§4.4 · 2026-09-16). 산출물은 정의상
+        //    현행 규격이고, 1행이 안내문이라 머리글이 2행이다 — 아래 검사들은 전부
+        //    <b>머리글이 1행</b>이라는 구판 전제 위에 서 있어 그대로 물으면 죄다 헛짚는다.
+        //    이행은 <b>사람이 만든 옛 파일</b>의 일이다.
+        if (workbook.Worksheets.Any(sheet => WorkbookOutputNotice.HeaderRowOf(sheet) == 2))
+        {
+            return false;
+        }
+
         IXLWorksheet? fixtures = Find(workbook, ChapterSheetNames.Fixtures);
 
         return Header(workbook, ChapterSheetNames.Episodes, 3) == "인덱스" ||

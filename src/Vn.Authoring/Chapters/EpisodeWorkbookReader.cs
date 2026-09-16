@@ -15,7 +15,8 @@ namespace Vn.Authoring.Chapters;
 /// </summary>
 public static class EpisodeWorkbookReader
 {
-    private const int HeaderRow = 1;
+    // ⛔ 머리글 행은 상수가 아니다 (§4.4 · 2026-09-16) — 구판은 1행, 산출물은 2행이다.
+    //    `WorkbookOutputNotice.HeaderRowOf`가 시트를 보고 가른다.
 
     // 6열 (v14, 2026-08-24 소유자). 왼쪽 두 칸이 <b>제어 행의 메타데이터</b>이고,
     // 오른쪽 네 칸이 <b>대사 줄</b>이다:
@@ -105,7 +106,7 @@ public static class EpisodeWorkbookReader
     private static IXLWorksheet? FindEpisodeSheet(XLWorkbook workbook) =>
         workbook.Worksheets.FirstOrDefault(sheet =>
             Headers.Select((header, offset) =>
-                string.Equals(Cell(sheet, HeaderRow, offset + 1), header, StringComparison.Ordinal))
+                string.Equals(Cell(sheet, WorkbookOutputNotice.HeaderRowOf(sheet), offset + 1), header, StringComparison.Ordinal))
                 .All(matches => matches));
 
     // ── 행 ──────────────────────────────────────────────────────────────────
@@ -233,7 +234,7 @@ public static class EpisodeWorkbookReader
     private static IEnumerable<int> DataRows(IXLWorksheet sheet) =>
         sheet.RowsUsed()
             .Select(row => row.RowNumber())
-            .Where(row => row > HeaderRow)
+            .Where(row => row > WorkbookOutputNotice.HeaderRowOf(sheet))
             .OrderBy(row => row);
 
     private static string Cell(IXLWorksheet sheet, int row, int column)
