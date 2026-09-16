@@ -53,8 +53,9 @@ public sealed class ChapterDocument
     /// </summary>
     /// <param name="sourcePath">이 챕터를 <b>낼</b> 워크북 경로. 이제 읽은 자리가 아니다.</param>
     /// <param name="definition">
-    /// 주면 <b>모델 검사</b>를 함께 돌린다(<see cref="StatDiagnostics"/>). 리더의 불평과는
+    /// 주면 <b>스탯 검사</b>도 함께 돌린다(<see cref="StatDiagnostics"/>). 리더의 불평과는
     /// 다른 것이다 — 파일의 흠이 아니라 <b>값의 흠</b>이라, 주인이 프로젝트가 된 뒤에도 남는다.
+    /// 자동 길 검사(<see cref="ChapterAutoEdgeCheck"/>)는 정의 파일이 없어도 늘 돈다.
     /// </param>
     public ChapterGraphModel ToGraphModel(string sourcePath, GameDefinition? definition = null) => new(
         ChapterId,
@@ -64,7 +65,7 @@ public sealed class ChapterDocument
         Conditions.Select(Reparse).ToList(),
         Stats,
         Fixtures,
-        StatDiagnostics(sourcePath, definition),
+        ModelDiagnostics(sourcePath, definition),
         speakers: [],
         hasSpeakerSheet: false,
         ChoiceOptions);
@@ -81,6 +82,15 @@ public sealed class ChapterDocument
     /// ⚠ 행 번호는 <see cref="ChapterStat.SourceRow"/>다 — 들여온 값이면 원래 자리를 짚고,
     /// 툴에서 만든 것이면 0이다(짚을 행이 아직 없다).
     /// </summary>
+    /// <summary>
+    /// 저작한 값에 대한 검사 전부 — <b>값의 흠</b>이라 워크북을 안 읽어도 봐야 하는 것들이다.
+    ///
+    /// ⛔ <b>새 검사를 더할 자리가 여기다.</b> 리더 안에만 두면 R-F 뒤에는 <b>툴이 소유한
+    /// 챕터에서 조용히 안 돈다</b> — V1이 정확히 그 사고였다(자동 길 다섯이 그렇게 빠졌다).
+    /// </summary>
+    private IReadOnlyList<ChapterDiagnostic> ModelDiagnostics(string path, GameDefinition? definition) =>
+        [.. StatDiagnostics(path, definition), .. ChapterAutoEdgeCheck.Of(Episodes, Edges, path)];
+
     private IReadOnlyList<ChapterDiagnostic> StatDiagnostics(string path, GameDefinition? definition)
     {
         var diagnostics = new List<ChapterDiagnostic>();
