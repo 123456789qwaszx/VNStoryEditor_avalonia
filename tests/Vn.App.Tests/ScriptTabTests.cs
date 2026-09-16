@@ -189,7 +189,10 @@ public sealed class ScriptTabTests : IDisposable
         Assert.Contains("⚠", session.StatusMessage);
     });
 
-    // ── 작가가 글을 쓰면 노드가 생긴다 (§6.2) ─────────────────────────────
+    // ── 빈 자리의 사다리 (§6.2 · 챕터 그래프 2026-08-26의 규율을 잇는다) ────
+    //
+    // 새 프로젝트 → ＋챕터 → ＋에피소드 → <b>＋대본</b>. 앞의 셋은 [챕터 그래프]가 세웠고,
+    // 마지막 칸이 여기다. 안내문만 서 있으면 다음 할 일이 글로만 남는다.
 
     [Fact]
     public void 노드가_없는_에피소드도_목록에_선다() => HeadlessUi.Run(() =>
@@ -202,13 +205,28 @@ public sealed class ScriptTabTests : IDisposable
 
         Assert.Equal(["ep01", "ep02"], view.FindControl<ListBox>("EpisodeList")!
             .ItemsSource!.Cast<string>());
-
-        // 아직 빈 대본이라고 말해 준다 — 빈 화면에 아무 말이 없으면 고장으로 읽힌다.
-        Assert.Contains("아직 빈 대본", view.FindControl<TextBlock>("HintText")!.Text!);
     });
 
     [Fact]
-    public void 빈_에피소드에_쓰면_그때_노드가_선다() => HeadlessUi.Run(() =>
+    public void 빈_에피소드에는_가운데에_대본_단추가_선다() => HeadlessUi.Run(() =>
+    {
+        // 빈 입력칸만 보이면 작가는 그것이 고장인지 빈 대본인지 못 가린다 — 누를 자리가
+        // 판 한가운데 함께 선다(챕터 그래프의 [＋ 에피소드]와 같은 모양이다).
+        WriteChapter("ch01", "ep01");
+
+        (ScriptView view, _) = Show();
+
+        Assert.True(view.FindControl<Border>("EmptyPanel")!.IsVisible);
+        Assert.True(view.FindControl<Button>("EmptyAddScriptButton")!.IsVisible);
+        Assert.Contains("아직 빈 대본", view.FindControl<TextBlock>("EmptyText")!.Text!);
+
+        // 세우기 전에는 반영할 것이 없다 — 단추 둘이 동시에 살아 있으면 어느 쪽이
+        // 다음 걸음인지 흐려진다.
+        Assert.False(view.FindControl<Button>("ApplyButton")!.IsEnabled);
+    });
+
+    [Fact]
+    public void 대본_단추를_누르면_그때_노드가_선다() => HeadlessUi.Run(() =>
     {
         WriteChapter("ch01", "ep01");
 
@@ -217,19 +235,46 @@ public sealed class ScriptTabTests : IDisposable
         // 누르기 전에는 판에 아무 노드도 없다 — 훑어보기만으로 빈 노드가 쌓이면 안 된다.
         Assert.Empty(session.Project.EnumerateNodes().OfType<DialogueNode>());
 
-        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 작가가 처음 쓴 줄";
-        Click(view, "ApplyButton");
+        Click(view, "EmptyAddScriptButton");
 
         DialogueNode created = Assert.Single(
             session.Project.EnumerateNodes().OfType<DialogueNode>());
 
         Assert.Equal("ep01", created.Name);
+
+        // 사다리가 내려가고 쓸 자리가 열린다 — 노드 생성이 딸려 주는 빈 줄은 은퇴했다.
+        Assert.False(view.FindControl<Border>("EmptyPanel")!.IsVisible);
+        Assert.True(view.FindControl<Button>("ApplyButton")!.IsEnabled);
+        Assert.Empty(session.Project.FindScript(created.ScriptId!)!.ActiveLines);
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 작가가 처음 쓴 줄";
+        Click(view, "ApplyButton");
+
         Assert.Equal(["작가가 처음 쓴 줄"], Texts(session, created));
 
         // 그리고 워크북도 함께 나갔다 — 툴에 쓴 것이 엑셀을 채운다.
         Assert.Equal(
             ["작가가 처음 쓴 줄"],
             EpisodeWorkbookReader.Read(WorkbookPath("ch01", "ep01")).Rows.Select(row => row.Text));
+    });
+
+    [Fact]
+    public void 쓰는_중에_노드가_사라져도_글은_살아_남는다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 글을 쓰는 동안에는 화면을 다시 그리지 않는다(타이핑이 씹히므로). 그래서 그 사이
+        //    다른 탭에서 노드가 지워지면 사다리가 못 올라온다 — [글 반영]에도 길이 있어야
+        //    쓰던 글을 잃지 않는다.
+        WriteChapter("ch01", "ep01");
+
+        (ScriptView view, AuthoringSession session) = Show();
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 사라진 사이에 쓴 줄";
+        Click(view, "ApplyButton");
+
+        DialogueNode rescued = Assert.Single(
+            session.Project.EnumerateNodes().OfType<DialogueNode>());
+
+        Assert.Equal(["사라진 사이에 쓴 줄"], Texts(session, rescued));
     });
 
     [Fact]
@@ -244,6 +289,29 @@ public sealed class ScriptTabTests : IDisposable
 
         Assert.Empty(session.Project.EnumerateNodes().OfType<DialogueNode>());
         Assert.Contains("빈 글은", session.StatusMessage);
+    });
+
+    [Fact]
+    public void 챕터가_없으면_어디로_가야_하는지_가리킨다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 여기에는 [＋ 챕터]를 세우지 않는다 — 챕터의 주인은 기획자의 엑셀이고 그 단추는
+        //    [챕터 그래프]에 이미 있다. 같은 단추가 두 자리에 서면 어느 쪽이 진짜인지 묻게 된다.
+        (ScriptView view, _) = Show();
+
+        Assert.True(view.FindControl<Border>("EmptyPanel")!.IsVisible);
+        Assert.False(view.FindControl<Button>("EmptyAddScriptButton")!.IsVisible);
+        Assert.Contains("[챕터 그래프]", view.FindControl<TextBlock>("EmptyText")!.Text!);
+    });
+
+    [Fact]
+    public void 에피소드가_없는_챕터도_어디로_가야_하는지_가리킨다() => HeadlessUi.Run(() =>
+    {
+        WriteChapter("ch01");
+
+        (ScriptView view, _) = Show();
+
+        Assert.False(view.FindControl<Button>("EmptyAddScriptButton")!.IsVisible);
+        Assert.Contains("에피소드가 없습니다", view.FindControl<TextBlock>("EmptyText")!.Text!);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────

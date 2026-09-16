@@ -37,6 +37,7 @@ public partial class ScriptView : UserControl
         ChapterList.SelectionChanged += (_, _) => UiGuard.Run(_session, "챕터 고르기", RebuildEpisodes);
         EpisodeList.SelectionChanged += (_, _) => UiGuard.Run(_session, "에피소드 고르기", ShowSelected);
         ApplyButton.Click += (_, _) => UiGuard.Run(_session, "글 반영", Apply);
+        EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
     }
 
 
@@ -167,16 +168,36 @@ public partial class ScriptView : UserControl
     private DialogueNode? SelectedNode() =>
         EpisodeList.SelectedItem is string episodeId ? FindNode(episodeId) : null;
 
+    /// <summary>
+    /// 지금 고른 것에 맞춰 화면을 세운다 — 그리고 <b>고를 것이 없으면 만들 자리를 세운다</b>.
+    ///
+    /// 빈 자리의 사다리는 챕터 그래프가 2026-08-26에 세운 규율을 잇는다
+    /// (새 프로젝트 → ＋챕터 → ＋에피소드 → <b>＋대본</b>). 규율은 둘이다:
+    /// ① <b>한 번에 한 칸만</b> 선다 — 앞 칸을 안 밟았는데 뒤 칸이 보이면 오히려 헷갈린다.
+    /// ② 앞의 두 칸은 여기서 <b>누르게 하지 않는다</b> — 챕터·에피소드의 주인은 기획자의
+    ///    엑셀이고 그 단추는 [챕터 그래프]에 이미 있다. 두 자리에 같은 단추가 서면 어느
+    ///    쪽이 진짜인지 묻게 된다. 여기서는 어디로 가야 하는지만 가리킨다.
+    /// </summary>
     private void ShowSelected()
     {
         _pendingDeleteText = null;
         ProblemsText.IsVisible = false;
+        EmptyPanel.IsVisible = false;
+        EmptyAddScriptButton.IsVisible = false;
 
         if (_session is null || EpisodeList.SelectedItem is not string episodeId)
         {
-            HeaderText.Text = ChapterList.ItemCount == 0
-                ? "아직 챕터가 없습니다 — [챕터 그래프]에서 만들 수 있습니다."
-                : "에피소드를 고르세요.";
+            bool noChapter = ChapterList.ItemCount == 0;
+
+            HeaderText.Text = noChapter ? "아직 챕터가 없습니다." : "에피소드를 고르세요.";
+
+            EmptyPanel.IsVisible = true;
+            EmptyText.Text = noChapter
+                ? "아직 챕터가 없습니다.\n[챕터 그래프]에서 챕터를 세우면 여기에 글 쓸 자리가 생깁니다."
+                : ChapterList.SelectedItem is null
+                    ? "왼쪽에서 챕터를 고르세요."
+                    : "이 챕터에는 아직 에피소드가 없습니다.\n" +
+                      "[챕터 그래프]에서 첫 에피소드를 세우면 여기에 섭니다.";
 
             ScriptBox.Text = string.Empty;
             ScriptBox.IsEnabled = false;
@@ -189,11 +210,17 @@ public partial class ScriptView : UserControl
         ScriptBox.IsEnabled = true;
         ApplyButton.IsEnabled = true;
 
-        // 아직 아무도 안 쓴 에피소드 — 빈 화면에서 시작한다. 노드는 [글 반영]이 만든다.
+        // 사다리의 마지막 칸 — 에피소드는 있는데 아직 아무도 안 썼다.
         if (FindNode(episodeId) is not { } node)
         {
             ScriptBox.Text = string.Empty;
-            HintText.Text = "아직 빈 대본입니다 — 쓰고 [글 반영]을 누르면 이 에피소드가 섭니다.";
+            ApplyButton.IsEnabled = false;
+
+            EmptyPanel.IsVisible = true;
+            EmptyAddScriptButton.IsVisible = true;
+            EmptyText.Text = $"'{episodeId}'은 아직 빈 대본입니다.";
+
+            HintText.Text = string.Empty;
             return;
         }
 
@@ -203,6 +230,32 @@ public partial class ScriptView : UserControl
             _session.Project, node.Id, OutputPresetCatalog.ScenarioOnly, _session.Definition));
 
         HintText.Text = "고친 뒤 [글 반영] — 줄의 신원은 보존됩니다.";
+    }
+
+    /// <summary>
+    /// 사다리의 마지막 칸 — <b>[＋ 대본]</b>. 이 에피소드의 대사노드를 세우고 커서를 넣는다.
+    ///
+    /// ⚠ 빈 노드가 생기는 것은 여기뿐이고, 그래도 되는 이유는 <b>사람이 눌렀기</b> 때문이다.
+    /// 훑어보기만으로 빈 노드가 쌓이면 안 된다는 규율(<see cref="Apply"/>)은 그대로다.
+    /// </summary>
+    private void AddScript()
+    {
+        if (_session is null || EpisodeList.SelectedItem is not string episodeId)
+        {
+            return;
+        }
+
+        if (FindNode(episodeId) is null)
+        {
+            CreateNodeFor(episodeId);
+        }
+
+        ShowSelected();
+
+        // 다음 할 일은 쓰는 것이다 — 커서를 옮겨 주지 않으면 한 번 더 눌러야 한다.
+        ScriptBox.Focus();
+
+        _session.SetStatus($"'{episodeId}' 대본을 세웠습니다 — 쓰고 [글 반영]을 누르세요.");
     }
 
     /// <summary>
@@ -221,9 +274,11 @@ public partial class ScriptView : UserControl
 
         string text = ScriptBox.Text ?? string.Empty;
 
-        // ⛔ <b>작가가 글을 쓰면 노드가 생긴다</b> (§6.2). 빈 에피소드에 처음 쓰는 순간이
-        //    그 노드가 태어나는 순간이다 — 그 전까지 만들지 않는 것은, 훑어보기만 해도
-        //    판에 빈 노드가 쌓이면 안 되기 때문이다.
+        // ⛔ <b>작가가 글을 쓰면 노드가 생긴다</b> (§6.2). 보통은 [＋ 대본]이 먼저 세우지만
+        //    여기에도 길이 있어야 한다: 글을 쓰는 동안에는 화면을 다시 그리지 않으므로
+        //    (<see cref="Rebuild"/>), 타이핑 중에 노드가 다른 탭에서 사라지면 사다리가
+        //    올라오지 못한다. 그때 쓰던 글을 잃지 않는 자리가 이 갈래다.
+        //    ⚠ 빈 글로는 만들지 않는다 — 잘못 누른 것까지 판에 남기지 않는다.
         if (FindNode(episodeId) is not { } node)
         {
             if (text.Trim().Length == 0)
