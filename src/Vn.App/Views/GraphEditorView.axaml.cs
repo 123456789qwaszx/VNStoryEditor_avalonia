@@ -2070,7 +2070,16 @@ public partial class GraphEditorView : UserControl
             else
             {
                 _slotLabels[SlotKey(choice)] = wanted;
-                _session.Editor.AddChoiceLabel(choice.ChapterId, wanted);
+
+                // ⚠ <b>이미 있으면 안 배운다.</b> 사전은 <b>어휘집</b>이라 같은 말이 두 번 들어갈
+                //    자리가 없고, `AddChoiceLabel`은 [선택지 사전] 화면을 위해 중복을 거절한다 —
+                //    여기서 그대로 부르면 <b>흔한 문구를 다시 쓰는 것만으로 실패한다</b>
+                //    (2026-09-16에 테스트가 잡았다).
+                if (!_session.Editor.FindChapter(choice.ChapterId)!.ChoiceOptions.Any(option =>
+                        string.Equals(option.Text, wanted, StringComparison.Ordinal)))
+                {
+                    _session.Editor.AddChoiceLabel(choice.ChapterId, wanted);
+                }
             }
 
             return;
@@ -2884,10 +2893,159 @@ public partial class GraphEditorView : UserControl
             ? null
             : dropped.NodeId;
 
+        if (port.ChoicePort is { } choice)
+        {
+            // ⚠ <b>UiGuard로 받는다.</b> 규칙 위반은 편집기가 예외로 거절하는데(신원 겹침 ·
+            //    없는 에피소드), 놓임 처리기는 Avalonia가 부르는 자리라 그대로 터진다.
+            //    거절은 상태줄로 가야 한다 — 이 저장소의 모든 편집 창구가 그 규약을 쓴다.
+            UiGuard.Run(_session, "선택지 잇기", () => JoinChoice(choice, target));
+            return;
+        }
+
         if (port.ExecutionPort is not null)
         {
             _session?.Editor.SetExitTarget(port.ExecutionPort, target);
         }
+    }
+
+    /// <summary>
+    /// <b>선택지를 잇거나 끊는다</b> (R7 P-3) — 이 손짓이 고치는 것은 <b>챕터 간선</b>이다.
+    ///
+    /// ⛔ 연출 층에 사본을 두지 않는다(<c>docs/plans/R7.md</c> §2 ①). 그래서 여기서 그은 길이
+    /// [챕터 그래프]에도 그대로 보이고, 내보내기·도달성 증명·V1/V2 진단이 <b>하나도 안 바뀐
+    /// 채</b> 그 값을 본다.
+    /// </summary>
+    private void JoinChoice(GraphChoicePort choice, string? targetNodeId)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (targetNodeId is null)
+        {
+            Unjoin(choice);
+            return;
+        }
+
+        if (EpisodeAt(targetNodeId) is not var (chapterId, episodeId))
+        {
+            _session.SetStatus("에피소드가 아닌 노드에는 선택지를 놓을 수 없습니다.");
+            return;
+        }
+
+        // ⚠ 간선은 챕터 안의 길이다 — 두 챕터를 이을 수 없다. 조용히 무시하면 사람은
+        //   손이 미끄러진 줄 안다.
+        if (!string.Equals(chapterId, choice.ChapterId, StringComparison.Ordinal))
+        {
+            _session.SetStatus(
+                $"'{chapterId}'는 다른 챕터입니다 — 선택지는 챕터 안에서만 잇습니다.");
+            return;
+        }
+
+        string label = LabelOf(choice);
+
+        // 문구가 없는 채로 살아 있는 칸은 <b>자동 길</b> 자리다 (§2 ③-a).
+        bool auto = choice.IsEmpty && label.Length == 0;
+
+        // ⚠ <b>자동 길은 장면을 못 넘는다</b> — 장면 경계는 실제로 `Commit → Exit → Enter`라,
+        //   묻지 않고 넘어가면 안 된다(`AutoEdgeCrossesScene`). 관문에서야 알면 되돌려야 하니
+        //   여기서 먼저 말하고, <b>대신 할 수 있는 것</b>을 함께 말한다.
+        //
+        // ⚠ 장면ID를 아무 데도 안 적은 챕터에서는 에피소드마다 제 장면이라(`__scene_*`)
+        //   자동 길이 아예 설 수 없다. 그것도 규칙 그대로다 — 숨기지 않고 말한다.
+        if (auto && SceneOf(choice.ChapterId, choice.FromEpisodeId) is { } from &&
+            SceneOf(choice.ChapterId, episodeId) is { } to &&
+            !string.Equals(from, to, StringComparison.Ordinal))
+        {
+            _session.SetStatus(
+                "자동 길은 같은 장면 안에서만 이어집니다 — 두 에피소드를 같은 장면에 두거나, " +
+                "문구를 적어 선택지로 이어 주세요.");
+
+            return;
+        }
+
+        if (!choice.IsEmpty)
+        {
+            // 이미 이어진 칸을 다른 노드로 옮긴 것이다 — 옛 길을 걷고 새로 긋는다.
+            _session.Editor.RemoveEdge(
+                choice.ChapterId, choice.FromEpisodeId, choice.ToEpisodeId!, choice.Label);
+        }
+
+        _session.Editor.AddEdge(
+            choice.ChapterId, choice.FromEpisodeId, episodeId,
+            optionLabel: label.Length > 0 ? label : null,
+            auto: auto);
+
+        // 그 칸의 적어 둔 문구는 이제 간선이 들고 있다.
+        //
+        // ⚠ <b>다른 칸의 것은 안 건드린다.</b> 새 간선은 목록 끝에 붙으므로 빈 칸의 자리
+        //    번호가 안 밀린다 — 이 칸 하나만 지우는 것이 맞다.
+        _slotLabels.Remove(SlotKey(choice));
+
+        _session.SetStatus(auto
+            ? $"'{choice.FromEpisodeId}' → '{episodeId}' 자동으로 이었습니다(문구 없이 지나갑니다)."
+            : $"'{choice.FromEpisodeId}' → '{episodeId}' 선택지 '{label}'을 이었습니다.");
+
+        Rebuild();
+    }
+
+    /// <summary>
+    /// 빈 곳에 놓았다 — 이어져 있던 길을 걷는다.
+    ///
+    /// ⚠ 이때는 그 에피소드의 <b>적어 둔 문구를 전부 놓는다</b>. 간선이 줄면 빈 칸의 자리
+    /// 번호가 한 칸씩 내려와 적어 둔 것이 엉뚱한 칸에 붙기 때문이다 — 잘못된 자리에 남기느니
+    /// 비우는 편이 낫다(문구 자체는 챕터의 사전에 남아 있다).
+    /// </summary>
+    private void Unjoin(GraphChoicePort choice)
+    {
+        if (choice.IsEmpty)
+        {
+            return;
+        }
+
+        _session!.Editor.RemoveEdge(
+            choice.ChapterId, choice.FromEpisodeId, choice.ToEpisodeId!, choice.Label);
+
+        foreach (string key in _slotLabels.Keys
+                     .Where(key => key.StartsWith(choice.FromEpisodeId + "#", StringComparison.Ordinal))
+                     .ToList())
+        {
+            _slotLabels.Remove(key);
+        }
+
+        _session.SetStatus($"'{choice.FromEpisodeId}' → '{choice.ToEpisodeId}' 길을 걷었습니다.");
+        Rebuild();
+    }
+
+    /// <summary>그 에피소드의 장면 — 빈 칸이면 <c>__scene_{에피소드}</c>로 퇴화한다.</summary>
+    private string? SceneOf(string chapterId, string episodeId) =>
+        _session?.Editor.FindChapter(chapterId)?.Episodes
+            .FirstOrDefault(episode =>
+                string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal))
+            ?.EffectiveSceneId;
+
+    /// <summary>
+    /// 그 노드가 선 자리 — (챕터, 에피소드). 에피소드가 아니면 null.
+    ///
+    /// ⚠ 판 이름이 챕터고 표식이 먼저고 없으면 이름이다 — 대본 탭·장면 묶기·슬롯 투영이
+    /// 쓰는 그 규칙이다(새 규약을 만들지 않는다).
+    /// </summary>
+    private (string ChapterId, string EpisodeId)? EpisodeAt(string nodeId)
+    {
+        if (_session?.Project.FindFileContainingNode(nodeId) is not { } file ||
+            _session.Project.FindNode(nodeId) is not DialogueNode dialogue ||
+            _session.Editor.FindChapter(file.Name) is not { } chapter)
+        {
+            return null;
+        }
+
+        string episodeId = dialogue.ExcelEpisodeId is { Length: > 0 } marked ? marked : dialogue.Name;
+
+        return chapter.Episodes.Any(episode =>
+            string.Equals(episode.EpisodeId, episodeId, StringComparison.Ordinal))
+            ? (chapter.ChapterId, episodeId)
+            : null;
     }
 
     // AttachLatestResult(발행 결과 끌어 연결)는 2026-08-21에 사라졌다 — 연출 채널이

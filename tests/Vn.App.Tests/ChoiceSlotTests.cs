@@ -126,7 +126,163 @@ public sealed class ChoiceSlotTests : IDisposable
         Assert.Equal(GraphEditorView.SlotAsleep, Dots(graph, session, "root")[1]);
     });
 
+    // ── 끌어 잇기 (R7 P-3) ─────────────────────────────────────────────────
+
+    [Fact]
+    public void 문구를_적고_끌어다_놓으면_챕터_간선이_생긴다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 이 조각의 관문 — 화면이 만드는 것은 <b>챕터 간선</b>이다(§2 ①). 그래야
+        //    [챕터 그래프]에도 같은 길이 보이고 내보내기가 그대로 돈다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Write(graph, session, "root", slot: 1, "왼쪽으로");
+        Drag(graph, session, "root", slot: 1, onto: "a");
+
+        ChapterEdge edge = Assert.Single(session.Editor.FindChapter("ch01")!.Edges);
+
+        Assert.Equal("root", edge.FromEpisodeId);
+        Assert.Equal("a", edge.ToEpisodeId);
+        Assert.Equal("왼쪽으로", edge.OptionLabel);
+        Assert.False(edge.Auto);
+    });
+
+    [Fact]
+    public void 문구_없는_첫_칸을_끌면_자동_길이_된다() => HeadlessUi.Run(() =>
+    {
+        // §2 ③-a — 묻지 않고 지나가는 길에는 고를 것이 없으니 문구도 없다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        // ⚠ 자동 길은 장면을 못 넘으므로 둘을 같은 장면에 둔다 — 안 그러면 규격 위반이고,
+        //    화면이 그것을 먼저 막는다(아래 테스트).
+        session.Editor.UpdateEpisodeScenes("ch01", ["root", "a"], "opening");
+        graph.Rebuild();
+
+        Drag(graph, session, "root", slot: 0, onto: "a");
+
+        ChapterEdge edge = Assert.Single(session.Editor.FindChapter("ch01")!.Edges);
+
+        Assert.True(edge.Auto);
+        Assert.True(string.IsNullOrEmpty(edge.OptionLabel));
+
+        // 그리고 그 길은 규격을 지킨다 — 저작 시점 진단이 조용해야 한다.
+        Assert.DoesNotContain(
+            session.Editor.FindChapter("ch01")!.ToGraphModel("chapters/ch01.xlsx").Errors,
+            item => item.Code.ToString().StartsWith("AutoEdge", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 장면을_넘는_자동_길은_먼저_막고_대안을_말한다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 장면 경계는 실제로 `Commit → Exit → Enter`다 — 묻지 않고 넘어가면 안 된다
+        //    (`AutoEdgeCrossesScene`). 관문에서야 알면 되돌려야 하니 여기서 먼저 말한다.
+        //
+        // ⚠ 장면ID를 아무 데도 안 적은 챕터가 바로 이 경우다 — 에피소드마다 제 장면이라
+        //    (`__scene_*`) 자동 길이 아예 설 수 없다. 숨기지 않고 말한다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Drag(graph, session, "root", slot: 0, onto: "a");
+
+        Assert.Empty(session.Editor.FindChapter("ch01")!.Edges);
+        Assert.Contains("같은 장면 안에서만", session.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("문구를 적어", session.StatusMessage, StringComparison.Ordinal);
+    });
+
+    [Fact]
+    public void 빈_곳에_놓으면_길이_걷힌다() => HeadlessUi.Run(() =>
+    {
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        session.Editor.AddEdge("ch01", "root", "a", optionLabel: "왼쪽으로");
+        graph.Rebuild();
+
+        Drag(graph, session, "root", slot: 0, onto: null);
+
+        Assert.Empty(session.Editor.FindChapter("ch01")!.Edges);
+    });
+
+    [Fact]
+    public void 다른_챕터의_노드에는_못_놓고_이유를_말한다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 간선은 챕터 안의 길이다. 조용히 무시하면 사람은 손이 미끄러진 줄 안다.
+        (GraphEditorView graph, AuthoringSession session) = Show(secondChapter: true);
+
+        Write(graph, session, "root", slot: 1, "저쪽으로");
+        Drag(graph, session, "root", slot: 1, onto: "far");
+
+        Assert.Empty(session.Editor.FindChapter("ch01")!.Edges);
+        Assert.Contains("다른 챕터", session.StatusMessage, StringComparison.Ordinal);
+    });
+
+    [Fact]
+    public void 같은_문구로_같은_곳에_두_번은_안_된다() => HeadlessUi.Run(() =>
+    {
+        // 간선의 신원은 (출발, 도착, 문구)다 (v9) — 겹치면 같은 버튼이 둘로 보인다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        session.Editor.AddEdge("ch01", "root", "a", optionLabel: "왼쪽으로");
+        graph.Rebuild();
+
+        Write(graph, session, "root", slot: 1, "왼쪽으로");
+        Drag(graph, session, "root", slot: 1, onto: "a");
+
+        Assert.Single(session.Editor.FindChapter("ch01")!.Edges);
+        Assert.Contains("이미 있습니다", session.StatusMessage, StringComparison.Ordinal);
+    });
+
+    [Fact]
+    public void 이미_사전에_있는_문구를_다시_써도_된다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 사전은 어휘집이다 — 같은 말을 다른 자리에서 다시 쓰는 것이 그 존재 이유다.
+        //    [선택지 사전] 화면의 중복 거절을 그대로 부르면 <b>흔한 문구를 두 번째 노드에서
+        //    못 쓴다</b>(2026-09-16에 이 테스트가 잡았다).
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        Write(graph, session, "root", slot: 1, "돌아간다");
+        Write(graph, session, "a", slot: 1, "돌아간다");
+
+        Assert.DoesNotContain("오류", session.StatusMessage, StringComparison.Ordinal);
+        Assert.Single(session.Editor.FindChapter("ch01")!.ChoiceOptions,
+            option => option.Text == "돌아간다");
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 그 칸을 끌어 저 노드에 놓는다 — 사람이 하는 길 그대로다.
+    /// <paramref name="onto"/>가 null이면 빈 곳에 놓는다(= 끊기).
+    /// </summary>
+    private static void Drag(
+        GraphEditorView graph, AuthoringSession session, string nodeName, int slot, string? onto)
+    {
+        Press(Rows(graph, session, nodeName)[slot].Children.OfType<Ellipse>().Single());
+
+
+        var canvas = graph.FindControl<Canvas>("GraphCanvas")!;
+
+        // 빈 곳은 카드가 하나도 없는 먼 자리다.
+        Point on = onto is null
+            ? new Point(5000, 5000)
+            : Card(graph, session, onto) is { } card
+                ? new Point(Canvas.GetLeft(card) + 20, Canvas.GetTop(card) + 10)
+                : default;
+
+        // ⚠ 포인터 이벤트의 자리는 <b>최상위 기준</b>이다 — 넘긴 rootVisual과 무관하게 그렇게
+        //   풀린다(2026-09-16에 탐색기에서 한 번, 여기서 또 한 번 밟았다). 판 좌표를 그대로
+        //   주면 엉뚱한 데에 놓여 <b>조용히 아무 일도 안 일어난다</b>.
+        var root = (Visual)TopLevel.GetTopLevel(canvas)!;
+        Point at = canvas.TranslatePoint(on, root)!.Value;
+
+        canvas.RaiseEvent(new PointerReleasedEventArgs(
+            canvas, new Pointer(0, PointerType.Mouse, true), root, at, 0,
+            new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.LeftButtonReleased),
+            KeyModifiers.None, MouseButton.Left));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    private static Border? Card(GraphEditorView graph, AuthoringSession session, string nodeName) =>
+        graph.FindControl<Canvas>("GraphCanvas")!.Children.OfType<Border>()
+            .FirstOrDefault(card => card.Tag as string == NodeId(session, nodeName));
 
     /// <summary>그 노드의 선택지 칸 머리점들 — 그린 차례대로.</summary>
     private static IReadOnlyList<IBrush> Dots(GraphEditorView graph, AuthoringSession session, string nodeName) =>
@@ -181,8 +337,8 @@ public sealed class ChoiceSlotTests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
-    /// <summary>ch01 — root · a, 각각 대사 노드가 선 판.</summary>
-    private (GraphEditorView Graph, AuthoringSession Session) Show()
+    /// <summary>ch01 — root · a, 각각 대사 노드가 선 판. 자리는 겹치지 않게 벌려 둔다.</summary>
+    private (GraphEditorView Graph, AuthoringSession Session) Show(bool secondChapter = false)
     {
         var session = new AuthoringSession();
         session.Open(ManifestPath);
@@ -190,10 +346,14 @@ public sealed class ChoiceSlotTests : IDisposable
         session.Editor.EnsureChapter("ch01");
         string fileId = session.EnsureChapterBoard("ch01");
 
-        foreach (string episodeId in (string[])["root", "a"])
+        Seed(session, "ch01", fileId, 0, "root", "a");
+
+        if (secondChapter)
         {
-            session.Editor.AddEpisode("ch01", episodeId, title: episodeId, 0, 0);
-            session.Editor.AddDialogueNode(fileId, name: episodeId).ExcelEpisodeId = episodeId;
+            session.Editor.EnsureChapter("ch02");
+            string second = session.EnsureChapterBoard("ch02");
+            Seed(session, "ch02", second, 1200, "far");
+            session.SetFileExpanded(second, expanded: true);
         }
 
         // ⚠ 판을 펴야 카드가 선다 — 접힌 판은 표 프록시 하나로 온다.
@@ -207,5 +367,17 @@ public sealed class ChoiceSlotTests : IDisposable
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         return (graph, session);
+    }
+
+    private static void Seed(
+        AuthoringSession session, string chapterId, string fileId, double x, params string[] episodeIds)
+    {
+        for (int index = 0; index < episodeIds.Length; index++)
+        {
+            session.Editor.AddEpisode(chapterId, episodeIds[index], title: episodeIds[index], 0, 0);
+
+            session.Editor.AddDialogueNode(
+                fileId, x + (index * 320), 0, episodeIds[index]).ExcelEpisodeId = episodeIds[index];
+        }
     }
 }
