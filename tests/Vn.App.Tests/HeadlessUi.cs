@@ -64,7 +64,22 @@ public static class TestAppBuilder
 {
     public static AppBuilder BuildAvaloniaApp() => AppBuilder
         .Configure<App>()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions())
+
+        // ⛔ <b>글자는 진짜로 잰다</b> (2026-09-16). 헤드리스 기본값(`UseHeadlessDrawing = true`)의
+        //    글자 대역이 <b>메모리를 무한히 먹는다</b> — 감싸기(`TextWrapping="Wrap"`)를 켠
+        //    TextBox에 <b>맨 끝이 아닌 빈 줄</b>이 하나라도 있으면 그렇다.
+        //
+        //    4줄로 재현된다: `new TextBox { Text = "\n", TextWrapping = Wrap }`를 창에 넣고
+        //    레이아웃을 돌리면 `ShapedBuffer.EnsureClusterCache`에서 OOM이 난다. 터지는 것은
+        //    "\n" · "\n\n" · "\n가" · "가\n\n" · "가\n\n가"이고, "" · "가\n" · " \n"은 멀쩡하다
+        //    (= <b>마지막 줄이 아닌 빈 줄</b>). `NoWrap`이면 안 터진다.
+        //
+        //    ⚠ <b>제품은 멀쩡하다.</b> Skia(실제 앱)로 돌리면 같은 글이 전부 통과한다 —
+        //    헤드리스 그리기 대역만의 문제다. 대신 그 대역을 쓰면 <b>스위트가 기계를 먹는다</b>
+        //    (2026-09-16 소유자: 32GB · 90%에서 두 번 직접 껐다). 대본 한 편에 빈 줄이 없을
+        //    수는 없으니 언젠가 반드시 밟는다.
+        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+        .UseSkia()
         // 더블탭 시간 창을 테스트가 쥔다 — 합성 더블클릭이 스위트 부하의 진짜 시계에
         // 매이지 않게 한다. 상세는 TestPlatformSettings.
         .AfterSetup(_ => TestPlatformSettings.Install());
