@@ -1,8 +1,12 @@
 namespace Vn.Authoring.Chapters;
 
 /// <summary>
-/// `에피소드` 시트 한 행. 위치는 엑셀이 소유하고 뷰는 읽기만 한다 (G-2) —
-/// 그래서 <see cref="X"/>·<see cref="Y"/>에 setter가 없다.
+/// 에피소드 하나.
+///
+/// ⚠ 옛 주석은 <i>"위치는 엑셀이 소유하고 뷰는 읽기만 한다 (G-2)"</i>였다. 2026-09-16에
+/// 그 전제가 뒤집혔다(R-F) — 자리의 주인은 이제 프로젝트이고
+/// <c>ProjectEditor.MoveEpisode</c>가 고친다. <see cref="X"/>·<see cref="Y"/>에 setter가
+/// 없는 것은 그대로지만, 이유가 "남의 값이라서"가 아니라 <b>레코드라서</b>다(<c>with</c>로 바꾼다).
 /// </summary>
 /// <param name="Index">"05"·"05A"·"★"처럼 사람이 붙이는 표시용 순번. 숫자가 아니어도 된다.</param>
 /// <param name="DialogueEntry">런타임이 재생할 대사 엔트리 이름. 비면 오류다.</param>
