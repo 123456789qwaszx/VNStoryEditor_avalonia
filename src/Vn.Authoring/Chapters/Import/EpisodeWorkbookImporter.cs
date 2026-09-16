@@ -229,7 +229,11 @@ public static class EpisodeWorkbookImporter
             return existing;
         }
 
-        DialogueNode created = editor.AddDialogueNode(fileId, name: name);
+        // 새 카드는 <b>제 장면의 줄</b>에 선다 (R7 P-4) — 원점에 쌓이면 판을 열었을 때
+        // 카드가 한 곳에 겹쳐 챕터 프레임도 장면 영역도 뜻을 잃는다.
+        (double x, double y) = Graph.NodePlacement.For(editor.Project, chapter.ChapterId, episodeId);
+
+        DialogueNode created = editor.AddDialogueNode(fileId, x, y, name);
 
         // 노드 생성이 자동으로 채우는 첫 빈 줄을 은퇴시킨다. 워크북의 줄들은 전부 제 신원을
         // 실어 오는데 이 줄만 고아로 남아, 반영이 "이 빈 줄이 지워진 것인지 어느 줄로 고쳐진

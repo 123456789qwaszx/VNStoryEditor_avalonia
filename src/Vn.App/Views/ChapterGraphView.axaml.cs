@@ -3326,7 +3326,8 @@ public partial class ChapterGraphView : UserControl
 
         if (!alreadyThere)
         {
-            DialogueNode created = _session.Editor.AddDialogueNode(fileId, name: episodeId);
+            (double x, double y) = Vn.Authoring.Graph.NodePlacement.For(_session.Project, chapterId, episodeId);
+            DialogueNode created = _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
 
             // ⚠ 이 표식은 아직 "본문은 엑셀 소유"라는 뜻이라 편집기가 읽기 전용으로 잠근다.
             //    §6.4가 그 개념 자체를 걷으라고 하지만(뒤집기 뒤에는 모든 노드가 툴 소유다),

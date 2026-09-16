@@ -918,8 +918,13 @@ public partial class ScriptView : UserControl
     /// </summary>
     private DialogueNode CreateNodeFor(string episodeId)
     {
-        string fileId = _session!.Editor.EnsureChapterBoard(EpisodeTree.Selection!.ChapterId);
-        DialogueNode created = _session.Editor.AddDialogueNode(fileId, name: episodeId);
+        string chapterId = EpisodeTree.Selection!.ChapterId;
+        string fileId = _session!.Editor.EnsureChapterBoard(chapterId);
+
+        // 새 카드는 <b>제 장면의 줄</b>에 선다 (R7 P-4) — 원점에 쌓이면 챕터 프레임도
+        // 장면 영역도 뜻을 잃는다. 규칙은 세 창구가 함께 쓴다.
+        (double x, double y) = Vn.Authoring.Graph.NodePlacement.For(_session.Project, chapterId, episodeId);
+        DialogueNode created = _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
 
         created.ExcelEpisodeId = episodeId;
 
