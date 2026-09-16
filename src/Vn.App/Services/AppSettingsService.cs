@@ -114,6 +114,92 @@ internal static class AppSettingsService
     private static double ClampVolume(double? volume) =>
         volume is { } value && double.IsFinite(value) ? Math.Clamp(value, 0, 1) : 1;
 
+    // ── 탐색기 접힘 (R6 S-4) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// <b>탐색기의 접힘</b> — 프로젝트별로 (<c>docs/plans/R6-explorer.md</c> §4).
+    ///
+    /// ⚠ <b>왜 프로젝트 파일이 아닌가.</b> 프로젝트 파일은 <b>팀의 것</b>이고 커밋된다 —
+    /// 내가 접어 둔 것이 남의 화면을 접으면 안 된다. 재생 속도·음량이 이미 이 자리에 산다.
+    ///
+    /// ⚠ <b>편 것과 접은 것을 둘 다</b> 싣는다. 트리는 <i>"고른 에피소드가 든 마디는 저절로
+    /// 펴진다"</i>를 기본값으로 쓰므로, 접은 것만 기억하면 사람이 <b>일부러 편</b> 마디가
+    /// 안 돌아오고, 편 것만 기억하면 <b>접은 것이 안 남는다</b>.
+    /// </summary>
+    public static (IReadOnlyList<string> Expanded, IReadOnlyList<string> Collapsed) LoadExplorerState(
+        string projectPath) => LoadExplorerState(SettingsPath, projectPath);
+
+    internal static (IReadOnlyList<string> Expanded, IReadOnlyList<string> Collapsed) LoadExplorerState(
+        string settingsPath, string projectPath)
+    {
+        AppSettings settings = Load(settingsPath);
+        ExplorerState? state = FindExplorer(settings, NormalizeProjectKey(projectPath));
+
+        return (state?.Expanded ?? [], state?.Collapsed ?? []);
+    }
+
+    public static void SaveExplorerState(
+        string projectPath, IEnumerable<string> expanded, IEnumerable<string> collapsed) =>
+        SaveExplorerState(SettingsPath, projectPath, expanded, collapsed);
+
+    internal static void SaveExplorerState(
+        string settingsPath,
+        string projectPath,
+        IEnumerable<string> expanded,
+        IEnumerable<string> collapsed)
+    {
+        AppSettings settings = Load(settingsPath);
+        settings.Explorers ??= [];
+
+        string key = NormalizeProjectKey(projectPath);
+
+        // 대소문자만 다른 옛 열쇠가 있으면 그것을 쓴다 — 윈도에서 같은 프로젝트가 둘로 갈리면
+        // 접힘이 경로를 어떻게 적었느냐에 따라 달라 보인다.
+        key = settings.Explorers.Keys.FirstOrDefault(existing =>
+            string.Equals(existing, key, StringComparison.OrdinalIgnoreCase)) ?? key;
+
+        settings.Explorers[key] = new ExplorerState
+        {
+            Expanded = [.. expanded],
+            Collapsed = [.. collapsed]
+        };
+
+        Prune(settings.Explorers);
+        Save(settings, settingsPath);
+    }
+
+    private static ExplorerState? FindExplorer(AppSettings settings, string key) =>
+        settings.Explorers?.FirstOrDefault(entry =>
+            string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
+
+    /// <summary>
+    /// 사라진 프로젝트의 접힘을 버린다 — 설정 파일이 <b>자라기만</b> 하면 안 된다.
+    ///
+    /// ⚠ <b>못 읽는 경로는 남긴다.</b> 없는 것과 못 읽는 것은 다르다 — 네트워크 드라이브가
+    /// 잠깐 안 붙었다고 그 프로젝트의 접힘을 버리면 돌아왔을 때 트리가 통째로 펴져 있다.
+    /// </summary>
+    private static void Prune(Dictionary<string, ExplorerState> explorers)
+    {
+        foreach (string key in explorers.Keys.ToList())
+        {
+            try
+            {
+                if (!File.Exists(key))
+                {
+                    explorers.Remove(key);
+                }
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or
+                    NotSupportedException or
+                    PathTooLongException or
+                    IOException or
+                    UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     /// <summary>
     /// 설정 파일이 없거나, 잘린 JSON이거나, 형이 전혀 다른 내용이어도 기본값으로 돌아간다.
     /// 편의 설정 하나 때문에 앱이 시작하지 못하는 일은 없어야 한다.
@@ -143,11 +229,13 @@ internal static class AppSettingsService
         }
     }
 
-    private static void Save(AppSettings settings)
+    private static void Save(AppSettings settings) => Save(settings, SettingsPath);
+
+    private static void Save(AppSettings settings, string settingsPath)
     {
         try
         {
-            string? directory = Path.GetDirectoryName(SettingsPath);
+            string? directory = Path.GetDirectoryName(settingsPath);
 
             if (directory is not null)
             {
@@ -155,7 +243,7 @@ internal static class AppSettingsService
             }
 
             File.WriteAllText(
-                SettingsPath,
+                settingsPath,
                 JsonSerializer.Serialize(settings, WriteOptions),
                 new UTF8Encoding(false));
         }
@@ -194,5 +282,19 @@ internal static class AppSettingsService
 
         /// <summary>미리 듣기 효과음 볼륨 0..1 (W63). null이면 원음.</summary>
         public double? SfxVolume { get; set; }
+
+        /// <summary>프로젝트 경로 → 탐색기 접힘 (R6 S-4). null이면 기억한 것이 없다.</summary>
+        public Dictionary<string, ExplorerState>? Explorers { get; set; }
+    }
+
+    /// <summary>
+    /// 한 프로젝트의 탐색기 접힘. 마디 <b>열쇠</b>만 싣는다 — 트리 구조는 그릴 때마다
+    /// 프로젝트에서 다시 나오므로, 여기 남은 것이 실제 마디와 안 맞으면 그냥 안 쓰인다.
+    /// </summary>
+    internal sealed class ExplorerState
+    {
+        public List<string> Expanded { get; set; } = [];
+
+        public List<string> Collapsed { get; set; } = [];
     }
 }

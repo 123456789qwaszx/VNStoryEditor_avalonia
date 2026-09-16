@@ -139,4 +139,109 @@ public class AppSettingsServiceTests
             Cleanup(path);
         }
     }
+
+    // ── 탐색기 접힘 (R6 S-4) ────────────────────────────────────────────────
+
+    [Fact]
+    public void 접힘은_프로젝트별로_기억한다()
+    {
+        // 규격 §4 — 프로젝트 파일은 팀의 것이라 여기(%APPDATA%)에 둔다. 그러니 어느
+        // 프로젝트의 접힘인지가 <b>열쇠</b>여야 한다.
+        string path = TempSettings();
+        string first = TempProject();
+        string second = TempProject();
+
+        try
+        {
+            AppSettingsService.SaveExplorerState(path, first, ["ch:a"], ["ch:b"]);
+            AppSettingsService.SaveExplorerState(path, second, ["ch:c"], []);
+
+            Assert.Equal(["ch:a"], AppSettingsService.LoadExplorerState(path, first).Expanded);
+            Assert.Equal(["ch:b"], AppSettingsService.LoadExplorerState(path, first).Collapsed);
+            Assert.Equal(["ch:c"], AppSettingsService.LoadExplorerState(path, second).Expanded);
+            Assert.Empty(AppSettingsService.LoadExplorerState(path, second).Collapsed);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public void 대소문자만_다른_경로는_같은_프로젝트다()
+    {
+        // 윈도 경로다 — 갈리면 접힘이 "경로를 어떻게 적었느냐"에 따라 달라 보인다.
+        string path = TempSettings();
+        string project = TempProject();
+
+        try
+        {
+            AppSettingsService.SaveExplorerState(path, project.ToLowerInvariant(), ["ch:a"], []);
+            AppSettingsService.SaveExplorerState(path, project.ToUpperInvariant(), [], ["ch:a"]);
+
+            (IReadOnlyList<string> expanded, IReadOnlyList<string> collapsed) =
+                AppSettingsService.LoadExplorerState(path, project);
+
+            Assert.Empty(expanded);
+            Assert.Equal(["ch:a"], collapsed);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public void 사라진_프로젝트의_접힘은_버린다()
+    {
+        // 설정 파일이 자라기만 하면 안 된다 — 임시 프로젝트를 여닫는 것만으로 늘어난다.
+        string path = TempSettings();
+        string gone = TempProject();
+        string alive = TempProject();
+
+        try
+        {
+            AppSettingsService.SaveExplorerState(path, gone, ["ch:a"], []);
+            File.Delete(gone);
+
+            AppSettingsService.SaveExplorerState(path, alive, ["ch:b"], []);
+
+            Assert.Single(AppSettingsService.Load(path).Explorers!);
+            Assert.Empty(AppSettingsService.LoadExplorerState(path, gone).Expanded);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    [Fact]
+    public void 접힘이_없거나_깨져_있어도_빈_것으로_돌아간다()
+    {
+        // 편의 설정 하나 때문에 탐색기가 안 서면 안 된다.
+        string path = TempSettings();
+        Write(path, "{ \"Explorers\": \"객체여야 하는 자리\" }");
+
+        try
+        {
+            Assert.Empty(AppSettingsService.LoadExplorerState(path, TempProject()).Expanded);
+        }
+        finally
+        {
+            Cleanup(path);
+        }
+    }
+
+    /// <summary>진짜 파일이어야 한다 — 없는 프로젝트의 접힘은 저장할 때 버려진다(가지치기).</summary>
+    private static string TempProject()
+    {
+        string directory = Path.Combine(
+            Path.GetTempPath(), "vn-explorer-state", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        string path = Path.Combine(directory, "project.vnproj");
+        File.WriteAllText(path, "{}");
+
+        return path;
+    }
 }

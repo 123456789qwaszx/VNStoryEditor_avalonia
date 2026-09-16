@@ -127,7 +127,56 @@ public sealed class ChapterSceneTreeTests
         window.Close();
     });
 
+    [Fact]
+    public void 접은_것이_앱을_다시_열어도_남는다() => HeadlessUi.Run(() =>
+    {
+        // 규격 §4 — 접힘은 <b>사람의 것</b>이라 프로젝트를 따라다닌다. 세션 안에서만 살면
+        // 탭을 옮겼다 오거나 앱을 다시 켤 때마다 접어 둔 것이 도로 펴진다.
+        string project = TempProject();
+        ChapterDocument chapter = Chapter("ch01", ("opening", "ep01"));
+
+        ChapterSceneTree first = Show(chapter, project);
+        Press(first, SceneTreeRowKind.Chapter);
+        Assert.DoesNotContain(first.Rows, row => row.Kind == SceneTreeRowKind.Episode);
+
+        // 새 컨트롤 = 앱을 다시 켠 것. 같은 프로젝트를 다시 연다.
+        ChapterSceneTree reopened = Show(chapter, project);
+
+        Assert.DoesNotContain(reopened.Rows, row => row.Kind == SceneTreeRowKind.Episode);
+    });
+
+    [Fact]
+    public void 다른_프로젝트를_열면_앞_프로젝트의_접힘을_안_쓴다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 열쇠는 챕터 Id로 만든다 — 프로젝트를 갈아도 안 놓으면 <b>이름만 같은 다른
+        //    챕터</b>가 엉뚱하게 접힌 채로 열린다.
+        ChapterDocument chapter = Chapter("ch01", ("opening", "ep01"));
+
+        ChapterSceneTree tree = Show(chapter, TempProject());
+        Press(tree, SceneTreeRowKind.Chapter);
+        Assert.DoesNotContain(tree.Rows, row => row.Kind == SceneTreeRowKind.Episode);
+
+        tree.Remember(TempProject());
+        tree.Rebuild(Project(chapter), (_, _) => true);
+        tree.Select("ch01", "ep01");
+
+        Assert.Contains(tree.Rows, row => row.Kind == SceneTreeRowKind.Episode);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>진짜 파일이어야 한다 — 없는 프로젝트의 접힘은 저장할 때 버려진다(가지치기).</summary>
+    private static string TempProject()
+    {
+        string directory = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "vn-tree-collapse", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        string path = System.IO.Path.Combine(directory, "project.vnproj");
+        File.WriteAllText(path, "{}");
+
+        return path;
+    }
 
     private static SceneTreeRow Row(ChapterSceneTree tree, string episodeId) =>
         tree.Rows.Single(row => row.EpisodeId == episodeId);
@@ -151,12 +200,13 @@ public sealed class ChapterSceneTreeTests
     /// ⚠ 고르지 않으면 규격 §4대로 <b>전부 접혀 있어</b> 줄이 챕터 하나뿐이다 — 그 상태에서
     /// 자식을 세는 단언은 빈 집합을 보고 <b>거짓으로 통과</b>한다(2026-09-16에 실제로 그랬다).
     /// </summary>
-    private static ChapterSceneTree Show(ChapterDocument chapter)
+    private static ChapterSceneTree Show(ChapterDocument chapter, string? projectPath = null)
     {
         var tree = new ChapterSceneTree();
         var window = new Window { Width = 300, Height = 500, Content = tree };
         window.Show();
 
+        tree.Remember(projectPath);
         tree.Rebuild(Project(chapter), (_, _) => true);
         tree.Select(chapter.ChapterId, chapter.Episodes[0].EpisodeId);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();

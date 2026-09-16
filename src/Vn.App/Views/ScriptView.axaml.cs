@@ -85,6 +85,8 @@ public partial class ScriptView : UserControl
             return;
         }
 
+        // 접힘은 사람의 것이라 프로젝트를 따라다닌다 (R6 S-4) — 같은 프로젝트면 지나간다.
+        EpisodeTree.Remember(_session.ProjectPath);
         EpisodeTree.Rebuild(_session.Project, HasScript);
 
         // 아직 아무것도 안 골랐으면 첫 에피소드를 고른다 — 빈 오른쪽 화면으로 시작하면

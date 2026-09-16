@@ -70,6 +70,9 @@ public partial class ChapterSceneTree : UserControl
     private StoryProject? _project;
     private Func<string, string, bool>? _hasScript;
 
+    /// <summary>접힘을 기억해 둘 프로젝트. 없으면 <b>세션 안에서만</b> 산다.</summary>
+    private string? _projectPath;
+
     public ChapterSceneTree() => InitializeComponent();
 
     /// <summary>에피소드를 골랐다. 챕터는 파생이므로 함께 실어 보낸다.</summary>
@@ -100,6 +103,38 @@ public partial class ChapterSceneTree : UserControl
         }
 
         Draw();
+    }
+
+    /// <summary>
+    /// 이 프로젝트의 접힘을 <b>이어 쓴다</b> (R6 S-4 · 규격 §4).
+    ///
+    /// 프로젝트가 바뀌면 들고 있던 접힘을 놓고 새로 읽는다 — 앞 프로젝트의 챕터 이름으로 만든
+    /// 열쇠가 남아 있으면 이름이 같은 다른 챕터가 엉뚱하게 접힌다.
+    ///
+    /// ⚠ 같은 프로젝트면 <b>아무것도 안 한다</b>. 이 자리는 다시 그릴 때마다 지나가므로
+    /// (편집 한 번이 판을 다시 그린다) 매번 파일을 읽으면 안 된다.
+    /// </summary>
+    internal void Remember(string? projectPath)
+    {
+        if (string.Equals(_projectPath, projectPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _projectPath = projectPath;
+        _expanded.Clear();
+        _collapsed.Clear();
+
+        if (projectPath is null)
+        {
+            return;
+        }
+
+        (IReadOnlyList<string> expanded, IReadOnlyList<string> collapsed) =
+            AppSettingsService.LoadExplorerState(projectPath);
+
+        _expanded.UnionWith(expanded);
+        _collapsed.UnionWith(collapsed);
     }
 
     /// <summary>밖에서 고르게 한다(복원·이어 고르기). 가는 길의 마디를 함께 편다.</summary>
@@ -345,6 +380,11 @@ public partial class ChapterSceneTree : UserControl
         {
             _collapsed.Remove(row.Key);
             _expanded.Add(row.Key);
+        }
+
+        if (_projectPath is not null)
+        {
+            AppSettingsService.SaveExplorerState(_projectPath, _expanded, _collapsed);
         }
 
         Draw();
