@@ -382,6 +382,10 @@ public partial class GraphEditorView : UserControl
 
             _frames.Add(frame);
             _frames.Add(label);
+
+            // 챕터 안에 장면을 한 겹 더 (R6 S-3b) — 챕터 프레임 <b>뒤에</b> 더해야 그 위에
+            // 깔린다(아래 Insert가 목록 순서대로 넣는다).
+            DrawSceneFrames(group.Key, group);
         }
 
         // 카드·간선보다 뒤에 깔리도록 맨 앞 인덱스에 순서대로 끼운다.
@@ -391,6 +395,129 @@ public partial class GraphEditorView : UserControl
         }
 
         DrawChapterRails();
+    }
+
+    /// <summary>
+    /// <b>장면 프레임</b> — 챕터 프레임 안에 한 겹 더 (R6 S-3b · <c>docs/plans/R6-explorer.md</c> §5).
+    ///
+    /// 같은 장면의 카드가 한 영역으로 보여야 작가가 <b>어디까지가 한 수명</b>인지 안다 —
+    /// 장면 안에서는 모든 게 물릴 수 있고 장면이 끝나면 확정되기 때문이다.
+    ///
+    /// ⚠ <b>안 그리는 경우 셋</b>: 챕터가 아닌 판 · 장면ID를 하나도 안 적은 챕터 ·
+    /// 장면이 하나뿐인 챕터. 앞의 둘은 접힌 판과 <b>같은 규칙</b>이고(규격 §2), 셋째는
+    /// 챕터 프레임과 똑같은 자리에 겹쳐 그려 봐야 테두리만 두 겹이 되기 때문이다.
+    ///
+    /// ⚠ 히트 대상이 아니다 — 클릭·드래그·포트에 아무 영향이 없다(챕터 프레임과 같다).
+    /// </summary>
+    private void DrawSceneFrames(string fileId, IEnumerable<ExpandedNodeProjection> nodes)
+    {
+        if (_session?.Project.Files.FirstOrDefault(file =>
+                string.Equals(file.Id, fileId, StringComparison.Ordinal)) is not { } board ||
+            _session.Editor.FindChapter(board.Name) is not { } chapter)
+        {
+            return;
+        }
+
+        IReadOnlyList<ChapterScene> scenes = ChapterSceneGrouping.Of(
+            chapter.ToGraphModel(chapter.ChapterId));
+
+        if (scenes.Count < 2 || scenes.All(scene => scene.IsDefault))
+        {
+            return;
+        }
+
+        var sceneOf = new Dictionary<string, ChapterScene>(StringComparer.Ordinal);
+
+        foreach (ChapterScene scene in scenes)
+        {
+            foreach (ChapterEpisode episode in scene.Episodes)
+            {
+                sceneOf[episode.EpisodeId] = scene;
+            }
+        }
+
+        List<ExpandedNodeProjection> all = nodes.ToList();
+
+        foreach (ChapterScene scene in scenes)
+        {
+            Rect? bounds = null;
+
+            foreach (ExpandedNodeProjection node in all)
+            {
+                if (EpisodeOf(node) is not { } episodeId ||
+                    !sceneOf.TryGetValue(episodeId, out ChapterScene? owner) ||
+                    !ReferenceEquals(owner, scene) ||
+                    FindCard(node.NodeId) is not { } card)
+                {
+                    continue;
+                }
+
+                var rect = new Rect(node.Position.X, node.Position.Y, CardWidth, CardHeightOf(card));
+                bounds = bounds is { } current ? current.Union(rect) : rect;
+            }
+
+            if (bounds is not { } area)
+            {
+                continue;
+            }
+
+            // 챕터 프레임(24·46)보다 얕게 — 두 테두리가 붙어 보이지 않게 한다.
+            area = area.Inflate(new Thickness(10, 26, 10, 10));
+
+            _frames.Add(SceneFrame(area));
+            _frames.Add(SceneLabel(area, scene));
+        }
+    }
+
+    /// <summary>그 노드가 대신하는 에피소드 — 표식이 먼저고, 없으면 이름이다(대본 탭과 같은 규칙).</summary>
+    private string? EpisodeOf(ExpandedNodeProjection node) =>
+        _session?.Project.FindNode(node.NodeId) is DialogueNode dialogue
+            ? dialogue.ExcelEpisodeId is { Length: > 0 } marked ? marked : dialogue.Name
+            : null;
+
+    private static Border SceneFrame(Rect area)
+    {
+        var frame = new Border
+        {
+            Width = area.Width,
+            Height = area.Height,
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(90, 217, 119, 6)),
+            Background = new SolidColorBrush(Color.FromArgb(10, 217, 119, 6)),
+            IsHitTestVisible = false
+        };
+
+        Canvas.SetLeft(frame, area.X);
+        Canvas.SetTop(frame, area.Y);
+
+        return frame;
+    }
+
+    private static Border SceneLabel(Rect area, ChapterScene scene)
+    {
+        var label = new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 1),
+            Background = new SolidColorBrush(Color.FromArgb(180, 217, 119, 6)),
+            IsHitTestVisible = false,
+            Child = new TextBlock
+            {
+                // ⚠ 장면이 확정·롤백의 경계라는 것이 이름표에서 읽혀야 한다.
+                Text = scene.HasSplitEntry
+                    ? $"장면 {scene.DisplayName} ⚠"
+                    : $"장면 {scene.DisplayName}",
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = Brushes.White
+            }
+        };
+
+        Canvas.SetLeft(label, area.X + 10);
+        Canvas.SetTop(label, area.Y + 6);
+
+        return label;
     }
 
     // ── 챕터 간선 철도 배선 (T1) ────────────────────────────────────────────
