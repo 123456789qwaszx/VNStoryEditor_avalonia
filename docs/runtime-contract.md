@@ -62,6 +62,47 @@
 [Unity]   ──┘
 ```
 
+## 0-0. Scene이란 무엇인가 — 툴이 알아야 하는 만큼 (2026-09-16 확정)
+
+> 계약이 굳었다(소유자). 정본은 `ked-progression-runtime/dev`.
+
+**Scene은 표시 이름도 유니티 씬도 아니다. 여러 Episode를 하나의 진행
+커밋/롤백/복원 수명으로 묶는 단위다.**
+
+```text
+Scenario(회차) > Chapter > Scene > Episode
+```
+
+### 툴이 지켜야 하는 것 넷
+
+| | 규칙 | 근거 |
+|---|---|---|
+| ① | **정본은 `Episode.SceneId` 하나다.** 같은 값을 가진 에피소드들이 한 Scene이다 | 런타임에도 저장되는 Scene 테이블이 없다 — `SceneProgression`은 **실행 시** 만들어진다 |
+| ② | **빈 값은 `__scene_{EpisodeId}`** — 에피소드 하나가 곧 장면 하나인 퇴화 상태 | `EpisodeNode` 생성자가 발급. 구판 워크북 호환이 여기 산다 |
+| ③ | **Scene에 밖에서 들어오는 자리는 하나**(=루트). 챕터 시작도 그 하나로 센다. 같은 루트로 여러 간선·재진입은 정상 | `ChapterInvariants.VerifySceneEntries`. 롤백이 되돌아갈 곳과 이어하기가 재개할 곳이 그 자리다 |
+| ④ | **자동 간선은 장면을 못 넘는다** | 장면 경계는 실제로 `Commit → Exit → Enter`다 — 모르게 넘어가면 안 된다 |
+
+⛔ **툴은 이 판정을 따로 구현하지 않는다.** 내보내기가 낸 JSON을 코어 로더에 되먹여
+코어의 Error를 `CoreRefusedChapter`로 세운다 — **판정의 주인은 코어 하나다.**
+
+### 툴이 흉내 내지 않는 것
+
+수명주기(`Commit` / `Rollback` / `Replay` / `Stop`)는 **실행 층의 것**이다. 툴은 그 경계를
+**저작**할 뿐 재현하지 않는다. 참고로만 적어 둔다 — 같은 Scene 안 이동은 커밋 없음,
+다른 Scene으로 가면 `Commit → Exit → Enter`, 롤백은 같은 Scene을 유지한 채 루트부터 replay,
+Stop/New Game/Manual Load는 커밋 금지, Episode Skip은 연출 기능이라 진행을 안 건드린다.
+
+### 화면에서의 Scene — 아직 층이 아니다 (R6에서 세운다)
+
+지금 `SceneId`는 **값으로만** 있다 — 에피소드 칸 하나와 배지 하나. Chapter와 Episode를
+**잇는 자리가 없다**(2026-09-16 소유자 관찰). [R6](plans/R6.md)이 그것을 세운다:
+대본 탭과 연출 그래프가 `Chapter → Scene → Episode`로 접었다 펼 수 있게.
+
+⚠ 그때도 **Scene 엔티티를 만들지 않는다** — 화면의 층은 `Episode.SceneId`에서 나오는
+**파생 묶음**이다. 엔티티를 만들면 정본이 둘이 된다.
+
+---
+
 ## 0-1. ⚠ 2026-09-02 재편 — 진행 코어가 챕터 안으로 들어왔고, Scene이 섰다
 
 런타임 실측(`server_DB`, 09-02 — G4 작업이 **미커밋으로 진행 중**인 트리. 내 두 읽기 사이에
@@ -92,7 +133,7 @@
 | `Ked.Presentation.Core` | **실질 갈림 0** — CRLF를 빼면 `SlideMotion.cs`·`StageReducer.Staging.cs` 79줄, 코드는 삼항식 줄바꿈 1건, 나머지는 이쪽이 더 풍부한 `///` 주석 |
 | 커맨드 어휘 | **차이 0** — 런타임 등록 126(리터럴 125 + `$"{frame}fr"` 동적 1) ↔ 카탈로그 126항목. ⚠ §E1·§G-3의 "179"는 낡은 수치였다 |
 | `ExportedTuning` | 08-22 이후 변화 없음 |
-| **`Ked.Progression`** | ⛔ **갈렸다** — 이쪽 `src/Ked.Progression`(08-25 반입)은 런타임 사본 대비 **12파일 821줄** + 저쪽에서 사라진 파일 셋(`EndingRule.cs`·`ScenarioAdvance.cs`·`ScenarioTransition.cs`)이 남아 있다. 이쪽 로더는 `EndingRules`를 아직 읽고 `SceneId`·`VerifySceneEntries`를 모른다 → **`CoreRefusedChapter` 관문이 저쪽보다 느슨하다.** `SceneId`를 내지 않는 동안은 퇴화 상태라 안 보이지만, 내기 시작하는 순간 "저작 통과 · 게임 로드 실패"가 실전이 된다(§G-11) |
+| **`Ked.Progression`** | ✅ **맞물렸다 (2026-09-16 실측).** 두 사본이 **공유하는 24파일 중 23개가 차이 0**이고(CRLF 무시), 나머지 `Spec/ChapterProgression.cs`도 필드·주석 **위치**만 다르다. `Spec/ChapterInvariants.cs`가 같으므로 `SceneId`·`VerifySceneEntries`·`VerifyAuto`가 **양쪽에서 같은 문장으로 판정한다**. 옛 서술("12파일 821줄 뒤" · "사라진 파일 셋 잔존" · "관문이 느슨하다")은 전부 낡았다 — `EndingRule.cs`·`ScenarioAdvance.cs`·`ScenarioTransition.cs`는 이쪽에도 없다.<br>⚠ **남은 차이는 의도한 것이다**: 이쪽에만 `Reachability/`(도달성 증명 G7 — 저작 전용), 저쪽에만 `Scene/`·`Contracts/`·`ProgressionDriver`(실행 층 — 툴은 실행하지 않는다). **정본은 `ked-progression-runtime/dev`다.** |
 
 ---
 
@@ -267,11 +308,16 @@ UPM을 버리고 `Assets/Scripts/Ked.Progression/`에 복사 반입했다**("매
 커밋→태그→푸시→재해결 왕복이 가장 큰 비용" — `Documentation~/vendoring.md`). 그래서 지금
 이 문서가 겨누는 **로더·DTO의 실물은 런타임 사본**이다.
 
-| 사본 | 어디 | 상태 (2026-09-02) |
+| 사본 | 어디 | 상태 (2026-09-16 실측) |
 |---|---|---|
-| 정본 | `C:\Users\river\Documents\GitHub\ked-progression` `feat/host-integration` | 마지막 커밋 08-25 + **08-26 역동기화가 미커밋** — `Fold`·`SceneId` 없음. **사본보다 뒤처져 있다** |
-| 런타임 사본 | `ked-presentation-runtime/Assets/Scripts/Ked.Progression/` | **실제 작업이 여기서** — Scene·fold·`VerifySceneEntries`. 유니티 EditMode 테스트 14개(09-02 신설) |
-| 이쪽 사본 | `src/Ked.Progression/` | 08-25 반입. 런타임 대비 **12파일 821줄** 뒤 + 사라진 파일 셋 잔존 (§G-11) |
+| **정본** | **`ked-progression-runtime` `dev`** — `Assets/Progression/Runtime/` | ⭐ **여기가 정본이다** (2026-09-16 소유자: *"Scenario/Chapter/Scene/Episode 계약이 완전히 굳었다"*). Core/Runtime/Host 세 층. 문서는 `Progression-Runtime_README.md`·`Progression-Runtime_Plan.md` |
+| 이쪽 사본 | `src/Ked.Progression/` | ✅ **공유 24파일 중 23개 차이 0.** 남은 하나도 위치 차이뿐. 이쪽에만 `Reachability/`(도달성 증명 — 저작 전용), 저쪽에만 `Scene/`·`Contracts/`·`ProgressionDriver`(실행 층) |
+| ~~옛 정본~~ | `ked-progression` `feat/host-integration` | **더는 정본이 아니다.** 08-25에서 멈춤 |
+| ~~옛 런타임 사본~~ | `ked-presentation-runtime/Assets/Scripts/Ked.Progression/` | 실제 작업이 `ked-progression-runtime`으로 옮겨 갔다 |
+
+> ⚠ **툴은 실행 층을 반입하지 않는다.** `SceneProgression`·`SceneRunner`·`ProgressionDriver`는
+> *언제 무엇을 실행하는가*이고, 툴은 *무엇이 유효한 진행인가*(Core)만 있으면 된다.
+> 툴이 실행 층을 흉내 내면 **수명주기의 주인이 둘**이 된다.
 
 **Gate D는 닫혔다 (2026-08-23)** — 로더·DTO·전이기가 서서 실제로 몰아 봤다(H1·H2·H4).
 그 뒤 저쪽이 세이브를 코어에서 걷어 호스트 `Save/` 층으로 옮겼다(§H-6).
@@ -302,7 +348,7 @@ Option : { TargetEpisodeId, ChoiceLabel, VisibleConditions[], Conditions[],
 | `Nodes[]` | `EpisodeNode` | |
 | `NextOptions[]` | `EpisodeOption` | **배열 순서 = 화면 순서 = 서버 이력의 `OptionIndex`**(§C3). 정렬 금지 |
 | **`Node.EventKey`** | `EpisodeNode.EventKey` | ✅ **양쪽 다 섰다** — 이쪽 v14(08-26)부터 내고, 저쪽 DTO 칸도 같은 날(`665e47e1`). 해석 없이 실어 나르고, 장면 끝 fold에서 시청 보고(`PendingEvent`)의 열쇠가 된다. "칸 부탁 중"은 끝 |
-| **`Node.SceneId`** | `EpisodeNode.SceneId` | ⛔ **이쪽이 아직 안 낸다 (§G-10, 대기).** 선택 칸 — 비면 저쪽이 `__scene_{EpisodeId}`를 발급해 **에피소드 하나 = 장면 하나인 퇴화 상태**가 된다(매 에피소드 무대 클리어, 에피소드를 넘는 롤백 없음). 불변식: 장면마다 밖에서 들어오는 자리 하나(재진입 허용). 이어하기는 장면 루트에서만 |
+| **`Node.SceneId`** | `EpisodeNode.SceneId` | ✅ **양쪽 다 섰다 (2026-09-16 확인).** 이쪽은 `에피소드` 시트의 `장면ID` 칸을 그대로 낸다(빈 값도 빈 문자열로). 비면 저쪽 `EpisodeNode` **생성자**가 `__scene_{EpisodeId}`를 발급해 **에피소드 하나 = 장면 하나인 퇴화 상태**가 된다(매 에피소드 무대 클리어, 에피소드를 넘는 롤백 없음) — 구판 호환은 그 자리에서 산다.<br>불변식: 장면마다 밖에서 들어오는 자리 하나(**챕터 시작도 그 하나로 센다**, 재진입 허용). 이어하기는 장면 루트에서만. 자동 간선은 장면을 못 넘는다.<br>⛔ **이쪽이 그 불변식을 따로 구현하지 않는다** — 내보내기가 낸 JSON을 코어 로더에 되먹여(`ProgressionLoader.Load`) 코어의 Error를 `CoreRefusedChapter`로 세우고 **그 간선의 행까지 짚는다**. 판정의 주인은 코어 하나다 |
 | ~~`EndingRules`~~ | **저쪽에서 폐지** (`5e424840`) | 이쪽은 여전히 빈 배열을 낸다 — Newtonsoft가 모르는 칸을 버려 무해. 재반입(§G-11)하면 이쪽 DTO에서도 사라진다 |
 | ~~`Option.Kind`~~ | **저쪽에서 폐지** (`adfda627` — 자동 진행 자체가 폐지) | §G-7 종결. 이쪽이 내는 값은 버려진다 |
 | ~~`Option.HideWhenLocked`~~ | **저쪽 DTO에 없다** | 옛 F4의 "저쪽 DTO는 그대로 둔다"는 낡았다 — 저쪽이 걷었다 |
