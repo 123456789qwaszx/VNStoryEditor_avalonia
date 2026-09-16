@@ -147,4 +147,61 @@ public sealed class BranchMarkerTests
     private static string Preview(ProjectEditor editor, DialogueNode node) =>
         DocumentPreviewFormatter.Format(
             WorkingDialoguePreview.Compose(editor.Project, node.Id));
+
+    // ── 「분기 추가」 (R7 P-5, 편집 명령) ───────────────────────────────────
+
+    [Fact]
+    public void 한_번에_표식과_자유_씬이_함께_선다()
+    {
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+
+        DialogueNode made = editor.AddBranchMarker(node.Id, lineId);
+
+        Assert.Equal(made.Id, node.FindExtension(lineId)!.DetourTargetNodeId);
+        Assert.Single(Ports(editor, node), port => port.Kind == ExitPortKind.Detour);
+
+        // ⚠ 자유 씬이다 — 대본 탭 트리에 안 나오고 진행 JSON에도 안 실린다.
+        Assert.Null(made.ExcelEpisodeId);
+
+        // 같은 판에 선다 — 다녀오는 길이 판을 넘지 않는다.
+        Assert.Equal(
+            editor.Project.FindFileContainingNode(node.Id)!.Id,
+            editor.Project.FindFileContainingNode(made.Id)!.Id);
+    }
+
+    [Fact]
+    public void 되돌리기_한_번에_셋이_함께_돌아간다()
+    {
+        // ⛔ 갈라 두면 표식만 사라지고 <b>아무도 안 부르는 씬</b>이 판에 남는다.
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+
+        int before = editor.Project.Files[0].Nodes.Count;
+        editor.AddBranchMarker(node.Id, lineId);
+
+        editor.Undo();
+
+        Assert.Equal(before, editor.Project.Files[0].Nodes.Count);
+        Assert.Null(editor.Project.EnumerateNodes().OfType<DialogueNode>()
+            .First(item => item.Id == node.Id)
+            .FindExtension(lineId)?.DetourTargetNodeId);
+    }
+
+    [Fact]
+    public void 한_자리에_둘은_못_둔다()
+    {
+        // 표식은 줄 하나에 하나다 — 둘을 적을 칸이 없고, 있어도 어느 쪽이 먼저인지 말할 수 없다.
+        (ProjectEditor editor, DialogueNode node, string lineId) = World();
+        editor.AddBranchMarker(node.Id, lineId);
+
+        Assert.Throws<InvalidOperationException>(() => editor.AddBranchMarker(node.Id, lineId));
+    }
+
+    [Fact]
+    public void 그_노드의_줄이_아니면_거절한다()
+    {
+        (ProjectEditor editor, DialogueNode node, _) = World();
+
+        Assert.Throws<InvalidOperationException>(
+            () => editor.AddBranchMarker(node.Id, "ln_아무거나"));
+    }
 }

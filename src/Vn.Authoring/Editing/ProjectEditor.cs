@@ -238,29 +238,8 @@ public sealed partial class ProjectEditor
     {
         if (scriptId is null)
         {
-            StoryFile file = RequireFile(fileId);
-            var created = new DialogueNode(name: name ?? NextName("장면"))
-            {
-                Layout = new NodeLayout { X = x, Y = y }
-            };
-
-            if (Project.FindNode(created.Id) is not null)
-            {
-                throw new InvalidOperationException($"노드 Id '{created.Id}'가 프로젝트 안에서 중복됩니다.");
-            }
-
-            var script = new ScriptDocument(name: $"{created.Name} 대본");
-            var firstLine = new ScriptLine(_newLineId());
-            created.ScriptId = script.Id;
-
-            Mutate(() =>
-            {
-                script.Lines.Add(firstLine);
-                script.RequireLocale(script.PrimaryLocale).Entries[firstLine.Id] = LocalizedLine.Empty;
-                Project.Scripts.Add(script);
-                file.Nodes.Add(created);
-                Project.StartNodeId ??= created.Id;
-            });
+            (DialogueNode created, Action attach) = NewDialogueNodeCore(fileId, x, y, name);
+            Mutate(attach);
 
             return created;
         }
@@ -272,6 +251,97 @@ public sealed partial class ProjectEditor
         };
 
         return AddNode(fileId, node);
+    }
+
+    /// <summary>
+    /// 대사 노드와 그 전용 대본을 <b>짓기만</b> 한다 — <see cref="Mutate"/> 밖이다.
+    ///
+    /// ⚠ 다른 변경과 <b>한 번에</b> 묶어야 할 때 쓴다(「분기 추가」는 노드·대본·표식이 한
+    /// 동작이라 되돌리기 한 번에 셋이 함께 돌아와야 한다). <c>Mutate</c> 안에서 다른 명령을
+    /// 부르면 변경이 겹쳐 쌓여 되돌리기가 반쪽이 된다 — 그래서 <b>짓는 것</b>과 <b>붙이는
+    /// 것</b>을 갈라 둔다.
+    /// </summary>
+    private (DialogueNode Created, Action Attach) NewDialogueNodeCore(
+        string fileId, double x, double y, string? name)
+    {
+        StoryFile file = RequireFile(fileId);
+        var created = new DialogueNode(name: name ?? NextName("장면"))
+        {
+            Layout = new NodeLayout { X = x, Y = y }
+        };
+
+        if (Project.FindNode(created.Id) is not null)
+        {
+            throw new InvalidOperationException($"노드 Id '{created.Id}'가 프로젝트 안에서 중복됩니다.");
+        }
+
+        var script = new ScriptDocument(name: $"{created.Name} 대본");
+        var firstLine = new ScriptLine(_newLineId());
+        created.ScriptId = script.Id;
+
+        return (created, () =>
+        {
+            script.Lines.Add(firstLine);
+            script.RequireLocale(script.PrimaryLocale).Entries[firstLine.Id] = LocalizedLine.Empty;
+            Project.Scripts.Add(script);
+            file.Nodes.Add(created);
+            Project.StartNodeId ??= created.Id;
+        });
+    }
+
+    /// <summary>
+    /// <b>「분기 추가」</b> (R7 P-5 · 2026-09-17 소유자) — 그 줄 <b>앞</b>에 분기 표식을 두고,
+    /// 다녀올 <b>자유 씬</b>을 함께 세워 잇는다.
+    ///
+    /// ⛔ <b>조건을 걸지 않는다.</b> 연출 그래프는 "어디서 갈라지는가"만 짚는다 — 성립하든
+    /// 말든 다녀오고, 다녀온 씬이 제 첫머리에서 보고 아니면 곧바로 돌아온다. 조건을 채우는
+    /// 창구는 이후의 다른 탭이다.
+    ///
+    /// ⚠ <b>자유 씬이다</b>(<c>ExcelEpisodeId</c>가 없다) — 대본 탭 트리에 안 나오고 진행
+    /// JSON에도 안 실린다. 대사는 [대사 편집]에서만 쓴다.
+    ///
+    /// ⚠ 노드·대본·표식이 <b>한 번의 변경</b>이다. 갈라 두면 되돌리기 한 번에 표식만 사라져
+    /// <b>아무도 안 부르는 씬</b>이 판에 남는다.
+    /// </summary>
+    /// <param name="beforeLineId">이 줄 앞에서 갈라진다. 그 줄에 이미 표식이 있으면 거절한다.</param>
+    public DialogueNode AddBranchMarker(string nodeId, string beforeLineId, string? name = null)
+    {
+        if (Project.FindNode(nodeId) is not DialogueNode source)
+        {
+            throw new InvalidOperationException("분기는 대사 노드에만 둘 수 있습니다.");
+        }
+
+        if (Project.FindFileContainingNode(nodeId) is not { } file)
+        {
+            throw new InvalidOperationException("판에 서 있지 않은 노드입니다.");
+        }
+
+        if (Project.FindScript(source.ScriptId) is not { } script ||
+            script.ActiveLines.All(line =>
+                !string.Equals(line.Id, beforeLineId, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException("그 줄이 이 노드의 대본에 없습니다.");
+        }
+
+        if (source.FindExtension(beforeLineId)?.DetourTargetNodeId is not null)
+        {
+            throw new InvalidOperationException(
+                "그 자리에는 이미 분기가 있습니다 — 한 자리에 하나만 둘 수 있습니다.");
+        }
+
+        (DialogueNode created, Action attach) = NewDialogueNodeCore(
+            file.Id,
+            source.Layout.X,
+            source.Layout.Y + Graph.NodePlacement.SceneRow,
+            name ?? NextName("분기"));
+
+        Mutate(() =>
+        {
+            attach();
+            source.RequireExtension(beforeLineId).DetourTargetNodeId = created.Id;
+        });
+
+        return created;
     }
 
     public SetNode AddSetNode(
