@@ -27,10 +27,11 @@ public class YarnBundleVerificationTests
     [InlineData("golden_ep.yarn")]
     public void 골든_대본과_글자_하나까지_같다(string fileName)
     {
+        // ⛔ 선언 파일 갈래는 2026-09-17에 걷었다 — `declarations.yarn`이 없어져
+        //    `InlineData`에 남은 이름이 하나뿐이고, 갈래는 <b>절대 안 타는 길</b>이었다.
         YarnBundle bundle = EmitGoldenBundle();
-        string actual = fileName == YarnBundleEmitter.DeclarationsFileName
-            ? YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!
-            : bundle.Files.Single(file => file.FileName.EndsWith(fileName, StringComparison.Ordinal)).Text;
+        string actual = bundle.Files
+            .Single(file => file.FileName.EndsWith(fileName, StringComparison.Ordinal)).Text;
         string goldenPath = Path.Combine(GoldenDirectory, fileName);
 
         if (!File.Exists(goldenPath))

@@ -100,9 +100,35 @@ public class OutputManifestTests
             "Set_테스트_파일_본문.yarn",
             OutputManifest.ExpectedFileNames(sample.Project));
 
-        Assert.Contains(
-            YarnBundleEmitter.DeclarationsFileName,
+        // ⛔ <b>뒤집혔다</b> (2026-09-17 — 선언 파일 폐지). 전에는 `declarations.yarn`이
+        //    기대 목록에 <i>있어야</i> 했다. 이제는 안 내므로 기대 목록에 있으면 안 된다 —
+        //    있으면 옛 폴더에 남은 그 파일이 <b>고아로 안 잡혀 영원히 남는다.</b>
+        Assert.DoesNotContain(
+            "declarations.yarn",
             OutputManifest.ExpectedFileNames(sample.Project));
+    }
+
+    [Fact]
+    public void 옛_선언_파일은_고아로_잡힌다()
+    {
+        // 안 내기로 한 파일이 폴더에 남아 있으면 <b>지울 수 있게 보여야</b> 한다.
+        // 이름을 알아보는 일만 남기고 기대 목록에서 뺀 것이 그 목적이다.
+        string directory = TempDirectory();
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(directory, "declarations.yarn"),
+                "title: _declarations\n---\n<<declare $옛변수 = 0>>\n===\n");
+
+            OrphanOutputScan scan = OutputManifest.Scan(directory, ["본문.yarn"]);
+
+            Assert.Equal(["declarations.yarn"], scan.Orphans.Select(orphan => orphan.FileName));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]
@@ -162,7 +188,7 @@ public class OutputManifestTests
             File.WriteAllText(Path.Combine(directory, OutputManifest.FileName), "{ 이건 JSON이 아니다");
             File.WriteAllText(Path.Combine(directory, "Story_옛것.yarn"), "title: Story_옛것\n---\n===\n");
 
-            OrphanOutputScan scan = OutputManifest.Scan(directory, [YarnBundleEmitter.DeclarationsFileName]);
+            OrphanOutputScan scan = OutputManifest.Scan(directory, ["본문.yarn"]);
 
             Assert.NotNull(scan.Note);
             Assert.Contains(OutputManifest.FileName, scan.Note!, StringComparison.Ordinal);

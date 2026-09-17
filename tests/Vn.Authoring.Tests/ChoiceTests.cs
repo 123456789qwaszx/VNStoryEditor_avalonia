@@ -320,10 +320,12 @@ public class ChoiceTests
         Assert.DoesNotContain("pres_end", bundle.StoryText, StringComparison.Ordinal);
 
         // 합성 추적 변수(`$__ch_N`)도 사라졌다 — 서브 레인 사본이 같은 갈래를 타게 하려고
-        // 두었던 것이라, 레인이 없어지자 쓸 곳이 없다. 선언 파일에도 나오지 않는다.
+        // 두었던 것이라, 레인이 없어지자 쓸 곳이 없다.
+        //
+        // ⛔ 선언 파일 쪽 단언은 2026-09-17에 걷었다 — **선언 파일 자체가 없어졌다.**
+        //    낼 파일이 없는데 "거기 안 나온다"를 재면, 없어진 것을 안 알아차린 채
+        //    언제까지나 초록인 테스트가 된다.
         Assert.DoesNotContain("__ch_", bundle.StoryText, StringComparison.Ordinal);
-        Assert.DoesNotContain("__ch_", YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle }) ?? string.Empty,
-            StringComparison.Ordinal);
     }
 
     private static int CountPlainLines(string yarn)

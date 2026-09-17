@@ -9,12 +9,10 @@ namespace Vn.Authoring.Rendering;
 /// <summary>이미터가 발견한 문제 하나. 막는 문제를 안고는 파일을 쓰지 않는다.</summary>
 public sealed record YarnBundleProblem(string Message, bool IsBlocking, string? LineId = null);
 
-/// <summary>
-/// 이 번들이 필요로 하는 변수 선언 하나. 선언은 번들 텍스트가 아니라
-/// 폴더당 하나뿐인 선언 파일에 실린다 — 여러 번들을 한 유니티 프로젝트로 컴파일할 때
-/// 같은 변수를 두 번 선언하면 컴파일 전체가 깨지기 때문이다.
-/// </summary>
-public sealed record YarnDeclaration(string Variable, string InitialValue);
+// ⛔ `YarnDeclaration`과 선언 파일(`declarations.yarn`) 일체는 2026-09-17에 걷혔다.
+//    선언할 대상이 <b>작가 변수</b>였고 그 어휘가 없어졌다 — 챕터 스탯은 변수가 아니라
+//    `stat("키")` 함수로 읽으므로 선언이 없다. 옛 폴더에 남은 파일을 <i>알아보는</i> 일은
+//    `OutputManifest`가 계속 한다(고아로 짚어 지우게 하려고).
 
 /// <summary>
 /// 합성 하나에서 나온 <b>대본 하나</b>. 파일로 쓰기 전의 순수 문자열이다.
@@ -29,14 +27,12 @@ public sealed class YarnBundle
     public YarnBundle(
         string bundleName,
         string storyText,
-        IReadOnlyList<YarnDeclaration> declarations,
         IReadOnlyList<YarnBundleProblem> problems,
         string? sourceNodeName = null,
         string? sourceNodeId = null)
     {
         BundleName = bundleName;
         StoryText = storyText;
-        Declarations = declarations;
         Problems = problems;
         SourceNodeName = sourceNodeName ?? bundleName;
         SourceNodeId = sourceNodeId ?? string.Empty;
@@ -55,9 +51,6 @@ public sealed class YarnBundle
     public string SourceNodeId { get; }
 
     public string StoryText { get; }
-
-    /// <summary>이 번들이 쓰는 변수와 초기값. 선언 파일 합집합의 재료다.</summary>
-    public IReadOnlyList<YarnDeclaration> Declarations { get; }
 
     public IReadOnlyList<YarnBundleProblem> Problems { get; }
 
@@ -190,12 +183,15 @@ public static class YarnBundleEmitter
                     // 시크 표적을 영영 못 찾는다</b> — 계약서 C1의 silent hang이다. 예외도
                     // 경고도 없이 멈추므로 <b>내지 않는 것</b>만이 안전하다.
                     //
-                    // ⚠ <c>&lt;&lt;declare&gt;&gt;</c>는 <b>아직 낸다</b>. 아무도 쓰지 않는 선언
-                    // 변수는 값이 변하지 않으니 되감을 것도 없다 — 조건이 상수로 굳을 뿐
-                    // 멈추지 않는다. 작가 변수라는 <b>개념</b>을 걷는 것은 다음 조각이고,
-                    // 거기서 선언도 함께 사라진다(렌더링 픽스처가 그 어휘 위에 서 있다).
+                    // ⛔ <c>&lt;&lt;declare&gt;&gt;</c>와 <c>declarations.yarn</c>도 <b>함께 걷혔다</b>
+                    // (2026-09-17, 같은 날 뒤이어). 선언할 대상이 작가 변수였으므로 어휘가
+                    // 없어진 뒤에는 낼 것이 없다.
                     //
                     // 값이 변하는 자리는 챕터 간선의 `스탯변화` 하나다(2026-08-14).
+                    //
+                    // ⚠ 이 <c>case</c>는 <b>남는다.</b> <see cref="RenderedSegmentKind.SetAssignment"/>를
+                    // 내는 곳은 없지만, 열거형에서 지우면 프리뷰·CSV까지 끌려온다. 여기서
+                    // 아무것도 안 하는 것이 "안 낸다"의 가장 싼 표현이다.
                     break;
 
                 case RenderedSegmentKind.PresentationCommand:
@@ -257,7 +253,6 @@ public static class YarnBundleEmitter
         return new YarnBundle(
             name,
             story.ToString(),
-            CollectDeclarations(dialogue, definition),
             problems,
             dialogue.SourceNodeName,
             dialogue.SourceNodeId)
@@ -331,9 +326,6 @@ public static class YarnBundleEmitter
         (bundle.StoryText.Contains("#line:", StringComparison.Ordinal)
             ? string.Empty
             : "  ← 재생할 줄이 없습니다(빈 노드)");
-
-    /// <summary>선언 파일 이름. 폴더당 하나다.</summary>
-    public const string DeclarationsFileName = "declarations.yarn";
 
     /// <summary>
     /// ⛔ <b><c>Story_</c> 접두는 2026-08-24에 폐지됐다</b> (소유자, 런타임과 함께 —
@@ -449,66 +441,6 @@ public static class YarnBundleEmitter
                 yield return FileNameOf(prefix, bundleName);
             }
         }
-    }
-
-    /// <summary>선언 전용 노드의 타이틀. 런타임은 이 노드에 진입하지 않는다.</summary>
-    public const string DeclarationsNodeTitle = "_declarations";
-
-    /// <summary>
-    /// 여러 번들의 선언 합집합을 선언 파일 텍스트로 만든다. 선언이 하나도 없으면 null이다.
-    ///
-    /// 런타임 C#에는 <c>&lt;&lt;declare&gt;&gt;</c>도 스마트 변수도 없다 — 컴파일을 위해
-    /// 이미터가 선언을 내되(D4), Story 노드마다 내면 여러 번들을 한 프로그램으로 컴파일할 때
-    /// 중복 선언으로 깨진다. 그래서 선언은 전용 파일 하나에만 낸다.
-    /// 같은 변수의 초기값이 번들 간에 다르면 합집합이 성립하지 않으므로 거부한다.
-    /// </summary>
-    public static string? ComposeDeclarationsText(IReadOnlyList<YarnBundle> bundles)
-    {
-        ArgumentNullException.ThrowIfNull(bundles);
-
-        // 번들 목록의 순서와 무관하게 같은 파일이 나오도록 변수 이름순으로 정렬한다.
-        var union = new SortedDictionary<string, string>(StringComparer.Ordinal);
-
-        foreach (YarnBundle bundle in bundles)
-        {
-            foreach (YarnDeclaration declaration in bundle.Declarations)
-            {
-                if (union.TryGetValue(declaration.Variable, out string? existing))
-                {
-                    if (!string.Equals(existing, declaration.InitialValue, StringComparison.Ordinal))
-                    {
-                        throw new InvalidOperationException(
-                            $"변수 '{declaration.Variable}'의 초기값이 합성 간에 다릅니다 " +
-                            $"({existing} vs {declaration.InitialValue}). " +
-                            "같은 폴더로 내보내는 합성들은 같은 게임 정의를 써야 합니다.");
-                    }
-
-                    continue;
-                }
-
-                union[declaration.Variable] = declaration.InitialValue;
-            }
-        }
-
-        if (union.Count == 0)
-        {
-            return null;
-        }
-
-        var builder = new StringBuilder();
-        builder.Append("title: ").Append(DeclarationsNodeTitle).Append("\n---\n");
-
-        foreach ((string variable, string initialValue) in union)
-        {
-            builder.Append("<<declare ")
-                .Append(YarnSyntax.NormalizeVariable(variable))
-                .Append(" = ")
-                .Append(initialValue)
-                .Append(">>\n");
-        }
-
-        builder.Append("===\n");
-        return builder.ToString();
     }
 
     /// <summary>
@@ -720,24 +652,10 @@ public static class YarnBundleEmitter
                 "판에서 한쪽의 이름을 바꾸거나, 안 쓰는 노드면 지워 주세요.");
         }
 
-        // ⛔ 접두가 없어진 뒤로(2026-08-24) 번들 파일이 <b>선언 파일과 같은 이름</b>이 될
-        // 수 있다 — 대사엔트리를 `declarations`라고 적으면 그렇다. 예전에는 `Story_`가
-        // 막아 주던 자리다. 덮어쓰면 선언이 통째로 사라지고, 런타임은 되돌릴 초기값을
-        // 잃는다(그 사고는 조용하다).
-        string? collision = bundles
-            .SelectMany(bundle => bundle.Files.Select(file => file.FileName))
-            .FirstOrDefault(name =>
-                string.Equals(name, DeclarationsFileName, StringComparison.OrdinalIgnoreCase));
-
-        if (collision is not null)
-        {
-            throw new InvalidOperationException(
-                $"대사엔트리 이름이 선언 파일과 겹칩니다: '{collision}'. " +
-                "그 노드의 `대사엔트리`를 다른 이름으로 바꿔 주세요.");
-        }
-
-        // 선언 충돌은 파일을 하나라도 쓰기 전에 확인한다.
-        string? declarations = ComposeDeclarationsText(bundles);
+        // ⛔ 2026-09-17에 <b>거절 하나를 풀었다.</b> 대사엔트리를 `declarations`라고 적으면
+        //    선언 파일을 덮어쓴다고 막던 자리인데, <b>선언 파일이 없어졌다</b>. 덮어쓸
+        //    상대가 없는 이름을 계속 거절하면 근거 없는 규칙만 남아 사람을 막는다.
+        //    (옛 폴더에 남은 `declarations.yarn`은 `OutputManifest`가 고아로 짚어 준다.)
 
         Directory.CreateDirectory(directory);
         var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
@@ -761,34 +679,7 @@ public static class YarnBundleEmitter
             }
         }
 
-        if (declarations is not null)
-        {
-            Write(DeclarationsFileName, declarations);
-        }
-
         return written;
-    }
-
-    /// <summary>
-    /// 이 번들이 쓰는 변수를 등장 순서대로 모은다. 초기값 타입은 게임 정의의
-    /// variables가 정하고, 모르면 숫자다(런타임이 스탯을 float으로 읽는다).
-    /// </summary>
-    /// <summary>
-    /// ⛔ <b>이제 아무것도 모으지 않는다</b> (2026-09-17 — 작가 변수 폐지). 선언할 대상이
-    /// 작가 변수였고, 그 어휘가 없어졌다. 챕터 스탯은 변수가 아니라 <c>stat("키")</c>
-    /// <b>함수</b>로 읽으므로 선언이 없다.
-    ///
-    /// ⚠ 그래서 <c>declarations.yarn</c>은 <b>아예 안 나간다</b> — 빈 선언 파일을 쓰지
-    /// 않는 것이 옛 동작이고, 런타임도 *"안 내는 쪽이 깔끔하다"*고 했다(회신 §3).
-    /// </summary>
-    private static IReadOnlyList<YarnDeclaration> CollectDeclarations(
-        DialogueResult dialogue,
-        GameDefinition? definition)
-    {
-        _ = dialogue;
-        _ = definition;
-
-        return [];
     }
 
     /// <summary>

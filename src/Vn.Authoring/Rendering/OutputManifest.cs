@@ -50,7 +50,9 @@ public static class OutputManifest
     {
         ArgumentNullException.ThrowIfNull(project);
 
-        var names = new List<string> { YarnBundleEmitter.DeclarationsFileName };
+        // ⛔ `declarations.yarn`이 2026-09-17에 이 목록에서 빠졌다 — 더 이상 내지 않는다.
+        //    옛 폴더에 남은 것은 고아로 잡히는 것이 맞다(`LegacyDeclarationsFileName`).
+        var names = new List<string>();
 
         // ⚠ <b>판을 돌면서</b> 센다 (2026-08-25) — 파일 이름이 챕터를 앞에 달게 되면서
         //    (챕터=판 1:1) 그 노드가 어느 판에 사는지를 알아야 이름을 맞출 수 있다.
@@ -195,10 +197,20 @@ public static class OutputManifest
             .ToArray();
     }
 
+    /// <summary>
+    /// ⛔ <b>더 이상 내지 않는 선언 파일의 이름</b> (2026-09-17에 작가 변수와 함께 걷혔다 —
+    /// <see cref="YarnBundleEmitter"/> 머리 참조).
+    ///
+    /// <b>그래서 <see cref="ExpectedFileNames"/>에는 없고 여기에만 있다.</b> 앞으로 만들
+    /// 파일이 아니므로 기대 목록에서 빠지고, 그 결과 옛 폴더에 남은 이 파일은 <b>고아로
+    /// 잡혀 사람이 지울 수 있게 된다</b> — 그것이 원하는 동작이다. 알아보는 일만 남긴다.
+    /// </summary>
+    private const string LegacyDeclarationsFileName = "declarations.yarn";
+
     /// <summary>이 폴더에서 VnTool이 만들었을 법한 이름인가.</summary>
     private static bool LooksLikeOutput(string fileName)
     {
-        if (string.Equals(fileName, YarnBundleEmitter.DeclarationsFileName, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(fileName, LegacyDeclarationsFileName, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }

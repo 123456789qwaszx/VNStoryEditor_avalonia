@@ -89,8 +89,9 @@ public class YarnBundleEmitterTests
         // 나오면 그 초기화의 수명이 에피소드가 되어 앞 에피소드에서 켠 값이 지워진다.
         Assert.DoesNotContain("<<set ", bundle.StoryText, StringComparison.Ordinal);
 
-        // ⛔ 선언도 <b>비어 있다</b> — 작가 변수가 없어져 선언할 대상이 없다.
-        Assert.Empty(bundle.Declarations);
+        // ⛔ 선언은 <b>개념째로 없다</b> — `YarnBundle.Declarations`도 2026-09-17에 걷혔다.
+        //    빈 목록을 재는 단언은 타입이 사라지면서 함께 지웠다.
+        Assert.DoesNotContain("<<declare", bundle.StoryText, StringComparison.Ordinal);
 
         // 조건 구조는 Story 안에 그대로 선다 — 이제 `stat("키")` 함수로 읽는다.
         Assert.Contains("<<if stat(\"favor\") >= 5>>", bundle.StoryText, StringComparison.Ordinal);
@@ -188,11 +189,15 @@ public class YarnBundleEmitterTests
             IReadOnlyList<string> written = YarnBundleEmitter.WriteTo(bundle, directory);
 
             // ⛔ <b>대본 하나뿐이다</b> (2026-09-17). 작가 변수가 없어져 선언할 것이
-            //    남지 않았고, 빈 선언 파일은 아예 안 쓴다 — 런타임도 *"안 내는 쪽이
-            //    깔끔하다"*고 했다.
+            //    남지 않았고, 선언 파일을 내는 길 자체를 걷었다 — 런타임도 *"안 내는
+            //    쪽이 깔끔하다"*고 했다.
+            //
+            // ⚠ 이름으로 다시 재는 이유: 상수를 지운 뒤에도 <b>누가 그 이름을 다시
+            //    쓰기 시작하면</b> 이 단언이 잡아야 한다. 상수를 참조하면 상수가
+            //    없어지는 순간 검사도 함께 사라졌다.
             Assert.Single(written);
             Assert.DoesNotContain(written, path =>
-                Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
+                Path.GetFileName(path) == "declarations.yarn");
             Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
 
             foreach (string path in written)
