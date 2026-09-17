@@ -67,8 +67,14 @@ internal enum SceneTreeCommand
     /// <summary>장면 줄에서 — 장면을 걷는다(에피소드는 남는다).</summary>
     DeleteScene,
 
-    /// <summary>장면 줄에서 — 그 장면에 에피소드를 하나 더한다.</summary>
-    AddEpisode
+    /// <summary>
+    /// 에피소드를 하나 더한다 — <b>누른 줄이 어디에 붙일지를 정한다</b>: 장면 줄에서는 그
+    /// 장면의 끝에, 에피소드 줄에서는 <b>그 뒤에</b>(간선까지 함께).
+    /// </summary>
+    AddEpisode,
+
+    /// <summary>에피소드 줄에서 — 그 에피소드를 걷는다(2026-09-18 소유자).</summary>
+    DeleteEpisode
 }
 
 /// <summary>고른 에피소드. <b>챕터는 상태가 아니라 파생</b>이다 — 그 에피소드가 속한 챕터다.</summary>
@@ -147,6 +153,19 @@ public partial class ChapterSceneTree : UserControl
     internal event Action<SceneTreeDrop>? Dropped;
 
     internal ChapterEpisodePick? Selection { get; private set; }
+
+    /// <summary>
+    /// 고른 것을 놓는다 — <b>고른 에피소드가 지워졌을 때</b>.
+    ///
+    /// ⚠ <see cref="Rebuild"/>도 사라진 선택을 놓지만, 그쪽은 <b>다시 그릴 때</b>의 일이고
+    /// 부르는 화면이 사정상 다시 그리기를 미룰 수 있다([대본] 탭은 안 저장한 글이 있으면
+    /// 안 그린다). 지운 쪽이 직접 놓는 편이 확실하다.
+    /// </summary>
+    internal void ClearSelection()
+    {
+        Selection = null;
+        Draw();
+    }
 
     /// <summary>지금 보이는 줄들 — 검증이 구조를 재는 자리.</summary>
     internal IReadOnlyList<SceneTreeRow> Rows => _rows;
@@ -861,8 +880,16 @@ public partial class ChapterSceneTree : UserControl
     }
 
     /// <summary>
-    /// 줄의 우클릭 차림표 (2026-09-16 소유자). <b>담는 줄에만</b> 붙는다 — 에피소드는
-    /// 이 탭에서 만드는 것이 글이지 구조가 아니고, 지우는 자리는 [챕터 그래프]에 있다.
+    /// 줄의 우클릭 차림표 (2026-09-16 소유자).
+    ///
+    /// ⛔ <b>2026-09-18에 에피소드 줄에도 붙었다</b> (소유자). 옛 규칙은 <i>"담는 줄에만 —
+    /// 에피소드는 이 탭에서 만드는 것이 글이지 구조가 아니고, 지우는 자리는 [챕터 그래프]에
+    /// 있다"</i>였는데, 그러면 작가가 <b>탭을 건너가야</b> 한 칸을 더하거나 뺀다. 구조를
+    /// 못 만지게 막은 것이 아니라 <b>먼 데로 보낸 것</b>이었다.
+    ///
+    /// ⚠ 규율은 여전히 밖에 있다 — 만들기는 <see cref="Vn.Authoring.Editing.ProjectEditor"/>,
+    /// 지우기는 <see cref="Vn.Authoring.Chapters.EpisodeDeleter"/>. 여기서 느는 것은
+    /// <b>부르는 자리</b>뿐이다.
     /// </summary>
     private ContextMenu? Menu(SceneTreeRow row)
     {
@@ -892,6 +919,18 @@ public partial class ChapterSceneTree : UserControl
                 {
                     Item("에피소드 추가", SceneTreeCommand.AddEpisode),
                     Item(row.IsDraft ? "빈 장면 닫기" : "장면 삭제…", SceneTreeCommand.DeleteScene)
+                }
+            },
+
+            // ⚠ 에피소드 줄에서의 [에피소드 추가]는 <b>그 뒤에</b> 붙인다(간선까지) —
+            //    장면 줄에서는 그 장면의 끝에 붙는다. 어느 줄을 눌렀느냐가 곧 어디에
+            //    붙일지다.
+            SceneTreeRowKind.Episode => new ContextMenu
+            {
+                ItemsSource = new[]
+                {
+                    Item("에피소드 추가", SceneTreeCommand.AddEpisode),
+                    Item("에피소드 삭제…", SceneTreeCommand.DeleteEpisode)
                 }
             },
 

@@ -196,6 +196,57 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         Assert.Equal(["ch02"], Rows(view, SceneTreeRowKind.Chapter));
     });
 
+    // ── 에피소드 줄의 차림표 (2026-09-18 소유자) ──────────────────────────
+
+    [Fact]
+    public void 에피소드_줄에서_더하면_그_뒤에_붙는다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 누른 줄이 <b>어디에 붙일지</b>를 정한다 — 장면 줄은 그 장면의 끝, 에피소드
+        //    줄은 그 뒤. 이야기를 쓰다가 "여기 한 칸 더"가 이 자리다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01", "ep02");
+
+        Menu(view, SceneTreeRowKind.Episode, "에피소드 추가", episodeId: "ep01");
+
+        ChapterDocument chapter = session.Editor.FindChapter("ch01")!;
+        ChapterEpisode made = Assert.Single(
+            chapter.Episodes, episode => episode.EpisodeId.StartsWith("new", StringComparison.Ordinal));
+
+        // 끝이 아니라 <b>누른 것 뒤</b>에 붙었다 — 간선이 그것을 말한다.
+        Assert.Contains(chapter.Edges, edge =>
+            edge.FromEpisodeId == "ep01" && edge.ToEpisodeId == made.EpisodeId);
+
+        // 그리고 바로 쓸 수 있다 — 카드와 대본이 함께 선다.
+        Assert.Contains(
+            session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => EpisodeNaming.EpisodeIdOf(node) == made.EpisodeId && node.ScriptId is not null);
+    });
+
+    [Fact]
+    public void 에피소드_삭제도_한_번_더_눌러야_지운다() => HeadlessUi.Run(() =>
+    {
+        // 사라지는 것이 줄거리 한 칸이 아니라 <b>원고</b>다 — 되돌리기가 없는 쪽이다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01", "ep02");
+
+        Menu(view, SceneTreeRowKind.Episode, "에피소드 삭제…", episodeId: "ep01");
+
+        Assert.Contains("ep01", session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
+        Assert.NotNull(view.ConfirmButton);
+
+        view.ConfirmButton!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.DoesNotContain("ep01", session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
+
+        // 비어 있던 카드도 함께 걷힌다 — 남으면 사라진 에피소드를 사칭하는 유령이 된다.
+        Assert.DoesNotContain(
+            session.Project.EnumerateNodes().OfType<DialogueNode>(),
+            node => EpisodeNaming.EpisodeIdOf(node) == "ep01");
+
+        Assert.DoesNotContain(Rows(view, SceneTreeRowKind.Episode), id => id == "ep01");
+    });
+
     // ── 이름 고치기 (줄을 더블클릭) ────────────────────────────────────────
 
     [Fact]
@@ -422,14 +473,16 @@ public sealed class ScriptTabAuthoringTests : IDisposable
 
     /// <summary>그 줄을 우클릭해 차림표의 그 항목을 누른다 — 사람이 하는 길 그대로다.</summary>
     private static void Menu(
-        ScriptView view, SceneTreeRowKind kind, string header, string? sceneId = null)
+        ScriptView view, SceneTreeRowKind kind, string header,
+        string? sceneId = null, string? episodeId = null)
     {
         ChapterSceneTree tree = Tree(view);
 
         int index = tree.Rows
             .Select((row, at) => (row, at))
             .First(item => item.row.Kind == kind &&
-                           (sceneId is null || item.row.SceneId == sceneId)).at;
+                           (sceneId is null || item.row.SceneId == sceneId) &&
+                           (episodeId is null || item.row.EpisodeId == episodeId)).at;
 
         ContextMenu menu = tree.GetVisualDescendants().OfType<Button>().ElementAt(index).ContextMenu!;
 

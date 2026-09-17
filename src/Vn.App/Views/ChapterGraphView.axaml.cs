@@ -3552,6 +3552,14 @@ public partial class ChapterGraphView : UserControl
             $"간선 {from}→{to}을 '{DefaultOptionLabel}'로 더했습니다 — 문구는 그 줄을 눌러 고칩니다.");
     }
 
+    /// <summary>
+    /// [에피소드 삭제] — 규율은 <see cref="EpisodeDeleter"/> 하나다.
+    ///
+    /// ⛔ <b>2026-09-18까지 그 규율이 여기 살았다</b>(원고 밀기·행 지우기·카드 거두기
+    /// 100여 줄). [대본] 탭에 같은 기능을 붙이려면 사본을 뜨는 수밖에 없었고, 사본은
+    /// 갈린다 — 바로 앞의 「에피소드 만들기」가 그렇게 갈려 있었다. 화면에 남는 것은
+    /// <b>무엇을 골랐는가</b>와 <b>결과를 어떻게 말하는가</b>뿐이다.
+    /// </summary>
     internal void DeleteSelectedEpisode()
     {
         if (_selectedEpisodeId is not { } episodeId || _selectedChapterId is not { } chapterId)
@@ -3561,106 +3569,19 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        // 대본 파일을 먼저 .bak으로 민다 (2026-08-26 소유자: "삭제했는데 여전히 폴더에는
-        // 남아있는 버그") — 못 밀면(엑셀이 열고 있다) 행도 안 지운다: 행은 없는데 원고만
-        // 남으면 지운 에피소드의 파일이 폴더에 유물로 쌓인다(이 버그 그 자체다).
-        (string? backup, string? original, string? archiveFailure) =
-            SelectedEpisodesFolder is { } folder
-                ? EpisodeLibrary.ArchiveWorkbook(folder, episodeId)
-                : (null, null, null);
+        EpisodeDeleter.Result result = EpisodeDeleter.Delete(
+            _session!.Editor, _session.ProjectPath, chapterId, episodeId);
 
-        if (archiveFailure is not null)
+        if (!result.Ok)
         {
-            _session?.SetStatus(archiveFailure);
+            _session.SetStatus(result.Failure!);
             return;
-        }
-
-        try
-        {
-            _session!.Editor.RemoveEpisode(chapterId, episodeId);
-        }
-        catch when (backup is not null && original is not null)
-        {
-            // 못 지웠으면 파일을 되돌린다 — 에피소드는 있는데 원고가 .bak인 반쪽도 나쁘다.
-            // 여기서 또 실패하면 조용히 넘긴다: 사유는 UiGuard가 사람에게 말한다.
-            try
-            {
-                File.Move(backup, original, overwrite: true);
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException)
-            {
-            }
-
-            throw;
         }
 
         _selectedEpisodeId = null;
 
-        string detached = DetachBoardNode(episodeId);
         ChapterEmitRun emitted = EmitSelectedChapter();
-
-        _session?.SetStatus(
-            $"'{episodeId}'과 그 간선·픽스처 참조를 지웠습니다." +
-            (backup is not null
-                ? $" 대본 파일은 {IoPath.GetFileName(backup)}으로 밀어 두었습니다."
-                : string.Empty) +
-            detached +
-            emitted.Notice());
-    }
-
-    /// <summary>
-    /// 지운 에피소드의 <b>대사 노드를 연출 그래프에서 거둔다</b> (2026-08-25).
-    ///
-    /// 안 거두면 판에 <b>유령이 남는다</b> — 사라진 에피소드를 자기라고 주장하는 노드다.
-    /// 그 상태는 오래 조용했는데, 빈 노드가 발행에서 막혀 산출 목록에서 통째로 빠졌기
-    /// 때문이다. 빈 노드도 내보내게 되면서(같은 날) <b>번들 이름이 겹칩니다</b>로 터졌다 —
-    /// 같은 Id로 에피소드를 다시 만들면 판에 같은 이름의 노드가 둘이 된다.
-    ///
-    /// <b>비어 있으면 지우고, 채워져 있으면 떼기만 한다.</b> 연출을 넣어 둔 노드를 툴이
-    /// 임의로 지우면 되돌릴 자리가 없다(판 편집에는 Ctrl+Z가 없다). 떼어 낸 노드는 자유
-    /// 씬이 되어 <b>더 이상 그 에피소드를 사칭하지 않고</b>, 사람이 보고 정한다.
-    ///
-    /// ⚠ <b>이 챕터의 판에서만</b> 찾는다. 프로젝트 전체에서 이름으로 찾으면 다른 챕터에
-    /// 같은 Id가 있을 때 남의 노드를 건드린다.
-    /// </summary>
-    private string DetachBoardNode(string episodeId)
-    {
-        if (_session is not { } session || SelectedModel is not { } model)
-        {
-            return string.Empty;
-        }
-
-        Vn.Authoring.Model.StoryFile? board = session.Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, model.ChapterId, StringComparison.Ordinal));
-
-        if (board?.Nodes.OfType<Vn.Authoring.Model.DialogueNode>().FirstOrDefault(node =>
-                string.Equals(node.MarkedEpisodeId, episodeId, StringComparison.Ordinal) ||
-                string.Equals(node.Name, episodeId, StringComparison.Ordinal))
-            is not { } node)
-        {
-            return string.Empty;
-        }
-
-        bool empty = session.Project.FindScript(node.ScriptId) is not { } script ||
-            script.Lines.Count == 0 ||
-            !script.ActiveLines.Any();
-
-        if (empty)
-        {
-            session.Editor.RemoveNode(node.Id);
-            return $" 연출 그래프의 빈 노드 '{node.Name}'도 함께 지웠습니다.";
-        }
-
-        // ⛔ 전에는 여기서 `node.MarkedEpisodeId = null`을 <b>직접</b> 썼다. 두 가지가 틀렸다:
-        //    ① 편집기를 안 지나 되돌리기에 안 남았고, ② 표식만 비워서 <b>사칭이 안 끝났다</b>
-        //    (이름이 Id와 같은 노드는 `EpisodeNaming`이 이름을 뒷길로 쓴다). 둘 다 편집기의
-        //    `DetachEpisodeMark`가 갖는다 — 이 표식의 규칙은 화면이 정할 것이 아니다.
-        string previous = node.Name;
-        string detached = session.Editor.DetachEpisodeMark(node.Id);
-
-        return $" ⚠ 연출 그래프의 '{previous}'은 내용이 있어 남겨 두고 '{detached}'으로 " +
-            "떼어 냈습니다 — 살릴지 지울지는 판에서 정해 주세요.";
+        _session.SetStatus(result.Describe(episodeId) + emitted.Notice());
     }
 
     /// <summary>

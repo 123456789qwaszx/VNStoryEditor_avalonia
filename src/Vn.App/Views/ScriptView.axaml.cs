@@ -226,6 +226,10 @@ public partial class ScriptView : UserControl
                 AddEpisodeToScene(row);
                 break;
 
+            case SceneTreeCommand.DeleteEpisode:
+                ConfirmEpisodeDelete(row);
+                break;
+
             case SceneTreeCommand.DeleteScene when row.IsDraft:
                 EpisodeTree.DropDraftScene(row.ChapterId, row.SceneId!);
                 _session.SetStatus($"빈 장면 '{row.SceneId}' 자리를 닫았습니다.");
@@ -434,10 +438,15 @@ public partial class ScriptView : UserControl
         string episodeId = $"new{number:D2}";
         string sceneId = row.SceneId!;
 
-        ChapterEpisode? parent =
-            chapter.Episodes.LastOrDefault(episode =>
+        // ⚠ <b>누른 줄이 어디에 붙일지를 정한다</b> (2026-09-18). 에피소드 줄에서 불렀으면
+        //    <b>그 뒤에</b> 붙인다 — 이야기를 쓰다가 "여기 한 칸 더"가 그 자리다. 장면 줄에서
+        //    불렀으면 그 장면의 끝이다.
+        ChapterEpisode? parent = row.Kind == SceneTreeRowKind.Episode
+            ? chapter.Episodes.FirstOrDefault(episode =>
+                string.Equals(episode.EpisodeId, row.EpisodeId, StringComparison.Ordinal))
+            : chapter.Episodes.LastOrDefault(episode =>
                 string.Equals(episode.EffectiveSceneId, sceneId, StringComparison.Ordinal))
-            ?? chapter.Episodes.LastOrDefault();
+              ?? chapter.Episodes.LastOrDefault();
 
         if (parent is null)
         {
@@ -485,6 +494,44 @@ public partial class ScriptView : UserControl
                 // 빈 값이 곧 미지정이다 — `__scene_{EpisodeId}`로 퇴화한다.
                 _session.Editor.UpdateEpisodeScenes(row.ChapterId, episodes, sceneId: string.Empty);
                 _session.SetStatus($"장면 '{sceneId}'을 걷었습니다. 에피소드 {episodes.Count}개는 남았습니다.");
+            });
+    }
+
+    /// <summary>
+    /// [에피소드 삭제] (2026-09-18 소유자) — 규칙은 <see cref="EpisodeDeleter"/>가 갖는다.
+    /// [챕터 그래프]의 [에피소드 삭제]와 <b>같은 길</b>이고, 여기서 하는 일은 무엇을
+    /// 골랐는지 말하고 결과를 상태줄에 옮기는 것뿐이다.
+    ///
+    /// ⚠ <b>지우는 것이 글이라는 것을 먼저 말한다.</b> 작가의 탭에서 누르는 삭제이므로
+    /// 사라지는 것이 줄거리 한 칸이 아니라 <b>원고</b>다 — 원고는 <c>.bak</c>으로 남는다.
+    /// </summary>
+    private void ConfirmEpisodeDelete(SceneTreeRow row)
+    {
+        string episodeId = row.EpisodeId!;
+
+        Confirm(
+            $"'{episodeId}'과 그 간선·픽스처 참조를 지웁니다. " +
+            "원고는 .bak으로 남고, 글이 든 카드는 지우지 않고 떼어만 냅니다.",
+            "에피소드 지우기",
+            () =>
+            {
+                EpisodeDeleter.Result result = EpisodeDeleter.Delete(
+                    _session!.Editor, _session.ProjectPath, row.ChapterId, episodeId);
+
+                if (!result.Ok)
+                {
+                    _session.SetStatus(result.Failure!);
+                    return;
+                }
+
+                // 지운 것을 계속 고르고 있으면 오른쪽에 없는 글이 선다.
+                if (EpisodeTree.Selection?.EpisodeId == episodeId)
+                {
+                    EpisodeTree.ClearSelection();
+                }
+
+                ShowSelected();
+                _session.SetStatus(result.Describe(episodeId));
             });
     }
 
