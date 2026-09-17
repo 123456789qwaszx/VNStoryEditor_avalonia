@@ -96,7 +96,7 @@ R0~R5의 순서·체크리스트·완료 근거는 [`docs/plans/PLAN.md`](docs/p
 | [`docs/handoff/architecture-decisions.md`](docs/handoff/architecture-decisions.md) | 확정된 설계와 **그 이유** |
 | [`docs/runtime-contract.md`](docs/runtime-contract.md) | 유니티 런타임과의 계약 (Gate D) |
 | [`docs/progression-handoff.md`](docs/progression-handoff.md) | 진행 코어 교환 이력·현행 상대·표본 JSON 안내 |
-| [`docs/ch01.contract-sample.xlsx`](docs/ch01.contract-sample.xlsx) | Scene·Auto·조건·스탯·Via·EventKey를 담은 현행 계약 표본 |
+| [`docs/ch01.contract-sample.xlsx`](docs/ch01.contract-sample.xlsx) | Scene·Auto·조건·스탯·EventKey를 담은 계약 표본 (⚠ `Via` 열은 2026-09-17에 폐지 — 표본은 그 전 것이다) |
 | [`docs/work-orders/chapter-graph-orders.md`](docs/work-orders/chapter-graph-orders.md) | 챕터 계층 규격 원본 |
 | [`docs/chapter-layer-guide.md`](docs/chapter-layer-guide.md) | 기획자용 사용 안내 |
 | [`docs/writer-guide.md`](docs/writer-guide.md) | 작가용 사용 안내 |

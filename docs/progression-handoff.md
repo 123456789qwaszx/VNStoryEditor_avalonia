@@ -8,6 +8,11 @@
 > 작업 대기열이 아니다. 현재 계약은 [`runtime-contract.md`](runtime-contract.md),
 > 실행 상태는 [`plans/PLAN.md`](plans/PLAN.md)를 우선한다.
 
+> ⛔ **추기 (2026-09-17)** — **`Option.ViaNodeId` 칸이 없어졌다.** 아래 §1이 통째로 옛글이다.
+> 「길에 매단 연출」은 같은 재생 순서의 **에피소드 한 칸**으로 폈다(`A —문구→ 연출 —자동→ B`).
+> 툴·코어 사본·런타임에서 같은 날 함께 걷었고, 옛 JSON의 그 칸은 모르는 이름으로 무시된다.
+> 근거는 [`work-orders/one-stat-layer-orders.md`](work-orders/one-stat-layer-orders.md) §C.
+
 기준: **2026-08-23 (4차)** · VnTool(`java-start`) 저장소 · 테스트 **1490 통과**
 
 계약 원문은 [`runtime-contract.md`](runtime-contract.md) **2부**이고, 충돌하면 그쪽이 정본이다.
