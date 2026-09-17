@@ -247,6 +247,48 @@ public static class ConditionExpressionParser
                 .ToArray());
 
     /// <summary>두 글자 연산자를 먼저 본다. <c>&gt;=</c>를 <c>&gt;</c>로 읽으면 의미가 달라진다.</summary>
+    /// <summary>
+    /// 조건식 원문에서 <b>스탯키만</b> 갈아 끼운다 — 스탯 개명이 쓴다 (2026-09-17).
+    ///
+    /// ⛔ <b>단순 문자열 치환이면 안 된다.</b> <c>trust</c>를 갈면 <c>trustworthy</c>의 앞부분도
+    /// 갈리고, 값에 든 글자까지 바뀐다. 키가 어디서 끝나는지는 <b>비교 연산자가 정하고</b>,
+    /// 그 문법을 아는 곳은 여기 하나다 — 그래서 개명기가 아니라 파서가 이 일을 진다.
+    ///
+    /// ⚠ <b>연산자와 값은 원문 그대로 둔다.</b> 다시 조립하면 사람이 적은 띄어쓰기가
+    /// 지워지고, 파서가 못 읽는 식(탈출구로 남겨 둔 원문)이 조용히 날아간다.
+    /// 못 읽는 항은 <b>손대지 않고 지나간다</b>.
+    /// </summary>
+    public static string ReplaceStatKey(string? expression, string from, string to)
+    {
+        string source = expression ?? string.Empty;
+
+        if (source.Length == 0 || from.Length == 0 || to.Length == 0 ||
+            string.Equals(from, to, StringComparison.Ordinal))
+        {
+            return source;
+        }
+
+        var rebuilt = new List<string>();
+
+        // ⚠ 빈 항을 버리지 않는다 — 원문의 `;` 개수를 그대로 돌려줘야 한다.
+        foreach (string rawTerm in source.Split(';'))
+        {
+            if (!TrySplitComparison(rawTerm, out string key, out _, out _) ||
+                !string.Equals(key.Trim(), from, StringComparison.Ordinal))
+            {
+                rebuilt.Add(rawTerm);
+                continue;
+            }
+
+            // 키가 끝나는 자리 = 연산자가 시작하는 자리. 그 뒤는 글자 하나 안 건드린다.
+            int cut = rawTerm.IndexOf(key, StringComparison.Ordinal);
+            rebuilt.Add(string.Concat(
+                rawTerm.AsSpan(0, cut), to, rawTerm.AsSpan(cut + key.Length)));
+        }
+
+        return string.Join(";", rebuilt);
+    }
+
     private static bool TrySplitComparison(
         string term,
         out string key,

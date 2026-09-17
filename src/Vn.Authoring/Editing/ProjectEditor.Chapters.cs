@@ -622,6 +622,172 @@ public sealed partial class ProjectEditor
         });
     }
 
+
+    /// <summary>
+    /// <b>스탯 개명이 참조를 끌고 간다</b> (R7 후속 · 2026-09-17 소유자 — 계층을 하나로).
+    ///
+    /// ⛔ <b>개명이 쉬워지는 것이 곧 위험이다.</b> 지금까지 스탯 키는 엑셀에 살아서 고치기가
+    /// 무서웠고, 그래서 아무도 안 고쳤다. 툴이 정의를 쥐면 한 번에 쉬워지는데 —
+    /// <b>쉬운데 안전하지 않은 것이 어려운데 안전하지 않은 것보다 나쁘다.</b>
+    ///
+    /// 키가 사는 자리는 넷이고 <b>한 번의 변경</b>으로 함께 간다:
+    ///
+    /// <list type="number">
+    /// <item><c>스탯</c> 정의 행 — 표시이름이 키와 같았으면 그것도 따라간다(안 정한 이름이다).</item>
+    /// <item>간선의 <c>스탯변화</c> — 해석된 채로 살아서 키만 갈면 된다.</item>
+    /// <item>챕터 <c>조건</c> 식 — 원문이라 문법을 아는 <see cref="ConditionExpressionParser.ReplaceStatKey"/>가 간다.</item>
+    /// <item>⭐ <b>판에 공급된 조건</b> — 아래.</item>
+    /// </list>
+    ///
+    /// ⚠ <b>넷째를 빠뜨리면 대사 갈래가 통째로 고아가 된다.</b> 판의 공급 노드는 챕터 조건을
+    /// 번역해 들고 있고(<c>stat("trust") &gt;= 3</c>), 줄에 매달린 전환은 그 조건의 <b>Id</b>로
+    /// 잇는다. 그런데 <c>ChapterBoardSupply.RenameSuppliedCondition</c>은 <b>식으로 짝을
+    /// 찾는다</b> — 스탯을 갈면 식이 달라져 짝을 못 찾고, 다음 동기화가 <b>새 Id로 다시
+    /// 만든다</b>. 그 자리 주석이 경고하는 바로 그 고아다. 그래서 여기서 <b>Id를 지킨 채</b>
+    /// 식만 갈아 끼운다.
+    ///
+    /// ⚠ <c>game.definition.json</c>의 변수는 <b>안 건드린다</b>. 그쪽은 게임 전역 어휘이고
+    /// 챕터 스탯은 만들 때 거기서 씨앗만 받는다 — 남의 이름이다.
+    /// </summary>
+    /// <returns>바꾼 자리의 수. 거절되면 <c>Applied</c>가 false이고 아무것도 안 건드렸다.</returns>
+    public StatRenameOutcome RenameChapterStat(string chapterId, string oldKey, string newKey)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+
+        string from = (oldKey ?? string.Empty).Trim();
+        string to = (newKey ?? string.Empty).Trim();
+
+        if (from.Length == 0 || to.Length == 0)
+        {
+            return StatRenameOutcome.Refuse("스탯 키가 비어 있습니다.");
+        }
+
+        if (string.Equals(from, to, StringComparison.Ordinal))
+        {
+            return StatRenameOutcome.Refuse("같은 이름입니다 — 바꿀 것이 없습니다.");
+        }
+
+        int index = chapter.Stats.FindIndex(stat =>
+            string.Equals(stat.Key, from, StringComparison.Ordinal));
+
+        if (index < 0)
+        {
+            return StatRenameOutcome.Refuse($"스탯 '{from}'이 이 챕터에 없습니다.");
+        }
+
+        if (chapter.Stats.Any(stat => string.Equals(stat.Key, to, StringComparison.Ordinal)))
+        {
+            return StatRenameOutcome.Refuse($"스탯 '{to}'가 이미 있습니다 — 둘을 합치려면 먼저 하나를 지우세요.");
+        }
+
+        // ⚠ 내보낼 때 Yarn 식별자로 정규화되므로, 정규화 뒤에 겹치면 <b>대사에서 같은
+        //    스탯이 된다</b>. 화면에서는 달라 보이는데 게임에서 하나가 되는 자리라 막는다.
+        string normalized = Rendering.YarnSyntax.SanitizeVariableName(to);
+
+        if (chapter.Stats.Any(stat =>
+                !string.Equals(stat.Key, from, StringComparison.Ordinal) &&
+                string.Equals(Rendering.YarnSyntax.SanitizeVariableName(stat.Key), normalized, StringComparison.Ordinal)))
+        {
+            return StatRenameOutcome.Refuse(
+                $"'{to}'는 Yarn에서 '{normalized}'가 되어 이미 있는 스탯과 겹칩니다.");
+        }
+
+        ChapterStat renamed = chapter.Stats[index] with
+        {
+            Key = to,
+
+            // 표시이름을 따로 안 정했으면(= 키와 같았으면) 함께 간다. 정해 뒀으면 사람의 글자다.
+            DisplayName = string.Equals(chapter.Stats[index].DisplayName, from, StringComparison.Ordinal)
+                ? to
+                : chapter.Stats[index].DisplayName
+        };
+
+        var edges = new List<(int Index, ChapterEdge Edge)>();
+
+        for (int i = 0; i < chapter.Edges.Count; i++)
+        {
+            if (!chapter.Edges[i].StatChanges.Any(delta =>
+                    string.Equals(delta.Key, from, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            edges.Add((i, chapter.Edges[i] with
+            {
+                StatChanges = chapter.Edges[i].StatChanges
+                    .Select(delta => string.Equals(delta.Key, from, StringComparison.Ordinal)
+                        ? delta with { Key = to }
+                        : delta)
+                    .ToList()
+            }));
+        }
+
+        var conditions = new List<(int Index, ChapterCondition Condition)>();
+
+        for (int i = 0; i < chapter.Conditions.Count; i++)
+        {
+            string rewritten = ConditionExpressionParser.ReplaceStatKey(
+                chapter.Conditions[i].Expression, from, to);
+
+            if (string.Equals(rewritten, chapter.Conditions[i].Expression, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            conditions.Add((i, chapter.Conditions[i] with
+            {
+                Expression = rewritten,
+
+                // ⚠ 옛 해석을 들고 있으면 검증이 고치기 전 값으로 참을 말한다 —
+                //    `UpdateChapterCondition`과 같은 규율이다. ToGraphModel이 다시 푼다.
+                Parsed = [],
+                IsValid = false
+            }));
+        }
+
+        List<ConditionDefinition> supplied = SuppliedConditionsReading(chapterId, from);
+
+        Mutate(() =>
+        {
+            chapter.Stats[index] = renamed;
+
+            foreach ((int at, ChapterEdge edge) in edges)
+            {
+                chapter.Edges[at] = edge;
+            }
+
+            foreach ((int at, ChapterCondition condition) in conditions)
+            {
+                chapter.Conditions[at] = condition;
+            }
+
+            foreach (ConditionDefinition condition in supplied)
+            {
+                // Id를 지킨 채 식만 간다 — 줄에 매달린 전환이 이 Id로 잇는다.
+                condition.Expression = condition.Expression.Replace(
+                    Rendering.YarnSyntax.StatRead(from),
+                    Rendering.YarnSyntax.StatRead(to),
+                    StringComparison.Ordinal);
+            }
+        });
+
+        return new StatRenameOutcome(true, edges.Count, conditions.Count, supplied.Count, null);
+    }
+
+    /// <summary>
+    /// 그 챕터 판의 공급 노드가 들고 있는 조건 중 <b>이 스탯을 읽는</b> 것들.
+    /// 판이 없거나 공급 노드가 아직 없으면 빈 목록이다.
+    /// </summary>
+    private List<ConditionDefinition> SuppliedConditionsReading(string chapterId, string statKey)
+    {
+        string read = Rendering.YarnSyntax.StatRead(statKey);
+
+        return Project.EnumerateNodes().OfType<SetNode>()
+            .Where(node => ChapterBoardSupply.IsConditionSupplyNodeName(node.Name))
+            .SelectMany(node => node.Conditions)
+            .Where(condition => condition.Expression.Contains(read, StringComparison.Ordinal))
+            .ToList();
+    }
     // ── 잔손 ────────────────────────────────────────────────────────────────
 
     private static ChapterEpisode? FindEpisode(ChapterDocument chapter, string episodeId) =>
@@ -1008,3 +1174,24 @@ public sealed record LiftedViaScene(
     string ViaEpisodeId,
     string FromEpisodeId,
     string ToEpisodeId);
+
+/// <summary>
+/// 스탯 개명 한 판의 결과 (2026-09-17).
+/// </summary>
+/// <param name="Applied">개명했는가. false면 <b>아무것도 안 건드렸다</b>.</param>
+/// <param name="Edges">`스탯변화`가 바뀐 간선 수.</param>
+/// <param name="Conditions">식이 바뀐 챕터 조건 수.</param>
+/// <param name="SuppliedConditions">
+/// 판에 공급된 조건 중 식이 바뀐 수 — <b>Id를 지킨 채</b> 갈았다. 이걸 빠뜨리면 다음
+/// 동기화가 새 Id로 다시 만들어 줄에 매달린 갈래가 전부 고아가 된다.
+/// </param>
+/// <param name="Refusal">거절 사유. <paramref name="Applied"/>가 false일 때만 있다.</param>
+public sealed record StatRenameOutcome(
+    bool Applied,
+    int Edges,
+    int Conditions,
+    int SuppliedConditions,
+    string? Refusal)
+{
+    public static StatRenameOutcome Refuse(string reason) => new(false, 0, 0, 0, reason);
+}
