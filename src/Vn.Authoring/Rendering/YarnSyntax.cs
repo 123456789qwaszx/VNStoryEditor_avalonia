@@ -100,9 +100,36 @@ internal static class YarnSyntax
     /// </summary>
     public const string StatFunction = "stat";
 
+    /// <summary>
     /// <inheritdoc cref="StatFunction"/>
+    ///
+    /// ⛔ <b>키를 정규화하지 않는다</b> (2026-09-17, 런타임 회신 §6.1이 잡았다).
+    /// 한때 <see cref="SanitizeVariableName"/>을 지났는데 <b>틀렸다</b>:
+    ///
+    /// <code>
+    /// 스탯 이름   호감도 (윌로우)
+    /// JSON Key    "호감도 (윌로우)"        ← 진행 JSON은 원본 그대로 낸다
+    /// 옛 대사     stat("호감도__윌로우_")  ← 정규화돼 갈렸다
+    /// 런타임      KeyNotFoundException     ← 그 대사가 재생될 때 처음 터진다
+    /// </code>
+    ///
+    /// <b>산출도 컴파일도 통과한다</b> — 그 대사가 나올 때까지 아무도 모른다.
+    ///
+    /// 정규화하던 이유는 <c>$변수</c> 시절의 것이다(*"Yarn 식별자에는 공백이 못 들어간다"*).
+    /// 함수의 인자는 식별자가 아니라 <b>문자열 리터럴</b>이라 공백도 괄호도 그냥 들어간다 —
+    /// 규칙을 더하는 게 아니라 <b>빼는</b> 것이 맞다. 이름이 한 개가 되고 유니코드 정규화
+    /// 위험도 함께 사라진다(같은 실행에서 같은 원본이 두 자리로 나가므로).
+    ///
+    /// ⚠ 문자열을 깨뜨릴 수 있는 <c>"</c>와 <c>\</c>만 이스케이프한다.
+    /// </summary>
     public static string StatRead(string? key) =>
-        $"{StatFunction}(\"{SanitizeVariableName(key)}\")";
+        $"{StatFunction}(\"{EscapeStringLiteral(key)}\")";
+
+    /// <summary>Yarn 문자열 리터럴 안에서 깨지는 두 글자만 막는다 — <c>\</c>가 먼저다.</summary>
+    private static string EscapeStringLiteral(string? value) =>
+        (value ?? string.Empty)
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal);
 
     public static string NormalizeVariable(string? variable)
     {

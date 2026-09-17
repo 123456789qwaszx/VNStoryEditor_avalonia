@@ -181,13 +181,19 @@ public sealed class StageEpisodeChoiceTests
     });
 
     [Fact]
-    public void 자유_씬이_매달린_간선은_씬을_먼저_재생하고_도착_에피소드가_뒤따른다() => HeadlessUi.Run(() =>
+    public void 간선에_매단_씬은_이제_안_거친다() => HeadlessUi.Run(() =>
     {
+        // ⛔ <b>뒤집혔다</b> (2026-09-17 — 계약의 `ViaNodeId`가 양쪽에서 걷혔다). 전에는
+        //    간선에 매단 씬을 먼저 재생하고 도착 에피소드를 pending으로 들었다.
+        //
+        // 같은 재생 순서는 이제 <b>에피소드 한 칸</b>이 말한다: `A —문구→ 연출 —자동→ B`.
+        // 옛 프로젝트 호환은 안 본다(소유자: *"이전의 프로젝트들은 모두 버리고"*) — 그래서
+        // 남은 `ChoiceExits` 배선은 <b>그냥 무시</b>되고 곧장 도착으로 간다.
         var (preview, session, fileId) = ShowPreview();
         DialogueNode ep01 = AddEpisodeNode(session, fileId, "EP01");
         DialogueNode ep02 = AddEpisodeNode(session, fileId, "EP02");
         DialogueNode via = session.Editor.AddDialogueNode(fileId, name: "샛길씬");
-        ep01.ChoiceExits["믿는다"] = via.Id; // 작가가 판에서 매단 자유 씬 (ViaNode)
+        ep01.ChoiceExits["믿는다"] = via.Id;
 
         preview.SupplyChapters([Chapter("ch05", edges: [Edge("EP01", "EP02", "믿는다", row: 2)])]);
         preview.Show(LastLineRequest());
@@ -197,8 +203,8 @@ public sealed class StageEpisodeChoiceTests
         preview.SceneChosen += id => chosen = id;
         preview.CurrentRequest!.ChoiceOptions!.Single().Choose!();
 
-        Assert.Equal(via.Id, chosen); // 씬이 먼저 —
-        Assert.Equal(ep02.Id, preview.Playback.TakePendingEpisodeTarget()); // 다음 자리는 도착 에피소드
+        Assert.Equal(ep02.Id, chosen);
+        Assert.Null(preview.Playback.TakePendingEpisodeTarget());
     });
 
     [Fact]

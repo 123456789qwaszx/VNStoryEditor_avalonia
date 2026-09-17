@@ -43,13 +43,33 @@ public sealed class ChapterStatEditTests
     }
 
     [Fact]
-    public void Yarn에서_겹치는_키도_거절한다()
+    public void 공백만_다른_키는_이제_서로_다른_스탯이다()
     {
-        // ⚠ 화면에서는 달라 보이는데 <b>게임에서 하나가 된다</b> — 내보낼 때 정규화된다.
+        // ⚠ <b>뒤집혔다</b> (2026-09-17, 런타임 회신 §6.1). `호감 도`와 `호감_도`는 한때
+        //    내보낼 때 정규화돼 게임에서 하나가 됐고, 그래서 막았다. `stat("키")`의 인자가
+        //    <b>문자열 리터럴</b>이 되면서 정규화가 없어졌으니 막을 이유도 없다.
         ProjectEditor editor = World();
         editor.AddChapterStat("ch01", "호감_도");
 
-        Assert.Throws<InvalidOperationException>(() => editor.AddChapterStat("ch01", "호감 도"));
+        editor.AddChapterStat("ch01", "호감 도");
+
+        Assert.Equal(2, Chapter(editor).Stats.Count(stat => stat.Key.StartsWith("호감", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void 공백이_든_키가_대사에_원본_그대로_나간다()
+    {
+        // ⛔ <b>진행 JSON은 키를 원본 그대로 낸다.</b> 대사만 정규화하면 둘이 갈리고,
+        //    산출도 컴파일도 통과한 뒤 <b>그 대사가 재생될 때</b> 런타임에서 터진다
+        //    (런타임 회신 §6.1이 잡았다).
+        ProjectEditor editor = World();
+        editor.AddChapterStat("ch01", "호감도 (윌로우)");
+        editor.AddChapterCondition("ch01", "친함", "호감도 (윌로우) >= 3");
+
+        Assert.Equal(
+            "stat(\"호감도 (윌로우)\") >= 3",
+            ConditionYarnTranslator.Translate(
+                Chapter(editor).ToGraphModel("ch01", null).Conditions.Single(item => item.Label == "친함")).Yarn);
     }
 
     [Fact]

@@ -132,26 +132,6 @@ public static class ChapterValidator
                     "없습니다. 카드를 더블클릭해 대본을 한 줄이라도 적어 주세요."));
             }
 
-            // ② 그 에피소드에서 나가는 길에 매단 자유 씬.
-            foreach (ChapterEdge edge in chapter.Edges.Where(item =>
-                         string.Equals(item.FromEpisodeId, episode.EpisodeId, StringComparison.Ordinal)))
-            {
-                if (board.SceneFor(episode, edge) is not { } scene || HasPlayableLine(project, scene))
-                {
-                    continue;
-                }
-
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.ViaSceneEmpty,
-                    chapter.SourcePath,
-                    ChapterSheetNames.Edges,
-                    edge.SourceRow,
-                    "D",
-                    $"'{episode.EpisodeId}'→'{edge.ToEpisodeId}' 길에 매단 연출 씬 " +
-                    $"'{scene.Name}'에 재생할 줄이 하나도 없습니다. " +
-                    "연출 그래프에서 채우거나, 안 쓸 것이면 선을 떼 주세요."));
-            }
         }
     }
 

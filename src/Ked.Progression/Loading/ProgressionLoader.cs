@@ -278,7 +278,6 @@ namespace Ked.Progression
                         conditions,
                         dto.LockedReasonText,
                         changes,
-                        dto.ViaNodeId,
                         dto.Auto));
                 }
                 catch (ArgumentException error)

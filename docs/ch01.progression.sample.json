@@ -44,7 +44,6 @@
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
-          "ViaNodeId": "",
           "StatChanges": []
         }
       ],
@@ -71,7 +70,6 @@
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
-          "ViaNodeId": "",
           "StatChanges": []
         }
       ],
@@ -112,7 +110,6 @@
             }
           ],
           "LockedReasonText": "아직 신뢰가 부족하다",
-          "ViaNodeId": "암전_전환",
           "StatChanges": [
             {
               "Key": "trust",
@@ -133,7 +130,6 @@
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
-          "ViaNodeId": "",
           "StatChanges": []
         }
       ],
@@ -160,7 +156,6 @@
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
-          "ViaNodeId": "",
           "StatChanges": []
         }
       ],
@@ -187,7 +182,6 @@
           "VisibleConditions": [],
           "Conditions": [],
           "LockedReasonText": "",
-          "ViaNodeId": "",
           "StatChanges": []
         }
       ],

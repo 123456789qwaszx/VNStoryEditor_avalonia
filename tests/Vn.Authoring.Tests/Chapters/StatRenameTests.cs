@@ -181,18 +181,17 @@ public sealed class StatRenameTests
     }
 
     [Fact]
-    public void Yarn에서_겹치는_이름도_막는다()
+    public void 공백만_다른_이름으로_바꿀_수_있다()
     {
-        // ⚠ 화면에서는 달라 보이는데 <b>게임에서 하나가 되는</b> 자리다 — 내보낼 때
-        //    Yarn 식별자로 정규화되기 때문이다(공백·기호가 전부 `_`가 된다).
+        // ⚠ <b>뒤집혔다</b> (2026-09-17, 런타임 회신 §6.1). 내보낼 때 Yarn 식별자로
+        //    정규화되던 것이 막던 근거였는데, `stat("키")`의 인자가 문자열 리터럴이 되면서
+        //    정규화가 없어졌다 — 둘은 이제 게임에서도 서로 다른 스탯이다.
         ProjectEditor editor = World();
         Chapter(editor).Stats.Add(new ChapterStat("호감_도", "호감_도", 0, 0, 10, SourceRow: 0));
 
-        StatRenameOutcome outcome = editor.RenameChapterStat("ch01", "trust", "호감 도");
-
-        Assert.False(outcome.Applied);
-        Assert.Contains("겹칩니다", outcome.Refusal!, StringComparison.Ordinal);
-        Assert.Contains(Chapter(editor).Stats, stat => stat.Key == "trust");
+        Assert.True(editor.RenameChapterStat("ch01", "trust", "호감 도").Applied);
+        Assert.Contains(Chapter(editor).Stats, stat => stat.Key == "호감 도");
+        Assert.Contains(Chapter(editor).Stats, stat => stat.Key == "호감_도");
     }
 
     [Fact]

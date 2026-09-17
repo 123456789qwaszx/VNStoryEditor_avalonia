@@ -39,8 +39,8 @@ public static class ChapterProgressionExporter
     };
 
     /// <param name="project">
-    /// 연출 그래프의 배선을 읽을 프로젝트. 없으면 <c>ViaNodeId</c>가 빈 문자열로 나간다 —
-    /// 챕터 모델만으로 부르는 자리(테스트·CLI)가 그대로 살아 있어야 하기 때문이다.
+    /// 연출 그래프의 배선을 읽을 프로젝트. 없으면 판에서 오는 값(대사 엔트리 이름)이 빈
+    /// 문자열이 된다 — 챕터 모델만으로 부르는 자리(테스트·CLI)가 그대로 살아 있어야 한다.
     /// </param>
     public static ChapterExportResult Export(
         ChapterGraphModel chapter, string? episodesFolder, StoryProject? project = null)
@@ -282,14 +282,6 @@ public static class ChapterProgressionExporter
                 // **연출 그래프**다 — 시나리오 작가가 엑셀노드의 선택지 포트에 커스텀
                 // 대사 노드를 잇고, 그 배선은 프로젝트에 산다(`DialogueNode.ChoiceExits`).
                 //
-                // ⚠ 간선 시트에 `연출` 칸을 두지 않는 이유가 이것이다 — 같은 것이 엑셀에도
-                // 있으면 두 곳에 살고 갈린다. v11의 그 칸은 2026-08-24에 폐지됐고, 되살릴
-                // 자리는 반대편이었다.
-                //
-                // 런타임은 이 길을 고른 뒤 <b>도착 에피소드로 가기 전에</b> 이 노드를
-                // 재생한다(`Via 재생 → Commit`). 툴이 자유 씬을 detour로 — 재생하고 부른
-                // 갈래로 돌아오게 — 다루는 것과 같은 뜻이다.
-                ViaNodeId = via.NodeNameFor(episode, edge),
                 StatChanges = edge.StatChanges
                     .Select(delta => new StatChangeJson
                     {
@@ -440,19 +432,6 @@ public static class ChapterProgressionExporter
         /// <summary><b>해금조건</b> — 보이지만 고를 수 있으려면.</summary>
         public List<ConditionJson> Conditions { get; set; } = new();
         public string LockedReasonText { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 이 길을 <b>지나며 거쳐 갈</b> 연출의 Yarn 노드 이름. 비면 곧장 간다.
-        ///
-        /// ⚠ <b>"노드"는 Yarn 노드다</b> — 에피소드 노드가 아니다. 저작 쪽 원본은
-        /// <c>DialogueNode.ChoiceExits</c>(연출 그래프의 배선)이고 계약 쪽 이름이
-        /// <c>ViaNodeId</c>다. 값을 만드는 자리는 <see cref="ChapterBoard"/> 하나다.
-        ///
-        /// ⚠ <b>여기에 파라미터를 붙이지 않는다</b> — 지속시간·이징·색이 들어오는 순간
-        /// 경계면이 진짜로 넓어진다. 연출의 파라미터는 연출 쪽에서 산다
-        /// (`ked-progression` 요청, 2026-08-18). 이 칸은 이름 하나다.
-        /// </summary>
-        public string ViaNodeId { get; set; } = string.Empty;
 
         /// <summary>
         /// 이 간선을 타는 순간 1회 커밋할 스탯 증감 (2026-08-14 — 스탯이 변하는 유일한 자리).

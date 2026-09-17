@@ -92,8 +92,11 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
         JsonElement[] options = choice.GetProperty("NextOptions").EnumerateArray().ToArray();
         Assert.Equal(["trust_path", "alone_path"],
             options.Select(option => option.GetProperty("TargetEpisodeId").GetString()!).ToArray());
-        Assert.Equal("암전_전환", options[0].GetProperty("ViaNodeId").GetString());
-        Assert.Equal(string.Empty, options[1].GetProperty("ViaNodeId").GetString());
+        // ⛔ `ViaNodeId`는 <b>계약에서 없어졌다</b> (2026-09-17 — 양쪽 완료). 길에 매달던
+        //    연출은 같은 재생 순서의 <b>에피소드 한 칸</b>으로 편다:
+        //    `A —문구→ 연출 —자동→ B`. 그래서 칸 자체가 안 나가야 한다.
+        Assert.All(options, option =>
+            Assert.False(option.TryGetProperty("ViaNodeId", out _)));
 
         JsonElement[] nodes = document.RootElement.GetProperty("Nodes").EnumerateArray().ToArray();
         Assert.Equal("scene_hall", nodes.Single(node => node.GetProperty("EpisodeId").GetString() == "root")

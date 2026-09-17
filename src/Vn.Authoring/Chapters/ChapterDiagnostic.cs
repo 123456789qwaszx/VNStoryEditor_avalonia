@@ -24,7 +24,6 @@ public enum ChapterDiagnosticCode
     /// 간선에 매단 자유 씬에 재생할 줄이 하나도 없다 (2026-08-25). 줄 없는 노드는
     /// YarnProject에 실리지 않아 게임이 그 씬을 찾지 못한다.
     /// </summary>
-    ViaSceneEmpty,
 
     /// <summary>
     /// 에피소드의 대사 노드에 재생할 줄이 하나도 없다 (2026-08-25). 같은 이유로 치명적이다 —

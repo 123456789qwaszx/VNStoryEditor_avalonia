@@ -528,9 +528,10 @@ public partial class MiniStagePreview : UserControl
     }
 
     /// <summary>
-    /// 선택지 클릭 — 도착 에피소드의 노드로 씬을 넘긴다. 간선에 자유 씬이 매달려 있으면
-    /// 그 씬을 먼저 재생하고 도착 에피소드가 뒤따른다(계약의 ViaNodeId — 다음 자리는
-    /// <see cref="StagePlayback.SetPendingEpisodeTarget"/>이 들고, 씬 끝에서 소비된다).
+    /// 선택지 클릭 — 도착 에피소드의 노드로 씬을 넘긴다.
+    ///
+    /// ⛔ 한때 간선에 매달린 연출 씬을 먼저 재생했다(계약의 `ViaNodeId`). 2026-09-17에
+    /// 양쪽에서 걷혔다 — 그 순서는 이제 <b>에피소드 한 칸</b>이 말한다.
     /// <b>간선을 타는 순간 그 간선의 `스탯변화`가 1회 커밋된다</b> (2026-08-27 — 전이 규칙
     /// v9① 그대로). 커밋은 이동이 성사될 때만이다 — 도착이 없어 제자리에 남으면 스탯도 그대로다.
     /// </summary>
@@ -561,35 +562,7 @@ public partial class MiniStagePreview : UserControl
         // 지금 서 있는 판의 것이어야 잃어버린 스탯이 생기지 않는다).
         EnsureChapterRunFor(chapter).Commit(edge);
 
-        if (ViaSceneIdFor(source, edge.OptionLabel!) is { } viaId &&
-            _session.Project.FindNode(viaId) is DialogueNode)
-        {
-            Playback.SetPendingEpisodeTarget(target.Id);
-            RequestSceneChange(viaId);
-            return;
-        }
-
         RequestSceneChange(target.Id);
-    }
-
-    /// <summary>
-    /// 이 간선에 매달린 자유 씬 — 배선이 사는 두 자리를 내보내기(<c>ChapterBoard</c>)·철도
-    /// 배선(<c>GraphEditorView.PortFor</c>)과 <b>같은 순서로</b> 본다: 문구가 같은 구판
-    /// OPTION 줄의 포트가 먼저, 없으면 문구를 열쇠로 한 선택지 배선이다.
-    /// </summary>
-    private string? ViaSceneIdFor(DialogueNode source, string optionLabel)
-    {
-        ExitPort? legacy = NodeConnections.PortsOf(source, _session!.Project)
-            .FirstOrDefault(port =>
-                port.IsChoice &&
-                string.Equals(port.ChoiceText, optionLabel, StringComparison.Ordinal));
-
-        if (legacy is not null)
-        {
-            return legacy.TargetNodeId;
-        }
-
-        return source.ChoiceExits.GetValueOrDefault(optionLabel);
     }
 
     /// <summary>

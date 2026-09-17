@@ -682,17 +682,10 @@ public sealed partial class ProjectEditor
             return StatRenameOutcome.Refuse($"스탯 '{to}'가 이미 있습니다 — 둘을 합치려면 먼저 하나를 지우세요.");
         }
 
-        // ⚠ 내보낼 때 Yarn 식별자로 정규화되므로, 정규화 뒤에 겹치면 <b>대사에서 같은
-        //    스탯이 된다</b>. 화면에서는 달라 보이는데 게임에서 하나가 되는 자리라 막는다.
-        string normalized = Rendering.YarnSyntax.SanitizeVariableName(to);
-
-        if (chapter.Stats.Any(stat =>
-                !string.Equals(stat.Key, from, StringComparison.Ordinal) &&
-                string.Equals(Rendering.YarnSyntax.SanitizeVariableName(stat.Key), normalized, StringComparison.Ordinal)))
-        {
-            return StatRenameOutcome.Refuse(
-                $"'{to}'는 Yarn에서 '{normalized}'가 되어 이미 있는 스탯과 겹칩니다.");
-        }
+        // ⛔ ~~정규화 뒤에 겹치면 막는다~~ — <b>걷혔다</b> (2026-09-17, 런타임 회신 §6.1).
+        //    내보낼 때 Yarn 식별자로 정규화되던 것이 근거였는데, `stat("키")`의 인자는
+        //    식별자가 아니라 <b>문자열 리터럴</b>이라 정규화 자체가 없어졌다. `호감 도`와
+        //    `호감_도`는 이제 게임에서도 서로 다른 스탯이다 — 막을 이유가 사라졌다.
 
         ChapterStat renamed = chapter.Stats[index] with
         {
@@ -1120,17 +1113,8 @@ public sealed partial class ProjectEditor
             throw new InvalidOperationException($"스탯 '{key}'가 이미 있습니다.");
         }
 
-        string normalized = Rendering.YarnSyntax.SanitizeVariableName(key);
-
-        if (chapter.Stats.Any(stat => Other(stat) &&
-                string.Equals(
-                    Rendering.YarnSyntax.SanitizeVariableName(stat.Key),
-                    normalized,
-                    StringComparison.Ordinal)))
-        {
-            throw new InvalidOperationException(
-                $"'{key}'는 Yarn에서 '{normalized}'가 되어 이미 있는 스탯과 겹칩니다.");
-        }
+        // ⛔ ~~정규화 뒤 겹침도 막는다~~ — <b>걷혔다</b> (2026-09-17, 런타임 회신 §6.1).
+        //    `stat("키")`의 인자가 문자열 리터럴이라 정규화가 없어졌고, 근거도 함께 사라졌다.
     }
 
     /// <summary>
@@ -1412,126 +1396,6 @@ public sealed partial class ProjectEditor
                 $"스탯변화 '{text}': {parsed.Problems[0].Message}");
     }
 
-    /// <summary>
-    /// <b>간선에 매달렸던 연출 씬을 길 가운데로 올린다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17).
-    ///
-    /// ⛔ <c>ViaNode</c>는 <b>재생 순서를 말하는 두 번째 방법</b>이었다. `A —문구→ B` 간선에
-    /// 씬을 매달아 "가는 길에 이걸 먼저 틀어라"라고 적었는데, 같은 순서를 간선 두 개로
-    /// 그대로 말할 수 있다:
-    ///
-    /// <code>
-    /// 전: A —"문구"→ B   (간선에 Via가 매달려 있다)
-    /// 후: A —"문구"→ Via —자동→ B
-    /// </code>
-    ///
-    /// 런타임이 A를 틀고, 고른 뒤 Via를 틀고, 묻지 않고 B로 간다 — <b>순서가 똑같다</b>.
-    /// 같은 것을 두 데서 말하면 갈린다는 것이 이 저장소가 반복해서 다친 자리이고, 그래서
-    /// 곁칸이 아니라 간선이 남는다.
-    ///
-    /// <para>규칙 셋이 이 모양을 강제한다:</para>
-    /// <list type="bullet">
-    /// <item>Via는 <b>도착의 장면</b>에 둔다 — 자동 길은 장면을 못 넘는다(<c>AutoEdgeCrossesScene</c>).</item>
-    /// <item>문구·조건·스탯은 <b>앞 간선에 남는다</b> — 사람이 고른 자리가 거기다.
-    /// 자동 길은 무조건·무증감이어야 한다(<c>AutoEdgeHasChoiceLabel</c>·<c>AutoEdgeHasSiblings</c>).</item>
-    /// <item>이미 에피소드인 노드는 <b>안 건드린다</b> — 그건 연출 씬이 아니라 잘못 이어진
-    /// 배선이고, <c>WarnExitsIntoExcelNodes</c>가 이미 그것을 짚는다.</item>
-    /// </list>
-    ///
-    /// ⚠ 한 번 올리면 <c>ChoiceExits</c>에서 지운다 — 남겨 두면 같은 씬이 <b>두 번</b>
-    /// 재생된다(간선으로 한 번, 곁칸으로 한 번).
-    /// </summary>
-    /// <returns>올린 씬들. 아무것도 없으면 빈 목록이고 편집 기록도 안 남는다.</returns>
-    public IReadOnlyList<LiftedViaScene> LiftViaScenes(string chapterId)
-    {
-        ChapterDocument chapter = RequireChapter(chapterId);
-
-        if (Project.Files.FirstOrDefault(item =>
-                string.Equals(item.Name, chapterId, StringComparison.Ordinal)) is not { } board)
-        {
-            return [];
-        }
-
-        var plans = new List<(ChapterEdge Edge, DialogueNode Source, DialogueNode Via, string ViaEpisodeId)>();
-
-        foreach (ChapterEdge edge in chapter.Edges.ToList())
-        {
-            if (edge.OptionLabel is not { Length: > 0 } label ||
-                FindEpisode(chapter, edge.FromEpisodeId) is not { } from ||
-                NodeOnBoard(board, chapter, from) is not { } source ||
-                !source.ChoiceExits.TryGetValue(label, out string? targetId) ||
-                Project.FindNode(targetId) is not DialogueNode via ||
-                !board.Nodes.Contains(via) ||
-                EpisodeNaming.EpisodeFor(chapter, via) is not null)
-            {
-                continue;
-            }
-
-            string episodeId = via.Name;
-
-            if (FindEpisode(chapter, episodeId) is not null ||
-                plans.Any(plan => string.Equals(plan.ViaEpisodeId, episodeId, StringComparison.Ordinal)))
-            {
-                // 이름이 겹치면 건드리지 않는다 — 조용히 개명하면 어느 씬이 어디로 갔는지
-                // 아무도 모른다. 사람이 판에서 이름을 고치면 다음 번에 올라간다.
-                continue;
-            }
-
-            plans.Add((edge, source, via, episodeId));
-        }
-
-        if (plans.Count == 0)
-        {
-            return [];
-        }
-
-        var lifted = new List<LiftedViaScene>();
-
-        Mutate(() =>
-        {
-            foreach ((ChapterEdge edge, DialogueNode source, DialogueNode via, string episodeId) in plans)
-            {
-                int index = chapter.Edges.IndexOf(edge);
-
-                chapter.Episodes.Add(new ChapterEpisode(
-                    episodeId,
-                    episodeId,
-                    Index: string.Empty,
-                    DialogueEntry: episodeId,
-                    Math.Round(via.Layout.X, 2),
-                    Math.Round(via.Layout.Y, 2),
-                    Memo: null,
-                    SourceRow: 0)
-                {
-                    // 자동 길은 장면을 못 넘는다 — 도착의 장면에 선다.
-                    SceneId = FindEpisode(chapter, edge.ToEpisodeId)?.SceneId
-                });
-
-                via.ExcelEpisodeId = episodeId;
-
-                chapter.Edges[index] = edge with { ToEpisodeId = episodeId };
-                chapter.Edges.Insert(index + 1, new ChapterEdge(
-                    episodeId, edge.ToEpisodeId, OptionLabel: null,
-                    ConditionLabel: null, LockedMessage: null, SourceRow: 0)
-                {
-                    Auto = true
-                });
-
-                source.ChoiceExits.Remove(edge.OptionLabel!);
-
-                lifted.Add(new LiftedViaScene(
-                    chapterId, episodeId, edge.FromEpisodeId, edge.ToEpisodeId));
-            }
-        });
-
-        return lifted;
-    }
-
-    /// <summary>그 에피소드를 재생하는 판 위의 카드. 아직 없으면 <c>null</c>이다.</summary>
-    private static DialogueNode? NodeOnBoard(
-        StoryFile board, ChapterDocument chapter, ChapterEpisode episode) =>
-        board.Nodes.OfType<DialogueNode>().FirstOrDefault(node =>
-            EpisodeNaming.EpisodeFor(chapter, node) is { } found &&
-            string.Equals(found.EpisodeId, episode.EpisodeId, StringComparison.Ordinal));
 
     /// <summary>
     /// <b>판에 남은 옛 자유 씬을 에피소드로 올린다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17).
@@ -1545,9 +1409,8 @@ public sealed partial class ProjectEditor
     ///
     /// ⚠ <b>부른 쪽의 장면</b>에 둔다. 곁가지는 제 본줄 옆에 있어야 판에서 읽힌다.
     ///
-    /// ⚠ <see cref="LiftViaScenes"/> <b>다음에</b> 부른다 — 간선에 매달렸던 씬은 그쪽이
-    /// 진짜 간선을 달아 주므로 <c>도달불가 허용</c>이 필요 없다. 순서를 뒤집으면 멀쩡히
-    /// 이어질 씬에 허용 표가 붙는다.
+    /// ⚠ <b>이제는 안전망이다</b> — 판에 세운 카드가 언제나 에피소드를 받으므로(2026-09-17)
+    /// 올릴 것이 정상적으로는 없다. 어긋난 상태를 만나면 조용히 고친다.
     /// </summary>
     /// <returns>올린 에피소드Id들. 올릴 것이 없으면 빈 목록이고 프로젝트를 안 건드린다.</returns>
     public IReadOnlyList<string> LiftFreeScenes(string chapterId)
@@ -1634,15 +1497,6 @@ public sealed partial class ProjectEditor
     }
 }
 
-/// <summary>
-/// 길 가운데로 올라온 옛 연출 씬 하나 (R7 P-6 · 결정 ⑤).
-/// <c>A —문구→ Via —자동→ To</c>로 펴졌다는 보고다.
-/// </summary>
-public sealed record LiftedViaScene(
-    string ChapterId,
-    string ViaEpisodeId,
-    string FromEpisodeId,
-    string ToEpisodeId);
 
 /// <summary>
 /// 스탯 개명 한 판의 결과 (2026-09-17).

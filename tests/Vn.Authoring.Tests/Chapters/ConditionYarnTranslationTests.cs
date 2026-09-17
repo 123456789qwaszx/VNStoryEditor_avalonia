@@ -62,7 +62,7 @@ public sealed class ConditionYarnTranslationTests
     {
         // ⚠ Yarn 식별자에 공백이 못 들어간다 — 그대로 내면 <b>번들 전체가</b> 컴파일에
         //    실패한다. 규칙의 주인은 `YarnSyntax.SanitizeVariableName` 하나다.
-        Assert.Equal("stat(\"호감_도\") >= 1", Yarn("호감 도 >= 1"));
+        Assert.Equal("stat(\"호감 도\") >= 1", Yarn("호감 도 >= 1"));
     }
 
     [Fact]
