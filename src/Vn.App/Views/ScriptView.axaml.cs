@@ -572,40 +572,9 @@ public partial class ScriptView : UserControl
     /// ⚠ 확인 창을 띄우지 않는다 — 창은 방금 읽던 트리를 덮는다. 트리 옆에 붙어 뜨는
     /// 쪽이 어느 줄을 지우는 것인지 더 분명하다([챕터 그래프]가 세운 그 규율).
     /// </summary>
-    private void Confirm(string caution, string confirmText, Action act)
-    {
-        var panel = new StackPanel { Spacing = 6, MaxWidth = 260 };
-
-        panel.Children.Add(new TextBlock
-        {
-            Text = caution,
-            FontSize = 11,
-            TextWrapping = TextWrapping.Wrap,
-            Opacity = 0.85
-        });
-
-        var flyout = new Flyout { Content = panel };
-
-        var confirm = new Button
-        {
-            Content = confirmText,
-            FontSize = 11,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Foreground = new SolidColorBrush(Color.FromRgb(190, 60, 60))
-        };
-
-        confirm.Click += (_, _) => UiGuard.Run(_session, confirmText, () =>
-        {
-            flyout.Hide();
-            ConfirmButton = null;
-            act();
-        });
-
-        panel.Children.Add(confirm);
-        flyout.ShowAt(EpisodeTree);
-
-        ConfirmButton = confirm;
-    }
+    private void Confirm(string caution, string confirmText, Action act) =>
+        ConfirmButton = ConfirmFlyout.Show(
+            EpisodeTree, _session, caution, confirmText, act, closed: () => ConfirmButton = null);
 
     /// <summary>
     /// 지금 떠 있는 확인 단추 — <b>테스트의 손잡이</b>다([화자 ▾]의 <see cref="SpeakerMenuItems"/>와

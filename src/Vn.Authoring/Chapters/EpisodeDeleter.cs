@@ -130,10 +130,7 @@ public static class EpisodeDeleter
             return (null, null);
         }
 
-        bool empty = editor.Project.FindScript(card.ScriptId) is not { } script ||
-            !script.ActiveLines.Any();
-
-        if (empty)
+        if (NothingWritten(editor.Project, card))
         {
             string name = card.Name;
             editor.RemoveNode(card.Id);
@@ -142,6 +139,31 @@ public static class EpisodeDeleter
         }
 
         return (null, editor.DetachEpisodeMark(card.Id));
+    }
+
+    /// <summary>
+    /// 이 카드에 <b>지킬 글이 하나도 없는가</b>.
+    ///
+    /// ⛔ <b>"줄이 있는가"로 재면 안 된다.</b> 갓 만든 카드는 빈 줄 하나를 달고 태어나므로
+    /// (<c>NewDialogueNodeCore</c>), 줄 수로 재면 <b>방금 만든 에피소드를 지울 때마다</b>
+    /// `(떼어냄)` 카드가 남는다 — 이 규칙이 막으려던 유령이 바로 그것이다.
+    ///
+    /// ⚠ 내보내기 쪽의 「빈 노드」 판정(<c>ActiveLines.Any()</c>)과 <b>다른 질문이다</b>.
+    /// 그쪽은 <i>"재생할 줄이 있는가"</i>이고 빈 줄도 재생되는 한 줄이다. 여기는
+    /// <i>"사람이 쓴 것이 있는가"</i>다 — 빈 줄은 쓴 것이 아니다.
+    /// </summary>
+    private static bool NothingWritten(Model.StoryProject project, DialogueNode card)
+    {
+        if (project.FindScript(card.ScriptId) is not { } script)
+        {
+            return true;
+        }
+
+        Script.ScriptLocale primary = script.RequireLocale(script.PrimaryLocale);
+
+        return !script.ActiveLines.Any(line =>
+            primary.Find(line.Id) is { } text &&
+            (!string.IsNullOrWhiteSpace(text.Text) || !string.IsNullOrWhiteSpace(text.Speaker)));
     }
 
     /// <summary>민 파일을 제자리로. <b>언제나 false</b>를 돌려준다 — 예외를 삼키지 않는다.</summary>

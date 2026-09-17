@@ -241,6 +241,34 @@ public partial class GraphEditorView : UserControl
     internal void Attach(AuthoringSession session)
     {
         _session = session;
+
+        // 단추가 <b>무엇을 지울지</b>는 고른 것에 달렸다 — 고를 때마다 이름을 맞춘다.
+        session.SelectionChanged += (_, _) =>
+            UiGuard.Run(_session, "삭제 단추 맞추기", RefreshDeleteButton);
+
+        RefreshDeleteButton();
+    }
+
+    /// <summary>
+    /// 지울 것의 이름을 <b>단추에 적는다</b> (2026-09-18).
+    ///
+    /// ⛔ 챕터 판의 카드를 고른 채로 「노드 삭제」라고 적혀 있으면 <b>단추가 거짓말</b>이다 —
+    /// 그것을 누르면 에피소드가, 그러니까 간선과 원고까지 함께 사라진다. 누르기 <b>전에</b>
+    /// 보이는 것이 확인 한 걸음보다 먼저다.
+    /// </summary>
+    private void RefreshDeleteButton()
+    {
+        bool episode =
+            _session?.SelectedNode is DialogueNode card &&
+            EpisodeNaming.ChapterOf(_session.Project, card) is not null;
+
+        DeleteNodeButton.Content = episode ? "에피소드 삭제…" : "노드 삭제";
+        ToolTip.SetTip(
+            DeleteNodeButton,
+            episode
+                ? "이 카드는 챕터의 에피소드입니다 — 간선·픽스처 참조까지 함께 지웁니다. " +
+                  "원고는 .bak으로 남지만 되돌리기로는 안 돌아옵니다."
+                : "이 판의 카드 하나를 지웁니다. 되돌리기 한 번으로 돌아옵니다.");
     }
 
     // ── 그리기 ──────────────────────────────────────────────────────────────
@@ -3370,7 +3398,48 @@ public partial class GraphEditorView : UserControl
             return;
         }
 
+        // ⭐ <b>챕터 판의 대사 카드는 에피소드다</b> (R7 P-6 · 결정 ⑤). 그러니 그 카드를
+        //    지우는 것은 <b>에피소드를 지우는 일</b>이고, 챕터 그래프·대본 탭과 같은 길을
+        //    지나야 한다 — 2026-09-18까지는 카드만 걷어 <b>대본 없는 반쪽 에피소드</b>가
+        //    남았다(만들기는 합쳐 놓고 지우기는 안 합친 자리였다).
+        //
+        // ⚠ <b>여기서만 묻는다.</b> 챕터 그래프의 [에피소드 삭제]는 이름이 이미 무엇을
+        //    지우는지 말하지만, 여기서 사람은 <b>카드를 지운다고 생각하고</b> 누른다.
+        //    그리고 이 길은 원고를 `.bak`으로 미므로 <b>되돌리기가 못 되돌린다</b>.
+        if (_session.Project.FindNode(nodeId) is DialogueNode card &&
+            EpisodeNaming.ChapterOf(_session.Project, card) is { } chapter)
+        {
+            string episodeId = EpisodeNaming.EpisodeIdOf(card);
+
+            DeleteConfirmButton = ConfirmFlyout.Show(
+                DeleteNodeButton,
+                _session,
+                $"'{episodeId}'은 챕터 '{chapter.ChapterId}'의 에피소드입니다. " +
+                "간선·픽스처 참조까지 함께 지웁니다 — 원고는 .bak으로 남지만 " +
+                "되돌리기로는 안 돌아옵니다.",
+                "에피소드 지우기",
+                () => DeleteEpisodeOfCard(chapter.ChapterId, episodeId),
+                closed: () => DeleteConfirmButton = null);
+
+            return;
+        }
+
+        // 작가의 낙서판 — 에피소드가 아니라 카드다. 되돌리기 한 번에 돌아온다.
         _session.Editor.RemoveNode(nodeId);
+    }
+
+    /// <summary>
+    /// 지금 떠 있는 확인 단추 — <b>테스트의 손잡이</b>다([대본] 탭의 <c>ConfirmButton</c>과
+    /// 같은 뜻). 플라이아웃의 팝업은 창 밖에 살아 나무를 타고 내려가 찾을 수 없다.
+    /// </summary>
+    internal Button? DeleteConfirmButton { get; private set; }
+
+    private void DeleteEpisodeOfCard(string chapterId, string episodeId)
+    {
+        EpisodeDeleter.Result result = EpisodeDeleter.Delete(
+            _session!.Editor, _session.ProjectPath, chapterId, episodeId);
+
+        _session.SetStatus(result.Ok ? result.Describe(episodeId) : result.Failure!);
     }
 
     private NodeCard? FindCard(string nodeId)

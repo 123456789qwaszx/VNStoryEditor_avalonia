@@ -167,6 +167,12 @@ public sealed class ChapterGraphEditingTests
 
         var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
         script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
+
+        // ⚠ <b>글을 실제로 넣는다</b> (2026-09-18). 줄만 있고 비어 있으면 이제 「쓴 것이
+        //    없다」로 친다 — 갓 만든 카드가 빈 줄 하나를 달고 태어나기 때문이다. 그것까지
+        //    "내용 있음"으로 세면 <b>새로 만든 에피소드를 지울 때마다</b> 유령이 남는다.
+        script.RequireLocale(script.PrimaryLocale).Entries["ln_keep"] =
+            new Vn.Authoring.Script.LocalizedLine("윌로", "잃으면 안 되는 줄");
         session.Project.Scripts.Add(script);
         kept.ScriptId = script.Id;
 
@@ -212,6 +218,12 @@ public sealed class ChapterGraphEditingTests
 
         var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
         script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
+
+        // ⚠ <b>글을 실제로 넣는다</b> (2026-09-18). 줄만 있고 비어 있으면 이제 「쓴 것이
+        //    없다」로 친다 — 갓 만든 카드가 빈 줄 하나를 달고 태어나기 때문이다. 그것까지
+        //    "내용 있음"으로 세면 <b>새로 만든 에피소드를 지울 때마다</b> 유령이 남는다.
+        script.RequireLocale(script.PrimaryLocale).Entries["ln_keep"] =
+            new Vn.Authoring.Script.LocalizedLine("윌로", "잃으면 안 되는 줄");
         session.Project.Scripts.Add(script);
         kept.ScriptId = script.Id;
 

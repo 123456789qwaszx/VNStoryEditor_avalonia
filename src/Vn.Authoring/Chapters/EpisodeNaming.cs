@@ -18,6 +18,36 @@ namespace Vn.Authoring.Chapters;
 /// </summary>
 public static class EpisodeNaming
 {
+    /// <summary>
+    /// 이 판이 곧 <b>챕터</b>라면 그 챕터. 작가의 낙서판이면 <c>null</c>이다.
+    ///
+    /// ⚠ <b>챕터 = 판 1:1이고, 잇는 것은 이름이다</b> (G-1 v2). 이 한 줄이 「이 카드가
+    /// 에피소드인가」를 가르므로 <b>여기 한 곳에만</b> 둔다 — 새 프로젝트는 <c>기본 파일</c>
+    /// 이라는 챕터 아닌 판으로 시작하고, 거기 세운 카드는 진행에 안 실린다.
+    /// </summary>
+    public static ChapterDocument? ChapterOfBoard(StoryProject project, StoryFile board)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(board);
+
+        return project.Chapters.FirstOrDefault(chapter =>
+            string.Equals(chapter.ChapterId, board.Name, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 이 카드가 선 <b>챕터</b>. 챕터 판이 아니면 <c>null</c>이고, 그때 이 카드는
+    /// <b>에피소드가 아니다</b>.
+    /// </summary>
+    public static ChapterDocument? ChapterOf(StoryProject project, StoryNode node)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(node);
+
+        return project.FindFileContainingNode(node.Id) is { } board
+            ? ChapterOfBoard(project, board)
+            : null;
+    }
+
     /// <summary>그 노드가 대신하는 에피소드 Id — 표식이 먼저고, 없으면 이름이다.</summary>
     public static string EpisodeIdOf(DialogueNode node)
     {

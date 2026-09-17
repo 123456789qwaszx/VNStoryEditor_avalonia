@@ -325,10 +325,9 @@ public sealed partial class ProjectEditor
             ? episode.SceneId
             : null;
 
-    /// <summary>이 판이 곧 챕터라면 그 챕터. 작가의 낙서판이면 <c>null</c>이다.</summary>
+    /// <summary>이 판이 곧 챕터라면 그 챕터 — 규칙은 <see cref="EpisodeNaming"/>이 갖는다.</summary>
     private ChapterDocument? ChapterOfBoard(StoryFile file) =>
-        Project.Chapters.FirstOrDefault(item =>
-            string.Equals(item.ChapterId, file.Name, StringComparison.Ordinal));
+        EpisodeNaming.ChapterOfBoard(Project, file);
 
     /// <summary>
     /// 이 노드가 질 <b>에피소드</b>를 짓는다 (R7 P-6). 챕터 판이 아니면 둘 다 <c>null</c>이다 —
