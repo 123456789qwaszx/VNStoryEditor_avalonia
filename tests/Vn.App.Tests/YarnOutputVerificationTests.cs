@@ -144,15 +144,14 @@ public sealed class YarnOutputVerificationTests : IDisposable
         Assert.True(Directory.Exists(golden), $"골든 폴더를 못 찾았다: {golden}");
 
         string[] sources =
-        [
-            Path.Combine(golden, storyFile),
-            Path.Combine(golden, "declarations.yarn")
-        ];
+        // ⛔ 선언 파일은 2026-09-17에 사라졌다 — 작가 변수가 없어져 선언할 것이 없고,
+        //    빈 선언 파일은 아예 안 쓴다. 골든도 대본 하나다.
+        [Path.Combine(golden, storyFile)];
 
         YarnOutputVerdict verdict = YarnOutputVerification.Verify(sources);
 
         Assert.False(verdict.HasErrors, string.Join(" / ", verdict.Errors));
-        Assert.Equal(2, verdict.FileCount);
+        Assert.Equal(1, verdict.FileCount);
     }
 
     [Fact]

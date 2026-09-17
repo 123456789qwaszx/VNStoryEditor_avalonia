@@ -355,34 +355,9 @@ public sealed class ChapterEpisodeNodeTests
 
         Assert.Contains(available.Conditions, condition => condition.Name == "신뢰높음");
     });
-
-    [Fact]
-    public void 자유_노드가_스탯을_set으로_바꾸면_경고한다() => HeadlessUi.Run(() =>
-    {
-        // 가드레일 — 스탯 변화의 원천은 엑셀 J열 하나여야 도달성 증명이 참을 말한다.
-        (_, AuthoringSession session, _) = ShowSyncedNode();
-
-        string fileId = session.EnsureChapterBoard("ch05");
-        DialogueNode free = session.Editor.AddDialogueNode(fileId, name: "몰래스탯");
-        string lineId = session.Project.FindScript(free.ScriptId)!.ActiveLines.First().Id;
-        session.Editor.SetLineSetOperations(free.Id, lineId,
-        [
-            new SetOperation { Variable = "trust", Operator = SetOperatorKind.Add, Value = "1" }
-        ]);
-
-        ChapterGraphModel chapter = ChapterWorkbookReader.Read(
-            Path.Combine(EpisodesRoot(session), "..", "chapters", "ch05.xlsx"));
-
-        var warnings = ChapterBoardSupply.WarnFreeNodeStatWrites(session.Editor, fileId, chapter);
-
-        Assert.Contains(warnings, warning =>
-            warning.Severity == ChapterDiagnosticSeverity.Warning &&
-            warning.Message.Contains("몰래스탯") &&
-            warning.Message.Contains("trust"));
-
-        // 엑셀노드는 대상이 아니다 — J열이 원천이니까.
-        Assert.DoesNotContain(warnings, warning => warning.Message.Contains("Story_ch05_02"));
-    });
+    // ⛔ <b>「자유 노드가 스탯을 set으로 바꾸면 경고한다」는 2026-09-17에 걷혔다</b>
+    //    (작가 변수 폐지). 대사에서 스탯에 `<<set>>`을 걸 길 자체가 없어져, 경고가
+    //    지키던 뒷길이 <b>구조적으로 불가능</b>해졌다.
 
     /// <summary>
     /// 칸에 글을 치고 <b>초점을 진짜로 옮긴다</b>. 이름 칸으로 옮기는 것은 그것이 늘 있고

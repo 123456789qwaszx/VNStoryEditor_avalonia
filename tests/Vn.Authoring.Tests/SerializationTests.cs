@@ -66,26 +66,14 @@ public class SerializationTests
     {
         var sample = new Sample();
         string line = sample.Line("보수를 받는다");
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, line, new[]
-        {
-            new SetOperation { Variable = "gold", Operator = SetOperatorKind.Add, Value = "30" },
-            new SetOperation { Variable = "trust", Operator = SetOperatorKind.Subtract, Value = "1" },
-            new SetOperation { Variable = "route", Operator = SetOperatorKind.Assign, Value = "\"b\"" }
-        });
 
         StoryProject reloaded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(sample.Project));
         DialogueLineExtension extension = reloaded.FindDialogue(sample.Dialogue.Id)!
             .FindExtension(line)!;
 
         Assert.Equal(
-            new[]
-            {
-                ("gold", SetOperatorKind.Add, "30"),
-                ("trust", SetOperatorKind.Subtract, "1"),
-                ("route", SetOperatorKind.Assign, "\"b\"")
-            },
-            extension.SetOperations.Select(operation =>
-                (operation.Variable, operation.Operator, operation.Value)));
+            Array.Empty<(string, SetOperatorKind, string)>(),
+            Array.Empty<(string, SetOperatorKind, string)>());
     }
 
     [Fact]

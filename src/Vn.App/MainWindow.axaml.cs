@@ -39,7 +39,6 @@ public partial class MainWindow : Window
     // 옮기면 그 배선이 두 벌이 된다. 이름을 XAML 시절 그대로 둔 것은 의도다: 참조하는
     // 자리가 마흔 군데라 이름이 바뀌면 이사와 무관한 diff가 그만큼 생긴다.
     private readonly DialogueNodeEditor DialogueEditor = new();
-    private readonly SetNodeEditor SetEditor = new();
     private readonly PresentationNodeEditor PresentationEditor = new();
     private readonly AssetExplorerView AssetExplorer = new() { MaxHeight = 300 };
 
@@ -126,7 +125,6 @@ public partial class MainWindow : Window
         ChapterGraph.Attach(_session);
         Script.Attach(_session);
         DialogueEditor.Attach(_session);
-        SetEditor.Attach(_session);
         PresentationEditor.Attach(_session);
         StagePreview.Attach(_session);
         AssetExplorer.Attach(_session);
@@ -433,7 +431,7 @@ public partial class MainWindow : Window
         //    화면이 무대라서다. 여기엔 노드 편집기들만 남는다.
         return new Panel
         {
-            Children = { DialogueEditor, SetEditor, PresentationEditor, EmptyText }
+            Children = { DialogueEditor, PresentationEditor, EmptyText }
         };
     }
 
@@ -1403,7 +1401,6 @@ public partial class MainWindow : Window
         StoryNode? node = _session.SelectedNode;
 
         DialogueEditor.IsVisible = node is DialogueNode;
-        SetEditor.IsVisible = node is SetNode;
         PresentationEditor.IsVisible = node is PresentationNode;
         EmptyText.IsVisible = node is null;
         EmptyText.Text = "노드를 선택하면 여기서 편집합니다.";
@@ -1414,7 +1411,6 @@ public partial class MainWindow : Window
         }
         else if (node is SetNode)
         {
-            SetEditor.Show(node.Id);
         }
         else if (node is PresentationNode)
         {
@@ -1451,12 +1447,6 @@ public partial class MainWindow : Window
         if (node is DialogueNode && DialogueEditor.NodeId == node.Id)
         {
             DialogueEditor.Rebuild();
-            return;
-        }
-
-        if (node is SetNode && SetEditor.NodeId == node.Id)
-        {
-            SetEditor.Rebuild();
             return;
         }
 

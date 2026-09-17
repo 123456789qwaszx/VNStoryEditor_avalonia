@@ -170,18 +170,6 @@ public static class DialoguePublisher
 
             node.BranchExits.TryGetValue(line.LineId, out string? branchExit);
 
-            foreach (SetOperation operation in line.Sets)
-            {
-                if (string.IsNullOrWhiteSpace(operation.Variable))
-                {
-                    problems.Add(new PublishProblem(
-                        PublishProblemKind.InvalidSetOperation,
-                        line.LineId,
-                        $"LineId '{line.LineId}'의 변수 변경에 변수 이름이 없습니다.",
-                        IsBlocking: true));
-                }
-            }
-
             if (line.Transition is { OpensOption: true } optionTransition)
             {
                 if (string.IsNullOrWhiteSpace(optionTransition.OptionId))
@@ -194,19 +182,6 @@ public static class DialoguePublisher
                         IsBlocking: true));
                 }
 
-                // 미리보기 태그 조회는 런타임에서 소문자 키로 일어난다(계약서 D5).
-                foreach (SetOperation operation in line.Sets)
-                {
-                    if (operation.Variable.Any(char.IsUpper))
-                    {
-                        problems.Add(new PublishProblem(
-                            PublishProblemKind.ChoicePreviewNotice,
-                            line.LineId,
-                            $"옵션 효과 변수 '{operation.Variable}'에 대문자가 있어 미리보기 태그는 " +
-                            "소문자로 출력됩니다. 누적 표시 조회는 소문자 키로 일어납니다.",
-                            IsBlocking: false));
-                    }
-                }
             }
 
             lines.Add(new DialogueResultLine(
@@ -217,14 +192,7 @@ public static class DialoguePublisher
                 line.Text,
                 Freeze(line.Transition, project, definition, available),
                 line.Transition?.OpensBranch == true ? branchExit : null,
-                line.Sets.Count == 0
-                    ? null
-                    : line.Sets
-                        .Select(operation => new DialogueResultSetOperation(
-                            operation.Variable,
-                            operation.Operator,
-                            operation.Value))
-                        .ToArray(),
+                null,
                 // 둘째 전환부터 — 겹쳐 닫기·연달아 열기가 여기 실린다 (2026-08-17).
                 line.Transitions.Count <= 1
                     ? null
@@ -267,10 +235,9 @@ public static class DialoguePublisher
                 IsBlocking: false));
         }
 
-        var assignments = ConnectedSetNodeResolver.Resolve(project, node.Id)
-            .SelectMany(connected => connected.Node.Assignments)
-            .Select(assignment => new DialogueResultAssignment(assignment.Variable, assignment.Value))
-            .ToList();
+        // ⛔ 설정노드의 변수 배정은 2026-09-17에 폐지됐다 (작가 변수 폐지) — 설정노드는
+        //    이제 <b>조건만</b> 공급한다. 결과에 실을 배정이 없다.
+        var assignments = new List<DialogueResultAssignment>();
 
         return new DialogueDraft(
             node.Id,

@@ -25,7 +25,6 @@ public class YarnBundleVerificationTests
 
     [Theory]
     [InlineData("golden_ep.yarn")]
-    [InlineData("declarations.yarn")]
     public void 골든_대본과_글자_하나까지_같다(string fileName)
     {
         YarnBundle bundle = EmitGoldenBundle();
@@ -133,64 +132,6 @@ public class YarnBundleVerificationTests
         }
     }
 
-    [Fact]
-    public void 두_합성을_같은_폴더로_내보내면_선언은_합집합_한_번이고_컴파일된다()
-    {
-        BundleWorld world = BuildWorld();
-        YarnBundle first = Emit(world);
-
-        // 두 번째 합성 — 같은 변수(favor)를 쓰고 새 변수(trust)도 하나 쓴다.
-        DialogueNode second = world.Sample.TargetB;
-        string secondLine = world.Sample.Project.FindScript(second.ScriptId)!.ActiveLines.First().Id;
-        world.Sample.Editor.SetLineSetOperations(second.Id, secondLine, new[]
-        {
-            new SetOperation { Variable = "favor", Operator = SetOperatorKind.Add, Value = "1" },
-            new SetOperation { Variable = "trust", Operator = SetOperatorKind.Subtract, Value = "2" }
-        });
-        DialogueResult secondResult = world.Sample.Editor.PublishDialogue(second.Id).Result;
-        YarnBundle secondBundle = YarnBundleEmitter.Emit(
-            secondResult,
-            project: world.Sample.Project,
-            definition: Sample.Definition);
-
-        string directory = Path.Combine(Path.GetTempPath(), $"VnTool.Compile.{Guid.NewGuid():N}");
-
-        try
-        {
-            var bundles = new List<YarnBundle> { first, secondBundle };
-
-            foreach (DialogueNode target in new[] { world.Sample.TargetA, world.Sample.TargetDefault })
-            {
-                DialogueResult result = world.Sample.Editor.PublishDialogue(target.Id).Result;
-                bundles.Add(YarnBundleEmitter.Emit(result, project: world.Sample.Project));
-            }
-
-            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles(bundles, directory);
-
-            // 선언 파일은 폴더당 하나이고, 같은 변수(favor)는 한 번만 선언된다.
-            string declarationsPath = Assert.Single(written, path =>
-                Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
-            string declarations = File.ReadAllText(declarationsPath, Encoding.UTF8);
-            // 작가의 아이템·능력은 챕터 접두를 받는다 (2026-08-17) — 이 픽스처의 favor·trust는
-            // 둘 다 작가 설정노드의 것이다. 같은 판의 두 번들이 같은 이름을 쓰면 선언은
-            // 여전히 한 번뿐이다(접두가 같으니 합집합도 그대로 돈다).
-            Assert.Single(Regex.Matches(declarations, Regex.Escape("<<declare $__t1_sf_test_favor")));
-            Assert.Contains("<<declare $__t1_sf_test_trust = 0>>", declarations, StringComparison.Ordinal);
-
-            AnalysisReport report = Analyze(directory);
-            IReadOnlyList<VnDiagnostic> errors = report.Diagnostics
-                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                .ToArray();
-
-            Assert.True(errors.Count == 0, "컴파일 오류: " + string.Join(
-                Environment.NewLine,
-                errors.Select(error => $"{error.Code} {error.FilePath}:{error.Line} {error.Message}")));
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
-    }
 
     // ── 선택지 번들 (W8) ────────────────────────────────────────────────────
 
@@ -295,8 +236,7 @@ public class YarnBundleVerificationTests
         // W55 — 조건 종료 한 줄이 선택지도 닫는다: Pres에서 선택 합성 조건이
         // 조건 사본보다 먼저 닫혀(endif 두 개) 실제 컴파일을 통과해야 한다.
         var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
-        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "$favor >= 5");
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "stat(\"favor\") >= 5");
 
         sample.Line("시작.");
         sample.Line("조건 시작", LineConditionTransition.BeginIf(sample.ConditionA.Id));
@@ -377,7 +317,7 @@ public class YarnBundleVerificationTests
             bundleName: "choices_ep");
 
         // OptionId(= 라벨 라인의 LineId 태그 순서)와 $__ch 번호가 그대로다.
-        Assert.Contains($"-> 완전히 고친 라벨 #fatigue:+10 #common_ingredient:+15 #line:{world.Label1}",
+        Assert.Contains($"-> 완전히 고친 라벨 #line:{world.Label1}",
             after.StoryText, StringComparison.Ordinal);
         Assert.Equal(OptionLineTags(before.StoryText), OptionLineTags(after.StoryText));
         Assert.Equal(SyncSets(before.StoryText), SyncSets(after.StoryText));
@@ -451,25 +391,6 @@ public class YarnBundleVerificationTests
 
     // ── 연출 실행 변수의 수명은 챕터다 (2026-08-24 호스트 실측) ─────────────
 
-    [Fact]
-    public void 설정노드_초기값은_선언으로만_나가고_노드_머리에는_안_박힌다()
-    {
-        // ⛔ 호스트 실측 (`work-orders/chapter-scope-variables-orders.md`):
-        // "에피소드1 열쇠 = true → 에피소드2 열쇠 = false ← 머리의 세 줄이 다시 밟는다."
-        //
-        // 설정노드의 할당은 <b>"이 챕터에 이런 변수가 있다"</b>는 선언이지, "이 노드에
-        // 들어올 때 이 값으로 되돌려라"가 아니다. 같은 목록이 두 뜻으로 쓰이고 있었고,
-        // 앞의 것만 참이다. 되돌리기는 챕터 진입에서 런타임이 한 번 한다.
-        YarnBundle bundle = EmitGoldenBundle();
-
-        Assert.DoesNotContain("<<set $__t1_sf_test_favor", bundle.StoryText, StringComparison.Ordinal);
-
-        // 그런데 <b>선언에는 있어야 한다</b> — 없으면 런타임이 되돌릴 값을 모른다.
-        Assert.Contains(
-            bundle.Declarations,
-            declaration => declaration.Variable == "__t1_sf_test_favor" &&
-                declaration.InitialValue == "0");
-    }
 
     [Fact]
     public void 작가가_줄에_단_set은_이제_안_나간다()
@@ -488,36 +409,6 @@ public class YarnBundleVerificationTests
         Assert.DoesNotContain("<<set ", bundle.StoryText, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void 선언_파일이_같은_폴더에_함께_쓰인다()
-    {
-        // 호스트 §6 — "선언 파일이 유니티에 안 온다". 이쪽 출력에는 있다는 것을 못 박는다:
-        // 이 테스트가 초록인 채로 그쪽에 안 닿으면 원인은 복사·임포트 쪽이다.
-        YarnBundle bundle = EmitGoldenBundle();
-
-        string directory = Path.Combine(
-            Path.GetTempPath(), "vn-decl-file", Guid.NewGuid().ToString("N"));
-
-        try
-        {
-            IReadOnlyList<string> written = YarnBundleEmitter.WriteBundles([bundle], directory);
-
-            string declarations = Assert.Single(
-                written, path => Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
-
-            Assert.Contains(
-                "<<declare $__t1_sf_test_favor = 0>>",
-                File.ReadAllText(declarations),
-                StringComparison.Ordinal);
-        }
-        finally
-        {
-            if (Directory.Exists(directory))
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-        }
-    }
 
     private static YarnBundle EmitGoldenBundle() => Emit(BuildWorld());
 
@@ -538,8 +429,7 @@ public class YarnBundleVerificationTests
     private static BundleWorld BuildWorld()
     {
         var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
-        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "$favor >= 5");
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "stat(\"favor\") >= 5");
 
         string first = sample.Line("첫 줄 그대로");
         sample.Editor.SetScriptLineText(sample.Script.Id, first, "라루", "첫 줄 그대로");
@@ -548,10 +438,6 @@ public class YarnBundleVerificationTests
         string close = sample.Line("갈래 뒤 대사", LineConditionTransition.EndIf());
         sample.Editor.SetScriptLineText(sample.Script.Id, close, string.Empty, "갈래 뒤 대사");
 
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, first, new[]
-        {
-            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "10" }
-        });
         sample.Editor.SetExitTarget(
             sample.Dialogue.Id, Vn.Authoring.Flow.ExitPortKind.Branch, open, sample.TargetA.Id);
         sample.Editor.SetExitTarget(

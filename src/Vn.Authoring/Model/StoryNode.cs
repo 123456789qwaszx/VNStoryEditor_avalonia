@@ -59,9 +59,6 @@ public sealed class SetNode : StoryNode
     {
     }
 
-    /// <summary>이 노드를 지날 때 적용되는 값. 게임이 해석한다.</summary>
-    public List<VariableAssignment> Assignments { get; init; } = new();
-
     /// <summary>이 노드가 이후 대사 노드에 공급하는 조건들.</summary>
     public List<ConditionDefinition> Conditions { get; init; } = new();
 
@@ -71,7 +68,6 @@ public sealed class SetNode : StoryNode
         {
             Layout = Layout.Clone(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
-            Assignments = Assignments.Select(item => item.Clone()).ToList(),
             Conditions = Conditions.Select(item => item.Clone()).ToList()
         };
     }
@@ -155,56 +151,6 @@ public sealed class CommandPreset
             Note = Note
         };
     }
-}
-
-/// <summary>변수 하나에 값을 넣는다. 값은 게임이 해석하므로 문자열로 들고 있는다.</summary>
-public sealed class VariableAssignment
-{
-    /// <summary>기본 타입. 스탯은 숫자로 선언 출력된다(계약서 D4).</summary>
-    public const string FloatType = "float";
-
-    /// <summary>플래그 타입 (X7). 값은 Yarn 문법 그대로 <c>true</c>/<c>false</c> 문자열이다.</summary>
-    public const string BoolType = "bool";
-
-    public bool IsBool => string.Equals(Type, BoolType, StringComparison.Ordinal);
-
-    public string Variable { get; set; } = string.Empty;
-
-    public string Value { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 변수 타입. 지금은 <see cref="FloatType"/> 하나지만 드롭다운 구조로 노출해
-    /// 이후 타입 추가(bool 플래그 등)에 대비한다. <c>&lt;&lt;declare&gt;&gt;</c> 출력은
-    /// 값 문자열 그대로라 타입 필드가 출력에 관여하지 않는다 — 정합의 책임은
-    /// 값을 그 타입으로 쓰는 편집 UI에 있다.
-    /// </summary>
-    public string Type { get; set; } = FloatType;
-
-    /// <summary>슬라이더 기본 범위 (X6). 등록하지 않은 변수는 이 범위를 쓴다.</summary>
-    public const double DefaultSliderMin = -5;
-
-    public const double DefaultSliderMax = 5;
-
-    /// <summary>
-    /// Set 편집 슬라이더의 변수별 범위. null이면 기본 -5~+5다.
-    /// 범위는 슬라이더 편의지 검증 제약이 아니다 — 직접 입력은 범위 밖도 허용된다.
-    /// </summary>
-    public double? SliderMin { get; set; }
-
-    public double? SliderMax { get; set; }
-
-    public double EffectiveSliderMin => SliderMin ?? DefaultSliderMin;
-
-    public double EffectiveSliderMax => Math.Max(EffectiveSliderMin + 1, SliderMax ?? DefaultSliderMax);
-
-    public VariableAssignment Clone() => new()
-    {
-        Variable = Variable,
-        Value = Value,
-        Type = Type,
-        SliderMin = SliderMin,
-        SliderMax = SliderMax
-    };
 }
 
 /// <summary>

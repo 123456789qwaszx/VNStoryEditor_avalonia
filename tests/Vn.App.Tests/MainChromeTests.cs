@@ -133,9 +133,10 @@ public sealed class MainChromeTests
         Assert.Empty(Live<DialogueNodeEditor>(window));
         Assert.Empty(Live<AssetExplorerView>(window));
 
-        SelectTab(window, "GraphTabItem"); // 연출 그래프 — 편집기 셋이 선다 (탐색기는 2026-08-26에 무대로)
+        // ⚠ 편집기가 <b>둘</b>이 됐다 (2026-09-17) — 설정노드 편집기는 작가 변수와 함께
+        //    걷혔다(그 화면의 내용이 통째로 작가 변수였다).
+        SelectTab(window, "GraphTabItem");
         Assert.Single(Live<DialogueNodeEditor>(window));
-        Assert.Single(Live<SetNodeEditor>(window));
         Assert.Single(Live<PresentationNodeEditor>(window));
         Assert.Empty(Live<AssetExplorerView>(window));
 

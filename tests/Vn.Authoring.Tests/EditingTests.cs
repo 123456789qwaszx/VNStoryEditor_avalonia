@@ -241,66 +241,10 @@ public class EditingTests
         Assert.Equal("호감 매우 높음", choice.Label);
     }
 
-    [Fact]
-    public void assignment_값만_바꾸면_현재_편집_행을_다시_만들지_않는다()
-    {
-        var sample = new Sample();
-        sample.Editor.SetAssignments(
-            sample.SetNode.Id,
-            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
+    // ⛔ <b>assignment 알림 검사 셋은 2026-09-17에 걷혔다</b> (작가 변수 폐지). 설정노드가
+    //    변수를 들지 않으므로 `SetAssignments`라는 창구 자체가 없어졌다. 같은 자리의
+    //    <b>조건</b> 알림 규율은 위아래에 그대로 남아 있다.
 
-        ProjectChangedEventArgs? change = null;
-        sample.Editor.Changed += (_, args) => change = args;
-
-        sample.Editor.SetAssignments(
-            sample.SetNode.Id,
-            new[] { new VariableAssignment { Variable = "$favor", Value = "2" } });
-
-        Assert.NotNull(change);
-        Assert.Equal(ProjectChangeKind.Content, change!.Kind);
-        Assert.False(change!.NeedsInspectorRebuild);
-        Assert.False(change!.NeedsGraphRebuild);
-        Assert.Equal("2", sample.SetNode.Assignments[0].Value);
-    }
-
-    [Fact]
-    public void assignment_행_개수가_바뀌면_구조_변경이다()
-    {
-        var sample = new Sample();
-        ProjectChangedEventArgs? change = null;
-        sample.Editor.Changed += (_, args) => change = args;
-
-        sample.Editor.SetAssignments(
-            sample.SetNode.Id,
-            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
-
-        Assert.NotNull(change);
-        Assert.Equal(ProjectChangeKind.Structure, change!.Kind);
-        Assert.True(change!.NeedsInspectorRebuild);
-        Assert.True(change!.NeedsGraphRebuild);
-    }
-
-    [Fact]
-    public void 같은_조건과_assignment를_다시_설정하면_알리지_않는다()
-    {
-        var sample = new Sample();
-        sample.Editor.SetAssignments(
-            sample.SetNode.Id,
-            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
-
-        int notifications = 0;
-        sample.Editor.Changed += (_, _) => notifications++;
-
-        sample.Editor.UpdateCondition(
-            sample.ConditionA.Id,
-            sample.ConditionA.Name,
-            sample.ConditionA.Expression);
-        sample.Editor.SetAssignments(
-            sample.SetNode.Id,
-            new[] { new VariableAssignment { Variable = "$favor", Value = "1" } });
-
-        Assert.Equal(0, notifications);
-    }
 
     [Fact]
     public void 대사_본문_수정은_DialogueContent로_알린다()

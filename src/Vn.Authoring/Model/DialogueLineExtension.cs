@@ -142,22 +142,6 @@ public static class SetOperators
 /// 세이브 리플레이가 <c>&lt;&lt;set&gt;&gt;</c>을 재실행해 변수를 재구축하므로(계약서 C5)
 /// 값은 결정적이어야 한다. 랜덤·외부 상태 참조를 여기 넣지 않는다.
 /// </summary>
-public sealed class SetOperation
-{
-    public string Variable { get; set; } = string.Empty;
-
-    public SetOperatorKind Operator { get; set; } = SetOperatorKind.Assign;
-
-    public string Value { get; set; } = string.Empty;
-
-    public SetOperation Clone() => new()
-    {
-        Variable = Variable,
-        Operator = Operator,
-        Value = Value
-    };
-}
-
 /// <summary>
 /// DialogueNode가 <b>대본 한 줄에 덧붙이는 대사 논리</b>.
 ///
@@ -214,9 +198,6 @@ public sealed class DialogueLineExtension
         }
     }
 
-    /// <summary>이 줄에 도달했을 때 실행할 변수 변경. 목록 순서가 곧 실행 순서다.</summary>
-    public List<SetOperation> SetOperations { get; init; } = new();
-
     /// <summary>
     /// <b>여기서 갈라진다</b> — 이 줄에서 다녀올 노드 (R7 P-5 · 2026-09-17 소유자).
     ///
@@ -233,13 +214,12 @@ public sealed class DialogueLineExtension
 
     /// <summary>이 확장이 아무것도 담고 있지 않은지. 빈 확장은 저장하지 않는다.</summary>
     public bool IsEmpty =>
-        Transitions.Count == 0 && SetOperations.Count == 0 && DetourTargetNodeId is null;
+        Transitions.Count == 0 && DetourTargetNodeId is null;
 
     public DialogueLineExtension Clone() =>
         new(LineId)
         {
             Transitions = Transitions.Select(transition => transition.Clone()).ToList(),
-            SetOperations = SetOperations.Select(operation => operation.Clone()).ToList(),
             DetourTargetNodeId = DetourTargetNodeId
         };
 }

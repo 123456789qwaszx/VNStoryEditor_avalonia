@@ -85,39 +85,6 @@ internal static class StoryNodeJson
 
     private static void WriteSetNode(SetNode node, JsonObject json)
     {
-        if (node.Assignments.Count > 0)
-        {
-            var assignments = new JsonArray();
-            foreach (VariableAssignment assignment in node.Assignments)
-            {
-                var entry = new JsonObject
-                {
-                    ["variable"] = assignment.Variable,
-                    ["value"] = assignment.Value
-                };
-
-                // 기본 타입(float)은 쓰지 않는다 — 기존 프로젝트 파일이 바뀌지 않는다.
-                if (!string.Equals(assignment.Type, VariableAssignment.FloatType, StringComparison.Ordinal))
-                {
-                    entry["type"] = assignment.Type;
-                }
-
-                // 슬라이더 범위도 등록했을 때만 쓴다(기본 -5~+5는 생략).
-                if (assignment.SliderMin is { } sliderMin)
-                {
-                    entry["sliderMin"] = sliderMin;
-                }
-
-                if (assignment.SliderMax is { } sliderMax)
-                {
-                    entry["sliderMax"] = sliderMax;
-                }
-
-                assignments.Add(entry);
-            }
-            json["assignments"] = assignments;
-        }
-
         if (node.Conditions.Count > 0)
         {
             var conditions = new JsonArray();
@@ -183,23 +150,6 @@ internal static class StoryNodeJson
                 }
 
                 lineJson["conditions"] = array;
-            }
-
-            if (extension.SetOperations.Count > 0)
-            {
-                var operations = new JsonArray();
-
-                foreach (SetOperation operation in extension.SetOperations)
-                {
-                    operations.Add(new JsonObject
-                    {
-                        ["variable"] = operation.Variable,
-                        ["operator"] = SetOperators.Symbol(operation.Operator),
-                        ["value"] = operation.Value
-                    });
-                }
-
-                lineJson["set"] = operations;
             }
 
             // 「조건 분기」 표식 (R7 P-5) — 이 줄에서 다녀올 노드. 조건이 아니다.
@@ -476,20 +426,9 @@ internal static class StoryNodeJson
     {
         var node = new SetNode(id, name);
 
-        foreach (JsonNode? item in json["assignments"]?.AsArray() ?? new JsonArray())
-        {
-            if (item is JsonObject assignment)
-            {
-                node.Assignments.Add(new VariableAssignment
-                {
-                    Variable = (string?)assignment["variable"] ?? string.Empty,
-                    Value = (string?)assignment["value"] ?? string.Empty,
-                    Type = (string?)assignment["type"] ?? VariableAssignment.FloatType,
-                    SliderMin = (double?)assignment["sliderMin"],
-                    SliderMax = (double?)assignment["sliderMax"]
-                });
-            }
-        }
+        // ⛔ `assignments`는 2026-09-17에 폐지됐다 (작가 변수 폐지) — 옛 프로젝트 파일에
+        //    남아 있어도 <b>안 읽는다</b>. 소유자가 옛 프로젝트를 버리기로 했으므로
+        //    되살릴 자리가 없다.
 
         foreach (JsonNode? item in json["conditions"]?.AsArray() ?? new JsonArray())
         {
@@ -548,18 +487,7 @@ internal static class StoryNodeJson
                 }
             }
 
-            foreach (JsonNode? operationItem in lineJson["set"]?.AsArray() ?? new JsonArray())
-            {
-                if (operationItem is JsonObject operationJson)
-                {
-                    extension.SetOperations.Add(new SetOperation
-                    {
-                        Variable = (string?)operationJson["variable"] ?? string.Empty,
-                        Operator = SetOperators.Parse((string?)operationJson["operator"]),
-                        Value = (string?)operationJson["value"] ?? string.Empty
-                    });
-                }
-            }
+            // ⛔ 줄의 `set`도 2026-09-17에 폐지됐다 — 옛 파일에 남아 있어도 안 읽는다.
 
             if ((string?)lineJson["detour"] is { Length: > 0 } detour)
             {

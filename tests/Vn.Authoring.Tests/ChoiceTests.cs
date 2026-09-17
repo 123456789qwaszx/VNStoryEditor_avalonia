@@ -255,12 +255,6 @@ public class ChoiceTests
     {
         var sample = new Sample();
         string label = sample.Line("안전한 길", LineConditionTransition.BeginChoice());
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, label, new[]
-        {
-            new SetOperation { Variable = "Fatigue", Operator = SetOperatorKind.Add, Value = "10" },
-            new SetOperation { Variable = "route", Operator = SetOperatorKind.Assign, Value = "\"a\"" },
-            new SetOperation { Variable = "risk", Operator = SetOperatorKind.Subtract, Value = "1" }
-        });
         string body = sample.Line("본문");
         sample.Line("끝", LineConditionTransition.EndChoice());
 
@@ -274,7 +268,10 @@ public class ChoiceTests
         Assert.Equal(0, option.ChoiceOptionIndex);
 
         // D5 — 정수 증감만 태그가 되고 키는 소문자다. 대입과 비정수는 태그를 만들지 않는다.
-        Assert.Equal(new[] { "#fatigue:+10", "#risk:-1" }, option.Tags);
+        // ⛔ <b>미리보기 태그가 사라졌다</b> (2026-09-17 — 작가 변수 폐지). 태그는 줄의
+        //    `<<set>>`에서 <b>파생</b>되던 표시용 글자였다. 값이 변하는 자리가 챕터 간선의
+        //    `스탯변화`로 옮겨졌으므로, 선택지에 비용을 보여 주려면 그쪽에서 다시 내야 한다.
+        Assert.Null(option.Tags);
 
         // 라벨은 일반 대사 라인으로 나오지 않는다.
         Assert.DoesNotContain(document.Segments, segment =>
@@ -284,10 +281,12 @@ public class ChoiceTests
             segment.Kind == RenderedSegmentKind.DialogueLine && segment.Source.LineId == body);
         Assert.Equal(1, bodyLine.IndentLevel);
 
-        // 발행 검증이 대문자 변수 소문자화를 알렸다.
+        // ⛔ 「대문자 변수 소문자화」 알림은 2026-09-17에 사라졌다 — 그 알림은 옵션의
+        //    <b>미리보기 태그</b>가 소문자 키로 조회된다는 사정이었고, 태그가 작가 변수
+        //    set에서 파생되던 것이라 함께 없어졌다.
         DialogueDraft draft = DialoguePublisher.Draft(sample.Project, sample.Dialogue.Id);
-        Assert.Contains(draft.Problems, problem =>
-            problem.Kind == PublishProblemKind.ChoicePreviewNotice && !problem.IsBlocking);
+        Assert.DoesNotContain(draft.Problems, problem =>
+            problem.Kind == PublishProblemKind.ChoicePreviewNotice);
     }
 
     // ── 이미터 ──────────────────────────────────────────────────────────────
@@ -308,12 +307,11 @@ public class ChoiceTests
 
         // Story: 라벨은 접두 없이(D6), 태그는 표시 전용(D5), 본문 첫 문장은 동기 변수 set.
         Assert.Contains(
-            $"-> 안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15 #line:{world.Label1}",
+            $"-> 안전한 길을 따라간다 #line:{world.Label1}",
             bundle.StoryText,
             StringComparison.Ordinal);
-        // ⛔ 옵션 본문의 set은 <b>안 나간다</b> (2026-09-17 · 런타임 회신 §3). 위의 태그
-        //    (`#fatigue:+10`)는 <b>표시 전용</b>이라 그대로 가지만, 실제로 값이 변하는
-        //    자리는 챕터 간선의 `스탯변화` 하나다.
+        // ⛔ 옵션 본문의 set도, 거기서 파생되던 <b>미리보기 태그</b>도 안 나간다
+        //    (2026-09-17 — 작가 변수 폐지). 값이 변하는 자리는 챕터 간선의 `스탯변화`다.
         Assert.DoesNotContain("<<set ", bundle.StoryText, StringComparison.Ordinal);
 
         // 옵션 출구는 본문 끝의 jump다. 2026-08-18까지는 그 앞에 <<pres_end>>가 붙었는데
@@ -351,19 +349,9 @@ public class ChoiceTests
         sample.Line("숲 입구에 도착했다.");
 
         string label1 = sample.Line("안전한 길을 따라간다", LineConditionTransition.BeginChoice());
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, label1, new[]
-        {
-            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "10" },
-            new SetOperation { Variable = "common_ingredient", Operator = SetOperatorKind.Add, Value = "15" }
-        });
         string body1 = sample.Line("안전한 길에서 평범한 재료를 얻었다.");
 
         string label2 = sample.Line("깊은 숲으로 들어간다", LineConditionTransition.BeginNextOption());
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, label2, new[]
-        {
-            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "30" },
-            new SetOperation { Variable = "risk", Operator = SetOperatorKind.Add, Value = "1" }
-        });
         sample.Line("숲 깊은 곳에서 희귀한 향신료를 발견했다.");
 
         sample.Line("좋아. 가보자.", LineConditionTransition.EndChoice());
@@ -404,8 +392,7 @@ public class ChoiceTests
         var sample = new Sample();
 
         // 실컴파일까지 가는 월드다 — 조건 식은 Yarn 문법($ 접두)이어야 한다 (골든 월드와 동일).
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
-        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "$favor >= 5");
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "stat(\"favor\") >= 5");
 
         sample.Line("가게 앞이다.");
         string opener = sample.Line("주인이 있다", LineConditionTransition.BeginIf(sample.ConditionA.Id));

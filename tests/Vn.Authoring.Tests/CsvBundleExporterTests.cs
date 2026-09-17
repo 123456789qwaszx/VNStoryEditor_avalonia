@@ -57,10 +57,13 @@ public class CsvBundleExporterTests
 
         string[] rows = bundle.ReviewCsv.Split("\r\n");
 
-        // 라벨 줄: 선택 열에 블록·옵션·라벨이, Set 열에 효과가 적힌다.
+        // 라벨 줄: 선택 열에 블록·옵션·라벨이 적힌다.
+        //
+        // ⛔ <b>Set 열은 이제 빈다</b> (2026-09-17 — 작가 변수 폐지). 검수 CSV가 줄마다
+        //    담던 효과는 줄의 `<<set>>`이었고, 값이 변하는 자리가 챕터 간선으로 옮겨졌다.
         string labelRow = rows.Single(row => row.Contains(world.Label1, StringComparison.Ordinal));
         Assert.Contains("블록1 옵션1 라벨", labelRow, StringComparison.Ordinal);
-        Assert.Contains("fatigue += 10 ; common_ingredient += 15", labelRow, StringComparison.Ordinal);
+        Assert.DoesNotContain("fatigue +=", labelRow, StringComparison.Ordinal);
 
         // 옵션 출구는 대상 노드 이름으로 적힌다.
         string exitRow = rows.Single(row => row.Contains("바로 돌아간다", StringComparison.Ordinal));

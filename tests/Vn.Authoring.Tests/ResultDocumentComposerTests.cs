@@ -14,46 +14,11 @@ namespace Vn.Authoring.Tests;
 /// </summary>
 public class ResultDocumentComposerTests
 {
-    [Fact]
-    public void 발행_당시_연결된_SetNode의_assignment가_결과에_얼어붙는다()
-    {
-        // 2026-08-17 — 공급 범위가 판(챕터) 전체다. 같은 판의 설정노드 배정은 모두 실린다.
-        var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
-
-        SetNode second = sample.Editor.AddSetNode(sample.File.Id, name: "두 번째 설정");
-        second.Assignments.Add(new VariableAssignment { Variable = "trust", Value = "2" });
-
-        // 다른 판의 것은 안 실린다 — 챕터가 다르면 다른 어휘다.
-        var otherFile = new StoryFile("sf_other", "다른 챕터");
-        sample.Project.Files.Add(otherFile);
-        SetNode foreign = sample.Editor.AddSetNode(otherFile.Id, name: "남의 설정");
-        foreign.Assignments.Add(new VariableAssignment { Variable = "ignored", Value = "1" });
-
-        sample.Line("본문");
-
-        DialogueResult result = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
-
-        Assert.Equal(
-            new[] { "favor", "trust" },
-            result.Assignments.Select(assignment => assignment.Variable));
-        Assert.DoesNotContain(result.Assignments, assignment => assignment.Variable == "ignored");
-
-        // ⛔ 그런데 <b>문서에는 안 실린다</b> (2026-08-24, 작업지시 §4). 그 할당은 선언이지
-        // "이 노드에 들어올 때 이 값으로 되돌려라"가 아니다 — 세그먼트로 내면 이미터가
-        // 모든 대사노드 머리에 `set`을 박아 초기화의 수명이 <b>에피소드</b>가 된다.
-        RenderedDocument document = ResultDocumentComposer.Compose(result, project: sample.Project);
-
-        Assert.DoesNotContain(
-            document.Segments,
-            segment => segment.Kind == RenderedSegmentKind.SetAssignment);
-    }
 
     [Fact]
     public void 조건_전환과_갈래_출구를_실행_순서대로_평평하게_합성한다()
     {
         var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
         var (_, l1, l2, l3, l4, l5, _) = sample.BuildSpecExample();
 
         sample.Editor.SetExitTarget(sample.Dialogue.Id, ExitPortKind.Branch, l1, sample.TargetA.Id);
@@ -116,7 +81,6 @@ public class ResultDocumentComposerTests
     public void Yarn_Formatter는_NodeId와_LineId를_사용해_읽기_전용_문서를_만든다()
     {
         var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
 
         string opening = sample.Line("맞아요", LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Editor.SetScriptLineText(sample.Script.Id, opening, "라루", "맞아요");
@@ -265,37 +229,6 @@ public class ResultDocumentComposerTests
         Assert.Equal(DocumentLayer.Presentation, commands[0].Layer);
     }
 
-    [Fact]
-    public void 줄의_변수_변경은_대사_앞에_set으로_펼쳐진다()
-    {
-        var sample = new Sample();
-        string line = sample.Line("지친 목소리");
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, line, new[]
-        {
-            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "10" }
-        });
-
-        DialogueResult result = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
-        RenderedDocument document = ResultDocumentComposer.Compose(result, project: sample.Project);
-
-        RenderedSegment set = document.Segments.Single(segment =>
-            segment.Kind == RenderedSegmentKind.SetAssignment && segment.Source.LineId == line);
-        RenderedSegment dialogue = document.Segments.Single(segment =>
-            segment.Kind == RenderedSegmentKind.DialogueLine && segment.Source.LineId == line);
-
-        Assert.Equal("fatigue", set.Variable);
-        Assert.Equal("+=", set.Operator);
-        Assert.Equal("10", set.Value);
-        Assert.True(document.Segments.ToList().IndexOf(set) <
-                    document.Segments.ToList().IndexOf(dialogue));
-
-        // ⛔ <b>합성기는 여전히 이 조각을 만들고</b>, 내보내기·미리보기가 <b>안 낸다</b>
-        //    (2026-09-17 · 런타임 회신 §3). 조각의 자리·값은 위에서 재고, 여기서는
-        //    <b>글자로는 안 나간다</b>는 것을 못 박는다 — 남으면 롤백에서 안 되감겨
-        //    리플레이가 다른 분기를 탄다(계약서 C1의 silent hang).
-        Assert.DoesNotContain(
-            "<<set ", YarnPreviewFormatter.Format(document), StringComparison.Ordinal);
-    }
 
     [Fact]
     public void Setup_커맨드는_첫_줄보다_앞에_LineId_없이_펼쳐진다()

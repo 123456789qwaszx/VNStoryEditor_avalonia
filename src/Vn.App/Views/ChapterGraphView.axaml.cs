@@ -40,7 +40,7 @@ public partial class ChapterGraphView : UserControl
     /// <summary>들여오기를 거부당한 챕터 — 전부 아니면 전무라 챕터 단위다 (§5.2).</summary>
     private readonly List<string> _importRefusals = new();
 
-    /// <summary>판 수준 경고 (2단계 가드레일) — 자유 노드의 Tier 2 스탯 set 등.</summary>
+    /// <summary>판 수준 경고 (2단계 가드레일) — 진행이 착지하는 카드로 향하는 출구 등.</summary>
     private readonly List<ChapterDiagnostic> _boardWarnings = new();
 
     /// <summary>선택된 챕터의 구조 검증 + 도달성 증명 결과 (G7). 워크북을 읽을 때 갱신된다.</summary>
@@ -691,9 +691,9 @@ public partial class ChapterGraphView : UserControl
                 $"자유 씬 {raised.Count}개를 에피소드로 올렸습니다 — {string.Join(", ", raised)}.");
         }
 
-        // 가드레일 — 자유 노드의 스탯 set, 엑셀노드로 향하는 출구. 막지 않고 크게 말한다.
-        _boardWarnings.AddRange(
-            ChapterBoardSupply.WarnFreeNodeStatWrites(_session.Editor, fileId, model));
+        // 가드레일 — 진행이 착지하는 카드로 향하는 출구. 막지 않고 크게 말한다.
+        // ⛔ 「자유 노드의 스탯 set」 경고는 2026-09-17에 걷혔다 — 작가 변수가 없어져
+        //    대사에서 스탯에 `<<set>>`을 걸 길 자체가 사라졌다.
         _boardWarnings.AddRange(
             ChapterBoardSupply.WarnExitsIntoExcelNodes(_session.Editor, fileId, model));
 

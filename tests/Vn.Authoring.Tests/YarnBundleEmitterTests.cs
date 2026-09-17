@@ -89,14 +89,11 @@ public class YarnBundleEmitterTests
         // 나오면 그 초기화의 수명이 에피소드가 되어 앞 에피소드에서 켠 값이 지워진다.
         Assert.DoesNotContain("<<set ", bundle.StoryText, StringComparison.Ordinal);
 
-        // 대신 선언으로 나간다 — 런타임이 챕터 진입에서 이 초기값으로 되돌린다.
-        Assert.Contains(
-            bundle.Declarations,
-            declaration => declaration.Variable == "__t1_sf_test_favor" &&
-                declaration.InitialValue == "0");
+        // ⛔ 선언도 <b>비어 있다</b> — 작가 변수가 없어져 선언할 대상이 없다.
+        Assert.Empty(bundle.Declarations);
 
-        // 조건 구조는 Story 안에 그대로 선다.
-        Assert.Contains("<<if $__t1_sf_test_favor >= 5>>", bundle.StoryText, StringComparison.Ordinal);
+        // 조건 구조는 Story 안에 그대로 선다 — 이제 `stat("키")` 함수로 읽는다.
+        Assert.Contains("<<if stat(\"favor\") >= 5>>", bundle.StoryText, StringComparison.Ordinal);
         Assert.Contains("<<endif>>", bundle.StoryText, StringComparison.Ordinal);
     }
 
@@ -136,50 +133,7 @@ public class YarnBundleEmitterTests
         Assert.True(firstLine > camera, "셋업 커맨드는 첫 대사보다 앞에 있어야 한다");
     }
 
-    [Fact]
-    public void 변수_선언은_Story가_아니라_선언_파일_하나에_모인다()
-    {
-        BundleFixture fixture = BuildFixture();
 
-        YarnBundle bundle = Emit(fixture);
-
-        // D4 — 런타임에는 declare도 스마트 변수도 없다. 컴파일을 위해 이미터가 선언하되,
-        // Story 노드마다 내면 여러 번들을 한 프로그램으로 컴파일할 때 중복 선언으로 깨진다.
-        Assert.DoesNotContain("<<declare", bundle.StoryText, StringComparison.Ordinal);
-        Assert.Equal(
-            new[] { ("__t1_sf_test_favor", "0"), ("__t1_sf_test_fatigue", "0") },
-            bundle.Declarations.Select(declaration => (declaration.Variable, declaration.InitialValue)));
-
-        string declarations = YarnBundleEmitter.ComposeDeclarationsText(new[] { bundle })!;
-        Assert.StartsWith("title: _declarations\n---\n", declarations, StringComparison.Ordinal);
-        Assert.Contains("<<declare $__t1_sf_test_favor = 0>>", declarations, StringComparison.Ordinal);
-        Assert.Contains("<<declare $__t1_sf_test_fatigue = 0>>", declarations, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void 같은_변수의_초기값이_합성_간에_다르면_선언_합집합을_거부한다()
-    {
-        BundleFixture fixture = BuildFixture();
-        YarnBundle numberTyped = Emit(fixture);
-
-        // favor를 string으로 선언하는 다른 게임 정의 — 초기값이 ""가 된다.
-        var conflicting = new Vn.Authoring.Definition.GameDefinition
-        {
-            Variables =
-            {
-                new Vn.Authoring.Definition.VariableSpec { Name = "favor", Type = "string" }
-            }
-        };
-        YarnBundle stringTyped = YarnBundleEmitter.Emit(
-            fixture.Dialogue,
-            fixture.Presentation,
-            fixture.Sample.Project,
-            conflicting,
-            bundleName: "other_ep");
-
-        Assert.Throws<InvalidOperationException>(() =>
-            YarnBundleEmitter.ComposeDeclarationsText(new[] { numberTyped, stringTyped }));
-    }
 
     [Fact]
     public void 메인_레인_전용_커맨드도_그냥_나간다()
@@ -233,9 +187,11 @@ public class YarnBundleEmitterTests
         {
             IReadOnlyList<string> written = YarnBundleEmitter.WriteTo(bundle, directory);
 
-            // 대본 하나 + 선언 파일 하나 (2026-08-18 — 트리오가 아니다).
-            Assert.Equal(2, written.Count);
-            Assert.Contains(written, path =>
+            // ⛔ <b>대본 하나뿐이다</b> (2026-09-17). 작가 변수가 없어져 선언할 것이
+            //    남지 않았고, 빈 선언 파일은 아예 안 쓴다 — 런타임도 *"안 내는 쪽이
+            //    깔끔하다"*고 했다.
+            Assert.Single(written);
+            Assert.DoesNotContain(written, path =>
                 Path.GetFileName(path) == YarnBundleEmitter.DeclarationsFileName);
             Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
 
@@ -286,18 +242,13 @@ public class YarnBundleEmitterTests
     private static BundleFixture BuildFixture(bool withPresentationCommands = true)
     {
         var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
-        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "$favor >= 5");
+        sample.Editor.UpdateCondition(sample.ConditionA.Id, "호감 높음", "stat(\"favor\") >= 5");
 
         string first = sample.Line("첫 줄");
         sample.Editor.SetScriptLineText(sample.Script.Id, first, "라루", "첫 줄");
         string open = sample.Line("갈래 안", LineConditionTransition.BeginIf(sample.ConditionA.Id));
         sample.Editor.SetScriptLineText(sample.Script.Id, open, "윌로", "갈래 안");
         string close = sample.Line("갈래 뒤", LineConditionTransition.EndIf());
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, first, new[]
-        {
-            new SetOperation { Variable = "fatigue", Operator = SetOperatorKind.Add, Value = "10" }
-        });
         sample.Editor.SetExitTarget(sample.Dialogue.Id, Vn.Authoring.Flow.ExitPortKind.Branch, open, sample.TargetA.Id);
         sample.Editor.SetExitTarget(sample.Dialogue.Id, Vn.Authoring.Flow.ExitPortKind.Default, null, sample.TargetDefault.Id);
 

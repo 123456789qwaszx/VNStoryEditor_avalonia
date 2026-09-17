@@ -56,7 +56,8 @@ public class OutputPresetTests
         RenderedDocument document = Compose(sample, OutputPresetCatalog.RuntimeFull);
 
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.NodeHeader);
-        Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.SetAssignment);
+        // ⛔ SetAssignment 층은 2026-09-17에 비었다 — 작가 변수가 없어져 실릴 조각이 없다.
+        Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.SetAssignment);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.ConditionBegin);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.PresentationCommand);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.DialogueLine);
@@ -221,7 +222,6 @@ public class OutputPresetTests
     private static PresetSample BuildPresetSample()
     {
         var sample = new Sample();
-        sample.SetNode.Assignments.Add(new VariableAssignment { Variable = "favor", Value = "0" });
 
         string opening = sample.Line(
             "첫 대사",
@@ -232,10 +232,6 @@ public class OutputPresetTests
 
         // ⚠ 작가가 <b>줄에</b> 단 set — 2026-08-24부터 문서에 남는 set은 이것뿐이다.
         // 설정노드의 초기값은 선언으로만 나간다(작업지시 §4).
-        sample.Editor.SetLineSetOperations(sample.Dialogue.Id, opening, new[]
-        {
-            new SetOperation { Variable = "favor", Operator = SetOperatorKind.Add, Value = "1" }
-        });
 
         sample.Editor.SetExitTarget(
             sample.Dialogue.Id,

@@ -384,13 +384,9 @@ public partial class DialogueNodeEditor : UserControl
     /// </summary>
     private ConditionSimulation.Result SimulateBranches(DialogueNode node, DialogueScript script)
     {
-        var initial = RegisteredVariables(node)
-            .Select(assignment => (
-                assignment.Variable,
-                Value: _session!.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
-                    ? overridden
-                    : assignment.Value))
-            .ToList();
+        // ⛔ 작가 변수가 없어졌다 (2026-09-17) — 시뮬이 들고 시작할 값이 없다.
+        //    조건이 묻는 것은 이제 챕터 스탯뿐이고, 그것은 판이 아니라 진행이 든다.
+        var initial = new List<(string Variable, string Value)>();
 
         return ConditionSimulation.Decide(
             script.Lines,
@@ -401,7 +397,7 @@ public partial class DialogueNodeEditor : UserControl
                     ?? _session.Definition.Conditions.FirstOrDefault(condition =>
                         string.Equals(condition.Id, conditionId, StringComparison.Ordinal))?.Expression
                 : null,
-            line => line.Sets.Select(operation => (operation.Variable, operation.Operator, operation.Value)),
+            _ => Array.Empty<(string, SetOperatorKind, string)>(),
             initial,
             _session!.BranchSelection);
     }
@@ -720,12 +716,6 @@ public partial class DialogueNodeEditor : UserControl
 
         foreach (BranchFlow.AnalyzedLine<DialogueLine> item in scriptAnalysis.Lines)
         {
-            if (item.Taken || item.Unresolved)
-            {
-                setsUpToLine.AddRange(item.Source.Sets.Select(operation =>
-                    (operation.Variable, operation.Operator, operation.Value)));
-            }
-
             if (selected is not null &&
                 string.Equals(item.Source.LineId, selected.LineId, StringComparison.Ordinal))
             {
@@ -734,11 +724,7 @@ public partial class DialogueNodeEditor : UserControl
         }
 
         IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
-            RegisteredVariables(node).Select(assignment => (
-                assignment.Variable,
-                _session.SimulationValues.TryGetValue(assignment.Variable, out string? overridden)
-                    ? overridden
-                    : assignment.Value)),
+            Array.Empty<(string, string)>(),
             setsUpToLine);
 
         // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다.
@@ -1424,18 +1410,7 @@ public partial class DialogueNodeEditor : UserControl
             rail.Children.Add(BuildTransitionTag(node, resolved));
         }
 
-        IReadOnlyList<SetOperation> sets = resolved.Line.Sets;
-
-        if (sets.Count > 0)
-        {
-            IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
-
-            for (int operationIndex = 0; operationIndex < sets.Count; operationIndex++)
-            {
-                rail.Children.Add(BuildSetTag(
-                    node, resolved.Line.LineId, registered, operationIndex, sets[operationIndex]));
-            }
-        }
+        // ⛔ set 태그는 2026-09-17에 걷혔다 — 작가 변수가 없어져 줄에 달 값이 없다.
 
         return rail.Children.Count > 0 ? rail : null;
     }
@@ -1525,45 +1500,6 @@ public partial class DialogueNodeEditor : UserControl
                 Opacity = 0.6
             });
             panel.Children.Add(BuildConditionBox(node, resolved));
-            new Flyout { Content = panel }.ShowAt(tag);
-        };
-
-        return tag;
-    }
-
-    /// <summary>set 태그 하나. 누르면 아이템·능력·연산자·값 편집 행이 Flyout으로 열린다.</summary>
-    private Control BuildSetTag(
-        DialogueNode node,
-        string lineId,
-        IReadOnlyList<VariableAssignment> registered,
-        int operationIndex,
-        SetOperation operation)
-    {
-        string summary = $"set {operation.Variable} {SetOperators.Symbol(operation.Operator)} {operation.Value}";
-        var blue = new SolidColorBrush(Color.FromArgb(200, 37, 99, 235));
-
-        // ⚠ 잠긴 이유가 엑셀이 아니다 — 스탯 조작의 주인은 <b>챕터 간선</b>의 스탯변화다
-        //    (2026-08-14 폐지 결정). 대본이 열린 뒤에도 그 결정은 그대로다.
-        if (_chapterEpisode)
-        {
-            Control chip = TagChip(summary, blue);
-            ToolTip.SetTip(chip, "스탯변화는 챕터 그래프의 간선에서 고칩니다 — 간선 시트 C열 (예: trust +3).");
-            return chip;
-        }
-
-        Button tag = TagButton(summary, blue);
-        ToolTip.SetTip(tag, "누르면 이 <<set>>을 고치거나 지웁니다.");
-
-        tag.Click += (_, _) =>
-        {
-            var panel = new StackPanel { Spacing = 4, MinWidth = 300 };
-            panel.Children.Add(new TextBlock
-            {
-                Text = "이 줄에 도달했을 때 실행할 <<set>>",
-                FontSize = 10,
-                Opacity = 0.6
-            });
-            panel.Children.Add(BuildSetOperationRow(node, lineId, registered, operationIndex, operation));
             new Flyout { Content = panel }.ShowAt(tag);
         };
 
@@ -1751,45 +1687,8 @@ public partial class DialogueNodeEditor : UserControl
             Section("조건 / 선택지");
             panel.Children.Add(BuildConditionBox(node, resolved));
 
-            Section("Set");
-            IReadOnlyList<VariableAssignment> registered = RegisteredVariables(node);
-            var addSet = new Button { Content = "+ set", FontSize = 10, Padding = new Thickness(7, 2) };
-            ToolTip.SetTip(addSet, "이 줄에 도달했을 때 실행할 <<set>>을 더합니다.");
-
-            addSet.Click += (_, _) =>
-            {
-                if (_building)
-                {
-                    return;
-                }
-
-                List<SetOperation> next = CurrentSets(node, resolved.Line.LineId);
-                next.Add(new SetOperation
-                {
-                    Variable = registered.FirstOrDefault()?.Variable ?? string.Empty,
-                    Operator = SetOperatorKind.Add,
-                    Value = "1"
-                });
-                _session!.Editor.SetLineSetOperations(node.Id, resolved.Line.LineId, next);
-            };
-
-            if (registered.Count == 0 && resolved.Line.Sets.Count == 0)
-            {
-                var setRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-                setRow.Children.Add(addSet);
-                setRow.Children.Add(new TextBlock
-                {
-                    Text = "챕터 설정 노드에 아이템·능력을 더하면 드롭다운으로 고릅니다.",
-                    FontSize = 10,
-                    Opacity = 0.55,
-                    VerticalAlignment = VerticalAlignment.Center
-                });
-                panel.Children.Add(setRow);
-            }
-            else
-            {
-                panel.Children.Add(addSet);
-            }
+            // ⛔ 「Set」 구역은 2026-09-17에 걷혔다 (소유자: *"작가 변수라는 개념 자체를
+            //    지웁시다"*). 값이 변하는 자리는 이제 <b>챕터 간선의 `스탯변화`</b> 하나다.
         }
 
         // 출구는 선택·조건 갈래의 마지막 줄에서만 매달 수 있다.
@@ -1997,296 +1896,6 @@ public partial class DialogueNodeEditor : UserControl
         return box;
     }
 
-    /// <summary>
-    /// 이 대사 노드가 쓸 수 있는 아이템·능력 — 이 챕터(판) 설정 노드의 등록 목록이다.
-    /// 조건 드롭다운과 같은 해석기(<see cref="ConnectedSetNodeResolver"/>)를 지난다.
-    /// </summary>
-    private IReadOnlyList<VariableAssignment> RegisteredVariables(DialogueNode node)
-    {
-        return ConnectedSetNodeResolver.Resolve(_session!.Project, node.Id)
-            .SelectMany(connected => connected.Node.Assignments)
-            .Where(assignment => assignment.Variable.Length > 0)
-            .GroupBy(assignment => assignment.Variable, StringComparer.Ordinal)
-            .Select(group => group.First())
-            .ToList();
-    }
-
-    private List<SetOperation> CurrentSets(DialogueNode node, string lineId)
-    {
-        return node.LineExtensions
-            .FirstOrDefault(extension => string.Equals(extension.LineId, lineId, StringComparison.Ordinal))
-            ?.SetOperations.Select(operation => operation.Clone()).ToList() ?? new List<SetOperation>();
-    }
-
-    /// <summary>
-    /// set 편집 (X6) — 타이핑 대신 등록 아이템·능력 드롭다운 + 슬라이더.
-    /// 슬라이더 범위는 설정노드의 항목별 등록(기본 -5~+5)이고 편의일 뿐이라
-    /// 옆의 직접 입력으로 범위 밖 값도 넣을 수 있다. 저장되는 것은 값 문자열
-    /// 그대로이므로 <c>&lt;&lt;set&gt;&gt;</c> 출력은 바이트 단위로 불변이다.
-    /// 고밀도 개편 후에는 태그 Flyout 안에서 열린다.
-    /// </summary>
-    private Control BuildSetOperationRow(
-        DialogueNode node,
-        string lineId,
-        IReadOnlyList<VariableAssignment> registered,
-        int operationIndex,
-        SetOperation operation)
-    {
-        // 드롭다운에는 등록된 아이템·능력만 나온다 (X6 수용). 이미 적혀 있는 미등록 이름은
-        // 그 행에서만 '(미등록)'으로 보인다 — 조용히 지우지 않는다.
-        var choices = registered.Select(item => (item.Variable, Label: item.Variable)).ToList();
-        VariableAssignment? registration = registered.FirstOrDefault(item =>
-            string.Equals(item.Variable, operation.Variable, StringComparison.Ordinal));
-
-        if (registration is null && operation.Variable.Length > 0)
-        {
-            choices.Insert(0, (operation.Variable, Label: $"{operation.Variable} (미등록)"));
-        }
-
-        void Commit(Action<SetOperation> mutate)
-        {
-            if (_building)
-            {
-                return;
-            }
-
-            List<SetOperation> next = CurrentSets(node, lineId);
-
-            if (operationIndex < next.Count)
-            {
-                mutate(next[operationIndex]);
-                _session!.Editor.SetLineSetOperations(node.Id, lineId, next);
-            }
-        }
-
-        var variableBox = new ComboBox
-        {
-            ItemsSource = choices.Select(choice => choice.Label).ToList(),
-            SelectedIndex = choices.FindIndex(choice =>
-                string.Equals(choice.Variable, operation.Variable, StringComparison.Ordinal)),
-            FontSize = 11,
-            MinWidth = 110,
-            PlaceholderText = choices.Count == 0 ? "등록된 아이템·능력 없음" : "아이템·능력"
-        };
-
-        variableBox.SelectionChanged += (_, _) =>
-        {
-            if (variableBox.SelectedIndex >= 0 && variableBox.SelectedIndex < choices.Count)
-            {
-                Commit(target => target.Variable = choices[variableBox.SelectedIndex].Variable);
-            }
-        };
-
-        string[] operators = ["=", "+=", "-="];
-        var operatorBox = new ComboBox
-        {
-            ItemsSource = operators,
-            SelectedIndex = Array.IndexOf(operators, SetOperators.Symbol(operation.Operator)),
-            FontSize = 11,
-            Margin = new Thickness(4, 0, 0, 0)
-        };
-
-        operatorBox.SelectionChanged += (_, _) =>
-        {
-            if (operatorBox.SelectedIndex >= 0)
-            {
-                Commit(target => target.Operator = SetOperators.Parse(operators[operatorBox.SelectedIndex]));
-            }
-        };
-
-        // 능력(보유)은 수치 슬라이더가 아니라 On/Off 토글이다 (X7).
-        // 저장 값은 Yarn 문법 그대로 true/false 문자열 — 출력 불변.
-        //
-        // 종류는 <b>이 챕터의 등록</b>만 본다 (2026-08-17 소유자) — 정의 파일을 뒤지던
-        // 폴백은 뺐다. 기획자 스탯은 작가에게 노출되어서는 안 되는 자료라, 종류를 알아내는
-        // 길로도 쓰지 않는다.
-        bool isBool = registration?.IsBool == true;
-
-        // 능력에는 부호가 없다 (2026-08-17 소유자: "지금 능력은 On, Off인데도 부호가 있는데,
-        // 부호를 없애던지 혹은 =로 고정") — On/Off에 `+=`가 설 자리가 없다. 콤보를 감추고
-        // 값을 `=`로 못 박는다: 고를 것이 하나뿐이면 고르게 하지 않는다.
-        if (isBool)
-        {
-            operatorBox.IsVisible = false;
-
-            if (operation.Operator != SetOperatorKind.Assign)
-            {
-                Commit(target => target.Operator = SetOperatorKind.Assign);
-            }
-        }
-
-        if (isBool)
-        {
-            var toggle = new CheckBox
-            {
-                IsChecked = string.Equals(operation.Value, "true", StringComparison.OrdinalIgnoreCase),
-                Content = string.Equals(operation.Value, "true", StringComparison.OrdinalIgnoreCase) ? "On" : "Off",
-                Margin = new Thickness(6, 0, 0, 0),
-                FontSize = 11,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            toggle.IsCheckedChanged += (_, _) =>
-            {
-                if (!_building)
-                {
-                    toggle.Content = toggle.IsChecked == true ? "On" : "Off";
-                    Commit(target => target.Value = toggle.IsChecked == true ? "true" : "false");
-                }
-            };
-
-            var removeBool = new Button
-            {
-                Content = "✕",
-                FontSize = 10,
-                Margin = new Thickness(4, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            removeBool.Click += (_, _) =>
-            {
-                if (!_building)
-                {
-                    List<SetOperation> nextOps = CurrentSets(node, lineId);
-
-                    if (operationIndex < nextOps.Count)
-                    {
-                        nextOps.RemoveAt(operationIndex);
-                        _session!.Editor.SetLineSetOperations(node.Id, lineId, nextOps);
-                    }
-                }
-            };
-
-            var boolRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto") };
-            Grid.SetColumn(variableBox, 0);
-            Grid.SetColumn(operatorBox, 1);
-            Grid.SetColumn(toggle, 2);
-            Grid.SetColumn(removeBool, 3);
-            boolRow.Children.Add(variableBox);
-            boolRow.Children.Add(operatorBox);
-            boolRow.Children.Add(toggle);
-            boolRow.Children.Add(removeBool);
-            return boolRow;
-        }
-
-        double min = registration?.EffectiveSliderMin ?? VariableAssignment.DefaultSliderMin;
-        double max = registration?.EffectiveSliderMax ?? VariableAssignment.DefaultSliderMax;
-        bool syncing = false;
-
-        var slider = new Slider
-        {
-            Minimum = min,
-            Maximum = max,
-            TickFrequency = 1,
-            IsSnapToTickEnabled = true,
-            Margin = new Thickness(6, 0, 0, 0),
-            MinWidth = 90,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        var valueBox = new TextBox
-        {
-            Text = operation.Value,
-            FontSize = 11,
-            Width = 56,
-            Margin = new Thickness(4, 0, 0, 0)
-        };
-        ToolTip.SetTip(valueBox, $"직접 입력 — 슬라이더 범위({FormatNumber(min)}~{FormatNumber(max)}) 밖 값도 됩니다.");
-
-        if (double.TryParse(
-                operation.Value,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double numeric))
-        {
-            slider.Value = Math.Clamp(numeric, min, max);
-        }
-
-        // 드래그 중에는 숫자 표시만 따라오고, 커밋은 놓는 순간 한 번이다 —
-        // 커밋이 편집 행을 다시 만들므로(Structure) 틱마다 커밋하면 드래그가 끊긴다.
-        slider.ValueChanged += (_, args) =>
-        {
-            if (!syncing && !_building)
-            {
-                syncing = true;
-                valueBox.Text = FormatNumber(args.NewValue);
-                syncing = false;
-            }
-        };
-
-        slider.PointerCaptureLost += (_, _) =>
-        {
-            if (!syncing && !_building)
-            {
-                syncing = true;
-                string formatted = FormatNumber(slider.Value);
-                valueBox.Text = formatted;
-                Commit(target => target.Value = formatted);
-                syncing = false;
-            }
-        };
-
-        valueBox.LostFocus += (_, _) =>
-        {
-            if (syncing || _building)
-            {
-                return;
-            }
-
-            syncing = true;
-            string text = valueBox.Text ?? string.Empty;
-
-            if (double.TryParse(
-                    text,
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out double typed))
-            {
-                slider.Value = Math.Clamp(typed, min, max); // 슬라이더는 편의 — 값은 그대로 저장
-            }
-
-            Commit(target => target.Value = text);
-            syncing = false;
-        };
-
-        var remove = new Button
-        {
-            Content = "✕",
-            FontSize = 10,
-            Margin = new Thickness(4, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-
-        remove.Click += (_, _) =>
-        {
-            if (_building)
-            {
-                return;
-            }
-
-            List<SetOperation> next = CurrentSets(node, lineId);
-
-            if (operationIndex < next.Count)
-            {
-                next.RemoveAt(operationIndex);
-                _session!.Editor.SetLineSetOperations(node.Id, lineId, next);
-            }
-        };
-
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto") };
-        Grid.SetColumn(variableBox, 0);
-        Grid.SetColumn(operatorBox, 1);
-        Grid.SetColumn(slider, 2);
-        Grid.SetColumn(valueBox, 3);
-        Grid.SetColumn(remove, 4);
-        row.Children.Add(variableBox);
-        row.Children.Add(operatorBox);
-        row.Children.Add(slider);
-        row.Children.Add(valueBox);
-        row.Children.Add(remove);
-
-        return row;
-    }
 
     private static string FormatNumber(double value) =>
         value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);

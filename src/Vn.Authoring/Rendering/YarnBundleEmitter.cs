@@ -136,10 +136,9 @@ public static class YarnBundleEmitter
             ? YarnSyntax.SanitizeNodeName(bundleName)
             : BundleNameOf(dialogue.SourceNodeName, dialogue.SourceNodeId);
 
-        // 챕터 네임스페이스 (2026-08-17) — 작가의 아이템·능력은 챕터 단위로만 살아야 하는데
-        // Yarn의 변수 저장소는 하나다. 접두가 그 틈을 막는다. A계층 스탯은 그대로 둔다.
-        string tier1Prefix = Tier1Namespace.PrefixFor(project, dialogue.SourceNodeId);
-        HashSet<string> statNames = Tier1Namespace.StatNames(project, dialogue.SourceNodeId);
+        // ⛔ 챕터 네임스페이스 접두(`__t1_`)는 2026-09-17에 사라졌다 — 어휘가 둘이라 이름이
+        //    부딪히던 것인데, 작가 변수가 없어져 부딪힐 것이 없다.
+        HashSet<string> statNames = ChapterStatNames(project, dialogue.SourceNodeId);
 
         var problems = new List<YarnBundleProblem>();
         var story = new StringBuilder();
@@ -208,11 +207,7 @@ public static class YarnBundleEmitter
                 case RenderedSegmentKind.ConditionEnd:
                     CloseStoryHeader();
 
-                    AppendCondition(story, segment with
-                    {
-                        Expression = Tier1Namespace.ApplyToExpression(
-                            segment.Expression, tier1Prefix, statNames)
-                    }, indent);
+                    AppendCondition(story, segment, indent);
 
                     break;
 
@@ -262,7 +257,7 @@ public static class YarnBundleEmitter
         return new YarnBundle(
             name,
             story.ToString(),
-            CollectDeclarations(dialogue, definition, tier1Prefix, statNames),
+            CollectDeclarations(dialogue, definition),
             problems,
             dialogue.SourceNodeName,
             dialogue.SourceNodeId)
@@ -778,49 +773,49 @@ public static class YarnBundleEmitter
     /// 이 번들이 쓰는 변수를 등장 순서대로 모은다. 초기값 타입은 게임 정의의
     /// variables가 정하고, 모르면 숫자다(런타임이 스탯을 float으로 읽는다).
     /// </summary>
+    /// <summary>
+    /// ⛔ <b>이제 아무것도 모으지 않는다</b> (2026-09-17 — 작가 변수 폐지). 선언할 대상이
+    /// 작가 변수였고, 그 어휘가 없어졌다. 챕터 스탯은 변수가 아니라 <c>stat("키")</c>
+    /// <b>함수</b>로 읽으므로 선언이 없다.
+    ///
+    /// ⚠ 그래서 <c>declarations.yarn</c>은 <b>아예 안 나간다</b> — 빈 선언 파일을 쓰지
+    /// 않는 것이 옛 동작이고, 런타임도 *"안 내는 쪽이 깔끔하다"*고 했다(회신 §3).
+    /// </summary>
     private static IReadOnlyList<YarnDeclaration> CollectDeclarations(
         DialogueResult dialogue,
-        GameDefinition? definition,
-        string tier1Prefix,
-        IReadOnlySet<string> statNames)
+        GameDefinition? definition)
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var declarations = new List<YarnDeclaration>();
+        _ = dialogue;
+        _ = definition;
 
-        void Collect(string variable)
+        return [];
+    }
+
+    /// <summary>
+    /// 이 노드가 선 챕터의 <b>스탯 키들</b> — `$진행스탯` 누출 검사가 쓴다.
+    ///
+    /// ⚠ 한때 <c>Tier1Namespace.StatNames</c>였다. 그 클래스는 작가 변수에 챕터 접두를
+    /// 붙이려고 있었고 2026-09-17에 어휘가 하나가 되면서 통째로 죽었다 — 남은 쓰임이
+    /// 이것 하나라 여기로 옮겨 왔다.
+    /// </summary>
+    private static HashSet<string> ChapterStatNames(StoryProject? project, string? nodeId)
+    {
+        if (project is null || nodeId is null)
         {
-            string trimmed = variable.TrimStart('$').Trim();
-
-            if (trimmed.Length == 0)
-            {
-                return;
-            }
-
-            // 초기값 타입은 <b>접두 붙이기 전</b> 이름으로 찾는다 — 정의 파일은 작가가
-            // 보는 이름을 안다. 선언에 나가는 것은 접두 붙은 이름이다.
-            string declared = Tier1Namespace.Apply(trimmed, tier1Prefix, statNames);
-
-            if (seen.Add(declared))
-            {
-                declarations.Add(new YarnDeclaration(declared, InitialValueOf(trimmed, definition)));
-            }
+            return new HashSet<string>(StringComparer.Ordinal);
         }
 
-        foreach (DialogueResultAssignment assignment in dialogue.Assignments)
-        {
-            Collect(assignment.Variable);
-        }
+        StoryFile? file = project.Files.FirstOrDefault(candidate =>
+            candidate.Nodes.Any(node => string.Equals(node.Id, nodeId, StringComparison.Ordinal)));
 
-        // 합성 추적 변수(`__ch_N`) 선언은 2026-08-18에 사라졌다 — 서브 레인이 없다.
-        foreach (DialogueResultLine line in dialogue.Lines)
-        {
-            foreach (DialogueResultSetOperation operation in line.Sets)
-            {
-                Collect(operation.Variable);
-            }
-        }
-
-        return declarations;
+        return file is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : project.Chapters
+                .FirstOrDefault(chapter =>
+                    string.Equals(chapter.ChapterId, file.Name, StringComparison.Ordinal))
+                ?.Stats.Select(stat => stat.Key)
+                .ToHashSet(StringComparer.Ordinal)
+              ?? new HashSet<string>(StringComparer.Ordinal);
     }
 
     private static string InitialValueOf(string variable, GameDefinition? definition)

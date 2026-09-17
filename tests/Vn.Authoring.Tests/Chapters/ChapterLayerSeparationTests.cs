@@ -88,38 +88,9 @@ public sealed class ChapterLayerSeparationTests
         Assert.Equal("우호적", AvailableConditionResolver.LayeredLabel(own));
     }
 
-    [Fact]
-    public void 설정노드가_챕터_스탯을_배정하면_경고한다()
-    {
-        // 후보에서 빼는 것만으로는 안 된다 — 변수 칸은 자유 입력이라 손으로 `trust`를
-        // 적을 수 있고, 설정노드의 배정은 Set_ 노드 본문이 되어 실제로 <<set>>이 나간다.
-        // 대사 줄만 훑던 검사가 이 길을 놓치고 있었다 (2026-08-17).
-        Board board = BuildBoard();
-        board.Editor.SetAssignments(board.Own.Id,
-        [
-            new VariableAssignment { Variable = "trust", Value = "1" },
-            new VariableAssignment { Variable = "mood", Value = "1" } // 작가 변수 — 조용해야 한다
-        ]);
-
-        var chapter = new ChapterGraphModel(
-            "ch01", "ch01.xlsx",
-            episodes: [],
-            edges: [],
-            conditions: [],
-            stats: [new ChapterStat("trust", "신뢰", 0, 0, 10, 2)],
-            fixtures: [],
-            diagnostics: []);
-
-        IReadOnlyList<ChapterDiagnostic> warnings = ChapterBoardSupply.WarnFreeNodeStatWrites(
-            board.Editor, board.Project.Files.Single().Id, chapter);
-
-        ChapterDiagnostic warning = Assert.Single(warnings);
-        Assert.Equal(ChapterDiagnosticSeverity.Warning, warning.Severity);
-        Assert.Contains("작가 조건", warning.Message);   // 어느 설정노드인지
-        Assert.Contains("trust", warning.Message);
-        Assert.Contains("간선", warning.Message);        // 어디가 제자리인지
-        Assert.DoesNotContain("mood", warning.Message);
-    }
+    // ⛔ <b>「설정노드가 챕터 스탯을 배정하면 경고한다」는 2026-09-17에 걷혔다</b>
+    //    (작가 변수 폐지). 설정노드가 변수를 아예 안 들므로 배정할 길이 없고, 경고가
+    //    지키던 것 — 대사 중에 스탯이 변하는 뒷길 — 은 <b>구조적으로 불가능</b>해졌다.
 
     [Fact]
     public void 동기화는_대사노드마다_링크를_잇지_않는다()
