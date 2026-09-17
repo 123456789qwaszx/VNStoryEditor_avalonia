@@ -196,6 +196,26 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         Assert.Equal(["ch02"], Rows(view, SceneTreeRowKind.Chapter));
     });
 
+    [Fact]
+    public void 빈_자리를_우클릭하면_챕터_추가가_뜬다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 머리글의 [＋]와 같은 일이지만, 트리가 비었을 때 사람이 먼저 누르는 것은
+        //    <b>비어 있는 그 자리</b>다 (2026-09-18 소유자).
+        (ScriptView view, _) = Show();
+
+        ContextMenu menu = Tree(view).FindControl<ScrollViewer>("TreeScroll")!.ContextMenu!;
+
+        MenuItem add = Assert.Single(
+            menu.ItemsSource!.OfType<MenuItem>(),
+            item => string.Equals(item.Header as string, "챕터 추가", StringComparison.Ordinal));
+
+        add.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 이름을 받는 플라이아웃이 열린다 — 여기서 바로 만들지 않는다(머리글과 같은 길).
+        Assert.NotNull(view.FindControl<Button>("ChapterAddButton"));
+    });
+
     // ── 에피소드 줄의 차림표 (2026-09-18 소유자) ──────────────────────────
 
     [Fact]

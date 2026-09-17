@@ -38,7 +38,7 @@
         </Grid>
 
         <!-- 오른쪽 — 글 -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto" Margin="0,8,8,8">
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="0,8,8,8">
 
             <TextBlock Grid.Row="0"
                        x:Name="HeaderText"
@@ -98,15 +98,9 @@
                            TextWrapping="Wrap" />
             </StackPanel>
 
-            <!-- ⛔ [화자 ▾]와 [저장] 단추는 2026-09-18에 걷었다 (소유자: "솔직히 쓸모 없어").
-                 저장은 Ctrl+S 하나이고, 화자는 이름을 치는 편이 고르는 것보다 빠르다 —
-                 작가가 보는 화면에는 <b>글과 글에 대한 말</b>만 남긴다. -->
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="10" Margin="2,8,0,0">
-                <TextBlock x:Name="HintText"
-                           VerticalAlignment="Center"
-                           Opacity="0.65"
-                           TextWrapping="Wrap" />
-            </StackPanel>
+            <!-- ⛔ 2026-09-18 소유자 — [화자 ▾]·[저장] 단추와 안내 문구를 전부 걷었다.
+                 저장은 Ctrl+S 하나이고, 늘 떠 있는 안내는 곧 안 읽히는 글자가 된다.
+                 이 화면에 남는 것은 <b>글</b>과, 글에 문제가 있을 때 하는 <b>말</b>뿐이다. -->
         </Grid>
     </Grid>
 </UserControl>

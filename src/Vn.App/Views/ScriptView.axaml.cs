@@ -198,6 +198,11 @@ public partial class ScriptView : UserControl
                     "우클릭해 에피소드를 넣으면 그때 저장됩니다.");
                 break;
 
+            case SceneTreeCommand.AddChapter:
+                // 머리글의 [＋]와 같은 창구다 — 플라이아웃이 이름을 받는다.
+                ChapterAddFlyout.ShowAt(ChapterAddButton, _session);
+                break;
+
             case SceneTreeCommand.AddEpisode:
                 AddEpisodeToScene(row);
                 break;
@@ -686,7 +691,6 @@ public partial class ScriptView : UserControl
             _inProject = string.Empty;
             ScriptBox.Text = _inProject;
             ScriptBox.IsEnabled = false;
-            HintText.Text = string.Empty;
             return;
         }
 
@@ -705,14 +709,11 @@ public partial class ScriptView : UserControl
             EmptyAddScriptButton.IsVisible = true;
             EmptyText.Text = $"'{episodeId}'은 아직 빈 대본입니다.";
 
-            HintText.Text = string.Empty;
             return;
         }
 
         _inProject = ProjectText(node) ?? string.Empty;
         ScriptBox.Text = _inProject;
-
-        HintText.Text = "자유롭게 고치고 Ctrl+S로 저장 — 줄의 신원은 보존됩니다.";
 
         ShowUnknownSpeakers(Speakers(node));
     }

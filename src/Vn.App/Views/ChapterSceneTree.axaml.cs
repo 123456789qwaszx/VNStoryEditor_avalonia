@@ -74,7 +74,15 @@ internal enum SceneTreeCommand
     AddEpisode,
 
     /// <summary>에피소드 줄에서 — 그 에피소드를 걷는다(2026-09-18 소유자).</summary>
-    DeleteEpisode
+    DeleteEpisode,
+
+    /// <summary>
+    /// <b>빈 자리</b>에서 — 챕터를 하나 세운다 (2026-09-18 소유자).
+    ///
+    /// ⚠ 머리글의 <c>＋</c>와 같은 일이다. 단추 하나로 충분해 보였지만, 트리가 비었을 때
+    /// 사람이 먼저 누르는 것은 <b>비어 있는 그 자리</b>다.
+    /// </summary>
+    AddChapter
 }
 
 /// <summary>고른 에피소드. <b>챕터는 상태가 아니라 파생</b>이다 — 그 에피소드가 속한 챕터다.</summary>
@@ -117,7 +125,31 @@ public partial class ChapterSceneTree : UserControl
     /// <summary>접힘을 기억해 둘 프로젝트. 없으면 <b>세션 안에서만</b> 산다.</summary>
     private string? _projectPath;
 
-    public ChapterSceneTree() => InitializeComponent();
+    public ChapterSceneTree()
+    {
+        InitializeComponent();
+
+        // ⚠ <b>빈 자리의 차림표</b> (2026-09-18 소유자). 줄이 아니라 <see cref="TreeScroll"/>에
+        //    단다 — 줄 위에서 우클릭하면 그 줄의 차림표가 먼저 뜨고, 빈 데서 눌렀을 때만
+        //    여기까지 올라온다. 챕터가 하나도 없을 때 사람이 먼저 누르는 곳이 그 자리다.
+        TreeScroll.ContextMenu = EmptyMenu();
+    }
+
+    /// <summary>빈 자리에서 여는 차림표 — 지금은 [챕터 추가] 하나다.</summary>
+    private ContextMenu EmptyMenu()
+    {
+        var add = new MenuItem { Header = "챕터 추가", FontSize = 12 };
+
+        add.Click += (_, _) => UiGuard.Run(null, "탐색기 차림표", () =>
+            CommandRequested?.Invoke(
+                SceneTreeCommand.AddChapter,
+                new SceneTreeRow(
+                    SceneTreeRowKind.Chapter, Key: string.Empty, ChapterId: string.Empty,
+                    SceneId: null, EpisodeId: null, Text: string.Empty, Depth: 0,
+                    IsSceneRoot: false, HasSplitEntry: false, IsEmptyScript: false)));
+
+        return new ContextMenu { ItemsSource = new[] { add } };
+    }
 
     /// <summary>
     /// <b>빈 장면 자리들</b> — <c>{챕터}/{장면}</c>. 에피소드가 들어오면 진짜 장면이 되고
@@ -522,26 +554,45 @@ public partial class ChapterSceneTree : UserControl
             Spacing = 3
         };
 
-        if (row.IsSceneRoot)
+        // ⛔ <b>에피소드는 전부 표를 단다</b> (2026-09-18 소유자: *"장면의 첫번째
+        //    에피소드에만 있고 그 아래쪽에는 없는 게 불편"*). 전에는 장면 루트(`⌂`)만
+        //    표가 있어서 <b>나머지 줄이 왼쪽으로 반 칸 밀려 보였다</b> — 루트를 눈에
+        //    띄게 하려던 표가 다른 줄을 들쭉날쭉하게 만든 셈이다.
+        //
+        // ⚠ 뜻은 그대로다: `⌂`는 여전히 <b>장면 루트</b>이고, 나머지는 자리만 맞추는
+        //    점이다. 같은 열에 서되 무게가 다르다.
+        if (row.Kind == SceneTreeRowKind.Episode)
         {
-            // ⌂ = 장면 루트. 롤백이 되돌아갈 곳이고 이어하기가 재개할 곳이라 장면에 하나다.
             line.Children.Add(new TextBlock
             {
-                Text = "⌂",
-                FontSize = 9,
-                Opacity = 0.75,
+                Text = row.IsSceneRoot ? "⌂" : "·",
+                FontSize = row.IsSceneRoot ? 12 : 13,
+                Width = 12,
+                TextAlignment = TextAlignment.Center,
+                Opacity = row.IsSceneRoot ? 0.8 : 0.35,
                 VerticalAlignment = VerticalAlignment.Center,
-                [ToolTip.TipProperty] = "장면 루트 — 롤백이 되돌아가고 이어하기가 재개하는 자리입니다."
+                [ToolTip.TipProperty] = row.IsSceneRoot
+                    ? "장면 루트 — 롤백이 되돌아가고 이어하기가 재개하는 자리입니다."
+                    : null
             });
         }
+
+        // ⚠ <b>종류가 한눈에 갈려야 한다</b> (2026-09-18 소유자: *"뭐가 뭔지 구분이 안 돼"*).
+        //    들여쓰기만으로는 챕터·장면·에피소드가 같은 글자로 보인다 — 크기와 무게를 함께 준다.
+        (double size, FontWeight weight, double dim) = row.Kind switch
+        {
+            SceneTreeRowKind.Chapter => (15.0, FontWeight.Bold, 1.0),
+            SceneTreeRowKind.Scene => (13.0, FontWeight.SemiBold, 0.8),
+            _ => (13.0, FontWeight.Normal, 1.0)
+        };
 
         line.Children.Add(new TextBlock
         {
             Text = row.Text,
-            FontSize = 11,
-            FontWeight = row.Kind == SceneTreeRowKind.Chapter ? FontWeight.SemiBold : FontWeight.Normal,
+            FontSize = size,
+            FontWeight = weight,
             // 대본이 없는 에피소드와 빈 장면은 흐리게 — 아직 아무것도 안 든 자리다.
-            Opacity = row.IsEmptyScript || row.IsDraft ? 0.45 : 1,
+            Opacity = row.IsEmptyScript || row.IsDraft ? 0.45 : dim,
             VerticalAlignment = VerticalAlignment.Center
         });
 
@@ -562,7 +613,7 @@ public partial class ChapterSceneTree : UserControl
         var button = new Button
         {
             Content = line,
-            Padding = new Thickness(4, 2),
+            Padding = new Thickness(4, 3),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
 
@@ -627,7 +678,8 @@ public partial class ChapterSceneTree : UserControl
             Release(RowAt(args.GetPosition(RowHost)) ?? row);
         }), RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
 
-        var host = new DockPanel { Margin = new Thickness(row.Depth * 14, 0, 0, 0) };
+        // 깊이 한 칸을 넓힌다 — 들여쓰기가 종류를 읽는 두 번째 단서다.
+        var host = new DockPanel { Margin = new Thickness(row.Depth * 18, 0, 0, 0) };
         Control arrow = Arrow(row);
 
         DockPanel.SetDock(arrow, Dock.Left);
@@ -646,16 +698,19 @@ public partial class ChapterSceneTree : UserControl
     {
         bool leaf = row.Kind == SceneTreeRowKind.Episode || row.IsDraft;
 
+        // ⛔ <b>접힘이 보여야 한다</b> (2026-09-18 소유자: *"접혀있는건지 펴진건지 구분이
+        //    안돼"*). 9포인트에 70% 불투명한 <c>▾</c>·<c>▸</c>는 둘 다 <b>작은 얼룩</b>으로
+        //    보였다 — 모양이 아니라 <b>크기</b>가 먼저 문제였다. 속을 채운 글자로 키운다.
         var arrow = new Border
         {
-            Width = 14,
+            Width = 18,
             Background = Brushes.Transparent,
             VerticalAlignment = VerticalAlignment.Stretch,
             Child = new TextBlock
             {
-                Text = leaf ? " " : IsExpanded(row.Key, row.ChapterId, null) ? "▾" : "▸",
-                FontSize = 9,
-                Opacity = 0.7,
+                Text = leaf ? " " : IsExpanded(row.Key, row.ChapterId, null) ? "▼" : "▶",
+                FontSize = 11,
+                Opacity = 0.85,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
@@ -771,7 +826,7 @@ public partial class ChapterSceneTree : UserControl
             Text = NameOf(row),
             FontSize = 11,
             Padding = new Thickness(4, 1),
-            Margin = new Thickness(row.Depth * 14 + 13, 0, 0, 0)
+            Margin = new Thickness(row.Depth * 18 + 17, 0, 0, 0)
         };
 
         void Commit(bool keep)
