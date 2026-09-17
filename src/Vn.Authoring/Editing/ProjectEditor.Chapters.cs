@@ -136,15 +136,45 @@ public sealed partial class ProjectEditor
             throw new InvalidOperationException($"EpisodeId '{episodeId}'가 이미 있습니다.");
         }
 
-        var episode = new ChapterEpisode(
-            episodeId, title, Index: string.Empty, DialogueEntry: episodeId,
-            Math.Round(x, 2), Math.Round(y, 2), Memo: null, SourceRow: 0)
-        {
-            SceneId = sceneId
-        };
+        (_, ChapterEpisode? episode, Action attach) = NewEpisodeCore(
+            chapterId, episodeId, title, x, y, sceneId);
 
-        Mutate(() => chapter.Episodes.Add(episode));
-        return episode;
+        Mutate(attach);
+        return episode!;
+    }
+
+    /// <summary>
+    /// <b>에피소드 하나를 짓기만 한다</b> — 카드·대본까지 함께, <see cref="Mutate"/> 밖에서.
+    ///
+    /// ⭐ <b>2026-09-18에 창구가 하나로 합쳐졌다.</b> 그 전에는 「에피소드에는 대사노드가
+    /// 있다」가 <b>편집기 명령이 아니라 화면에</b> 살았다: 챕터 그래프는 <c>AddEpisode</c> 뒤에
+    /// 노드 만들기를 한 줄 더 불렀고, 대본 탭은 <b>그 한 줄이 없었다</b>. 그래서 작가의 탭에서
+    /// 만든 에피소드만 쓸 자리가 없었다.
+    ///
+    /// ⚠ <b>창구를 늘릴 때 잊을 수 있는 자리를 없앤 것</b>이 요점이다. 이제 에피소드를 만드는
+    /// 길은 전부 여기를 지나므로, 어디서 만들었느냐가 결과를 바꾸지 않는다.
+    ///
+    /// ⚠ <see cref="EnsureChapterBoard"/>가 판을 <b>먼저</b> 세운다(없을 때만). 판이 없는
+    /// 챕터에 에피소드를 넣는 것은 카드를 놓을 자리가 없다는 뜻이다.
+    /// </summary>
+    private (DialogueNode Node, ChapterEpisode? Episode, Action Attach) NewEpisodeCore(
+        string chapterId, string episodeId, string title, double x, double y, string? sceneId)
+    {
+        string fileId = EnsureChapterBoard(chapterId);
+
+        // ⚠ <b>자리가 둘이다.</b> 주어진 (x, y)는 <b>챕터 그래프</b>의 자리이고, 연출 판의
+        //    카드는 제 판의 규칙(<see cref="Graph.NodePlacement"/>)으로 선다 — 장면마다 제
+        //    줄에. 한쪽 좌표를 다른 판에 그대로 넣으면 사람이 맞춰 둔 배치가 흐트러진다.
+        (double cardX, double cardY) = Graph.NodePlacement.For(Project, chapterId, episodeId);
+
+        return NewDialogueNodeCore(
+            fileId,
+            cardX,
+            cardY,
+            name: episodeId,
+            sceneId: sceneId,
+            title: title,
+            episodePosition: (x, y));
     }
 
     /// <summary>
@@ -173,23 +203,20 @@ public sealed partial class ProjectEditor
             throw new InvalidOperationException($"부모 에피소드 '{parentEpisodeId}'가 없습니다.");
         }
 
-        var episode = new ChapterEpisode(
-            newEpisodeId, title, Index: string.Empty, DialogueEntry: newEpisodeId,
-            Math.Round(x, 2), Math.Round(y, 2), Memo: null, SourceRow: 0)
-        {
-            SceneId = sceneId
-        };
+        (_, ChapterEpisode? episode, Action attach) = NewEpisodeCore(
+            chapterId, newEpisodeId, title, x, y, sceneId);
 
         ChapterEdge edge = NewEdge(chapter, parentEpisodeId, newEpisodeId, optionLabel);
 
+        // 에피소드·카드·대본·간선이 <b>한 변경</b>이다 — 되돌리기 한 번에 넷이 함께 사라진다.
         Mutate(() =>
         {
-            chapter.Episodes.Add(episode);
+            attach();
             chapter.Edges.Add(edge);
             LearnChoiceLabel(chapter, optionLabel);
         });
 
-        return episode;
+        return episode!;
     }
 
     /// <summary>속성 패널의 저장 — null이 아닌 것만 바꾼다.</summary>

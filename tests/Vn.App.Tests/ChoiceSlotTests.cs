@@ -468,12 +468,20 @@ public sealed class ChoiceSlotTests : IDisposable
     private static void Seed(
         AuthoringSession session, string chapterId, string fileId, double x, params string[] episodeIds)
     {
+        _ = fileId;
+
         for (int index = 0; index < episodeIds.Length; index++)
         {
+            // ⚠ <b>카드를 따로 세우지 않는다</b> (2026-09-18) — `AddEpisode`가 함께 만든다.
+            //    전에는 여기서 한 장 더 만들었고, 그러면 이름이 같은 카드가 둘 서서 끌어
+            //    놓기가 <b>엉뚱한 카드</b>를 맞힌다(이 테스트가 `root → root` 간선으로 깨졌다).
             session.Editor.AddEpisode(chapterId, episodeIds[index], title: episodeIds[index], 0, 0);
 
-            session.Editor.AddDialogueNode(
-                fileId, x + (index * 320), 0, episodeIds[index]).MarkedEpisodeId = episodeIds[index];
+            DialogueNode card = session.Project.EnumerateNodes().OfType<DialogueNode>()
+                .Single(node => EpisodeNaming.EpisodeIdOf(node) == episodeIds[index]);
+
+            // 자리는 이 테스트가 정한다 — 카드를 맞히려면 좌표를 알아야 한다.
+            session.Editor.MoveNode(card.Id, x + (index * 320), 0);
         }
     }
 }

@@ -453,8 +453,10 @@ public partial class ScriptView : UserControl
         EpisodeTree.Select(row.ChapterId, episodeId);
         ShowSelected();
 
+        // ⭐ 2026-09-18부터 카드와 대본이 함께 서므로 <b>바로 쓸 수 있다</b> — 전에는
+        //    여기서 만든 에피소드만 쓸 자리가 없어 [＋ 대본]을 한 번 더 눌러야 했다.
         _session.SetStatus(
-            $"장면 '{sceneId}'에 에피소드 '{episodeId}'를 넣었습니다 — " +
+            $"장면 '{sceneId}'에 에피소드 '{episodeId}'를 넣었습니다 — 바로 쓰고 Ctrl+S. " +
             "이름은 [챕터 그래프]에서 정합니다.");
     }
 
@@ -1047,9 +1049,10 @@ public partial class ScriptView : UserControl
         // 새 카드는 <b>제 장면의 줄</b>에 선다 (R7 P-4) — 원점에 쌓이면 챕터 프레임도
         // 장면 영역도 뜻을 잃는다. 규칙은 세 창구가 함께 쓴다.
         (double x, double y) = Vn.Authoring.Graph.NodePlacement.For(_session.Project, chapterId, episodeId);
+        // ⛔ 여기서 표식(`MarkedEpisodeId`)을 직접 붙이던 줄은 2026-09-18에 걷혔다 —
+        //    이름이 곧 EpisodeId이므로 편집기의 `NewEpisodeFor`가 이미 같은 값을 넣는다.
+        //    표식의 규칙은 한 자리에만 있어야 한다.
         DialogueNode created = _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
-
-        created.MarkedEpisodeId = episodeId;
 
         // 노드 생성이 딸려 주는 첫 빈 줄을 은퇴시킨다 — 작가의 글이 그 자리를 채운다.
         // 남겨 두면 신원 없는 고아가 되어 diff가 "지운 것인지 고친 것인지"를 못 가린다.

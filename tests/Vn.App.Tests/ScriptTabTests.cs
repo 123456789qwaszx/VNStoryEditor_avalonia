@@ -704,9 +704,15 @@ public sealed class ScriptTabTests : IDisposable
 
             string previous = string.Empty;
 
+            // ⚠ <b>카드 없는 에피소드를 짓는다</b> (2026-09-18). 이 헬퍼가 흉내내는 것은
+            //    <i>기획자가 짜 온 챕터</i>이고, 거기에는 아직 작가의 대본이 없다 — 실제로
+            //    그 상태가 오는 길은 챕터 워크북 임포트이고, 임포트는 문서에 바로 넣는다.
+            //    `AddEpisode`를 쓰면 카드까지 함께 서서 「아직 안 쓴 에피소드」를 못 만든다.
             foreach (string id in episodeIds)
             {
-                editor.AddEpisode(chapterId, id, title: id, 0, 0);
+                editor.FindChapter(chapterId)!.Episodes.Add(new ChapterEpisode(
+                    id, id, Index: string.Empty, DialogueEntry: id,
+                    0, 0, Memo: null, SourceRow: 0));
 
                 if (previous.Length > 0)
                 {
@@ -744,9 +750,11 @@ public sealed class ScriptTabTests : IDisposable
         AuthoringSession session, string chapterId, string episodeId,
         params (string Speaker, string Text)[] lines)
     {
-        // ⚠ 챕터 워크북도 있어야 한다 — 에피소드 목록의 출처가 그쪽이다(기획자의 것).
+        // ⚠ 챕터가 있어야 한다 — 에피소드 목록의 출처가 그쪽이다(기획자의 것).
         WriteChapter(chapterId, episodeId);
 
+        // ⚠ <b>카드는 여기서 세운다.</b> `WriteChapter`는 <i>기획자가 짜 온 챕터</i>를
+        //    흉내내므로 카드가 없다(임포트의 모양) — 작가가 대본을 다는 것이 이 줄이다.
         string fileId = session.Editor.EnsureChapterBoard(chapterId);
         DialogueNode node = session.Editor.AddDialogueNode(fileId, name: episodeId);
         string scriptId = session.Editor.EnsureDialogueScript(node.Id).Id;

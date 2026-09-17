@@ -106,10 +106,13 @@ public sealed class ScriptSaveShellTests : IDisposable
         session.Open(manifest);
 
         session.Editor.EnsureChapter("ch01");
+
+        // ⚠ 카드와 대본까지 함께 선다 (2026-09-18) — 여기서 또 만들면 카드가 둘이 된다.
         session.Editor.AddEpisode("ch01", "ep01", title: "ep01", 0, 0);
 
-        string fileId = session.Editor.EnsureChapterBoard("ch01");
-        DialogueNode node = session.Editor.AddDialogueNode(fileId, name: "ep01");
+        DialogueNode node = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(item => Vn.Authoring.Chapters.EpisodeNaming.EpisodeIdOf(item) == "ep01");
+
         string scriptId = session.Editor.EnsureDialogueScript(node.Id).Id;
 
         ScriptLine first = session.Project.FindScript(scriptId)!.ActiveLines.First();

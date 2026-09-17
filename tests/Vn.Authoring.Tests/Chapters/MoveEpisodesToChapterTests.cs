@@ -128,20 +128,16 @@ public sealed class MoveEpisodesToChapterTests
         editor.EnsureChapter("ch01");
         editor.EnsureChapter("ch02");
 
-        string first = editor.EnsureChapterBoard("ch01");
-        string second = editor.EnsureChapterBoard("ch02");
+        editor.EnsureChapterBoard("ch01");
+        editor.EnsureChapterBoard("ch02");
 
+        // ⚠ 카드는 따로 안 세운다 — 2026-09-18부터 에피소드를 만드는 명령이 함께 만든다.
+        //    전에는 아래에 `AddDialogueNode` 네 줄이 더 있었고, 지금 그러면 에피소드마다
+        //    카드가 둘 선다(이 테스트가 정확히 그렇게 깨졌다).
         editor.AddEpisode("ch01", "root", title: "시작", 0, 0, sceneId: "opening");
         editor.AddNextEpisode("ch01", "root", "a", title: "가", 260, 0, optionLabel: "가자", sceneId: "shared");
         editor.AddNextEpisode("ch01", "a", "b", title: "나", 520, 0, optionLabel: "다음", sceneId: "shared");
         editor.AddEpisode("ch02", "far", title: "저쪽", 0, 0, sceneId: "other");
-
-        foreach (string episodeId in (string[])["root", "a", "b"])
-        {
-            editor.AddDialogueNode(first, name: episodeId).MarkedEpisodeId = episodeId;
-        }
-
-        editor.AddDialogueNode(second, name: "far").MarkedEpisodeId = "far";
 
         return (editor, project);
     }

@@ -82,12 +82,21 @@ public sealed class NodePlacementTests
         var project = new StoryProject();
         var editor = new ProjectEditor(project);
 
-        editor.EnsureChapter("ch01");
+        Vn.Authoring.Chapters.ChapterDocument chapter = editor.EnsureChapter("ch01");
         editor.EnsureChapterBoard("ch01");   // 노드는 자리를 물어본 뒤에 선다
 
+        // ⚠ <b>카드 없는 에피소드</b>를 짓는다 — 2026-09-18부터 `AddEpisode`는 카드까지
+        //    함께 만들므로, 그것으로는 이 질문(*"새 카드가 어디 서야 하나"*)의 대상이
+        //    애초에 안 생긴다. 카드 없는 에피소드가 <b>실제로</b> 오는 길은 임포트이고,
+        //    임포트는 이렇게 문서에 바로 넣는다.
         foreach ((string sceneId, string episodeId) in episodes)
         {
-            editor.AddEpisode("ch01", episodeId, title: episodeId, 0, 0, sceneId);
+            chapter.Episodes.Add(new Vn.Authoring.Chapters.ChapterEpisode(
+                episodeId, episodeId, Index: string.Empty, DialogueEntry: episodeId,
+                0, 0, Memo: null, SourceRow: 0)
+            {
+                SceneId = sceneId
+            });
         }
 
         return project;

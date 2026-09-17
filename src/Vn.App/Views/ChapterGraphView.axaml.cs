@@ -3740,7 +3740,11 @@ public partial class ChapterGraphView : UserControl
                 }
             }
 
-            EnsureDialogueNodeFor(episodeId);
+            // ⛔ 여기 있던 `EnsureDialogueNodeFor`는 2026-09-18에 걷혔다. 화면이 에피소드를
+            //    만든 <b>뒤에</b> 카드를 한 줄 더 세우던 자리인데, 그 한 줄을 대본 탭이
+            //    잊어서 <b>작가의 탭에서 만든 에피소드만 쓸 자리가 없었다</b>.
+            //    이제 `AddEpisode`·`AddNextEpisode`가 카드까지 함께 만든다 — 창구가 잊을
+            //    자리 자체가 없어졌다.
         }
 
         ChapterEmitRun emitted = EmitSelectedChapter();
@@ -3748,48 +3752,6 @@ public partial class ChapterGraphView : UserControl
         _session?.SetStatus(
             $"'{episodeId}'을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요." +
             emitted.Notice());
-    }
-
-    /// <summary>
-    /// 방금 더한 에피소드의 대사노드를 <b>그 자리에서</b> 세운다 (R-D · 2026-09-16).
-    ///
-    /// ⚠ 예전에는 이 노드를 <b>동기화가</b> 세웠다 — 툴이 워크북을 만들고, 감시자가 그
-    /// 파일을 보고, 동기화가 그것을 다시 읽어서 노드를 세우는 왕복이었다. 워크북이
-    /// 원본이던 시절에는 그 길밖에 없었지만, 툴이 원본이 된 뒤로는 <b>에피소드를 더하는
-    /// 것이 툴 안의 일</b>이므로 엑셀을 한 바퀴 돌 이유가 없다.
-    ///
-    /// (그 왕복이 남긴 결함이 실제로 있었다 — 2026-08-22 소유자 보고: "챕터그래프에서
-    /// 에피소드를 추가했는데 연출그래프에 반영이 안 돼 … 더블클릭해서 엑셀을 열어야
-    /// 그제야". 노드가 서는 조건이 <em>파일 사건</em>이었기 때문이다. 이제 아니다.)
-    /// </summary>
-    private void EnsureDialogueNodeFor(string episodeId)
-    {
-        if (_session is null || _selectedChapterId is not { } chapterId)
-        {
-            return;
-        }
-
-        string fileId = _session.EnsureChapterBoard(chapterId);
-
-        // 이름의 원천은 챕터 `에피소드` 시트의 `대사엔트리`인데, 갓 더한 행은 그 칸이
-        // 비어 있다 — 그때는 EpisodeId가 곧 이름이다(임포터의 규칙과 같다).
-        bool alreadyThere = _session.Project.FindFile(fileId)?.Nodes
-            .OfType<DialogueNode>()
-            .Any(node => string.Equals(node.Name, episodeId, StringComparison.Ordinal)) == true;
-
-        if (!alreadyThere)
-        {
-            (double x, double y) = Vn.Authoring.Graph.NodePlacement.For(_session.Project, chapterId, episodeId);
-
-            // ⛔ 전에는 여기서 표식을 <b>직접</b> 붙였다(`created.MarkedEpisodeId = episodeId`).
-            //    R7 P-6에서 <c>NewEpisodeFor</c>가 그 일을 맡은 뒤로 <b>두 번 붙이고 있었다</b> —
-            //    이름이 곧 EpisodeId이므로 `EpisodeNaming.EpisodeFor`가 방금 더한 에피소드를
-            //    찾아 같은 값을 넣는다. 표식의 규칙은 한 자리에만 있어야 한다.
-            //
-            //    ⚠ 옛 주석은 이 표식이 <i>"본문은 엑셀 소유"라서 편집기가 읽기 전용으로
-            //    잠근다"</i>고 설명했다. <b>그 잠금은 R-E에서 풀렸다.</b>
-            _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
-        }
     }
 
     /// <summary>

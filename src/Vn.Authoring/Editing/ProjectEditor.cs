@@ -239,7 +239,7 @@ public sealed partial class ProjectEditor
     {
         if (scriptId is null)
         {
-            (DialogueNode created, Action attach) = NewDialogueNodeCore(fileId, x, y, name, sceneId);
+            (DialogueNode created, _, Action attach) = NewDialogueNodeCore(fileId, x, y, name, sceneId);
             Mutate(attach);
 
             return created;
@@ -266,16 +266,26 @@ public sealed partial class ProjectEditor
     /// 자유 씬이라는 종류가 없어졌으므로 <b>판의 대사 노드는 전부 에피소드</b>다 — 카드를
     /// 세우는 것이 곧 에피소드를 만드는 일이고, 그래서 어긋난 이름이 애초에 안 생긴다.
     /// </summary>
-    private (DialogueNode Created, Action Attach) NewDialogueNodeCore(
+    private (DialogueNode Created, ChapterEpisode? Episode, Action Attach) NewDialogueNodeCore(
         string fileId,
         double x,
         double y,
         string? name,
         string? sceneId = null,
-        bool allowUnreachable = false)
+        bool allowUnreachable = false,
+        string? title = null,
+        (double X, double Y)? episodePosition = null)
     {
         StoryFile file = RequireFile(fileId);
-        var created = new DialogueNode(name: name ?? NextName("장면"))
+
+        // ⭐ <b>이름을 고르는 규칙도 여기 하나다</b> (2026-09-18). 챕터 판에서는 이 이름이
+        //    곧 EpisodeId가 되므로 <c>장면 3</c> 같은 <b>공백 든 Id</b>가 나오면 안 된다 —
+        //    그 Id는 대본 워크북의 파일 이름으로 나간다. 다른 창구가 이미 쓰던 `new01`
+        //    규약으로 맞춘다.
+        var created = new DialogueNode(
+            name: name ?? (ChapterOfBoard(file) is { } board
+                ? NextEpisodeId(board)
+                : NextName("장면")))
         {
             Layout = new NodeLayout { X = x, Y = y }
         };
@@ -290,9 +300,9 @@ public sealed partial class ProjectEditor
         created.ScriptId = script.Id;
 
         (ChapterDocument? chapter, ChapterEpisode? episode) =
-            NewEpisodeFor(file, created, sceneId, allowUnreachable);
+            NewEpisodeFor(file, created, sceneId, allowUnreachable, title, episodePosition);
 
-        return (created, () =>
+        return (created, episode, () =>
         {
             script.Lines.Add(firstLine);
             script.RequireLocale(script.PrimaryLocale).Entries[firstLine.Id] = LocalizedLine.Empty;
@@ -332,8 +342,14 @@ public sealed partial class ProjectEditor
     /// <see cref="EpisodeNaming.EpisodeFor"/>에 맡긴다 — 여기서 이름만 맞춰 보면 `대사엔트리`가
     /// 따로 적힌 챕터마다 에피소드가 <b>두 배로 불어난다</b>(2026-09-17에 겪었다).
     /// </summary>
+    /// <param name="episodePosition">
+    /// 챕터 그래프에서의 자리. ⚠ <b>카드의 자리와 다른 판이다</b> — 연출 판의 좌표를 그대로
+    /// 챕터 그래프에 넣으면 사람이 맞춰 둔 배치가 흐트러진다. 안 주면 카드 자리를 따른다
+    /// (연출 그래프에서 카드부터 세우는 길이 그렇다 — 거기서는 그 자리가 유일한 정보다).
+    /// </param>
     private (ChapterDocument? Chapter, ChapterEpisode? Episode) NewEpisodeFor(
-        StoryFile file, DialogueNode created, string? sceneId, bool allowUnreachable)
+        StoryFile file, DialogueNode created, string? sceneId, bool allowUnreachable,
+        string? title = null, (double X, double Y)? episodePosition = null)
     {
         if (ChapterOfBoard(file) is not { } chapter)
         {
@@ -352,11 +368,11 @@ public sealed partial class ProjectEditor
 
         return (chapter, new ChapterEpisode(
             created.Name,
-            created.Name,
+            title ?? created.Name,
             Index: string.Empty,
             DialogueEntry: created.Name,
-            Math.Round(created.Layout.X, 2),
-            Math.Round(created.Layout.Y, 2),
+            Math.Round(episodePosition?.X ?? created.Layout.X, 2),
+            Math.Round(episodePosition?.Y ?? created.Layout.Y, 2),
             Memo: null,
             SourceRow: 0,
             AllowUnreachable: allowUnreachable)
@@ -406,7 +422,7 @@ public sealed partial class ProjectEditor
                 "그 자리에는 이미 분기가 있습니다 — 한 자리에 하나만 둘 수 있습니다.");
         }
 
-        (DialogueNode created, Action attach) = NewDialogueNodeCore(
+        (DialogueNode created, _, Action attach) = NewDialogueNodeCore(
             file.Id,
             source.Layout.X,
             source.Layout.Y + Graph.NodePlacement.SceneRow,
@@ -2462,5 +2478,29 @@ public sealed partial class ProjectEditor
             node.Name.StartsWith(prefix, StringComparison.Ordinal)) + 1;
 
         return $"{prefix} {count}";
+    }
+
+    /// <summary>
+    /// 그 챕터에서 <b>아직 안 쓰인 자리표시 EpisodeId</b> — <c>new01</c>, <c>new02</c>…
+    ///
+    /// ⛔ 이 규약은 2026-09-18까지 <b>화면 둘에 손으로 복사돼</b> 있었고(챕터 그래프·대본 탭),
+    /// 연출 그래프는 아예 다른 규약(<c>장면 3</c>)을 썼다 — 같은 행동이 창구마다 다른 Id를
+    /// 만들었다. EpisodeId는 대본 워크북의 <b>파일 이름</b>으로 나가므로 공백이 든 Id는
+    /// 특히 나쁘다.
+    ///
+    /// ⚠ 사람이 고칠 것을 전제한 이름이다 — 이름을 정하는 것은 기획자의 일이고, 여기서는
+    /// <b>겹치지 않는 자리</b>만 준다.
+    /// </summary>
+    private static string NextEpisodeId(Chapters.ChapterDocument chapter)
+    {
+        int number = 1;
+
+        while (chapter.Episodes.Any(episode =>
+                   string.Equals(episode.EpisodeId, $"new{number:D2}", StringComparison.Ordinal)))
+        {
+            number++;
+        }
+
+        return $"new{number:D2}";
     }
 }

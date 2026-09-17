@@ -206,9 +206,11 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         (ScriptView view, AuthoringSession session) = Show();
         Chapter(session, "ch01", "ep01");
 
-        string fileId = session.EnsureChapterBoard("ch01");
-        DialogueNode node = session.Editor.AddDialogueNode(fileId, name: "ep01");
-        node.MarkedEpisodeId = "ep01";
+        // ⚠ 카드는 `Chapter(...)`가 부른 `AddEpisode`가 이미 세웠다 (2026-09-18) — 여기서
+        //    또 만들면 이름이 같은 카드가 둘이 되고, 개명이 그중 하나만 따라간다.
+        DialogueNode node = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(item => Vn.Authoring.Chapters.EpisodeNaming.EpisodeIdOf(item) == "ep01");
+
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Rename(view, SceneTreeRowKind.Episode, "prologue");
