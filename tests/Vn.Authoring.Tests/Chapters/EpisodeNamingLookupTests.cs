@@ -64,15 +64,16 @@ public sealed class EpisodeNamingLookupTests
     }
 
     [Fact]
-    public void 떼어_낸_카드는_더_이상_안_잡힌다()
+    public void 걷힌_카드는_더_이상_안_잡힌다()
     {
-        // 떼기는 표식을 비우고 <b>이름까지</b> 바꾼다 — 둘 다여야 뒷길로도 안 잡힌다.
+        // ⚠ 2026-09-18까지 이 자리는 <b>떼어내기</b>였다(표식을 비우고 이름을 바꿔 판에
+        //    남겼다). Ctrl+Z가 생기면서 그럴 이유가 없어졌고, 이제 그냥 걷는다.
         (ProjectEditor editor, StoryFile board) = World();
 
         var card = new DialogueNode(name: "ep01") { MarkedEpisodeId = "ep01" };
         board.Nodes.Add(card);
 
-        editor.DetachEpisodeMark(card.Id);
+        editor.RemoveNode(card.Id);
 
         Assert.Null(EpisodeNaming.CardFor(editor.Project, "ch01", "ep01"));
     }

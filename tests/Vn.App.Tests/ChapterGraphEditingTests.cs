@@ -150,88 +150,45 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 내용이_있는_노드는_지우지_않고_자유_씬으로_떼어_낸다() => HeadlessUi.Run(() =>
+    public void 글이_든_노드도_함께_지우고_되돌리기로_돌아온다() => HeadlessUi.Run(() =>
     {
-        // 연출을 넣어 둔 노드를 툴이 임의로 지우면 되돌릴 자리가 없다(판에는 Ctrl+Z가 없다).
-        // 떼어 내면 더 이상 그 에피소드를 사칭하지 않으므로 유령 노릇은 끝난다.
+        // ⛔ <b>2026-09-18에 뒤집혔다</b> (소유자: *"노드가 지워지는게 아니라 떼어냄으로
+        //    변하는데?"*). 전에는 글이 든 카드를 지우지 않고 <c>(떼어냄)</c>으로 이름만
+        //    바꿔 판에 남겼다. 근거는 *"툴이 임의로 지우면 되돌릴 자리가 없다(판 편집에는
+        //    Ctrl+Z가 없다)"*였는데, <b>같은 날 Ctrl+Z가 붙어 그 전제가 없어졌다</b>.
+        //
+        // ⚠ 글은 그래도 안 사라진다 — 대본은 원래 안 지우고, 되돌리면 카드가 다시 찾는다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
-        // 대본은 이제 사람이 들여온다 (R-D).
         view.ImportEpisodes();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 들여오기가 세운 그 노드에 내용을 넣어 둔다 — 사본을 만들지 않는다.
-        DialogueNode kept = session.Project.EnumerateNodes().OfType<DialogueNode>()
+        DialogueNode written = session.Project.EnumerateNodes().OfType<DialogueNode>()
             .Single(node => node.MarkedEpisodeId == "branch05.02A");
 
         var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
         script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
-
-        // ⚠ <b>글을 실제로 넣는다</b> (2026-09-18). 줄만 있고 비어 있으면 이제 「쓴 것이
-        //    없다」로 친다 — 갓 만든 카드가 빈 줄 하나를 달고 태어나기 때문이다. 그것까지
-        //    "내용 있음"으로 세면 <b>새로 만든 에피소드를 지울 때마다</b> 유령이 남는다.
         script.RequireLocale(script.PrimaryLocale).Entries["ln_keep"] =
             new Vn.Authoring.Script.LocalizedLine("윌로", "잃으면 안 되는 줄");
         session.Project.Scripts.Add(script);
-        kept.ScriptId = script.Id;
+        written.ScriptId = script.Id;
 
         view.SelectEpisode("branch05.02A");
         view.DeleteSelectedEpisode();
 
-        Assert.NotNull(session.Project.FindNode(kept.Id));
-        Assert.Null(kept.MarkedEpisodeId);   // 표식은 떼였다
+        // 카드가 <b>사라진다</b> — `(떼어냄)`이 판에 남지 않는다.
+        Assert.Null(session.Project.FindNode(written.Id));
+        Assert.DoesNotContain(
+            session.Project.EnumerateNodes(),
+            node => node.Name.Contains("떼어냄", StringComparison.Ordinal));
 
-        // ⭐ <b>표식이 비었다는 것만으로는 사칭이 끝나지 않는다.</b> 답을 내는 자리는
-        //    `EpisodeNaming` 하나이고, 거기서 표식이 없으면 <b>이름이 뒷길</b>이다.
-        //    이름이 그대로면 노드는 여전히 그 에피소드라고 말한다.
-        Assert.NotEqual(
-            "branch05.02A",
-            Vn.Authoring.Chapters.EpisodeNaming.EpisodeIdOf(kept));
-    });
-
-    [Fact]
-    public void 이름이_Id와_같은_노드도_떼면_사칭을_멈춘다() => HeadlessUi.Run(() =>
-    {
-        // ⭐ 위 테스트가 안 덮던 자리다. 들여오기는 노드를 `대사엔트리`로 짓기 때문에
-        //    이름과 Id가 <b>다르고</b>, 그래서 표식만 비워도 사칭이 끝났다.
-        //
-        //    ⛔ 그런데 [＋ 에피소드]가 세우는 노드는 <b>이름이 곧 Id</b>다. 표식만 비우면
-        //    `EpisodeNaming`이 이름을 뒷길로 쓰므로 노드는 <b>여전히 그 에피소드라고 말한다</b> —
-        //    유령이 그대로 남고, 같은 Id로 다시 만들면 "번들 이름이 겹칩니다"로 터진다.
-        using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, AuthoringSession session) = Show(project);
-
-        HashSet<string> before = session.Project.EnumerateNodes()
-            .Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
-
-        view.AddEpisodeFromToolbar();
-        view.RefreshFromDisk();
+        session.Editor.Undo();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        DialogueNode kept = session.Project.EnumerateNodes().OfType<DialogueNode>()
-            .Single(node => !before.Contains(node.Id));
-
-        // ⚠ 이것이 이 테스트의 전제다 — [＋ 에피소드]는 이름과 Id를 같게 만든다.
-        string episodeId = kept.MarkedEpisodeId!;
-        Assert.Equal(episodeId, kept.Name);
-
-        var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
-        script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
-
-        // ⚠ <b>글을 실제로 넣는다</b> (2026-09-18). 줄만 있고 비어 있으면 이제 「쓴 것이
-        //    없다」로 친다 — 갓 만든 카드가 빈 줄 하나를 달고 태어나기 때문이다. 그것까지
-        //    "내용 있음"으로 세면 <b>새로 만든 에피소드를 지울 때마다</b> 유령이 남는다.
-        script.RequireLocale(script.PrimaryLocale).Entries["ln_keep"] =
-            new Vn.Authoring.Script.LocalizedLine("윌로", "잃으면 안 되는 줄");
-        session.Project.Scripts.Add(script);
-        kept.ScriptId = script.Id;
-
-        view.SelectEpisode(episodeId);
-        view.DeleteSelectedEpisode();
-
-        Assert.NotNull(session.Project.FindNode(kept.Id));
-        Assert.NotEqual(episodeId, Vn.Authoring.Chapters.EpisodeNaming.EpisodeIdOf(kept));
+        // 되돌리면 카드도 에피소드도 돌아오고, 글은 애초에 안 사라졌다.
+        Assert.NotNull(session.Project.FindNode(written.Id));
+        Assert.NotNull(session.Project.FindScript(script.Id));
     });
 
     [Fact]

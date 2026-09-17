@@ -16,7 +16,7 @@ namespace Vn.Authoring.Chapters;
 /// <list type="number">
 ///   <item><c>episodes/{챕터}/{에피소드}.xlsx</c> — 대본 워크북을 <c>.bak</c>으로 민다</item>
 ///   <item>챕터의 에피소드 행과 그것을 쓰는 간선·픽스처 참조 (<see cref="ProjectEditor.RemoveEpisode"/>)</item>
-///   <item>판 위의 <b>카드</b> — 비어 있으면 지우고, 글이 있으면 떼어만 낸다</item>
+///   <item>판 위의 <b>카드</b> — 함께 걷는다</item>
 /// </list>
 ///
 /// <b>순서가 규격이다.</b> 파일을 <b>먼저</b> 민다 — 행은 지웠는데 원고가 폴더에 남으면
@@ -24,21 +24,23 @@ namespace Vn.Authoring.Chapters;
 /// 지우기가 실패하면 <b>민 파일을 되돌린다</b>: 행은 있는데 원고가 <c>.bak</c>인 반쪽이
 /// 더 나쁘다.
 ///
-/// ⚠ <b>글이 든 카드는 안 지운다.</b> 연출을 넣어 둔 카드를 툴이 임의로 지우면 되돌릴
-/// 자리가 없다. 떼어 내면 그 에피소드를 더는 사칭하지 않고, 살릴지 지울지는 사람이 판에서
-/// 정한다 (<see cref="ProjectEditor.DetachEpisodeMark"/>).
+/// ⛔ <b>2026-09-18에 「떼어내기」가 없어졌다</b> (소유자가 짚었다). 글이 든 카드는 지우지
+/// 않고 <c>(떼어냄)</c>으로 이름만 바꿔 남겼었는데, 그 근거가 *"툴이 임의로 지우면 되돌릴
+/// 자리가 없다(판 편집에는 <b>Ctrl+Z가 없다</b>)"*였다. <b>같은 날 Ctrl+Z가 붙어 전제가
+/// 없어졌고</b>, 남는 것은 "지우라고 했는데 이름만 바뀐 카드가 남는" 혼란뿐이었다.
+///
+/// ⚠ 그래도 <b>글은 안 사라진다</b> — 대본은 원래 안 지운다. 되돌리기 한 번이면 카드가
+/// 제 대본을 다시 찾는다.
 /// </summary>
 public static class EpisodeDeleter
 {
     /// <param name="WorkbookBackup">대본 워크북이 밀려간 <c>.bak</c> 파일 이름(없었으면 null).</param>
-    /// <param name="CardRemoved">비어 있어 함께 지운 카드의 이름(안 지웠으면 null).</param>
-    /// <param name="CardDetachedAs">글이 있어 떼어만 낸 카드의 <b>새 이름</b>(안 뗐으면 null).</param>
+    /// <param name="CardRemoved">함께 걷힌 카드의 이름(카드가 없었으면 null).</param>
     public sealed record Result(
         bool Ok,
         string? Failure,
         string? WorkbookBackup = null,
-        string? CardRemoved = null,
-        string? CardDetachedAs = null)
+        string? CardRemoved = null)
     {
         public static Result Fail(string reason) => new(false, reason);
 
@@ -54,15 +56,10 @@ public static class EpisodeDeleter
 
             if (CardRemoved is { } removed)
             {
-                text += $" 연출 그래프의 빈 노드 '{removed}'도 함께 지웠습니다.";
-            }
-            else if (CardDetachedAs is { } detached)
-            {
-                text += $" ⚠ 연출 그래프의 카드는 내용이 있어 '{detached}'으로 떼어 냈습니다 — " +
-                    "살릴지 지울지는 판에서 정해 주세요.";
+                text += $" 연출 그래프의 노드 '{removed}'도 함께 지웠습니다.";
             }
 
-            return text;
+            return text + " 되돌리기(Ctrl+Z)로 돌아옵니다.";
         }
     }
 
@@ -106,59 +103,36 @@ public static class EpisodeDeleter
         }
 
         // ③ 카드.
-        (string? removed, string? detached) = TakeCard(editor, chapterId, episodeId);
-
-        return new Result(true, null, backup, removed, detached);
+        return new Result(true, null, backup, TakeCard(editor, chapterId, episodeId));
     }
 
     /// <summary>
-    /// 그 에피소드의 카드를 거둔다 — 비었으면 지우고, 글이 있으면 떼어만 낸다.
+    /// 그 에피소드의 카드를 <b>거둔다</b>.
+    ///
+    /// ⛔ <b>2026-09-18까지는 글이 든 카드를 지우지 않고 「떼어내기」만 했다</b> — 이름을
+    /// <c>(떼어냄)</c>으로 바꾸고 표식을 비워 판에 남겼다. 근거는 코드에 이렇게 적혀 있었다:
+    /// *"툴이 임의로 지우면 되돌릴 자리가 없다(<b>판 편집에는 Ctrl+Z가 없다</b>)"*.
+    ///
+    /// <b>그 전제가 같은 날 없어졌다</b> — Ctrl+Z가 붙었다. 지킬 것이 없어진 뒤로 남는 것은
+    /// <i>"지우라고 했는데 이름만 바뀐 카드가 남는"</i> 혼란뿐이라, 소유자가 그것을 짚었다.
+    ///
+    /// ⚠ <b>글은 그래도 안 사라진다.</b> 대본(<see cref="Model.StoryProject.Scripts"/>)은
+    /// 원래 지우지 않으므로 카드만 걷히고, 되돌리기 한 번이면 카드가 제 대본을 다시 찾는다.
     ///
     /// ⚠ <b>이 챕터의 판에서만</b> 찾는다. 프로젝트 전체를 이름으로 훑으면 다른 챕터에 같은
     /// Id가 있을 때 남의 카드를 건드린다.
     /// </summary>
-    private static (string? Removed, string? DetachedAs) TakeCard(
-        ProjectEditor editor, string chapterId, string episodeId)
+    private static string? TakeCard(ProjectEditor editor, string chapterId, string episodeId)
     {
         if (EpisodeNaming.CardFor(editor.Project, chapterId, episodeId) is not { } card)
         {
-            return (null, null);
+            return null;
         }
 
-        if (NothingWritten(editor.Project, card))
-        {
-            string name = card.Name;
-            editor.RemoveNode(card.Id);
+        string name = card.Name;
+        editor.RemoveNode(card.Id);
 
-            return (name, null);
-        }
-
-        return (null, editor.DetachEpisodeMark(card.Id));
-    }
-
-    /// <summary>
-    /// 이 카드에 <b>지킬 글이 하나도 없는가</b>.
-    ///
-    /// ⛔ <b>"줄이 있는가"로 재면 안 된다.</b> 갓 만든 카드는 빈 줄 하나를 달고 태어나므로
-    /// (<c>NewDialogueNodeCore</c>), 줄 수로 재면 <b>방금 만든 에피소드를 지울 때마다</b>
-    /// `(떼어냄)` 카드가 남는다 — 이 규칙이 막으려던 유령이 바로 그것이다.
-    ///
-    /// ⚠ 내보내기 쪽의 「빈 노드」 판정(<c>ActiveLines.Any()</c>)과 <b>다른 질문이다</b>.
-    /// 그쪽은 <i>"재생할 줄이 있는가"</i>이고 빈 줄도 재생되는 한 줄이다. 여기는
-    /// <i>"사람이 쓴 것이 있는가"</i>다 — 빈 줄은 쓴 것이 아니다.
-    /// </summary>
-    private static bool NothingWritten(Model.StoryProject project, DialogueNode card)
-    {
-        if (project.FindScript(card.ScriptId) is not { } script)
-        {
-            return true;
-        }
-
-        Script.ScriptLocale primary = script.RequireLocale(script.PrimaryLocale);
-
-        return !script.ActiveLines.Any(line =>
-            primary.Find(line.Id) is { } text &&
-            (!string.IsNullOrWhiteSpace(text.Text) || !string.IsNullOrWhiteSpace(text.Speaker)));
+        return name;
     }
 
     /// <summary>민 파일을 제자리로. <b>언제나 false</b>를 돌려준다 — 예외를 삼키지 않는다.</summary>

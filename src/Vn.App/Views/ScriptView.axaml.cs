@@ -558,7 +558,8 @@ public partial class ScriptView : UserControl
 
         Confirm(
             $"'{episodeId}'과 그 간선·픽스처 참조를 지웁니다. " +
-            "원고는 .bak으로 남고, 글이 든 카드는 지우지 않고 떼어만 냅니다.",
+            "연출 그래프의 카드도 함께 걷힙니다. 원고는 .bak으로 남고, " +
+            "되돌리기(Ctrl+Z)로 통째로 돌아옵니다.",
             "에피소드 지우기",
             () =>
             {
