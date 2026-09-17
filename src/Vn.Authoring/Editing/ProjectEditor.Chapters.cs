@@ -859,7 +859,7 @@ public sealed partial class ProjectEditor
             return StatRemoveOutcome.Refuse($"스탯 '{target}'이 이 챕터에 없습니다.", []);
         }
 
-        IReadOnlyList<StatUse> uses = FindStatUses(chapterId, target);
+        IReadOnlyList<ChapterUse> uses = FindStatUses(chapterId, target);
 
         if (uses.Count > 0)
         {
@@ -907,7 +907,7 @@ public sealed partial class ProjectEditor
     /// 판에 공급된 조건도 세지 않는다 — 챕터 조건에서 <b>파생</b>된 것이라, 원본 조건이
     /// 막고 있으면 여기까지 올 일이 없다.
     /// </summary>
-    public IReadOnlyList<StatUse> FindStatUses(string chapterId, string key)
+    public IReadOnlyList<ChapterUse> FindStatUses(string chapterId, string key)
     {
         ChapterDocument chapter = RequireChapter(chapterId);
         string target = (key ?? string.Empty).Trim();
@@ -917,7 +917,7 @@ public sealed partial class ProjectEditor
             return [];
         }
 
-        var uses = new List<StatUse>();
+        var uses = new List<ChapterUse>();
 
         foreach (ChapterEdge edge in chapter.Edges)
         {
@@ -929,8 +929,8 @@ public sealed partial class ProjectEditor
 
             string label = edge.OptionLabel is { Length: > 0 } text ? $" \"{text}\"" : string.Empty;
 
-            uses.Add(new StatUse(
-                StatUseKind.Edge,
+            uses.Add(new ChapterUse(
+                ChapterUseKind.Edge,
                 $"간선 {edge.FromEpisodeId} → {edge.ToEpisodeId}{label}",
                 $"스탯변화: {StatDeltaParser.Format(edge.StatChanges)}"));
         }
@@ -943,14 +943,252 @@ public sealed partial class ProjectEditor
                     condition.Expression,
                     StringComparison.Ordinal))
             {
-                uses.Add(new StatUse(
-                    StatUseKind.Condition,
+                uses.Add(new ChapterUse(
+                    ChapterUseKind.Condition,
                     $"조건 '{condition.Label}'",
                     condition.Expression));
             }
         }
 
         return uses;
+    }
+
+    // ── 스탯 정의 (2026-09-17 — 저작 자리가 엑셀에서 챕터 그래프로) ──────────
+
+    /// <summary>
+    /// 스탯 하나를 세운다.
+    ///
+    /// ⚠ <b>경계(최소·최대·초기)는 여기서 안 막는다.</b> <see cref="ChapterDocument"/>가 이미
+    /// 진단으로 짚고(<c>최소 &gt; 최대</c>, 초기값이 범위 밖), <b>리더는 오류가 있어도 모델을
+    /// 만든다</b>(규칙 14) — 여기서만 막으면 툴로 만든 것과 워크북에서 읽은 것이 서로 다른
+    /// 규칙을 살게 된다. 값을 채워 가는 중에 막히지도 않는다.
+    ///
+    /// ⛔ 막는 것은 <b>키 중복</b>뿐이다. 같은 키가 둘이면 어느 행이 이기는지 말할 수 없어
+    /// 진단으로 넘길 수 있는 상태가 아니다 — 정규화 뒤에 겹치는 것도 같다(화면에서는 달라
+    /// 보이는데 <b>게임에서 하나가 된다</b>).
+    /// </summary>
+    public ChapterStat AddChapterStat(
+        string chapterId,
+        string key,
+        string? displayName = null,
+        int initial = 0,
+        int minimum = 0,
+        int maximum = 100,
+        ChapterStatType type = ChapterStatType.Int)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+        string target = (key ?? string.Empty).Trim();
+
+        if (target.Length == 0)
+        {
+            throw new InvalidOperationException("스탯 키가 비어 있습니다.");
+        }
+
+        RequireStatKeyFree(chapter, target, replacing: null);
+
+        var stat = new ChapterStat(
+            target,
+            string.IsNullOrWhiteSpace(displayName) ? target : displayName.Trim(),
+            initial,
+            minimum,
+            maximum,
+            SourceRow: 0,
+            type);
+
+        Mutate(() => chapter.Stats.Add(stat));
+
+        return stat;
+    }
+
+    /// <summary>
+    /// 스탯의 값·표시이름·타입을 고친다 — null이 아닌 것만 바꾼다
+    /// (<see cref="UpdateEpisode"/>와 같은 손버릇).
+    ///
+    /// ⚠ <b>키는 여기서 못 바꾼다.</b> 키를 바꾸는 것은 참조를 끌고 가는 일이라
+    /// <see cref="RenameChapterStat"/>의 몫이다 — 여기서 슬쩍 바꾸면 간선·조건·픽스처가
+    /// 옛 이름을 가리킨 채 남는다.
+    /// </summary>
+    public void UpdateChapterStat(
+        string chapterId,
+        string key,
+        string? displayName = null,
+        int? initial = null,
+        int? minimum = null,
+        int? maximum = null,
+        ChapterStatType? type = null)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+        string target = (key ?? string.Empty).Trim();
+
+        int index = chapter.Stats.FindIndex(stat =>
+            string.Equals(stat.Key, target, StringComparison.Ordinal));
+
+        if (index < 0)
+        {
+            throw new InvalidOperationException($"스탯 '{target}'이 이 챕터에 없습니다.");
+        }
+
+        Mutate(() => chapter.Stats[index] = chapter.Stats[index] with
+        {
+            DisplayName = displayName ?? chapter.Stats[index].DisplayName,
+            Initial = initial ?? chapter.Stats[index].Initial,
+            Minimum = minimum ?? chapter.Stats[index].Minimum,
+            Maximum = maximum ?? chapter.Stats[index].Maximum,
+            Type = type ?? chapter.Stats[index].Type
+        });
+    }
+
+    /// <summary>
+    /// 이 키를 써도 되는가 — 겹치면 던진다.
+    /// <paramref name="replacing"/>은 자기 자신이라 안 센다.
+    /// </summary>
+    private static void RequireStatKeyFree(ChapterDocument chapter, string key, string? replacing)
+    {
+        bool Other(ChapterStat stat) =>
+            replacing is null || !string.Equals(stat.Key, replacing, StringComparison.Ordinal);
+
+        if (chapter.Stats.Any(stat => Other(stat) &&
+                string.Equals(stat.Key, key, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException($"스탯 '{key}'가 이미 있습니다.");
+        }
+
+        string normalized = Rendering.YarnSyntax.SanitizeVariableName(key);
+
+        if (chapter.Stats.Any(stat => Other(stat) &&
+                string.Equals(
+                    Rendering.YarnSyntax.SanitizeVariableName(stat.Key),
+                    normalized,
+                    StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                $"'{key}'는 Yarn에서 '{normalized}'가 되어 이미 있는 스탯과 겹칩니다.");
+        }
+    }
+
+    /// <summary>
+    /// <b>챕터 조건 하나를 지운다 — 쓰는 곳이 있으면 거절하고 어디인지 말한다</b>
+    /// (스탯 삭제와 같은 규율 · 2026-09-17).
+    ///
+    /// 조건을 부르는 곳은 둘이다:
+    ///
+    /// <list type="bullet">
+    /// <item><b>간선</b> — 표시조건·해금조건에 라벨로 적는다. 지우면
+    /// <c>ConditionLabelUndefined</c>로 울지만 그 문구는 <b>오타를 가정</b>한다.</item>
+    /// <item>⭐ <b>대사 줄의 갈래</b> — 판에 공급된 조건을 <b>Id</b>로 붙든다. 챕터 조건이
+    /// 사라지면 동기화가 그 공급 조건을 <b>지우지도 갱신하지도 않아</b> 옛 식을 든 채 남는다.
+    /// 갈래는 계속 살아 있고, 무엇을 묻는지는 아무 데도 없다.</item>
+    /// </list>
+    /// </summary>
+    public ChapterConditionRemoveOutcome RemoveChapterCondition(string chapterId, string label)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+        string target = (label ?? string.Empty).Trim();
+
+        ChapterCondition? condition = chapter.Conditions.FirstOrDefault(item =>
+            string.Equals(item.Label, target, StringComparison.Ordinal));
+
+        if (condition is null)
+        {
+            return ChapterConditionRemoveOutcome.Refuse($"조건 '{target}'이 이 챕터에 없습니다.", []);
+        }
+
+        IReadOnlyList<ChapterUse> uses = FindConditionUses(chapterId, target);
+
+        if (uses.Count > 0)
+        {
+            return ChapterConditionRemoveOutcome.Refuse(
+                $"조건 '{target}'을 지울 수 없습니다 — {uses.Count}곳에서 쓰고 있습니다.", uses);
+        }
+
+        // 아무도 안 부르면 판에 공급된 사본도 함께 걷는다 — 남겨 두면 정의 없는 조건이
+        // 드롭다운에 계속 보인다.
+        List<(SetNode Node, ConditionDefinition Condition)> supplied = SuppliedNamed(target);
+
+        Mutate(() =>
+        {
+            chapter.Conditions.Remove(condition);
+
+            foreach ((SetNode node, ConditionDefinition item) in supplied)
+            {
+                node.Conditions.Remove(item);
+            }
+        });
+
+        return new ChapterConditionRemoveOutcome(true, supplied.Count, [], null);
+    }
+
+    /// <summary>이 조건을 <b>쓰는 곳</b> — 간선의 표시/해금, 그리고 대사 줄의 갈래.</summary>
+    public IReadOnlyList<ChapterUse> FindConditionUses(string chapterId, string label)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+        string target = (label ?? string.Empty).Trim();
+
+        if (target.Length == 0)
+        {
+            return [];
+        }
+
+        var uses = new List<ChapterUse>();
+
+        foreach (ChapterEdge edge in chapter.Edges)
+        {
+            bool unlock = string.Equals(edge.ConditionLabel, target, StringComparison.Ordinal);
+            bool visible = string.Equals(edge.VisibleConditionLabel, target, StringComparison.Ordinal);
+
+            if (!unlock && !visible)
+            {
+                continue;
+            }
+
+            uses.Add(new ChapterUse(
+                ChapterUseKind.Edge,
+                EdgeWhere(edge),
+                unlock && visible ? "표시조건 · 해금조건" : unlock ? "해금조건" : "표시조건"));
+        }
+
+        var ids = new HashSet<string>(
+            SuppliedNamed(target).Select(pair => pair.Condition.Id), StringComparer.Ordinal);
+
+        if (ids.Count == 0)
+        {
+            return uses;
+        }
+
+        foreach (DialogueNode node in Project.EnumerateNodes().OfType<DialogueNode>())
+        {
+            foreach (DialogueLineExtension extension in node.LineExtensions)
+            {
+                if (!extension.Transitions.Any(transition =>
+                        transition.ConditionId is { } id && ids.Contains(id)))
+                {
+                    continue;
+                }
+
+                uses.Add(new ChapterUse(
+                    ChapterUseKind.DialogueBranch,
+                    $"대사 '{node.Name}'",
+                    $"줄 {extension.LineId}의 갈래"));
+            }
+        }
+
+        return uses;
+    }
+
+    /// <summary>판의 공급 노드가 이 이름으로 들고 있는 조건들.</summary>
+    private List<(SetNode Node, ConditionDefinition Condition)> SuppliedNamed(string label) =>
+        Project.EnumerateNodes().OfType<SetNode>()
+            .Where(node => ChapterBoardSupply.IsConditionSupplyNodeName(node.Name))
+            .SelectMany(node => node.Conditions.Select(condition => (Node: node, Condition: condition)))
+            .Where(pair => string.Equals(pair.Condition.Name, label, StringComparison.Ordinal))
+            .ToList();
+
+    /// <summary>거절 목록에 적는 간선 한 줄 — 사람이 판에서 찾아갈 수 있게.</summary>
+    private static string EdgeWhere(ChapterEdge edge)
+    {
+        string option = edge.OptionLabel is { Length: > 0 } text ? $" \"{text}\"" : string.Empty;
+
+        return $"간선 {edge.FromEpisodeId} → {edge.ToEpisodeId}{option}";
     }
     // ── 잔손 ────────────────────────────────────────────────────────────────
 
@@ -1362,18 +1600,26 @@ public sealed record StatRenameOutcome(
     public static StatRenameOutcome Refuse(string reason) => new(false, 0, 0, 0, 0, reason);
 }
 
-/// <summary>이 스탯을 쓰는 자리 하나 — 사람이 찾아갈 수 있게 적는다.</summary>
+/// <summary>
+/// <b>무언가를 쓰고 있는 자리 하나</b> — 사람이 <b>찾아갈 수 있게</b> 적는다.
+///
+/// ⛔ *"쓰이고 있습니다"*로 끝내면 챕터를 뒤져야 한다. 지우기를 거절하는 쪽이 이 목록을
+/// 들고 와야 <b>거절이 곧 정리 안내</b>가 된다.
+/// </summary>
 /// <param name="Where">어디인가 — `간선 root → a "믿는다"` · `조건 '신뢰높음'`.</param>
 /// <param name="Detail">무엇이 적혀 있는가 — 그 칸의 원문.</param>
-public sealed record StatUse(StatUseKind Kind, string Where, string Detail);
+public sealed record ChapterUse(ChapterUseKind Kind, string Where, string Detail);
 
-public enum StatUseKind
+public enum ChapterUseKind
 {
-    /// <summary>간선의 `스탯변화`.</summary>
+    /// <summary>간선이 쓴다 — `스탯변화`이거나 표시/해금 조건 라벨.</summary>
     Edge,
 
-    /// <summary>챕터 `조건`의 식.</summary>
-    Condition
+    /// <summary>챕터 `조건`의 식이 쓴다.</summary>
+    Condition,
+
+    /// <summary>대사 줄의 갈래가 쓴다 — 판에 공급된 조건을 Id로 붙들고 있다.</summary>
+    DialogueBranch
 }
 
 /// <summary>
@@ -1388,9 +1634,24 @@ public enum StatUseKind
 public sealed record StatRemoveOutcome(
     bool Applied,
     int Fixtures,
-    IReadOnlyList<StatUse> Uses,
+    IReadOnlyList<ChapterUse> Uses,
     string? Refusal)
 {
-    public static StatRemoveOutcome Refuse(string reason, IReadOnlyList<StatUse> uses) =>
+    public static StatRemoveOutcome Refuse(string reason, IReadOnlyList<ChapterUse> uses) =>
+        new(false, 0, uses, reason);
+}
+
+/// <summary>챕터 조건 삭제 한 판의 결과 (2026-09-17).</summary>
+/// <param name="Applied">지웠는가. false면 <b>아무것도 안 건드렸다</b>.</param>
+/// <param name="SuppliedRemoved">판에서 함께 걷은 공급 조건 수.</param>
+/// <param name="Uses">거절의 <b>근거</b> — 먼저 비워야 할 자리들.</param>
+/// <param name="Refusal">거절 사유. <paramref name="Applied"/>가 false일 때만 있다.</param>
+public sealed record ChapterConditionRemoveOutcome(
+    bool Applied,
+    int SuppliedRemoved,
+    IReadOnlyList<ChapterUse> Uses,
+    string? Refusal)
+{
+    public static ChapterConditionRemoveOutcome Refuse(string reason, IReadOnlyList<ChapterUse> uses) =>
         new(false, 0, uses, reason);
 }

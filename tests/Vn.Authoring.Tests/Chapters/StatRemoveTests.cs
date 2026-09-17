@@ -47,14 +47,14 @@ public sealed class StatRemoveTests
         //    들고 와야</b> 그 자체로 정리 안내가 된다.
         ProjectEditor editor = World();
 
-        IReadOnlyList<StatUse> uses = editor.RemoveChapterStat("ch01", "trust").Uses;
+        IReadOnlyList<ChapterUse> uses = editor.RemoveChapterStat("ch01", "trust").Uses;
 
-        StatUse edge = Assert.Single(uses, use => use.Kind == StatUseKind.Edge);
+        ChapterUse edge = Assert.Single(uses, use => use.Kind == ChapterUseKind.Edge);
         Assert.Contains("root → a", edge.Where, StringComparison.Ordinal);
         Assert.Contains("믿는다", edge.Where, StringComparison.Ordinal);
         Assert.Contains("trust +1", edge.Detail, StringComparison.Ordinal);
 
-        StatUse condition = Assert.Single(uses, use => use.Kind == StatUseKind.Condition);
+        ChapterUse condition = Assert.Single(uses, use => use.Kind == ChapterUseKind.Condition);
         Assert.Contains("신뢰높음", condition.Where, StringComparison.Ordinal);
         Assert.Equal("trust >= 3", condition.Detail);
     }
