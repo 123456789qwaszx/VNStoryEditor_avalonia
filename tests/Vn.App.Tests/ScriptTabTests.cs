@@ -200,6 +200,38 @@ public sealed class ScriptTabTests : IDisposable
         Assert.False(view.HasUnsavedText);
     });
 
+    [Fact]
+    public void 판에서_노드를_지우면_쓴_글은_고아로_남고_화면은_그것을_안_말한다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ <b>지금 동작을 그대로 못 박는 테스트다</b> (2026-09-17 조사). 옳다고 주장하는
+        //    것이 아니라, 무엇이 실제로 일어나는지를 글이 아니라 코드로 남긴다.
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "잃으면 안 되는 줄"));
+        string scriptId = node.ScriptId!;
+
+        // [연출 그래프]에서 카드를 지운 것과 같다.
+        session.Editor.RemoveNode(node.Id);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // ① 에피소드는 살아 있다 — 트리의 원천은 챕터이므로 줄이 남는 것은 <b>맞다</b>.
+        Assert.Contains("ep01", session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
+
+        // ② 글은 <b>지워지지 않았다</b> — 고아 대본으로 프로젝트에 그대로 있다.
+        Assert.NotNull(session.Project.FindScript(scriptId));
+
+        // ③ ⛔ 그런데 화면은 "아직"이라고 말한다 — 쓴 적이 없다는 뜻이다.
+        Assert.Contains("아직 빈 대본", view.FindControl<TextBlock>("EmptyText")!.Text!);
+
+        // ④ ⛔ 그리고 [＋ 대본]은 <b>새 대본</b>을 만든다 — 고아를 되찾지 않는다.
+        Click(view, "EmptyAddScriptButton");
+
+        DialogueNode rebuilt = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(item => EpisodeNaming.EpisodeIdOf(item) == "ep01");
+
+        Assert.NotEqual(scriptId, rebuilt.ScriptId);
+        Assert.Empty(Texts(session, rebuilt));
+    });
+
     // ── 툴에 쓴 것이 엑셀을 채운다 (§6.2) ──────────────────────────────────
 
     [Fact]
