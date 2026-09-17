@@ -578,8 +578,7 @@ public partial class MainWindow : Window
             foreach (ChapterEntry entry in _chapters)
             {
                 string chapterId = entry.ChapterId;
-                string? boardId = _session.Project.Files.FirstOrDefault(file =>
-                    string.Equals(file.Name, chapterId, StringComparison.Ordinal))?.Id;
+                string? boardId = EpisodeNaming.BoardOf(_session.Project, chapterId)?.Id;
                 bool isActive = boardId is not null &&
                     string.Equals(_session.ActiveFileId, boardId, StringComparison.Ordinal);
 

@@ -427,15 +427,8 @@ public partial class ScriptView : UserControl
             return;
         }
 
-        int number = 1;
-
-        while (chapter.Episodes.Any(episode =>
-                   string.Equals(episode.EpisodeId, $"new{number:D2}", StringComparison.Ordinal)))
-        {
-            number++;
-        }
-
-        string episodeId = $"new{number:D2}";
+        // ⚠ Id 짓는 규칙은 편집기 하나다 (2026-09-18) — 화면마다 세던 것을 걷었다.
+        string episodeId = _session.Editor.NextEpisodeId(row.ChapterId);
         string sceneId = row.SceneId!;
 
         // ⚠ <b>누른 줄이 어디에 붙일지를 정한다</b> (2026-09-18). 에피소드 줄에서 불렀으면
@@ -678,12 +671,7 @@ public partial class ScriptView : UserControl
             return null;
         }
 
-        return _session.Project.Files
-            .FirstOrDefault(file => string.Equals(file.Name, chapterId, StringComparison.Ordinal))
-            ?.Nodes.OfType<DialogueNode>()
-            .FirstOrDefault(node =>
-                string.Equals(node.MarkedEpisodeId, episodeId, StringComparison.Ordinal) ||
-                string.Equals(node.Name, episodeId, StringComparison.Ordinal));
+        return EpisodeNaming.CardFor(_session.Project, chapterId, episodeId);
     }
 
     private DialogueNode? SelectedNode() =>

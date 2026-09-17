@@ -3598,13 +3598,9 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
-        int number = 1;
-        while (model.FindEpisode($"new{number:D2}") is not null)
-        {
-            number++;
-        }
-
-        string episodeId = $"new{number:D2}";
+        // ⚠ Id 짓는 규칙은 편집기 하나다 — 화면마다 세면 하나가 다른 목록을 훑는다
+        //    (여기는 <b>워크북 모델</b>을, 대본 탭은 <b>챕터 문서</b>를 보고 있었다).
+        string episodeId = _session!.Editor.NextEpisodeId(chapterId);
 
         // ⭐ v12 (2026-08-24 소유자) — **에피소드를 더하면 간선이 함께 선다.** 고른 것이
         // 없으면 마지막 에피소드에서 잇는다: 떨어진 섬을 만들지 않는다(도달성 증명이 곧바로

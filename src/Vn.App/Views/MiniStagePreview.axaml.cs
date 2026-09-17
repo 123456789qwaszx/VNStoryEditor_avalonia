@@ -543,10 +543,12 @@ public partial class MiniStagePreview : UserControl
             return;
         }
 
-        // EpisodeId는 챕터 안에서만 유일하다 — 같은 판(파일)에서만 찾는다.
-        DialogueNode? target = file.Nodes.OfType<DialogueNode>()
-            .FirstOrDefault(node =>
-                string.Equals(node.MarkedEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal));
+        // EpisodeId는 챕터 안에서만 유일하다 — 같은 판에서만 찾는다.
+        //
+        // ⛔ 2026-09-18까지 여기만 <b>표식으로만</b> 찾았다. 다른 세 자리(대본 탭·개명·삭제)는
+        //    표식이 없으면 이름을 뒷길로 썼으므로, 표식 없는 구판 카드에서 <b>저쪽은 찾고
+        //    프리뷰만 못 찾아</b> "아직 판에 노드가 없습니다"로 멈췄다. 이제 한 함수다.
+        DialogueNode? target = EpisodeNaming.CardFor(_session.Project, file.Name, edge.ToEpisodeId);
 
         if (target is null)
         {

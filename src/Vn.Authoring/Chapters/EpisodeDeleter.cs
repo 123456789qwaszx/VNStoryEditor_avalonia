@@ -120,12 +120,7 @@ public static class EpisodeDeleter
     private static (string? Removed, string? DetachedAs) TakeCard(
         ProjectEditor editor, string chapterId, string episodeId)
     {
-        StoryFile? board = editor.Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
-
-        if (board?.Nodes.OfType<DialogueNode>().FirstOrDefault(node =>
-                string.Equals(EpisodeNaming.EpisodeIdOf(node), episodeId, StringComparison.Ordinal))
-            is not { } card)
+        if (EpisodeNaming.CardFor(editor.Project, chapterId, episodeId) is not { } card)
         {
             return (null, null);
         }

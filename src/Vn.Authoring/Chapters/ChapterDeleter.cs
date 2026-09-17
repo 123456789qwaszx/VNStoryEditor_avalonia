@@ -80,8 +80,7 @@ public static class ChapterDeleter
             return Result.Fail("프로젝트를 먼저 저장해야 합니다.");
         }
 
-        StoryFile? board = editor.Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+        StoryFile? board = EpisodeNaming.BoardOf(editor.Project, chapterId);
 
         // ⚠ 막을 것을 <b>파일에 손대기 전에</b> 본다. 워크북을 밀고 나서 "판을 못 지운다"를
         //    만나면, 파일은 사라졌는데 연출 그래프에는 그대로 남는 — 이 기능이 고치려던

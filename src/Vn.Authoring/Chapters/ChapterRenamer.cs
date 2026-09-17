@@ -124,8 +124,7 @@ public static class ChapterRenamer
         }
 
         // 판이 따라간다 — 챕터 = 판 1:1. 판이 아직 없었다면 옮길 것도 없다.
-        StoryFile? board = editor.Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, oldId, StringComparison.Ordinal));
+        StoryFile? board = EpisodeNaming.BoardOf(editor.Project, oldId);
 
         if (board is not null)
         {

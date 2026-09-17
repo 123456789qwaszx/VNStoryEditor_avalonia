@@ -33,8 +33,7 @@ public static class NodePlacement
     {
         ArgumentNullException.ThrowIfNull(project);
 
-        StoryFile? board = project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+        StoryFile? board = Chapters.EpisodeNaming.BoardOf(project, chapterId);
 
         ChapterDocument? chapter = project.Chapters.FirstOrDefault(item =>
             string.Equals(item.ChapterId, chapterId, StringComparison.Ordinal));

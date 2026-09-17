@@ -35,6 +35,45 @@ public static class EpisodeNaming
     }
 
     /// <summary>
+    /// 그 챕터의 <b>판</b>. 없으면 <c>null</c>이다 — 만들지 않는다
+    /// (만드는 것은 <c>ProjectEditor.EnsureChapterBoard</c>다).
+    ///
+    /// ⛔ <see cref="ChapterOfBoard"/>의 역이고 <b>같은 한 줄</b>이다. 2026-09-18까지
+    /// <b>아홉 곳</b>에 손으로 복사돼 있었다(개명·삭제·자리잡기·화면 셋…). 한 줄짜리라
+    /// 복사가 쉬웠고, 쉬운 만큼 어디서 어떻게 찾는지가 갈릴 자리였다.
+    /// </summary>
+    public static StoryFile? BoardOf(StoryProject project, string chapterId)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        return project.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 그 에피소드를 <b>지고 있는 카드</b>. 없으면 <c>null</c>이다.
+    ///
+    /// ⚠ <b>그 챕터의 판에서만</b> 찾는다. EpisodeId는 챕터 안에서만 유일하므로, 프로젝트
+    /// 전체를 훑으면 다른 챕터의 같은 Id를 집는다.
+    ///
+    /// ⛔ 2026-09-18까지 <b>네 벌</b>이었고 <b>서로 답이 달랐다</b>: 대본 탭·개명은
+    /// <i>표식 또는 이름</i>, 무대 프리뷰는 <i>표식만</i>. 표식이 없는 구판 카드에서
+    /// 한쪽은 찾고 한쪽은 못 찾았다.
+    ///
+    /// ⚠ <see cref="ChapterBoard.EpisodeNodeFor"/>는 <b>다섯째가 아니다</b> — 그쪽은
+    /// 내보내기용으로 <i>프로젝트 전체</i>를 훑고 이름 뒷길도 `대사엔트리`를 쓴다. 질문이
+    /// 달라서 남겨 둔 것이고, 그 사실이 <see cref="ChapterBoard"/> 머리에 적혀 있다.
+    /// </summary>
+    public static DialogueNode? CardFor(StoryProject project, string chapterId, string episodeId)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        return BoardOf(project, chapterId)?.Nodes.OfType<DialogueNode>()
+            .FirstOrDefault(node =>
+                string.Equals(EpisodeIdOf(node), episodeId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 이 카드가 선 <b>챕터</b>. 챕터 판이 아니면 <c>null</c>이고, 그때 이 카드는
     /// <b>에피소드가 아니다</b>.
     /// </summary>

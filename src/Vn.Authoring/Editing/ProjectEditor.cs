@@ -2098,10 +2098,8 @@ public sealed partial class ProjectEditor
     /// <returns>그 챕터 판의 파일 Id. 이미 있으면 그대로다.</returns>
     public string EnsureChapterBoard(string chapterId)
     {
-        StoryFile? board = Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
-
-        board ??= AddStoryFile(chapterId);
+        StoryFile board =
+            Chapters.EpisodeNaming.BoardOf(Project, chapterId) ?? AddStoryFile(chapterId);
 
         // 챕터마다 설정 노드 하나가 상시로 선다 (2026-08-17 소유자) — 작가가 만들고 지우는
         // 것이 아니라 챕터에 딸린 자리다.
@@ -2490,6 +2488,13 @@ public sealed partial class ProjectEditor
     /// ⚠ 사람이 고칠 것을 전제한 이름이다 — 이름을 정하는 것은 기획자의 일이고, 여기서는
     /// <b>겹치지 않는 자리</b>만 준다.
     /// </summary>
+    /// <summary>
+    /// 그 챕터의 다음 자리표시 Id. <b>화면이 손수 세지 않게</b> 열어 둔다 — 세는 규칙이
+    /// 화면마다 있으면 하나가 다른 목록을 훑다가 겹치는 Id를 내고, 그러면 <c>AddEpisode</c>가
+    /// *"이미 있습니다"*로 던진다.
+    /// </summary>
+    public string NextEpisodeId(string chapterId) => NextEpisodeId(RequireChapter(chapterId));
+
     private static string NextEpisodeId(Chapters.ChapterDocument chapter)
     {
         int number = 1;

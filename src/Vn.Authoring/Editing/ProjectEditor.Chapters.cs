@@ -58,8 +58,7 @@ public sealed partial class ProjectEditor
     public int RemoveChapterWithBoard(string chapterId)
     {
         ChapterDocument? chapter = FindChapter(chapterId);
-        StoryFile? board = Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+        StoryFile? board = BoardOf(chapterId);
 
         if (chapter is null && board is null)
         {
@@ -359,9 +358,8 @@ public sealed partial class ProjectEditor
         return cut.Count;
     }
 
-    private StoryFile? BoardOf(string chapterId) =>
-        Project.Files.FirstOrDefault(file =>
-            string.Equals(file.Name, chapterId, StringComparison.Ordinal));
+    /// <summary>그 챕터의 판 — 규칙은 <see cref="EpisodeNaming.BoardOf"/> 하나다.</summary>
+    private StoryFile? BoardOf(string chapterId) => EpisodeNaming.BoardOf(Project, chapterId);
 
     /// <summary>여러 에피소드의 장면ID를 한 번에 — 장면 경계는 묶어서 긋는 값이다.</summary>
     public void UpdateEpisodeScenes(

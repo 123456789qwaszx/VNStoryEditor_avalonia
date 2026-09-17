@@ -107,13 +107,7 @@ public static class EpisodeRenamer
     private static bool RenameNode(
         ProjectEditor editor, string chapterId, string oldId, string newId)
     {
-        if (editor.Project.Files
-                .FirstOrDefault(file => string.Equals(file.Name, chapterId, StringComparison.Ordinal))
-                ?.Nodes.OfType<DialogueNode>()
-                .FirstOrDefault(node =>
-                    string.Equals(node.MarkedEpisodeId, oldId, StringComparison.Ordinal) ||
-                    string.Equals(node.Name, oldId, StringComparison.Ordinal))
-            is not { } node)
+        if (EpisodeNaming.CardFor(editor.Project, chapterId, oldId) is not { } node)
         {
             return false;
         }
