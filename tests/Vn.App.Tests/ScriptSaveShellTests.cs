@@ -87,6 +87,60 @@ public sealed class ScriptSaveShellTests : IDisposable
         window.Close();
     });
 
+    [Fact]
+    public void Ctrl_Z가_되돌린다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ <b>단축키가 없었다</b> (2026-09-18). 되돌리기는 창 위쪽 띠의 단추로만 됐는데,
+        //    트리에서 실수로 지운 사람은 거기까지 찾아 올라가야 했다. 지우는 단추를 세우며
+        //    소유자가 건 조건이 *"ctrl+z로 롤백이 가능해야"*다.
+        var window = new MainWindow();
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        DialogueNode node = SeedScript(window, _directory);
+
+        window.SessionProbe.Editor.AddEpisode("ch01", "ep02", title: string.Empty, 0, 0);
+        Assert.Equal(2, window.SessionProbe.Editor.FindChapter("ch01")!.Episodes.Count);
+
+        Press(window, Key.Z, KeyModifiers.Control);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Single(window.SessionProbe.Editor.FindChapter("ch01")!.Episodes);
+        Assert.NotNull(window.SessionProbe.Project.FindNode(node.Id));
+
+        window.Close();
+    });
+
+    [Fact]
+    public void 글을_쓰는_중에는_Ctrl_Z를_가로채지_않는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 입력칸에서 Ctrl+Z는 <b>타이핑</b>을 되돌리는 것이다. 그것을 프로젝트 되돌리기로
+        //    바꾸면 쓰던 문장이 통째로 날아간다 — 지우기를 되돌리려다 글을 잃는 꼴이다.
+        var window = new MainWindow();
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        SeedScript(window, _directory);
+
+        window.FindControl<TabControl>("MainTabs")!.SelectedItem =
+            window.FindControl<TabItem>("ScriptTabItem")!;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var view = window.FindControl<ScriptView>("Script")!;
+        view.TextArea.Focus();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        window.SessionProbe.Editor.AddEpisode("ch01", "ep02", title: string.Empty, 0, 0);
+
+        Press(window, Key.Z, KeyModifiers.Control);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // 프로젝트는 안 되돌아갔다 — 입력칸이 제 몫을 했다.
+        Assert.Equal(2, window.SessionProbe.Editor.FindChapter("ch01")!.Episodes.Count);
+
+        window.Close();
+    });
+
     /// <summary>
     /// 챕터 하나 · 에피소드 하나 · 줄 하나 — <b>대본 탭이 그릴 것</b>을 세운다.
     ///

@@ -114,13 +114,7 @@ public partial class ScriptView : UserControl
         EpisodeTree.Dropped += drop =>
             UiGuard.Run(_session, "옮기기", () => Move(drop));
 
-        ChapterAddButton.Click += (_, _) => UiGuard.Run(_session, "새 챕터", () =>
-        {
-            if (_session is not null)
-            {
-                ChapterAddFlyout.ShowAt(ChapterAddButton, _session);
-            }
-        });
+        DeleteRowButton.Click += (_, _) => UiGuard.Run(_session, "지우기", DeleteCursorRow);
 
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
 
@@ -179,6 +173,72 @@ public partial class ScriptView : UserControl
     // ── 탐색기 차림표 (2026-09-16 소유자) ──────────────────────────────────
 
     /// <summary>
+    /// 🗑 — <b>지금 짚고 있는 줄</b>을 지운다 (2026-09-18 소유자).
+    ///
+    /// ⛔ <b>지우는 자리를 하나로 모은 것</b>이 요점이다. 전에는 줄마다 우클릭 차림표에
+    /// 삭제가 있어서, 다른 것을 누르려다 눌리기 쉬웠다 — 이제 차림표에는 만드는 일만 있고
+    /// 지우는 일은 이 단추 하나다.
+    ///
+    /// ⚠ 종류마다 지우는 뜻이 다르다: 챕터는 통째로, 장면은 <b>이름표만</b>(에피소드는
+    /// 남는다), 에피소드는 그 한 칸. 세 갈래를 여기서 고르고 <b>규율은 각자의 자리</b>가 갖는다.
+    ///
+    /// ⚠ 셋 다 <b>되돌리기(Ctrl+Z)로 돌아온다</b> — 프로젝트가 원본이라서다. 함께 밀리는
+    /// 워크북 <c>.bak</c>은 산출물이라 다음 출력에서 다시 난다.
+    /// </summary>
+    private void DeleteCursorRow()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (EpisodeTree.CursorRow is not { } row)
+        {
+            _session.SetStatus("지울 것을 트리에서 먼저 눌러 주세요 — 챕터·장면·에피소드.");
+            return;
+        }
+
+        switch (row.Kind)
+        {
+            case SceneTreeRowKind.Chapter:
+                ConfirmChapterDelete(row);
+                break;
+
+            case SceneTreeRowKind.Scene when row.IsDraft:
+                EpisodeTree.DropDraftScene(row.ChapterId, row.SceneId!);
+                _session.SetStatus($"빈 장면 '{row.SceneId}' 자리를 닫았습니다.");
+                break;
+
+            case SceneTreeRowKind.Scene:
+                ConfirmSceneDelete(row);
+                break;
+
+            case SceneTreeRowKind.Episode:
+                ConfirmEpisodeDelete(row);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 누른 줄이 <b>어느 챕터</b>인가. 빈 자리에서 우클릭했으면 지금 짚고 있는 줄의 챕터,
+    /// 그것도 없으면 첫 챕터다 — 챕터가 하나도 없으면 <c>null</c>.
+    /// </summary>
+    private string? TargetChapter(SceneTreeRow row)
+    {
+        if (row.ChapterId is { Length: > 0 } named)
+        {
+            return named;
+        }
+
+        if (EpisodeTree.CursorRow?.ChapterId is { Length: > 0 } cursor)
+        {
+            return cursor;
+        }
+
+        return _session?.Project.Chapters.FirstOrDefault()?.ChapterId;
+    }
+
+    /// <summary>
     /// 트리에서 시킨 일을 한다. ⛔ <b>트리는 하지 않는다</b> — 그쪽은 투영이고 편집기를
     /// 모른다(두 화면이 그 컨트롤 하나를 쓴다).
     /// </summary>
@@ -191,20 +251,29 @@ public partial class ScriptView : UserControl
 
         switch (command)
         {
-            case SceneTreeCommand.AddScene:
-                string opened = EpisodeTree.AddDraftScene(row.ChapterId);
+            // ⚠ 셋이 <b>어느 줄에서든</b> 뜨므로, 대상이 없을 수 있다 (2026-09-18).
+            //    그때는 조용히 지나가지 않고 <b>무엇이 먼저 필요한지</b> 말한다.
+            case SceneTreeCommand.AddScene when TargetChapter(row) is { } sceneChapter:
+                string opened = EpisodeTree.AddDraftScene(sceneChapter);
                 _session.SetStatus(
-                    $"'{row.ChapterId}'에 장면 '{opened}' 자리를 열었습니다 — " +
+                    $"'{sceneChapter}'에 장면 '{opened}' 자리를 열었습니다 — " +
                     "우클릭해 에피소드를 넣으면 그때 저장됩니다.");
                 break;
 
+            case SceneTreeCommand.AddScene:
+                _session.SetStatus("장면을 넣을 챕터를 먼저 만들거나 골라 주세요.");
+                break;
+
             case SceneTreeCommand.AddChapter:
-                // 머리글의 [＋]와 같은 창구다 — 플라이아웃이 이름을 받는다.
-                ChapterAddFlyout.ShowAt(ChapterAddButton, _session);
+                ChapterAddFlyout.ShowAt(DeleteRowButton, _session);
+                break;
+
+            case SceneTreeCommand.AddEpisode when TargetChapter(row) is not null:
+                AddEpisodeToScene(row);
                 break;
 
             case SceneTreeCommand.AddEpisode:
-                AddEpisodeToScene(row);
+                _session.SetStatus("에피소드를 넣을 챕터를 먼저 만들거나 골라 주세요.");
                 break;
 
             case SceneTreeCommand.DeleteEpisode:
@@ -403,14 +472,18 @@ public partial class ScriptView : UserControl
     /// </summary>
     private void AddEpisodeToScene(SceneTreeRow row)
     {
-        if (_session!.Editor.FindChapter(row.ChapterId) is not { } chapter)
+        // ⚠ <b>셋이 어느 줄에서든 뜬다</b>(2026-09-18) — 챕터 줄이나 빈 자리에서 불렀으면
+        //    장면이 안 정해져 있다. 그때는 그 챕터의 <b>마지막 에피소드가 선 장면</b>을 따른다:
+        //    "지금 쓰던 자리 뒤에 한 칸"이 사람이 기대하는 것이다.
+        if (TargetChapter(row) is not { } chapterId ||
+            _session!.Editor.FindChapter(chapterId) is not { } chapter)
         {
             return;
         }
 
         // ⚠ Id 짓는 규칙은 편집기 하나다 (2026-09-18) — 화면마다 세던 것을 걷었다.
-        string episodeId = _session.Editor.NextEpisodeId(row.ChapterId);
-        string sceneId = row.SceneId!;
+        string episodeId = _session.Editor.NextEpisodeId(chapterId);
+        string? sceneId = row.SceneId ?? chapter.Episodes.LastOrDefault()?.EffectiveSceneId;
 
         // ⚠ <b>누른 줄이 어디에 붙일지를 정한다</b> (2026-09-18). 에피소드 줄에서 불렀으면
         //    <b>그 뒤에</b> 붙인다 — 이야기를 쓰다가 "여기 한 칸 더"가 그 자리다. 장면 줄에서
@@ -424,16 +497,16 @@ public partial class ScriptView : UserControl
 
         if (parent is null)
         {
-            _session.Editor.AddEpisode(row.ChapterId, episodeId, title: string.Empty, 0, 0, sceneId);
+            _session.Editor.AddEpisode(chapterId, episodeId, title: string.Empty, 0, 0, sceneId);
         }
         else
         {
             _session.Editor.AddNextEpisode(
-                row.ChapterId, parent.EpisodeId, episodeId, title: string.Empty,
+                chapterId, parent.EpisodeId, episodeId, title: string.Empty,
                 parent.X + 220, parent.Y, optionLabel: "다음", sceneId);
         }
 
-        EpisodeTree.Select(row.ChapterId, episodeId);
+        EpisodeTree.Select(chapterId, episodeId);
         ShowSelected();
 
         // ⭐ 2026-09-18부터 카드와 대본이 함께 서므로 <b>바로 쓸 수 있다</b> — 전에는

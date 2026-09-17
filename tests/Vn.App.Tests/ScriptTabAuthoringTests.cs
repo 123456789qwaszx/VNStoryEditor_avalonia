@@ -146,7 +146,7 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         session.Editor.UpdateEpisode("ch01", "ep01", sceneId: "opening");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Menu(view, SceneTreeRowKind.Scene, "장면 삭제…", "opening");
+        Delete(view, SceneTreeRowKind.Scene, sceneId: "opening");
         view.ConfirmButton!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -166,7 +166,7 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         Menu(view, SceneTreeRowKind.Chapter, "장면 추가");
         string sceneId = Assert.Single(Tree(view).Rows, row => row.IsDraft).SceneId!;
 
-        Menu(view, SceneTreeRowKind.Scene, "빈 장면 닫기", sceneId);
+        Delete(view, SceneTreeRowKind.Scene, sceneId: sceneId);
 
         // 확인을 묻지 않는다 — 지울 것이 없다.
         Assert.Null(view.ConfirmButton);
@@ -183,7 +183,7 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         Chapter(session, "ch01", "ep01");
         Chapter(session, "ch02", "ep01");
 
-        Menu(view, SceneTreeRowKind.Chapter, "챕터 삭제…");
+        Delete(view, SceneTreeRowKind.Chapter);
 
         // 차림표를 누른 것은 첫 걸음일 뿐이다 — 아직 그대로다.
         Assert.NotNull(session.Editor.FindChapter("ch01"));
@@ -197,23 +197,42 @@ public sealed class ScriptTabAuthoringTests : IDisposable
     });
 
     [Fact]
-    public void 빈_자리를_우클릭하면_챕터_추가가_뜬다() => HeadlessUi.Run(() =>
+    public void 우클릭하면_만드는_일_셋이_같이_뜬다() => HeadlessUi.Run(() =>
     {
-        // ⚠ 머리글의 [＋]와 같은 일이지만, 트리가 비었을 때 사람이 먼저 누르는 것은
-        //    <b>비어 있는 그 자리</b>다 (2026-09-18 소유자).
+        // ⛔ 줄마다 다른 차림표를 내면 <b>어디서 눌러야 무엇이 나오는지 외워야 한다</b>
+        //    (2026-09-18 소유자: *"챕터, 장면, 에피소드 추가 모두 그냥 같이 표시"*).
+        //
+        // ⚠ 그리고 <b>삭제는 차림표에 없다</b> — 다른 것을 누르려다 눌리지 않도록
+        //    머리글의 🗑 하나로 모았다.
         (ScriptView view, _) = Show();
 
         ContextMenu menu = Tree(view).FindControl<ScrollViewer>("TreeScroll")!.ContextMenu!;
 
-        MenuItem add = Assert.Single(
+        Assert.Equal(
+            ["챕터 추가", "장면 추가", "에피소드 추가"],
+            menu.ItemsSource!.OfType<MenuItem>().Select(item => item.Header as string));
+
+        Assert.DoesNotContain(
             menu.ItemsSource!.OfType<MenuItem>(),
-            item => string.Equals(item.Header as string, "챕터 추가", StringComparison.Ordinal));
+            item => (item.Header as string)?.Contains("삭제", StringComparison.Ordinal) == true);
+    });
 
-        add.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    [Fact]
+    public void 줄_위의_차림표도_같은_셋이다() => HeadlessUi.Run(() =>
+    {
+        // 다른 데서 우클릭했다고 다른 것이 나오면 그것부터가 외울 거리다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Chapter(session, "ch01", "ep01");
 
-        // 이름을 받는 플라이아웃이 열린다 — 여기서 바로 만들지 않는다(머리글과 같은 길).
-        Assert.NotNull(view.FindControl<Button>("ChapterAddButton"));
+        foreach (SceneTreeRowKind kind in (SceneTreeRowKind[])
+                 [SceneTreeRowKind.Chapter, SceneTreeRowKind.Episode])
+        {
+            ContextMenu menu = RowButton(view, kind, null, null).ContextMenu!;
+
+            Assert.Equal(
+                ["챕터 추가", "장면 추가", "에피소드 추가"],
+                menu.ItemsSource!.OfType<MenuItem>().Select(item => item.Header as string));
+        }
     });
 
     // ── 에피소드 줄의 차림표 (2026-09-18 소유자) ──────────────────────────
@@ -249,7 +268,7 @@ public sealed class ScriptTabAuthoringTests : IDisposable
         (ScriptView view, AuthoringSession session) = Show();
         Chapter(session, "ch01", "ep01", "ep02");
 
-        Menu(view, SceneTreeRowKind.Episode, "에피소드 삭제…", episodeId: "ep01");
+        Delete(view, SceneTreeRowKind.Episode, episodeId: "ep01");
 
         Assert.Contains("ep01", session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
         Assert.NotNull(view.ConfirmButton);
@@ -492,6 +511,38 @@ public sealed class ScriptTabAuthoringTests : IDisposable
             .ToList();
 
     /// <summary>그 줄을 우클릭해 차림표의 그 항목을 누른다 — 사람이 하는 길 그대로다.</summary>
+    /// <summary>
+    /// 줄을 <b>눌러 커서를 옮기고</b> 🗑을 누른다 — 2026-09-18부터 지우는 창구는 그 하나다.
+    /// </summary>
+    private static void Delete(
+        ScriptView view, SceneTreeRowKind kind, string? sceneId = null, string? episodeId = null)
+    {
+        RowButton(view, kind, sceneId, episodeId)
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        view.FindControl<Button>("DeleteRowButton")!
+            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>그 줄의 이름 단추 — 누르면 커서가 거기로 간다.</summary>
+    private static Button RowButton(
+        ScriptView view, SceneTreeRowKind kind, string? sceneId, string? episodeId)
+    {
+        ChapterSceneTree tree = Tree(view);
+
+        int index = tree.Rows
+            .Select((row, at) => (row, at))
+            .First(item => item.row.Kind == kind &&
+                           (sceneId is null || item.row.SceneId == sceneId) &&
+                           (episodeId is null || item.row.EpisodeId == episodeId)).at;
+
+        return tree.GetVisualDescendants().OfType<Button>().ElementAt(index);
+    }
+
     private static void Menu(
         ScriptView view, SceneTreeRowKind kind, string header,
         string? sceneId = null, string? episodeId = null)

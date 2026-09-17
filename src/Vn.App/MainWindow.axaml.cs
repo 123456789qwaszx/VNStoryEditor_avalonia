@@ -252,13 +252,37 @@ public partial class MainWindow : Window
         Script.DraftChanged += () => UiGuard.Run(_session, "대본 초고 표시", RefreshShell);
 
         // 저장 단축키 (W49) — 어디에 포커스가 있어도 Ctrl+S가 저장이다.
+        //
+        // ⛔ <b>Ctrl+Z가 없었다</b> (2026-09-18에 알았다). 되돌리기는 <b>단추로만</b> 됐는데,
+        //    그 단추는 창 위쪽 띠에 있어서 트리에서 실수로 지운 사람이 찾아 올라가야 했다.
+        //    지우는 단추를 세우면서 소유자가 짚은 조건이 *"ctrl+z로 롤백이 가능해야"*이고,
+        //    그것이 이미 되는 줄 알았던 것이 문제였다.
         AddHandler(KeyDownEvent, (_, args) =>
         {
-            if (args.Key == Avalonia.Input.Key.S &&
-                args.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
+            if (!args.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
             {
-                args.Handled = true;
-                OnSaveClick(this, new RoutedEventArgs());
+                return;
+            }
+
+            switch (args.Key)
+            {
+                case Avalonia.Input.Key.S:
+                    args.Handled = true;
+                    OnSaveClick(this, new RoutedEventArgs());
+                    break;
+
+                // ⚠ 글 입력칸에서는 <b>가로채지 않는다</b> — 거기서 Ctrl+Z는 <b>타이핑</b>을
+                //    되돌리는 것이고, 그것을 프로젝트 되돌리기로 바꾸면 쓰던 문장이 통째로
+                //    날아간다. TextBox가 제 되돌리기를 먼저 하도록 둔다.
+                case Avalonia.Input.Key.Z when FocusManager?.GetFocusedElement() is not TextBox:
+                    args.Handled = true;
+                    UiGuard.Run(_session, "되돌리기", _session.Editor.Undo);
+                    break;
+
+                case Avalonia.Input.Key.Y when FocusManager?.GetFocusedElement() is not TextBox:
+                    args.Handled = true;
+                    UiGuard.Run(_session, "다시 실행", _session.Editor.Redo);
+                    break;
             }
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 

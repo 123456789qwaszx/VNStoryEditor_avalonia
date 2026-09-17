@@ -13,8 +13,12 @@
              ⛔ 목록 <b>둘</b>(챕터·에피소드)이던 자리다. 그 구조에는 <b>장면이 설 자리가
                 없었다</b> — 챕터와 에피소드 사이가 비어 있었기 때문이다. 이제 한 그루다. -->
         <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="8">
-            <!-- 머리글 오른쪽의 [＋] = 새 챕터. 사다리의 첫 칸이 이 탭에도 서야
-                 작가가 [챕터 그래프]로 건너갔다 오지 않는다 (2026-09-16 소유자). -->
+            <!-- ⛔ 2026-09-18 소유자 — 머리글의 [＋]가 <b>빨간 삭제</b>로 바뀌었다.
+                 만드는 일은 전부 우클릭 차림표로 갔고(셋이 늘 같이 뜬다), 지우는 일만
+                 단추로 남았다: <b>고른 줄을 지운다</b>.
+
+                 ⚠ 지우는 단추가 <b>하나뿐</b>인 것이 요점이다. 차림표 곳곳에 삭제가 있으면
+                    다른 것을 누르려다 눌린다 — 실수를 줄이려고 자리를 하나로 모았다. -->
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="2,0,0,4">
                 <TextBlock Grid.Column="0"
                            Text="챕터 · 장면 · 에피소드"
@@ -24,14 +28,15 @@
                            VerticalAlignment="Center" />
 
                 <Button Grid.Column="1"
-                        x:Name="ChapterAddButton"
-                        Content="＋"
-                        FontSize="12"
+                        x:Name="DeleteRowButton"
+                        Content="🗑"
+                        FontSize="13"
                         Padding="6,0"
                         MinWidth="0"
+                        Foreground="IndianRed"
                         Background="Transparent"
                         BorderThickness="0"
-                        ToolTip.Tip="새 챕터" />
+                        ToolTip.Tip="고른 줄을 지웁니다 — 챕터·장면·에피소드. 되돌리기(Ctrl+Z)로 돌아옵니다." />
             </Grid>
 
             <views:ChapterSceneTree Grid.Row="1" x:Name="EpisodeTree" />

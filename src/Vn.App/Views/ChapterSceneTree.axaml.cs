@@ -58,13 +58,13 @@ internal sealed record SceneTreeDrop(SceneTreeRow Source, SceneTreeRow Target);
 /// <summary>줄을 우클릭했을 때 할 수 있는 일 — <b>하는 것은 이 컨트롤이 아니다</b>.</summary>
 internal enum SceneTreeCommand
 {
-    /// <summary>챕터 줄에서 — 빈 장면 자리를 하나 연다.</summary>
+    /// <summary>빈 장면 자리를 하나 연다 — 누른 줄의 챕터에.</summary>
     AddScene,
 
-    /// <summary>챕터 줄에서.</summary>
+    /// <summary>챕터를 걷는다. ⚠ <b>차림표에는 없다</b> — 머리글의 빨간 단추가 부른다.</summary>
     DeleteChapter,
 
-    /// <summary>장면 줄에서 — 장면을 걷는다(에피소드는 남는다).</summary>
+    /// <summary>장면을 걷는다(에피소드는 남는다). ⚠ 차림표에는 없다.</summary>
     DeleteScene,
 
     /// <summary>
@@ -135,21 +135,14 @@ public partial class ChapterSceneTree : UserControl
         TreeScroll.ContextMenu = EmptyMenu();
     }
 
-    /// <summary>빈 자리에서 여는 차림표 — 지금은 [챕터 추가] 하나다.</summary>
-    private ContextMenu EmptyMenu()
-    {
-        var add = new MenuItem { Header = "챕터 추가", FontSize = 12 };
-
-        add.Click += (_, _) => UiGuard.Run(null, "탐색기 차림표", () =>
-            CommandRequested?.Invoke(
-                SceneTreeCommand.AddChapter,
-                new SceneTreeRow(
-                    SceneTreeRowKind.Chapter, Key: string.Empty, ChapterId: string.Empty,
-                    SceneId: null, EpisodeId: null, Text: string.Empty, Depth: 0,
-                    IsSceneRoot: false, HasSplitEntry: false, IsEmptyScript: false)));
-
-        return new ContextMenu { ItemsSource = new[] { add } };
-    }
+    /// <summary>
+    /// 빈 자리에서 여는 차림표 — <b>줄 위와 같은 셋</b>이다. 다른 데서 우클릭했다고 다른
+    /// 것이 나오면 그것부터가 외울 거리다.
+    /// </summary>
+    private ContextMenu EmptyMenu() => Menu(new SceneTreeRow(
+        SceneTreeRowKind.Chapter, Key: string.Empty, ChapterId: string.Empty,
+        SceneId: null, EpisodeId: null, Text: string.Empty, Depth: 0,
+        IsSceneRoot: false, HasSplitEntry: false, IsEmptyScript: false))!;
 
     /// <summary>
     /// <b>빈 장면 자리들</b> — <c>{챕터}/{장면}</c>. 에피소드가 들어오면 진짜 장면이 되고
@@ -772,12 +765,21 @@ public partial class ChapterSceneTree : UserControl
             bool landing = string.Equals(row.Key, _hoverKey, StringComparison.Ordinal) &&
                            DragSource() is { } dragged && Accepts(dragged, row);
 
+            // ⛔ <b>커서가 곧 지울 대상이다</b> (2026-09-18) — 🗑 단추가 이 줄에 대해 돈다.
+            //    그래서 희미하면 안 된다: 전에는 <c>150</c> 알파의 얇은 선이라 <b>어느 줄이
+            //    짚혀 있는지 한눈에 안 보였고</b>, 그 상태로 지우는 단추를 붙이면 사람이
+            //    무엇이 사라질지 모르는 채로 누른다.
             button.BorderThickness = new Thickness(landing || cursor ? 1 : 0);
             button.BorderBrush = landing
                 ? new SolidColorBrush(Color.FromArgb(220, 61, 123, 217))
                 : cursor
-                    ? new SolidColorBrush(Color.FromArgb(150, 61, 123, 217))
+                    ? new SolidColorBrush(Color.FromArgb(230, 61, 123, 217))
                     : Brushes.Transparent;
+
+            if (!selected && cursor)
+            {
+                button.Background = new SolidColorBrush(Color.FromArgb(26, 61, 123, 217));
+            }
         }
     }
 
@@ -957,39 +959,20 @@ public partial class ChapterSceneTree : UserControl
             return item;
         }
 
-        return row.Kind switch
+        // ⛔ <b>줄마다 다른 차림표를 안 낸다</b> (2026-09-18 소유자: *"챕터, 장면, 에피소드
+        //    추가 모두 그냥 같이 표시가 되도록"*). 전에는 줄 종류마다 할 수 있는 것만
+        //    보였는데, 그러면 <b>어디서 우클릭해야 무엇이 나오는지를 외워야</b> 한다.
+        //    셋이 늘 같은 자리에 있으면 외울 것이 없다.
+        //
+        // ⚠ 어디에 붙일지는 <b>누른 줄</b>이 정한다 — 그것은 각 명령이 알아서 푼다.
+        return new ContextMenu
         {
-            SceneTreeRowKind.Chapter => new ContextMenu
+            ItemsSource = new[]
             {
-                ItemsSource = new[]
-                {
-                    Item("장면 추가", SceneTreeCommand.AddScene),
-                    Item("챕터 삭제…", SceneTreeCommand.DeleteChapter)
-                }
-            },
-
-            SceneTreeRowKind.Scene => new ContextMenu
-            {
-                ItemsSource = new[]
-                {
-                    Item("에피소드 추가", SceneTreeCommand.AddEpisode),
-                    Item(row.IsDraft ? "빈 장면 닫기" : "장면 삭제…", SceneTreeCommand.DeleteScene)
-                }
-            },
-
-            // ⚠ 에피소드 줄에서의 [에피소드 추가]는 <b>그 뒤에</b> 붙인다(간선까지) —
-            //    장면 줄에서는 그 장면의 끝에 붙는다. 어느 줄을 눌렀느냐가 곧 어디에
-            //    붙일지다.
-            SceneTreeRowKind.Episode => new ContextMenu
-            {
-                ItemsSource = new[]
-                {
-                    Item("에피소드 추가", SceneTreeCommand.AddEpisode),
-                    Item("에피소드 삭제…", SceneTreeCommand.DeleteEpisode)
-                }
-            },
-
-            _ => null
+                Item("챕터 추가", SceneTreeCommand.AddChapter),
+                Item("장면 추가", SceneTreeCommand.AddScene),
+                Item("에피소드 추가", SceneTreeCommand.AddEpisode)
+            }
         };
     }
 
