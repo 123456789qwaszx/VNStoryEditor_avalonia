@@ -174,7 +174,52 @@ public sealed class ChapterGraphEditingTests
         view.DeleteSelectedEpisode();
 
         Assert.NotNull(session.Project.FindNode(kept.Id));
-        Assert.Null(kept.MarkedEpisodeId);   // 더 이상 그 에피소드가 아니다
+        Assert.Null(kept.MarkedEpisodeId);   // 표식은 떼였다
+
+        // ⭐ <b>표식이 비었다는 것만으로는 사칭이 끝나지 않는다.</b> 답을 내는 자리는
+        //    `EpisodeNaming` 하나이고, 거기서 표식이 없으면 <b>이름이 뒷길</b>이다.
+        //    이름이 그대로면 노드는 여전히 그 에피소드라고 말한다.
+        Assert.NotEqual(
+            "branch05.02A",
+            Vn.Authoring.Chapters.EpisodeNaming.EpisodeIdOf(kept));
+    });
+
+    [Fact]
+    public void 이름이_Id와_같은_노드도_떼면_사칭을_멈춘다() => HeadlessUi.Run(() =>
+    {
+        // ⭐ 위 테스트가 안 덮던 자리다. 들여오기는 노드를 `대사엔트리`로 짓기 때문에
+        //    이름과 Id가 <b>다르고</b>, 그래서 표식만 비워도 사칭이 끝났다.
+        //
+        //    ⛔ 그런데 [＋ 에피소드]가 세우는 노드는 <b>이름이 곧 Id</b>다. 표식만 비우면
+        //    `EpisodeNaming`이 이름을 뒷길로 쓰므로 노드는 <b>여전히 그 에피소드라고 말한다</b> —
+        //    유령이 그대로 남고, 같은 Id로 다시 만들면 "번들 이름이 겹칩니다"로 터진다.
+        using var project = new TempProject(SamplePath);
+        (ChapterGraphView view, AuthoringSession session) = Show(project);
+
+        HashSet<string> before = session.Project.EnumerateNodes()
+            .Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+
+        view.AddEpisodeFromToolbar();
+        view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        DialogueNode kept = session.Project.EnumerateNodes().OfType<DialogueNode>()
+            .Single(node => !before.Contains(node.Id));
+
+        // ⚠ 이것이 이 테스트의 전제다 — [＋ 에피소드]는 이름과 Id를 같게 만든다.
+        string episodeId = kept.MarkedEpisodeId!;
+        Assert.Equal(episodeId, kept.Name);
+
+        var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
+        script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
+        session.Project.Scripts.Add(script);
+        kept.ScriptId = script.Id;
+
+        view.SelectEpisode(episodeId);
+        view.DeleteSelectedEpisode();
+
+        Assert.NotNull(session.Project.FindNode(kept.Id));
+        Assert.NotEqual(episodeId, Vn.Authoring.Chapters.EpisodeNaming.EpisodeIdOf(kept));
     });
 
     [Fact]

@@ -3652,9 +3652,14 @@ public partial class ChapterGraphView : UserControl
             return $" 연출 그래프의 빈 노드 '{node.Name}'도 함께 지웠습니다.";
         }
 
-        node.MarkedEpisodeId = null;
+        // ⛔ 전에는 여기서 `node.MarkedEpisodeId = null`을 <b>직접</b> 썼다. 두 가지가 틀렸다:
+        //    ① 편집기를 안 지나 되돌리기에 안 남았고, ② 표식만 비워서 <b>사칭이 안 끝났다</b>
+        //    (이름이 Id와 같은 노드는 `EpisodeNaming`이 이름을 뒷길로 쓴다). 둘 다 편집기의
+        //    `DetachEpisodeMark`가 갖는다 — 이 표식의 규칙은 화면이 정할 것이 아니다.
+        string previous = node.Name;
+        string detached = session.Editor.DetachEpisodeMark(node.Id);
 
-        return $" ⚠ 연출 그래프의 '{node.Name}'은 내용이 있어 남겨 두고 자유 씬으로 " +
+        return $" ⚠ 연출 그래프의 '{previous}'은 내용이 있어 남겨 두고 '{detached}'으로 " +
             "떼어 냈습니다 — 살릴지 지울지는 판에서 정해 주세요.";
     }
 
@@ -3775,13 +3780,15 @@ public partial class ChapterGraphView : UserControl
         if (!alreadyThere)
         {
             (double x, double y) = Vn.Authoring.Graph.NodePlacement.For(_session.Project, chapterId, episodeId);
-            DialogueNode created = _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
 
-            // ⚠ 이 표식은 아직 "본문은 엑셀 소유"라는 뜻이라 편집기가 읽기 전용으로 잠근다.
-            //    §6.4가 그 개념 자체를 걷으라고 하지만(뒤집기 뒤에는 모든 노드가 툴 소유다),
-            //    그것은 잠금 배너·편집 관문과 함께 움직일 일이라 따로 둔다. 지금은 임포터와
-            //    <b>같은 표식</b>을 붙여 두 길이 만든 노드가 구별되지 않게만 한다.
-            created.MarkedEpisodeId = episodeId;
+            // ⛔ 전에는 여기서 표식을 <b>직접</b> 붙였다(`created.MarkedEpisodeId = episodeId`).
+            //    R7 P-6에서 <c>NewEpisodeFor</c>가 그 일을 맡은 뒤로 <b>두 번 붙이고 있었다</b> —
+            //    이름이 곧 EpisodeId이므로 `EpisodeNaming.EpisodeFor`가 방금 더한 에피소드를
+            //    찾아 같은 값을 넣는다. 표식의 규칙은 한 자리에만 있어야 한다.
+            //
+            //    ⚠ 옛 주석은 이 표식이 <i>"본문은 엑셀 소유"라서 편집기가 읽기 전용으로
+            //    잠근다"</i>고 설명했다. <b>그 잠금은 R-E에서 풀렸다.</b>
+            _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
         }
     }
 
