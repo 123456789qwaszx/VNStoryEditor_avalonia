@@ -331,14 +331,28 @@ public partial class DialogueNodeEditor : UserControl
                     choiceChain = -1;
                 }
 
+                // 「조건 분기」 카드는 <b>줄 사이에</b> 낀다 (R7 P-5 · 2026-09-17 소유자) —
+                // 그 줄에 붙은 것이 아니라 그 줄 <b>앞에서</b> 갈라진다는 표식이다.
+                Control? marker = BuildBranchMarkerCard(node, line.Line.LineId);
+
                 Control card = WrapForStageSelection(BuildCard(node, script, line), line.Line.LineId);
 
                 if (inChoice && choiceBox is not null)
                 {
+                    if (marker is not null)
+                    {
+                        choiceBox.Children.Add(marker);
+                    }
+
                     choiceBox.Children.Add(card);
                 }
                 else
                 {
+                    if (marker is not null)
+                    {
+                        LineHost.Children.Add(marker);
+                    }
+
                     LineHost.Children.Add(card);
                 }
             }
@@ -1556,6 +1570,80 @@ public partial class DialogueNodeEditor : UserControl
         return tag;
     }
 
+    // ── 「조건 분기」 카드 (R7 P-5) ──────────────────────────────────────────
+
+    /// <summary>
+    /// 그 줄 <b>앞</b>에 낀 「조건 분기」 카드. 표식이 없으면 <c>null</c>이다.
+    ///
+    /// ⛔ <b>내용이 없다.</b> 연출 그래프는 "어디서 갈라지는가"만 짚는다 (2026-09-17 소유자) —
+    /// 구체적인 조건식도 선택지 문구도 여기서 정하지 않는다. 대본에는 <c>&lt;&lt;detour {노드}&gt;&gt;</c>
+    /// 한 줄로 나가고, <c>&lt;&lt;if&gt;&gt;</c>가 없다.
+    ///
+    /// ⚠ 지우는 것은 <b>표식뿐</b>이다 — 다녀오던 에피소드는 판에 그대로 선다. 함께 지우면
+    /// 거기 써 둔 대사가 한 번의 실수로 사라진다.
+    /// </summary>
+    private Control? BuildBranchMarkerCard(DialogueNode node, string lineId)
+    {
+        if (node.FindExtension(lineId)?.DetourTargetNodeId is not { Length: > 0 } targetId)
+        {
+            return null;
+        }
+
+        string name = _session?.Project.FindNode(targetId)?.Name ?? "(사라진 노드)";
+
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        row.Children.Add(new TextBlock
+        {
+            Text = "⑂ 조건 분기",
+            FontSize = 11,
+            FontWeight = FontWeight.Bold,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = $"→ {name}",
+            FontSize = 11,
+            Opacity = 0.8,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        row.Children.Add(new TextBlock
+        {
+            Text = "다녀왔다가 이 줄부터 이어집니다 — 조건은 다녀오는 곳의 첫머리에서 겁니다.",
+            FontSize = 10,
+            Opacity = 0.55,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        Button remove = SmallButton("✕ 분기 제거", () =>
+            _session!.Editor.SetExitTarget(node.Id, ExitPortKind.Detour, lineId, null));
+        ToolTip.SetTip(remove, "표식만 지웁니다 — 다녀오던 에피소드는 판에 그대로 남습니다.");
+        row.Children.Add(remove);
+
+        return new Border
+        {
+            Tag = BranchMarkerTag(lineId),
+            Margin = new Thickness(0, 2, 0, 2),
+            Padding = new Thickness(8, 4),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1.5),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(170, 124, 58, 237)),
+            Background = new SolidColorBrush(Color.FromArgb(20, 124, 58, 237)),
+            Child = row
+        };
+    }
+
+    /// <summary>그 줄의 「조건 분기」 카드가 지는 표 — 화면 테스트가 이것으로 찾는다.</summary>
+    internal static string BranchMarkerTag(string lineId) => $"branch:{lineId}";
+
     // ── ＋ (메타데이터 추가) ─────────────────────────────────────────────────
 
     /// <summary>
@@ -1596,6 +1684,53 @@ public partial class DialogueNodeEditor : UserControl
                 Opacity = 0.6,
                 Margin = new Thickness(0, panel.Children.Count == 0 ? 0 : 6, 0, 0)
             });
+        }
+
+        // ⭐ 「분기 추가」 (R7 P-5 · 2026-09-17 소유자) — <b>모든 노드에서</b> 선다.
+        //
+        // ⛔ 조건을 걸지 않는다. 이 줄 <b>앞</b>에 아무것도 없는 카드가 끼고, 연출 그래프의
+        //    카드에 포트가 하나 뚫리며, 다녀올 에피소드가 함께 서서 이미 이어진 상태가 된다.
+        //    조건이 성립하든 말든 다녀오고, 다녀온 곳이 제 첫머리에서 보고 아니면 곧바로
+        //    돌아온다 — "어디서 갈라지는가"만 짚는 것이 연출 그래프의 몫이기 때문이다.
+        Section("분기");
+
+        if (resolved.Line.LineId is { Length: > 0 } markerLineId &&
+            node.FindExtension(markerLineId)?.DetourTargetNodeId is { Length: > 0 })
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "이 자리에는 이미 분기가 있습니다 — 한 줄에 하나만 둘 수 있습니다.",
+                FontSize = 10,
+                Opacity = 0.6,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 250
+            });
+        }
+        else
+        {
+            var addBranch = new Button
+            {
+                Content = "＋ 분기 추가",
+                FontSize = 10,
+                Padding = new Thickness(7, 2)
+            };
+            ToolTip.SetTip(
+                addBranch,
+                "이 줄 앞에서 갈라집니다. 다녀올 에피소드가 함께 서고 이미 이어진 상태입니다 — " +
+                "조건은 그 에피소드의 첫머리에서 겁니다.");
+
+            addBranch.Click += (_, _) =>
+            {
+                if (_building)
+                {
+                    return;
+                }
+
+                UiGuard.Run(_session!, "분기 추가", () =>
+                    _session!.Editor.AddBranchMarker(node.Id, resolved.Line.LineId));
+            };
+
+            panel.Children.Add(addBranch);
         }
 
         if (_chapterEpisode)
