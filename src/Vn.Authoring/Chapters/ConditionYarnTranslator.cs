@@ -11,11 +11,23 @@ public sealed record ConditionYarnTranslation(string? Yarn, string? Problem)
 /// <summary>
 /// 챕터 `조건` 시트의 식을 Yarn 식으로 번역한다 — <b>두 언어를 잇는 유일한 자리다.</b>
 ///
-/// 시트의 식(`trust >= 3`, AND는 `;`)은 기획자 언어다: 스탯키에 <c>$</c>가 없고, 런타임의
-/// <c>EpisodeCondition</c> 평가기가 그래프 해금에서 읽는다. 반면 에피소드 <b>대사 안</b>의
-/// <c>&lt;&lt;if&gt;&gt;</c>는 Yarn VM이 평가하므로 변수에 <c>$</c>가 붙어야 한다 — 브리지가
-/// 대화 전에 심어 주는 것이 바로 <c>$trust</c>류다(U9). 실컴파일이 이 간극을 잡았다:
-/// <c>&lt;&lt;if trust &gt;= 3&gt;&gt;</c>은 Yarn에서 문법 오류다.
+/// 시트의 식(`trust >= 3`, AND는 `;`)은 기획자 언어다: 런타임의 <c>EpisodeCondition</c>
+/// 평가기가 그래프 해금에서 읽는다. 반면 에피소드 <b>대사 안</b>의 <c>&lt;&lt;if&gt;&gt;</c>는
+/// Yarn VM이 평가하므로 Yarn이 아는 표기여야 한다 — <c>&lt;&lt;if trust &gt;= 3&gt;&gt;</c>은
+/// Yarn에서 문법 오류다(실컴파일이 이 간극을 잡았다).
+///
+/// ⭐ <b>2026-09-17에 표기가 바뀌었다</b>: <c>$trust</c>(변수) → <c>stat("trust")</c>
+/// (<b>읽기 전용 함수</b> · <see cref="YarnSyntax.StatFunction"/>).
+///
+/// <list type="bullet">
+/// <item>계층을 하나로 합치기로 정해지면서(소유자) <b>작가 전용 스탯이라는 개념이
+/// 없어졌다</b> — 대사가 물을 낱말은 챕터 스탯 하나뿐이다.</item>
+/// <item>변수로 심으면 <c>&lt;&lt;set $trust = 5&gt;&gt;</c>가 문법적으로 유효해지고, 그
+/// 쓰기는 세이브/로드 복귀와 도달성 증명이 <b>못 보는 뒷길</b>이다. 함수에는 왼쪽 변이 없다.</item>
+/// <item>⚠ 2026-09-01(G0)에 저쪽의 <c>PublishStats</c> 다리가 걷혔는데 이 번역기는 <b>계속
+/// <c>$trust</c>를 냈다</b> — 즉 그날부터 여기서 나간 대사 조건은 <b>런타임에서 조용히
+/// 빗나가고 있었다</b>. 이 변경이 그 구멍을 닫는다.</item>
+/// </list>
 ///
 /// 원문 해석은 <see cref="ConditionExpressionParser"/>가 이미 했다(챕터 리더). 여기서는 그
 /// 해석 결과(<see cref="ConditionTerm"/>)를 조립만 한다 — 식을 두 번 해석하는 곳을 만들지 않는다.
@@ -41,8 +53,9 @@ public static class ConditionYarnTranslator
 
         foreach (ConditionTerm term in condition.Parsed)
         {
-            // $ 표기는 조립기의 것 하나를 쓴다 — 여기서 문자열로 덧붙이면 규약 사본이다.
-            string variable = YarnSyntax.NormalizeVariable(term.Key);
+            // ⭐ <b>읽기 전용 함수</b>로 나간다 (2026-09-17 소유자). 표기는 조립기의 것
+            //    하나를 쓴다 — 여기서 문자열로 덧붙이면 규약 사본이다.
+            string variable = YarnSyntax.StatRead(term.Key);
             string comparison = term.Comparison switch
             {
                 ConditionComparison.AtLeast => ">=",

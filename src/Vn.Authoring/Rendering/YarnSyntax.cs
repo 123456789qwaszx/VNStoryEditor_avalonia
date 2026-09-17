@@ -79,6 +79,31 @@ internal static class YarnSyntax
         builder.Append(segment.Text ?? string.Empty);
     }
 
+    /// <summary>
+    /// <c>stat("키")</c> — <b>진행 스탯을 대사 안에서 읽는 유일한 표기</b>
+    /// (2026-09-17 소유자 · 계약서 §D1).
+    ///
+    /// ⛔ <b>변수가 아니라 함수인 것이 핵심이다.</b> <c>$trust</c>로 심어 주면 읽기와 함께
+    /// <c>&lt;&lt;set $trust = 5&gt;&gt;</c>가 <b>문법적으로 유효해진다</b> — 그리고 대사
+    /// 중의 스탯 쓰기는 세이브/로드 복귀와 도달성 증명이 <b>못 보는 뒷길</b>이다
+    /// (2026-08-14에 그래서 J열을 폐지했다). 함수에는 왼쪽 변이 없으므로 <b>쓸 수가 없다</b> —
+    /// 금지가 아니라 불가능이다.
+    ///
+    /// 2026-09-01(G0)에 걷힌 <c>PublishStats</c> 다리는 <b>양방향</b>이었다. 되살리는 것은
+    /// 그 절반이다.
+    ///
+    /// ⚠ <b>런타임과의 접점이다.</b> 저쪽이 같은 이름의 Yarn 함수를 등록해야 하고, 없으면
+    /// 번들이 <b>컴파일에서 멈춘다</b> — 조용히 틀리는 것보다 낫지만, 저쪽 반영 전에
+    /// 내보내면 빌드가 선다. 이름을 고치는 것은 양쪽 합의 사항이다.
+    ///
+    /// 깃발(Bool 스탯)도 같은 표기다 — 0/1 정수로 살기 때문에(2026-08-19) 비교가 그대로 선다.
+    /// </summary>
+    public const string StatFunction = "stat";
+
+    /// <inheritdoc cref="StatFunction"/>
+    public static string StatRead(string? key) =>
+        $"{StatFunction}(\"{SanitizeVariableName(key)}\")";
+
     public static string NormalizeVariable(string? variable)
     {
         string value = variable?.Trim() ?? string.Empty;
