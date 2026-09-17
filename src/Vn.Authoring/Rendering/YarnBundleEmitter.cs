@@ -269,6 +269,24 @@ public static class YarnBundleEmitter
         };
     }
 
+    /// <summary>
+    /// <b>진행 스탯을 <c>$변수</c> 표기로 쓴 자리를 막는다</b> — 내보내기가 마지막 문이다
+    /// (계약서 §G-14).
+    ///
+    /// ⚠ <b>2026-09-17에 뜻이 좁아졌다.</b> 전에는 *"대사에서 진행 스탯을 아예 못 쓴다"*였고,
+    /// 계층이 하나가 되면서 <b>읽기는 열렸다</b>. 막는 것은 이제 <b>표기</b>다:
+    ///
+    /// <list type="bullet">
+    /// <item>✅ <c>&lt;&lt;if stat("trust") &gt;= 3&gt;&gt;</c> — 읽기. <c>$</c>가 없으니 여기 안 걸린다</item>
+    /// <item>⛔ <c>&lt;&lt;set $trust = 5&gt;&gt;</c> — 쓰기. <b>영원히 막는다</b></item>
+    /// <item>⛔ <c>&lt;&lt;if $trust &gt;= 3&gt;&gt;</c> — 그런 변수가 런타임에 없다</item>
+    /// </list>
+    ///
+    /// ⭐ <b>쓰기를 막는 일은 사실 표기가 이미 한다.</b> 함수에는 왼쪽 변이 없어 <c>stat(...)</c>로는
+    /// 쓸 수가 없다 — 이 검증은 <b>손으로 <c>$</c>를 적은 자리</b>를 잡는 마지막 그물이다.
+    /// 대사 중의 스탯 쓰기는 세이브/로드 복귀와 도달성 증명이 못 보는 뒷길이라
+    /// (2026-08-14에 J열을 폐지한 이유) 경고가 아니라 <b>차단</b>이어야 한다.
+    /// </summary>
     internal static void ValidateProgressionStatReferences(
         RenderedDocument document,
         IReadOnlySet<string> progressionStats,
@@ -300,8 +318,9 @@ public static class YarnBundleEmitter
         foreach (string name in leaked.OrderBy(value => value, StringComparer.Ordinal))
         {
             problems.Add(new YarnBundleProblem(
-                $"진행 스탯 '{name}'을 Yarn 대사 조건·set에서 사용할 수 없습니다. " +
-                "진행 분기는 챕터 간선의 표시조건·해금조건·스탯변화에 작성하세요.",
+                $"진행 스탯 '{name}'을 `${name}` 변수로 쓸 수 없습니다. " +
+                $"읽기는 `{YarnSyntax.StatRead(name)}`로 하고, " +
+                "값을 바꾸는 것은 챕터 간선의 `스탯변화`에서만 합니다.",
                 IsBlocking: true));
         }
     }

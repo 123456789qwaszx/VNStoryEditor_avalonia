@@ -24,9 +24,11 @@ public sealed record ConditionYarnTranslation(string? Yarn, string? Problem)
 /// 없어졌다</b> — 대사가 물을 낱말은 챕터 스탯 하나뿐이다.</item>
 /// <item>변수로 심으면 <c>&lt;&lt;set $trust = 5&gt;&gt;</c>가 문법적으로 유효해지고, 그
 /// 쓰기는 세이브/로드 복귀와 도달성 증명이 <b>못 보는 뒷길</b>이다. 함수에는 왼쪽 변이 없다.</item>
-/// <item>⚠ 2026-09-01(G0)에 저쪽의 <c>PublishStats</c> 다리가 걷혔는데 이 번역기는 <b>계속
-/// <c>$trust</c>를 냈다</b> — 즉 그날부터 여기서 나간 대사 조건은 <b>런타임에서 조용히
-/// 빗나가고 있었다</b>. 이 변경이 그 구멍을 닫는다.</item>
+/// <item>⚠ 2026-09-01(G0)에 저쪽의 <c>PublishStats</c> 다리가 걷혔는데 이 번역기는 계속
+/// <c>$trust</c>를 냈다. <b>조용히 틀리지는 않았다</b> —
+/// <c>YarnBundleEmitter.ValidateProgressionStatReferences</c>가 <b>차단</b>으로 잡아
+/// 내보내기 자체가 거절됐다. 대신 그날부터 <b>이 기능이 죽어 있었다</b>: 대사 카드에서
+/// 챕터 조건을 고를 수는 있는데 고르면 산출이 막혔다. 이 변경이 그 길을 다시 연다.</item>
 /// </list>
 ///
 /// 원문 해석은 <see cref="ConditionExpressionParser"/>가 이미 했다(챕터 리더). 여기서는 그
