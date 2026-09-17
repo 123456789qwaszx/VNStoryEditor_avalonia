@@ -212,7 +212,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
             DialogueNode? node = Session.Project.Files
                 .FirstOrDefault(file => file.Name == chapterId)?.Nodes
                 .OfType<DialogueNode>()
-                .FirstOrDefault(item => item.ExcelEpisodeId == "main05.02");
+                .FirstOrDefault(item => item.MarkedEpisodeId == "main05.02");
 
             return node is null
                 ? "<노드 없음>"
@@ -252,7 +252,7 @@ public sealed class ExcelToPresentationGraphTests : IDisposable
         private AuthoringSession Session => window.SessionProbe;
 
         private DialogueNode Node => Session.Project.EnumerateNodes().OfType<DialogueNode>()
-            .Single(item => item.ExcelEpisodeId == "main05.02");
+            .Single(item => item.MarkedEpisodeId == "main05.02");
 
         public void ShowChapterGraph() => SelectTab("ChapterTabItem");
 

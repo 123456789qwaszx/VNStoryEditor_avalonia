@@ -138,7 +138,7 @@ public sealed class ChapterGraphEditingTests
         // 판은 뷰를 붙이는 순간 이미 섰고 노드는 들여오기가 세웠다 — 여기서 또 만들면
         // 같은 이름이 둘이 되어 실물이 아니라 사본을 재게 된다.
         DialogueNode ghost = session.Project.EnumerateNodes().OfType<DialogueNode>()
-            .Single(node => node.ExcelEpisodeId == "branch05.02A");
+            .Single(node => node.MarkedEpisodeId == "branch05.02A");
 
         // 대본은 딸려 있어도 살아 있는 줄이 없으면 빈 노드다 — 재생할 것이 없다.
         Assert.Empty(session.Project.FindScript(ghost.ScriptId)!.ActiveLines);
@@ -163,7 +163,7 @@ public sealed class ChapterGraphEditingTests
 
         // 들여오기가 세운 그 노드에 내용을 넣어 둔다 — 사본을 만들지 않는다.
         DialogueNode kept = session.Project.EnumerateNodes().OfType<DialogueNode>()
-            .Single(node => node.ExcelEpisodeId == "branch05.02A");
+            .Single(node => node.MarkedEpisodeId == "branch05.02A");
 
         var script = new Vn.Authoring.Script.ScriptDocument(name: "남은 대본");
         script.Lines.Add(new Vn.Authoring.Script.ScriptLine("ln_keep"));
@@ -174,7 +174,7 @@ public sealed class ChapterGraphEditingTests
         view.DeleteSelectedEpisode();
 
         Assert.NotNull(session.Project.FindNode(kept.Id));
-        Assert.Null(kept.ExcelEpisodeId);   // 더 이상 그 에피소드가 아니다
+        Assert.Null(kept.MarkedEpisodeId);   // 더 이상 그 에피소드가 아니다
     });
 
     [Fact]
@@ -432,7 +432,7 @@ public sealed class ChapterGraphEditingTests
         // 손으로 흉내내야 했다. 목록이 달라지면 재읽기가 동기화를 부르므로, 에피소드를
         // 더한 그 자리에서 노드가 선다(그 전에는 엑셀 파일이 생겨 감시자가 울어야 했다).
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            node => node.ExcelEpisodeId == "new01");
+            node => node.MarkedEpisodeId == "new01");
 
         view.SelectEpisode("new01");
         view.FindControl<TextBox>("IdBox")!.Text = "ep_renamed";
@@ -443,10 +443,10 @@ public sealed class ChapterGraphEditingTests
         Assert.Null(EpisodeLibrary.FindExisting(project.EpisodesFolder, "new01"));
 
         // 대사 노드도 새 이름이다 — 새로 만들지 않고 이름만 바꿔 연출·신원이 보존된다.
-        // 엑셀 표식(ExcelEpisodeId)도 함께 간다 — 옛 Id로 남으면 시나리오 그래프가
+        // 엑셀 표식(MarkedEpisodeId)도 함께 간다 — 옛 Id로 남으면 시나리오 그래프가
         // 챕터 밖 노드로 보고 레일을 끊는다.
         Assert.Contains(session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            node => node.Name == "ep_renamed" && node.ExcelEpisodeId == "ep_renamed");
+            node => node.Name == "ep_renamed" && node.MarkedEpisodeId == "ep_renamed");
         Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
             node => node.Name == "new01");
     });
@@ -467,7 +467,7 @@ public sealed class ChapterGraphEditingTests
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 
         Assert.DoesNotContain(session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            node => node.ExcelEpisodeId == "new01");
+            node => node.MarkedEpisodeId == "new01");
 
         view.AddEpisodeFromToolbar();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); // QueueReload 한 차례
@@ -475,7 +475,7 @@ public sealed class ChapterGraphEditingTests
         // 엑셀을 열지 않았는데도 노드가 서 있다 — 목록이 달라진 것이 곧 동기화의 이유다.
         DialogueNode node = Assert.Single(
             session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            item => item.ExcelEpisodeId == "new01");
+            item => item.MarkedEpisodeId == "new01");
 
         // 첫 대사도 함께 심어져 있다 (2026-08-26 소유자) — 빈 대본은 검증이 오류로
         // 막으므로, 방금 더한 에피소드가 그 오류부터 들고 시작하지 않는다.
@@ -502,7 +502,7 @@ public sealed class ChapterGraphEditingTests
 
         DialogueNode node = Assert.Single(
             session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            item => item.ExcelEpisodeId == "new01");
+            item => item.MarkedEpisodeId == "new01");
 
         Assert.True(
             session.Project.FindScript(node.ScriptId) is { } document &&

@@ -44,15 +44,36 @@ public class SerializationTests
     }
 
     [Fact]
-    public void 엑셀노드_표식이_프로젝트와_함께_왕복한다()
+    public void 에피소드_표식이_프로젝트와_함께_왕복한다()
     {
-        // 이 표식이 사라지면 편집기가 엑셀 소유 대본을 자유 노드로 착각해 잠금이 풀린다.
+        // ⚠ 표식이 사라지면 <b>어느 카드가 어느 에피소드였는지 복원할 수 없다</b>.
+        //    (2026-09-17까지 이 테스트의 근거는 "엑셀 소유 대본의 잠금이 풀린다"였다 —
+        //     그 잠금은 R-D에서, 자유 노드라는 종류는 P-6에서 없어졌다. 표식은 남았다.)
         var sample = new Sample();
-        sample.Dialogue.ExcelEpisodeId = "ep_hallway";
+        sample.Dialogue.MarkedEpisodeId = "ep_hallway";
 
         StoryProject reloaded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(sample.Project));
 
-        Assert.Equal("ep_hallway", reloaded.FindDialogue(sample.Dialogue.Id)!.ExcelEpisodeId);
+        Assert.Equal("ep_hallway", reloaded.FindDialogue(sample.Dialogue.Id)!.MarkedEpisodeId);
+    }
+
+    [Fact]
+    public void 옛_이름의_에피소드_표식도_읽는다()
+    {
+        // 칸 이름이 `excelEpisode` → `episodeMark`로 바뀌었다 (2026-09-17). 이 표식은
+        // 파생값이 아니라 저장된 신원이라, 못 읽으면 되살릴 방법이 없다 — 그래서
+        // 옛 이름도 계속 읽는다. 다시 저장하면 새 이름으로 옮겨 앉는다.
+        var sample = new Sample();
+        sample.Dialogue.MarkedEpisodeId = "ep_hallway";
+
+        string snapshot = ProjectSnapshotCodec.Encode(sample.Project)
+            .Replace("\"episodeMark\"", "\"excelEpisode\"", StringComparison.Ordinal);
+
+        Assert.Contains("\"excelEpisode\"", snapshot, StringComparison.Ordinal);
+
+        StoryProject reloaded = ProjectSnapshotCodec.Decode(snapshot);
+
+        Assert.Equal("ep_hallway", reloaded.FindDialogue(sample.Dialogue.Id)!.MarkedEpisodeId);
     }
 
     // ⛔ `엑셀_행_신원_맵이_프로젝트와_함께_왕복한다`는 2026-09-16에 은퇴했다 (R-D).

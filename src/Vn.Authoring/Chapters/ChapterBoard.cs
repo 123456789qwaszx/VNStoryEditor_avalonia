@@ -44,7 +44,7 @@ internal sealed class ChapterBoard
             // 같은 에피소드에 노드가 둘일 수는 없지만(동기화가 하나만 세운다), 손으로
             // 만든 프로젝트에서 겹치면 먼저 만난 것을 쓴다. 여기서 던지지 않는 이유는
             // 내보내기가 배선 하나 때문에 챕터 전체를 막을 자리가 아니기 때문이다.
-            if (node.ExcelEpisodeId is { } episodeId)
+            if (node.MarkedEpisodeId is { } episodeId)
             {
                 _excelNodes.TryAdd(episodeId, node);
             }
@@ -57,7 +57,7 @@ internal sealed class ChapterBoard
     /// <summary>
     /// 이 에피소드를 재생할 <b>대사 노드</b>. 없으면 <c>null</c>이다.
     ///
-    /// ⚠ <c>ExcelEpisodeId</c>를 먼저 본다 — 그것이 <b>진짜 연결</b>이다. 이름으로 찾는 것은
+    /// ⚠ <c>MarkedEpisodeId</c>를 먼저 본다 — 그것이 <b>진짜 연결</b>이다. 이름으로 찾는 것은
     /// 아직 표식이 안 붙은 구판 프로젝트를 위한 뒷길이고, 판에서 노드를 개명하면 이름은
     /// 갈리지만 표식은 남는다.
     /// </summary>

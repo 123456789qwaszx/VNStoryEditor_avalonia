@@ -208,13 +208,25 @@ public sealed class DialogueNode : StoryNode
     public string? ScriptId { get; set; }
 
     /// <summary>
-    /// 이 대본의 원본인 에피소드 엑셀의 Id. null이면 작가 소유의 자유 노드다.
+    /// 이 노드가 <b>어느 에피소드인가</b>를 적어 둔 표식.
     ///
-    /// 값이 있으면 <b>엑셀노드</b>다(2단계 무대의 본류): 본문·화자·줄 구성은 엑셀이 소유하고
-    /// 툴에서는 읽기 전용이다 — 여기서 고쳐도 다음 동기화가 엑셀 내용으로 되돌리므로,
-    /// 고칠 수 있는 것처럼 보이는 화면이 곧 원고 증발 사고다. 출구·연출은 툴 소유로 남는다.
+    /// ⛔ <b>2026-09-17까지 이름이 <c>ExcelEpisodeId</c>였고, 그 이름이 두 번 거짓이 됐다.</b>
+    /// <list type="number">
+    /// <item><b>엑셀은 주인이 아니다</b> (R-D·R-F, 2026-09-16). 옛 머리글은 <i>"본문·화자·줄
+    ///   구성은 엑셀이 소유하고 툴에서는 읽기 전용 — 여기서 고쳐도 다음 동기화가 되돌린다"</i>
+    ///   였는데, <b>그 동기화가 철거됐다.</b> 대본의 원본은 프로젝트다.</item>
+    /// <item><b>null이 「자유 노드」를 뜻하지 않는다</b> (R7 P-6 · 결정 ⑤, 2026-09-17).
+    ///   자유 씬이라는 종류가 없어졌다 — 챕터 판의 카드는 <b>전부 에피소드</b>다.</item>
+    /// </list>
+    ///
+    /// <b>남은 뜻은 하나뿐이다: 노드 이름과 에피소드 Id가 <i>다를 때</i> 그 Id를 적어 둔다.</b>
+    /// 같으면 비어 있어도 된다 — 그래서 <b>이 값을 직접 읽으면 안 된다</b>. 답을 내는 자리는
+    /// <see cref="Chapters.EpisodeNaming"/> 하나다(표식이 있으면 표식, 없으면 이름).
+    ///
+    /// ⚠ <b>파생값이 아니라 저장된 신원이다.</b> 이름을 바꿔도 끊기지 않으라고 두는 것이므로
+    /// 잃으면 어느 카드가 어느 에피소드였는지 <b>복원할 수 없다</b>.
     /// </summary>
-    public string? ExcelEpisodeId { get; set; }
+    public string? MarkedEpisodeId { get; set; }
 
     /// <summary>
     /// LineId별 대사 논리. 목록 순서는 파일에서 읽는 순서일 뿐이고 실행 순서가 아니다.
@@ -255,7 +267,7 @@ public sealed class DialogueNode : StoryNode
 
     /// <summary>
     /// ⛔ <b>걷혔다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17). 이 속성은
-    /// <c>ExcelEpisodeId is null ? null : DefaultExitTargetNodeId</c>였다 — <b>커스텀(자유)
+    /// <c>MarkedEpisodeId is null ? null : DefaultExitTargetNodeId</c>였다 — <b>커스텀(자유)
     /// 노드에는 기본 출구가 없다</b>는 2026-08-21의 규칙이고, 그것이 곧 엑셀노드/자유노드의
     /// 구분이었다.
     ///
@@ -297,7 +309,7 @@ public sealed class DialogueNode : StoryNode
         {
             Layout = Layout.Clone(),
             ScriptId = ScriptId,
-            ExcelEpisodeId = ExcelEpisodeId,
+            MarkedEpisodeId = MarkedEpisodeId,
             LineExtensions = LineExtensions.Select(item => item.Clone()).ToList(),
             DefaultExitTargetNodeId = DefaultExitTargetNodeId,
             BranchExits = new Dictionary<string, string>(BranchExits, StringComparer.Ordinal),

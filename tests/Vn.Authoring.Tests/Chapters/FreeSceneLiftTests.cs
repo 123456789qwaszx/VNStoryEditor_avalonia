@@ -20,7 +20,7 @@ public sealed class FreeSceneLiftTests
 
         Assert.Equal(["곁가지"], editor.LiftFreeScenes("ch01"));
 
-        Assert.Equal("곁가지", free.ExcelEpisodeId);
+        Assert.Equal("곁가지", free.MarkedEpisodeId);
         Assert.Contains(Chapter(editor).Episodes, episode =>
             string.Equals(episode.EpisodeId, "곁가지", StringComparison.Ordinal));
     }
@@ -84,7 +84,7 @@ public sealed class FreeSceneLiftTests
         // ⛔ 둘 다 올리면 같은 EpisodeId가 두 번 선다 — 챕터가 통째로 못 읽히는 상태다.
         (ProjectEditor editor, DialogueNode _) = World();
         DialogueNode twin = editor.AddDialogueNode(BoardOf(editor), 0, 0, "곁가지2");
-        twin.ExcelEpisodeId = null;
+        twin.MarkedEpisodeId = null;
         twin.Name = "곁가지";
         Chapter(editor).Episodes.RemoveAll(episode =>
             string.Equals(episode.EpisodeId, "곁가지2", StringComparison.Ordinal));
@@ -153,7 +153,7 @@ public sealed class FreeSceneLiftTests
 
         // ⚠ 판에 세운 카드는 이제 에피소드를 함께 만든다(P-6) — 옛 프로젝트의 자유 씬을
         //    흉내 내려면 표식과 에피소드를 도로 걷어야 한다.
-        free.ExcelEpisodeId = null;
+        free.MarkedEpisodeId = null;
         Chapter(editor).Episodes.RemoveAll(episode =>
             string.Equals(episode.EpisodeId, "곁가지", StringComparison.Ordinal));
 

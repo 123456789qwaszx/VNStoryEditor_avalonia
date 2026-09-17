@@ -6,7 +6,7 @@ namespace Vn.Authoring.Chapters;
 /// <b>진행이 착지하는 카드와 옆으로만 불려 가는 곁가지를 가른다</b> — <b>한 벌이다</b>
 /// (R7 P-6 · 결정 ⑤ · 2026-09-17).
 ///
-/// ⛔ 전에는 이 구분을 <c>ExcelEpisodeId is null</c>이 대신했다 — *에피소드면 척추,
+/// ⛔ 전에는 이 구분을 <c>MarkedEpisodeId is null</c>이 대신했다 — *에피소드면 척추,
 /// 아니면 자유 씬*. 그 갈래가 <b>엑셀노드/자유노드의 구분 그 자체</b>였고, 없어졌다:
 /// 챕터 판의 대사 노드는 전부 에피소드다.
 ///
@@ -58,6 +58,6 @@ public static class ChapterSpine
         ArgumentNullException.ThrowIfNull(landedOn);
         ArgumentNullException.ThrowIfNull(node);
 
-        return node.ExcelEpisodeId is not { Length: > 0 } episodeId || !landedOn.Contains(episodeId);
+        return node.MarkedEpisodeId is not { Length: > 0 } episodeId || !landedOn.Contains(episodeId);
     }
 }

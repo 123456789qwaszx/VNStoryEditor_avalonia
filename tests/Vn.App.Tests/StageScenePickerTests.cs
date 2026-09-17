@@ -28,9 +28,9 @@ public sealed class StageScenePickerTests
         session.Editor.AddDialogueNode(fileId, name: "커스텀B");
         session.Editor.AddDialogueNode(fileId, name: "커스텀A");
         DialogueNode late = session.Editor.AddDialogueNode(fileId, name: "EP10");
-        late.ExcelEpisodeId = "EP10";
+        late.MarkedEpisodeId = "EP10";
         DialogueNode episode = session.Editor.AddDialogueNode(fileId, name: "EP00");
-        episode.ExcelEpisodeId = "EP00";
+        episode.MarkedEpisodeId = "EP00";
 
         var combo = preview.FindControl<ComboBox>("SceneCombo")!;
         combo.IsDropDownOpen = true; // 열 때마다 목록을 다시 짓는다

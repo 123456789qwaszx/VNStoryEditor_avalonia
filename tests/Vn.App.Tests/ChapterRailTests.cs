@@ -207,7 +207,7 @@ public sealed class ChapterRailTests
 
         // ① 엑셀노드 카드에서 옵션·기본 포트가 사라졌다 — 칩으로 이사(IF 갈래만 남는다).
         DialogueNode excel = session.Project.EnumerateNodes().OfType<DialogueNode>()
-            .Single(node => node.ExcelEpisodeId == "EP00");
+            .Single(node => node.MarkedEpisodeId == "EP00");
         ExpandedNodeProjection projected = GraphProjectionBuilder
             .Build(session.Project, session.Project.Files.Select(file => file.Id)
                 .ToHashSet(StringComparer.Ordinal))
@@ -344,7 +344,7 @@ public sealed class ChapterRailTests
         StoryFile saved = StoryFileJson.Read(
             StoryFileJson.Write(session.Project.Files.Single(file => file.Id == fileId)));
         DialogueNode reloaded = saved.Nodes.OfType<DialogueNode>()
-            .Single(node => node.ExcelEpisodeId == "EP00");
+            .Single(node => node.MarkedEpisodeId == "EP00");
         Assert.Equal(free.Id, reloaded.ChoiceExits["라루를 믿는다"]);
     });
 
@@ -371,7 +371,7 @@ public sealed class ChapterRailTests
     private static DialogueNode AddExcelNode(AuthoringSession session, string fileId, string episodeId)
     {
         DialogueNode node = session.Editor.AddDialogueNode(fileId, name: episodeId);
-        node.ExcelEpisodeId = episodeId;
+        node.MarkedEpisodeId = episodeId;
         return node;
     }
 

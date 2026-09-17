@@ -70,7 +70,7 @@ public sealed class ChoiceSlotProjectionTests
         ProjectEditor editor = World();
         DialogueNode made = editor.AddDialogueNode(BoardOf(editor), name: "곁가지");
 
-        Assert.Equal("곁가지", made.ExcelEpisodeId);
+        Assert.Equal("곁가지", made.MarkedEpisodeId);
         Assert.Equal(3, SlotsOf(editor, "곁가지").Count);
     }
 
@@ -158,7 +158,7 @@ public sealed class ChoiceSlotProjectionTests
         foreach (string episodeId in (string[])["root", "a", "b", "c", "d"])
         {
             editor.AddEpisode("ch01", episodeId, title: episodeId, 0, 0);
-            editor.AddDialogueNode(fileId, name: episodeId).ExcelEpisodeId = episodeId;
+            editor.AddDialogueNode(fileId, name: episodeId).MarkedEpisodeId = episodeId;
         }
 
         return editor;

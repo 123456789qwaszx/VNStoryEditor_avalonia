@@ -115,7 +115,7 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
     {
         var project = new StoryProject();
         var file = new StoryFile(name: "ch01.contract-sample");
-        var choice = new DialogueNode(name: "Story_ch01_choice") { ExcelEpisodeId = "choice" };
+        var choice = new DialogueNode(name: "Story_ch01_choice") { MarkedEpisodeId = "choice" };
         var via = new DialogueNode(name: "암전 전환");
         choice.ChoiceExits["라루에게 맡긴다"] = via.Id;
         file.Nodes.Add(choice);

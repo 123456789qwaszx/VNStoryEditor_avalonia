@@ -44,7 +44,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
             // 판에는 노드가 다 있는데 대본이 하나도 없는 상태.
             file.Nodes.Add(new DialogueNode(name: episode.EpisodeId)
             {
-                ExcelEpisodeId = episode.EpisodeId
+                MarkedEpisodeId = episode.EpisodeId
             });
         }
 
@@ -80,7 +80,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
 
         var project = new StoryProject();
         var file = new StoryFile(name: chapter.ChapterId);
-        var excel = new DialogueNode(name: "Id를_바꿧음") { ExcelEpisodeId = "시작" };
+        var excel = new DialogueNode(name: "Id를_바꿧음") { MarkedEpisodeId = "시작" };
 
         file.Nodes.Add(excel);
         project.Files.Add(file);

@@ -336,7 +336,7 @@ public partial class MiniStagePreview : UserControl
             return false;
         }
 
-        if (PlayingDialogueOf(nodeId) is not { ExcelEpisodeId: { } episodeId } source)
+        if (PlayingDialogueOf(nodeId) is not { MarkedEpisodeId: { } episodeId } source)
         {
             return false; // 커스텀 씬의 끝은 에피소드 끝이 아니다
         }
@@ -546,7 +546,7 @@ public partial class MiniStagePreview : UserControl
         // EpisodeId는 챕터 안에서만 유일하다 — 같은 판(파일)에서만 찾는다.
         DialogueNode? target = file.Nodes.OfType<DialogueNode>()
             .FirstOrDefault(node =>
-                string.Equals(node.ExcelEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal));
+                string.Equals(node.MarkedEpisodeId, edge.ToEpisodeId, StringComparison.Ordinal));
 
         if (target is null)
         {
@@ -876,7 +876,7 @@ public partial class MiniStagePreview : UserControl
 
         List<DialogueNode> scenes = (_session.ActiveFile?.Nodes ?? [])
             .OfType<DialogueNode>()
-            .OrderBy(node => node.ExcelEpisodeId is null ? 1 : 0)
+            .OrderBy(node => node.MarkedEpisodeId is null ? 1 : 0)
             .ThenBy(node => node.Name, StringComparer.Ordinal)
             .ToList();
 
@@ -885,7 +885,7 @@ public partial class MiniStagePreview : UserControl
         try
         {
             SceneCombo.ItemsSource = scenes
-                .Select(node => $"{(node.ExcelEpisodeId is null ? "✎" : "📄")} {node.Name}")
+                .Select(node => $"{(node.MarkedEpisodeId is null ? "✎" : "📄")} {node.Name}")
                 .ToList();
             SceneCombo.Tag = scenes;
             SceneCombo.SelectedIndex = selectedDialogueId is null

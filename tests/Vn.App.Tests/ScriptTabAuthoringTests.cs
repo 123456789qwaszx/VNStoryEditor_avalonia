@@ -208,13 +208,13 @@ public sealed class ScriptTabAuthoringTests : IDisposable
 
         string fileId = session.EnsureChapterBoard("ch01");
         DialogueNode node = session.Editor.AddDialogueNode(fileId, name: "ep01");
-        node.ExcelEpisodeId = "ep01";
+        node.MarkedEpisodeId = "ep01";
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Rename(view, SceneTreeRowKind.Episode, "prologue");
 
         Assert.Equal(["prologue"], session.Editor.FindChapter("ch01")!.Episodes.Select(e => e.EpisodeId));
-        Assert.Equal("prologue", node.ExcelEpisodeId);
+        Assert.Equal("prologue", node.MarkedEpisodeId);
         Assert.Equal("prologue", node.Name);
     });
 

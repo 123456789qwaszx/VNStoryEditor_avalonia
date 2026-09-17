@@ -167,7 +167,7 @@ public static class ChapterBoardSupply
         ArgumentNullException.ThrowIfNull(chapter);
 
         // ⚠ <b>전제가 2026-09-17에 바뀌었다</b> (R7 P-6 · 결정 ⑤). 전에는 "엑셀노드"
-        //    (<c>ExcelEpisodeId</c>가 있는 노드)를 가리키면 경고했는데, 이제는 판의 대사
+        //    (<c>MarkedEpisodeId</c>가 있는 노드)를 가리키면 경고했는데, 이제는 판의 대사
         //    노드가 <b>전부</b> 에피소드라 그 기준이면 <b>모든 배선이 운다</b>.
         //
         // 진짜 기준은 <b>진행이 그 카드에 착지하는가</b>다 — 규칙은 <see cref="ChapterSpine"/>
@@ -182,7 +182,7 @@ public static class ChapterBoardSupply
 
         Dictionary<string, DialogueNode> excelNodes = editor.Project.EnumerateNodes()
             .OfType<DialogueNode>()
-            .Where(node => node.ExcelEpisodeId is { } episodeId && landed.Contains(episodeId))
+            .Where(node => node.MarkedEpisodeId is { } episodeId && landed.Contains(episodeId))
             .ToDictionary(node => node.Id, node => node, StringComparer.Ordinal);
 
         if (excelNodes.Count == 0)

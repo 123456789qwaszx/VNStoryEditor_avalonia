@@ -61,8 +61,8 @@ public sealed class MoveEpisodesToChapterTests
         StoryFile from = editor.Project.Files.Single(file => file.Name == "ch01");
         StoryFile to = editor.Project.Files.Single(file => file.Name == "ch02");
 
-        Assert.Equal(["root"], from.Nodes.OfType<DialogueNode>().Select(node => node.ExcelEpisodeId));
-        Assert.Equal(["far", "a", "b"], to.Nodes.OfType<DialogueNode>().Select(node => node.ExcelEpisodeId));
+        Assert.Equal(["root"], from.Nodes.OfType<DialogueNode>().Select(node => node.MarkedEpisodeId));
+        Assert.Equal(["far", "a", "b"], to.Nodes.OfType<DialogueNode>().Select(node => node.MarkedEpisodeId));
     }
 
     [Fact]
@@ -110,8 +110,8 @@ public sealed class MoveEpisodesToChapterTests
             ["root", "a", "b"],
             editor.Project.Files.Single(file => file.Name == "ch01")
                 .Nodes.OfType<DialogueNode>()
-                .Where(node => node.ExcelEpisodeId is not null)
-                .Select(node => node.ExcelEpisodeId));
+                .Where(node => node.MarkedEpisodeId is not null)
+                .Select(node => node.MarkedEpisodeId));
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
@@ -138,10 +138,10 @@ public sealed class MoveEpisodesToChapterTests
 
         foreach (string episodeId in (string[])["root", "a", "b"])
         {
-            editor.AddDialogueNode(first, name: episodeId).ExcelEpisodeId = episodeId;
+            editor.AddDialogueNode(first, name: episodeId).MarkedEpisodeId = episodeId;
         }
 
-        editor.AddDialogueNode(second, name: "far").ExcelEpisodeId = "far";
+        editor.AddDialogueNode(second, name: "far").MarkedEpisodeId = "far";
 
         return (editor, project);
     }

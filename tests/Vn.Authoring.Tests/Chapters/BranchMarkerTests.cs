@@ -110,7 +110,7 @@ public sealed class BranchMarkerTests
         editor.AddEpisode("ch01", "root", title: "root", 0, 0);
 
         DialogueNode node = editor.AddDialogueNode(fileId, 0, 0, "root");
-        node.ExcelEpisodeId = "root";
+        node.MarkedEpisodeId = "root";
 
         editor.AddDialogueNode(fileId, 400, 0, "곁가지");
 
@@ -162,7 +162,7 @@ public sealed class BranchMarkerTests
 
         // ⚠ 뒤집힌 자리다 (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는 자유 씬이라 표식이 없었다 —
         //    이제 자유 씬이라는 종류가 없으므로 다녀오는 곳도 <b>그냥 에피소드</b>다.
-        Assert.Equal(made.Name, made.ExcelEpisodeId);
+        Assert.Equal(made.Name, made.MarkedEpisodeId);
         Assert.Contains(
             editor.Project.Chapters.Single().Episodes,
             episode => string.Equals(episode.EpisodeId, made.Name, StringComparison.Ordinal));

@@ -576,7 +576,7 @@ public partial class ScriptView : UserControl
             .FirstOrDefault(file => string.Equals(file.Name, chapterId, StringComparison.Ordinal))
             ?.Nodes.OfType<DialogueNode>()
             .FirstOrDefault(node =>
-                string.Equals(node.ExcelEpisodeId, episodeId, StringComparison.Ordinal) ||
+                string.Equals(node.MarkedEpisodeId, episodeId, StringComparison.Ordinal) ||
                 string.Equals(node.Name, episodeId, StringComparison.Ordinal));
     }
 
@@ -926,7 +926,7 @@ public partial class ScriptView : UserControl
         (double x, double y) = Vn.Authoring.Graph.NodePlacement.For(_session.Project, chapterId, episodeId);
         DialogueNode created = _session.Editor.AddDialogueNode(fileId, x, y, episodeId);
 
-        created.ExcelEpisodeId = episodeId;
+        created.MarkedEpisodeId = episodeId;
 
         // 노드 생성이 딸려 주는 첫 빈 줄을 은퇴시킨다 — 작가의 글이 그 자리를 채운다.
         // 남겨 두면 신원 없는 고아가 되어 diff가 "지운 것인지 고친 것인지"를 못 가린다.

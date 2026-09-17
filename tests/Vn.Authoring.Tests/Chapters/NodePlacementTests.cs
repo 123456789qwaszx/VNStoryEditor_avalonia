@@ -73,7 +73,7 @@ public sealed class NodePlacementTests
         var editor = new ProjectEditor(project);
 
         editor.AddDialogueNode(editor.EnsureChapterBoard("ch01"), x, y, episodeId)
-            .ExcelEpisodeId = episodeId;
+            .MarkedEpisodeId = episodeId;
     }
 
     /// <summary>ch01과 그 판 — 에피소드는 챕터에 있고, 노드는 아직 없다.</summary>

@@ -244,7 +244,7 @@ public sealed class StageEpisodeChoiceTests
     private static DialogueNode AddEpisodeNode(AuthoringSession session, string fileId, string episodeId)
     {
         DialogueNode node = session.Editor.AddDialogueNode(fileId, name: episodeId);
-        node.ExcelEpisodeId = episodeId;
+        node.MarkedEpisodeId = episodeId;
         return node;
     }
 

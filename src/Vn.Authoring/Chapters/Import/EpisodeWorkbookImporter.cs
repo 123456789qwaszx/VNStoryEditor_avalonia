@@ -138,7 +138,7 @@ public static class EpisodeWorkbookImporter
             // ⚠ 이 표식은 아직 "본문은 엑셀 소유"라는 뜻이라 편집기가 읽기 전용으로 잠근다.
             //    §6.4는 뒤집기 뒤에 그 개념 자체가 사라진다고 하지만, 그것은 잠금 배너·편집
             //    관문과 함께 움직일 일이라 따로 둔다 — 여기서는 붙여만 둔다.
-            node.ExcelEpisodeId = item.EpisodeId;
+            node.MarkedEpisodeId = item.EpisodeId;
 
             // 대사를 한 줄도 안 쓴 에피소드에도 <b>노드는 선다</b> (2026-08-17 소유자) —
             // 빈 노드라도 서 있으면 작가에게 "여기에 쓰면 된다"가 보인다. 본문만

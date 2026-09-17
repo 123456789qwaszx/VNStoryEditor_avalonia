@@ -111,7 +111,7 @@ public static class EpisodeRenamer
                 .FirstOrDefault(file => string.Equals(file.Name, chapterId, StringComparison.Ordinal))
                 ?.Nodes.OfType<DialogueNode>()
                 .FirstOrDefault(node =>
-                    string.Equals(node.ExcelEpisodeId, oldId, StringComparison.Ordinal) ||
+                    string.Equals(node.MarkedEpisodeId, oldId, StringComparison.Ordinal) ||
                     string.Equals(node.Name, oldId, StringComparison.Ordinal))
             is not { } node)
         {
@@ -119,9 +119,9 @@ public static class EpisodeRenamer
         }
 
         // 엑셀 표식도 함께 간다 — 옛 Id로 남으면 연출 그래프가 챕터 밖 노드로 보고 레일을 끊는다.
-        if (node.ExcelEpisodeId is not null)
+        if (node.MarkedEpisodeId is not null)
         {
-            node.ExcelEpisodeId = newId;
+            node.MarkedEpisodeId = newId;
         }
 
         editor.RenameNode(node.Id, newId);

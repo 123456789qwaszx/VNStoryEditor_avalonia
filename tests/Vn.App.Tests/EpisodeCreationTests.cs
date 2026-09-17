@@ -81,7 +81,7 @@ public sealed class EpisodeCreationTests : IDisposable
         // 대사가 한 줄도 없어도 작가의 판에 노드가 선다 (2026-08-17).
         Assert.Contains(
             session.Project.EnumerateNodes().OfType<DialogueNode>(),
-            node => node.ExcelEpisodeId == "손으로적은화");
+            node => node.MarkedEpisodeId == "손으로적은화");
 
         // ⛔ <b>대본 파일이 생기는지는 더 묻지 않는다</b> (R-D · 2026-09-16). 예전에는
         //    동기화가 빈 워크북을 만들어 주었지만, 워크북은 이제 <b>산출물</b>이라 만드는

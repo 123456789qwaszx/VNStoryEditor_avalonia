@@ -218,7 +218,7 @@ public static class GraphProjectionBuilder
         //    두면 「분기 추가」가 <b>안 보이는 포트를 뚫는다</b> — 소유자가 그린 그림의
         //    핵심("연출그래프의 카드에 포트만 뚫리는데")이 통째로 빠진다. P-6 뒤로는 판의
         //    카드가 전부 에피소드라 이 갈래에 <b>모두</b> 걸리므로 더 그렇다.
-        if (node is DialogueNode { ExcelEpisodeId: not null })
+        if (node is DialogueNode { MarkedEpisodeId: not null })
         {
             exits = exits.Where(exit =>
                 exit.Kind == Vn.Authoring.Flow.ExitPortKind.Detour ||
@@ -356,7 +356,7 @@ public static class GraphProjectionBuilder
                 // ⚠ 옛 문구는 "📄 엑셀"이었고 뜻은 <b>"이 본문은 엑셀 소유라 잠겼다"</b>였다.
                 //    2026-09-16에 그 잠금이 사라지면서(R-E) 남은 뜻은 <b>소속</b>뿐이다 —
                 //    "엑셀"이라고 적어 두면 카드가 없는 잠금을 계속 말하게 된다.
-                if (dialogue.ExcelEpisodeId is null)
+                if (dialogue.MarkedEpisodeId is null)
                 {
                     return badge;
                 }
@@ -504,7 +504,7 @@ public static class GraphProjectionBuilder
         }
 
         string? SceneFor(CollapsedNodeEntry entry) =>
-            project.FindNode(entry.NodeId) is DialogueNode { ExcelEpisodeId: { } episodeId } &&
+            project.FindNode(entry.NodeId) is DialogueNode { MarkedEpisodeId: { } episodeId } &&
             sceneOf.TryGetValue(episodeId, out string? sceneId)
                 ? sceneId
                 : sceneOf.TryGetValue(entry.NodeName, out string? byName) ? byName : null;

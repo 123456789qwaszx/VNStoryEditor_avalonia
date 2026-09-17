@@ -322,7 +322,7 @@ public sealed class ChoiceSlotTests : IDisposable
             session.Project.Files[0].Id, 0, 400, "곁가지");
         graph.Rebuild();
 
-        Assert.Equal("곁가지", aside.ExcelEpisodeId);
+        Assert.Equal("곁가지", aside.MarkedEpisodeId);
         Assert.DoesNotContain(
             session.Editor.FindChapter("ch01")!.Edges,
             edge => string.Equals(edge.ToEpisodeId, "곁가지", StringComparison.Ordinal));
@@ -473,7 +473,7 @@ public sealed class ChoiceSlotTests : IDisposable
             session.Editor.AddEpisode(chapterId, episodeIds[index], title: episodeIds[index], 0, 0);
 
             session.Editor.AddDialogueNode(
-                fileId, x + (index * 320), 0, episodeIds[index]).ExcelEpisodeId = episodeIds[index];
+                fileId, x + (index * 320), 0, episodeIds[index]).MarkedEpisodeId = episodeIds[index];
         }
     }
 }

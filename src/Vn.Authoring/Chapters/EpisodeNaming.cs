@@ -10,7 +10,7 @@ namespace Vn.Authoring.Chapters;
 /// 반복해서 다친 그 자리다(V1 자동 길 검사, 스탯 검사 두 벌, 챕터 개명 규율 두 벌).
 ///
 /// ⚠ <b>표식이 신원이고 이름은 글자다.</b> <see cref="DialogueNode.Name"/>은 사람이 판에서
-/// 고치는 글자라 신원으로 삼으면 개명 때마다 끊긴다. 그래서 <see cref="DialogueNode.ExcelEpisodeId"/>가
+/// 고치는 글자라 신원으로 삼으면 개명 때마다 끊긴다. 그래서 <see cref="DialogueNode.MarkedEpisodeId"/>가
 /// 먼저고, 이름은 아직 표식이 안 붙은 구판 프로젝트를 위한 뒷길이다.
 ///
 /// R7 P-6부터 <b>챕터 판의 대사 노드는 전부 에피소드</b>라서 이 규약이 늘 성립한다 —
@@ -23,7 +23,7 @@ public static class EpisodeNaming
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        return node.ExcelEpisodeId is { Length: > 0 } marked ? marked : node.Name;
+        return node.MarkedEpisodeId is { Length: > 0 } marked ? marked : node.Name;
     }
 
     /// <summary>

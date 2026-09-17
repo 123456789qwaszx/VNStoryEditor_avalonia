@@ -49,7 +49,7 @@ public sealed class StoryProject
     /// 셀을 고치고 파일을 다시 읽었다. 이제 주인이 여기이고 워크북은 <b>산출물</b>이다.
     ///
     /// ⚠ <b>대본과 짝을 이룬다.</b> <see cref="Scripts"/>가 대사 본문의 원본이듯 이쪽이
-    /// 구조의 원본이고, 둘을 잇는 것은 <c>DialogueNode.ExcelEpisodeId</c>다.
+    /// 구조의 원본이고, 둘을 잇는 것은 <c>DialogueNode.MarkedEpisodeId</c>다.
     /// </summary>
     public List<ChapterDocument> Chapters { get; init; } = new();
 

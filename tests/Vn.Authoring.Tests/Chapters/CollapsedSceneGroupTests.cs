@@ -145,7 +145,7 @@ public sealed class CollapsedSceneGroupTests
                 SceneId = sceneId
             });
 
-            file.Nodes.Add(new DialogueNode(name: episodeId) { ExcelEpisodeId = episodeId });
+            file.Nodes.Add(new DialogueNode(name: episodeId) { MarkedEpisodeId = episodeId });
         }
 
         return project;

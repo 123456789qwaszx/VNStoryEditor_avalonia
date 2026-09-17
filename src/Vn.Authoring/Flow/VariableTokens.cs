@@ -1,17 +1,22 @@
 namespace Vn.Authoring.Flow;
 
 /// <summary>
-/// 조건식 안의 <c>$이름</c> 토큰을 훑는 <b>한 자리</b>.
+/// 식 안의 <c>$이름</c> 토큰을 훑는 <b>한 자리</b>.
 ///
-/// 식은 사람이 쓴 원문이라 파싱하지 않는다 — <b>변수 토큰만</b> 갈아 끼우고 나머지 글자는
-/// 한 자도 손대지 않는다. 이 규칙을 두 곳에 적으면 한쪽이 <c>$열쇠</c>와 <c>$열쇠2</c>를
-/// 가르지 못하는 날이 오고, 그 어긋남은 Yarn 컴파일에서야 드러난다.
+/// 식은 사람이 쓴 원문이라 파싱하지 않는다 — <b>토큰만</b> 집어내고 나머지 글자는 한 자도
+/// 보지 않는다. 경계를 여기 한 곳에만 적는 이유는 <c>$열쇠</c>와 <c>$열쇠2</c>를 가르는
+/// 규칙이 둘로 갈리면 그 어긋남이 Yarn 컴파일에서야 드러나기 때문이다.
 ///
-/// 지금 이것을 쓰는 두 자리:
-/// <list type="bullet">
-///   <item><see cref="Rendering.Tier1Namespace"/> — 챕터 네임스페이스 접두 붙이기</item>
-///   <item><c>ProjectEditor.SetAssignments</c> — 아이템·능력 개명 전파</item>
-/// </list>
+/// ⛔ <b>더 이상 "변수를 다루는" 자리가 아니다</b> (2026-09-17). 옛 머리글이 적어 둔 두
+/// 소비자 <c>Tier1Namespace</c>(챕터 접두)와 <c>ProjectEditor.SetAssignments</c>(개명 전파)는
+/// <b>둘 다 작가 변수와 함께 삭제됐다</b>. 갈아 끼우던 <c>Rewrite</c>도 그때 함께 죽었다 —
+/// 스탯 키 개명은 이제 문법을 아는 <see cref="Chapters.ConditionExpressionParser.ReplaceStatKey"/>가
+/// 한다.
+///
+/// <b>남은 소비자는 하나다</b> — <c>YarnBundleEmitter.ValidateProgressionStatReferences</c>.
+/// 쓰임이 뒤집혔다: 예전에는 <i>변수를 고치려고</i> 찾았고, 지금은 <b>사람이 손으로 적은
+/// <c>$</c>를 잡아 산출을 막으려고</b> 찾는다. 대사가 스탯을 읽는 길은 <c>stat("키")</c>
+/// 함수뿐이고, 함수에는 왼쪽 변이 없어 쓸 수가 없다.
 /// </summary>
 public static class VariableTokens
 {
@@ -47,44 +52,9 @@ public static class VariableTokens
         }
     }
 
-    /// <summary>
-    /// <c>$이름</c>을 <paramref name="map"/>이 정한 이름으로 갈아 끼운다. <c>$</c>는 남고,
-    /// 이름이 아닌 글자는 통과한다. 한 토큰은 <b>한 번만</b> 매핑되므로 맞바꾸기(A↔B)도
-    /// 그대로 성립한다.
-    /// </summary>
-    public static string Rewrite(string? expression, Func<string, string> map)
-    {
-        ArgumentNullException.ThrowIfNull(map);
-
-        if (string.IsNullOrEmpty(expression))
-        {
-            return expression ?? string.Empty;
-        }
-
-        var builder = new System.Text.StringBuilder(expression.Length + 16);
-        int index = 0;
-
-        while (index < expression.Length)
-        {
-            if (expression[index] != '$')
-            {
-                builder.Append(expression[index]);
-                index++;
-                continue;
-            }
-
-            int start = ++index;
-
-            while (index < expression.Length && IsNameLetter(expression[index]))
-            {
-                index++;
-            }
-
-            builder.Append('$').Append(map(expression[start..index]));
-        }
-
-        return builder.ToString();
-    }
+    // ⛔ `Rewrite`는 2026-09-17에 걷혔다. <c>$이름</c>을 갈아 끼우는 일이었고, 그것을 쓰던
+    //    두 자리(챕터 접두·개명 전파)가 작가 변수와 함께 사라졌다. 남아 있으면 "대사의
+    //    식에서 이름을 갈아 끼우는 길이 있다"고 말하는 셈인데, 이제 그런 길은 없다.
 
     private static bool IsNameLetter(char letter) => char.IsLetterOrDigit(letter) || letter == '_';
 }

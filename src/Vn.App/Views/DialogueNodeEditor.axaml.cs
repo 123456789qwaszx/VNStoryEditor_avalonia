@@ -43,7 +43,7 @@ public partial class DialogueNodeEditor : UserControl
     private readonly Dictionary<string, Border> _stageLineCards = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// 지금 보는 노드가 <b>챕터의 에피소드</b>인가 (<see cref="DialogueNode.ExcelEpisodeId"/>).
+    /// 지금 보는 노드가 <b>챕터의 에피소드</b>인가 (<see cref="DialogueNode.MarkedEpisodeId"/>).
     ///
     /// ⛔ <b>이것은 더 이상 "엑셀이 소유한다"는 뜻이 아니다</b> (2026-09-16 · R-E · §6.4).
     /// 옛 이름은 <c>_excelOwned</c>였고 참이면 본문·화자·줄 구성이 통째로 읽기 전용이었다 —
@@ -231,7 +231,7 @@ public partial class DialogueNodeEditor : UserControl
 
         try
         {
-            _chapterEpisode = node.ExcelEpisodeId is not null;
+            _chapterEpisode = node.MarkedEpisodeId is not null;
 
             NameBox.Text = node.Name;
 
@@ -1986,7 +1986,7 @@ public partial class DialogueNodeEditor : UserControl
     private List<StoryNode> ExitTargets(DialogueNode node) => _session!.Project.EnumerateNodes()
         .Where(other => !string.Equals(other.Id, node.Id, StringComparison.Ordinal))
         .Where(other => other is not PresentationNode)
-        .Where(other => other is not DialogueNode { ExcelEpisodeId: not null })
+        .Where(other => other is not DialogueNode { MarkedEpisodeId: not null })
         .ToList();
 
     // ── 그 밖 ───────────────────────────────────────────────────────────────

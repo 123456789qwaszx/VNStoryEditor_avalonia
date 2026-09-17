@@ -205,7 +205,7 @@ public sealed class ChapterEpisodeNodeTests
 
         Assert.Contains(targets, target => target.Name == "곁가지2");
         Assert.DoesNotContain(targets, target =>
-            target is DialogueNode { ExcelEpisodeId: not null });
+            target is DialogueNode { MarkedEpisodeId: not null });
     });
 
     [Fact]

@@ -67,7 +67,7 @@ public partial class GraphEditorView : UserControl
     /// <summary>
     /// 이번 그리기에서 <b>곁가지</b>로 판정된 카드들 (R7 P-6 · 결정 ⑤ · 2026-09-17).
     ///
-    /// ⛔ 전에는 <c>ExcelEpisodeId is null</c>이 이 뜻이었다 — 그 갈래가 곧 엑셀노드/자유노드의
+    /// ⛔ 전에는 <c>MarkedEpisodeId is null</c>이 이 뜻이었다 — 그 갈래가 곧 엑셀노드/자유노드의
     /// 구분이었고 없어졌다. 판정은 <see cref="ChapterSpine"/> 한 벌이 한다: <b>진행이 착지하지
     /// 않는 카드</b>가 곁가지다.
     /// </summary>
@@ -611,7 +611,7 @@ public partial class GraphEditorView : UserControl
                 if (_session.Project.FindNode(item.NodeId) is DialogueNode dialogue)
                 {
                     // ⚠ <b>갈래가 바뀌었다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는
-                    //    `ExcelEpisodeId`가 있으면 척추, 없으면 자유 씬이었다 — 그 갈래가
+                    //    `MarkedEpisodeId`가 있으면 척추, 없으면 자유 씬이었다 — 그 갈래가
                     //    곧 엑셀노드/자유노드의 구분이었고 없어졌다. 이제는 <b>진행이
                     //    착지하는가</b>로 가른다(`ChapterSpine` 한 벌, 가드레일도 같은 것).
                     if (ChapterSpine.IsSideBranch(landed, dialogue))
@@ -624,7 +624,7 @@ public partial class GraphEditorView : UserControl
                     //    카드만 여기 들어와 레일을 받았는데, 이제는 판의 모든 카드가
                     //    에피소드라 <b>전부 아래에 3칸이 뚫려야</b> 한다 — 곁가지에서
                     //    진짜 분기를 뚫는 것이 「분기 추가」가 노리는 바로 그 손짓이다.
-                    if (dialogue.ExcelEpisodeId is { Length: > 0 } episodeId)
+                    if (dialogue.MarkedEpisodeId is { Length: > 0 } episodeId)
                     {
                         spots[episodeId] = (dialogue, rect);
                     }
@@ -1620,7 +1620,7 @@ public partial class GraphEditorView : UserControl
 
     /// <summary>챕터의 에피소드인가 — 소속을 묻는 것이지 잠금을 묻는 것이 아니다.</summary>
     private bool IsChapterEpisode(string nodeId) =>
-        _session?.Project.FindNode(nodeId) is DialogueNode { ExcelEpisodeId: not null };
+        _session?.Project.FindNode(nodeId) is DialogueNode { MarkedEpisodeId: not null };
 
     private NodeCard BuildCard(ExpandedNodeProjection node)
     {

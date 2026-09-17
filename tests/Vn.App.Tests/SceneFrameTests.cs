@@ -106,7 +106,7 @@ public sealed class SceneFrameTests
                 SceneId = sceneId
             });
 
-            session.Editor.AddDialogueNode(fileId, index * 260, 0, episodeId).ExcelEpisodeId = episodeId;
+            session.Editor.AddDialogueNode(fileId, index * 260, 0, episodeId).MarkedEpisodeId = episodeId;
         }
 
         return chapter;

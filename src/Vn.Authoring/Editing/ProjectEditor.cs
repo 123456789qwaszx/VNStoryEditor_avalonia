@@ -343,12 +343,12 @@ public sealed partial class ProjectEditor
         if (EpisodeNaming.EpisodeFor(chapter, created) is { } standing)
         {
             // 표식이 신원이다 — 이름은 사람이 고치는 글자라 개명 때마다 끊긴다(P-6 결정).
-            created.ExcelEpisodeId = standing.EpisodeId;
+            created.MarkedEpisodeId = standing.EpisodeId;
 
             return (null, null);
         }
 
-        created.ExcelEpisodeId = created.Name;
+        created.MarkedEpisodeId = created.Name;
 
         return (chapter, new ChapterEpisode(
             created.Name,

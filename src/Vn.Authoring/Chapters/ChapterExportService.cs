@@ -267,7 +267,7 @@ public sealed class ChapterExportService
     /// 지문에 실을 <b>판의 상태</b>.
     ///
     /// ⚠ <b>그 챕터의 판만 보면 안 된다</b> (2026-08-25). 대사 노드를 찾는 규칙이
-    /// <c>ExcelEpisodeId</c>로 <b>프로젝트 전체</b>를 훑으므로(<see cref="ChapterBoard"/>),
+    /// <c>MarkedEpisodeId</c>로 <b>프로젝트 전체</b>를 훑으므로(<see cref="ChapterBoard"/>),
     /// 다른 판이 서는 것만으로도 이 챕터의 판정이 바뀐다. 자기 판만 재면 그 변화를 놓쳐
     /// <b>"고쳤는데 계속 거부한다"</b>가 된다 — 실제로 한 번 그랬다: 처음 그리기에서
     /// 노드가 아직 없어 거부된 챕터가, 동기화가 노드를 세운 뒤에도 옛 결론을 들고 있었다.
@@ -285,7 +285,7 @@ public sealed class ChapterExportService
         return project.EnumerateNodes()
             .OfType<DialogueNode>()
             .Select(node =>
-                $"{node.Name}{node.ExcelEpisodeId}" +
+                $"{node.Name}{node.MarkedEpisodeId}" +
                 (project.FindScript(node.ScriptId)?.ActiveLines.Any() == true ? "1" : "0"))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();

@@ -3635,7 +3635,7 @@ public partial class ChapterGraphView : UserControl
             string.Equals(file.Name, model.ChapterId, StringComparison.Ordinal));
 
         if (board?.Nodes.OfType<Vn.Authoring.Model.DialogueNode>().FirstOrDefault(node =>
-                string.Equals(node.ExcelEpisodeId, episodeId, StringComparison.Ordinal) ||
+                string.Equals(node.MarkedEpisodeId, episodeId, StringComparison.Ordinal) ||
                 string.Equals(node.Name, episodeId, StringComparison.Ordinal))
             is not { } node)
         {
@@ -3652,7 +3652,7 @@ public partial class ChapterGraphView : UserControl
             return $" 연출 그래프의 빈 노드 '{node.Name}'도 함께 지웠습니다.";
         }
 
-        node.ExcelEpisodeId = null;
+        node.MarkedEpisodeId = null;
 
         return $" ⚠ 연출 그래프의 '{node.Name}'은 내용이 있어 남겨 두고 자유 씬으로 " +
             "떼어 냈습니다 — 살릴지 지울지는 판에서 정해 주세요.";
@@ -3781,7 +3781,7 @@ public partial class ChapterGraphView : UserControl
             //    §6.4가 그 개념 자체를 걷으라고 하지만(뒤집기 뒤에는 모든 노드가 툴 소유다),
             //    그것은 잠금 배너·편집 관문과 함께 움직일 일이라 따로 둔다. 지금은 임포터와
             //    <b>같은 표식</b>을 붙여 두 길이 만든 노드가 구별되지 않게만 한다.
-            created.ExcelEpisodeId = episodeId;
+            created.MarkedEpisodeId = episodeId;
         }
     }
 

@@ -7,6 +7,22 @@ namespace Vn.Authoring.Serialization;
 
 internal static class StoryNodeJson
 {
+    /// <summary>
+    /// <see cref="DialogueNode.MarkedEpisodeId"/>가 앉는 칸. 2026-09-17에 <c>excelEpisode</c>에서
+    /// 바뀌었다 — 엑셀은 이 값의 주인이 아니게 된 지 오래다(R-F).
+    /// </summary>
+    private const string EpisodeMarkKey = "episodeMark";
+
+    /// <summary>
+    /// ⚠ <b>옛 칸 이름은 계속 읽는다.</b> 이 표식은 파생값이 아니라 <b>저장된 신원</b>이라,
+    /// 못 읽으면 어느 카드가 어느 에피소드였는지 복원할 길이 없다. 다시 저장하면 새 이름으로
+    /// 옮겨 앉으므로 이 갈래는 프로젝트마다 <b>한 번만</b> 탄다.
+    ///
+    /// (같은 처지였던 <c>excelLines</c>를 R-D에서 그냥 버린 것과 다르다 — 그쪽은 워크북에서
+    /// 다시 만들 수 있었다.)
+    /// </summary>
+    private const string LegacyEpisodeMarkKey = "excelEpisode";
+
     public static JsonObject Write(StoryNode node)
     {
         string kind = node switch
@@ -113,9 +129,9 @@ internal static class StoryNodeJson
             json["script"] = node.ScriptId;
         }
 
-        if (node.ExcelEpisodeId is not null)
+        if (node.MarkedEpisodeId is not null)
         {
-            json["excelEpisode"] = node.ExcelEpisodeId;
+            json[EpisodeMarkKey] = node.MarkedEpisodeId;
         }
 
         var lines = new JsonArray();
@@ -450,7 +466,7 @@ internal static class StoryNodeJson
         var node = new DialogueNode(id, name)
         {
             ScriptId = (string?)json["script"],
-            ExcelEpisodeId = (string?)json["excelEpisode"]
+            MarkedEpisodeId = (string?)json[EpisodeMarkKey] ?? (string?)json[LegacyEpisodeMarkKey]
         };
         HashSet<string> lineIds = new(StringComparer.Ordinal);
 

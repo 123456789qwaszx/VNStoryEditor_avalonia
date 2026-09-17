@@ -1449,7 +1449,7 @@ public sealed partial class ProjectEditor
         {
             foreach ((DialogueNode node, string episodeId) in plans)
             {
-                node.ExcelEpisodeId = episodeId;
+                node.MarkedEpisodeId = episodeId;
 
                 chapter.Episodes.Add(new ChapterEpisode(
                     episodeId,
