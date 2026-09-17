@@ -142,7 +142,39 @@ public sealed class ChapterSheetEditTests : IDisposable
         Assert.DoesNotContain(session.Editor.FindChapter("ch01")!.Stats, stat => stat.Key == "여분");
     });
 
+    [Fact]
+    public void 키_바꾸기는_세이브가_안_따라온다고_먼저_말한다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ <b>키는 세이브의 열쇠다</b> (런타임 회신 §6.2). 저쪽 `LocalSaveFile.Stats`가 이
+        //    글자로 저장하고, 복원은 키가 없으면 <b>초기값</b>으로 떨어진다 — 경고도 없다.
+        //    개명이 끌고 가는 다섯 자리는 프로젝트 안이고 <b>디스크의 세이브는 그 다섯에
+        //    없다</b>. 표시 이름만 고치려던 사람이 이 문을 열 수 있으므로, 경고가
+        //    <b>적기 전에</b> 서야 한다.
+        (ChapterGraphView view, _) = Show();
+
+        Press(Buttons(Row(view, "stat:trust")).First());
+
+        List<string> shown = Prompt(view).GetVisualDescendants().OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty).ToList();
+
+        Assert.Contains(shown, text => text.Contains("세이브의 열쇠", StringComparison.Ordinal));
+        Assert.Contains(shown, text => text.Contains("초기값", StringComparison.Ordinal));
+        Assert.Contains(shown, text => text.Contains("표시이름", StringComparison.Ordinal));
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 열려 있는 입력 플라이아웃의 내용 — 경고와 칸이 함께 산다.
+    ///
+    /// ⚠ <b>자리표시 글자</b>로 찾는다. 표의 줄도 `TextBox`+`TextBlock`을 들고 있어서
+    /// 그것만으로 고르면 <b>조건 줄이 먼저 잡힌다</b>(한 번 잡혔다).
+    /// </summary>
+    private static Control Prompt(ChapterGraphView view) =>
+        (TopLevel.GetTopLevel(view) as Window)!.GetVisualDescendants()
+            .OfType<StackPanel>()
+            .First(panel => panel.Children.OfType<TextBox>()
+                .Any(box => !string.IsNullOrEmpty(box.PlaceholderText)));
 
     private static StackPanel Row(ChapterGraphView view, string tag) =>
         view.GetVisualDescendants().OfType<StackPanel>().Single(panel => Equals(panel.Tag, tag));

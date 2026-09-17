@@ -3072,7 +3072,7 @@ public partial class ChapterGraphView : UserControl
         });
 
         row.Children.Add(SheetBox(
-            stat.DisplayName, 88, "표시이름",
+            stat.DisplayName, 88, "표시이름 — 화면에만 쓴다. 세이브 열쇠는 왼쪽의 키다",
             value => _session!.Editor.UpdateChapterStat(_selectedChapterId!, stat.Key, displayName: value)));
 
         row.Children.Add(NumberBox(stat.Initial, "초기",
@@ -3100,7 +3100,10 @@ public partial class ChapterGraphView : UserControl
         row.Children.Add(type);
 
         var rename = new Button { Content = "✎", FontSize = 10, Padding = new Thickness(5, 1) };
-        ToolTip.SetTip(rename, "이름을 바꿉니다 — 간선·조건·픽스처의 참조가 함께 따라갑니다.");
+        ToolTip.SetTip(
+            rename,
+            "키(세이브 열쇠)를 바꿉니다 — 간선·조건·픽스처의 참조가 함께 따라가지만, " +
+            "이미 저장된 세이브는 못 따라옵니다. 표시 이름만 고치려면 [표시이름] 칸을 쓰세요.");
         rename.Click += (_, _) => ShowStatRenameFlyout(rename, stat.Key);
         row.Children.Add(rename);
 
@@ -3272,31 +3275,67 @@ public partial class ChapterGraphView : UserControl
             }));
     }
 
+    /// <summary>
+    /// 스탯의 <b>키</b>를 바꾼다 — 표시 이름이 아니다.
+    ///
+    /// ⛔ <b>키는 세이브의 열쇠다</b> (2026-09-17, 런타임 회신 §6.2가 짚었다).
+    /// 저쪽 <c>LocalSaveFile.Stats</c>가 이 글자로 저장하고, 복원은 키가 없으면 <b>초기값</b>으로
+    /// 떨어진다 — 오류도 경고도 없다. 개명이 끌고 가는 다섯 자리는 <b>프로젝트 안</b>이고,
+    /// <b>이미 디스크에 나간 세이브는 그 다섯에 없다.</b>
+    ///
+    /// ⚠ 그래서 경고가 <b>적기 전에</b> 선다. 표시 이름만 고치려는 사람이 이 문을 열면
+    /// 되돌릴 수 없는 일을 하게 되므로, 옆 칸을 쓰라고 말해 준다.
+    /// </summary>
     private void ShowStatRenameFlyout(Control anchor, string key)
     {
-        PromptFlyout(anchor, $"'{key}'의 새 이름", to =>
-            UiGuard.Run(_session, "스탯 개명", () =>
+        PromptFlyout(
+            anchor,
+            $"'{key}'의 새 키",
+            to => UiGuard.Run(_session, "스탯 키 바꾸기", () =>
             {
-                Vn.Authoring.Editing.StatRenameOutcome outcome = _session!.Editor.RenameChapterStat(_selectedChapterId!, key, to);
+                Vn.Authoring.Editing.StatRenameOutcome outcome =
+                    _session!.Editor.RenameChapterStat(_selectedChapterId!, key, to);
 
                 if (!outcome.Applied)
                 {
-                    throw new InvalidOperationException(outcome.Refusal ?? "개명하지 못했습니다.");
+                    throw new InvalidOperationException(outcome.Refusal ?? "바꾸지 못했습니다.");
                 }
 
                 _session.SetStatus(
                     $"'{key}' → '{to}' — 간선 {outcome.Edges} · 조건 {outcome.Conditions} · " +
-                    $"공급 조건 {outcome.SuppliedConditions} · 픽스처 {outcome.Fixtures}곳이 따라갔습니다.");
+                    $"공급 조건 {outcome.SuppliedConditions} · 픽스처 {outcome.Fixtures}곳이 " +
+                    "따라갔습니다. ⚠ 이미 저장된 세이브의 이 스탯은 초기값으로 떨어집니다.");
 
                 Draw();
-            }));
+            }),
+            caution:
+                "⚠ 키는 세이브의 열쇠입니다 — 바꾸면 이미 저장된 회차에서 이 스탯이 " +
+                "초기값으로 떨어집니다(경고 없이). 표시 이름만 고치려면 닫고 옆의 " +
+                "[표시이름] 칸을 쓰세요.");
     }
 
     /// <summary>글자 하나를 받는 작은 플라이아웃 — [챕터 추가]와 같은 손버릇이다.</summary>
-    private static void PromptFlyout(Control anchor, string placeholder, Action<string> accept)
+    private static void PromptFlyout(
+        Control anchor, string placeholder, Action<string> accept, string? caution = null)
     {
         var box = new TextBox { PlaceholderText = placeholder, FontSize = 11, MinWidth = 200 };
-        var flyout = new Flyout { Content = box };
+        var panel = new StackPanel { Spacing = 4, MaxWidth = 340 };
+
+        // ⚠ 경고가 <b>칸보다 위</b>에 선다 — 적고 나서 읽는 경고는 경고가 아니다.
+        if (caution is { Length: > 0 })
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = caution,
+                FontSize = 10,
+                Opacity = 0.8,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        panel.Children.Add(box);
+
+        var flyout = new Flyout { Content = panel };
 
         void Accept()
         {
