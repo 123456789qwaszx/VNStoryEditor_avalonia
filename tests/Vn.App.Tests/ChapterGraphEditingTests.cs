@@ -615,8 +615,11 @@ public sealed class ChapterGraphEditingTests
     [Fact]
     public void 스탯_안내는_조건과_같은_말투로_어디서_고치는지_말한다() => HeadlessUi.Run(() =>
     {
-        // 2026-08-24 소유자 — "편집은 챕터 엑셀의 `스탯` 시트에서 합니다."로. 두 표가 같은
-        // 탭에 나란히 서 있으니 "어디서 고치나"의 대답도 같은 모양이어야 눈이 한 번에 읽는다.
+        // 두 표가 같은 탭에 나란히 서 있으니 "어디서 고치나"의 대답도 같은 모양이어야
+        // 눈이 한 번에 읽는다 (2026-08-24 소유자).
+        //
+        // ⚠ <b>대답이 2026-09-17에 바뀌었다</b>: *"챕터 엑셀의 시트에서"* → <b>여기서</b>.
+        //    같은 말투여야 한다는 규칙은 그대로고, 가리키는 곳만 옮겨 왔다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
 
@@ -625,8 +628,9 @@ public sealed class ChapterGraphEditingTests
             .Select(block => block.Text ?? string.Empty)
             .ToList();
 
-        Assert.Contains(lines, text => text.StartsWith("편집은 챕터 엑셀의 `조건` 시트에서 합니다", StringComparison.Ordinal));
-        Assert.Contains(lines, text => text.StartsWith("편집은 챕터 엑셀의 `스탯` 시트에서 합니다", StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, text => text.Contains("엑셀", StringComparison.Ordinal));
+        Assert.Contains(lines, text => text.Contains("여기서 고칩니다", StringComparison.Ordinal));
+        Assert.Contains(lines, text => text.Contains("여기서 만들고 고칩니다", StringComparison.Ordinal));
     });
 
     [Fact]

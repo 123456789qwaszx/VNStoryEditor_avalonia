@@ -2042,6 +2042,24 @@ public partial class ChapterGraphView : UserControl
         _entries.FirstOrDefault(item => item.ChapterId == _selectedChapterId)?.Model;
 
     /// <summary>
+    /// 스탯·조건 표가 보는 <b>살아 있는</b> 챕터 — 없으면 <c>null</c>이고 부르는 쪽이
+    /// 디스크 스냅샷(<see cref="SelectedModel"/>)으로 물러난다.
+    ///
+    /// ⛔ <b>표를 편집 가능하게 만든 순간 스냅샷으로는 못 그린다</b> (2026-09-17).
+    /// <see cref="SelectedModel"/>은 워크북을 읽은 <c>_entries</c>에서 오므로, 방금 고친 값이
+    /// 저장·재읽기 전까지 <b>안 비친다</b> — 사람은 적었는데 안 들어갔다고 읽는다.
+    /// R7에서 철도가 같은 자리를 겪었고 답도 같다: <b>살아 있는 것을 먼저 보고 스냅샷은
+    /// 뒷받침</b>. 둘 다 같은 값을 말하므로 정본이 둘이 되는 것은 아니다.
+    ///
+    /// ⚠ 이 탭의 <b>두 표에만</b> 쓴다. 속성 패널·검증 보고는 디스크 동기화가 이끄는
+    /// 제 흐름이 있어 여기서 함께 바꾸지 않는다.
+    /// </summary>
+    private ChapterGraphModel? LiveSheetModel =>
+        _selectedChapterId is { } id && _session?.Editor.FindChapter(id) is { } chapter
+            ? chapter.ToGraphModel(id, _session.Definition)
+            : null;
+
+    /// <summary>
     /// 선택된 챕터의 대본 폴더 <c>episodes/{ChapterId}/</c> (2026-08-16 — 챕터별 격리).
     /// EpisodeId는 챕터 안에서만 유일하므로, 파일을 찾는 모든 길이 이 범위를 지난다.
     /// </summary>
@@ -3009,64 +3027,360 @@ public partial class ChapterGraphView : UserControl
 
 
     /// <summary>
-    /// [챕터] 탭의 읽기 전용 스탯 표. 어디에서도 값이 안 보이던 것이라 여기 세운다
-    /// (소유자 점검). 에피소드·간선은 그래프가 이미 그리므로 반복하지 않는다.
+    /// <summary>
+    /// [챕터] 탭의 <b>스탯 표</b> — 2026-09-17부터 <b>편집 가능</b>하다 (소유자: *"이제 엑셀이
+    /// 아닌 챕터그래프에서 직접 조건과 스탯을 정의"*).
+    ///
+    /// ⚠ 전에는 읽기 전용이었고 *"편집은 챕터 엑셀의 `스탯` 시트에서"*라고 적혀 있었다.
+    /// 그 문장은 <b>R-F(2026-09-16)가 이미 낡게 만들었다</b> — 그날 워크북이 산출물이 되고
+    /// 값의 주인이 <c>ChapterDocument</c>로 넘어왔는데 안내만 남아 있었다.
+    ///
+    /// ⚠ <b>키 칸은 없다.</b> 키를 바꾸는 것은 간선·조건·픽스처·공급 조건을 함께 끌고 가는
+    /// 일이라 [✎]가 <see cref="ProjectEditor.RenameChapterStat"/>로 간다 — 칸으로 두면
+    /// 글자를 고치는 사이의 중간 상태가 전부 진짜 개명이 된다.
     ///
     /// ⛔ 픽스처 표는 2026-08-24에 걷었다 (소유자 — 한 번도 안 썼다).
     /// </summary>
-    private void RefreshChapterSheets(ChapterGraphModel? model)
+    private void RefreshChapterSheets(ChapterGraphModel? snapshot)
     {
-        StatListPanel.Children.Clear();
+        ChapterGraphModel? model = LiveSheetModel ?? snapshot;
 
-        static SelectableTextBlock SheetLine(string text, bool dim = false) => new()
-        {
-            Text = text,
-            FontSize = 10,
-            Opacity = dim ? 0.55 : 0.75,
-            TextWrapping = TextWrapping.Wrap
-        };
+        StatListPanel.Children.Clear();
 
         foreach (ChapterStat stat in model?.Stats ?? Enumerable.Empty<ChapterStat>())
         {
-            string name = stat.DisplayName.Length > 0 && stat.DisplayName != stat.Key
-                ? $"{stat.Key} ({stat.DisplayName})"
-                : stat.Key;
-            StatListPanel.Children.Add(SheetLine($"{name} — 초기 {stat.Initial} · 범위 {stat.Minimum}~{stat.Maximum}"));
+            StatListPanel.Children.Add(StatRow(stat));
         }
 
         if (StatListPanel.Children.Count == 0)
         {
-            StatListPanel.Children.Add(SheetLine("스탯 시트가 비어 있습니다.", dim: true));
+            StatListPanel.Children.Add(new TextBlock
+            {
+                Text = "스탯이 없습니다 — 아래 [＋ 스탯]으로 만듭니다.",
+                FontSize = 10,
+                Opacity = 0.5
+            });
         }
 
+        StatListPanel.Children.Add(AddRowButton(
+            "＋ 스탯", "스탯 추가", StatAddFlyout, StatListPanel));
     }
 
-    private void RefreshConditionList(ChapterGraphModel? model)
+    /// <summary>스탯 한 줄 — 키(고정) · 표시이름 · 초기 · 최소 · 최대 · 타입 · 개명 · 삭제.</summary>
+    private Control StatRow(ChapterStat stat)
     {
-        RefreshChapterSheets(model);
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 3,
+            Tag = $"stat:{stat.Key}"
+        };
+
+        row.Children.Add(new SelectableTextBlock
+        {
+            Text = stat.Key,
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            Width = 96,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+
+        row.Children.Add(SheetBox(
+            stat.DisplayName, 88, "표시이름",
+            value => _session!.Editor.UpdateChapterStat(_selectedChapterId!, stat.Key, displayName: value)));
+
+        row.Children.Add(NumberBox(stat.Initial, "초기",
+            value => _session!.Editor.UpdateChapterStat(_selectedChapterId!, stat.Key, initial: value)));
+        row.Children.Add(NumberBox(stat.Minimum, "최소",
+            value => _session!.Editor.UpdateChapterStat(_selectedChapterId!, stat.Key, minimum: value)));
+        row.Children.Add(NumberBox(stat.Maximum, "최대",
+            value => _session!.Editor.UpdateChapterStat(_selectedChapterId!, stat.Key, maximum: value)));
+
+        var type = new ComboBox
+        {
+            FontSize = 10,
+            Width = 62,
+            ItemsSource = new[] { "정수", "깃발" },
+            SelectedIndex = stat.Type == ChapterStatType.Bool ? 1 : 0,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        type.SelectionChanged += (_, _) => UiGuard.Run(_session, "스탯 타입", () =>
+            _session!.Editor.UpdateChapterStat(
+                _selectedChapterId!,
+                stat.Key,
+                type: type.SelectedIndex == 1 ? ChapterStatType.Bool : ChapterStatType.Int));
+
+        row.Children.Add(type);
+
+        var rename = new Button { Content = "✎", FontSize = 10, Padding = new Thickness(5, 1) };
+        ToolTip.SetTip(rename, "이름을 바꿉니다 — 간선·조건·픽스처의 참조가 함께 따라갑니다.");
+        rename.Click += (_, _) => ShowStatRenameFlyout(rename, stat.Key);
+        row.Children.Add(rename);
+
+        var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
+        ToolTip.SetTip(remove, "지웁니다 — 쓰는 곳이 있으면 어디인지 말하고 거절합니다.");
+        remove.Click += (_, _) => UiGuard.Run(_session, "스탯 삭제", () => RemoveStat(stat.Key));
+        row.Children.Add(remove);
+
+        return row;
+    }
+
+    /// <summary>
+    /// [챕터] 탭의 <b>조건 표</b> — 스탯 표와 같은 날 편집 가능해졌다.
+    /// 라벨과 식을 그 자리에서 고치고, [✕]가 <b>쓰는 곳을 세어</b> 거절한다.
+    /// </summary>
+    private void RefreshConditionList(ChapterGraphModel? snapshot)
+    {
+        RefreshChapterSheets(snapshot);
+
+        ChapterGraphModel? model = LiveSheetModel ?? snapshot;
+
         ConditionListPanel.Children.Clear();
 
-        // 읽기 전용 표다 (2026-08-16 소유자) — 편집은 챕터 엑셀의 `조건` 시트에서.
         foreach (ChapterCondition condition in model?.Conditions ?? Enumerable.Empty<ChapterCondition>())
         {
-            ConditionListPanel.Children.Add(new SelectableTextBlock
-            {
-                Text = $"{condition.Label} = {condition.Expression}",
-                FontSize = 10,
-                Opacity = 0.75,
-                TextWrapping = TextWrapping.Wrap
-            });
+            ConditionListPanel.Children.Add(ConditionRow(condition));
         }
 
         if (ConditionListPanel.Children.Count == 0)
         {
             ConditionListPanel.Children.Add(new TextBlock
             {
-                Text = "조건이 없습니다 — 챕터 엑셀의 `조건` 시트에서 추가합니다.",
+                Text = "조건이 없습니다 — 아래 [＋ 조건]으로 만듭니다.",
                 FontSize = 10,
                 Opacity = 0.5
             });
         }
+
+        ConditionListPanel.Children.Add(AddRowButton(
+            "＋ 조건", "조건 추가", ConditionAddFlyout, ConditionListPanel));
+    }
+
+    /// <summary>조건 한 줄 — 라벨(고정) · 식 · 삭제.</summary>
+    private Control ConditionRow(ChapterCondition condition)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 3,
+            Tag = $"condition:{condition.Label}"
+        };
+
+        row.Children.Add(new SelectableTextBlock
+        {
+            Text = condition.Label,
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            Width = 96,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+
+        row.Children.Add(SheetBox(
+            condition.Expression, 232, "식 (예: trust >= 3; 깃발 == true)",
+            value => _session!.Editor.UpdateChapterCondition(_selectedChapterId!, condition.Label, value)));
+
+        var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
+        ToolTip.SetTip(remove, "지웁니다 — 쓰는 곳이 있으면 어디인지 말하고 거절합니다.");
+        remove.Click += (_, _) =>
+            UiGuard.Run(_session, "조건 삭제", () => RemoveCondition(condition.Label));
+        row.Children.Add(remove);
+
+        return row;
+    }
+
+    // ── 스탯·조건 편집의 잔손 ───────────────────────────────────────────────
+
+    /// <summary>
+    /// 표 안의 글자 칸. <b>초점을 잃을 때 저장한다</b> — 자판마다 쓰면 되돌리기가 글자 수만큼
+    /// 쌓이고 워크북이 매번 다시 나간다(엑셀노드 대사 칸이 배운 것과 같다). Enter도 확정이다.
+    /// </summary>
+    private TextBox SheetBox(string value, double width, string hint, Action<string> commit)
+    {
+        var box = new TextBox
+        {
+            Text = value,
+            FontSize = 10,
+            Width = width,
+            MinHeight = 0,
+            Padding = new Thickness(4, 1),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        ToolTip.SetTip(box, hint);
+
+        void Commit()
+        {
+            if (string.Equals(box.Text ?? string.Empty, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            UiGuard.Run(_session, hint, () => commit(box.Text ?? string.Empty));
+        }
+
+        box.LostFocus += (_, _) => Commit();
+        box.KeyDown += (_, args) => CommitOnEnter(args, Commit);
+
+        return box;
+    }
+
+    /// <summary>숫자 칸 — 못 읽는 글자는 <b>조용히 버리지 않고</b> 옛 값으로 되돌린다.</summary>
+    private TextBox NumberBox(int value, string hint, Action<int> commit)
+    {
+        TextBox box = SheetBox(
+            value.ToString(System.Globalization.CultureInfo.InvariantCulture), 46, hint,
+            text =>
+            {
+                if (!int.TryParse(text.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsed))
+                {
+                    throw new InvalidOperationException($"{hint}에는 정수를 적습니다 — '{text}'는 못 읽습니다.");
+                }
+
+                commit(parsed);
+            });
+
+        return box;
+    }
+
+    /// <summary>표 아래의 [＋] 한 줄.</summary>
+    private static Button AddRowButton(
+        string caption, string action, Action<Button> open, Panel host)
+    {
+        var button = new Button
+        {
+            Content = caption,
+            FontSize = 10,
+            Padding = new Thickness(7, 2),
+            Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+
+        _ = action;
+        _ = host;
+        button.Click += (_, _) => open(button);
+
+        return button;
+    }
+
+    private void StatAddFlyout(Button anchor)
+    {
+        PromptFlyout(anchor, "스탯 키 (예: courage)", key =>
+            UiGuard.Run(_session, "스탯 추가", () =>
+            {
+                _session!.Editor.AddChapterStat(_selectedChapterId!, key);
+                Draw();
+            }));
+    }
+
+    private void ConditionAddFlyout(Button anchor)
+    {
+        PromptFlyout(anchor, "조건 라벨 (예: 신뢰높음)", label =>
+            UiGuard.Run(_session, "조건 추가", () =>
+            {
+                // 식은 빈 채로 만든다 — 진단이 "조건식이 비어 있습니다"로 짚어 주고,
+                // 사람은 방금 생긴 줄에서 바로 적는다. 라벨만 정하면 되는 것이 첫 손짓이다.
+                _session!.Editor.AddChapterCondition(_selectedChapterId!, label, string.Empty);
+                Draw();
+            }));
+    }
+
+    private void ShowStatRenameFlyout(Control anchor, string key)
+    {
+        PromptFlyout(anchor, $"'{key}'의 새 이름", to =>
+            UiGuard.Run(_session, "스탯 개명", () =>
+            {
+                Vn.Authoring.Editing.StatRenameOutcome outcome = _session!.Editor.RenameChapterStat(_selectedChapterId!, key, to);
+
+                if (!outcome.Applied)
+                {
+                    throw new InvalidOperationException(outcome.Refusal ?? "개명하지 못했습니다.");
+                }
+
+                _session.SetStatus(
+                    $"'{key}' → '{to}' — 간선 {outcome.Edges} · 조건 {outcome.Conditions} · " +
+                    $"공급 조건 {outcome.SuppliedConditions} · 픽스처 {outcome.Fixtures}곳이 따라갔습니다.");
+
+                Draw();
+            }));
+    }
+
+    /// <summary>글자 하나를 받는 작은 플라이아웃 — [챕터 추가]와 같은 손버릇이다.</summary>
+    private static void PromptFlyout(Control anchor, string placeholder, Action<string> accept)
+    {
+        var box = new TextBox { PlaceholderText = placeholder, FontSize = 11, MinWidth = 200 };
+        var flyout = new Flyout { Content = box };
+
+        void Accept()
+        {
+            string text = (box.Text ?? string.Empty).Trim();
+
+            if (text.Length == 0)
+            {
+                return;
+            }
+
+            flyout.Hide();
+            accept(text);
+        }
+
+        box.KeyDown += (_, args) =>
+        {
+            if (args.Key == Avalonia.Input.Key.Enter)
+            {
+                args.Handled = true;
+                Accept();
+            }
+        };
+
+        flyout.ShowAt(anchor);
+        box.Focus();
+    }
+
+    /// <summary>
+    /// 스탯을 지운다 — 거절이 <b>어디서 쓰는지</b>를 들고 온다. 그 목록이 곧 정리 안내다.
+    /// </summary>
+    private void RemoveStat(string key)
+    {
+        Vn.Authoring.Editing.StatRemoveOutcome outcome = _session!.Editor.RemoveChapterStat(_selectedChapterId!, key);
+
+        if (!outcome.Applied)
+        {
+            throw new InvalidOperationException(Explain(outcome.Refusal, outcome.Uses));
+        }
+
+        _session.SetStatus($"스탯 '{key}'를 지웠습니다.");
+        Draw();
+    }
+
+    private void RemoveCondition(string label)
+    {
+        Vn.Authoring.Editing.ChapterConditionRemoveOutcome outcome =
+            _session!.Editor.RemoveChapterCondition(_selectedChapterId!, label);
+
+        if (!outcome.Applied)
+        {
+            throw new InvalidOperationException(Explain(outcome.Refusal, outcome.Uses));
+        }
+
+        _session.SetStatus($"조건 '{label}'을 지웠습니다.");
+        Draw();
+    }
+
+    /// <summary>
+    /// 거절 사유 + <b>쓰는 자리 목록</b>. ⛔ *"쓰이고 있습니다"*로 끝내면 사람이 챕터를
+    /// 뒤져야 한다 — 어디인지 말해야 거절이 정리 안내가 된다.
+    /// </summary>
+    private static string Explain(string? refusal, IReadOnlyList<Vn.Authoring.Editing.ChapterUse> uses)
+    {
+        if (uses.Count == 0)
+        {
+            return refusal ?? "지우지 못했습니다.";
+        }
+
+        return refusal + "  " + string.Join(" / ", uses.Select(use => $"{use.Where} — {use.Detail}"));
     }
 
     /// <summary>속성 패널의 [적용]. 모델의 현재 값과 다른 필드만 셀에 쓴다.</summary>

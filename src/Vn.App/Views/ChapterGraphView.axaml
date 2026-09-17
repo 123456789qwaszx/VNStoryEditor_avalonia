@@ -517,12 +517,14 @@
                     <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="ConditionSection" Margin="10" Spacing="4">
-                            <!-- 조건은 읽기 전용 표다 (2026-08-16 소유자 — 툴 편집 UI 제거).
-                                 편집은 챕터 엑셀의 `조건` 시트에서 — 스탯·연산자 드롭다운으로 조립한다. -->
+                            <!-- ⭐ 2026-09-17부터 툴에서 편집한다 (소유자 — 계층을 하나로
+                                 합치면서). 2026-08-16에 "읽기 전용, 편집은 엑셀에서"로 정했던
+                                 것이 뒤집혔고, 실은 R-F(2026-09-16)가 워크북을 산출물로 만든
+                                 날 이미 낡은 안내였는데 글자만 남아 있었다. -->
                             <TextBlock Text="조건 (라벨 ↔ 식)"
                                        FontWeight="SemiBold"
                                        FontSize="12" />
-                            <TextBlock Text="편집은 챕터 엑셀의 `조건` 시트에서 합니다 — 스탯과 연산자는 드롭다운, 값은 정수(bool은 true/false)입니다. 에피소드·간선은 여기 라벨만 부릅니다."
+                            <TextBlock Text="라벨과 식을 여기서 고칩니다 — 식은 `trust >= 3` 꼴이고 `;`가 AND, 깃발은 `깃발 == true`입니다. 고친 값은 챕터 워크북에 그대로 나갑니다."
                                        FontSize="10"
                                        Opacity="0.55"
                                        TextWrapping="Wrap"
@@ -533,11 +535,11 @@
                                        FontWeight="SemiBold"
                                        FontSize="12"
                                        Margin="0,14,0,0" />
-                            <!-- 조건 줄과 같은 문장이다 (2026-08-24 소유자: "편집은 챕터
-                                 엑셀의 '스탯' 시트에서 합니다. 로 바꿔줘") — 두 표가 같은
-                                 자리에 서 있으니 "어디서 고치나"의 대답도 같은 모양이어야
-                                 눈이 한 번에 읽는다. 소유가 둘로 갈린다는 사정은 남긴다. -->
-                            <TextBlock Text="편집은 챕터 엑셀의 `스탯` 시트에서 합니다 — 존재는 game.definition.json이, 값(초기·최소·최대)은 그 시트가 소유합니다."
+                            <!-- 조건 줄과 같은 결로 적는다 — 두 표가 같은 자리에 서 있으니
+                                 "어디서 고치나"의 대답도 같은 모양이어야 눈이 한 번에 읽는다.
+                                 ⚠ 2026-08-24에는 그 대답이 "챕터 엑셀의 '스탯' 시트"였다.
+                                 2026-09-17에 여기가 됐다. -->
+                            <TextBlock Text="여기서 만들고 고칩니다. 이름 바꾸기[✎]는 간선·조건·픽스처의 참조를 함께 끌고 가고, 지우기[✕]는 쓰는 곳이 있으면 어디인지 말하고 거절합니다."
                                        FontSize="10"
                                        Opacity="0.55"
                                        TextWrapping="Wrap" />
