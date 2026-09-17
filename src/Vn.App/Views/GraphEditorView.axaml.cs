@@ -64,6 +64,15 @@ public partial class GraphEditorView : UserControl
     /// </summary>
     private IReadOnlyList<ChapterEntry> _chapters = Array.Empty<ChapterEntry>();
 
+    /// <summary>
+    /// 이번 그리기에서 <b>곁가지</b>로 판정된 카드들 (R7 P-6 · 결정 ⑤ · 2026-09-17).
+    ///
+    /// ⛔ 전에는 <c>ExcelEpisodeId is null</c>이 이 뜻이었다 — 그 갈래가 곧 엑셀노드/자유노드의
+    /// 구분이었고 없어졌다. 판정은 <see cref="ChapterSpine"/> 한 벌이 한다: <b>진행이 착지하지
+    /// 않는 카드</b>가 곁가지다.
+    /// </summary>
+    private readonly HashSet<string> _sideBranchIds = new(StringComparer.Ordinal);
+
     internal void SupplyChapters(IReadOnlyList<ChapterEntry> entries)
     {
         _chapters = entries;
@@ -544,6 +553,10 @@ public partial class GraphEditorView : UserControl
 
         _railVisuals.Clear();
 
+        // ⚠ 곁가지 판정도 이번 그리기의 것이다 — 안 비우면 간선이 생겨 척추가 된 카드가
+        //    옛 판정을 그대로 들고 있어 웹으로 계속 걸린다.
+        _sideBranchIds.Clear();
+
         if (_session is null || _projection is null)
         {
             return;
@@ -576,7 +589,10 @@ public partial class GraphEditorView : UserControl
                 continue; // 챕터 판이 아니다 — 일반 프로젝트는 아무 변화 없다.
             }
 
-            // 에피소드 Id → 엑셀노드·카드 자리, 그리고 판의 모든 노드 자리(체인 경유용).
+            // 진행이 착지하는 에피소드들 — 척추와 곁가지를 가르는 열쇠다(R7 P-6).
+            HashSet<string> landed = ChapterSpine.LandedOn(chapter.Episodes, chapter.Edges);
+
+            // 에피소드 Id → 척추 카드 자리, 그리고 판의 모든 노드 자리(체인 경유용).
             // 아직 동기화 전인 에피소드는 없는 것으로 둔다 — 없는 노드로 선을 그으면 거짓말이다.
             var spots = new Dictionary<string, (DialogueNode Node, Rect Rect)>(StringComparer.Ordinal);
             var nodeRects = new Dictionary<string, Rect>(StringComparer.Ordinal);
@@ -594,13 +610,23 @@ public partial class GraphEditorView : UserControl
 
                 if (_session.Project.FindNode(item.NodeId) is DialogueNode dialogue)
                 {
-                    if (dialogue.ExcelEpisodeId is { } episodeId)
-                    {
-                        spots[episodeId] = (dialogue, rect);
-                    }
-                    else
+                    // ⚠ <b>갈래가 바뀌었다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는
+                    //    `ExcelEpisodeId`가 있으면 척추, 없으면 자유 씬이었다 — 그 갈래가
+                    //    곧 엑셀노드/자유노드의 구분이었고 없어졌다. 이제는 <b>진행이
+                    //    착지하는가</b>로 가른다(`ChapterSpine` 한 벌, 가드레일도 같은 것).
+                    if (ChapterSpine.IsSideBranch(landed, dialogue))
                     {
                         freeNodes.Add(dialogue);
+                        _sideBranchIds.Add(dialogue.Id);
+                    }
+
+                    // ⭐ <b>곁가지도 제 가지와 선택지 칸을 받는다</b> (R7 P-6). 전에는 척추
+                    //    카드만 여기 들어와 레일을 받았는데, 이제는 판의 모든 카드가
+                    //    에피소드라 <b>전부 아래에 3칸이 뚫려야</b> 한다 — 곁가지에서
+                    //    진짜 분기를 뚫는 것이 「분기 추가」가 노리는 바로 그 손짓이다.
+                    if (dialogue.ExcelEpisodeId is { Length: > 0 } episodeId)
+                    {
+                        spots[episodeId] = (dialogue, rect);
                     }
                 }
             }
@@ -1146,7 +1172,8 @@ public partial class GraphEditorView : UserControl
             string id = queue.Dequeue();
 
             if (!visited.Add(id) ||
-                _session!.Project.FindNode(id) is not DialogueNode { ExcelEpisodeId: null } node)
+                _session!.Project.FindNode(id) is not DialogueNode node ||
+                !_sideBranchIds.Contains(id))
             {
                 continue;
             }
@@ -1156,9 +1183,9 @@ public partial class GraphEditorView : UserControl
                 queue.Enqueue(next);
             }
 
-            // 커스텀 노드의 기본 출구는 죽었다 (2026-08-21) — EffectiveDefaultExit가
-            // 늘 null이므로 배선된 씬은 전부 (진행) 합류다.
-            if (node.EffectiveDefaultExit is { } defaultNext)
+            // ⚠ 관문이 걷혔다 (R7 P-6 · 2026-09-17) — 엑셀노드/자유노드 구분이 없어져
+            //    기본 출구는 모든 대사 노드가 가진다. 안 이어 뒀으면 (진행) 합류다.
+            if (node.DefaultExitTargetNodeId is { } defaultNext)
             {
                 queue.Enqueue(defaultNext);
             }
@@ -1195,7 +1222,8 @@ public partial class GraphEditorView : UserControl
             string id = queue.Dequeue();
 
             if (!visited.Add(id) ||
-                _session!.Project.FindNode(id) is not DialogueNode { ExcelEpisodeId: null } node)
+                _session!.Project.FindNode(id) is not DialogueNode node ||
+                !_sideBranchIds.Contains(id))
             {
                 continue;
             }
@@ -1210,7 +1238,7 @@ public partial class GraphEditorView : UserControl
                 queue.Enqueue(next);
             }
 
-            if (node.EffectiveDefaultExit is { } defaultNext)
+            if (node.DefaultExitTargetNodeId is { } defaultNext)
             {
                 queue.Enqueue(defaultNext);
             }
@@ -1229,11 +1257,12 @@ public partial class GraphEditorView : UserControl
         while (currentId is not null &&
                seen.Add(currentId) &&
                nodeRects.TryGetValue(currentId, out Rect rect) &&
-               _session!.Project.FindNode(currentId) is DialogueNode { ExcelEpisodeId: null } free)
+               _sideBranchIds.Contains(currentId) &&
+               _session!.Project.FindNode(currentId) is DialogueNode free)
         {
             rects.Add(rect);
             // 커스텀→커스텀 배선이 죽어(2026-08-21) 체인은 첫 씬 하나로 끝난다.
-            currentId = free.EffectiveDefaultExit;
+            currentId = free.DefaultExitTargetNodeId;
         }
 
         return rects;

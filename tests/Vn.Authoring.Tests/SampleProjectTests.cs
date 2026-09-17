@@ -140,10 +140,11 @@ public class SampleProjectTests
         Assert.Contains(("nd_scene", ExitPortKind.Branch, "호감 높음", "nd_good"), connections);
         Assert.Contains(("nd_scene", ExitPortKind.Branch, "신뢰 높음 (elseif)", "nd_trust"), connections);
 
-        // 이 견본의 nd_scene은 커스텀(자유) 노드다 — 기본 출구는 엑셀노드만 가지므로
-        // (2026-08-21) 구판 defaultExit(nd_normal) 배선은 지워지지 않은 채 무시된다.
-        Assert.DoesNotContain(connections, connection => connection.Kind == ExitPortKind.Default);
-        Assert.Equal(2, connections.Count);
+        // ⚠ 2026-09-17에 뒤집혔다 (R7 P-6 · 결정 ⑤). 전에는 *기본 출구는 엑셀노드만 가진다*
+        //    (2026-08-21)라 이 견본의 defaultExit(nd_normal)이 무시됐다 — 그 관문이 곧
+        //    엑셀노드/자유노드의 구분이었고, 구분이 없어졌으므로 배선이 살아난다.
+        Assert.Contains(("nd_scene", ExitPortKind.Default, "기본", "nd_normal"), connections);
+        Assert.Equal(3, connections.Count);
     }
 
     [Fact]

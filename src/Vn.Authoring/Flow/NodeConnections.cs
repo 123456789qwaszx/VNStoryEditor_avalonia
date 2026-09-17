@@ -125,19 +125,19 @@ public static class NodeConnections
                     ExitPortKind.Detour, dialogue.Id, line.LineId, "분기", detour, ports.Count));
             }
 
-            // 기본 출구는 엑셀노드만 가진다 (2026-08-21 소유자) — 커스텀(자유) 노드는
-            // detour로 재생되고 호출한 갈래로 돌아가므로 출구 자체가 없다.
-            // 다른 커스텀 씬으로 잇는 것도 조건 갈래(detour)의 몫이다.
-            if (dialogue.ExcelEpisodeId is not null)
-            {
-                ports.Add(new ExitPort(
-                    ExitPortKind.Default,
-                    dialogue.Id,
-                    null,
-                    "기본",
-                    dialogue.DefaultExitTargetNodeId,
-                    -1));
-            }
+            // ⛔ ~~기본 출구는 엑셀노드만 가진다~~ (2026-08-21) — <b>걷혔다</b>
+            //    (R7 P-6 · 결정 ⑤ · 2026-09-17). 그 관문이 곧 엑셀노드/자유노드의 구분이었고,
+            //    구분이 없어졌으므로 <b>대사 노드는 전부 기본 출구를 가진다</b>.
+            //
+            // ⚠ 이 규칙은 `StoryNode.EffectiveDefaultExit`에도 <b>따로 한 벌</b> 있었다 —
+            //    같은 규칙이 두 곳에 살면 갈린다. 그쪽도 함께 걷었다.
+            ports.Add(new ExitPort(
+                ExitPortKind.Default,
+                dialogue.Id,
+                null,
+                "기본",
+                dialogue.DefaultExitTargetNodeId,
+                -1));
         }
 
         return ports;

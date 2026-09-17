@@ -119,10 +119,15 @@ public sealed class ChapterRailTests
     });
 
     [Fact]
-    public void 엑셀노드와_자유_씬은_한눈에_갈린다() => HeadlessUi.Run(() =>
+    public void 챕터_밖의_카드는_한눈에_갈린다() => HeadlessUi.Run(() =>
     {
         // 소유자 보고 (2026-08-15) — "대본노드와 엑셀노드가 똑같이 생겨서 구분이 어렵다."
-        // 종별 시각 언어: 엑셀노드 = 각진 미색 서류(📄), 자유 씬 = 둥근 흰 원고(✎).
+        // 종별 시각 언어: 에피소드 = 각진 미색 서류(📄), 그 밖 = 둥근 흰 원고(✎).
+        //
+        // ⚠ 뜻이 좁아졌다 (R7 P-6 · 결정 ⑤ · 2026-09-17). 전에는 <b>엑셀노드/자유 씬</b>을
+        //    갈랐는데 챕터 판의 카드가 전부 에피소드가 됐다 — 그래서 남는 구분은
+        //    <b>챕터에 실린 카드인가</b> 하나뿐이고, 판 위 카드끼리는 이제 다 같아 보인다
+        //    (소유자: 조건 노드 카드도 "종류가 하나뿐이니 가를 것이 없다").
         (GraphEditorView graph, AuthoringSession session, string fileId) = ShowBoard("ch01");
 
         DialogueNode excel = AddExcelNode(session, fileId, "EP00");
@@ -249,24 +254,23 @@ public sealed class ChapterRailTests
             line => Math.Abs(line.EndPoint.X - (700 - 8)) < 0.5 ||
                     Math.Abs(line.EndPoint.X - (700 + 105)) < 0.5);
 
-        // ④ 커스텀 노드에는 출구가 없다 (2026-08-21 소유자) — 커스텀→커스텀 배선은
-        // 조건 갈래(detour)의 몫이라 기본 출구 쓰기는 조용히 거절되고, 씬은 곧장
-        // (진행)으로 합류한다.
+        // ④ ⚠ 2026-09-17에 뒤집혔다 (R7 P-6 · 결정 ⑤). 전에는 커스텀 노드의 기본 출구
+        //    쓰기가 조용히 거절돼 씬이 곧장 (진행)으로 합류했다 — 그 거절이 곧 엑셀노드/
+        //    자유노드의 구분이었고, 구분이 없어졌으므로 배선이 서고 선도 그려진다.
         DialogueNode sceneC = session.Editor.AddDialogueNode(fileId, name: "다음씬C");
         sceneC.Layout.X = 960;
         sceneC.Layout.Y = 300;
         session.Editor.SetExitTarget(free.Id, ExitPortKind.Default, null, sceneC.Id);
-        Assert.Null(free.DefaultExitTargetNodeId);
+        Assert.Equal(sceneC.Id, free.DefaultExitTargetNodeId);
 
         graph.Rebuild();
 
-        // sceneC로 들어가는 선이 없다 — 배선되지 않았다.
-        Assert.DoesNotContain(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
-            line => Math.Abs(line.EndPoint.X - (960 - 8)) < 0.5 ||
-                    Math.Abs(line.EndPoint.X - (960 + 105)) < 0.5);
-
-        // 첫 씬(자유씬A)에서 합류선이 레인 끝으로 나간다 — 출구 없음 = (진행).
+        // 합류하는 자리가 <b>한 칸 뒤로 밀렸다</b>. 전에는 자유씬A가 곧장 (진행)으로
+        // 합류했는데, 이제 그 배선이 살아 다음씬C까지 이어지고 <b>다음씬C가</b> 합류한다.
         Assert.Contains(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
+            line => Math.Abs(line.StartPoint.X - (960 + 210 + 6)) < 0.5);
+
+        Assert.DoesNotContain(canvas.Children.OfType<Avalonia.Controls.Shapes.Line>(),
             line => Math.Abs(line.StartPoint.X - (700 + 210 + 6)) < 0.5);
 
         // ⑤ (진행) 합류 (소유자 제안) — 척추 밖으로 확장한 웹의 노드 B: A의 갈래 출구로

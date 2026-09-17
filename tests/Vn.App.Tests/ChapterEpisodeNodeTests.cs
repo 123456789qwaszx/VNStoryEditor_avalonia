@@ -220,8 +220,9 @@ public sealed class ChapterEpisodeNodeTests
         // 갈래(detour) 출구가 엑셀노드를 가리키면 여전히 크게 말한다.
         free.BranchExits["ln_legacy"] = excelNodeId;
 
-        // 커스텀 노드의 기본 출구는 죽었다 (2026-08-21) — 구판 데이터가 엑셀노드를
-        // 가리키고 있어도 실행이 안 보는 값이라 경고도 내지 않는다.
+        // ⚠ 2026-09-17에 뒤집혔다 (R7 P-6 · 결정 ⑤). 전에는 커스텀 노드의 기본 출구가
+        //    죽은 값이라 경고도 안 냈다 — 그 관문이 곧 엑셀노드/자유노드의 구분이었고,
+        //    구분이 없어졌으므로 이 배선도 살아나 <b>갈래 출구와 나란히</b> 짚인다.
         free.DefaultExitTargetNodeId = excelNodeId;
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
@@ -229,10 +230,14 @@ public sealed class ChapterEpisodeNodeTests
 
         var warnings = ChapterBoardSupply.WarnExitsIntoExcelNodes(session.Editor, fileId, chapter);
 
-        ChapterDiagnostic warning = Assert.Single(warnings);
-        Assert.Equal(ChapterDiagnosticSeverity.Warning, warning.Severity);
+        Assert.Equal(2, warnings.Count);
+        Assert.All(warnings, item =>
+            Assert.Equal(ChapterDiagnosticSeverity.Warning, item.Severity));
+        Assert.Contains(warnings, item => item.Message.Contains("기본 출구", StringComparison.Ordinal));
+
+        ChapterDiagnostic warning = Assert.Single(
+            warnings, item => item.Message.Contains("갈래 출구", StringComparison.Ordinal));
         Assert.Contains("우회로", warning.Message);
-        Assert.Contains("갈래 출구", warning.Message);
         Assert.Contains("챕터 간선", warning.Message);
     });
 

@@ -281,7 +281,7 @@ public static class DialoguePublisher
             lines,
             assignments,
             // 커스텀 노드는 기본 출구 없이 발행된다 — detour의 복귀가 그 자리를 맡는다.
-            node.EffectiveDefaultExit,
+            node.DefaultExitTargetNodeId,
             problems,
             // 마지막 줄 뒤의 전환 (2026-08-24) — 대사 없는 조건 블록이 대본의 끝일 때.
             // 줄에 실린 것과 <b>같은 얼리기</b>를 지난다: 조건 Id가 아니라 <b>식</b>이

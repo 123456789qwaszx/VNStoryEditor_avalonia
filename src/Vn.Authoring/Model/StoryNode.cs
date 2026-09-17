@@ -308,15 +308,20 @@ public sealed class DialogueNode : StoryNode
     //    프로젝트가 그냥 갖는다. 구판 프로젝트 파일의 `excelLines`는 읽지 않고 지나간다.
 
     /// <summary>
-    /// 실행이 보는 기본 출구 — <b>커스텀(자유) 노드는 언제나 없다</b> (2026-08-21 소유자).
+    /// ⛔ <b>걷혔다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17). 이 속성은
+    /// <c>ExcelEpisodeId is null ? null : DefaultExitTargetNodeId</c>였다 — <b>커스텀(자유)
+    /// 노드에는 기본 출구가 없다</b>는 2026-08-21의 규칙이고, 그것이 곧 엑셀노드/자유노드의
+    /// 구분이었다.
     ///
-    /// 커스텀 노드는 조건 갈래의 <c>&lt;&lt;detour&gt;&gt;</c>로 재생되고 끝나면 호출한
-    /// 갈래로 돌아간다 — 출구가 있으면 돌아가지 못한다. 다른 커스텀 씬으로 이어 가는 것도
-    /// 조건 갈래(detour)의 몫이다. 기본 출구는 엑셀노드의 것(진행 칩 곁가지)만 남는다.
-    /// 구판 데이터의 <see cref="StoryNode.DefaultExitTargetNodeId"/>는 지우지 않고 조용히
-    /// 무시한다(Links 데이터와 같은 대접). 발행·포트·재생·레일이 전부 이 속성을 본다.
+    /// 그 구분이 없어졌다. 챕터 판의 대사 노드는 전부 에피소드라 관문이 언제나 열리고,
+    /// 챕터가 아닌 판(작가의 낙서판)에는 챕터 조건도 <c>&lt;&lt;detour&gt;&gt;</c>도 없어
+    /// 애초에 그 규칙이 말하던 상황이 아니다 — 거기서는 기본 출구가 노드를 잇는 유일한
+    /// 수단이라 막을 이유가 없다.
+    ///
+    /// 부르던 자리는 전부 <see cref="StoryNode.DefaultExitTargetNodeId"/>를 곧바로 본다.
     /// </summary>
-    public string? EffectiveDefaultExit => ExcelEpisodeId is null ? null : DefaultExitTargetNodeId;
+    [Obsolete("R7 P-6: 엑셀노드/자유노드 구분이 없어져 DefaultExitTargetNodeId와 같다.", error: true)]
+    public string? EffectiveDefaultExit => DefaultExitTargetNodeId;
 
     /// <summary>그 줄의 확장 — 없으면 만들어 붙인다. 빈 확장은 저장 때 알아서 빠진다.</summary>
     public DialogueLineExtension RequireExtension(string lineId)

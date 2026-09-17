@@ -252,9 +252,23 @@ public static class ChapterBoardSupply
         ArgumentNullException.ThrowIfNull(editor);
         ArgumentNullException.ThrowIfNull(chapter);
 
+        // ⚠ <b>전제가 2026-09-17에 바뀌었다</b> (R7 P-6 · 결정 ⑤). 전에는 "엑셀노드"
+        //    (<c>ExcelEpisodeId</c>가 있는 노드)를 가리키면 경고했는데, 이제는 판의 대사
+        //    노드가 <b>전부</b> 에피소드라 그 기준이면 <b>모든 배선이 운다</b>.
+        //
+        // 진짜 기준은 <b>진행이 그 카드에 착지하는가</b>다 — 규칙은 <see cref="ChapterSpine"/>
+        // 한 벌이고, 철도의 곁가지 웹 걷기가 같은 것을 쓴다.
+        var landed = new HashSet<string>(
+            chapter.Edges.Select(edge => edge.ToEpisodeId), StringComparer.Ordinal);
+
+        if (chapter.StartEpisode is { } start)
+        {
+            landed.Add(start.EpisodeId);
+        }
+
         Dictionary<string, DialogueNode> excelNodes = editor.Project.EnumerateNodes()
             .OfType<DialogueNode>()
-            .Where(node => node.ExcelEpisodeId is not null)
+            .Where(node => node.ExcelEpisodeId is { } episodeId && landed.Contains(episodeId))
             .ToDictionary(node => node.Id, node => node, StringComparer.Ordinal);
 
         if (excelNodes.Count == 0)
@@ -277,14 +291,14 @@ public static class ChapterBoardSupply
                         ChapterDiagnosticSeverity.Warning,
                         ChapterDiagnosticCode.ExitIntoExcelNode,
                         chapter.SourcePath, null, null, null,
-                        $"노드 '{dialogue.Name}'의 {exitKind}가 엑셀노드 '{target.Name}'을 가리킵니다 — " +
-                        "에피소드 사이의 흐름은 챕터 간선(기획자)이 정합니다. 이 점프는 표시/해금·" +
-                        "cleared 기록을 지나치고, 도착 노드를 처음부터 다시 재생합니다. 출구를 " +
-                        "자유 노드로 바꾸거나 비워 주세요(비우면 에피소드 종료)."));
+                        $"노드 '{dialogue.Name}'의 {exitKind}가 진행이 착지하는 에피소드 " +
+                        $"'{target.Name}'을 가리킵니다 — 에피소드 사이의 흐름은 챕터 간선(기획자)이 " +
+                        "정합니다. 이 점프는 표시/해금·cleared 기록을 지나치고, 도착 노드를 처음부터 " +
+                        "다시 재생합니다. 출구를 비우고 카드 아래 선택지 칸으로 이어 주세요."));
                 }
             }
 
-            Check(dialogue.EffectiveDefaultExit, "기본 출구");
+            Check(dialogue.DefaultExitTargetNodeId, "기본 출구");
 
             foreach ((_, string targetId) in dialogue.BranchExits)
             {

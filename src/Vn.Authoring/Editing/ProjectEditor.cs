@@ -753,14 +753,10 @@ public sealed partial class ProjectEditor
 
         if (kind == ExitPortKind.Default)
         {
-            if (node is DialogueNode { ExcelEpisodeId: null })
-            {
-                // 커스텀(자유) 노드는 기본 출구가 없다 (2026-08-21) — detour로 재생되고
-                // 호출한 갈래로 돌아간다. 구판 데이터는 지우지 않고 무시하므로 여기서도
-                // 새로 쓰지 않는 것만 지킨다.
-                return;
-            }
-
+            // ⛔ ~~커스텀(자유) 노드의 기본 출구 쓰기는 조용히 거절한다~~ (2026-08-21) —
+            //    <b>걷혔다</b> (R7 P-6 · 결정 ⑤ · 2026-09-17). 그 거절이 곧 엑셀노드/자유노드의
+            //    구분이었고, 같은 규칙이 `NodeConnections`와 `EffectiveDefaultExit`에도
+            //    한 벌씩 더 있었다 — 셋을 함께 걷었다.
             if (!string.Equals(node.DefaultExitTargetNodeId, targetNodeId, StringComparison.Ordinal))
             {
                 Mutate(() => node.DefaultExitTargetNodeId = targetNodeId);

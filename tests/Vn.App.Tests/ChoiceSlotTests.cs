@@ -307,6 +307,29 @@ public sealed class ChoiceSlotTests : IDisposable
             option => option.Text == "돌아간다");
     });
 
+    [Fact]
+    public void 진행이_착지하지_않는_카드에도_칸_셋이_선다() => HeadlessUi.Run(() =>
+    {
+        // ⭐ R7 P-6 · 결정 ⑤. 전에는 척추 카드(진행이 착지하는 에피소드)만 레일 가지와
+        //    칸을 받았고, 그 갈래가 곧 엑셀노드/자유노드의 구분이었다.
+        //
+        // 「분기 추가」가 세우는 카드가 정확히 이 부류다 — 들어오는 간선이 없고
+        // `<<detour>>`로만 불려 간다. 거기서 <b>진짜 분기를 뚫는</b> 것이 그 기능의 요점이라,
+        // 칸이 안 서면 기능 자체가 성립하지 않는다.
+        (GraphEditorView graph, AuthoringSession session) = Show();
+
+        DialogueNode aside = session.Editor.AddDialogueNode(
+            session.Project.Files[0].Id, 0, 400, "곁가지");
+        graph.Rebuild();
+
+        Assert.Equal("곁가지", aside.ExcelEpisodeId);
+        Assert.DoesNotContain(
+            session.Editor.FindChapter("ch01")!.Edges,
+            edge => string.Equals(edge.ToEpisodeId, "곁가지", StringComparison.Ordinal));
+
+        Assert.Equal(3, Rows(graph, session, "곁가지").Count);
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <summary>

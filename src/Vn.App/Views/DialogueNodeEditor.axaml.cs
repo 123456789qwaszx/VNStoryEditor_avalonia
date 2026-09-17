@@ -914,7 +914,7 @@ public partial class DialogueNodeEditor : UserControl
             line => line.Transition?.Kind,
             line => line.LineId,
             line => node.BranchExits.TryGetValue(line.LineId, out string? exit) ? exit : null,
-            node.EffectiveDefaultExit,
+            node.DefaultExitTargetNodeId,
             SimulateBranches(node, script).Effective,
             _selectedLineId,
             // 다녀온 detour는 없는 출구다 — 경로가 그 갈래를 지나 나머지 대본으로 잇는다.
@@ -2226,7 +2226,7 @@ public partial class DialogueNodeEditor : UserControl
     // 없을 테니 그냥 없애도 될 것 같아") — 같은 값을 판의 레일 칩(`○ 진행`)이 이미
     // 편집한다(`GraphEditorView.ShowRailChip`). 한 값에 편집 창구가 둘이면 어느 쪽이
     // 최신인지 화면이 대답하지 못한다. <b>데이터·포트·출력은 그대로다</b> —
-    // `DefaultExitTargetNodeId`·`EffectiveDefaultExit`·발행 점프 모두 손대지 않았다.
+    // `DefaultExitTargetNodeId`·발행 점프 모두 손대지 않았다.
     // 남은 후보 계산은 갈래(detour) 출구가 쓴다.
 
     /// <summary>
