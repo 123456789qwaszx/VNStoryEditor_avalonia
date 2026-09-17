@@ -129,6 +129,22 @@ public static class StatDeltaParser
             entry,
             $"'{key}'는 `스탯` 시트에 없는 스탯키입니다. " +
             $"선언된 키: {(knownStatKeys.Count == 0 ? "(없음)" : string.Join(", ", knownStatKeys))}");
+
+    /// <summary>
+    /// 해석한 것을 <b>`스탯변화` 문법으로 되돌린다</b> — 이 파서가 읽는 그 모양이다.
+    ///
+    /// ⚠ 읽는 쪽과 <b>같은 파일에</b> 둔다 (2026-09-17에 이미터에서 옮겨 왔다). 문법을 아는
+    /// 곳이 하나라야 읽기와 쓰기가 안 갈린다 — 워크북 이미터도, 삭제 거절이 *"여기서
+    /// 씁니다"*라고 보여 주는 글월도 이 함수를 지난다.
+    /// </summary>
+    public static string Format(IReadOnlyList<StatDelta> deltas)
+    {
+        ArgumentNullException.ThrowIfNull(deltas);
+
+        return string.Join("; ", deltas.Select(delta => delta.IsSet
+            ? $"{delta.Key} {(delta.Amount != 0 ? "true" : "false")}"
+            : $"{delta.Key} {delta.Amount.ToString("+0;-0;+0", CultureInfo.InvariantCulture)}"));
+    }
 }
 
 public sealed record StatDeltaParseResult(

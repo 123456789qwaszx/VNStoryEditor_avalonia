@@ -104,6 +104,28 @@ public sealed class StatRenameTests
         Assert.Equal("호감 >= 3; fatigue <= 2", Condition(editor, "둘").Expression);
     }
 
+    [Fact]
+    public void 픽스처의_시작값이_따라간다()
+    {
+        // ⚠ 시작값은 <b>스탯 키로 든 사전</b>이다. 안 갈면 그 값이 조용히 사라지고 워커가
+        //    초기값으로 되돌아간다 — 재생루트가 달라 보이는데 이유가 안 보인다.
+        //    (2026-09-17에 이 자리를 한 번 빠뜨렸다.)
+        ProjectEditor editor = World();
+        Chapter(editor).Fixtures.Add(new ChapterFixture(
+            "높은신뢰", IsActive: true,
+            Stats: new Dictionary<string, int> { ["trust"] = 7, ["fatigue"] = 1 },
+            Choices: [], SourceRow: 0));
+
+        StatRenameOutcome outcome = editor.RenameChapterStat("ch01", "trust", "호감");
+
+        Assert.Equal(1, outcome.Fixtures);
+
+        IReadOnlyDictionary<string, int> stats = Chapter(editor).Fixtures.Single().Stats;
+        Assert.Equal(7, stats["호감"]);
+        Assert.False(stats.ContainsKey("trust"));
+        Assert.Equal(1, stats["fatigue"]);
+    }
+
     // ── 공급된 조건 — 빠뜨리면 갈래가 고아가 된다 ──────────────────────────
 
     [Fact]

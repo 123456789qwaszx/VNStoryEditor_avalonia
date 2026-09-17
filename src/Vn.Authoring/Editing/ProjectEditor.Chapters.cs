@@ -637,6 +637,8 @@ public sealed partial class ProjectEditor
     /// <item>간선의 <c>스탯변화</c> — 해석된 채로 살아서 키만 갈면 된다.</item>
     /// <item>챕터 <c>조건</c> 식 — 원문이라 문법을 아는 <see cref="ConditionExpressionParser.ReplaceStatKey"/>가 간다.</item>
     /// <item>⭐ <b>판에 공급된 조건</b> — 아래.</item>
+    /// <item><c>픽스처</c>의 시작값 — 키로 든 사전이라 안 갈면 그 값이 <b>조용히 사라지고</b>
+    /// 워커가 초기값으로 되돌아간다(2026-09-17에 한 번 빠뜨렸다).</item>
     /// </list>
     ///
     /// ⚠ <b>넷째를 빠뜨리면 대사 갈래가 통째로 고아가 된다.</b> 판의 공급 노드는 챕터 조건을
@@ -745,11 +747,35 @@ public sealed partial class ProjectEditor
             }));
         }
 
+        var fixtures = new List<(int Index, ChapterFixture Fixture)>();
+
+        for (int i = 0; i < chapter.Fixtures.Count; i++)
+        {
+            if (!chapter.Fixtures[i].Stats.ContainsKey(from))
+            {
+                continue;
+            }
+
+            var stats = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach ((string key, int value) in chapter.Fixtures[i].Stats)
+            {
+                stats[string.Equals(key, from, StringComparison.Ordinal) ? to : key] = value;
+            }
+
+            fixtures.Add((i, chapter.Fixtures[i] with { Stats = stats }));
+        }
+
         List<ConditionDefinition> supplied = SuppliedConditionsReading(chapterId, from);
 
         Mutate(() =>
         {
             chapter.Stats[index] = renamed;
+
+            foreach ((int at, ChapterFixture fixture) in fixtures)
+            {
+                chapter.Fixtures[at] = fixture;
+            }
 
             foreach ((int at, ChapterEdge edge) in edges)
             {
@@ -771,7 +797,8 @@ public sealed partial class ProjectEditor
             }
         });
 
-        return new StatRenameOutcome(true, edges.Count, conditions.Count, supplied.Count, null);
+        return new StatRenameOutcome(
+            true, edges.Count, conditions.Count, supplied.Count, fixtures.Count, null);
     }
 
     /// <summary>
@@ -787,6 +814,133 @@ public sealed partial class ProjectEditor
             .SelectMany(node => node.Conditions)
             .Where(condition => condition.Expression.Contains(read, StringComparison.Ordinal))
             .ToList();
+    }
+
+    /// <summary>
+    /// <b>스탯 하나를 지운다 — 쓰는 곳이 있으면 거절하고 어디인지 말한다</b> (2026-09-17 소유자).
+    ///
+    /// ⛔ <b>개명과 달리 답이 없다.</b> 개명은 모든 참조가 새 이름을 따라가면 끝이지만, 삭제는
+    /// <c>trust +1</c>이 적힌 간선을 만났을 때 툴이 정할 수 없다 — 그 항만 뺄지(작가가 적은
+    /// 의도가 사라진다), 간선을 걷을지(이야기 구조가 바뀐다). 조건식 <c>trust &gt;= 3</c>은
+    /// 아예 <b>뺄 수가 없다</b>(식이 통째로 깨진다).
+    ///
+    /// ⚠ <b>나중에 진단이 잡아 준다는 것으로는 부족하다.</b> 파서가 <c>UnknownStatKey</c>로
+    /// 잡기는 하는데 문구가 *"`스탯` 시트에 없는 스탯키입니다"* — <b>오타를 가정한 안내</b>다.
+    /// 방금 일부러 지운 사람에게는 틀린 말이고, 진단은 검증할 때나 보인다.
+    /// <b>의도가 머릿속에 있는 순간은 지우는 그 순간</b>이라 그 자리에서 말한다.
+    ///
+    /// ⚠ <b>픽스처의 시작값은 막지 않고 함께 지운다.</b> 키로 든 사전이고 없으면 초기값으로
+    /// 읽히며(<c>ChapterFixtureWalker</c>) 내보내기에도 안 섞인다 — 잃을 저작이 없다.
+    ///
+    /// ⭐ 다음 확장(소유자: *"다로 넓히자"*)은 <b>「쓰는 곳을 전부 비우고 지우기」</b>다.
+    /// 그래서 <see cref="FindStatUses"/>를 따로 두었다 — 화면이 목록을 먼저 보여 주고,
+    /// 사람이 한 번 더 누르면 그 목록을 비운다.
+    /// </summary>
+    public StatRemoveOutcome RemoveChapterStat(string chapterId, string key)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+        string target = (key ?? string.Empty).Trim();
+
+        int index = chapter.Stats.FindIndex(stat =>
+            string.Equals(stat.Key, target, StringComparison.Ordinal));
+
+        if (index < 0)
+        {
+            return StatRemoveOutcome.Refuse($"스탯 '{target}'이 이 챕터에 없습니다.", []);
+        }
+
+        IReadOnlyList<StatUse> uses = FindStatUses(chapterId, target);
+
+        if (uses.Count > 0)
+        {
+            return StatRemoveOutcome.Refuse(
+                $"스탯 '{target}'을 지울 수 없습니다 — {uses.Count}곳에서 쓰고 있습니다.",
+                uses);
+        }
+
+        var fixtures = new List<(int Index, ChapterFixture Fixture)>();
+
+        for (int i = 0; i < chapter.Fixtures.Count; i++)
+        {
+            if (!chapter.Fixtures[i].Stats.ContainsKey(target))
+            {
+                continue;
+            }
+
+            fixtures.Add((i, chapter.Fixtures[i] with
+            {
+                Stats = chapter.Fixtures[i].Stats
+                    .Where(pair => !string.Equals(pair.Key, target, StringComparison.Ordinal))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)
+            }));
+        }
+
+        Mutate(() =>
+        {
+            chapter.Stats.RemoveAt(index);
+
+            foreach ((int at, ChapterFixture fixture) in fixtures)
+            {
+                chapter.Fixtures[at] = fixture;
+            }
+        });
+
+        return new StatRemoveOutcome(true, fixtures.Count, [], null);
+    }
+
+    /// <summary>
+    /// 이 스탯을 <b>쓰는 곳</b>을 전부 찾는다 — 간선의 <c>스탯변화</c>와 챕터 <c>조건</c>의 식.
+    ///
+    /// ⚠ <b>사람이 찾아갈 수 있게</b> 적는다. *"쓰이고 있습니다"*로 끝내면 챕터를 뒤져야 한다.
+    ///
+    /// ⚠ 픽스처는 세지 않는다 — 막을 이유가 없어 삭제가 함께 치운다(위).
+    /// 판에 공급된 조건도 세지 않는다 — 챕터 조건에서 <b>파생</b>된 것이라, 원본 조건이
+    /// 막고 있으면 여기까지 올 일이 없다.
+    /// </summary>
+    public IReadOnlyList<StatUse> FindStatUses(string chapterId, string key)
+    {
+        ChapterDocument chapter = RequireChapter(chapterId);
+        string target = (key ?? string.Empty).Trim();
+
+        if (target.Length == 0)
+        {
+            return [];
+        }
+
+        var uses = new List<StatUse>();
+
+        foreach (ChapterEdge edge in chapter.Edges)
+        {
+            if (!edge.StatChanges.Any(delta =>
+                    string.Equals(delta.Key, target, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            string label = edge.OptionLabel is { Length: > 0 } text ? $" \"{text}\"" : string.Empty;
+
+            uses.Add(new StatUse(
+                StatUseKind.Edge,
+                $"간선 {edge.FromEpisodeId} → {edge.ToEpisodeId}{label}",
+                $"스탯변화: {StatDeltaParser.Format(edge.StatChanges)}"));
+        }
+
+        foreach (ChapterCondition condition in chapter.Conditions)
+        {
+            // 원문을 본다 — 해석은 스탯이 사라지는 중이라 이미 못 믿는다.
+            if (!string.Equals(
+                    ConditionExpressionParser.ReplaceStatKey(condition.Expression, target, "\u0000"),
+                    condition.Expression,
+                    StringComparison.Ordinal))
+            {
+                uses.Add(new StatUse(
+                    StatUseKind.Condition,
+                    $"조건 '{condition.Label}'",
+                    condition.Expression));
+            }
+        }
+
+        return uses;
     }
     // ── 잔손 ────────────────────────────────────────────────────────────────
 
@@ -1185,13 +1339,48 @@ public sealed record LiftedViaScene(
 /// 판에 공급된 조건 중 식이 바뀐 수 — <b>Id를 지킨 채</b> 갈았다. 이걸 빠뜨리면 다음
 /// 동기화가 새 Id로 다시 만들어 줄에 매달린 갈래가 전부 고아가 된다.
 /// </param>
+/// <param name="Fixtures">시작값을 갈아 끼운 픽스처 수 — 안 갈면 그 값이 조용히 사라진다.</param>
 /// <param name="Refusal">거절 사유. <paramref name="Applied"/>가 false일 때만 있다.</param>
 public sealed record StatRenameOutcome(
     bool Applied,
     int Edges,
     int Conditions,
     int SuppliedConditions,
+    int Fixtures,
     string? Refusal)
 {
-    public static StatRenameOutcome Refuse(string reason) => new(false, 0, 0, 0, reason);
+    public static StatRenameOutcome Refuse(string reason) => new(false, 0, 0, 0, 0, reason);
+}
+
+/// <summary>이 스탯을 쓰는 자리 하나 — 사람이 찾아갈 수 있게 적는다.</summary>
+/// <param name="Where">어디인가 — `간선 root → a "믿는다"` · `조건 '신뢰높음'`.</param>
+/// <param name="Detail">무엇이 적혀 있는가 — 그 칸의 원문.</param>
+public sealed record StatUse(StatUseKind Kind, string Where, string Detail);
+
+public enum StatUseKind
+{
+    /// <summary>간선의 `스탯변화`.</summary>
+    Edge,
+
+    /// <summary>챕터 `조건`의 식.</summary>
+    Condition
+}
+
+/// <summary>
+/// 스탯 삭제 한 판의 결과 (2026-09-17).
+/// </summary>
+/// <param name="Applied">지웠는가. false면 <b>아무것도 안 건드렸다</b>.</param>
+/// <param name="Fixtures">시작값을 함께 치운 픽스처 수 — 막을 이유가 없는 자리다.</param>
+/// <param name="Uses">
+/// 거절의 <b>근거</b>. 여기가 비어 있지 않으면 그 자리를 먼저 비워야 지울 수 있다.
+/// </param>
+/// <param name="Refusal">거절 사유. <paramref name="Applied"/>가 false일 때만 있다.</param>
+public sealed record StatRemoveOutcome(
+    bool Applied,
+    int Fixtures,
+    IReadOnlyList<StatUse> Uses,
+    string? Refusal)
+{
+    public static StatRemoveOutcome Refuse(string reason, IReadOnlyList<StatUse> uses) =>
+        new(false, 0, uses, reason);
 }

@@ -116,7 +116,7 @@ public static class ChapterWorkbookEmitter
             row++;
             Text(sheet, row, 1, edge.FromEpisodeId);
             Text(sheet, row, 2, edge.ToEpisodeId);
-            Text(sheet, row, 3, Format(edge.StatChanges));
+            Text(sheet, row, 3, StatDeltaParser.Format(edge.StatChanges));
             Text(sheet, row, 4, edge.OptionLabel);
             Text(sheet, row, 5, edge.VisibleConditionLabel);
             Text(sheet, row, 6, edge.ConditionLabel);
@@ -188,11 +188,6 @@ public static class ChapterWorkbookEmitter
     /// `스탯변화` 문법으로 되돌린다 — <see cref="StatDeltaParser"/>가 읽는 그 모양이다
     /// (`trust +2; met_willow true`). ⚠ 깃발은 증감이 아니라 <b>지정</b>이라 부호를 안 쓴다.
     /// </summary>
-    private static string Format(IReadOnlyList<StatDelta> deltas) =>
-        string.Join("; ", deltas.Select(delta => delta.IsSet
-            ? $"{delta.Key} {(delta.Amount != 0 ? "true" : "false")}"
-            : $"{delta.Key} {delta.Amount.ToString("+0;-0;+0", CultureInfo.InvariantCulture)}"));
-
     private static void Header(IXLWorksheet sheet, string[] headers)
     {
         // ⛔ 안내문이 먼저다 (§4.4) — 겉모습을 입히는 쪽이 이 줄을 보고 머리글 행을 가른다.
