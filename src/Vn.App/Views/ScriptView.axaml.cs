@@ -43,8 +43,11 @@ internal enum ScriptSaveOutcome
 /// 쓰던 그 경로이고, 여기서 달라진 것은 <b>그 둘레</b>뿐이다: 노드가 아니라 에피소드를
 /// 고르고, 화면에 글만 남긴다.
 ///
-/// ⛔ <b>저장은 Ctrl+S 하나다</b> (2026-09-17 소유자). 입력칸은 <b>자유롭게</b> 고치고,
-/// 넣는 것은 저장이 한다 — [글 반영]도 같은 저장이고 이름만 둘이다.
+/// ⛔ <b>저장은 Ctrl+S 하나다</b> (2026-09-17 소유자). 입력칸은 <b>자유롭게</b> 고친다.
+///
+/// ⛔ <b>아래 단추 둘도 걷었다</b> (2026-09-18 소유자: *"솔직히 쓸모 없어"*) — [화자 ▾]와
+/// [저장]. 화자는 이름을 치는 편이 고르는 것보다 빠르고, 저장은 Ctrl+S 하나다. 남은 것은
+/// <b>글과 글에 대한 말</b>뿐이다.
 /// </summary>
 public partial class ScriptView : UserControl
 {
@@ -77,12 +80,6 @@ public partial class ScriptView : UserControl
     internal TextBox TextArea => ScriptBox;
 
     /// <summary>
-    /// 글을 넣은 뒤 <b>프로젝트까지 저장해 달라</b>는 요청 (2026-09-17 소유자: *"글 반영도
-    /// 일종의 저장이고요"*). 저장은 껍데기의 일이라(경로 묻기·다른 이름으로) 여기서 하지 않는다.
-    /// </summary>
-    internal event Action? SaveRequested;
-
-    /// <summary>
     /// <see cref="HasUnsavedText"/>가 <b>뒤집혔다</b> — 껍데기가 제목과 표시를 고칠 때다.
     ///
     /// ⚠ <b>글자마다 알리지 않는다.</b> 껍데기의 <c>RefreshShell</c>은 <c>IsDirty</c>를 묻고
@@ -93,17 +90,6 @@ public partial class ScriptView : UserControl
 
     /// <summary>마지막으로 알린 <see cref="HasUnsavedText"/> — 뒤집힘만 세려고 든다.</summary>
     private bool _announcedUnsaved;
-
-    /// <summary>[화자 ▾]가 여는 목록의 몸통. 열 때마다 다시 채운다 — 등록부는 변한다.</summary>
-    private readonly StackPanel _speakerMenu = new();
-
-    /// <summary>
-    /// 지금 화자 목록에 선 이름들 — <b>테스트의 손잡이</b>다(챕터 그래프의
-    /// <c>ChapterAddCenterButton</c>과 같은 뜻). 플라이아웃의 팝업은 창 밖에 살아
-    /// 나무를 타고 내려가 찾을 수 없다.
-    /// </summary>
-    internal IReadOnlyList<Button> SpeakerMenuItems =>
-        _speakerMenu.Children.OfType<Button>().ToList();
 
     public ScriptView()
     {
@@ -136,17 +122,7 @@ public partial class ScriptView : UserControl
             }
         });
 
-        // [글 반영]도 <b>저장</b>이다 (2026-09-17 소유자). 글을 넣고 프로젝트까지 저장한다 —
-        // 단추와 Ctrl+S가 같은 일을 하고, 이름만 둘이다.
-        ApplyButton.Click += (_, _) => UiGuard.Run(_session, "대본 저장", () =>
-        {
-            if (SaveText() is not ScriptSaveOutcome.NeedsConfirmation)
-            {
-                SaveRequested?.Invoke();
-            }
-        });
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
-        SpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 고르기", PickSpeaker);
 
         ScriptBox.TextChanged += (_, _) => AnnounceDraft();
     }
@@ -710,8 +686,6 @@ public partial class ScriptView : UserControl
             _inProject = string.Empty;
             ScriptBox.Text = _inProject;
             ScriptBox.IsEnabled = false;
-            ApplyButton.IsEnabled = false;
-            SpeakerButton.IsEnabled = false;
             HintText.Text = string.Empty;
             return;
         }
@@ -720,16 +694,12 @@ public partial class ScriptView : UserControl
 
         HeaderText.Text = episodeId;
         ScriptBox.IsEnabled = true;
-        ApplyButton.IsEnabled = true;
-        SpeakerButton.IsEnabled = true;
 
         // 사다리의 마지막 칸 — 에피소드는 있는데 아직 아무도 안 썼다.
         if (FindNode(episodeId) is not { } node)
         {
             _inProject = string.Empty;
             ScriptBox.Text = _inProject;
-            ApplyButton.IsEnabled = false;
-            SpeakerButton.IsEnabled = false;
 
             EmptyPanel.IsVisible = true;
             EmptyAddScriptButton.IsVisible = true;
@@ -809,122 +779,6 @@ public partial class ScriptView : UserControl
               "[챕터 그래프]의 [화자]에서 등록하면 초상화가 붙습니다.";
     }
 
-    /// <summary>
-    /// <b>화자 드롭다운</b> (§6.2). 지금 커서가 선 줄의 앞에 등록된 이름을 붙인다.
-    ///
-    /// ⚠ 칸이 아니라 <b>글</b>을 고치는 화면이라 콤보박스가 설 자리가 없다 — 대신
-    /// 연출 그래프의 화자 고르기와 같은 <b>플라이아웃</b>이고, 원천도 같은 등록부다.
-    /// </summary>
-    private void PickSpeaker()
-    {
-        if (_session is null)
-        {
-            return;
-        }
-
-        List<string> candidates = _session.Definition.Speakers
-            .Select(speaker => speaker.Name)
-            .Where(name => name.Length > 0)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        if (candidates.Count == 0)
-        {
-            _session.SetStatus(
-                "등록된 화자가 없습니다 — [챕터 그래프]의 [화자]에서 더하면 여기 목록에 옵니다. " +
-                "그때까지는 '이름: 대사'로 직접 쓰면 됩니다.");
-            return;
-        }
-
-        _speakerMenu.Children.Clear();
-
-        var flyout = new Flyout
-        {
-            Content = new ScrollViewer { MaxHeight = 260, Content = _speakerMenu },
-            Placement = PlacementMode.Top
-        };
-
-        foreach (string name in candidates)
-        {
-            var item = new Button
-            {
-                Content = name,
-                FontSize = 11,
-                Padding = new Thickness(10, 4),
-                MinWidth = 140,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Background = Brushes.Transparent
-            };
-
-            item.Click += (_, _) =>
-            {
-                flyout.Hide();
-                UiGuard.Run(_session, "화자 붙이기", () => SetSpeakerOnCaretLine(name));
-            };
-
-            _speakerMenu.Children.Add(item);
-        }
-
-        flyout.ShowAt(SpeakerButton);
-    }
-
-    /// <summary>
-    /// 커서가 선 줄의 화자를 <paramref name="name"/>으로 만든다.
-    ///
-    /// ⚠ 이미 화자가 적힌 줄이면 <b>갈아 끼운다</b> — 앞에 붙이기만 하면 "라루: 윌로: …"가
-    /// 되고, 그것은 파서에게 화자 '라루'에 내용 "윌로: …"인 한 줄이다(조용히 망가진다).
-    /// 무엇이 화자인지는 파서의 규칙과 같아야 한다: <b>첫 콜론 앞, 공백 없음</b>
-    /// (공백 있는 등록명은 예외 — <c>ScenarioTextParser.SplitSpeaker</c>).
-    /// </summary>
-    private void SetSpeakerOnCaretLine(string name)
-    {
-        string text = ScriptBox.Text ?? string.Empty;
-        int caret = Math.Clamp(ScriptBox.CaretIndex, 0, text.Length);
-
-        int start = text.LastIndexOf('\n', Math.Max(caret - 1, 0)) + 1;
-
-        if (caret == 0)
-        {
-            start = 0;
-        }
-
-        int end = text.IndexOf('\n', start);
-        end = end < 0 ? text.Length : end;
-
-        string line = text[start..end];
-        string body = SplitBody(line);
-
-        string replacement = $"{name}: {body}";
-
-        ScriptBox.Text = text[..start] + replacement + text[end..];
-        ScriptBox.CaretIndex = start + replacement.Length;
-        ScriptBox.Focus();
-    }
-
-    /// <summary>화자 접두를 뗀 나머지. 접두가 없으면 줄 그대로다.</summary>
-    private string SplitBody(string line)
-    {
-        int colon = line.IndexOf(':');
-
-        if (colon <= 0)
-        {
-            return line;
-        }
-
-        string prefix = line[..colon];
-
-        // 파서와 같은 규칙 — 접두에 공백이 있으면 산문이라 화자가 아니다. 등록된 이름과
-        // 정확히 같을 때만 공백 있는 접두도 이름으로 본다.
-        if (prefix.Any(char.IsWhiteSpace) &&
-            _session?.Definition.Speakers.Any(speaker =>
-                string.Equals(speaker.Name, prefix, StringComparison.Ordinal)) != true)
-        {
-            return line;
-        }
-
-        return line[(colon + 1)..].TrimStart();
-    }
 
     /// <summary>
     /// 사다리의 마지막 칸 — <b>[＋ 대본]</b>. 이 에피소드의 대사노드를 세우고 커서를 넣는다.

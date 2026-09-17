@@ -80,7 +80,7 @@ public sealed class ScriptTabTests : IDisposable
 
         var box = view.FindControl<TextBox>("ScriptBox")!;
         box.Text = "윌로: 복도는 조용하지 않았다.";
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Equal(["복도는 조용하지 않았다."], Texts(session, node));
         Assert.Equal(before, LineIds(session, node).Single());
@@ -96,7 +96,7 @@ public sealed class ScriptTabTests : IDisposable
 
         var box = view.FindControl<TextBox>("ScriptBox")!;
         box.Text = "윌로: 첫 줄\n라루: 새로 쓴 줄";
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Equal(["첫 줄", "새로 쓴 줄"], Texts(session, node));
 
@@ -115,13 +115,13 @@ public sealed class ScriptTabTests : IDisposable
         var box = view.FindControl<TextBox>("ScriptBox")!;
         box.Text = "윌로: 첫 줄";
 
-        Click(view, "ApplyButton");
+        Save(view);
 
         // 첫 번째는 묻기만 한다 — 둘째 줄이 아직 살아 있다.
         Assert.Equal(["첫 줄", "둘째 줄"], Texts(session, node));
         Assert.Contains("한 번 더", session.StatusMessage);
 
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Equal(["첫 줄"], Texts(session, node));
     });
@@ -244,7 +244,7 @@ public sealed class ScriptTabTests : IDisposable
 
         // 한 줄은 그대로 두고 한 줄만 고친다 — 지우기가 아니므로 한 번에 반영된다.
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n라루: 툴에서 고친 대사";
-        Click(view, "ApplyButton");
+        Save(view);
 
         EpisodeWorkbookModel written = EpisodeWorkbookReader.Read(WorkbookPath("ch01", "ep01"));
 
@@ -263,7 +263,7 @@ public sealed class ScriptTabTests : IDisposable
         Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "문이 열렸다.";
-        Click(view, "ApplyButton");
+        Save(view);
 
         EpisodeWorkbookModel written = EpisodeWorkbookReader.Read(WorkbookPath("ch01", "ep01"));
 
@@ -281,13 +281,13 @@ public sealed class ScriptTabTests : IDisposable
 
         // 한 번 내서 파일을 만들어 두고, 그것을 엑셀처럼 붙든다.
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄";
-        Click(view, "ApplyButton");
+        Save(view);
 
         using (new FileStream(
                    WorkbookPath("ch01", "ep01"), FileMode.Open, FileAccess.Read, FileShare.None))
         {
             view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 붙들린 동안 쓴 글";
-            Click(view, "ApplyButton");
+            Save(view);
         }
 
         // 글은 프로젝트에 남았다.
@@ -327,9 +327,8 @@ public sealed class ScriptTabTests : IDisposable
         Assert.True(view.FindControl<Button>("EmptyAddScriptButton")!.IsVisible);
         Assert.Contains("아직 빈 대본", view.FindControl<TextBlock>("EmptyText")!.Text!);
 
-        // 세우기 전에는 반영할 것이 없다 — 단추 둘이 동시에 살아 있으면 어느 쪽이
-        // 다음 걸음인지 흐려진다.
-        Assert.False(view.FindControl<Button>("ApplyButton")!.IsEnabled);
+        // 세우기 전에는 쓸 자리가 아니다 — 사다리를 밟아야 입력칸이 열린다.
+        Assert.False(view.HasUnsavedText);
     });
 
     [Fact]
@@ -351,11 +350,10 @@ public sealed class ScriptTabTests : IDisposable
 
         // 사다리가 내려가고 쓸 자리가 열린다 — 노드 생성이 딸려 주는 빈 줄은 은퇴했다.
         Assert.False(view.FindControl<Border>("EmptyPanel")!.IsVisible);
-        Assert.True(view.FindControl<Button>("ApplyButton")!.IsEnabled);
         Assert.Empty(session.Project.FindScript(created.ScriptId!)!.ActiveLines);
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 작가가 처음 쓴 줄";
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Equal(["작가가 처음 쓴 줄"], Texts(session, created));
 
@@ -376,7 +374,7 @@ public sealed class ScriptTabTests : IDisposable
         (ScriptView view, AuthoringSession session) = Show();
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 사라진 사이에 쓴 줄";
-        Click(view, "ApplyButton");
+        Save(view);
 
         DialogueNode rescued = Assert.Single(
             session.Project.EnumerateNodes().OfType<DialogueNode>());
@@ -398,7 +396,7 @@ public sealed class ScriptTabTests : IDisposable
         (ScriptView view, AuthoringSession session) = Show();
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "   \n  ";
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Empty(session.Project.EnumerateNodes().OfType<DialogueNode>());
         Assert.Contains("빈 글은", session.StatusMessage);
@@ -427,64 +425,6 @@ public sealed class ScriptTabTests : IDisposable
         Assert.Contains("에피소드가 없습니다", view.FindControl<TextBlock>("EmptyText")!.Text!);
     });
 
-    // ── 화자는 등록부에서 (§6.2) ────────────────────────────────────────────
-
-    [Fact]
-    public void 화자를_고르면_커서가_선_줄에_붙는다() => HeadlessUi.Run(() =>
-    {
-        // 칸이 아니라 글을 고치는 화면이라 콤보박스가 설 자리가 없다 — 드롭다운은
-        // 커서가 선 줄에 이름을 붙여 준다. 손으로 쳐도 되지만, 그러면 오타가 곧 미등록이다.
-        Register(("윌로", "willo"), ("라루", "laru"));
-
-        (ScriptView view, AuthoringSession session) = Show();
-        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
-
-        var box = view.FindControl<TextBox>("ScriptBox")!;
-        box.Text = "윌로: 첫 줄\n아직 화자가 없는 줄";
-        box.CaretIndex = box.Text.Length;
-
-        PickSpeaker(view, "라루");
-
-        Assert.Equal("윌로: 첫 줄\n라루: 아직 화자가 없는 줄", box.Text);
-    });
-
-    [Fact]
-    public void 이미_화자가_있는_줄이면_갈아_끼운다() => HeadlessUi.Run(() =>
-    {
-        // ⛔ 앞에 붙이기만 하면 "라루: 윌로: …"가 되고, 파서는 그것을 화자 '라루'에
-        //    내용 "윌로: …"인 한 줄로 읽는다 — 조용히 망가지는 자리다.
-        Register(("윌로", "willo"), ("라루", "laru"));
-
-        (ScriptView view, AuthoringSession session) = Show();
-        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
-
-        var box = view.FindControl<TextBox>("ScriptBox")!;
-        box.Text = "윌로: 첫 줄";
-        box.CaretIndex = 3;
-
-        PickSpeaker(view, "라루");
-
-        Assert.Equal("라루: 첫 줄", box.Text);
-    });
-
-    [Fact]
-    public void 콜론이_있어도_산문이면_화자로_보지_않는다() => HeadlessUi.Run(() =>
-    {
-        // 파서의 규칙과 같아야 한다 — 접두에 공백이 있으면 산문이다("그는 말했다: …").
-        Register(("라루", "laru"));
-
-        (ScriptView view, AuthoringSession session) = Show();
-        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
-
-        var box = view.FindControl<TextBox>("ScriptBox")!;
-        box.Text = "그는 말했다: 다시는 오지 않겠다고";
-        box.CaretIndex = 0;
-
-        PickSpeaker(view, "라루");
-
-        Assert.Equal("라루: 그는 말했다: 다시는 오지 않겠다고", box.Text);
-    });
-
     [Fact]
     public void 미등록_화자는_오류가_아니라_표시된다() => HeadlessUi.Run(() =>
     {
@@ -496,7 +436,7 @@ public sealed class ScriptTabTests : IDisposable
         DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n문지기: 어서 오시오";
-        Click(view, "ApplyButton");
+        Save(view);
 
         // 반영은 됐다 — 오류가 아니다.
         Assert.Equal(["첫 줄", "어서 오시오"], Texts(session, node));
@@ -528,7 +468,7 @@ public sealed class ScriptTabTests : IDisposable
         DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n늙은 상인: 어서 오시오";
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Equal(["첫 줄", "늙은 상인: 어서 오시오"], Texts(session, node));
         Assert.False(view.FindControl<TextBlock>("UnknownSpeakerText")!.IsVisible);
@@ -541,7 +481,7 @@ public sealed class ScriptTabTests : IDisposable
         ]));
 
         view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n늙은 상인: 어서 오시오";
-        Click(view, "ApplyButton");
+        Save(view);
 
         Assert.Equal(["첫 줄", "어서 오시오"], Texts(session, node));
     });
@@ -664,18 +604,6 @@ public sealed class ScriptTabTests : IDisposable
                 CharacterId = item.CharacterId
             }).ToList());
 
-    /// <summary>[화자 ▾]를 열고 그 이름을 고른다 — 목록 안의 단추가 실제 창구다.</summary>
-    private static void PickSpeaker(ScriptView view, string name)
-    {
-        Click(view, "SpeakerButton");
-
-        view.SpeakerMenuItems
-            .Single(button => string.Equals(button.Content as string, name, StringComparison.Ordinal))
-            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-    }
-
     /// <summary>에피소드 몇 개짜리 챕터 워크북 — 기획자가 만들어 둔 판의 최소 모양.</summary>
     private void WriteChapter(string chapterId, params string[] episodeIds)
     {
@@ -771,6 +699,18 @@ public sealed class ScriptTabTests : IDisposable
 
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         return node;
+    }
+
+    /// <summary>
+    /// Ctrl+S가 지나는 그 길 — 껍데기가 저장 전에 부르는 함수다.
+    ///
+    /// ⚠ 2026-09-18까지는 <c>Click(view, "ApplyButton")</c>이었다. 그 단추를 걷으면서
+    ///    (소유자: *"솔직히 쓸모 없어"*) 테스트도 <b>진짜 창구</b>를 부른다.
+    /// </summary>
+    private static void Save(ScriptView view)
+    {
+        view.SaveText();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
     private static void Click(ScriptView view, string name)

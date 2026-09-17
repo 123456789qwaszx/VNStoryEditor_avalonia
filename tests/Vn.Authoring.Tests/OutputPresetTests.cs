@@ -73,7 +73,10 @@ public class OutputPresetTests
 
         RenderedDocument document = Compose(sample, OutputPresetCatalog.ScenarioOnly);
 
-        Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.NodeHeader);
+        // ⛔ <b>머리글은 안 낸다</b> (2026-09-18 소유자). 이 프리셋은 <b>쓰는 면</b>이고
+        //    그 글은 그대로 파서로 되돌아가는데, 파서는 <c>[</c>로 시작하는 줄을 「해석 못 한
+        //    줄」로 올린다 — 저장할 때마다 자기가 낸 `[장면] …`이 붉은 글씨로 돌아왔다.
+        Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.NodeHeader);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.ConditionBegin);
         Assert.Contains(document.Segments, segment => segment.Kind == RenderedSegmentKind.DialogueLine);
         Assert.DoesNotContain(document.Segments, segment => segment.Kind == RenderedSegmentKind.SetAssignment);
@@ -84,7 +87,7 @@ public class OutputPresetTests
                 or RenderedSegmentKind.DefaultJump);
 
         string text = DocumentPreviewFormatter.Format(document);
-        Assert.Contains("[장면]", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("[장면]", text, StringComparison.Ordinal);
 
         // X11 — 조건은 대괄호 표기가 아니라 실제 Yarn 문법이다(표기=파싱 문법, X12 왕복 전제).
         Assert.Contains("<<if ", text, StringComparison.Ordinal);

@@ -150,7 +150,13 @@ public static class OutputPresetCatalog
         "조건과 화자·대사만 읽기 쉽게 표시하고 Set, 연출, 실행 출구는 숨김",
         new DocumentOutputOptions(
             DocumentOutputFormat.Scenario,
-            includeStructure: true,
+
+            // ⛔ <b>머리글(`[장면] 이름`)을 안 낸다</b> (2026-09-18 소유자: *"이런 쓸모없는
+            //    글자 치워줘"*). 이 프리셋은 보는 면이 아니라 <b>쓰는 면</b>이고, 쓴 글은
+            //    그대로 파서로 되돌아간다 — 그런데 파서는 <c>[</c>로 시작하는 줄을
+            //    <b>해석 못 한 줄</b>로 올린다. 그래서 저장할 때마다 자기가 낸 머리글이
+            //    붉은 글씨로 되돌아오고 있었다. 어느 노드인지는 화면 위 제목이 말한다.
+            includeStructure: false,
             includeSetAssignments: false,
             includeConditions: true,
             includePresentation: false,

@@ -247,9 +247,8 @@ public partial class MainWindow : Window
 
         Opened += OnOpened;
 
-        // [대본]의 [글 반영]은 저장이다 — 경로 묻기·[다른 이름으로]가 여기 있으므로
-        // 그 탭은 요청만 하고 실제 저장은 이 창이 한다.
-        Script.SaveRequested += () => OnSaveClick(this, new RoutedEventArgs());
+        // ⛔ [대본]의 [저장] 단추는 2026-09-18에 걷혔다 (소유자: "솔직히 쓸모 없어") —
+        //    Ctrl+S 하나이고, 그것은 아래 Tunnel 처리기가 받아 `FlushPendingEdits`로 간다.
         Script.DraftChanged += () => UiGuard.Run(_session, "대본 초고 표시", RefreshShell);
 
         // 저장 단축키 (W49) — 어디에 포커스가 있어도 Ctrl+S가 저장이다.
