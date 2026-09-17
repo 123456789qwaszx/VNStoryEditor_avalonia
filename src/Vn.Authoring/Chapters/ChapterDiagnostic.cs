@@ -134,7 +134,16 @@ public enum ChapterDiagnosticCode
     /// 옳지만(<see cref="ChapterLibrary"/>), 임포트는 부분 성공하지 않는다(§5.2) — 무엇이
     /// 안 들어왔는지 모르는 채로 절반만 들이면 어느 챕터가 원본인지 사람이 알 수 없다.
     /// </summary>
-    ChapterFileUnreadable
+    ChapterFileUnreadable,
+
+    /// <summary>
+    /// 도달성 <b>증명이 상한에서 멈췄다</b> (2026-09-17). 챕터에 대한 알림 하나다.
+    ///
+    /// ⚠ 이것이 <b>보증의 성격이 바뀌었다는 신호</b>다. 이 코드가 있으면 같은 실행의
+    /// <see cref="EpisodeUnreachable"/>은 「없음을 증명했다」가 아니라 「못 찾았다」다.
+    /// 전에는 그 차이가 문장 한 줄과 색깔뿐이었고, 도달 불가가 없으면 아무 말도 없었다.
+    /// </summary>
+    ReachabilityExplorationIncomplete
 }
 
 /// <summary>

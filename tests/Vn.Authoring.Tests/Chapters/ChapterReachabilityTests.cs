@@ -300,6 +300,102 @@ public sealed class ChapterReachabilityTests
         Assert.Equal(4, span.Maximum);
     }
 
+    // ── 상한 ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 상한에_걸리면_증명하지_못했다고_챕터_단위로_말한다()
+    {
+        // ⭐ <b>이 실패 경로는 2026-09-17까지 시험되지 않았다.</b> 상한에 걸리면 에피소드마다
+        //    붙는 문장이 "경로가 없습니다"(오류)에서 "찾지 못했습니다"(경고)로 바뀌는 것이
+        //    전부였고 — 뜻은 정반대인데 화면은 거의 같아 보인다 — <b>도달 불가가 하나도
+        //    없으면 아무 말도 하지 않았다</b>.
+        //
+        //    깃발 하나는 상태공간을 두 배로 만든다. 스무 개면 ×100만이라 상한에 걸린다.
+        //    작가 변수가 없어져 이런 기억이 전부 챕터 스탯으로 들어오므로, 이것은 가상의
+        //    시나리오가 아니라 <b>다가오는 모양</b>이다.
+        ChapterGraphModel chapter = FlagChain(flags: 20);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        Assert.False(result.ExplorationComplete);
+        Assert.True(
+            result.VisitedStates > ChapterReachabilityProver.StateLimit,
+            $"상한을 넘겨야 이 경로를 재는 것이다 (센 상태 {result.VisitedStates})");
+
+        ChapterDiagnostic notice = Assert.Single(
+            result.Diagnostics,
+            item => item.Code == ChapterDiagnosticCode.ReachabilityExplorationIncomplete);
+
+        // 챕터가 틀린 것이 아니라 증명기가 답을 못 낸 것이다 — 내보내기를 막으면 안 된다.
+        Assert.Equal(ChapterDiagnosticSeverity.Info, notice.Severity);
+        Assert.Contains("증명하지 못했습니다", notice.Message, StringComparison.Ordinal);
+
+        // ⚠ 그리고 센 숫자를 사람에게 보여 준다 — 축소를 할지 말지를 이 숫자가 정한다.
+        Assert.Contains(
+            result.VisitedStates.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
+            notice.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 끝까지_훑었으면_증명_못했다는_말을_하지_않는다()
+    {
+        // 언제나 뜨는 알림은 옆에 선 진짜 오류까지 안 읽히게 만든다 (StatCountOutOfRange가
+        // 그렇게 폐지됐다). 상한에 안 걸렸으면 이 코드는 없어야 한다.
+        ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
+
+        ChapterReachabilityResult result = ChapterReachabilityProver.Prove(chapter);
+
+        Assert.True(result.ExplorationComplete);
+        Assert.DoesNotContain(
+            result.Diagnostics,
+            item => item.Code == ChapterDiagnosticCode.ReachabilityExplorationIncomplete);
+
+        // 센 상태는 늘 보고한다 — 상한에 걸리기 <b>전에</b> 숫자가 보여야 쓸모가 있다.
+        Assert.InRange(result.VisitedStates, 1, ChapterReachabilityProver.StateLimit);
+    }
+
+    /// <summary>
+    /// 깃발 <paramref name="flags"/>개가 <b>갈래마다 다르게 켜지는</b> 사슬. 각 칸에서 켜는
+    /// 길과 안 켜는 길이 같은 곳으로 모이므로 상태가 칸마다 두 배가 된다 — 깃발을 쓰는
+    /// 실제 모양이 이것이다("라루를 도왔나"는 도운 갈래에서만 켜진다).
+    ///
+    /// ⚠ 어느 간선도 이 깃발들을 <b>안 읽는다</b>. 그래서 도달 가능 집합에는 아무 영향이
+    /// 없는데 상태공간만 부푼다 — 이것이 벡터 축소 제안이 겨냥하는 바로 그 모양이다.
+    /// </summary>
+    private static ChapterGraphModel FlagChain(int flags)
+    {
+        var stats = new List<ChapterStat>();
+        var episodes = new List<ChapterEpisode>();
+        var edges = new List<ChapterEdge>();
+
+        for (int index = 0; index <= flags; index++)
+        {
+            episodes.Add(Episode($"ep{index:00}", index + 2));
+        }
+
+        for (int index = 0; index < flags; index++)
+        {
+            stats.Add(new ChapterStat(
+                $"flag{index:00}", $"깃발{index:00}",
+                Initial: 0, Minimum: 0, Maximum: 1, SourceRow: index + 2));
+
+            string from = $"ep{index:00}";
+            string to = $"ep{index + 1:00}";
+
+            edges.Add(new ChapterEdge(from, to, "켠다", null, null, edges.Count + 2)
+            {
+                StatChanges = [new StatDelta($"flag{index:00}", 1, StatChangeKind.Set)]
+            });
+
+            edges.Add(new ChapterEdge(from, to, "안 켠다", null, null, edges.Count + 2));
+        }
+
+        return new ChapterGraphModel(
+            "flags", "flags.xlsx", episodes, edges, [], stats,
+            Array.Empty<ChapterFixture>(), Array.Empty<ChapterDiagnostic>());
+    }
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <summary>v8 — 관문은 에피소드가 아니라 들어오는 길이 갖는다(간선 조건으로 준다).</summary>

@@ -3990,11 +3990,17 @@ public partial class ChapterGraphView : UserControl
         }
 
         // 탐색이 상한에서 멈췄으면 "도달 불가"가 단정이 아니라는 사실을 먼저 말한다.
-        if (_validation is { Reachability.ExplorationComplete: false })
+        //
+        // ⚠ <b>문장은 여기서 쓰지 않는다</b> (2026-09-17). 전에는 화면이 제 문구를 들고
+        //    있었는데, 같은 사실을 모델도 말하기 시작하면 두 문구가 갈린다 — 그리고 화면
+        //    밖(내보내기 보고·기록)에서는 <b>이 사실이 아예 안 보였다</b>. 이제 증명기가
+        //    진단으로 내고(센 상태 수까지), 화면은 그것을 <b>눈에 띄게 올리는</b> 일만 한다.
+        if (all.FirstOrDefault(item =>
+                item.Code == ChapterDiagnosticCode.ReachabilityExplorationIncomplete)
+            is { } incomplete)
         {
             DiagnosticsPanel.Children.Add(DiagnosticLine(
-                "도달성 탐색이 상한에서 중단됐습니다 — 아래의 도달 불가는 단정이 아니라 " +
-                "'경로를 찾지 못했다'입니다.", Brushes.DarkGoldenrod, dim: false, bold: true));
+                incomplete.Message, Brushes.DarkGoldenrod, dim: false, bold: true));
         }
 
         // ⚠ 세는 것은 <b>말할 것이 있는</b> 보고뿐이다 (2026-08-24). 예전에는 보고가

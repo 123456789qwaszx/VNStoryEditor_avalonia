@@ -5,6 +5,15 @@ namespace Vn.Authoring.Chapters;
 /// 상태공간을 끝까지 훑었는가. 상한에 걸려 중단했으면 false이고, 그때 "도달 불가"는
 /// 단정이 아니라 경고로 낮춰 보고돼 있다 — 증명하지 못한 것을 오류라고 말하지 않는다.
 /// </param>
+/// <param name="VisitedStates">
+/// 훑은 <b>(에피소드, 스탯 벡터)</b> 상태의 수. <see cref="ChapterReachabilityProver.StateLimit"/>
+/// 까지 센다.
+///
+/// ⭐ <b>이 숫자가 축소를 할지 말지를 정한다</b> (2026-09-17). 깃발은 0/1 정수라 <b>갈래마다
+/// 다르게 켜지면 상태공간을 두 배로</b> 만든다 — 그리고 깃발은 바로 그러려고 만든다. 작가
+/// 변수가 없어져 그런 기억이 전부 챕터 스탯으로 들어오므로, 언젠가 상한에 닿는다.
+/// <b>언제인지는 실제 대본을 돌려 봐야 안다.</b> 그래서 센다.
+/// </param>
 /// <summary>
 /// 그 에피소드에 <b>도착했을 때</b> 스탯 하나가 가질 수 있는 폭 (2026-08-17 소유자:
 /// "간선을 따라 왔을 때 스탯의 변화량이 노드에 표시되도록. 여러 루트가 있을 때는 스탯의
@@ -24,7 +33,8 @@ public sealed record ChapterReachabilityResult(
     IReadOnlySet<string> ReachableEpisodeIds,
     IReadOnlyList<ChapterDiagnostic> Diagnostics,
     bool ExplorationComplete,
-    IReadOnlyDictionary<string, IReadOnlyList<ChapterStatSpan>>? StatSpans = null)
+    IReadOnlyDictionary<string, IReadOnlyList<ChapterStatSpan>>? StatSpans = null,
+    int VisitedStates = 0)
 {
     public bool HasErrors =>
         Diagnostics.Any(item => item.Severity == ChapterDiagnosticSeverity.Error);
@@ -64,11 +74,21 @@ public sealed record ChapterReachabilityResult(
 /// 일</i>이기 때문이다. <b>맞출 상대가 없으므로 이제 자유롭게 고친다.</b>
 /// </para>
 /// <para>
-/// ⚠ <b>잃은 것은 적어 둔다</b>(저쪽이 짚었다): 이 증명기는 <b>두 번째 증인</b>을 잃었다.
-/// 지금까지는 독립 구현 둘이 같은 답을 내는지로 스스로를 검증했다. 이제는 이 구현
-/// 하나뿐이고, 여기 버그는 <b>아무도 대조해 주지 않는다</b> — 테스트가 유일한 증인이다.
-/// 두 구현을 사람이 지키는 비용과 맞바꾼 것이고, *"두 곳에 있으면 갈린다"*가 그 교환을
-/// 지지한다.
+/// ⭐ <b>그래서 사본을 일부러 안 고친다</b> (2026-09-17). 이 저장소의
+/// <c>src/Ked.Progression/Reachability/ChapterReachability.cs</c>는 아직 서 있고
+/// <c>ChapterReachabilityEquivalenceTests</c>가 둘을 대조한다 — 지문
+/// (<c>runtime-sync.txt</c>)에는 없으므로 <b>고칠 수는 있지만 안 고친다</b>. 다가오는
+/// <b>상태 벡터 축소</b>는 도달 가능 집합을 한 글자도 바꾸면 안 되는 변경이고, 그러면
+/// <b>안 건드린 사본이 정확히 옳은 기준</b>이다: 이쪽만 고쳐서 대조가 초록이면 그것이
+/// 기계적 증거다. 양쪽을 함께 고치면 같은 실수를 두 번 쓰고 테스트는 초록이 된다.
+/// (아래 인접 색인도 같은 이유로 이쪽에만 넣었다.)
+///
+/// ⚠ <b>잃은 것은 적어 둔다</b>(저쪽이 짚었다): 이 증명기는 <b>독립된</b> 증인을 잃었다.
+/// 지금까지는 남이 유지하는 구현이 같은 답을 내는지로 스스로를 검증했다. 사본은 아직
+/// 여기 서 있지만 이제 <b>같은 사람이 함께 고칠 사본</b>이므로, 같은 오해는 두 곳에 똑같이
+/// 들어간다 — 잡는 것은 <b>한쪽만 고친 실수</b>뿐이다. 그래도 그것이 이번 축소에서 제일
+/// 있을 법한 실수라 값을 한다. 두 구현을 사람이 지키는 비용과 맞바꾼 것이고,
+/// *"두 곳에 있으면 갈린다"*가 그 교환을 지지한다.
 /// </para>
 /// <para>
 /// 화면이 이 결과를 (내용해시 → 결과) 캐시 뒤에서 부르는 것은 <b>상관없다</b> — 캐시는
@@ -77,8 +97,13 @@ public sealed record ChapterReachabilityResult(
 /// </summary>
 public static class ChapterReachabilityProver
 {
-    /// <summary>완전 탐색 상한. 스탯 5개 × 범위 0~10이라도 이 안에 넉넉히 든다.</summary>
-    private const int StateLimit = 250_000;
+    /// <summary>
+    /// 완전 탐색 상한. 스탯 5개 × 범위 0~10이라도 이 안에 넉넉히 든다.
+    ///
+    /// ⚠ <b>전체 곱이 아니라 실제로 닿는 조합만 센다</b> — 간선을 타야 상태가 생긴다.
+    /// 그래서 값의 범위가 넓어도 대개 남는데, <b>깃발이 합류 지점에서 만나면</b> 곱해진다.
+    /// </summary>
+    internal const int StateLimit = 250_000;
 
     /// <summary>
     /// 스탯 증감의 원천은 <b>간선</b> 하나다 (2026-08-14 소유자 결정). 에피소드 안에서는
@@ -112,16 +137,56 @@ public static class ChapterReachabilityProver
         // 한 번만 걷는다 (2026-08-25). 고정점 반복이 있던 이유는 `cleared:`가 도달 가능
         // 집합 자체를 참조해서였는데, 그 조건이 폐지되면서 조건이 참조하는 것은 스탯뿐이
         // 됐다 — 스탯은 걷는 도중에 정해지므로 두 번째 바퀴가 새로 찾을 것이 없다.
-        (reachable, complete) = Explore(chapter, start, maxSeen, minSeen, spans);
+        int visited;
+        (reachable, complete, visited) = Explore(chapter, start, maxSeen, minSeen, spans);
 
+        ReportIncompleteExploration(chapter, complete, visited, diagnostics);
         ReportUnreachable(chapter, reachable, maxSeen, minSeen, complete, diagnostics);
 
-        return new ChapterReachabilityResult(reachable, diagnostics, complete, BuildSpans(chapter, spans));
+        return new ChapterReachabilityResult(
+            reachable, diagnostics, complete, BuildSpans(chapter, spans), visited);
+    }
+
+    /// <summary>
+    /// 상한에 걸렸다는 것을 <b>챕터 단위로 한 번 크게</b> 말한다 (2026-09-17).
+    ///
+    /// ⛔ <b>전에는 이 말을 할 자리가 없었다.</b> 상한에 걸리면 에피소드마다 붙는 문장이
+    /// <i>"경로가 없습니다"</i>(오류)에서 <i>"경로를 찾지 못했습니다(탐색이 상한에서 중단됨)"</i>
+    /// (경고)로 바뀌는 것이 전부였다. <b>뜻은 정반대인데 화면은 거의 같아 보인다</b> —
+    /// 「없음을 증명했다」와 「못 찾았다」다. 게다가 도달 불가가 하나도 없으면 상한에 걸린
+    /// 사실을 <b>아무도 말하지 않았다</b>.
+    ///
+    /// ⚠ <b>오류가 아니라 알림이다.</b> 챕터가 틀린 것이 아니라 <b>이 증명기가 답을 못
+    /// 낸 것</b>이므로, 오류로 올려 내보내기를 막으면 멀쩡한 챕터가 커진 죄로 출시를 못 한다.
+    /// 그러나 <b>조용히 넘기지도 않는다</b>(규칙 14 — 판정을 못 한 사실을 삼키지 않는다).
+    /// </summary>
+    private static void ReportIncompleteExploration(
+        ChapterGraphModel chapter,
+        bool complete,
+        int visited,
+        List<ChapterDiagnostic> diagnostics)
+    {
+        if (complete)
+        {
+            return;
+        }
+
+        diagnostics.Add(new ChapterDiagnostic(
+            ChapterDiagnosticSeverity.Info,
+            ChapterDiagnosticCode.ReachabilityExplorationIncomplete,
+            chapter.SourcePath,
+            ChapterSheetNames.Episodes,
+            Row: null,
+            Column: null,
+            $"이 챕터의 도달성은 **증명하지 못했습니다** — 상태 {visited:N0}개에서 탐색을 " +
+            "멈췄습니다. 아래 「도달 불가」는 단정이 아니라 **찾지 못했다**는 뜻입니다. " +
+            "스탯 깃발(0/1)은 갈래마다 다르게 켜지면 상태 수를 두 배로 만듭니다 — " +
+            "간선의 표시조건·해금조건이 읽지 않는 깃발이 많으면 그것이 원인입니다."));
     }
 
     // ── 탐색 ────────────────────────────────────────────────────────────────
 
-    private static (HashSet<string> Reachable, bool Complete) Explore(
+    private static (HashSet<string> Reachable, bool Complete, int Visited) Explore(
         ChapterGraphModel chapter,
         ChapterEpisode start,
         int[] maxSeen,
@@ -131,6 +196,22 @@ public static class ChapterReachabilityProver
         var reachable = new HashSet<string>(StringComparer.Ordinal) { start.EpisodeId };
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<(string EpisodeId, int[] Stats)>();
+
+        // ⚠ 출발지별 간선 목록을 <b>한 번</b> 만든다 (2026-09-17). 전에는 상태를 하나 꺼낼
+        //    때마다 `chapter.Edges` 전체를 문자열 비교로 훑었다 — 상태 25만 × 간선 수만큼의
+        //    비교였다. 답은 한 글자도 안 바뀐다(같은 간선을 같은 순서로 본다).
+        var outgoing = new Dictionary<string, List<ChapterEdge>>(StringComparer.Ordinal);
+
+        foreach (ChapterEdge edge in chapter.Edges)
+        {
+            if (!outgoing.TryGetValue(edge.FromEpisodeId, out List<ChapterEdge>? list))
+            {
+                list = [];
+                outgoing[edge.FromEpisodeId] = list;
+            }
+
+            list.Add(edge);
+        }
 
         int[] initial = chapter.Stats.Select(stat => stat.Initial).ToArray();
         queue.Enqueue((start.EpisodeId, initial));
@@ -142,13 +223,13 @@ public static class ChapterReachabilityProver
         {
             if (visited.Count > StateLimit)
             {
-                return (reachable, false);
+                return (reachable, false, visited.Count);
             }
 
             (string episodeId, int[] stats) = queue.Dequeue();
 
-            foreach (ChapterEdge edge in chapter.Edges.Where(edge =>
-                         string.Equals(edge.FromEpisodeId, episodeId, StringComparison.Ordinal)))
+            foreach (ChapterEdge edge in
+                     outgoing.TryGetValue(episodeId, out List<ChapterEdge>? edges) ? edges : [])
             {
                 ChapterEpisode? target = chapter.FindEpisode(edge.ToEpisodeId);
 
@@ -180,7 +261,7 @@ public static class ChapterReachabilityProver
             }
         }
 
-        return (reachable, true);
+        return (reachable, true, visited.Count);
     }
 
     /// <summary>
