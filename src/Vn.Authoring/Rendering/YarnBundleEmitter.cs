@@ -183,18 +183,20 @@ public static class YarnBundleEmitter
                     break;
 
                 case RenderedSegmentKind.SetAssignment:
-                    // set은 Story에만 낸다 (D2). 저장소가 공유라 Pres에 복제하면 이중 실행된다.
-                    if (segment.Source.LineId is not null)
-                    {
-                        CloseStoryHeader();
-                    }
-
-                    story.Append(segment.Source.LineId is null ? string.Empty : indent);
-                    YarnSyntax.AppendSet(story, segment with
-                    {
-                        Variable = Tier1Namespace.Apply(segment.Variable ?? string.Empty, tier1Prefix, statNames)
-                    });
-                    story.Append('\n');
+                    // ⛔ <b><c>&lt;&lt;set&gt;&gt;</c>은 더 이상 안 낸다</b> (2026-09-17 · 런타임 회신 §3).
+                    //
+                    // 런타임이 <b>Yarn 변수 층을 통째로 걷었다</b> — 아무도 초기화·저장·되감지
+                    // 않는다. 대본에 하나라도 남으면 챕터를 다시 시작해도 값이 안 돌아가고,
+                    // 세이브에 안 실리고, 롤백에서 안 되감겨 <b>리플레이가 다른 분기를 타고
+                    // 시크 표적을 영영 못 찾는다</b> — 계약서 C1의 silent hang이다. 예외도
+                    // 경고도 없이 멈추므로 <b>내지 않는 것</b>만이 안전하다.
+                    //
+                    // ⚠ <c>&lt;&lt;declare&gt;&gt;</c>는 <b>아직 낸다</b>. 아무도 쓰지 않는 선언
+                    // 변수는 값이 변하지 않으니 되감을 것도 없다 — 조건이 상수로 굳을 뿐
+                    // 멈추지 않는다. 작가 변수라는 <b>개념</b>을 걷는 것은 다음 조각이고,
+                    // 거기서 선언도 함께 사라진다(렌더링 픽스처가 그 어휘 위에 서 있다).
+                    //
+                    // 값이 변하는 자리는 챕터 간선의 `스탯변화` 하나다(2026-08-14).
                     break;
 
                 case RenderedSegmentKind.PresentationCommand:

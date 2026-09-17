@@ -311,11 +311,10 @@ public class ChoiceTests
             $"-> 안전한 길을 따라간다 #fatigue:+10 #common_ingredient:+15 #line:{world.Label1}",
             bundle.StoryText,
             StringComparison.Ordinal);
-        // 옵션 본문의 실제 효과는 작가 변수 set이다 — 챕터 접두를 받는다 (2026-08-17).
-        Assert.Contains(
-            "    <<set $__t1_sf_test_fatigue += 10>>",
-            bundle.StoryText,
-            StringComparison.Ordinal);
+        // ⛔ 옵션 본문의 set은 <b>안 나간다</b> (2026-09-17 · 런타임 회신 §3). 위의 태그
+        //    (`#fatigue:+10`)는 <b>표시 전용</b>이라 그대로 가지만, 실제로 값이 변하는
+        //    자리는 챕터 간선의 `스탯변화` 하나다.
+        Assert.DoesNotContain("<<set ", bundle.StoryText, StringComparison.Ordinal);
 
         // 옵션 출구는 본문 끝의 jump다. 2026-08-18까지는 그 앞에 <<pres_end>>가 붙었는데
         // 서브 레인이 없어져 함께 사라졌다.

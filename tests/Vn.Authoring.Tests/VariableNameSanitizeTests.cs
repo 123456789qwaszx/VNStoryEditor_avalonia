@@ -77,7 +77,15 @@ public sealed class VariableNameSanitizeTests
             project: sample.Project,
             definition: Sample.Definition);
 
+        // ⚠ <c>&lt;&lt;set&gt;&gt;</c>이 2026-09-17에 안 나가게 됐으므로 본문에는 이름이
+        //    아예 없다. 정규화가 지켜지는 자리는 이제 <b>선언</b>이다 — 거기서 공백이
+        //    새면 번들 전체가 컴파일에 실패한다(그것이 이 검사의 요점이다).
         Assert.DoesNotContain("능력이 바뀌", bundle.StoryText);
-        Assert.Contains("능력이_바뀌", bundle.StoryText);
+        Assert.Contains(
+            bundle.Declarations,
+            declaration => declaration.Variable.Contains("능력이_바뀌", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            bundle.Declarations,
+            declaration => declaration.Variable.Contains("능력이 바뀌", StringComparison.Ordinal));
     }
 }

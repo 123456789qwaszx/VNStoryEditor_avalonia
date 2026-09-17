@@ -472,14 +472,20 @@ public class YarnBundleVerificationTests
     }
 
     [Fact]
-    public void 작가가_줄에_단_set은_그대로_나간다()
+    public void 작가가_줄에_단_set은_이제_안_나간다()
     {
-        // 지워야 할 것은 초기값 되밟기뿐이다. 이야기 도중의 변화는 [3]의 정상적인 쓰임이라
-        // 그대로 간다 — 여기까지 지우면 작가가 쓴 이야기가 사라진다.
+        // ⛔ <b>뒤집혔다</b> (2026-09-17 · 런타임 회신 §3). 전에는 *"지워야 할 것은 초기값
+        //    되밟기뿐이고 이야기 도중의 변화는 [3]의 정상적인 쓰임"*이라 그대로 냈다.
+        //
+        // 런타임이 <b>Yarn 변수 층을 통째로 걷었다</b> — 아무도 초기화·저장·되감지 않는다.
+        // 남아 있으면 롤백에서 안 되감겨 리플레이가 다른 분기를 타고 <b>시크 표적을 영영
+        // 못 찾는다</b>(계약서 C1의 silent hang). 예외도 경고도 없이 멈추므로, 작가가 쓴
+        // 것을 내주는 것보다 <b>안 내는 것</b>이 안전하다.
+        //
+        // 값이 변하는 자리는 이제 챕터 간선의 `스탯변화` 하나다.
         YarnBundle bundle = EmitGoldenBundle();
 
-        Assert.Contains(
-            "<<set $__t1_sf_test_fatigue += 10>>", bundle.StoryText, StringComparison.Ordinal);
+        Assert.DoesNotContain("<<set ", bundle.StoryText, StringComparison.Ordinal);
     }
 
     [Fact]

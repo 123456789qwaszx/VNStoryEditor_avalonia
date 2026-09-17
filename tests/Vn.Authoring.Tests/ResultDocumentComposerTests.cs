@@ -289,8 +289,12 @@ public class ResultDocumentComposerTests
         Assert.True(document.Segments.ToList().IndexOf(set) <
                     document.Segments.ToList().IndexOf(dialogue));
 
-        string text = YarnPreviewFormatter.Format(document);
-        Assert.Contains("<<set $fatigue += 10>>", text, StringComparison.Ordinal);
+        // ⛔ <b>합성기는 여전히 이 조각을 만들고</b>, 내보내기·미리보기가 <b>안 낸다</b>
+        //    (2026-09-17 · 런타임 회신 §3). 조각의 자리·값은 위에서 재고, 여기서는
+        //    <b>글자로는 안 나간다</b>는 것을 못 박는다 — 남으면 롤백에서 안 되감겨
+        //    리플레이가 다른 분기를 탄다(계약서 C1의 silent hang).
+        Assert.DoesNotContain(
+            "<<set ", YarnPreviewFormatter.Format(document), StringComparison.Ordinal);
     }
 
     [Fact]

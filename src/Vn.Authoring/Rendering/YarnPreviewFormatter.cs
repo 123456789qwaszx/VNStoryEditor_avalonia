@@ -48,9 +48,9 @@ public static class YarnPreviewFormatter
                 break;
 
             case RenderedSegmentKind.SetAssignment:
-                builder.Append(indent);
-                YarnSyntax.AppendSet(builder, segment);
-                builder.Append('\n');
+                // ⛔ 이미터와 <b>같이</b> 안 낸다 (2026-09-17). 미리보기가 `<<set>>`을 보여
+                //    주면 사람은 파일에도 나가는 줄 안다 — 화면에서 본 것과 파일이 다른
+                //    이야기를 하지 않는 것이 이 포매터가 있는 이유다.
                 break;
 
             case RenderedSegmentKind.ConditionBegin:
