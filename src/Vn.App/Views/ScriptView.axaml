@@ -78,7 +78,7 @@
                                 HorizontalAlignment="Center"
                                 Padding="16,6"
                                 IsVisible="False"
-                                ToolTip.Tip="이 에피소드의 대본을 세웁니다 — 판에 대사노드가 서고, 쓴 글은 [글 반영]으로 워크북까지 나갑니다." />
+                                ToolTip.Tip="이 에피소드의 대본을 세웁니다 — 판에 대사노드가 서고, 쓴 글은 저장(Ctrl+S)으로 워크북까지 나갑니다." />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -100,14 +100,14 @@
 
             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
 
-                <!-- 쓰는 동안 쓰는 도구라 [글 반영] 앞에 선다 — 왼쪽에서 오른쪽이 곧 순서다. -->
+                <!-- 쓰는 동안 쓰는 도구라 저장 앞에 선다 — 왼쪽에서 오른쪽이 곧 순서다. -->
                 <Button x:Name="SpeakerButton"
                         Content="화자 ▾"
                         ToolTip.Tip="등록된 화자를 지금 커서가 선 줄의 앞에 붙입니다. 목록의 원천은 game.definition.json이고, 기획자가 [챕터 그래프]의 [화자]에서 적습니다." />
 
                 <Button x:Name="ApplyButton"
-                        Content="글 반영"
-                        ToolTip.Tip="쓴 글을 이 에피소드의 대사로 반영합니다. 기존 줄의 신원(LineId)은 내용이 바뀌어도 보존됩니다 — 연출·세이브가 그 신원에 매달려 있습니다." />
+                        Content="저장 (Ctrl+S)"
+                        ToolTip.Tip="쓴 글을 이 에피소드의 대사로 넣고 프로젝트를 저장합니다 — Ctrl+S와 같은 일입니다. 기존 줄의 신원(LineId)은 내용이 바뀌어도 보존됩니다: 연출·세이브가 그 신원에 매달려 있습니다." />
 
                 <TextBlock x:Name="HintText"
                            VerticalAlignment="Center"

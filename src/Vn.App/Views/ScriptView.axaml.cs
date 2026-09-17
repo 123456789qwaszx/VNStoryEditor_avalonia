@@ -12,6 +12,22 @@ using Vn.Authoring.Script;
 
 namespace Vn.App.Views;
 
+/// <summary>글을 대본으로 넣으려 한 결과.</summary>
+internal enum ScriptSaveOutcome
+{
+    /// <summary>넣을 것이 없었다 — 고친 데가 없거나 쓸 자리가 아니다.</summary>
+    Nothing,
+
+    /// <summary>들어갔다.</summary>
+    Saved,
+
+    /// <summary>줄이 지워질 참이라 <b>한 번 더</b>를 기다린다.</summary>
+    NeedsConfirmation,
+
+    /// <summary>넣지 못했다 — 사유는 상태줄에 있다.</summary>
+    Refused
+}
+
 /// <summary>
 /// <b>[대본] — 작가의 자리</b> (R-E · 2026-09-16,
 /// <c>docs/work-orders/tool-owns-workbooks-orders.md</c> §6).
@@ -26,6 +42,9 @@ namespace Vn.App.Views;
 /// <see cref="ProjectEditor.ApplyScenarioText"/>로 반영한다. 연출 그래프의 대사 편집기가
 /// 쓰던 그 경로이고, 여기서 달라진 것은 <b>그 둘레</b>뿐이다: 노드가 아니라 에피소드를
 /// 고르고, 화면에 글만 남긴다.
+///
+/// ⛔ <b>저장은 Ctrl+S 하나다</b> (2026-09-17 소유자). 입력칸은 <b>자유롭게</b> 고치고,
+/// 넣는 것은 저장이 한다 — [글 반영]도 같은 저장이고 이름만 둘이다.
 /// </summary>
 public partial class ScriptView : UserControl
 {
@@ -33,6 +52,47 @@ public partial class ScriptView : UserControl
 
     /// <summary>삭제 확인 대기 중인 글 — 같은 글로 한 번 더 누르면 적용한다.</summary>
     private string? _pendingDeleteText;
+
+    /// <summary>
+    /// <b>지금 프로젝트에 들어 있는 글</b> — 입력칸을 채울 때와 넣기가 성공할 때 갱신한다.
+    ///
+    /// ⚠ 이것이 <b>초고인지 아닌지를 아는 유일한 근거</b>다. 입력칸의 글과 이 값이 다르면
+    /// 아직 안 들어간 글이 있다는 뜻이고, 그 사실을 알아야 ① 저장이 그것을 먼저 넣고
+    /// ② 다시 그리기가 그것을 덮지 않고 ③ 제목이 <c>*</c>를 달 수 있다.
+    /// </summary>
+    private string _inProject = string.Empty;
+
+    /// <summary>
+    /// 입력칸에 <b>아직 안 들어간 글</b>이 있는가.
+    ///
+    /// ⚠ 껍데기(<see cref="MainWindow"/>)가 저장 표시와 저장 순서에 쓴다 — 프로젝트의
+    /// <c>IsDirty</c>는 이것을 모른다. 글은 <see cref="ProjectEditor"/>를 지나야 프로젝트에
+    /// 들어가므로, 타이핑만 한 상태는 프로젝트 쪽에서 보면 <b>아무 일도 없는 것</b>이다.
+    /// </summary>
+    internal bool HasUnsavedText =>
+        ScriptBox.IsEnabled &&
+        !string.Equals(ScriptBox.Text ?? string.Empty, _inProject, StringComparison.Ordinal);
+
+    /// <summary>글 입력칸 — 테스트의 손잡이다.</summary>
+    internal TextBox TextArea => ScriptBox;
+
+    /// <summary>
+    /// 글을 넣은 뒤 <b>프로젝트까지 저장해 달라</b>는 요청 (2026-09-17 소유자: *"글 반영도
+    /// 일종의 저장이고요"*). 저장은 껍데기의 일이라(경로 묻기·다른 이름으로) 여기서 하지 않는다.
+    /// </summary>
+    internal event Action? SaveRequested;
+
+    /// <summary>
+    /// <see cref="HasUnsavedText"/>가 <b>뒤집혔다</b> — 껍데기가 제목과 표시를 고칠 때다.
+    ///
+    /// ⚠ <b>글자마다 알리지 않는다.</b> 껍데기의 <c>RefreshShell</c>은 <c>IsDirty</c>를 묻고
+    /// 그것은 <b>프로젝트 전체를 문자열로 인코딩한다</b> — 키 입력마다 부르면 큰 프로젝트에서
+    /// 타이핑이 끈다. 값이 바뀌는 순간은 글 뭉치 하나에 두 번뿐이다.
+    /// </summary>
+    internal event Action? DraftChanged;
+
+    /// <summary>마지막으로 알린 <see cref="HasUnsavedText"/> — 뒤집힘만 세려고 든다.</summary>
+    private bool _announcedUnsaved;
 
     /// <summary>[화자 ▾]가 여는 목록의 몸통. 열 때마다 다시 채운다 — 등록부는 변한다.</summary>
     private readonly StackPanel _speakerMenu = new();
@@ -76,9 +136,33 @@ public partial class ScriptView : UserControl
             }
         });
 
-        ApplyButton.Click += (_, _) => UiGuard.Run(_session, "글 반영", Apply);
+        // [글 반영]도 <b>저장</b>이다 (2026-09-17 소유자). 글을 넣고 프로젝트까지 저장한다 —
+        // 단추와 Ctrl+S가 같은 일을 하고, 이름만 둘이다.
+        ApplyButton.Click += (_, _) => UiGuard.Run(_session, "대본 저장", () =>
+        {
+            if (SaveText() is not ScriptSaveOutcome.NeedsConfirmation)
+            {
+                SaveRequested?.Invoke();
+            }
+        });
         EmptyAddScriptButton.Click += (_, _) => UiGuard.Run(_session, "대본 세우기", AddScript);
         SpeakerButton.Click += (_, _) => UiGuard.Run(_session, "화자 고르기", PickSpeaker);
+
+        ScriptBox.TextChanged += (_, _) => AnnounceDraft();
+    }
+
+    /// <summary>안 들어간 글이 있느냐가 <b>뒤집혔을 때만</b> 껍데기를 깨운다.</summary>
+    private void AnnounceDraft()
+    {
+        bool unsaved = HasUnsavedText;
+
+        if (unsaved == _announcedUnsaved)
+        {
+            return;
+        }
+
+        _announcedUnsaved = unsaved;
+        DraftChanged?.Invoke();
     }
 
 
@@ -514,7 +598,11 @@ public partial class ScriptView : UserControl
     /// </summary>
     private void Rebuild()
     {
-        if (_session is null || ScriptBox.IsFocused)
+        // ⛔ <b>안 들어간 글은 덮지 않는다</b> (2026-09-17). 포커스만 보던 시절에는 입력칸을
+        //    떠난 초고가 <b>다른 탭의 변경 알림 한 번에 사라졌다</b> — 저장이 엔터·[글 반영]에
+        //    묶여 있어서 "떠났으면 넣었겠지"가 대개 맞았기 때문이다. 자유롭게 고치는
+        //    구조에서는 그 가정이 깨진다: 쓰다 말고 마우스를 옮기는 것이 정상이다.
+        if (_session is null || ScriptBox.IsFocused || HasUnsavedText)
         {
             return;
         }
@@ -613,7 +701,8 @@ public partial class ScriptView : UserControl
                 : "이 챕터에는 아직 에피소드가 없습니다.\n" +
                   "[챕터 그래프]에서 첫 에피소드를 세우면 여기에 섭니다.";
 
-            ScriptBox.Text = string.Empty;
+            _inProject = string.Empty;
+            ScriptBox.Text = _inProject;
             ScriptBox.IsEnabled = false;
             ApplyButton.IsEnabled = false;
             SpeakerButton.IsEnabled = false;
@@ -631,7 +720,8 @@ public partial class ScriptView : UserControl
         // 사다리의 마지막 칸 — 에피소드는 있는데 아직 아무도 안 썼다.
         if (FindNode(episodeId) is not { } node)
         {
-            ScriptBox.Text = string.Empty;
+            _inProject = string.Empty;
+            ScriptBox.Text = _inProject;
             ApplyButton.IsEnabled = false;
             SpeakerButton.IsEnabled = false;
 
@@ -643,15 +733,29 @@ public partial class ScriptView : UserControl
             return;
         }
 
-        // ⚠ `ScenarioOnly`는 `includeLineId: false`다 (§6.3) — 화면에 `#line:` 태그가
-        //    보이면 지저분하고 작가가 지운다. 신원은 diff가 붙들므로 안 보여도 안전하다.
-        ScriptBox.Text = DocumentPreviewFormatter.Format(WorkingDialoguePreview.ComposePreset(
-            _session.Project, node.Id, OutputPresetCatalog.ScenarioOnly, _session.Definition));
+        _inProject = ProjectText(node) ?? string.Empty;
+        ScriptBox.Text = _inProject;
 
-        HintText.Text = "고친 뒤 [글 반영] — 줄의 신원은 보존됩니다.";
+        HintText.Text = "자유롭게 고치고 Ctrl+S로 저장 — 줄의 신원은 보존됩니다.";
 
         ShowUnknownSpeakers(Speakers(node));
     }
+
+    /// <summary>
+    /// 프로젝트에 들어 있는 글을 <b>입력칸의 모양으로</b> 그린다 — <b>이 계산은 한 자리다</b>.
+    ///
+    /// ⚠ 채울 때와 <see cref="HasUnsavedText"/>가 견줄 때가 같은 글을 봐야 한다. 둘이
+    /// 갈리면 아무것도 안 고쳤는데 "안 들어간 글이 있다"가 되고, 그러면 다시 그리기가
+    /// 영영 막히고 제목의 <c>*</c>가 안 꺼진다.
+    ///
+    /// ⚠ `ScenarioOnly`는 `includeLineId: false`다 (§6.3) — 화면에 `#line:` 태그가 보이면
+    /// 지저분하고 작가가 지운다. 신원은 diff가 붙들므로 안 보여도 안전하다.
+    /// </summary>
+    private string? ProjectText(DialogueNode node) =>
+        _session is null
+            ? null
+            : DocumentPreviewFormatter.Format(WorkingDialoguePreview.ComposePreset(
+                _session.Project, node.Id, OutputPresetCatalog.ScenarioOnly, _session.Definition));
 
     /// <summary>그 노드가 실제로 쓰고 있는 화자명들 — 프로젝트가 원본이라 글이 아니라 줄에서 센다.</summary>
     private IEnumerable<string> Speakers(DialogueNode node)
@@ -841,21 +945,32 @@ public partial class ScriptView : UserControl
         // 다음 할 일은 쓰는 것이다 — 커서를 옮겨 주지 않으면 한 번 더 눌러야 한다.
         ScriptBox.Focus();
 
-        _session.SetStatus($"'{episodeId}' 대본을 세웠습니다 — 쓰고 [글 반영]을 누르세요.");
+        _session.SetStatus($"'{episodeId}' 대본을 세웠습니다 — 쓰고 Ctrl+S로 저장하세요.");
     }
 
     /// <summary>
-    /// 쓴 글을 대사로 반영한다.
+    /// 쓴 글을 대사로 넣는다 — <b>저장의 첫 절반</b>이다.
+    ///
+    /// ⛔ <b>Ctrl+S가 이것을 먼저 부른다</b> (2026-09-17 소유자). 전에는 그러지 않았고,
+    /// 그것이 조용한 사고였다: 입력칸에 글을 쓰고 Ctrl+S를 누르면 <b>상태줄이 저장했다고
+    /// 말하는데 쓴 글은 프로젝트에 없었다</b>. 글은 <see cref="ProjectEditor.ApplyScenarioText"/>를
+    /// 지나야 프로젝트에 들어가는데 저장은 프로젝트만 쓰기 때문이다.
     ///
     /// ⚠ <b>지우기는 두 번 눌러야 한다.</b> 붙여넣기 한 번이 줄을 통째로 날릴 수 있고,
     /// 그 줄에는 연출이 매달려 있다 — 같은 글로 한 번 더 누르면 그때 지운다
     /// (연출 그래프의 [텍스트 반영]과 같은 규율이다).
     /// </summary>
-    private void Apply()
+    internal ScriptSaveOutcome SaveText()
     {
         if (_session is null || EpisodeTree.Selection is not { } pick)
         {
-            return;
+            return ScriptSaveOutcome.Nothing;
+        }
+
+        // 고친 데가 없으면 지나간다 — 저장마다 같은 글을 되넣으면 되돌리기가 그것으로 찬다.
+        if (!HasUnsavedText)
+        {
+            return ScriptSaveOutcome.Nothing;
         }
 
         string episodeId = pick.EpisodeId;
@@ -871,8 +986,8 @@ public partial class ScriptView : UserControl
         {
             if (text.Trim().Length == 0)
             {
-                _session.SetStatus("빈 글은 반영하지 않습니다 — 한 줄이라도 쓰고 눌러 주세요.");
-                return;
+                _session.SetStatus("빈 글은 넣지 않습니다 — 한 줄이라도 쓰고 저장해 주세요.");
+                return ScriptSaveOutcome.Refused;
             }
 
             node = CreateNodeFor(episodeId);
@@ -890,8 +1005,8 @@ public partial class ScriptView : UserControl
         {
             _pendingDeleteText = text;
             _session.SetStatus(
-                $"{outcome.Summary()} — 같은 글로 [글 반영]을 한 번 더 누르면 지웁니다.");
-            return;
+                $"{outcome.Summary()} — 같은 글로 한 번 더 저장하면 지웁니다(Ctrl+S 또는 [저장]).");
+            return ScriptSaveOutcome.NeedsConfirmation;
         }
 
         _pendingDeleteText = null;
@@ -904,10 +1019,18 @@ public partial class ScriptView : UserControl
         if (!outcome.Applied)
         {
             _session.SetStatus(outcome.Summary());
-            return;
+            return ScriptSaveOutcome.Refused;
         }
 
-        _session.SetStatus($"글을 반영했습니다. {outcome.Summary()}{EmitWorkbook(node)}");
+        // ⚠ <b>들어간 글을 여기서 기억한다.</b> 입력칸의 글자 그대로가 아니라 <b>프로젝트를
+        //    다시 그린 글</b>이어야 한다 — 파서가 다듬는 자리가 있어서(빈 줄·공백·화자 표기)
+        //    입력칸 글을 그대로 기준으로 잡으면 넣은 직후에도 "안 들어간 글이 있다"가 된다.
+        _inProject = ProjectText(node) ?? text;
+        ScriptBox.Text = _inProject;
+
+        _session.SetStatus($"글을 저장했습니다. {outcome.Summary()}{EmitWorkbook(node)}");
+
+        return ScriptSaveOutcome.Saved;
     }
 
     /// <summary>

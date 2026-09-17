@@ -247,6 +247,11 @@ public partial class MainWindow : Window
 
         Opened += OnOpened;
 
+        // [대본]의 [글 반영]은 저장이다 — 경로 묻기·[다른 이름으로]가 여기 있으므로
+        // 그 탭은 요청만 하고 실제 저장은 이 창이 한다.
+        Script.SaveRequested += () => OnSaveClick(this, new RoutedEventArgs());
+        Script.DraftChanged += () => UiGuard.Run(_session, "대본 초고 표시", RefreshShell);
+
         // 저장 단축키 (W49) — 어디에 포커스가 있어도 Ctrl+S가 저장이다.
         AddHandler(KeyDownEvent, (_, args) =>
         {
@@ -262,6 +267,10 @@ public partial class MainWindow : Window
         _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
         _autoSaveTimer.Tick += (_, _) => UiGuard.Run(_session, "자동 저장", () =>
         {
+            // ⚠ 자동 저장도 <b>먼저 넣는다</b> (2026-09-17). 안 그러면 쓰던 글은 10분마다
+            //    지나가는 저장의 대상이 아니라 <b>영원히 밖에</b> 있다.
+            FlushPendingEdits();
+
             if (_session.ProjectPath is not null && _session.IsDirty)
             {
                 _session.Save();
@@ -852,6 +861,8 @@ public partial class MainWindow : Window
     {
         try
         {
+            FlushPendingEdits();
+
             if (_session.ProjectPath is null)
             {
                 await SaveAsAsync();
@@ -866,6 +877,22 @@ public partial class MainWindow : Window
             Report("저장", exception);
         }
     }
+
+    /// <summary>
+    /// 저장하기 <b>전에</b>, 화면에만 있고 프로젝트에는 아직 안 들어간 것을 넣는다.
+    ///
+    /// ⛔ <b>이것이 없던 것이 조용한 사고였다</b> (2026-09-17 소유자). [대본]의 입력칸에 글을
+    /// 쓰고 Ctrl+S를 누르면 <b>상태줄은 저장했다고 말하는데 쓴 글은 프로젝트에 없었다</b> —
+    /// 저장은 프로젝트를 쓰고, 글은 <c>ApplyScenarioText</c>를 지나야 프로젝트에 들어간다.
+    /// 그 둘 사이에 아무도 없었다.
+    ///
+    /// ⚠ <b>줄이 지워질 참이면 넣지 않는다</b>(<see cref="ScriptSaveOutcome.NeedsConfirmation"/>).
+    /// 그래도 프로젝트 저장은 <b>그대로 진행한다</b> — 상관없는 일까지 볼모로 잡을 이유가
+    /// 없고, 글이 아직 대기 중이라는 사실은 제목의 <c>*</c>가 계속 말한다.
+    ///
+    /// ⚠ 새 화면이 늘면 <b>여기에 한 줄을 더한다.</b> 저장의 뜻은 화면마다 다를 수 없다.
+    /// </summary>
+    private void FlushPendingEdits() => Script.SaveText();
 
     private async void OnSaveAsClick(object? sender, RoutedEventArgs e)
     {
@@ -1472,7 +1499,10 @@ public partial class MainWindow : Window
             : "현재 작업 파일 없음";
         StatusText.Text = _session.StatusMessage;
 
-        bool dirty = _session.IsDirty;
+        // ⚠ <b>화면에만 있는 것도 센다</b> (2026-09-17). [대본]의 입력칸에 쓴 글은 아직
+        //    프로젝트에 없으므로 <c>IsDirty</c>가 <b>모른다</b> — 그것만 보면 쓰는 중에
+        //    제목이 깨끗해 보이고, 창을 닫아도 아무도 안 묻는다.
+        bool dirty = _session.IsDirty || Script.HasUnsavedText;
         DirtyText.Text = dirty ? "● 저장되지 않은 변경" : string.Empty;
 
         UndoButton.IsEnabled = _session.Editor.CanUndo;

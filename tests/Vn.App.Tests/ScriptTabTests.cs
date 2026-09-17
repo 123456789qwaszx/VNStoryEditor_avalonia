@@ -126,6 +126,80 @@ public sealed class ScriptTabTests : IDisposable
         Assert.Equal(["첫 줄"], Texts(session, node));
     });
 
+    // ── 저장은 Ctrl+S 하나다 (2026-09-17 소유자) ──────────────────────────
+
+    [Fact]
+    public void 저장이_입력칸의_글을_먼저_넣는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ <b>여기가 조용한 사고였다.</b> 입력칸에 글을 쓰고 Ctrl+S를 누르면 상태줄은
+        //    저장했다고 말하는데, 글은 `ApplyScenarioText`를 안 지났으므로 프로젝트에
+        //    <b>없었다</b> — 저장은 프로젝트만 쓴다. 껍데기가 저장 전에 부르는 것이
+        //    이 함수이고, 그것이 없던 것이 문제였다.
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄\n라루: 저장으로 들어간 줄";
+
+        Assert.True(view.HasUnsavedText);
+
+        Assert.Equal(ScriptSaveOutcome.Saved, view.SaveText());
+
+        Assert.Equal(["첫 줄", "저장으로 들어간 줄"], Texts(session, node));
+        Assert.False(view.HasUnsavedText);
+    });
+
+    [Fact]
+    public void 고친_데가_없으면_저장이_지나간다() => HeadlessUi.Run(() =>
+    {
+        // 저장마다 같은 글을 되넣으면 되돌리기가 그것으로 차고, 워크북이 매번 다시 난다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        Assert.False(view.HasUnsavedText);
+        Assert.Equal(ScriptSaveOutcome.Nothing, view.SaveText());
+    });
+
+    [Fact]
+    public void 안_들어간_글은_다시_그리기가_덮지_않는다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 자유롭게 고치는 구조에서 <b>제일 잃기 쉬운 자리</b>다. 예전에는 포커스만 보고
+        //    "떠났으면 넣었겠지"로 덮었는데, 저장이 엔터·단추에 묶여 있을 때만 맞는 가정이다.
+        //    쓰다 말고 마우스를 옮기는 것은 정상이고, 그 사이 다른 탭의 변경 알림 한 번이면
+        //    초고가 사라졌다.
+        (ScriptView view, AuthoringSession session) = Show();
+        Seed(session, "ch01", "ep01", ("윌로", "첫 줄"));
+
+        var box = view.FindControl<TextBox>("ScriptBox")!;
+        box.Text = "윌로: 아직 저장 안 한 초고";
+
+        // 다른 탭이 프로젝트를 건드린 것과 같다 — 세션이 알림을 낸다.
+        session.Editor.AddScript("남의 대본");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("윌로: 아직 저장 안 한 초고", box.Text);
+        Assert.True(view.HasUnsavedText);
+    });
+
+    [Fact]
+    public void 지우기_확인_중에는_저장이_아직_안_끝났다고_말한다() => HeadlessUi.Run(() =>
+    {
+        // 두 번 누르기 규율은 그대로다 — 다만 "누르기"가 이제 "저장"이다.
+        (ScriptView view, AuthoringSession session) = Show();
+        DialogueNode node = Seed(session, "ch01", "ep01", ("윌로", "첫 줄"), ("라루", "둘째 줄"));
+
+        view.FindControl<TextBox>("ScriptBox")!.Text = "윌로: 첫 줄";
+
+        Assert.Equal(ScriptSaveOutcome.NeedsConfirmation, view.SaveText());
+        Assert.Equal(["첫 줄", "둘째 줄"], Texts(session, node));
+
+        // ⚠ 아직 안 들어갔으므로 <b>여전히 안 저장된 상태</b>다 — 제목의 *가 이것을 본다.
+        Assert.True(view.HasUnsavedText);
+
+        Assert.Equal(ScriptSaveOutcome.Saved, view.SaveText());
+        Assert.Equal(["첫 줄"], Texts(session, node));
+        Assert.False(view.HasUnsavedText);
+    });
+
     // ── 툴에 쓴 것이 엑셀을 채운다 (§6.2) ──────────────────────────────────
 
     [Fact]
@@ -282,10 +356,16 @@ public sealed class ScriptTabTests : IDisposable
     public void 빈_글로는_노드를_만들지_않는다() => HeadlessUi.Run(() =>
     {
         // 잘못 누른 것까지 판에 남기지 않는다.
+        //
+        // ⚠ <b>공백을 친다</b> (2026-09-17). 아무것도 안 친 상태에서 저장하면 이제
+        //    <see cref="ScriptSaveOutcome.Nothing"/>으로 조용히 지나간다 — Ctrl+S가 주된
+        //    길이 된 뒤로, 고친 데도 없는데 매번 말하면 그것은 잔소리다. 잡아야 하는 것은
+        //    <b>쓴 줄 알았는데 공백뿐인</b> 경우이고, 그쪽은 그대로 말한다.
         WriteChapter("ch01", "ep01");
 
         (ScriptView view, AuthoringSession session) = Show();
 
+        view.FindControl<TextBox>("ScriptBox")!.Text = "   \n  ";
         Click(view, "ApplyButton");
 
         Assert.Empty(session.Project.EnumerateNodes().OfType<DialogueNode>());
