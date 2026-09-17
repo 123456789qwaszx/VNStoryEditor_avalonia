@@ -3120,8 +3120,8 @@ public partial class ChapterGraphView : UserControl
         row.Children.Add(rename);
 
         var remove = new Button { Content = "✕", FontSize = 10, Padding = new Thickness(5, 1) };
-        ToolTip.SetTip(remove, "지웁니다 — 쓰는 곳이 있으면 어디인지 말하고 거절합니다.");
-        remove.Click += (_, _) => UiGuard.Run(_session, "스탯 삭제", () => RemoveStat(stat.Key));
+        ToolTip.SetTip(remove, "지웁니다 — 쓰는 곳이 있으면 어디인지 보여 주고 한 번 더 묻습니다.");
+        remove.Click += (_, _) => UiGuard.Run(_session, "스탯 삭제", () => RemoveStat(remove, stat.Key));
         row.Children.Add(remove);
 
         return row;
@@ -3342,17 +3342,104 @@ public partial class ChapterGraphView : UserControl
     /// <summary>
     /// 스탯을 지운다 — 거절이 <b>어디서 쓰는지</b>를 들고 온다. 그 목록이 곧 정리 안내다.
     /// </summary>
-    private void RemoveStat(string key)
+    private void RemoveStat(Control anchor, string key)
     {
         Vn.Authoring.Editing.StatRemoveOutcome outcome = _session!.Editor.RemoveChapterStat(_selectedChapterId!, key);
 
-        if (!outcome.Applied)
+        if (outcome.Applied)
         {
-            throw new InvalidOperationException(Explain(outcome.Refusal, outcome.Uses));
+            _session.SetStatus($"스탯 '{key}'를 지웠습니다.");
+            Draw();
+
+            return;
         }
 
-        _session.SetStatus($"스탯 '{key}'를 지웠습니다.");
-        Draw();
+        if (outcome.Uses.Count == 0)
+        {
+            throw new InvalidOperationException(outcome.Refusal ?? "지우지 못했습니다.");
+        }
+
+        // ⭐ <b>한 번 더 묻는다</b> (2026-09-17 소유자 — 「가부터 만들고 다로 확장하자」).
+        //    거절이 <b>목록을 들고 오므로</b> 그 목록이 곧 확인 화면이 된다: 무엇이 바뀔지
+        //    보고 나서 누르는 것과, 경고만 읽고 누르는 것은 다른 일이다.
+        ShowClearAndDeleteFlyout(anchor, key, outcome);
+    }
+
+    /// <summary>
+    /// 쓰는 곳을 <b>보여 주고</b> 「모두 비우고 지우기」를 내놓는다.
+    ///
+    /// ⚠ 무엇이 어떻게 바뀌는지 글로 적는다 — 간선은 <b>그 항만</b> 빠지고, 조건은
+    /// <b>식만 비고 남는다</b>. 조건을 통째로 지우면 그것을 쓰는 간선의 표시/해금이 함께
+    /// 풀려 <b>연쇄가 한 단계 더</b> 간다(2026-09-17 소유자).
+    /// </summary>
+    private void ShowClearAndDeleteFlyout(
+        Control anchor, string key, Vn.Authoring.Editing.StatRemoveOutcome refused)
+    {
+        var panel = new StackPanel { Spacing = 4, MaxWidth = 420 };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = refused.Refusal ?? string.Empty,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        foreach (Vn.Authoring.Editing.ChapterUse use in refused.Uses)
+        {
+            panel.Children.Add(new SelectableTextBlock
+            {
+                Text = $"· {use.Where} — {use.Detail}",
+                FontSize = 10,
+                Opacity = 0.75,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "비우면 간선에서는 그 항만 빠지고, 조건은 식만 비고 남습니다 " +
+                   "(검증이 빈 식을 짚어 줍니다).",
+            FontSize = 10,
+            Opacity = 0.6,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+
+        var clear = new Button
+        {
+            Content = "모두 비우고 지우기",
+            FontSize = 10,
+            Padding = new Thickness(7, 2),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+
+        var flyout = new Flyout { Content = panel };
+
+        clear.Click += (_, _) =>
+        {
+            flyout.Hide();
+
+            UiGuard.Run(_session, "스탯 비우고 삭제", () =>
+            {
+                Vn.Authoring.Editing.StatRemoveOutcome done =
+                    _session!.Editor.RemoveChapterStat(_selectedChapterId!, key, clearUses: true);
+
+                if (!done.Applied)
+                {
+                    throw new InvalidOperationException(done.Refusal ?? "지우지 못했습니다.");
+                }
+
+                _session.SetStatus(
+                    $"스탯 '{key}'를 지웠습니다 — 간선 {done.EdgesCleared}곳의 항을 빼고 " +
+                    $"조건 {done.ConditionsCleared}곳의 식을 비웠습니다.");
+
+                Draw();
+            });
+        };
+
+        panel.Children.Add(clear);
+        flyout.ShowAt(anchor);
     }
 
     private void RemoveCondition(string label)

@@ -96,9 +96,38 @@ public sealed class ChapterSheetEditTests : IDisposable
 
         Press(Buttons(Row(view, "stat:trust")).Last());
 
-        Assert.Contains("1곳", session.StatusMessage, StringComparison.Ordinal);
-        Assert.Contains("신뢰높음", session.StatusMessage, StringComparison.Ordinal);
+        // 한 번에 안 지우고 <b>보여 주고 묻는다</b> — 무엇이 바뀔지 보고 나서 누르는 것과
+        // 경고만 읽고 누르는 것은 다른 일이다.
         Assert.Contains(session.Editor.FindChapter("ch01")!.Stats, stat => stat.Key == "trust");
+
+        List<string> shown = Confirm(view).GetVisualDescendants().OfType<TextBlock>()
+            .Select(block => block.Text ?? string.Empty).ToList();
+
+        Assert.Contains(shown, text => text.Contains("1곳", StringComparison.Ordinal));
+        Assert.Contains(shown, text => text.Contains("신뢰높음", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void 한_번_더_누르면_비우고_지운다() => HeadlessUi.Run(() =>
+    {
+        // ⭐ 다 — 간선은 그 항만 빠지고, 조건은 <b>식만 비고 남는다</b>.
+        (ChapterGraphView view, AuthoringSession session) = Show();
+        session.Editor.AddEpisode("ch01", "root", title: "root", 0, 0);
+        session.Editor.AddEpisode("ch01", "a", title: "a", 0, 0);
+        session.Editor.AddEdge("ch01", "root", "a", optionLabel: "믿는다", statChanges: "trust +1");
+        Redraw(view);
+
+        Press(Buttons(Row(view, "stat:trust")).Last());
+        Press(Confirm(view).GetVisualDescendants().OfType<Button>()
+            .Single(button => (button.Content as string) == "모두 비우고 지우기"));
+
+        ChapterDocument chapter = session.Editor.FindChapter("ch01")!;
+
+        Assert.DoesNotContain(chapter.Stats, stat => stat.Key == "trust");
+        Assert.Empty(chapter.Edges.Single().StatChanges);
+
+        // 조건은 <b>남는다</b> — 통째로 지우면 그것을 쓰는 간선의 표시/해금이 함께 풀린다.
+        Assert.Equal(string.Empty, chapter.Conditions.Single().Expression);
     });
 
     [Fact]
@@ -137,6 +166,13 @@ public sealed class ChapterSheetEditTests : IDisposable
         button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
+
+    /// <summary>열려 있는 확인 플라이아웃의 내용 — 목록과 「모두 비우고 지우기」가 산다.</summary>
+    private static Control Confirm(ChapterGraphView view) =>
+        (TopLevel.GetTopLevel(view) as Window)!.GetVisualDescendants()
+            .OfType<StackPanel>()
+            .First(panel => panel.GetVisualDescendants().OfType<Button>()
+                .Any(button => (button.Content as string) == "모두 비우고 지우기"));
 
     private static void Redraw(ChapterGraphView view)
     {

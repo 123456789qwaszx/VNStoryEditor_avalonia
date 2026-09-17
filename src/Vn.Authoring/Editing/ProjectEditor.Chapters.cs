@@ -832,21 +832,21 @@ public sealed partial class ProjectEditor
     /// ⚠ <b>픽스처의 시작값은 막지 않고 함께 지운다.</b> 키로 든 사전이고 없으면 초기값으로
     /// 읽히며(<c>ChapterFixtureWalker</c>) 내보내기에도 안 섞인다 — 잃을 저작이 없다.
     ///
-    /// ⭐ <b>다음 확장 — 「쓰는 곳을 전부 비우고 지우기」</b> (소유자: *"가부터 만들고 다로
-    /// 확장하자"*). ⏸ <b>2026-09-17에 보류</b>했다(*"일단 보류, 다른 작업부터"*).
-    /// <see cref="FindStatUses"/>를 따로 둔 것이 그 자리다 — 화면이 목록을 먼저 보여 주고,
-    /// 사람이 한 번 더 누르면 그 목록을 비운다.
-    ///
-    /// <b>모양은 이미 정해졌다</b> (같은 날 소유자):
+    /// ⭐ <b><paramref name="clearUses"/> — 「쓰는 곳을 전부 비우고 지우기」</b> (2026-09-17 소유자).
+    /// 화면이 <see cref="FindStatUses"/>로 목록을 먼저 보여 주고, 사람이 한 번 더 누르면
+    /// 그 목록을 비운 뒤 지운다. <b>한 번의 변경</b>이라 되돌리기 한 번에 전부 돌아온다.
     ///
     /// <list type="bullet">
-    /// <item>간선 — <c>스탯변화</c>에서 <b>그 항만</b> 뺀다.</item>
+    /// <item>간선 — <c>스탯변화</c>에서 <b>그 항만</b> 뺀다. 길 자체를 걷으면 이야기 구조가 바뀐다.</item>
     /// <item>조건 — <b>식만 비우고 조건 자체는 남긴다.</b> 검증이 *"조건식이 비어 있습니다"*로
     /// 울어서 사람이 채운다. ⛔ 조건을 통째로 지우면 그것을 쓰는 간선의 표시/해금이 함께
     /// 풀려 <b>연쇄가 한 단계 더</b> 간다 — 지우는 사람이 안 본 자리까지 바뀐다.</item>
+    /// <item>판에 공급된 사본도 <b>식만 비운다</b>(Id는 지킨다). 이미터가 빈 식을
+    /// <c>&lt;&lt;if false&gt;&gt;</c>로 내므로 매달린 갈래는 <b>서 있되 안 탄다</b> —
+    /// 조용히 꺼져 있는 것이 사라지는 것보다 낫다.</item>
     /// </list>
     /// </summary>
-    public StatRemoveOutcome RemoveChapterStat(string chapterId, string key)
+    public StatRemoveOutcome RemoveChapterStat(string chapterId, string key, bool clearUses = false)
     {
         ChapterDocument chapter = RequireChapter(chapterId);
         string target = (key ?? string.Empty).Trim();
@@ -861,11 +861,59 @@ public sealed partial class ProjectEditor
 
         IReadOnlyList<ChapterUse> uses = FindStatUses(chapterId, target);
 
-        if (uses.Count > 0)
+        if (uses.Count > 0 && !clearUses)
         {
             return StatRemoveOutcome.Refuse(
                 $"스탯 '{target}'을 지울 수 없습니다 — {uses.Count}곳에서 쓰고 있습니다.",
                 uses);
+        }
+
+        var edges = new List<(int Index, ChapterEdge Edge)>();
+        var conditions = new List<(int Index, ChapterCondition Condition)>();
+        var emptied = new List<ConditionDefinition>();
+
+        if (clearUses)
+        {
+            for (int i = 0; i < chapter.Edges.Count; i++)
+            {
+                if (!chapter.Edges[i].StatChanges.Any(delta =>
+                        string.Equals(delta.Key, target, StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                // 간선은 <b>그 항만</b> 뺀다 — 길 자체를 걷으면 이야기 구조가 바뀐다.
+                edges.Add((i, chapter.Edges[i] with
+                {
+                    StatChanges = chapter.Edges[i].StatChanges
+                        .Where(delta => !string.Equals(delta.Key, target, StringComparison.Ordinal))
+                        .ToList()
+                }));
+            }
+
+            for (int i = 0; i < chapter.Conditions.Count; i++)
+            {
+                if (string.Equals(
+                        ConditionExpressionParser.ReplaceStatKey(chapter.Conditions[i].Expression, target, " "),
+                        chapter.Conditions[i].Expression,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                // ⛔ <b>식만 비우고 조건은 남긴다</b> (2026-09-17 소유자). 조건을 통째로 지우면
+                //    그것을 쓰는 간선의 표시/해금이 함께 풀려 <b>연쇄가 한 단계 더</b> 간다 —
+                //    지우는 사람이 안 본 자리까지 바뀐다. 빈 식은 검증이 짚어 사람이 채운다.
+                conditions.Add((i, chapter.Conditions[i] with
+                {
+                    Expression = string.Empty,
+                    Parsed = [],
+                    IsValid = false
+                }));
+
+                emptied.AddRange(SuppliedNamed(chapter.Conditions[i].Label)
+                    .Select(pair => pair.Condition));
+            }
         }
 
         var fixtures = new List<(int Index, ChapterFixture Fixture)>();
@@ -889,13 +937,32 @@ public sealed partial class ProjectEditor
         {
             chapter.Stats.RemoveAt(index);
 
+            foreach ((int at, ChapterEdge edge) in edges)
+            {
+                chapter.Edges[at] = edge;
+            }
+
+            foreach ((int at, ChapterCondition condition) in conditions)
+            {
+                chapter.Conditions[at] = condition;
+            }
+
+            foreach (ConditionDefinition supplied in emptied)
+            {
+                // ⚠ <b>Id는 지킨다</b> — 줄에 매달린 갈래가 이 Id로 잇는다. 식을 비우면
+                //    이미터가 `<<if false>>`로 내므로 갈래는 <b>서 있되 안 탄다</b>:
+                //    사람이 조건을 채울 때까지 조용히 꺼져 있는 것이 사라지는 것보다 낫다.
+                supplied.Expression = string.Empty;
+            }
+
             foreach ((int at, ChapterFixture fixture) in fixtures)
             {
                 chapter.Fixtures[at] = fixture;
             }
         });
 
-        return new StatRemoveOutcome(true, fixtures.Count, [], null);
+        return new StatRemoveOutcome(
+            true, fixtures.Count, edges.Count, conditions.Count, [], null);
     }
 
     /// <summary>
@@ -1627,6 +1694,8 @@ public enum ChapterUseKind
 /// </summary>
 /// <param name="Applied">지웠는가. false면 <b>아무것도 안 건드렸다</b>.</param>
 /// <param name="Fixtures">시작값을 함께 치운 픽스처 수 — 막을 이유가 없는 자리다.</param>
+/// <param name="EdgesCleared">`clearUses`로 그 항을 뺀 간선 수.</param>
+/// <param name="ConditionsCleared">`clearUses`로 <b>식을 비운</b> 조건 수 — 조건 자체는 남는다.</param>
 /// <param name="Uses">
 /// 거절의 <b>근거</b>. 여기가 비어 있지 않으면 그 자리를 먼저 비워야 지울 수 있다.
 /// </param>
@@ -1634,11 +1703,13 @@ public enum ChapterUseKind
 public sealed record StatRemoveOutcome(
     bool Applied,
     int Fixtures,
+    int EdgesCleared,
+    int ConditionsCleared,
     IReadOnlyList<ChapterUse> Uses,
     string? Refusal)
 {
     public static StatRemoveOutcome Refuse(string reason, IReadOnlyList<ChapterUse> uses) =>
-        new(false, 0, uses, reason);
+        new(false, 0, 0, 0, uses, reason);
 }
 
 /// <summary>챕터 조건 삭제 한 판의 결과 (2026-09-17).</summary>

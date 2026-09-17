@@ -123,7 +123,106 @@ public sealed class StatRemoveTests
         Assert.True(editor.RemoveChapterStat("ch01", "trust").Applied);
     }
 
+    // ── 다 — 쓰는 곳을 비우고 지우기 (2026-09-17 소유자) ────────────────────
+
+    [Fact]
+    public void 비우고_지우면_간선은_그_항만_빠진다()
+    {
+        // ⛔ 길 자체를 걷으면 <b>이야기 구조가 바뀐다</b> — 지우려던 것은 스탯이다.
+        ProjectEditor editor = World();
+        editor.UpdateEdge(
+            "ch01", "root", "a", statChanges: "trust +1; fatigue -1", matchOptionLabel: "믿는다");
+
+        StatRemoveOutcome outcome = editor.RemoveChapterStat("ch01", "trust", clearUses: true);
+
+        Assert.True(outcome.Applied);
+        Assert.Equal(1, outcome.EdgesCleared);
+
+        ChapterEdge edge = Assert.Single(Chapter(editor).Edges);
+        Assert.Equal(["fatigue"], edge.StatChanges.Select(delta => delta.Key));
+    }
+
+    [Fact]
+    public void 비우고_지우면_조건은_식만_비고_남는다()
+    {
+        // ⛔ 조건을 통째로 지우면 그것을 쓰는 간선의 표시/해금이 함께 풀려 <b>연쇄가 한
+        //    단계 더</b> 간다 — 지우는 사람이 안 본 자리까지 바뀐다.
+        ProjectEditor editor = World();
+
+        StatRemoveOutcome outcome = editor.RemoveChapterStat("ch01", "trust", clearUses: true);
+
+        Assert.Equal(1, outcome.ConditionsCleared);
+
+        ChapterCondition condition = Assert.Single(Chapter(editor).Conditions);
+        Assert.Equal("신뢰높음", condition.Label);
+        Assert.Equal(string.Empty, condition.Expression);
+        Assert.False(condition.IsValid);
+    }
+
+    [Fact]
+    public void 빈_식은_검증이_짚어_사람이_채운다()
+    {
+        // 비우고 끝내면 아무도 모른다 — 빈 식이 <b>할 일이 남았다</b>고 말해야 한다.
+        ProjectEditor editor = World();
+
+        editor.RemoveChapterStat("ch01", "trust", clearUses: true);
+
+        Assert.Contains(
+            Chapter(editor).ToGraphModel("ch01", null).Diagnostics,
+            item => item.Message.Contains("비어 있습니다", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void 판에_공급된_사본도_Id를_지킨_채_비워진다()
+    {
+        // ⚠ 갈래가 이 Id로 잇는다. 식이 비면 이미터가 `<<if false>>`로 내므로 갈래는
+        //    <b>서 있되 안 탄다</b> — 조용히 꺼져 있는 것이 사라지는 것보다 낫다.
+        (ProjectEditor editor, ConditionDefinition supplied) = WorldWithSupply();
+        string id = supplied.Id;
+
+        editor.RemoveChapterStat("ch01", "trust", clearUses: true);
+
+        Assert.Equal(id, supplied.Id);
+        Assert.Equal(string.Empty, supplied.Expression);
+    }
+
+    [Fact]
+    public void 되돌리기_한_번에_전부_돌아간다()
+    {
+        // ⛔ 갈라 두면 스탯만 사라지고 간선·조건은 비워진 <b>반쪽</b>이 남는다.
+        ProjectEditor editor = World();
+        string before = ProjectSnapshotCodec.Encode(editor.Project);
+
+        editor.RemoveChapterStat("ch01", "trust", clearUses: true);
+        editor.Undo();
+
+        Assert.Equal(before, ProjectSnapshotCodec.Encode(editor.Project));
+    }
+
+    [Fact]
+    public void 안_비우면_여전히_거절한다()
+    {
+        // 기본값은 <b>가</b>다 — 비우는 것은 사람이 한 번 더 눌러야 한다.
+        Assert.False(World().RemoveChapterStat("ch01", "trust").Applied);
+    }
+
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>위에 더해, 판과 공급된 조건까지 선 상태.</summary>
+    private static (ProjectEditor Editor, ConditionDefinition Supplied) WorldWithSupply()
+    {
+        ProjectEditor editor = World();
+        string fileId = editor.EnsureChapterBoard("ch01");
+
+        ChapterBoardSupply.SupplyChapterConditionsToBoard(
+            editor,
+            new Vn.Authoring.Definition.GameDefinition(),
+            fileId,
+            editor.FindChapter("ch01")!.ToGraphModel("ch01", null));
+
+        return (editor, editor.Project.EnumerateNodes().OfType<SetNode>()
+            .SelectMany(node => node.Conditions).Single());
+    }
 
     private static ChapterDocument Chapter(ProjectEditor editor) => editor.FindChapter("ch01")!;
 

@@ -532,7 +532,7 @@ public static class ChapterWorkbookReader
             {
                 diagnostics.Add(Cell(
                     ChapterDiagnosticSeverity.Error,
-                    MapConditionProblem(problem.Kind),
+                    ChapterDiagnostics.CodeFor(problem.Kind),
                     path, sheet.Name, row, 2,
                     $"조건 '{label}': {problem.Message}"));
             }
@@ -548,14 +548,6 @@ public static class ChapterWorkbookReader
 
         return conditions;
     }
-
-    private static ChapterDiagnosticCode MapConditionProblem(ConditionProblemKind kind) => kind switch
-    {
-        ConditionProblemKind.UnknownStatKey => ChapterDiagnosticCode.StatKeyUnknown,
-        ConditionProblemKind.ValueNotInteger => ChapterDiagnosticCode.StatValueNotInteger,
-        ConditionProblemKind.Empty => ChapterDiagnosticCode.ConditionExpressionBlank,
-        _ => ChapterDiagnosticCode.ConditionExpressionMalformed
-    };
 
     // ── 스탯 ────────────────────────────────────────────────────────────────
 

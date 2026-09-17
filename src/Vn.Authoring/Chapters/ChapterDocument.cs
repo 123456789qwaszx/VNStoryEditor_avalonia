@@ -91,6 +91,7 @@ public sealed class ChapterDocument
     private IReadOnlyList<ChapterDiagnostic> ModelDiagnostics(string path, GameDefinition? definition) =>
     [
         .. StatDiagnostics(path, definition),
+        .. ConditionDiagnostics(path),
         .. ChapterAutoEdgeCheck.Of(Episodes, Edges, path),
         .. ChapterSceneEntryCheck.Of(Episodes, Edges, path)
     ];
@@ -125,6 +126,43 @@ public sealed class ChapterDocument
                     ChapterDiagnosticCode.StatMissingFromGameDefinition, path, stat,
                     $"스탯 '{stat.Key}'가 game.definition.json에 없습니다. " +
                     "스탯의 원천은 정의 파일입니다(§3.1)."));
+            }
+        }
+
+        return diagnostics;
+    }
+
+    /// <summary>
+    /// 조건식에 대한 <b>모델 검사</b> — 스탯 검사와 같은 이유로 여기 있어야 한다
+    /// (2026-09-17에 뒤늦게 옮겨 왔다).
+    ///
+    /// ⛔ <b>R-F가 스탯에서 겪은 일이 조건에서 한 번 더 있었다.</b> 이 검사는
+    /// <see cref="ChapterWorkbookReader"/>에만 있었고, 거기 있었던 것은 <i>그때 그것이 유일한
+    /// 문이어서</i>였다. 모델이 정본이 된 뒤로 <b>툴에서 만들거나 고친 조건의 흠은 아무도
+    /// 안 봤다</b> — 식을 비워도, 모르는 스탯키를 적어도 검증 보고가 조용했다.
+    ///
+    /// ⚠ 빈 식이 특히 중요하다. 관문은 <see cref="ChapterGateJudge"/>가 <c>Broken</c>으로
+    /// 판정해 <b>조용히 열리지는 않지만</b>, 그 사실이 <b>도달 불가</b>로만 번져 보여서
+    /// 원인이 어느 조건인지 아무 데도 안 적힌다.
+    /// </summary>
+    private IReadOnlyList<ChapterDiagnostic> ConditionDiagnostics(string path)
+    {
+        var diagnostics = new List<ChapterDiagnostic>();
+        HashSet<string> keys = Stats.Select(stat => stat.Key).ToHashSet(StringComparer.Ordinal);
+
+        foreach (ChapterCondition condition in Conditions)
+        {
+            foreach (ConditionParseProblem problem in
+                     ConditionExpressionParser.Parse(condition.Expression, keys).Problems)
+            {
+                diagnostics.Add(new ChapterDiagnostic(
+                    ChapterDiagnosticSeverity.Error,
+                    ChapterDiagnostics.CodeFor(problem.Kind),
+                    path,
+                    ChapterSheetNames.Conditions,
+                    condition.SourceRow > 0 ? condition.SourceRow : null,
+                    Column: null,
+                    $"조건 '{condition.Label}' — {problem.Message}"));
             }
         }
 

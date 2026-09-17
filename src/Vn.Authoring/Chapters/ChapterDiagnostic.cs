@@ -178,3 +178,22 @@ public sealed record ChapterDiagnostic(
 
     public override string ToString() => Describe();
 }
+
+/// <summary>
+/// 조건식 해석 문제를 <b>진단 코드</b>로 옮기는 규칙 — <b>한 벌이다</b>.
+///
+/// ⚠ 워크북 리더와 모델 검사가 <b>둘 다</b> 쓴다. 2026-09-17까지는 리더에만 있었고,
+/// 그래서 R-F로 모델이 정본이 된 뒤 <b>툴에서 만든 조건의 흠은 아무도 안 봤다</b> —
+/// 같은 날 스탯 검사가 겪은 일(*"안 옮기면 조용히 사라지는 검사가 된다"*)이 조건에서
+/// 한 번 더 일어나 있었다.
+/// </summary>
+public static class ChapterDiagnostics
+{
+    public static ChapterDiagnosticCode CodeFor(ConditionProblemKind kind) => kind switch
+    {
+        ConditionProblemKind.UnknownStatKey => ChapterDiagnosticCode.StatKeyUnknown,
+        ConditionProblemKind.ValueNotInteger => ChapterDiagnosticCode.StatValueNotInteger,
+        ConditionProblemKind.Empty => ChapterDiagnosticCode.ConditionExpressionBlank,
+        _ => ChapterDiagnosticCode.ConditionExpressionMalformed
+    };
+}
