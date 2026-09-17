@@ -213,10 +213,16 @@ public static class GraphProjectionBuilder
 
         // T2 (철도 배선) — 엑셀노드의 선택지 옵션 포트와 기본 출구는 카드가 아니라
         // 짝 간선의 칩에 산다. IF 갈래 출구는 카드에 남는다(내부 곁가지는 간선과 무관).
+        //
+        // ⚠ <b>「조건 분기」 표식도 카드에 남는다</b> (R7 P-5 · 2026-09-17). 이것을 안 넣어
+        //    두면 「분기 추가」가 <b>안 보이는 포트를 뚫는다</b> — 소유자가 그린 그림의
+        //    핵심("연출그래프의 카드에 포트만 뚫리는데")이 통째로 빠진다. P-6 뒤로는 판의
+        //    카드가 전부 에피소드라 이 갈래에 <b>모두</b> 걸리므로 더 그렇다.
         if (node is DialogueNode { ExcelEpisodeId: not null })
         {
             exits = exits.Where(exit =>
-                exit.Kind == Vn.Authoring.Flow.ExitPortKind.Branch && !exit.IsChoice);
+                exit.Kind == Vn.Authoring.Flow.ExitPortKind.Detour ||
+                (exit.Kind == Vn.Authoring.Flow.ExitPortKind.Branch && !exit.IsChoice));
         }
 
         var ports = exits
@@ -547,9 +553,14 @@ public static class GraphProjectionBuilder
 
     private static string PortKey(ExitPort exit)
     {
-        return exit.Kind == ExitPortKind.Default
-            ? $"execution:{exit.NodeId}:default"
-            : $"execution:{exit.NodeId}:branch:{exit.BranchOpenLineId}";
+        // ⚠ <b>「조건 분기」는 제 접두를 진다</b> (R7 P-5). 갈래와 표식은 열쇠가 둘 다 LineId라,
+        //    한 줄이 갈래도 열고 표식도 지면 열쇠가 겹쳐 <b>두 포트가 한 자리를 다툰다</b>.
+        return exit.Kind switch
+        {
+            ExitPortKind.Default => $"execution:{exit.NodeId}:default",
+            ExitPortKind.Detour => $"execution:{exit.NodeId}:detour:{exit.BranchOpenLineId}",
+            _ => $"execution:{exit.NodeId}:branch:{exit.BranchOpenLineId}"
+        };
     }
 
 

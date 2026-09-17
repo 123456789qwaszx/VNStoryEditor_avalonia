@@ -117,6 +117,58 @@ public sealed class BranchMarkerCardTests : IDisposable
             port => port.Kind == ExitPortKind.Detour);
     });
 
+    [Fact]
+    public void 뚫린_포트가_그래프_카드에_실제로_선다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ 여기가 소유자 그림의 핵심이다 — "연출그래프의 카드에 포트만 뚫리는데".
+        //    판 투영이 에피소드 노드의 포트를 걸러 내면서 표식을 함께 떨어뜨리고 있었다
+        //    (2026-09-17에 잡았다): 카드는 보이는데 이을 자리가 <b>없는</b> 상태였고,
+        //    P-6 뒤로는 판의 카드가 전부 에피소드라 <b>한 자리도 안 보였다</b>.
+        (_, AuthoringSession session, string nodeId, string lineId) = Show();
+
+        DialogueNode made = session.Editor.AddBranchMarker(nodeId, lineId);
+
+        Vn.Authoring.Graph.ExpandedNodeProjection card = Vn.Authoring.Graph.GraphProjectionBuilder
+            .Build(session.Project, new HashSet<string>(session.Project.Files.Select(file => file.Id)))
+            .Items.OfType<Vn.Authoring.Graph.ExpandedNodeProjection>()
+            .Single(item => string.Equals(item.NodeId, nodeId, StringComparison.Ordinal));
+
+        Vn.Authoring.Graph.GraphOutputPortProjection port = Assert.Single(
+            card.OutputPorts,
+            item => item.ExecutionPort?.Kind == ExitPortKind.Detour);
+
+        // 이미 이어져 있다 — 사람이 한 번 더 끌 일이 없다.
+        Assert.True(port.IsConnected);
+        Assert.Equal(made.Id, port.ExecutionPort!.TargetNodeId);
+    });
+
+    [Fact]
+    public void 포트_열쇠는_서로_겹치지_않는다() => HeadlessUi.Run(() =>
+    {
+        // ⚠ 표식과 IF 갈래는 <b>둘 다 열쇠가 LineId다</b>. 한 줄이 갈래도 열고 표식도 지면
+        //    열쇠가 겹쳐 두 포트가 한 자리를 다투고 하나가 조용히 사라진다 — 그래서 표식은
+        //    제 접두(`:detour:`)를 진다.
+        (_, AuthoringSession session, string nodeId, string lineId) = Show();
+
+        session.Editor.AddBranchMarker(nodeId, lineId);
+
+        IReadOnlyList<Vn.Authoring.Graph.GraphOutputPortProjection> ports =
+            Vn.Authoring.Graph.GraphProjectionBuilder
+                .Build(session.Project, new HashSet<string>(session.Project.Files.Select(file => file.Id)))
+                .Items.OfType<Vn.Authoring.Graph.ExpandedNodeProjection>()
+                .Single(item => string.Equals(item.NodeId, nodeId, StringComparison.Ordinal))
+                .OutputPorts;
+
+        Assert.Equal(
+            ports.Count,
+            ports.Select(port => port.Key).Distinct(StringComparer.Ordinal).Count());
+
+        Assert.Contains(
+            ports,
+            port => port.ExecutionPort?.Kind == ExitPortKind.Detour &&
+                    port.Key.Contains(":detour:", StringComparison.Ordinal));
+    });
+
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static DialogueNode Node(AuthoringSession session, string nodeId) =>
