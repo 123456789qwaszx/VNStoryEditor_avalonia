@@ -201,8 +201,13 @@ R-C 끝 **1,813** → **1,772** (−41). 역방향 기계를 지키던 테스트
 
 §6.4가 말하듯 재료는 이미 있다 — `ScenarioTextParser` · `ProjectEditor.ApplyScenarioText`.
 막고 있던 것은 `_excelOwned` 두 줄이었고, **그 개념 자체를 걷는 것이 R-E의 일부**다
-(R-D에서 되쓰기는 걷었지만 표식 `DialogueNode.ExcelEpisodeId`와 읽기 전용 잠금은 남아 있다 —
-임포터와 [＋ 에피소드] 양쪽이 그 표식을 붙인다).
+(R-D에서 되쓰기는 걷었지만 표식과 읽기 전용 잠금은 남아 있다 — 임포터와 [＋ 에피소드]
+양쪽이 그 표식을 붙인다).
+
+> ⛔ **추기 (2026-09-17)** — 그 뒤로 둘 다 정리됐다. **읽기 전용 잠금은 R-E에서 풀렸고**,
+> 표식은 이름을 바꿨다: `DialogueNode.ExcelEpisodeId` → **`MarkedEpisodeId`**(저장 칸도
+> `excelEpisode` → `episodeMark`). 엑셀이 주인이 아니게 된 지 오래라 이름이 거짓이었다.
+> 값을 읽는 자리는 `EpisodeNaming` 하나다.
 
 ⚠ R-E가 서면 §1의 "작가가 대사를 쓸 자리가 엑셀뿐"인 구간이 끝난다. **그것이 이 전체
 작업의 목적지다**(§0).
