@@ -8,8 +8,8 @@
 > 뒤집힌 결정도 그 시절의 근거를 알아야 다시 뒤집지 않는다.
 >
 > **현행 정본은 인계 사슬이다:**
-> [`r-f-handoff.md`](r-f-handoff.md) → [`r-e-handoff.md`](r-e-handoff.md) →
-> [`r-d-handoff.md`](r-d-handoff.md) → [`r-c-v15-handoff.md`](r-c-v15-handoff.md)
+> [`2026-09-18-handoff.md`](2026-09-18-handoff.md) → [`r-f-handoff.md`](r-f-handoff.md) →
+> [`r-e-handoff.md`](r-e-handoff.md) → [`r-d-handoff.md`](r-d-handoff.md) → [`r-c-v15-handoff.md`](r-c-v15-handoff.md)
 >
 > ### 한 문장으로 무엇이 바뀌었나
 >
