@@ -383,8 +383,14 @@ public sealed partial class ProjectEditor
     /// <summary>
     /// 에피소드의 자리 — 그래프에서 끌어 옮긴 결과.
     ///
-    /// ⚠ 자리는 <b>구조가 아니다</b>. 되돌리기 목록이 드래그 한 번마다 부풀면 사람이 진짜
-    /// 되돌리고 싶은 편집까지 밀려 나간다 — 그래서 여기만 <c>NodeMetadata</c>로 알린다.
+    /// ⚠ 자리는 <b>구조가 아니다</b> — 파생 그래프도 편집 행도 안 달라지므로
+    /// <c>NodeMetadata</c>로 알린다. 화면이 통째로 다시 서지 않는다.
+    ///
+    /// ⛔ <b>되돌리기 목록은 종류를 안 본다</b> (2026-09-18에 확인). <c>Mutate</c>는 종류와
+    /// 무관하게 스냅샷을 하나씩 쌓으므로, <b>포인터가 움직일 때마다 이것을 부르면</b>
+    /// 되돌리기 목록이 픽셀 단위로 차 사람이 진짜 되돌리고 싶은 편집을 밀어낸다.
+    /// (연출 그래프가 지금 그렇게 부르고 있다 — 그쪽은 따로 볼 일이다.)
+    /// <b>끄는 동안은 화면만 움직이고, 놓을 때 한 번 부른다.</b>
     /// </summary>
     public void MoveEpisode(string chapterId, string episodeId, double x, double y)
     {
@@ -397,6 +403,46 @@ public sealed partial class ProjectEditor
                 X = Math.Round(x, 2),
                 Y = Math.Round(y, 2)
             });
+    }
+
+    /// <summary>
+    /// 여러 에피소드의 자리를 <b>한 번의 변경으로</b> 옮긴다 — 첫 자리 심기와 [자동 정렬]이
+    /// 쓴다 (2026-09-18).
+    ///
+    /// ⭐ <b>한 번인 것이 요점이다.</b> <see cref="MoveEpisode"/>를 스무 번 부르면 되돌리기도
+    /// 스무 번이라, 정렬 한 번을 무르려고 Ctrl+Z를 스무 번 눌러야 한다. 사람이 한 동작으로
+    /// 한 일은 한 번에 돌아와야 한다.
+    ///
+    /// ⚠ 모르는 EpisodeId가 있으면 <b>던진다</b>. 조용히 건너뛰면 "정렬했는데 하나가 제자리"를
+    /// 사람이 버그로 읽고, 그 자리를 찾을 단서가 없다.
+    /// </summary>
+    public void MoveEpisodes(
+        string chapterId, IReadOnlyDictionary<string, (double X, double Y)> positions)
+    {
+        ArgumentNullException.ThrowIfNull(positions);
+
+        ChapterDocument chapter = RequireChapter(chapterId);
+
+        // 자리(index)를 먼저 전부 확인한다 — 반쯤 옮기고 던지면 판이 어중간해진다.
+        List<(int Index, double X, double Y)> moves = positions
+            .Select(pair => (
+                Index: RequireEpisodeIndex(chapter, pair.Key),
+                X: Math.Round(pair.Value.X, 2),
+                Y: Math.Round(pair.Value.Y, 2)))
+            .ToList();
+
+        if (moves.Count == 0)
+        {
+            return;
+        }
+
+        Mutate(ProjectChangeKind.NodeMetadata, () =>
+        {
+            foreach ((int index, double x, double y) in moves)
+            {
+                chapter.Episodes[index] = chapter.Episodes[index] with { X = x, Y = y };
+            }
+        });
     }
 
     /// <summary>

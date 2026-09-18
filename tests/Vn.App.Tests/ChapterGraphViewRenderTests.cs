@@ -43,10 +43,16 @@ public sealed class ChapterGraphViewRenderTests
     });
 
     [Fact]
-    public void 그려진_노드는_깊이_열에_선다() => HeadlessUi.Run(() =>
+    public void 그려진_노드는_에피소드가_진_자리에_선다() => HeadlessUi.Run(() =>
     {
-        // v3 — 배치는 깊이 레이아웃이 소유한다. 열 = 시작에서의 가장 긴 경로.
-        // 견본의 흐름: 01 → 02 → (A) → 03 → end, A는 02의 분기이자 03으로 합류.
+        // ⛔ <b>v3까지 이 테스트의 이름은 「깊이 열에 선다」였다</b> — 판을 그릴 때마다
+        //    깊이 배치를 다시 계산했고, 엑셀의 X·Y는 내보내기에나 쓰였다. v4(2026-09-18
+        //    소유자: *"자유롭게 노드의 위치를 조절할 수 있게"*)가 그것을 뒤집었다:
+        //    이제 <b>사람이 적어 둔 자리 그대로</b> 선다.
+        //
+        //    그래서 여기 적힌 숫자는 배치 산식이 아니라 <b>견본 워크북의 X 열</b>이다:
+        //    01=0 · 02=220 · A=440 · 03=440 · end=680. 깊이 배치라면 03은 660(A 다음 열)에
+        //    섰을 텐데, 사람은 A와 같은 열에 두었고 이제 그 뜻이 이긴다.
         using var project = new TempProject(SamplePath);
         (Canvas canvas, _) = Render(project);
 
@@ -54,15 +60,38 @@ public sealed class ChapterGraphViewRenderTests
 
         Assert.Equal(220, placed["main05.02"].X - placed["main05.01"].X);
         Assert.Equal(440, placed["branch05.02A"].X - placed["main05.01"].X);
+        Assert.Equal(440, placed["main05.03"].X - placed["main05.01"].X);
+        Assert.Equal(680, placed["main05.end"].X - placed["main05.01"].X);
 
-        // 합류 노드는 가장 깊은 부모(A, 깊이 2) 다음 열이다 — 간선이 뒤로 꺾이지 않는다.
-        Assert.Equal(660, placed["main05.03"].X - placed["main05.01"].X);
-        Assert.Equal(880, placed["main05.end"].X - placed["main05.01"].X);
+        // 세로도 워크북 그대로다 — A는 본줄 위(−120), 03은 아래(+120).
+        Assert.Equal(-120, placed["branch05.02A"].Y - placed["main05.01"].Y);
+        Assert.Equal(120, placed["main05.03"].Y - placed["main05.01"].Y);
 
-        // 간선 없는 부착 노드는 그래프 아래 줄에 따로 선다.
+        // 간선 없는 부착 노드는 본줄 아래에 따로 선다 (워크북이 그렇게 적어 두었다).
         Assert.True(
             placed["attach05.02s"].Y > placed["main05.01"].Y,
             $"attach05.02s(Y={placed["attach05.02s"].Y})는 본류(Y={placed["main05.01"].Y}) 아래여야 한다");
+    });
+
+    [Fact]
+    public void 음수_자리도_판_안으로_들어온다() => HeadlessUi.Run(() =>
+    {
+        // ⛔ v3의 깊이 배치는 언제나 0 이상을 냈지만 손으로 적은 워크북은 아니다 —
+        //    견본의 `branch05.02A`가 Y=−120이다. 그대로 그리면 캔버스 위쪽 바깥에 서고,
+        //    스크롤이 닿지 않아 <b>아예 못 만지는 카드</b>가 된다.
+        using var project = new TempProject(SamplePath);
+        (Canvas canvas, _) = Render(project);
+
+        IReadOnlyDictionary<string, (double X, double Y)> placed = Placements(canvas);
+
+        Assert.All(placed.Values, position =>
+        {
+            Assert.True(position.X >= 0, $"X={position.X}는 판 밖이다");
+            Assert.True(position.Y >= 0, $"Y={position.Y}는 판 밖이다");
+        });
+
+        // 밀되 <b>거리는 그대로</b>다 — 사람이 짠 모양이 바뀌면 미는 뜻이 없다.
+        Assert.Equal(240, placed["main05.03"].Y - placed["branch05.02A"].Y);
     });
 
     [Fact]

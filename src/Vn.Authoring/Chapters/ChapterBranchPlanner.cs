@@ -6,9 +6,23 @@ namespace Vn.Authoring.Chapters;
 /// 정한다. 합류 노드(두 분기가 다시 만나는 곳)는 가장 깊은 부모보다 한 열 오른쪽에 서서
 /// 간선이 뒤로 꺾이지 않는다.
 ///
-/// <b>배치는 툴이 소유한다 (v3, 2026-08-12 소유자 개정).</b> 뷰는 그릴 때마다
-/// <see cref="Layout"/>을 다시 계산한다 — 드래그가 없으므로 사람이 지킬 배치도 없고,
-/// 흐름(간선)이 바뀌면 자리가 저절로 따라온다. 엑셀 X·Y 셀은 내보내기의 Position에나 쓰인다.
+/// ⛔ <b>~~배치는 툴이 소유한다 (v3)~~ — 걷혔다 (v4, 2026-09-18 소유자:</b> *"챕터그래프도
+/// 연출그래프와 동일하게 자유롭게 노드의 위치를 조절할 수 있게"*). v3의 근거는 <i>"드래그가
+/// 없으므로 사람이 지킬 배치도 없다"</i>였는데, 그 <b>전제가 뒤집혔다</b> — 드래그가 생겼다.
+/// 자리의 주인은 이제 <see cref="ChapterEpisode.X"/>·<see cref="ChapterEpisode.Y"/>이고
+/// <c>ProjectEditor.MoveEpisode</c>가 고친다(R-F가 2026-09-16에 엑셀에게서 가져온 그 값이다).
+///
+/// <b>그래서 이 계산은 「그리는 자리」가 아니라 「첫 자리」다.</b> 세 곳이 쓴다:
+///
+/// <list type="number">
+///   <item><see cref="SuggestPlacement"/> — 새로 세우는 카드 하나의 자리</item>
+///   <item><see cref="NeedsSeeding"/>가 참일 때 <see cref="Layout"/>로 <b>한 번 심기</b> —
+///         엑셀에서 들여온 챕터는 X·Y가 전부 0이라 한 자리에 포개진다</item>
+///   <item>[자동 정렬] — 사람이 흐트러뜨린 판을 부를 때 다시 세운다</item>
+/// </list>
+///
+/// ⚠ 자동으로 <b>다시</b> 계산하지 않는다. 사람이 옮긴 자리를 그리기가 덮으면, 옮긴 일이
+/// 아무 일도 아니게 된다.
 /// </summary>
 public static class ChapterBranchPlanner
 {
@@ -143,5 +157,35 @@ public static class ChapterBranchPlanner
         }
 
         return positions;
+    }
+
+    /// <summary>
+    /// <b>아직 자리가 없다</b> — 카드 둘 이상이 같은 점에 서 있다.
+    ///
+    /// v4에서 자리의 주인이 사람으로 넘어오면서 생긴 물음이다: 엑셀에서 들여온 챕터는 X·Y가
+    /// 전부 0이라, 그냥 제 값대로 그리면 <b>한 점에 전부 포개진다</b>. 그때 한 번
+    /// <see cref="Layout"/>으로 심어 준다.
+    ///
+    /// ⚠ <b>"전부 0"이 아니라 "겹친다"로 묻는다.</b> 에피소드 하나짜리 챕터는 (0,0)이어도
+    /// 아무 문제가 없고, 반대로 사람이 둘을 정확히 포개 놓았다면 그것도 고쳐 줄 자리다.
+    ///
+    /// ⚠ 이 판정은 <b>한 번만</b> 참이다 — 심고 나면 자리가 서로 달라지므로 다시 심지 않는다.
+    /// 그래야 그리기가 사람이 옮긴 자리를 덮는 일이 없다.
+    /// </summary>
+    public static bool NeedsSeeding(ChapterGraphModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var seen = new HashSet<(double X, double Y)>();
+
+        foreach (ChapterEpisode episode in model.Episodes)
+        {
+            if (!seen.Add((Math.Round(episode.X, 2), Math.Round(episode.Y, 2))))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

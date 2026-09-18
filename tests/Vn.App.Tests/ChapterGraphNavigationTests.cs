@@ -34,12 +34,14 @@ public sealed class ChapterGraphNavigationTests : IDisposable
         string path = Path.Combine(chapters, "ch01.xlsx");
 
         // 뷰포트보다 넓은 판 — 이동이 실제로 일어날 자리가 있어야 한다.
+        // ⚠ v4부터 판은 에피소드가 <b>제 X·Y로</b> 그려진다(깊이 배치가 매번 벌려 주지
+        //   않는다). 자리를 한 열씩 벌려 두어야 실제 판만큼 넓다.
         string previous = string.Empty;
 
         for (int index = 0; index < 8; index++)
         {
             string id = $"ep{index}";
-            ChapterWorkbookWriter.AddEpisode(path, id, title: "", index, 0);
+            ChapterWorkbookWriter.AddEpisode(path, id, title: "", index * ChapterBranchPlanner.ColumnWidth, 0);
 
             if (previous.Length > 0)
             {

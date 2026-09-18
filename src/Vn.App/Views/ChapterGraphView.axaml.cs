@@ -20,9 +20,13 @@ namespace Vn.App.Views;
 /// <summary>
 /// 챕터·에피소드 그래프 뷰 (G4·G5). <b>별도 화면이고 기존 대사·연출 그래프는 손대지 않는다</b> (G-1).
 ///
-/// <b>편집은 전부 엑셀 셀 쓰기다 (G-2 v2).</b> 위치·관계의 소유자는 여전히 엑셀이고, 이 화면의
-/// 드래그·패널·[＋ 분기]는 <see cref="ChapterWorkbookWriter"/>를 거쳐 해당 셀만 고친다.
-/// 저장 감시(G5)가 다시 읽어 화면이 따라온다 — 화면 상태가 진실이 되는 순간은 없다.
+/// ⛔ <b>~~편집은 전부 엑셀 셀 쓰기다 (G-2 v2)~~</b> — 두 번 뒤집혔다. R-F(2026-09-16)가
+/// 원본을 엑셀에서 프로젝트로 옮겼고(워크북은 그 뒤로 산출물이다), v4(2026-09-18)가 자리를
+/// 사람에게 돌려줬다. 이 화면의 편집은 <c>ProjectEditor</c>를 거치고, 되돌리기도 거기서 온다.
+///
+/// <b>자리의 주인은 에피소드 제 X·Y다 (v4, 2026-09-18 소유자:</b> *"챕터그래프도 연출그래프와
+/// 동일하게 자유롭게 노드의 위치를 조절할 수 있게"*). <see cref="ChapterBranchPlanner"/>는
+/// 이제 <b>그리는 자리가 아니라 첫 자리</b>를 낸다 — 자세한 것은 그쪽 주석에 있다.
 ///
 /// 오류가 있어도 읽힌 데까지 그린다. 빈 화면 + "오류"보다, 그려진 그래프 옆에 무엇이 어디서
 /// 잘못됐는지 세워 두는 편이 고칠 자리를 알려 준다(규칙 14).
@@ -245,6 +249,7 @@ public partial class ChapterGraphView : UserControl
         AddEdgeButton.Click += (_, _) => UiGuard.Run(_session, "간선 연결·수정", SubmitEdgeForm);
         DeleteEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 삭제", DeleteSelectedEpisode);
         AddEpisodeButton.Click += (_, _) => UiGuard.Run(_session, "에피소드 추가", AddEpisodeFromToolbar);
+        AutoArrangeButton.Click += (_, _) => UiGuard.Run(_session, "자동 정렬", AutoArrange);
         ImportEpisodesButton.Click += (_, _) => UiGuard.Run(_session, "대본 가져오기", ImportEpisodes);
         ImportChaptersButton.Click += (_, _) =>
             UiGuard.Run(_session, "챕터 가져오기", () => ImportChapters());
@@ -303,6 +308,11 @@ public partial class ChapterGraphView : UserControl
                 SelectEpisode(null);
             }
         };
+
+        // 카드 끌기 (v4) — 누름은 카드가 받고(e.Handled), 움직임과 놓음은 여기로 올라온다.
+        // 연출 그래프와 같은 자리에 같은 손놀림이다.
+        GraphCanvas.PointerMoved += OnCanvasPointerMoved;
+        GraphCanvas.PointerReleased += OnCanvasPointerReleased;
     }
 
     internal void Attach(AuthoringSession session)
@@ -1400,13 +1410,42 @@ public partial class ChapterGraphView : UserControl
             EmptyAddEpisodeButton.IsVisible = true;
         }
 
-        // 배치는 깊이 레이아웃이 소유한다 (v3) — 열 = 깊이, 드래그 없음.
-        // 흐름(간선)이 바뀌면 자리가 저절로 따라온다.
-        _placed = ChapterBranchPlanner.Layout(model)
-            .ToDictionary(
-                pair => pair.Key,
-                pair => (X: pair.Value.X + CanvasMargin, Y: pair.Value.Y + CanvasMargin),
-                StringComparer.Ordinal);
+        DrawCanvas(model);
+
+        DrawDiagnostics(model);
+        RefreshPropertyPanel(preserveTyping: true);
+    }
+
+    /// <summary>
+    /// <b>판만</b> 다시 그린다 — 카드·포트·간선. 검증 보고와 속성 패널은 안 건드린다.
+    ///
+    /// ⭐ <see cref="Draw"/>에서 떼어낸 이유는 <b>드래그</b>다 (v4, 2026-09-18). 카드를 끄는
+    /// 동안 매 프레임 필요한 것은 판뿐인데, <c>Draw</c>를 부르면 검증 보고 패널을 통째로
+    /// 다시 세우고 속성 패널의 타이핑까지 건드린다 — 끄는 중에 낼 비용도, 낼 이유도 없다.
+    ///
+    /// ⚠ 자리 계산이 여기 한 벌만 있어야 한다. 끄는 동안과 놓은 뒤가 다른 산식을 쓰면
+    /// 놓는 순간 카드가 튄다.
+    /// </summary>
+    private void DrawCanvas(ChapterGraphModel model)
+    {
+        GraphCanvas.Children.Clear();
+        _cardById.Clear();
+        _cardBase.Clear();
+        _lineByEdge.Clear();
+        _lineBase.Clear();
+
+        // 자리는 사람이 소유한다 (v4) — 에피소드가 제 X·Y를 지고 있고 드래그가 그것을
+        // 고친다. 그리기는 <b>덮지 않는다</b>: 덮으면 옮긴 일이 아무 일도 아니게 된다.
+        //
+        // ⚠ 끄는 중인 카드 하나만 임시 자리(`_dragPosition`)를 쓴다 — 아직 프로젝트에
+        //   안 적은 자리다. 놓을 때 한 번 적는다(되돌리기 한 번 = 드래그 한 번).
+        _placed = DisplayPlacement(model).ToDictionary(
+            pair => pair.Key,
+            pair => string.Equals(pair.Key, _draggingEpisodeId, StringComparison.Ordinal) &&
+                    _dragPosition is { } dragged
+                ? (X: dragged.X + CanvasMargin, Y: dragged.Y + CanvasMargin)
+                : (X: pair.Value.X + CanvasMargin, Y: pair.Value.Y + CanvasMargin),
+            StringComparer.Ordinal);
 
         GraphCanvas.Width = _placed.Count == 0
             ? CanvasMargin * 2
@@ -1440,9 +1479,7 @@ public partial class ChapterGraphView : UserControl
             DrawEpisode(model, episode);
         }
 
-        DrawDiagnostics(model);
         ApplySelectionVisuals();
-        RefreshPropertyPanel(preserveTyping: true);
     }
 
     // ⛔ 픽스처 (G6) — 2026-08-24에 화면에서 걷었다 (소유자: "꽤 오래 다뤘는데 단 한 번도
@@ -2011,13 +2048,37 @@ public partial class ChapterGraphView : UserControl
         !validation.Reachability.ReachableEpisodeIds.Contains(episode.EpisodeId) &&
         !episode.AllowUnreachable;
 
-    // ── 편집 (G-2 v2 → v3: 배치는 깊이 레이아웃 소유, 드래그 없음) ──────────
+    // ── 편집 (v4: 자리는 사람이 소유한다 — 드래그가 에피소드의 X·Y를 고친다) ──────
 
     private string? _selectedEpisodeId;
 
-    /// <summary>이번 그리기의 캔버스 배치 — <see cref="ChapterBranchPlanner.Layout"/> + 여백.</summary>
+    /// <summary>이번 그리기의 캔버스 배치 = 에피소드의 X·Y + 여백. <see cref="DrawCanvas"/>가 채운다.</summary>
     private IReadOnlyDictionary<string, (double X, double Y)> _placed =
         new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
+
+    /// <summary>지금 끌고 있는 카드. 없으면 <c>null</c>.</summary>
+    private string? _draggingEpisodeId;
+
+    /// <summary>잡은 지점과 카드 왼위 모서리의 차 — 카드가 커서 아래에서 튀지 않게 한다.</summary>
+    private Point _dragOffset;
+
+    /// <summary>
+    /// 끄는 동안의 임시 자리(여백 뺀 값 = 에피소드에 적힐 값). <b>아직 프로젝트에 없다.</b>
+    ///
+    /// ⭐ 놓을 때 <b>한 번</b> 적는 것이 요점이다. <c>MoveEpisode</c>는 부를 때마다 되돌리기
+    /// 스냅샷을 하나 쌓으므로, 포인터가 움직일 때마다 부르면 드래그 한 번에 되돌리기가
+    /// 수십 개 쌓여 사람이 진짜 무르고 싶은 편집을 밀어낸다.
+    /// </summary>
+    private (double X, double Y)? _dragPosition;
+
+    /// <summary>실제로 움직였나 — 그냥 누른 것과 끈 것을 가른다(안 움직였으면 안 적는다).</summary>
+    private bool _dragMoved;
+
+    /// <summary>
+    /// 다시 그리기 예약 — <see cref="QueueReload"/>와 같은 수법이다. 포인터는 프레임보다
+    /// 빨리 오므로, 들어오는 대로 판을 다시 그리면 대부분 버려질 그림을 그린다.
+    /// </summary>
+    private bool _dragRedrawQueued;
 
     /// <summary>선택된 챕터의 워크북 경로. 편집이 쓰는 대상이다.</summary>
     private string? SelectedChapterPath =>
@@ -2065,6 +2126,15 @@ public partial class ChapterGraphView : UserControl
 
             e.Handled = true; // 캔버스(빈 공간 = 선택 해제)로 흘러가면 방금 한 선택이 풀린다
             SelectEpisode(episode.EpisodeId);
+
+            // 끌 채비 (v4). 아직 아무것도 안 적는다 — 움직여야 드래그다.
+            Point position = e.GetPosition(GraphCanvas);
+
+            _draggingEpisodeId = episode.EpisodeId;
+            _dragOffset = new Point(
+                position.X - Canvas.GetLeft(card), position.Y - Canvas.GetTop(card));
+            _dragPosition = null;
+            _dragMoved = false;
         };
 
         card.DoubleTapped += (_, e) =>
@@ -2072,6 +2142,174 @@ public partial class ChapterGraphView : UserControl
             e.Handled = true;
             UiGuard.Run(_session, "에피소드 열기", () => OpenEpisode(episode.EpisodeId));
         };
+    }
+
+    /// <summary>
+    /// 끄는 중 — 카드의 임시 자리를 옮기고 판을 다시 그린다 (v4, 2026-09-18).
+    ///
+    /// ⚠ <b>프로젝트는 아직 안 고친다.</b> 놓을 때 한 번 적는다
+    /// (<see cref="OnCanvasPointerReleased"/>) — 그래야 되돌리기 한 번이 드래그 한 번이다.
+    /// </summary>
+    private void OnCanvasPointerMoved(object? sender, Avalonia.Input.PointerEventArgs args)
+    {
+        if (_draggingEpisodeId is null)
+        {
+            return;
+        }
+
+        if (!args.GetCurrentPoint(GraphCanvas).Properties.IsLeftButtonPressed)
+        {
+            // 판 밖에서 놓았다 — 놓음을 못 봤으므로 여기서 마무리한다.
+            CommitDrag();
+            return;
+        }
+
+        Point position = args.GetPosition(GraphCanvas);
+
+        // 여백 안쪽(음수)으로는 못 나간다 — 스크롤이 닿지 않는 자리에 카드를 두면 못 찾는다.
+        _dragPosition = (
+            X: Math.Max(0, position.X - _dragOffset.X - CanvasMargin),
+            Y: Math.Max(0, position.Y - _dragOffset.Y - CanvasMargin));
+        _dragMoved = true;
+
+        QueueDragRedraw();
+    }
+
+    private void OnCanvasPointerReleased(
+        object? sender, Avalonia.Input.PointerReleasedEventArgs args) => CommitDrag();
+
+    /// <summary>
+    /// 끌던 자리를 <b>한 번</b> 적는다. 안 움직였으면(그냥 누른 것) 아무것도 안 적는다 —
+    /// 카드를 고르기만 해도 되돌리기가 쌓이면 Ctrl+Z가 아무 일도 안 하는 것처럼 보인다.
+    ///
+    /// ⭐ <b>아직 자리가 없던 챕터라면 여기서 판 전체가 함께 적힌다</b>
+    /// (<see cref="DisplayPlacement"/>). 그때까지 보이던 자리는 빌린 것이라, 끈 카드 하나만
+    /// 적으면 나머지는 다음 그리기에서 <b>도로 한 점에 포개진다</b> — 사람 눈에는 카드 하나를
+    /// 옮겼더니 나머지가 사라진 것으로 보인다. 한 번의 변경이므로 되돌리기도 한 번이다.
+    /// </summary>
+    private void CommitDrag()
+    {
+        if (_draggingEpisodeId is not { } episodeId)
+        {
+            return;
+        }
+
+        (double X, double Y)? position = _dragPosition;
+        bool moved = _dragMoved;
+
+        _draggingEpisodeId = null;
+        _dragPosition = null;
+        _dragMoved = false;
+
+        if (!moved || position is not { } dropped ||
+            _selectedChapterId is not { } chapterId || SelectedModel is not { } model)
+        {
+            return;
+        }
+
+        Dictionary<string, (double X, double Y)> places =
+            DisplayPlacement(model).ToDictionary(pair => pair.Key, pair => pair.Value,
+                StringComparer.Ordinal);
+
+        places[episodeId] = dropped;
+
+        UiGuard.Run(_session, "에피소드 자리", () =>
+            _session!.Editor.MoveEpisodes(chapterId, places));
+    }
+
+    /// <summary>
+    /// <b>[자동 정렬]</b> — 흐름 순서(왼쪽에서 오른쪽)로 전부 다시 세운다 (v4, 2026-09-18).
+    ///
+    /// 자리의 주인이 사람이 되면 <b>돌아올 길</b>이 있어야 한다. 그 길이 곧 v3까지 매번
+    /// 돌던 깊이 배치다 — 없앤 것이 아니라 <b>부를 때만 도는 것</b>으로 바뀌었다.
+    ///
+    /// ⚠ 한 번의 변경이다(<c>MoveEpisodes</c>) — Ctrl+Z 한 번이면 정렬 전으로 돌아온다.
+    /// </summary>
+    private void AutoArrange()
+    {
+        if (_selectedChapterId is not { } chapterId || SelectedModel is not { } model ||
+            model.Episodes.Count == 0)
+        {
+            return;
+        }
+
+        _session!.Editor.MoveEpisodes(chapterId, ChapterBranchPlanner.Layout(model));
+        _session.SetStatus(
+            $"'{chapterId}'의 카드 {model.Episodes.Count}장을 흐름 순서로 다시 세웠습니다. " +
+            "되돌리기(Ctrl+Z)로 돌아옵니다.");
+    }
+
+    /// <summary>
+    /// <b>이 챕터를 어디에 그리나</b> — 에피소드의 X·Y가 원칙이고, <b>아직 자리가 없으면</b>
+    /// (카드가 한 점에 포개져 있으면) 깊이 배치를 빌려 쓴다 (v4, 2026-09-18).
+    ///
+    /// ⚠ <b>왜 빌리기만 하나:</b> v3까지 자리는 그릴 때마다 계산됐으므로 에피소드의 X·Y는
+    /// 아무도 안 채웠다 — 엑셀에서 들여온 챕터는 전부 (0,0)이고, 그대로 그리면 판이
+    /// <b>카드 한 장처럼</b> 보인다. 그렇다고 판을 열어 봤다는 이유로 프로젝트에 적으면,
+    /// ① 사람이 안 한 변경이 저장 대기에 오르고 ② 그것이 되돌리기 목록 맨 위에 앉아
+    /// <b>사람의 첫 Ctrl+Z가 카드를 도로 포갠다</b>. 둘 다 사람이 시킨 적 없는 일이다.
+    ///
+    /// ⭐ 그래서 <b>사람이 처음 카드를 옮길 때</b> 그 손과 함께 적힌다
+    /// (<see cref="CommitDrag"/>). 되돌리기 한 번이면 그 손 이전으로 돌아간다.
+    ///
+    /// ⚠ "전부 0"이 아니라 "겹친다"로 묻는 것이라, 사람이 카드 둘을 <b>정확히</b> 포개 놓아도
+    /// 빌린 배치로 보인다. 소수점 둘째 자리까지 맞아떨어져야 하니 손으로는 거의 안 일어나고,
+    /// 일어나도 다음 옮기기 한 번으로 풀린다.
+    ///
+    /// ⛔ <b>음수 자리도 여기서 걷는다.</b> v3의 깊이 배치는 언제나 0 이상을 냈지만, 손으로
+    /// 적은 워크북은 아니다 — 견본 챕터의 <c>branch05.02A</c>가 Y=−120이다. 그대로 그리면
+    /// 카드가 캔버스 위쪽 바깥에 서고 <b>스크롤이 닿지 않아 아예 못 만진다</b>. 왼위가
+    /// (0,0)이 되게 통째로 민다 — 서로의 거리는 그대로이므로 사람이 짠 모양은 안 바뀐다.
+    ///
+    /// ⚠ 미는 양은 <b>모델</b>에서 나온다(끄는 중의 임시 자리가 아니라). 그래야 끄는 동안
+    /// 기준이 안 흔들려 판 전체가 출렁이지 않는다.
+    /// </summary>
+    private IReadOnlyDictionary<string, (double X, double Y)> DisplayPlacement(
+        ChapterGraphModel model)
+    {
+        if (ChapterBranchPlanner.NeedsSeeding(model))
+        {
+            return ChapterBranchPlanner.Layout(model);
+        }
+
+        double left = model.Episodes.Count == 0 ? 0 : model.Episodes.Min(episode => episode.X);
+        double top = model.Episodes.Count == 0 ? 0 : model.Episodes.Min(episode => episode.Y);
+
+        // 왼위가 이미 안쪽이면 그대로 둔다 — 까닭 없이 판을 붙여 세우면 사람이 비워 둔
+        // 여백이 사라진다. 미는 것은 바깥으로 나간 만큼뿐이다.
+        double shiftX = Math.Min(0, left);
+        double shiftY = Math.Min(0, top);
+
+        return model.Episodes.ToDictionary(
+            episode => episode.EpisodeId,
+            episode => (X: episode.X - shiftX, Y: episode.Y - shiftY),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// 판 다시 그리기 예약 — 프레임마다 한 번으로 합친다. 검증 보고·속성 패널은 안 건드린다
+    /// (<see cref="DrawCanvas"/>).
+    /// </summary>
+    private void QueueDragRedraw()
+    {
+        if (_dragRedrawQueued)
+        {
+            return;
+        }
+
+        _dragRedrawQueued = true;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                _dragRedrawQueued = false;
+
+                if (_draggingEpisodeId is not null && SelectedModel is { } model)
+                {
+                    DrawCanvas(model);
+                }
+            },
+            DispatcherPriority.Render);
     }
 
     /// <summary>선택은 노드 아니면 간선 하나다 — 패널이 무엇을 편집하는지 애매하면 안 된다.</summary>
