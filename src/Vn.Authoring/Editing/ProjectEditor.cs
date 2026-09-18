@@ -621,22 +621,78 @@ public sealed partial class ProjectEditor
                 : item);
         }
 
+        Mutate(() => WriteLineTransitions(node, lineId, existing, resolved));
+    }
+
+    /// <summary>전환을 그 줄에 앉힌다. <b>스냅샷을 쌓지 않는다</b> — 부르는 쪽이 <c>Mutate</c> 안이다.</summary>
+    private void WriteLineTransitions(
+        DialogueNode node,
+        string lineId,
+        DialogueLineExtension? existing,
+        IReadOnlyList<LineConditionTransition> resolved)
+    {
+        DialogueLineExtension extension = existing ?? new DialogueLineExtension(lineId);
+
+        if (existing is null)
+        {
+            node.LineExtensions.Add(extension);
+        }
+
+        extension.Transitions.Clear();
+        extension.Transitions.AddRange(resolved);
+
+        // 순서가 중요하다. 먼저 주인 없는 출구를 버리고, 그다음에 빈 항목을 버린다.
+        // 반대로 하면 아직 출구가 매달려 있어 빈 항목이 남는다.
+        PruneBranchExits(node);
+        PruneLineExtensions(node);
+    }
+
+    /// <summary>
+    /// <b>이 노드가 통째로 도는 조건</b>을 건다 — 첫 줄에 <c>BeginIf</c>, 마지막 줄 뒤에
+    /// <c>EndIf</c> (2026-09-18). <c>null</c>이면 걷는다.
+    ///
+    /// <b>분기 에피소드의 첫머리 조건</b>이 사는 자리다 (R7 P-5 · 2026-09-18 소유자:
+    /// *"Detour로 조건 분기가 일어나는 마커를 끼워두고 그곳에서 조건과 내용을 추가한다는게
+    /// 유지보수 측면에서 얼마나 유리한지"*). 부르는 쪽 대본에는 <c>&lt;&lt;detour&gt;&gt;</c>
+    /// 한 줄뿐이고 <b>조건과 내용이 다녀올 곳에 함께</b> 있다 — 짝 맞출 <c>If</c>/<c>EndIf</c>가
+    /// 남의 대본에 흩어지지 않는다.
+    ///
+    /// ⭐ <b>성립하면 돈다</b>(허가). 조건이 거짓이면 본문이 통째로 건너뛰이고, 노드 끝이
+    /// 곧 <c>&lt;&lt;return&gt;&gt;</c>이라 곧바로 돌아간다. 모델에 부정(<c>not</c>)이 없으므로
+    /// 이 극성이 곧 저장 형태다.
+    ///
+    /// ⚠ <b>한 번의 변경이다.</b> 줄과 꼬리를 따로 쓰면 되돌리기가 둘로 쪼개져, 한 번 물렀을 때
+    /// <c>BeginIf</c>만 남은 <b>짝 없는 상태</b>가 판에 선다.
+    ///
+    /// ⚠ 첫 줄의 기존 전환은 <b>덮는다</b>. 덮어도 되는 모양인지는 부르는 쪽
+    /// (<see cref="Chapters.BranchEntryCondition"/>)이 먼저 재고 온다.
+    /// </summary>
+    public void SetEntryCondition(string nodeId, string? conditionId)
+    {
+        DialogueNode node = RequireDialogue(nodeId);
+
+        if (Project.FindScript(node.ScriptId)?.ActiveLines.FirstOrDefault() is not { } first)
+        {
+            throw new InvalidOperationException(
+                "대본이 비어 있어 조건을 걸 자리가 없습니다 — 첫 줄을 먼저 쓰세요.");
+        }
+
+        DialogueLineExtension? existing = node.FindExtension(first.Id);
+
         Mutate(() =>
         {
-            DialogueLineExtension extension = existing ?? new DialogueLineExtension(lineId);
+            WriteLineTransitions(
+                node,
+                first.Id,
+                existing,
+                conditionId is null ? [] : [LineConditionTransition.BeginIf(conditionId)]);
 
-            if (existing is null)
+            node.TrailingTransitions.Clear();
+
+            if (conditionId is not null)
             {
-                node.LineExtensions.Add(extension);
+                node.TrailingTransitions.Add(LineConditionTransition.EndIf());
             }
-
-            extension.Transitions.Clear();
-            extension.Transitions.AddRange(resolved);
-
-            // 순서가 중요하다. 먼저 주인 없는 출구를 버리고, 그다음에 빈 항목을 버린다.
-            // 반대로 하면 아직 출구가 매달려 있어 빈 항목이 남는다.
-            PruneBranchExits(node);
-            PruneLineExtensions(node);
         });
     }
 

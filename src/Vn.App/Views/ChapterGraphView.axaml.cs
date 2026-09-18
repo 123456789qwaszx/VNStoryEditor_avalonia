@@ -1473,6 +1473,7 @@ public partial class ChapterGraphView : UserControl
 
         // 간선을 먼저 그려야 노드 카드 아래로 깔린다.
         DrawEpisodeRails(model);
+        DrawBranchMarkers();
 
         foreach (ChapterEpisode episode in model.Episodes)
         {
@@ -1480,6 +1481,52 @@ public partial class ChapterGraphView : UserControl
         }
 
         ApplySelectionVisuals();
+    }
+
+    /// <summary>
+    /// <b>분기 표식</b>을 점선으로 그린다 (2026-09-18 소유자: *"챕터 그래프가 보면, 분기는
+    /// 선택지로 안 이어 주고 있거든?"*).
+    ///
+    /// <b>선택지와 다른 종류의 선이다.</b> 문구도 스탯변화도 없고, 누를 수도 없다 — 뚫고 떼는
+    /// 것은 연출 그래프의 일이므로 여기서는 <b>읽기만</b> 한다. 점선인 것이 그 뜻이다:
+    /// 사람이 고르는 길(실선)이 아니라 <b>반드시 한 번 다녀오는 통로</b>다.
+    ///
+    /// ⚠ 자리는 <see cref="ChapterEdge"/>와 나란히 잡지 않는다 — 분기는 간선이 아니므로
+    /// 포트를 차지하면 안 된다(포트 하나 = 선택지 하나, v9). 카드 아래변에서 나와 도착 카드
+    /// 위변으로 들어간다.
+    /// </summary>
+    private void DrawBranchMarkers()
+    {
+        if (_session is null || _selectedChapterId is not { } chapterId)
+        {
+            return;
+        }
+
+        var stroke = new SolidColorBrush(Color.Parse("#7A6FB0"));
+
+        foreach (ChapterBranchMarkers.Marker marker in
+                 ChapterBranchMarkers.For(_session.Editor.Project, chapterId))
+        {
+            if (!_placed.TryGetValue(marker.FromEpisodeId, out (double X, double Y) from) ||
+                !_placed.TryGetValue(marker.ToEpisodeId, out (double X, double Y) to))
+            {
+                continue;
+            }
+
+            var line = new Line
+            {
+                StartPoint = new Point(from.X + (CardWidth / 2), from.Y + CardHeight),
+                EndPoint = new Point(to.X + (CardWidth / 2), to.Y),
+                Stroke = stroke,
+                StrokeThickness = 1.6,
+                StrokeDashArray = new AvaloniaList<double> { 5, 4 },
+                IsHitTestVisible = false,
+                // 화면 없는 검증이 "무엇이 그려졌는지"를 색·좌표로 역추론하지 않게 한다.
+                Tag = $"분기:{marker.FromEpisodeId}->{marker.ToEpisodeId}"
+            };
+
+            GraphCanvas.Children.Add(line);
+        }
     }
 
     // ⛔ 픽스처 (G6) — 2026-08-24에 화면에서 걷었다 (소유자: "꽤 오래 다뤘는데 단 한 번도
