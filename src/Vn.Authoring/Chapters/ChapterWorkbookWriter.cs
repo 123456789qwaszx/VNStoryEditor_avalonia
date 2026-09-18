@@ -1013,9 +1013,14 @@ public static class ChapterWorkbookWriter
     /// 파일은 그대로 두고 사유만 돌려준다 — 반쯤 쓴 워크북은 없다.
     /// </summary>
     /// <param name="backup">
-    /// 쓰기 전의 원본을 <c>{파일}.bak</c>으로 남길지. 툴 편집에는 Ctrl+Z가 없으므로
-    /// <b>지우는 종류의 쓰기</b>(행·간선 삭제)는 이걸 켠다 — 실수해도 .bak을 .xlsx로
-    /// 되돌리면 그만이다. 백업은 마지막 파괴적 쓰기 직전 상태 하나만 남는다(굴림).
+    /// 쓰기 전의 원본을 <c>{파일}.bak</c>으로 남길지. <b>지우는 종류의 쓰기</b>(행·간선 삭제)는
+    /// 이걸 켠다 — 실수해도 .bak을 .xlsx로 되돌리면 그만이다. 백업은 마지막 파괴적 쓰기
+    /// 직전 상태 하나만 남는다(굴림).
+    ///
+    /// ⚠ 옛 근거는 <i>"툴 편집에는 Ctrl+Z가 없으므로"</i>였다. <b>2026-09-18에 Ctrl+Z가
+    /// 붙어 그 전제는 없어졌지만, 규칙은 남는다</b> — 되돌리기가 되돌리는 것은
+    /// <b>프로젝트</b>이지 디스크의 파일이 아니다. 이 파일에는 사람이 엑셀에서 손본 것이
+    /// 들어 있을 수 있고, 그것까지 되돌려 주지는 못한다.
     /// </param>
     private static ChapterWriteResult Mutate(string path, Action<XLWorkbook> edit, bool backup = false)
     {

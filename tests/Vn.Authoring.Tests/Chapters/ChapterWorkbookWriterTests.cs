@@ -324,7 +324,11 @@ public sealed class ChapterWorkbookWriterTests : IDisposable
     [Fact]
     public void 파괴적_쓰기는_직전_상태를_bak으로_남긴다()
     {
-        // 툴 편집에는 Ctrl+Z가 없다 — 지우는 종류의 쓰기는 .bak을 굴려 되돌릴 길을 남긴다.
+        // 지우는 종류의 쓰기는 .bak을 굴려 되돌릴 길을 남긴다.
+        //
+        // ⚠ 옛 근거는 "툴 편집에는 Ctrl+Z가 없다"였다. 2026-09-18에 Ctrl+Z가 붙어 그 전제는
+        //   없어졌지만 규칙은 남는다 — 되돌리기는 프로젝트를 되돌리지 디스크의 파일을
+        //   되돌리지 않고, 이 파일에는 사람이 엑셀에서 손본 것이 들어 있을 수 있다.
         string path = Copy();
         byte[] before = File.ReadAllBytes(path);
 
