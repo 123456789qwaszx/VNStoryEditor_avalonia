@@ -470,6 +470,31 @@
                         <Button x:Name="EdgeDeleteButton" Content="이 길 끊기" HorizontalAlignment="Stretch"
                                 ToolTip.Tip="간선 행을 지웁니다. 문구는 챕터 사전에 남습니다 — 다른 길에서 다시 씁니다." />
                     </StackPanel>
+
+                    <!-- 분기 (2026-09-18) — 선택지와 <b>다른 종류</b>다. 문구도 스탯변화도
+                         없다 (소유자: "조작의 단순함을 위해서, 분기로 이어지는 것은 선택지와
+                         다르게 라벨이나 스탯변화를 주지도 않을거야").
+
+                         ⛔ 여기서 <b>표식을 만들거나 떼지 않는다</b> — 뚫고 떼는 것은 연출
+                         그래프의 일이다. 이 패널이 쓰는 것은 다녀올 에피소드의 첫머리 조건
+                         하나뿐이다. -->
+                    <StackPanel x:Name="BranchPanel" Spacing="6" IsVisible="False">
+                        <TextBlock Text="분기 — 반드시 한 번 다녀오는 통로" FontWeight="SemiBold" FontSize="12" />
+                        <StackPanel x:Name="BranchFromToPanel" Orientation="Horizontal" Spacing="4" />
+
+                        <TextBlock Text="이 조건일 때 분기의 내용이 돈다" FontSize="10" Opacity="0.6" Margin="0,4,0,0" />
+                        <ComboBox x:Name="BranchConditionCombo" FontSize="11" HorizontalAlignment="Stretch"
+                                  ToolTip.Tip="분기로는 언제나 한 번 갑니다 — 막는 것은 다녀온 쪽입니다. 조건이 미달이면 그 에피소드가 아무것도 재생하지 않고 곧바로 돌아옵니다. 비우면 언제나 재생됩니다." />
+
+                        <TextBlock x:Name="BranchBlockedText"
+                                   FontSize="10"
+                                   Foreground="IndianRed"
+                                   TextWrapping="Wrap"
+                                   IsVisible="False" />
+
+                        <TextBlock Text="조건은 다녀갈 에피소드의 첫머리에 적힙니다 — 부르는 쪽 대본은 그대로입니다."
+                                   FontSize="10" Opacity="0.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                    </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

@@ -267,6 +267,8 @@ public partial class ChapterGraphView : UserControl
         EdgeAutoCheck.IsCheckedChanged += (_, _) => AutoSaveEdge();
         EdgeVisibleCombo.SelectionChanged += (_, _) => AutoSaveEdge();
         EdgeConditionCombo.SelectionChanged += (_, _) => AutoSaveEdge();
+        BranchConditionCombo.SelectionChanged += (_, _) =>
+            UiGuard.Run(_session, "분기 조건", SaveBranchCondition);
 
         EdgeLockedMsgBox.LostFocus += (_, _) => AutoSaveEdge();
         EdgeLockedMsgBox.KeyDown += (_, e) =>
@@ -1502,6 +1504,8 @@ public partial class ChapterGraphView : UserControl
             return;
         }
 
+        _branchByLine.Clear();
+
         var stroke = new SolidColorBrush(Color.Parse("#7A6FB0"));
 
         foreach (ChapterBranchMarkers.Marker marker in
@@ -1526,6 +1530,27 @@ public partial class ChapterGraphView : UserControl
             };
 
             GraphCanvas.Children.Add(line);
+            _branchByLine[marker.LineId] = (marker, line);
+
+            // 1.6px 점선은 사람이 못 누른다 — 간선과 같은 수법으로 굵은 히트 선을 겹친다.
+            var hit = new Line
+            {
+                StartPoint = line.StartPoint,
+                EndPoint = line.EndPoint,
+                Stroke = Brushes.Transparent,
+                StrokeThickness = 14,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+            };
+
+            string lineId = marker.LineId;
+
+            hit.PointerPressed += (_, e) =>
+            {
+                e.Handled = true; // 캔버스(빈 공간 = 선택 해제)까지 흘러가면 곧바로 풀린다
+                UiGuard.Run(_session, "분기 선택", () => SelectBranch(lineId));
+            };
+
+            GraphCanvas.Children.Add(hit);
         }
     }
 
@@ -2103,6 +2128,16 @@ public partial class ChapterGraphView : UserControl
     private IReadOnlyDictionary<string, (double X, double Y)> _placed =
         new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 고른 분기의 <b>줄</b> Id (2026-09-18). 한 에피소드가 분기를 여럿 가질 수 있어
+    /// 출발·도착만으로는 못 가른다 — 신원은 표식이 붙은 그 줄이다.
+    /// </summary>
+    private string? _selectedBranchLineId;
+
+    /// <summary>이번 그리기의 분기 선들 — 줄 Id로 찾는다(선택 강조와 패널이 같은 것을 본다).</summary>
+    private readonly Dictionary<string, (ChapterBranchMarkers.Marker Marker, Line Line)> _branchByLine =
+        new(StringComparer.Ordinal);
+
     /// <summary>지금 끌고 있는 카드. 없으면 <c>null</c>.</summary>
     private string? _draggingEpisodeId;
 
@@ -2384,6 +2419,7 @@ public partial class ChapterGraphView : UserControl
     {
         _selectedEpisodeId = episodeId;
         _selectedEdgeKey = null;
+        _selectedBranchLineId = null;
         HideEdgeForm(); // 다른 노드로 넘어가면 열려 있던 연결 폼은 닫는다
         ApplySelectionVisuals();
         RefreshPropertyPanel();
@@ -2393,6 +2429,21 @@ public partial class ChapterGraphView : UserControl
     {
         _selectedEdgeKey = (fromEpisodeId, toEpisodeId, optionLabel.Trim());
         _selectedEpisodeId = null;
+        _selectedBranchLineId = null;
+        HideEdgeForm();
+        ApplySelectionVisuals();
+        RefreshPropertyPanel();
+    }
+
+    /// <summary>
+    /// 분기 하나를 고른다 — <b>신원은 줄</b>이다 (2026-09-18). 한 에피소드가 분기를 여럿
+    /// 가질 수 있어 출발·도착만으로는 못 가른다.
+    /// </summary>
+    internal void SelectBranch(string? lineId)
+    {
+        _selectedBranchLineId = lineId;
+        _selectedEpisodeId = null;
+        _selectedEdgeKey = null;
         HideEdgeForm();
         ApplySelectionVisuals();
         RefreshPropertyPanel();
@@ -2433,6 +2484,15 @@ public partial class ChapterGraphView : UserControl
                 line.StrokeThickness = 3.4;
             }
         }
+
+        // 분기는 점선인 채로 굵어진다 — 굵기만 바꾸고 점선을 안 풀어야 "이것은 선택지가
+        // 아니다"가 고른 뒤에도 남는다.
+        if (_selectedBranchLineId is { } branchLineId &&
+            _branchByLine.TryGetValue(branchLineId, out (ChapterBranchMarkers.Marker _, Line Line) branch))
+        {
+            branch.Line.Stroke = new SolidColorBrush(Color.Parse("#3D7BD9"));
+            branch.Line.StrokeThickness = 3.4;
+        }
     }
 
     /// <summary>편집 칸을 마지막으로 채운 선택. 같은 선택이면 다시 채우지 않는다.</summary>
@@ -2458,10 +2518,22 @@ public partial class ChapterGraphView : UserControl
                 EdgeLabelKey(candidate) == key.Label)
             : null;
 
+        ChapterBranchMarkers.Marker? branch =
+            _selectedBranchLineId is { } branchLineId &&
+            _branchByLine.TryGetValue(branchLineId, out (ChapterBranchMarkers.Marker Marker, Line _) found)
+                ? found.Marker
+                : null;
+
         PropertyPanel.IsVisible = episode is not null;
         EdgePanel.IsVisible = edge is not null;
-        NoSelectionText.IsVisible = episode is null && edge is null;
+        BranchPanel.IsVisible = branch is not null;
+        NoSelectionText.IsVisible = episode is null && edge is null && branch is null;
         ApplyEditability();
+
+        if (branch is not null)
+        {
+            RefreshBranchPanel(model, branch);
+        }
 
         (string? Episode, (string From, string To, string Label)? Edge) selection =
             (episode?.EpisodeId,
@@ -3143,6 +3215,82 @@ public partial class ChapterGraphView : UserControl
             fill ? edge.VisibleConditionLabel ?? "(없음)" : EdgeVisibleCombo.SelectedItem as string);
         SetItems(EdgeConditionCombo, labels,
             fill ? edge.ConditionLabel ?? "(없음)" : EdgeConditionCombo.SelectedItem as string);
+    }
+
+    /// <summary>
+    /// 분기 패널 — <b>조건 한 칸</b>이 전부다 (2026-09-18).
+    ///
+    /// 문구도 스탯변화도 없다(소유자: *"분기로 이어지는 것은 선택지와 다르게 라벨이나
+    /// 스탯변화를 주지도 않을거야"*). 분기로는 <b>언제나 한 번 간다</b> — 이 조건이 막는
+    /// 것은 다녀간 뒤 그 에피소드가 <b>돌아가는가</b>이고, 그래서 조건이 적히는 자리도
+    /// 다녀갈 에피소드의 첫머리다(<see cref="BranchEntryCondition"/>).
+    ///
+    /// ⚠ 작가가 대사 편집기에서 지은 조건 구조는 <b>읽기만</b> 한다 — 덮으면 짝이 어긋난
+    /// 대본이 된다. 그때는 칸을 잠그고 사유를 세운다.
+    /// </summary>
+    private void RefreshBranchPanel(ChapterGraphModel? model, ChapterBranchMarkers.Marker marker)
+    {
+        BranchFromToPanel.Children.Clear();
+
+        if (model is not null)
+        {
+            BranchFromToPanel.Children.Add(EpisodeLink(model, marker.FromEpisodeId));
+            BranchFromToPanel.Children.Add(new TextBlock
+            {
+                Text = "⤳",
+                FontSize = 12,
+                Opacity = 0.5,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            });
+            BranchFromToPanel.Children.Add(EpisodeLink(model, marker.ToEpisodeId));
+        }
+
+        BranchEntryCondition.State state = BranchEntryCondition.Read(
+            _session!.Editor.Project, marker.ToNodeId, _session.Definition);
+
+        BranchBlockedText.Text = state.Blocked ?? string.Empty;
+        BranchBlockedText.IsVisible = state.Blocked is not null;
+        BranchConditionCombo.IsEnabled = state.Editable && ToolEditable;
+
+        var labels = new List<string> { BranchAlwaysItem };
+        labels.AddRange(model?.Conditions.Select(condition => condition.Label) ?? []);
+
+        // 채우는 동안 자동 저장이 울리면 고르지도 않은 값이 대본으로 나간다.
+        _fillingPanel = true;
+
+        try
+        {
+            SetItems(BranchConditionCombo, labels, state.Label ?? BranchAlwaysItem);
+        }
+        finally
+        {
+            _fillingPanel = false;
+        }
+    }
+
+    /// <summary>조건을 안 건 분기 — 언제나 재생된다. 「안 고름」과 같은 뜻이다.</summary>
+    private const string BranchAlwaysItem = "(언제나)";
+
+    /// <summary>고른 분기의 조건을 적는다. 고르는 순간 나간다 — 간선 패널과 같은 감각이다.</summary>
+    private void SaveBranchCondition()
+    {
+        if (_fillingPanel || _session is null || _selectedBranchLineId is not { } lineId ||
+            !_branchByLine.TryGetValue(lineId, out (ChapterBranchMarkers.Marker Marker, Line _) branch))
+        {
+            return;
+        }
+
+        string? label = BranchConditionCombo.SelectedItem as string;
+
+        string? failure = BranchEntryCondition.Set(
+            _session.Editor,
+            branch.Marker.ToNodeId,
+            string.Equals(label, BranchAlwaysItem, StringComparison.Ordinal) ? null : label,
+            _session.Definition);
+
+        _session.SetStatus(failure ?? (label is null or BranchAlwaysItem
+            ? $"'{branch.Marker.ToEpisodeId}'의 조건을 걷었습니다 — 언제나 재생됩니다."
+            : $"'{branch.Marker.ToEpisodeId}'은 조건 '{label}'일 때 재생됩니다. 되돌리기(Ctrl+Z)로 돌아옵니다."));
     }
 
     /// <summary>
