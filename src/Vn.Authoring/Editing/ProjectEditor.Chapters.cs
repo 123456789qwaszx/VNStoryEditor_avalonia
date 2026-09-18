@@ -912,7 +912,7 @@ public sealed partial class ProjectEditor
             for (int i = 0; i < chapter.Conditions.Count; i++)
             {
                 if (string.Equals(
-                        ConditionExpressionParser.ReplaceStatKey(chapter.Conditions[i].Expression, target, " "),
+                        ConditionExpressionParser.ReplaceStatKey(chapter.Conditions[i].Expression, target, "\0"),
                         chapter.Conditions[i].Expression,
                         StringComparison.Ordinal))
                 {
