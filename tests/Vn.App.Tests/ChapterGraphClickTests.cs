@@ -94,10 +94,11 @@ public sealed class ChapterGraphClickTests
         using var project = new TempProject(SamplePath);
         (Window window, Canvas canvas, ChapterGraphView view, _) = Show(project);
 
-        // 문구는 이제 카드 오른변의 포트 문구다(선택지 시트의 보이는 칸, 2026-08-16) —
-        // 사람이 간선을 누르려고 겨누는 자리이고, 누르면 그 간선이 선택된다.
-        TextBlock label = canvas.Children.OfType<TextBlock>().Single(block =>
-            block.Text?.Contains("라루의 제안") == true);
+        // ⛔ v4까지 이 문구는 <b>카드 오른변 안쪽</b>의 포트 문구였다. v5에서 포트가 아래변으로
+        //    내려가며 한 칸에 남는 폭이 카드의 1/4이 됐고(한글 몇 자에서 잘린다), 문구는
+        //    간선 한가운데로 옮겼다 — 사람이 간선을 누르려고 겨누는 바로 그 자리다.
+        Border label = canvas.Children.OfType<Border>().Single(border =>
+            border.Child is TextBlock text && text.Text?.Contains("라루의 제안") == true);
 
         Avalonia.Point center = label.TranslatePoint(
             new Avalonia.Point(label.Bounds.Width / 2, label.Bounds.Height / 2), window)!.Value;

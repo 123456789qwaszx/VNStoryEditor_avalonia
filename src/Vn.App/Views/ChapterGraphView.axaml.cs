@@ -1493,9 +1493,9 @@ public partial class ChapterGraphView : UserControl
     /// 것은 연출 그래프의 일이므로 여기서는 <b>읽기만</b> 한다. 점선인 것이 그 뜻이다:
     /// 사람이 고르는 길(실선)이 아니라 <b>반드시 한 번 다녀오는 통로</b>다.
     ///
-    /// ⚠ 자리는 <see cref="ChapterEdge"/>와 나란히 잡지 않는다 — 분기는 간선이 아니므로
-    /// 포트를 차지하면 안 된다(포트 하나 = 선택지 하나, v9). 카드 아래변에서 나와 도착 카드
-    /// 위변으로 들어간다.
+    /// ⚠ <b>오른쪽으로 나간다</b> (v5 · 2026-09-18 소유자: *"분기는 점선인 상태로, 현재
+    /// 선택지처럼 우측으로 붙이되"*) — 연출 그래프와 같은 변이다. 선택지가 아래변의 칸을
+    /// 쓰므로 자리도 겹치지 않는다(포트 하나 = 선택지 하나, v9).
     /// </summary>
     private void DrawBranchMarkers()
     {
@@ -1517,10 +1517,17 @@ public partial class ChapterGraphView : UserControl
                 continue;
             }
 
+            // 오른변 가운데에서 나가, 도착 카드의 <b>가까운 세로 변</b>으로 들어간다 —
+            // 되돌아가는 분기(도착이 왼쪽)도 선이 카드를 관통하지 않는다.
+            var start = new Point(from.X + CardWidth, from.Y + (CardHeight / 2));
+            bool targetIsRight = start.X <= to.X;
+
             var line = new Line
             {
-                StartPoint = new Point(from.X + (CardWidth / 2), from.Y + CardHeight),
-                EndPoint = new Point(to.X + (CardWidth / 2), to.Y),
+                StartPoint = start,
+                EndPoint = new Point(
+                    targetIsRight ? to.X : to.X + CardWidth,
+                    to.Y + (CardHeight / 2)),
                 Stroke = stroke,
                 StrokeThickness = 1.6,
                 StrokeDashArray = new AvaloniaList<double> { 5, 4 },
@@ -1566,21 +1573,46 @@ public partial class ChapterGraphView : UserControl
     // 규격이라 지우면 남의 파일이 깨지고, 걷기는 저작 계층의 순수 함수다(제 테스트가 있다).
     // 되살릴 때 필요한 것은 콤보 하나와 이 자리의 걷기 호출뿐이다.
 
-    /// <summary>포트 줄 높이 — 카드가 선택지 수만큼 아래로 자란다.</summary>
-    private const double PortRowHeight = 18;
+    /// <summary>
+    /// 언제나 서 있는 선택지 칸 수 (R7 §2 ③ — 소유자: "딱 3개").
+    ///
+    /// ⚠ <b>상한이 아니다.</b> 간선이 넷이면 넷을 다 그린다 — 넷째를 숨기면 사람은 줄이
+    /// <b>사라진</b> 줄 안다. 규칙의 주인은 <c>GraphProjectionBuilder.ChoiceSlots</c>이고
+    /// 여기는 그 수를 그릴 뿐이다.
+    /// </summary>
+    private const int ChoiceSlots = 3;
+
+    /// <summary>포트 점의 반지름 — 카드 변 위에 걸터앉는다.</summary>
+    private const double PortRadius = 4.5;
 
     /// <summary>에피소드 → 보이는 선택지(문구 붙은 나가는 간선). Draw가 채우고 카드·간선이 함께 본다.</summary>
     private readonly Dictionary<string, List<ChapterEdge>> _optionsByEpisode = new(StringComparer.Ordinal);
 
-    /// <summary>선택지 포트의 세로 자리 — 카드 그리기와 간선 그리기가 같은 산식을 쓴다.</summary>
-    private static double PortY(double cardY, int index) =>
-        cardY + CardHeight - 7 + index * PortRowHeight + PortRowHeight / 2;
+    /// <summary>이 에피소드가 낼 칸 수 — 언제나 셋 이상이고, 간선이 더 많으면 그만큼이다.</summary>
+    private static int SlotsFor(int optionCount) => Math.Max(ChoiceSlots, optionCount);
 
     /// <summary>
-    /// 간선 그리기의 갈림 (2026-08-15 소유자 개정 2) — <b>선택지 포트는 카드 오른쪽</b>이다.
-    /// 연출 그래프의 조건 갈래 포트와 같은 문법: 카드 오른변에 포트가 뚫리고 각 포트에서
-    /// 자기 간선이 나간다(선택지는 많아야 3개). 아래로 줄기를 빼는 철도 흉내는 폐기.
-    /// 선택지 없는 에피소드는 기존 중앙 직행선 그대로.
+    /// 선택지 포트의 가로 자리 — <b>카드 아래변</b>에 고르게 선다 (v5, 2026-09-18).
+    /// 카드 그리기와 간선 그리기가 같은 산식 하나를 본다.
+    /// </summary>
+    private static double PortX(double cardX, int index, int slots) =>
+        cardX + (CardWidth * (index + 1) / (slots + 1.0));
+
+    /// <summary>모든 길이 들어오는 <b>입구 한 점</b> — 카드 위변 가운데.</summary>
+    private static Point EntryDot(double cardX, double cardY) =>
+        new(cardX + (CardWidth / 2), cardY);
+
+    /// <summary>
+    /// <b>선택지는 아래로, 분기는 오른쪽으로</b> (v5 · 2026-09-18 소유자).
+    ///
+    /// ⛔ <b>v4까지 정확히 반대였다</b> — 선택지 포트가 카드 <i>오른쪽</i>, 분기가 <i>아래</i>.
+    /// 연출 그래프는 그 반대였고(분기가 오른쪽, 선택지가 아래), 소유자가 그것을 짚었다:
+    /// *"여기는 그게 반대로 분기가 아래, 선택지가 우측이다보니 헷갈립니다."*
+    /// 판이 둘인데 같은 것이 다른 변에서 나가면 손이 매번 헷갈린다.
+    ///
+    /// 그래서 아래변에 <b>점 세 개가 가로로</b> 서고(간선이 더 많으면 그만큼), 나간 길은
+    /// 모두 도착 카드 <b>위변의 점 하나</b>로 들어간다 — 들어오는 자리가 하나면 "이 카드로
+    /// 오는 길이 몇인가"가 한눈에 보인다.
     /// </summary>
     private void DrawEpisodeRails(ChapterGraphModel model)
     {
@@ -1603,10 +1635,12 @@ public partial class ChapterGraphView : UserControl
                 continue;
             }
 
+            int slots = SlotsFor(options.Count);
+
             for (int index = 0; index < options.Count; index++)
             {
                 DrawPortEdge(options[index],
-                    new Point(position.X + CardWidth + 5, PortY(position.Y, index)));
+                    new Point(PortX(position.X, index, slots), position.Y + CardHeight + 5));
             }
         }
     }
@@ -1651,33 +1685,24 @@ public partial class ChapterGraphView : UserControl
             return; // 없는 도착지는 구조 검증이 이미 잡았다.
         }
 
-        var targetRect = new Rect(target.X, target.Y, CardWidth, CardHeight);
-
         // ⚠ 직선이다 (2026-08-23 소유자 보고: "선이 완전히 겹치다보니 어디로 이어지는지
         // 확인하기가 힘들어").
         //
         // 예전에는 직교 3구간(가로 → 세로 → 가로)으로 돌렸는데, 꺾이는 x가
         // `(port.X + target.X) / 2`라 **같은 열로 가는 간선들이 세로 구간을 공유**했다.
-        // 도착도 언제나 카드 세로 중앙 한 점이라 마지막 가로 구간까지 겹쳤다. 결과적으로
-        // 한 에피소드에서 나가는 길이 여럿이면 화면에서 한 줄로 보였다.
+        // 결과적으로 한 에피소드에서 나가는 길이 여럿이면 화면에서 한 줄로 보였다.
         //
-        // 직선은 그 문제가 원천적으로 없다: 포트마다 y가 다르고 도착마다 위치가 다르므로
-        // **기울기가 저절로 갈린다.** 겹치려면 두 간선의 출발과 도착이 모두 같아야 하는데,
-        // 그러면 포트가 달라 출발점이 이미 다르다.
-        bool targetIsRight = port.X <= targetRect.X;
+        // 직선은 그 문제가 원천적으로 없다: 포트마다 x가 다르므로 **기울기가 저절로 갈린다.**
+        //
+        // ⚠ 도착은 <b>위변의 점 하나</b>다 (v5) — 들어오는 자리를 하나로 모으면 "이 카드로
+        //   오는 길이 몇인가"가 한눈에 보인다. 출발이 갈리므로 선이 겹치지도 않는다.
+        Point entry = EntryDot(target.X, target.Y);
+        double entryY = entry.Y - 8;
 
-        double entryX = targetIsRight ? targetRect.X - 8 : targetRect.Right + 8;
-        double entryY = targetRect.Y + (CardHeight / 2);
+        Segment(port.X, port.Y, entry.X, entryY);
 
-        Segment(port.X, port.Y, entryX, entryY);
-
-        // 화살촉은 진입하는 변에 둔다 — 뒤로 가는 길(도착이 왼쪽)이면 반대로 향한다.
-        AddEdgeArrow(
-            targetIsRight ? entryX + 1 : entryX - 1,
-            entryY,
-            stroke,
-            pointRight: targetIsRight,
-            pointLeft: !targetIsRight);
+        // 화살촉은 진입하는 변을 향한다 — 위에서 아래로 꽂힌다(기본 방향이 아래다).
+        AddEdgeArrow(entry.X, entryY + 1, stroke, pointRight: false);
 
         RegisterEdgeLines(edge, segments, stroke, thickness);
 
@@ -1699,6 +1724,8 @@ public partial class ChapterGraphView : UserControl
             UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(hitFrom, hitTo, hitLabel));
         };
         GraphCanvas.Children.Add(hit);
+
+        AddEdgeLabel(edge, port, new Point(entry.X, entryY));
     }
 
     private void AddEdgeArrow(
@@ -1720,6 +1747,58 @@ public partial class ChapterGraphView : UserControl
         Canvas.SetLeft(arrow, x);
         Canvas.SetTop(arrow, y);
         GraphCanvas.Children.Add(arrow);
+    }
+
+    /// <summary>
+    /// 간선의 <b>문구</b>를 그 선 한가운데에 놓는다 — 사람이 간선을 누르려고 겨누는 바로
+    /// 그 자리다. 누르면 그 간선이 선택된다.
+    ///
+    /// ⭐ <b>v5에서 문구가 여기로 왔다</b> (2026-09-18). 전에는 카드 오른변 안쪽에 포트마다
+    /// 한 줄씩 적었는데, 포트가 아래변으로 내려가면서 한 칸에 남는 폭이 카드의 1/4이 됐다 —
+    /// 한글 몇 자에서 잘린다. 옮기지 않았다면 판에서 <b>문구가 통째로 사라졌을</b> 자리다.
+    ///
+    /// ⚠ 말하는 것은 옛 카드 안 문구와 <b>똑같다</b>: 자동이면 `AUTO`, 문구가 비면
+    /// `⚠ 문구 없음`(종류가 아니라 고칠 것이다, v12), 그 뒤에 해금조건. 규칙이 한 벌이라
+    /// 포트 간선과 직행선이 같은 말을 한다 — 전에는 직행선만 이 라벨을 갖고 있었다.
+    /// </summary>
+    private void AddEdgeLabel(ChapterEdge edge, Point from, Point to)
+    {
+        string option = edge.Auto ? "AUTO"
+            : edge.HasNoOptionLabel ? "⚠ 문구 없음"
+            : edge.OptionLabel!;
+
+        string label = edge.ConditionLabel is { } gate ? $"{option} [{gate}]" : option;
+
+        var text = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#F0F4F6F8")),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(4, 1),
+            Child = new TextBlock
+            {
+                Text = label,
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Color.Parse(
+                    edge.Auto ? "#3D7BD9" : edge.HasNoOptionLabel ? "#C0392B" : "#5A646E"))
+            },
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+        };
+
+        string fromId = edge.FromEpisodeId;
+        string toId = edge.ToEpisodeId;
+        string labelKey = EdgeLabelKey(edge);
+
+        // 히트 선보다 나중에 그려져 클릭을 삼키므로, 라벨 클릭도 간선 선택으로 잇는다.
+        text.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId, labelKey));
+        };
+
+        text.Measure(Size.Infinity);
+        Canvas.SetLeft(text, ((from.X + to.X) / 2) - (text.DesiredSize.Width / 2));
+        Canvas.SetTop(text, ((from.Y + to.Y) / 2) - (text.DesiredSize.Height / 2));
+        GraphCanvas.Children.Add(text);
     }
 
     private void RegisterEdgeLines(ChapterEdge edge, List<Line> segments, IBrush stroke, double thickness)
@@ -1784,38 +1863,7 @@ public partial class ChapterGraphView : UserControl
         };
         GraphCanvas.Children.Add(hit);
 
-        string label = string.Join(" · ", new[]
-        {
-            edge.OptionLabel,
-            edge.ConditionLabel is null ? null : $"[{edge.ConditionLabel}]",
-        }.Where(part => !string.IsNullOrEmpty(part)));
-
-        if (label.Length == 0)
-        {
-            return;
-        }
-
-        var text = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#F0F4F6F8")),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(4, 1),
-            Child = new TextBlock { Text = label, FontSize = 10, Opacity = 0.85 },
-            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
-        };
-
-        // 라벨은 간선의 한가운데 — 사람이 간선을 누르려고 겨누는 바로 그 자리 — 를 덮는다.
-        // 히트 선보다 나중에 그려져 클릭을 삼키므로, 라벨 클릭도 간선 선택으로 잇는다.
-        text.PointerPressed += (_, e) =>
-        {
-            e.Handled = true;
-            UiGuard.Run(_session, "간선 선택", () => SelectEdgeKey(fromId, toId, labelKey));
-        };
-
-        text.Measure(Size.Infinity);
-        Canvas.SetLeft(text, ((x1 + x2) / 2) - (text.DesiredSize.Width / 2));
-        Canvas.SetTop(text, ((y1 + y2) / 2) - (text.DesiredSize.Height / 2));
-        GraphCanvas.Children.Add(text);
+        AddEdgeLabel(edge, new Point(x1, y1), new Point(x2, y2));
     }
 
     private void DrawEpisode(ChapterGraphModel model, ChapterEpisode episode)
@@ -1927,7 +1975,9 @@ public partial class ChapterGraphView : UserControl
         var card = new Border
         {
             Width = CardWidth,
-            Height = CardHeight + options.Count * PortRowHeight,
+            // ⚠ 카드는 <b>안 자란다</b> (v5) — 포트가 아래변 위에 걸터앉으므로 칸 수만큼
+            //   키를 늘릴 이유가 없다. v4까지는 선택지 줄마다 18px씩 자랐다.
+            Height = CardHeight,
             Padding = new Thickness(9, 7),
             CornerRadius = new CornerRadius(5),
             BorderThickness = new Thickness(hasError ? 2 : 1),
@@ -1974,61 +2024,90 @@ public partial class ChapterGraphView : UserControl
     private void DrawOptionPorts(
         ChapterGraphModel model, ChapterEpisode episode, IReadOnlyList<ChapterEdge> options, double x, double y)
     {
-        for (int index = 0; index < options.Count; index++)
+        // 들어오는 길이 모이는 점 하나 — 아래로 나가서 위로 들어온다.
+        GraphCanvas.Children.Add(Dot(
+            EntryDot(x, y),
+            new SolidColorBrush(Color.Parse("#7F8A96")),
+            filled: false,
+            tip: "이 에피소드로 들어오는 길이 여기로 모입니다."));
+
+        int slots = SlotsFor(options.Count);
+
+        for (int index = 0; index < slots; index++)
         {
-            ChapterEdge wired = options[index];
+            ChapterEdge? wired = index < options.Count ? options[index] : null;
 
-            // v12 — 문구가 비면 그것은 길의 종류가 아니라 **고칠 것**이다. 판에서
-            // 그 자리를 짚어 주지 않으면 기획자는 엑셀의 빈 칸을 못 찾는다.
-            string option = wired.Auto ? "AUTO" : wired.HasNoOptionLabel ? "⚠ 문구 없음" : wired.OptionLabel!;
-            double portY = PortY(y, index);
+            // v12 — 문구가 비면 그것은 길의 종류가 아니라 **고칠 것**이다. 판에서 그 자리를
+            // 짚어 주지 않으면 기획자는 빈 칸을 못 찾는다. 이제 그 말을 <b>점의 색</b>이 한다:
+            // 파랑=자동 · 빨강=문구 없음 · 주황=이어진 선택지 · 회색 빈 점=아직 안 쓴 칸.
+            IBrush colour = new SolidColorBrush(Color.Parse(
+                wired is null ? "#7F8A96"
+                    : wired.Auto ? "#3D7BD9"
+                    : wired.HasNoOptionLabel ? "#C0392B"
+                    : "#C06A14"));
 
-            var label = new TextBlock
+            Ellipse port = Dot(
+                new Point(PortX(x, index, slots), y + CardHeight),
+                colour,
+                filled: wired is not null,
+                tip: wired is null
+                    ? "빈 선택지 칸입니다 — [연출 그래프]에서 문구를 적으면 살아납니다."
+                    : PortTip(wired));
+
+            if (wired is { } edge)
             {
-                Text = wired.ConditionLabel is { } gate ? $"{option} [{gate}]" : option,
-                FontSize = 10,
-                Foreground = new SolidColorBrush(Color.Parse(
-                    wired.Auto ? "#3D7BD9" : wired.HasNoOptionLabel ? "#C0392B" : "#C06A14")),
-                MaxWidth = CardWidth - 24,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Background = Brushes.Transparent,
-                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
-            };
-            label.Measure(Size.Infinity);
-            Canvas.SetLeft(label, x + CardWidth - 12 - label.DesiredSize.Width);
-            Canvas.SetTop(label, portY - label.DesiredSize.Height / 2);
-
-            var port = new Avalonia.Controls.Shapes.Ellipse
-            {
-                Width = 9,
-                Height = 9,
-                Stroke = new SolidColorBrush(Color.Parse("#C06A14")),
-                StrokeThickness = 1.6,
-                Fill = new SolidColorBrush(Color.Parse("#C06A14")),
-                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
-            };
-            Canvas.SetLeft(port, x + CardWidth - 4.5);
-            Canvas.SetTop(port, portY - 4.5);
-
-            const string tip = "클릭하면 이 간선의 조건·해금·스탯변화를 편집합니다.";
-            ToolTip.SetTip(label, tip);
-            ToolTip.SetTip(port, tip);
-
-            ChapterEdge capturedEdge = wired;
-
-            void OnPressed(object? _, Avalonia.Input.PointerPressedEventArgs e)
-            {
-                e.Handled = true;
-                UiGuard.Run(_session, "선택지 포트", () =>
-                    SelectEdgeKey(capturedEdge.FromEpisodeId, capturedEdge.ToEpisodeId, EdgeLabelKey(capturedEdge)));
+                port.PointerPressed += (_, e) =>
+                {
+                    e.Handled = true;
+                    UiGuard.Run(_session, "선택지 포트", () =>
+                        SelectEdgeKey(edge.FromEpisodeId, edge.ToEpisodeId, EdgeLabelKey(edge)));
+                };
             }
 
-            label.PointerPressed += OnPressed;
-            port.PointerPressed += OnPressed;
-
-            GraphCanvas.Children.Add(label);
             GraphCanvas.Children.Add(port);
         }
+    }
+
+    /// <summary>
+    /// 포트 점 하나 — 카드 변 위에 <b>걸터앉는다</b>(가운데가 변에 오게 반지름만큼 민다).
+    /// 선택지·입구·분기가 같은 모양 하나를 쓴다.
+    /// </summary>
+    private static Ellipse Dot(Point at, IBrush colour, bool filled, string tip)
+    {
+        var dot = new Ellipse
+        {
+            Width = PortRadius * 2,
+            Height = PortRadius * 2,
+            Stroke = colour,
+            StrokeThickness = 1.6,
+            Fill = filled ? colour : Brushes.White,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+        };
+
+        ToolTip.SetTip(dot, tip);
+        Canvas.SetLeft(dot, at.X - PortRadius);
+        Canvas.SetTop(dot, at.Y - PortRadius);
+
+        return dot;
+    }
+
+    /// <summary>
+    /// 점 위에 뜨는 말 — 문구가 카드 안에서 사라진 자리를 메운다 (v5).
+    ///
+    /// ⚠ 점 셋이 가로로 서면 글자를 놓을 폭이 카드 너비의 1/4뿐이라 한글 몇 자에서 잘린다.
+    /// 그래서 문구는 <b>간선 가운데의 라벨</b>이 지고, 점은 색과 이 말로 제 사정을 말한다.
+    /// </summary>
+    private static string PortTip(ChapterEdge edge)
+    {
+        string option = edge.Auto ? "자동 진행"
+            : edge.HasNoOptionLabel ? "⚠ 문구가 없습니다 — 자동 진행이 아니면 고칠 자리입니다"
+            : edge.OptionLabel!;
+
+        string gate = edge.ConditionLabel is { } unlock ? $"\n해금조건: {unlock}" : string.Empty;
+        string visible = edge.VisibleConditionLabel is { } show ? $"\n표시조건: {show}" : string.Empty;
+
+        return $"{option} → {edge.ToEpisodeId}{visible}{gate}" +
+               "\n\n클릭하면 이 간선의 조건·해금·스탯변화를 편집합니다.";
     }
 
     /// <summary>

@@ -120,10 +120,12 @@ public sealed class ChapterGraphViewRenderTests
     });
 
     [Fact]
-    public void 간선은_출발_카드의_포트에서_도착_카드의_변으로_간다() => HeadlessUi.Run(() =>
+    public void 간선은_카드_아래의_포트에서_도착_카드_위의_점으로_간다() => HeadlessUi.Run(() =>
     {
-        // v12 (2026-08-24) — 나가는 길은 전부 포트에서 나간다. 예전에는 문구 없는 길만
-        // 카드 <b>중앙에서 중앙으로</b> 직행했는데, 그 개념이 폐지되면서 경로도 사라졌다.
+        // ⛔ <b>v4까지는 오른변 → 왼변이었다.</b> 연출 그래프는 정확히 반대(선택지가 아래,
+        //    분기가 오른쪽)였고, 소유자가 그것을 짚었다 (2026-09-18): *"여기는 그게 반대로
+        //    분기가 아래, 선택지가 우측이다보니 헷갈립니다."* 판이 둘인데 같은 것이 다른
+        //    변에서 나가면 손이 매번 헷갈린다.
         using var project = new TempProject(SamplePath);
         (Canvas canvas, _) = Render(project);
 
@@ -131,12 +133,13 @@ public sealed class ChapterGraphViewRenderTests
         Line edge = canvas.Children.OfType<Line>()
             .Single(line => (string?)line.Tag == "main05.01→main05.02 [계속]");
 
-        // 출발: 카드 오른변 바깥의 포트.
-        Assert.Equal(placed["main05.01"].X + CardWidth + 5, edge.StartPoint.X, 3);
+        // 출발: 아래변의 첫 칸. 칸이 셋이면 카드 너비의 1/4 자리다.
+        Assert.Equal(placed["main05.01"].X + (CardWidth / 4), edge.StartPoint.X, 3);
+        Assert.Equal(placed["main05.01"].Y + CardHeight + 5, edge.StartPoint.Y, 3);
 
-        // 도착: 카드 왼변 바로 앞, 세로 가운데.
-        Assert.Equal(placed["main05.02"].X - 8, edge.EndPoint.X, 3);
-        Assert.Equal(placed["main05.02"].Y + (CardHeight / 2), edge.EndPoint.Y, 3);
+        // 도착: 위변 <b>가운데 점 하나</b> — 들어오는 길은 전부 여기로 모인다.
+        Assert.Equal(placed["main05.02"].X + (CardWidth / 2), edge.EndPoint.X, 3);
+        Assert.Equal(placed["main05.02"].Y - 8, edge.EndPoint.Y, 3);
     });
 
     [Fact]

@@ -26,14 +26,27 @@ public sealed class ChapterBranchPanelTests
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project);
 
+        var canvas = view.FindControl<Canvas>("GraphCanvas")!;
+
         Line drawn = Assert.Single(
-            view.FindControl<Canvas>("GraphCanvas")!.Children.OfType<Line>(),
+            canvas.Children.OfType<Line>(),
             line => (line.Tag as string)?.StartsWith("분기:", StringComparison.Ordinal) == true);
 
         // 점선인 것이 뜻이다 — 사람이 고르는 길(실선)이 아니라 반드시 다녀오는 통로다.
         Assert.NotNull(drawn.StrokeDashArray);
         Assert.NotEmpty(drawn.StrokeDashArray!);
+
+        // ⭐ <b>오른변에서 나간다</b> (v5 · 2026-09-18 소유자: *"분기는 점선인 상태로, 현재
+        //    선택지처럼 우측으로 붙이되"*) — 연출 그래프와 같은 변이다. 선택지는 아래변을
+        //    쓰므로 둘이 안 겹친다.
+        Border card = canvas.Children.OfType<Border>().Single(border => (border.Tag as string) == "root");
+
+        Assert.Equal(Canvas.GetLeft(card) + CardWidth, drawn.StartPoint.X, 3);
+        Assert.Equal(Canvas.GetTop(card) + (CardHeight / 2), drawn.StartPoint.Y, 3);
     });
+
+    private const double CardWidth = 190;
+    private const double CardHeight = 74;
 
     [Fact]
     public void 분기를_고르면_조건_칸이_열린다() => HeadlessUi.Run(() =>

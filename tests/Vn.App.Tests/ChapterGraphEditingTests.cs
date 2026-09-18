@@ -769,11 +769,11 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 선택지_포트가_카드_오른쪽에_뚫린다() => HeadlessUi.Run(() =>
+    public void 선택지_포트는_카드_아래에_가로로_선다() => HeadlessUi.Run(() =>
     {
-        // v12 (2026-08-24) — 포트의 원천은 <b>나가는 간선 전부</b>다. 포트 하나 = 길
-        // 하나이고, 누르면 그 간선이 선택된다. 예전에는 문구 없는 길("보이지 않는 기본")만
-        // 포트에서 빠져 카드 중앙 직행선으로 갔는데, 그 개념이 폐지됐다.
+        // ⛔ <b>v4까지 포트는 카드 오른변이었다</b>. 연출 그래프는 반대(선택지가 아래, 분기가
+        //    오른쪽)였고, 소유자가 2026-09-18에 그것을 짚었다: *"아래쪽으로 고정된 점 3개를
+        //    가로로 두고, 그 포트가 노드위쪽의 점 하나로 출입이 되도록."*
         using var project = new TempProject(SamplePath);
 
         // 셋째 길을 하나 더 낸다 — 문구는 간선의 `선택지` 칸에 그대로 적힌다.
@@ -784,6 +784,30 @@ public sealed class ChapterGraphEditingTests
 
         var canvas = view.FindControl<Canvas>("GraphCanvas")!;
 
+        // 문구는 간선 한가운데로 옮겼다 — 아래변의 한 칸에 남는 폭이 카드의 1/4뿐이다.
+        List<Border> labels = canvas.Children.OfType<Border>()
+            .Where(border => border.Child is TextBlock text &&
+                             (text.Text ?? "").StartsWith("라루의 제안을 듣는다") ||
+                             (border.Child as TextBlock)?.Text is "혼자 문을 연다" or "셋째 길")
+            .ToList();
+
+        Assert.Equal(3, labels.Count);
+
+        // 칸은 <b>언제나 셋 이상</b>이다 — 빈 칸도 선다(고정된 점 3개). 여기에 들어오는
+        // 길이 모이는 위변의 점 하나가 카드마다 더 붙는다.
+        //
+        // 견본 `ch05`는 에피소드 6장이고 어느 것도 나가는 길이 셋을 넘지 않는다 →
+        // 칸 6×3 = 18, 입구 6 = 24. ⚠ 넷을 넘기면 넷을 다 그린다(3은 상한이 아니다).
+        Assert.Equal(
+            24, canvas.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Count(port => port.Width == 9));
+
+        // 라벨 클릭 = 그 길 선택 (포트 점도 같은 길로 간다).
+        Press(labels.Single(border => ((TextBlock)border.Child!).Text!.StartsWith("라루의 제안을 듣는다")));
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
+
+        Press(labels.Single(border => ((TextBlock)border.Child!).Text == "셋째 길"));
+        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
+
         static void Press(Control control) => control.RaiseEvent(new Avalonia.Input.PointerPressedEventArgs(
             control, new Avalonia.Input.Pointer(0, Avalonia.Input.PointerType.Mouse, true),
             control, default, 0,
@@ -791,24 +815,6 @@ public sealed class ChapterGraphEditingTests
                 Avalonia.Input.RawInputModifiers.LeftMouseButton,
                 Avalonia.Input.PointerUpdateKind.LeftButtonPressed),
             Avalonia.Input.KeyModifiers.None));
-
-        // 포트 문구 셋 + 포트 원 셋 (main05.02에서 나가는, 문구 붙은 길의 수).
-        List<TextBlock> labels = canvas.Children.OfType<TextBlock>()
-            .Where(block => (block.Text ?? "").StartsWith("라루의 제안을 듣는다") ||
-                            block.Text == "혼자 문을 연다" || block.Text == "셋째 길")
-            .ToList();
-        Assert.Equal(3, labels.Count);
-        // ⚠ 원의 수는 판 전체의 길 수다(v12 — 모든 길이 포트를 받는다). main05.02의 셋만
-        // 세던 옛 값(3)은 문구 없는 길이 포트에서 빠지던 시절의 것이다.
-        Assert.Equal(
-            6, canvas.Children.OfType<Avalonia.Controls.Shapes.Ellipse>().Count(port => port.Width == 9));
-
-        // 포트 클릭 = 그 길 선택. 포트는 늘 간선이 있다(v9 — 포트가 곧 길이다).
-        Press(labels.Single(block => block.Text!.StartsWith("라루의 제안을 듣는다")));
-        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
-
-        Press(labels.Single(block => block.Text == "셋째 길"));
-        Assert.True(view.FindControl<StackPanel>("EdgePanel")!.IsVisible);
     });
 
     // ── 기반 ────────────────────────────────────────────────────────────────
