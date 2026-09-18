@@ -1003,6 +1003,8 @@ dotnet run --project .\src\Vn.App\Vn.App.csproj
 | `EpisodeFlattener.cs` | 대본 행 → 평평한 줄 + `IF`~`ENDIF` 블록 해석 |
 | `ChapterValidator.cs` | 구조 검증 + 도달성 증명을 한 벌로 묶어 돌린다 |
 | `ChapterReachabilityProver.cs` | 스탯을 들고 상태공간을 걸어 "닿을 수 있는가"를 증명 |
+| `ChapterBranchMarkers.cs` | 한 챕터의 분기 표식을 모은다. 챕터 그래프가 읽어서 점선으로 그린다 |
+| `BranchEntryCondition.cs` | 분기 에피소드의 첫머리 조건 — 읽고 쓰는 유일한 자리. 성립하면 돈다 |
 | `ChapterBranchPlanner.cs` | **첫 자리**만 낸다 (v4) — 새 카드 자리 제안 · 자리 없는 챕터에 빌려주기 · [자동 정렬]. 그리는 자리는 에피소드의 X·Y다 |
 | `ChapterProgressionExporter.cs` | 런타임 수입용 JSON. **검증을 통과해야 나간다** |
 | `EpisodeSyncService.cs` | 대본 워크북 → 판의 대사 노드. 두 계층이 만나는 유일한 지점 |
