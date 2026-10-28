@@ -377,7 +377,7 @@ public partial class DialogueNodeEditor : UserControl
 
     /// <summary>
     /// 조건 값 시뮬 (W36-b) — 수동 선택 위에 "값이 이렇다면 이 갈래"의 자동 판정을 얹는다.
-    /// 시작값 = 등록 초기값. 식은 노드 조건·게임 정의 조건에서 찾는다.
+    /// 시작값은 없다(작가 변수 폐지, 2026-09-17). 식은 노드 조건·게임 정의 조건에서 찾는다.
     /// </summary>
     private ConditionSimulation.Result SimulateBranches(DialogueNode node, DialogueScript script)
     {

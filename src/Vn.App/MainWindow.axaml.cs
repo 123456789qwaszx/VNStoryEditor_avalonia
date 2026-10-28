@@ -226,7 +226,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 연출 그래프의 곁기둥 한 판 — 노드 편집기 셋이 겹쳐 선 자리(선택 하나만 보인다).
+    /// 연출 그래프의 곁기둥 한 판 — 노드 편집기 둘(대사·연출)이 겹쳐 선 자리(선택 하나만 보인다).
     /// </summary>
     private Control BuildSidePanel()
     {
