@@ -36,9 +36,7 @@ internal static class ProjectRefreshPlanner
                 RebuildGraph: false,
                 RefreshGraphPositions: false,
                 RebuildInspector: false,
-                RefreshPreview: selectedNode is DialogueNode,
-                // 연출 편집기의 커맨드 행은 유지하되 하단 무대 프리뷰는 새 커맨드를 접어야 한다.
-                RefreshStagePreview: selectedNode is PresentationNode),
+                RefreshPreview: selectedNode is DialogueNode),
 
             ProjectChangeKind.ConditionDefinition => new ProjectRefreshPlan(
                 RebuildGraph: true,
@@ -81,5 +79,4 @@ internal readonly record struct ProjectRefreshPlan(
     bool RebuildGraph,
     bool RefreshGraphPositions,
     bool RebuildInspector,
-    bool RefreshPreview = false,
-    bool RefreshStagePreview = false);
+    bool RefreshPreview = false);

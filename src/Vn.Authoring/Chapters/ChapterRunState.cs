@@ -29,7 +29,7 @@ public enum ChapterGateVerdict
 
 /// <summary>
 /// 간선 관문(표시·해금조건) 판정의 <b>단일 구현</b> (2026-08-27) — 도달성 증명·픽스처
-/// 워커·무대 프리뷰 셋이 이 하나를 본다. 예전에는 증명기와 워커가 같은 판정을 각자
+/// 워커가 이 하나를 본다. 예전에는 증명기와 워커가 같은 판정을 각자
 /// 들고 있었다(규칙이 두 벌이면 한쪽만 고쳐질 때 증명과 플레이가 갈린다).
 ///
 /// 깨진 라벨(<see cref="ChapterGateVerdict.Broken"/>)은 "지나갈 수 없음"이다 —
@@ -103,7 +103,7 @@ public sealed record ChapterRunStatValue(ChapterStat Stat, int Value)
 }
 
 /// <summary>
-/// 챕터 한 판의 진행 상태 (2026-08-27 소유자: 프리뷰가 "선택을 따라가며 스탯이 챕터
+/// 챕터 한 판의 진행 상태 (2026-08-27 소유자: "선택을 따라가며 스탯이 챕터
 /// 단위로 누적"되도록) — 시작은 `스탯` 시트의 초기값이고, <b>간선을 타는 순간 1회
 /// 커밋</b>이라는 전이 규칙 그대로 <see cref="Commit"/>이 유일한 변화 자리다.
 /// 판정·커밋의 규칙은 증명기·워커와 같은 한 벌이다(<see cref="ChapterGateJudge"/> ·
@@ -203,7 +203,7 @@ public sealed class ChapterRunState
             throw new ArgumentException("현재 챕터에 없는 간선입니다.", nameof(edge));
         }
 
-        // 프리뷰가 씬 선택기로 진입했을 수 있으므로 그 에피소드를 현재 위치로 맞춘다.
+        // 다른 에피소드에서 진입했을 수 있으므로 그 에피소드를 현재 위치로 맞춘다.
         if (!string.Equals(_working.CurrentEpisodeId, edge.FromEpisodeId, StringComparison.Ordinal))
         {
             _sceneEntry = Contract.ProgressionState.Restore(_runtime, edge.FromEpisodeId, _working.Stats);

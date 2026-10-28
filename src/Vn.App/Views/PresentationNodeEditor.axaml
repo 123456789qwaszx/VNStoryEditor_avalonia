@@ -19,7 +19,7 @@
                 Padding="8"
                 CornerRadius="6"
                 Background="#12000000">
-            <TextBlock Text="대사는 발행된 결과에서 온 읽기 전용 스냅샷입니다. 여기서 고쳐도 원고는 바뀌지 않습니다. 체크박스는 작성 데이터를 지우지 않고 명령의 활성 상태만 바꿉니다."
+            <TextBlock Text="대사는 발행된 결과에서 온 읽기 전용 스냅샷입니다. 여기서 고쳐도 원고는 바뀌지 않습니다. 라인별 연출 커맨드는 이 툴이 아니라 별도 연출 툴에서 붙입니다."
                        FontSize="11"
                        TextWrapping="Wrap"
                        Opacity="0.7" />

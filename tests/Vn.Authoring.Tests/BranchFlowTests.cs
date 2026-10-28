@@ -39,7 +39,7 @@ public class BranchFlowTests
             lines,
             line => line.Transition?.Kind,
             line => line.LineId,
-            // BranchAwareLines와 같은 라벨 규칙: 선택지=버튼 텍스트, 조건=이름(없으면 식).
+            // 라벨 규칙: 선택지=버튼 텍스트, 조건=이름(없으면 식).
             line => line.Transition?.Kind is ConditionTransitionKind.BeginChoice
                 or ConditionTransitionKind.BeginNextOption
                 ? line.Text
@@ -210,60 +210,5 @@ public class BranchFlowTests
 
         selection.Cycle(block); // → 미선택(근사)
         Assert.False(selection.TryGetCondition("ln_if", out _));
-    }
-
-    [Fact]
-    public void 갈래_인식_폴드_입력은_선택_라인까지_선택_갈래만_담는다()
-    {
-        DialogueResult dialogue = new(
-            new ResultIdentity("rs_bf", 1, DialogueResult.CurrentSchemaVersion, "sha256:test"),
-            "nd_bf", "장면", "sc_bf", 1, "ko-KR",
-            ChoiceDocument(),
-            Array.Empty<DialogueResultAssignment>(),
-            null,
-            DateTimeOffset.UnixEpoch);
-
-        var selection = new StageBranchSelection();
-        selection.SelectChoice("ln_labelA", "ln_labelA"); // 사과 갈래
-
-        BranchAwareLines.Result result = BranchAwareLines.UpTo(
-            dialogue, Array.Empty<PresentationResultBinding>(), "ln_end", selection);
-
-        Assert.Equal(
-            ["ln_0", "ln_labelA", "ln_a1", "ln_end"],
-            result.FoldLines.Select(line => line.LineId));
-        Assert.All(result.FoldLines, line => Assert.False(line.HasBranchTransition)); // 근사 아님
-        Assert.Equal(result.FoldLines.Select(line => line.LineId), result.TakenLines.Select(line => line.LineId));
-
-        BranchFlow.Block block = Assert.Single(result.Blocks);
-        Assert.Equal("ln_labelA", block.BlockLineId);
-
-        // 커서가 블록 앞이면 블록은 아직 칩에 없다.
-        BranchAwareLines.Result before = BranchAwareLines.UpTo(
-            dialogue, Array.Empty<PresentationResultBinding>(), "ln_0", selection);
-        Assert.Empty(before.Blocks);
-    }
-
-    [Fact]
-    public void 미선택이면_폴드_입력이_기존_근사와_같고_근사_표시가_남는다()
-    {
-        DialogueResult dialogue = new(
-            new ResultIdentity("rs_bf2", 1, DialogueResult.CurrentSchemaVersion, "sha256:test"),
-            "nd_bf2", "장면", "sc_bf2", 1, "ko-KR",
-            ChoiceDocument(),
-            Array.Empty<DialogueResultAssignment>(),
-            null,
-            DateTimeOffset.UnixEpoch);
-
-        BranchAwareLines.Result result = BranchAwareLines.UpTo(
-            dialogue, Array.Empty<PresentationResultBinding>(), "ln_end", new StageBranchSelection());
-
-        // 기존 LinesUpTo와 같은 라인 집합(전부) — 갈래 라인에만 근사 표시.
-        Assert.Equal(
-            MiniStageFold.LinesUpTo(dialogue, Array.Empty<PresentationResultBinding>(), "ln_end")
-                .Select(line => line.LineId),
-            result.FoldLines.Select(line => line.LineId));
-        Assert.True(result.FoldLines.First(line => line.LineId == "ln_a1").HasBranchTransition);
-        Assert.False(result.FoldLines.First(line => line.LineId == "ln_0").HasBranchTransition);
     }
 }

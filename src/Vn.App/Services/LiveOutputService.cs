@@ -70,7 +70,7 @@ internal sealed class LiveOutputService
     {
         try
         {
-            if (AssetRootSettings.ResolveFrom(
+            if (ProjectPaths.ResolveFrom(
                     _session.ProjectPath ?? Path.Combine(Environment.CurrentDirectory, "unsaved.vnproject.json"),
                     _session.Project.OutputPath) is not { } directory)
             {

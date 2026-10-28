@@ -1,5 +1,8 @@
 # 확정된 설계와 그 이유
 
+> **2026-10-28.** 무대 프리뷰·에셋 탐색기·연출 커맨드 편집 UI는 제거됐다(`../plans/stage-removal.md`).
+> 아래의 `MiniStageFold`·`StageSceneView`·`AssetExplorerModel`·`assetRoots`·`recentCommands`·프리뷰 해상도 언급은 이력이다.
+
 **이 문서는 요약이다.** 규범적 원문은 `../../ARCHITECTURE.md`(코드 구조)와
 `../runtime-contract.md`(런타임 계약)에 있고, 충돌하면 그쪽이 우선한다.
 "원칙 §…"는 `../runtime-ui-tooling-principles.md`를 가리킨다.
