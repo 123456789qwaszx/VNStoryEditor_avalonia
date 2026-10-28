@@ -45,7 +45,7 @@ public sealed class GameDefinition
     public List<PresentationCommandSpec> PresentationCommands { get; init; } = new();
 
     /// <summary>
-    /// 대본의 화자명 ↔ 초상화 characterId 매핑. 프리뷰가 화자 강조에 쓴다.
+    /// 대본의 화자명 ↔ 초상화 characterId 매핑.
     ///
     /// 런타임의 화자 정책 DBSO는 화자명→표시명/대사창만 알고 캐릭터 키를 모르므로
     /// 이 매핑은 어차피 신규 저작 데이터다. 게임별 어휘는 정의 파일이 공급한다는
@@ -54,40 +54,7 @@ public sealed class GameDefinition
     [JsonPropertyName("speakers")]
     public List<SpeakerSpec> Speakers { get; init; } = new();
 
-    /// <summary>프리뷰 표시 설정. 없으면 기본값(1920×1080)이다.</summary>
-    [JsonPropertyName("preview")]
-    public PreviewSpec? Preview { get; init; }
-
-    /// <summary>
-    /// 런타임 tuning 덤프(ExportedTuning) 폴더 재지정. 프로젝트 상대 또는 절대 경로.
-    /// 없으면 프로젝트 폴더의 <c>ExportedTuning</c>(런타임 내보내기 폴더명 그대로)을 쓴다.
-    /// </summary>
-    [JsonPropertyName("runtimeTuningPath")]
-    public string? RuntimeTuningPath { get; init; }
-
-    /// <summary>
-    /// 프리뷰 기준 해상도. <c>preview.resolution</c>("1920x1080" 형식)에서 읽고,
-    /// 없거나 형식이 다르면 기본 1920×1080이다. 게임별 CanvasScaler 해상도가 다르면
-    /// 정의 파일이 교체한다 — 코드에 게임을 박지 않는다.
-    /// </summary>
-    public (double Width, double Height) PreviewResolution
-    {
-        get
-        {
-            string[]? parts = Preview?.Resolution?.Split('x', 'X', '×');
-
-            if (parts is { Length: 2 } &&
-                double.TryParse(parts[0].Trim(), out double width) && width > 0 &&
-                double.TryParse(parts[1].Trim(), out double height) && height > 0)
-            {
-                return (width, height);
-            }
-
-            return (1920, 1080);
-        }
-    }
-
-    /// <summary>화자명에 매핑된 characterId. 없으면 null — 프리뷰는 이름만 보여 준다.</summary>
+    /// <summary>화자명에 매핑된 characterId. 없으면 null.</summary>
     public string? FindSpeakerCharacterId(string? speakerName)
     {
         if (string.IsNullOrWhiteSpace(speakerName))
@@ -184,13 +151,6 @@ public sealed class ConditionSpec
     public string Expression { get; init; } = string.Empty;
 }
 
-
-public sealed class PreviewSpec
-{
-    /// <summary>"1920x1080" 형식. 프리뷰 창의 기준 좌표계가 된다.</summary>
-    [JsonPropertyName("resolution")]
-    public string? Resolution { get; init; }
-}
 
 public sealed class SpeakerSpec
 {
@@ -318,8 +278,8 @@ public sealed class PresentationParameterSpec
     public string? Description { get; init; }
 
     /// <summary>
-    /// 숫자 파라미터의 슬라이더 선언 (W68) — 있으면 프리뷰 칩에서 이 값을 슬라이더로
-    /// 만질 수 있다. 범위·간격은 코드가 아니라 이 데이터가 정한다.
+    /// 숫자 파라미터의 슬라이더 선언 (W68) — 연출 툴이 이 값을 슬라이더로 만질 때의
+    /// 범위·간격. 코드가 아니라 이 데이터가 정한다.
     /// </summary>
     [JsonPropertyName("slider")]
     public PresentationSliderSpec? Slider { get; init; }

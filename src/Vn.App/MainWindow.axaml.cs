@@ -35,12 +35,11 @@ public partial class MainWindow : Window
     // ── 연출 그래프의 곁기둥 (2026-08-22 소유자 — 창의 우측 열에서 그 판 안으로 이사) ──
     //
     // ⚠ XAML이 아니라 여기서 만든다. 자리는 연출 그래프의 것이지만(SetSidePanel) 배선은
-    // 셸의 것이다 — 이 편집기들은 세션·무대 프리뷰·발행·선택 전환과 얽혀 있어 뷰로
+    // 셸의 것이다 — 이 편집기들은 세션·발행·선택 전환과 얽혀 있어 뷰로
     // 옮기면 그 배선이 두 벌이 된다. 이름을 XAML 시절 그대로 둔 것은 의도다: 참조하는
     // 자리가 마흔 군데라 이름이 바뀌면 이사와 무관한 diff가 그만큼 생긴다.
     private readonly DialogueNodeEditor DialogueEditor = new();
     private readonly PresentationNodeEditor PresentationEditor = new();
-    private readonly AssetExplorerView AssetExplorer = new() { MaxHeight = 300 };
 
     private readonly TextBlock EmptyText = new()
     {
@@ -69,16 +68,8 @@ public partial class MainWindow : Window
             UiGuard.Report(_session, "화면 동작", e.Exception);
         };
 
-        // 오디오 실재생 (W62) — 재생 실패·미지원 보고는 상태줄 하나로 모이고,
-        // 셸이 닫히면 소리도 함께 끝난다.
-        AudioPreview.Problem = message => _session.SetStatus(message);
-        Closed += (_, _) => AudioPreview.StopAll();
-
         // 곁기둥을 제 화면에 건다 — Attach보다 먼저여야 첫 그리기부터 자리가 서 있다.
         Graph.SetSidePanel(BuildSidePanel());
-        // 에셋 탐색기는 무대 프리뷰 조절창 아래에 산다 (2026-08-26 소유자 — 연출
-        // 그래프에서 이사). 자리는 뷰의 것, 배선(Attach·에셋 루트 지정)은 셸의 것이다.
-        StagePreview.AssetExplorerHost.Content = AssetExplorer;
 
         Graph.Attach(_session);
         // 왼쪽 챕터 목록의 원천은 챕터 그래프 뷰가 읽은 목록 하나다 — 두 곳이 따로 읽으면
@@ -92,9 +83,6 @@ public partial class MainWindow : Window
             RebuildFileList();
             // 연출 그래프의 철도 배선(T1)도 같은 목록 하나를 본다 — 두 곳이 따로 읽지 않는다.
             Graph.SupplyChapters(entries);
-            // 무대 프리뷰의 챕터 콤보도 같은 목록이다 (2026-08-26 소유자 — 씬 선택기가
-            // 고른 챕터의 씬만 담도록 챕터 드롭다운이 이 탭에도 섰다).
-            StagePreview.SupplyChapters(entries);
         };
         // 위 드롭다운으로 골라도 왼쪽 목록의 강조가 따라온다 (2026-08-17 소유자 보고) —
         // 목록 클릭이 하던 일(판 활성 + 목록 다시 그리기)을 여기서도 똑같이 한다.
@@ -103,21 +91,7 @@ public partial class MainWindow : Window
             _session.SelectFile(_session.EnsureChapterBoard(chapterId));
             RebuildFileList();
         });
-        MainTabs.SelectionChanged += (_, args) =>
-        {
-            ApplyTabChrome();
-            EnterStageTab();
-
-            // 무대에서 <b>돌아온</b> 것만 본다 — 챕터 그래프에서 건너온 사람의 화면까지
-            // 옮기면 남의 자리를 빼앗는 짓이다.
-            if (ReferenceEquals(MainTabs.SelectedItem, GraphTabItem) &&
-                args.RemovedItems.Count > 0 &&
-                ReferenceEquals(args.RemovedItems[0], StageTabItem))
-            {
-                UiGuard.Run(_session, "무대에서 돌아오기", ReturnFromStage);
-            }
-        };
-        Graph.NodeActivated += nodeId => UiGuard.Run(_session, "무대에서 보기", () => OpenOnStage(nodeId));
+        MainTabs.SelectionChanged += (_, _) => ApplyTabChrome();
         // XAML 기본은 펼침이고 SelectionChanged는 이미 정해진 선택에 오지 않는다 —
         // 여기서 한 번 맞춰 주지 않으면 첫 화면(챕터 그래프)만 어긋난다.
         ApplyTabChrome();
@@ -126,86 +100,7 @@ public partial class MainWindow : Window
         Script.Attach(_session);
         DialogueEditor.Attach(_session);
         PresentationEditor.Attach(_session);
-        StagePreview.Attach(_session);
-        AssetExplorer.Attach(_session);
         _liveOutput = new LiveOutputService(_session);
-        StagePreview.LineMoveRequested += delta =>
-        {
-            // 선택은 활성 편집기의 것 하나뿐이다 — 프리뷰 창은 그걸 움직일 뿐이다.
-            if (PresentationEditor.IsVisible)
-            {
-                PresentationEditor.MoveStageLine(delta);
-            }
-            else if (DialogueEditor.IsVisible)
-            {
-                DialogueEditor.MoveStageLine(delta);
-            }
-        };
-        StagePreview.LineSelectRequested += lineId =>
-        {
-            // 대본 패널의 대사 행 클릭 (2026-08-20) — 같은 규칙: 활성 편집기의 선택 하나.
-            if (PresentationEditor.IsVisible)
-            {
-                PresentationEditor.SelectStageLineById(lineId);
-            }
-        };
-        StagePreview.DetourResumeRequested += lineId =>
-        {
-            // detour 복귀 (2026-08-22) — 돌아간 노드의 편집기가 떠난 줄을 짚고 한 줄
-            // 나아간다. 다녀온 detour는 경로에서 빠져 있으므로(PopDetour가 표시했다)
-            // 그 한 걸음이 곧 "나머지 대본"의 첫 줄이다.
-            if (PresentationEditor.IsVisible)
-            {
-                PresentationEditor.SelectStageLineById(lineId);
-                PresentationEditor.MoveStageLine(1);
-            }
-            else if (DialogueEditor.IsVisible)
-            {
-                DialogueEditor.SelectStageLineById(lineId);
-                DialogueEditor.MoveStageLine(1);
-            }
-        };
-        StagePreview.SceneChosen += EnterPresentationChannel;
-        // 작업대 = Inspector (2026-08-21 소유자: "점의 세부 조절창과 연출 편집창이
-        // 합쳐지는 게 맞겠네") — 선택 커맨드 하나의 편집 행(연출 편집기) + 수치 조절
-        // (무대 뷰)을 연출 편집기가 한 판으로 조합해 프리뷰 탭에 공급한다. 연출 추가는
-        // 터미널 우클릭이 띄우는 콘솔이다(검색·종류별 탭·직접 입력 — 2026-08-21 소유자:
-        // "콘솔을 띄운다는 느낌으로"). 대사 편집기 화면은 발행 결과 뷰라 작업대가 없다.
-        StagePreview.CommandDetailProvider = commandId =>
-            PresentationEditor.IsVisible
-                ? PresentationEditor.BuildCommandInspector(commandId, StagePreview.BuildSceneInspector)
-                : null;
-        StagePreview.AddConsoleProvider = (lineId, setup, close) =>
-            PresentationEditor.IsVisible
-                ? PresentationEditor.BuildAddConsole(lineId, setup, close)
-                : null;
-        StagePreview.NodeExitRequested = () =>
-        {
-            // 문서 끝 도달 (W39) — 활성 편집기가 실행 출구를 따라 다음 노드로 전환하면
-            // 재생이 이어진다. 전환된 노드의 편집기가 열리며 첫 라인 프리뷰를 민다.
-            if (PresentationEditor.IsVisible)
-            {
-                return PresentationEditor.TryExitPlaybackNode();
-            }
-
-            return DialogueEditor.IsVisible && DialogueEditor.TryExitPlaybackNode();
-        };
-        StagePreview.ManipulationApplied += () =>
-        {
-            // 직접 조작은 연출 노드의 바인딩을 바꿨다 — 커맨드 행에 즉시 보여야 한다.
-            if (PresentationEditor.IsVisible)
-            {
-                PresentationEditor.Rebuild();
-            }
-            else if (DialogueEditor.IsVisible)
-            {
-                // 대사 편집기에서의 프리뷰 선택지 클릭(갈래 선택)도 즉시 보여야 한다 (W47).
-                DialogueEditor.RefreshBranchView();
-            }
-        };
-        DialogueEditor.StagePreview = StagePreview;
-        PresentationEditor.StagePreview = StagePreview;
-
         _session.Changed += OnSessionChanged;
         // 상태줄만 바뀐 경우는 셸 갱신 하나로 끝난다 (2026-08-18) — 판을 다시 그리거나
         // 워크북을 다시 읽을 이유가 없다. 그 구분이 없어서 노드가 늘수록 느려졌다.
@@ -309,130 +204,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 고른 탭에 chrome을 맞춘다 — 챕터 그래프에서는 연출 계층의 우측 열과 Yarn/CSV
-    /// 내보내기가 접힌다. 생성자와 탭 전환이 같은 계산 하나를 부른다: 시작 화면만
-    /// 따로 세우면 두 벌이 되고, 두 벌은 반드시 어긋난다.
-    /// </summary>
-    /// <summary>
-    /// 씬 하나를 연출할 수 있는 상태로 만든다 (2026-08-21) — 대사 발행 → 연출 노드 →
-    /// 결과 연결 → 연출 발행까지 한 번에(멱등). 소유자: "미리 다 해둔 다음에 무대
-    /// 프리뷰측에서 뭘 할지 고르도록".
-    ///
-    /// 부르는 곳이 둘이다 — <b>씬 선택기</b>와 <b>무대 프리뷰 탭에 들어오는 것</b>.
-    /// 둘은 같은 뜻이라 같은 함수를 지난다(사본 금지).
-    /// </summary>
-    private void EnterPresentationChannel(string dialogueNodeId)
-    {
-        PresentationChannelOutcome outcome = _session.Editor.EnsurePresentationChannel(
-            dialogueNodeId,
-            _session.Definition);
-
-        if (!outcome.Ready)
-        {
-            // 채널이 못 서도(대사 발행 불가 등) 씬 자체는 보여 준다 — 이유는 상태줄로.
-            _session.SetStatus(outcome.Problem ?? "연출 채널을 세울 수 없습니다.");
-            _session.Select(dialogueNodeId);
-            return;
-        }
-
-        _session.Select(outcome.Presentation!.Id);
-    }
-
-    /// <summary>
-    /// 무대 프리뷰 탭으로 들어왔다 (2026-08-22 소유자 보고: "연출 그래프에서 특정
-    /// 에피소드노드를 클릭한채로 프리뷰에 들어올 시에는, 화면을 클릭해도 콘솔이 안 나옴").
-    ///
-    /// 원인은 화면이 아니라 <b>무엇을 보고 있는가</b>였다: 대사 노드가 선택돼 있으면
-    /// 프리뷰가 <b>공급된 발행 결과</b>를 그리고, 발행본은 불변이라 직접 조작이 잠긴다
-    /// (<c>DisabledReason</c>). 잠긴 화면에서는 무대를 눌러도 조절창이 열리지 않는다.
-    ///
-    /// 그래서 <b>탭에 들어오는 것을 씬 선택과 같은 뜻으로</b> 친다 — 연출의 입구는 이
-    /// 판이고, 여기 들어왔다는 것은 그 씬을 연출하겠다는 것이다. 이미 채널이 서 있으면
-    /// 멱등이라 아무 일도 안 일어난다.
-    /// </summary>
-    /// <summary>
-    /// 연출 그래프에서 카드를 더블클릭했다 — 그 노드를 <b>무대에 올린다</b>
-    /// (2026-08-25 소유자: "더블클릭한 노드가 선택된채로").
-    ///
-    /// 고르는 것이 먼저이고 탭은 그다음이다. 탭 전환이 <see cref="EnterStageTab"/>를 부르고
-    /// 그것이 <b>지금 고른 것</b>을 보므로, 순서가 뒤집히면 무대는 <b>직전 노드</b>를 연다.
-    ///
-    /// ⚠ 대사 노드는 <see cref="EnterPresentationChannel"/>이 선택을 <b>연출 노드로</b>
-    /// 옮긴다(탭에 들어오는 것과 같은 뜻이라 같은 함수 하나를 지난다 — 사본 금지).
-    /// 그것이 곧 "더블클릭한 노드가 선택된 채"다: 무대가 그리는 것은 그 대사의 씬이고,
-    /// 대사 노드를 고른 채로 두면 발행본이 그려져 <b>잠긴 화면</b>이 된다.
-    ///
-    /// 설정 노드는 무대에 올릴 것이 없다. 조용히 아무 일도 안 하면 더블클릭이 고장 난
-    /// 것처럼 보이므로 사유를 말한다.
-    /// </summary>
-    private void OpenOnStage(string nodeId)
-    {
-        if (_session.Project.FindNode(nodeId) is not { } node)
-        {
-            return;
-        }
-
-        if (node is SetNode)
-        {
-            _session.SetStatus("설정 노드는 무대에서 볼 것이 없습니다 — 대사 노드를 눌러 주세요.");
-            return;
-        }
-
-        _session.Select(nodeId);
-        MainTabs.SelectedItem = StageTabItem;
-    }
-
-    /// <summary>
-    /// 무대에서 연출 그래프로 돌아왔다 — 방금 보던 <b>에피소드 노드</b>를 고른 채로,
-    /// 화면 한가운데에 놓는다 (2026-08-25 소유자).
-    ///
-    /// ⚠ 무대의 선택은 <b>연출 노드</b>다(<see cref="EnterPresentationChannel"/>가 그리로
-    /// 옮긴다 — 대사 노드를 고른 채로 두면 발행본이 그려져 잠긴 화면이 되기 때문이다).
-    /// 그런데 사람이 "보고 있던 것"이라고 여기는 것은 그 연출이 얹힌 <b>에피소드 노드</b>다.
-    /// 그래서 공급 연결을 거꾸로 타고 그쪽으로 돌려놓는다 — 안 그러면 돌아온 화면이
-    /// 방금 본 씬이 아니라 그 옆의 🎬 카드를 가리킨다.
-    ///
-    /// 판이 아직 안 재어진 순간이라, 가운데로 옮기는 것은
-    /// <see cref="GraphEditorView.CenterOnNode"/>가 잴 수 있게 된 뒤로 미룬다.
-    /// </summary>
-    private void ReturnFromStage()
-    {
-        if (_session.SelectedNode is not { } node)
-        {
-            return;
-        }
-
-        string target = node is PresentationNode
-            ? DialogueSuppliedBy(node.Id) ?? node.Id
-            : node.Id;
-
-        _session.Select(target);
-        Graph.CenterOnNode(target);
-    }
-
-    /// <summary>이 연출 노드가 공급하는 대사 노드 — 공급 연결(연출 → 대사)을 거꾸로 탄다.</summary>
-    private string? DialogueSuppliedBy(string presentationNodeId) =>
-        _session.Project.Links
-            .FirstOrDefault(link =>
-                link.Kind == NodeLinkKind.PresentationSupply &&
-                link.IsEnabled &&
-                string.Equals(link.SourceNodeId, presentationNodeId, StringComparison.Ordinal))
-            ?.TargetNodeId;
-
-    private void EnterStageTab()
-    {
-        if (!ReferenceEquals(MainTabs.SelectedItem, StageTabItem) ||
-            _session.SelectedNode is not DialogueNode dialogue)
-        {
-            return;
-        }
-
-        UiGuard.Run(_session, "연출 채널", () => EnterPresentationChannel(dialogue.Id));
-    }
-
-    /// <summary>
     /// 탭마다 다른 상단 chrome. ⚠ <b>곁기둥을 접는 코드는 2026-08-22에 사라졌다</b> —
-    /// 챕터 목록과 노드 편집기·에셋 탐색기가 각자 쓰는 화면 안으로 들어가면서
+    /// 챕터 목록과 노드 편집기가 각자 쓰는 화면 안으로 들어가면서
     /// "어느 탭에서 보이나"가 자리로 정해졌다. 여기 남은 것은 이름이 겹치는 단추들뿐이다:
     /// 챕터 툴바의 [내보내기](진행 JSON)와 상단 Yarn/CSV 내보내기가 한 화면에 둘이면
     /// 어느 쪽인지 헷갈린다.
@@ -453,14 +226,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 연출 그래프의 곁기둥 한 판 — 위는 노드 편집기 넷이 겹쳐 선 자리(선택 하나만
-    /// 보인다), 아래는 에셋 탐색기다. 탐색기는 제 머리에 접기 토글을 이미 갖고 있다.
+    /// 연출 그래프의 곁기둥 한 판 — 노드 편집기 셋이 겹쳐 선 자리(선택 하나만 보인다).
     /// </summary>
     private Control BuildSidePanel()
     {
-        // ⛔ 에셋 탐색기는 2026-08-26에 무대 프리뷰로 이사했다 (소유자: "에셋이
-        //    연출그래프에 있는데, 그게 무대프리뷰로 옮겨와줘") — 에셋을 보며 고르는
-        //    화면이 무대라서다. 여기엔 노드 편집기들만 남는다.
         return new Panel
         {
             Children = { DialogueEditor, PresentationEditor, EmptyText }
@@ -528,11 +297,6 @@ public partial class MainWindow : Window
                 // 화자·대사 내용 변경은 편집 컨트롤을 유지해야 하지만 Script Preview는
                 // 현재 모델을 곧바로 반영해야 한다. Preview만 다시 합성한다.
                 DialogueEditor.RefreshPreview();
-            }
-
-            if (plan.RefreshStagePreview)
-            {
-                PresentationEditor.RefreshStagePreview();
             }
 
             RefreshShell();
@@ -1466,23 +1230,6 @@ public partial class MainWindow : Window
             PresentationEditor.Show(node.Id);
         }
 
-        // 무대 프리뷰는 대사·연출 편집기만 채운다. 다른 노드에서는 빈 상태로 돌린다.
-        if (node is not DialogueNode && node is not PresentationNode)
-        {
-            StagePreview.Show(null);
-        }
-
-        // 씬 선택기가 현재 씬을 따라온다 — 연출 노드는 공급 대상(대사 노드)으로 옮겨 읽는다.
-        StagePreview.SetCurrentScene(node switch
-        {
-            DialogueNode dialogue => dialogue.Id,
-            PresentationNode presentation => _session.Project.Links.FirstOrDefault(link =>
-                    link.Kind == NodeLinkKind.PresentationSupply &&
-                    link.IsEnabled &&
-                    string.Equals(link.SourceNodeId, presentation.Id, StringComparison.Ordinal))
-                ?.TargetNodeId,
-            _ => null
-        });
     }
 
     /// <summary>

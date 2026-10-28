@@ -286,7 +286,6 @@ JSON을 그대로 쓴다. 해시 전용 표현을 따로 만들면 저장 형식
 | `AvailablePresentationCommandResolver` | **이 PresentationNode가 쓸 수 있는 커맨드 범주·프리셋**. 공급 노드 미연결 시 전체 카탈로그 폴백 |
 | `PresentationBindingResolver` | binding이 입력 결과의 어느 줄에 붙는지, 고아인지 |
 | `NodeConnections` | 노드의 실행 출력 포트와 프로젝트 전체 간선 |
-| `MiniStageFold` | 무대 프리뷰의 순수 폴드 — 선택 라인까지 접은 배경·슬롯·별칭·대사창 상태와 **미반영 커맨드 목록**(§3.10) |
 
 `ResolvedLine`에 "전환 적용 전 갈래"(`PrecedingBranch`)가 함께 있는 이유는,
 드롭다운의 의미가 **바로 앞 줄까지의 상태**로 정해지기 때문이다.
@@ -415,13 +414,11 @@ aggregate 하나로 독립되어 있어야 한다.
 
 | 타입 | 역할 |
 |---|---|
-| `AuthoringSession` | 열린 프로젝트 경로, 저장 여부, 선택 상태, `ActiveFileId`와 `ExpandedFileIds`, 프리뷰 에셋 인덱스·비트맵 캐시. 편집은 도메인이 한다 |
+| `AuthoringSession` | 열린 프로젝트 경로, 저장 여부, 선택 상태, `ActiveFileId`와 `ExpandedFileIds`. 편집은 도메인이 한다 |
 | `GraphEditorView` | 노드 추가·이동·선택, 포트 드래그 연결, 간선 선택·삭제 |
 | `DialogueNodeEditor` | 대본 선택·가져오기, 줄 카드, 조건 드롭다운, 발행 탭, 출력 미리 보기 |
 | `SetNodeEditor` | 조건과 변수 값 정의 |
-| `PresentationNodeEditor` | 입력 결과 선택, 읽기 전용 대사 미러, LineId별 연출 명령, 발행 |
-| `MiniStagePreview` | 대사·연출 편집기가 공유하는 무대 프리뷰 패널(§3.10). 에셋 루트 설정과 명시적 새로 고침도 여기 |
-| `PreviewImageCache<T>` | 경로 키(Ordinal) 비트맵 캐시. 로더 주입식 — 무효화는 명시적 `Clear`뿐 |
+| `PresentationNodeEditor` | 자동 채널 상태, 입력 결과 요약, 고아 연출. 라인별 커맨드 편집은 별도 연출 툴의 일이다(2026-10-28) |
 | `BranchPalette` | 갈래 색 표. 데이터가 아니라 표시 수단 |
 | `MainWindow` | 도구 모음, 열기·저장, 세션을 화면들에 물려준다 |
 | `ProjectRefreshPlanner` | 변경 알림 하나가 어느 화면을 다시 만들게 할지 정하는 유일한 자리 |
@@ -431,56 +428,18 @@ aggregate 하나로 독립되어 있어야 한다.
 **발행된 것에는 수정 UI가 없다.** 연출 편집기의 대사 미러는 `TextBlock`이지 `TextBox`가
 아니다. 발행 결과 목록도 읽기 전용 카드다.
 
-### 3.10 프리뷰 계층 — 무대 프리뷰 (Phase 2a-v1)
+### 3.10 프리뷰 계층 — 제거됨 (2026-10-28)
 
-"무슨 배경에서 누가 말하는가"만 답하는 읽기 전용 소비자다. 장면 재현이 아니라 정보가
-목표라서 좌표·크기·이펙트·시간은 다루지 않는다(그건 2b 정지 프레임 렌더러의 일).
-이미터·발행·계약서에는 손대지 않는다.
+무대 프리뷰(패널·무대 렌더러·직접 조작·조절창·자주 쓰는 칩·폴드·모션 계획·재생), 에셋 해석과
+탐색기, 런타임 튜닝 덤프 수입, 라인별 연출 커맨드 편집 UI(터미널·연출 추가·인스펙터·Setup 편집)는
+2026-10-28에 통째로 사라졌다 — 작가는 쓰지 않았고(소유자), 이 툴은 작가가 글을 쓰는 곳으로만
+남는다. 연출 저작은 별도 툴이 맡는다. 근거와 조사: `docs/plans/stage-removal.md`.
 
-책임은 세 겹으로 나뉜다.
-
-```
-Vn.Authoring/Assets   에셋 해석 — 파일 경로 수준까지만. 비트맵을 모른다
-   PortraitManifest      런타임 U12-v1 덤프(formatVersion 1, 불일치는 명시 거부)
-   PortraitKey           키 정규화·폴백 — 런타임 PortraitResolver 규칙 이식
-   PreviewAssetLibrary   배경 파일명=spriteKey(Ordinal)·초상화 키 인덱스, Problems
-Vn.Authoring/Flow     MiniStageFold — 순수 함수 폴드. 계산은 저장하지 않는다
-Vn.App                화면과 비트맵 — MiniStagePreview 패널, PreviewImageCache
-```
-
-지켜야 하는 것:
-
-- **폴드는 Flow의 계산이다.** 접은 상태를 어디에도 저장하지 않는다. 입력은 발행
-  Freeze와 같은 길로 해석된 커맨드(프리셋은 이미 최종 값)이므로 프리뷰용 두 번째
-  해석 규칙이 없다. 대사 편집기의 공급 짝도 내보내기와 같은 `NodeExportResolver`로 찾는다.
-- **에셋은 App 경계다.** Authoring은 경로와 해석 결과(정확/폴백/누락)까지만 알고,
-  Avalonia 비트맵·캐시·화면은 Vn.App에 있다. 파일 변경 감지는 없다 — 새로 고침은
-  명시적 동작 하나뿐이다.
-- **미처리 가시화 규칙.** 폴드가 인식하지 못한(또는 적용하지 못한) 커맨드는 조용히
-  버리지 않고 커맨드명·라인째로 `Unhandled`에 남겨 "반영 안 된 연출 N" 뱃지로 보인다.
-  누락 에셋도 키 문자열이 보이는 플레이스홀더와 `Problems`로 남는다. 이 목록이
-  2b 확장의 백로그다 — **조용히 버리는 코드는 리뷰 반려 사유다.**
-- v1 폴드는 갈래를 가정하지 않는다. 조건·선택 갈래도 문서 순서대로 전부 접고,
-  그 근사가 쓰였음을 표시 하나로 알린다. 갈래 인식 폴드는 2b에서.
-
-2a-v2(W17–W20)에서 이 계층 위에 얹힌 것:
-
-```
-Vn.Authoring/Assets     AssetExplorerModel — 탐색기 트리(배경=폴더 구조, 초상화=키 구조) 순수 계산
-Vn.Authoring/Definition CommandText — 병기 텍스트 조립·텍스트 입력 파싱의 단일 구현(이미터와 같은 규칙)
-                        ArgumentTokenCandidates — 파라미터 type별 후보 토큰(제약이 아니라 제안)
-Vn.Authoring/Editing    PresentationStageActions — 직접 조작→편집 변환(같은 종류는 수정, 시퀀스는 개별 커맨드)
-Vn.App                  AssetExplorerView(드래그 소스) · StageSceneComposer(기준 해상도 배치 계산, 순수)
-                        StageSceneView(도킹·분리 창 공용 렌더러+직접 조작) · StagePreviewWindow(따라가기·라인 이동)
-```
-
-**편집 경로 수렴 원칙 — 세 입력 경로, 한 통로.** 연출 커맨드를 만드는 길은 셋이다:
-갤러리/직접 추가, 텍스트 입력(`CommandText.Parse`), 프리뷰 직접 조작(클릭·드래그 →
-`PresentationStageActions`). 어느 길이든 결과는 같은 `ProjectEditor` 편집 명령으로
-수렴한다 — 프리뷰용 별도 쓰기 경로는 없고, 되돌리기 한 번이 조작 하나를 원복하며
-(배치 추가·병합 갱신이 한 mutate다), 발행→이미터 출력은 경로와 무관하게 같다
-(`InputPathEquivalenceTests`가 못박는다). 텍스트가 진실이므로 어떤 방식으로 만들었든
-커맨드에는 `<<이름 인자…>>` 텍스트가 병기된다.
+남은 것은 **데이터와 통로**다: `ProjectEditor`의 연출 커맨드 편집 API, `CommandText`(병기 텍스트
+조립·파싱의 단일 구현 — 이미터와 같은 규칙), 발행·이미터. 입력 경로가 무엇이든 같은
+`ProjectEditor` 편집 명령으로 수렴하고 발행→이미터 출력은 경로와 무관하게 같다는 원칙
+(`InputPathEquivalenceTests`)은 그대로다. 반입 `Ked.Presentation.Core`는 내보내기 규약의 주인이라
+남는다.
 
 ---
 
@@ -496,7 +455,7 @@ Vn.App                  AssetExplorerView(드래그 소스) · StageSceneCompose
 | PresentationNode는 어떤 버전을 읽는가 | `PresentationNode.Source` = {ResultId, Version, ContentHash} |
 | 정식 출력을 다시 만들 때 같은 입력을 찾을 수 있는가 | `RuntimeComposition`이 두 결과를 버전까지 지정해 저장한다 |
 | 이전 프로젝트는 어떻게 보호되는가 | 형식 버전 2 이하는 읽지 않고 거부한다 (§8) |
-| capability node와 실시간 프리뷰는 어디에 붙는가 | §5.2 |
+| capability node는 어디에 붙는가 | §5.2 |
 
 ### 4.1 조건은 반복 저장하지 않고 전환만 저장한다
 
@@ -710,10 +669,6 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 | 그래프 화면 | `App/Views/GraphEditorView.axaml{,.cs}` |
 | 대사 카드의 내용과 배치 | `App/Views/DialogueNodeEditor.axaml{,.cs}` |
 | 설정 노드 화면 | `App/Views/SetNodeEditor.axaml{,.cs}` |
-| 무대 조절창(탭·직접 조작) | `App/Views/StageSceneView.cs`의 `BuildStagePopover` — 탭 하나가 함수 하나(`BuildQuickTab`·`BuildBackgroundTab`·`BuildSlotTab`·`BuildCharacterTab`·`BuildAudioTab`) |
-| [★ 자주 쓰는] 기본 칩 목록 | `Model/StageQuickCommand.cs`의 `StageQuickCommands.Default` — 화면이 아니라 여기가 정한다 |
-| 수치 조절 위젯을 새 대상에 붙이기 | `App/Views/StageSceneView.cs`의 `ArgumentSink` — 슬라이더·선택기는 한 벌이고 "어디에 쓰나"만 갈아 끼운다 |
-| 라인 전이의 자리 보간·페이드 | `App/Views/StageSceneView.cs`의 `SetTransitionProgress`. ⚠ **등장·퇴장의 근거는 가시성 변화**(`Appeared`·`Departed`)다 — "직전에 자리가 있었나"로 판정하면 숨김 고스트가 자리를 등록하므로(W28) 이미 무대에 선 슬롯의 fade가 통째로 삼켜진다. 퇴장은 직전 렌더의 초상 컨트롤을 고스트 위에 다시 얹어 걷는다(배경 크로스페이드와 같은 결) |
 | 열린 프로젝트·저장 여부·선택 | `App/Services/AuthoringSession.cs` |
 | 최근 프로젝트 기억 | `App/Services/AppSettingsService.cs` |
 | 시작 오류 로그 | `App/Services/StartupLog.cs` |
@@ -849,13 +804,12 @@ Presentation.Source.ContentHash == Dialogue.Identity.ContentHash
 13. **골든 파일은 언제나 UTF-8로 읽는다.** PowerShell 5.1은 BOM이 없으면 ANSI로 읽는다.
     한국어를 담은 `.ps1`은 UTF-8 BOM으로 저장해야 한다.
 
-14. **프리뷰가 다루지 못하는 것을 조용히 버리지 않는다.**
-    폴드가 인식 못 한 커맨드는 `Unhandled`로, 못 찾은 에셋 키는 플레이스홀더와
-    `Problems`로 반드시 화면에 남는다 (§3.10). 조용히 버리면 나중에
-    "왜 이 장면만 다르지"로 돌아온다 — 그때는 어디서 사라졌는지 아무도 모른다.
+14. **다루지 못하는 것을 조용히 버리지 않는다.**
+    해석이 인식 못 한 커맨드·어휘는 `Problems`·뱃지로 반드시 화면에 남는다. 조용히 버리면
+    나중에 "왜 이 장면만 다르지"로 돌아온다 — 그때는 어디서 사라졌는지 아무도 모른다.
 
 15. **연출 커맨드를 만드는 새 길을 낼 때는 ProjectEditor로 수렴시킨다 (§3.10).**
-    직접 조작이든 파서든 프리뷰용 별도 쓰기 경로를 만들면 되돌리기·알림·발행이
+    파서든 다른 화면이든 별도 쓰기 경로를 만들면 되돌리기·알림·발행이
     그 길만 비켜 가고, 이미터 출력이 입력 방법에 따라 달라진다. 커맨드 텍스트의
     조립·파싱 규칙도 `CommandText` 하나다 — 화면과 파일이 다른 문장을 만들면 안 된다.
 

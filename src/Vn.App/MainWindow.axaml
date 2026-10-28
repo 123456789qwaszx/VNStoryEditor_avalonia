@@ -67,12 +67,12 @@
         </Border>
 
         <!-- 창은 이제 탭 하나뿐이다 (2026-08-22 소유자). 곁기둥 둘이 제 화면 안으로
-             들어갔다: <b>챕터 목록</b>은 챕터 그래프로, <b>노드 편집기 + 에셋 탐색기</b>는
-             연출 그래프로. 창이 들고 탭마다 접었다 펴던 시절에는 어느 화면의 것인지가
-             chrome 코드에만 적혀 있었고, 그래서 다른 화면의 발행·프리뷰가 소음으로 남았다.
-             이제 자리가 곧 소속이다 — 무대 프리뷰는 창 전체를 쓴다.
+             들어갔다: <b>챕터 목록</b>은 챕터 그래프로, <b>노드 편집기</b>는 연출 그래프로.
+             창이 들고 탭마다 접었다 펴던 시절에는 어느 화면의 것인지가 chrome 코드에만
+             적혀 있었고, 그래서 다른 화면의 발행이 소음으로 남았다. 이제 자리가 곧 소속이다.
+             무대 프리뷰 탭은 2026-10-28에 사라졌다 — 이 툴은 작가가 글을 쓰는 곳이다.
              탭 순서가 곧 작업 순서다 (2026-08-18 팀장 미팅): ① 챕터 그래프에서 구조와
-             대사를 짜고, ② 연출 그래프에서 그 위에 연출을 얹고, ③ 무대에서 확인한다.
+             대사를 짜고, ② 연출 그래프에서 그 위에 연출을 얹는다.
              두 그래프는 데이터도 편집 경로도 공유하지 않는다 (G-1). -->
         <TabControl x:Name="MainTabs" Padding="0">
             <TabItem x:Name="ChapterTabItem" Header="챕터 그래프">
@@ -81,15 +81,10 @@
             <TabItem x:Name="GraphTabItem" Header="연출 그래프">
                 <views:GraphEditorView x:Name="Graph" />
             </TabItem>
-            <!-- 무대 프리뷰 승격 (2026-08-20 소유자) — 우측 아래 조그만 패널이 아니라
-                 그래프들과 같은 급의 판이다. 분리 창(창으로 열기)은 이 탭이 대체한다. -->
             <!-- 작가의 자리 (R-E · 지시서 §6.1: "탭은 곧 역할이다 … 작가만 제 탭이 없었다").
                  ⚠ 앞 둘의 순서는 건드리지 않는다 — `MainChromeTests`가 고정하고 있다. -->
             <TabItem x:Name="ScriptTabItem" Header="대본">
                 <views:ScriptView x:Name="Script" />
-            </TabItem>
-            <TabItem x:Name="StageTabItem" Header="무대 프리뷰">
-                <views:MiniStagePreview x:Name="StagePreview" />
             </TabItem>
         </TabControl>
     </DockPanel>

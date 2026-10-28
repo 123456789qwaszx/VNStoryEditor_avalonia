@@ -31,7 +31,7 @@ namespace Vn.App.Views;
 /// </summary>
 public partial class DialogueNodeEditor : UserControl
 {
-    private static readonly SolidColorBrush StageSelectionBrush = new(Color.FromArgb(200, 37, 99, 235));
+    private static readonly SolidColorBrush LineSelectionBrush = new(Color.FromArgb(200, 37, 99, 235));
 
     private AuthoringSession? _session;
     private string? _nodeId;
@@ -40,7 +40,7 @@ public partial class DialogueNodeEditor : UserControl
     private readonly IReadOnlyList<OutputPreset> _outputPresets = OutputPresetCatalog.All;
     private OutputPreset _selectedOutputPreset = OutputPresetCatalog.RuntimeFull;
     private string? _selectedLineId;
-    private readonly Dictionary<string, Border> _stageLineCards = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Border> _lineCards = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 지금 보는 노드가 <b>챕터의 에피소드</b>인가 (<see cref="DialogueNode.MarkedEpisodeId"/>).
@@ -60,9 +60,6 @@ public partial class DialogueNodeEditor : UserControl
     /// <summary>갈래 시작 줄(라벨·조건) → 블록/갈래 (W36-a). 클릭하면 그 갈래가 선택으로 남는다.</summary>
     private readonly Dictionary<string, (BranchFlow.Block Block, int BranchIndex)> _branchStarts =
         new(StringComparer.Ordinal);
-
-    /// <summary>MainWindow가 꽂아 주는 공유 하단 무대 프리뷰.</summary>
-    internal MiniStagePreview? StagePreview { get; set; }
 
     public DialogueNodeEditor()
     {
@@ -170,7 +167,7 @@ public partial class DialogueNodeEditor : UserControl
 
         string scriptId = node.ScriptId ?? _session.Editor.EnsureDialogueScript(node.Id).Id;
         ScriptLine line = _session.Editor.InsertScriptLine(scriptId); // 인덱스 없음 = 맨 끝
-        SelectStageLine(line.Id);
+        SelectLine(line.Id);
     }
 
     internal void Attach(AuthoringSession session)
@@ -253,7 +250,7 @@ public partial class DialogueNodeEditor : UserControl
                 _session.Definition);
 
             LineHost.Children.Clear();
-            _stageLineCards.Clear();
+            _lineCards.Clear();
 
             if (_selectedLineId is null ||
                 flow.Lines.All(item => !string.Equals(item.Line.LineId, _selectedLineId, StringComparison.Ordinal)))
@@ -294,7 +291,7 @@ public partial class DialogueNodeEditor : UserControl
                     choiceBox = new StackPanel { Spacing = 3 };
                     choiceChain = line.Branch!.ChainIndex;
 
-                    // 지금 프리뷰가 접는 갈래를 헤더에 그대로 쓴다 (W36-a).
+                    // 지금 선택된 갈래를 헤더에 그대로 쓴다 (W36-a).
                     string headerText = "선택지 — 미선택 (문서 순서 근사)";
 
                     if (blockOfLine.TryGetValue(line.Line.LineId, out BranchFlow.Block? headerBlock) &&
@@ -335,7 +332,7 @@ public partial class DialogueNodeEditor : UserControl
                 // 그 줄에 붙은 것이 아니라 그 줄 <b>앞에서</b> 갈라진다는 표식이다.
                 Control? marker = BuildBranchMarkerCard(node, line.Line.LineId);
 
-                Control card = WrapForStageSelection(BuildCard(node, script, line), line.Line.LineId);
+                Control card = WrapForLineSelection(BuildCard(node, script, line), line.Line.LineId);
 
                 if (inChoice && choiceBox is not null)
                 {
@@ -380,7 +377,7 @@ public partial class DialogueNodeEditor : UserControl
 
     /// <summary>
     /// 조건 값 시뮬 (W36-b) — 수동 선택 위에 "값이 이렇다면 이 갈래"의 자동 판정을 얹는다.
-    /// 시작값 = 등록 초기값 + 세션 시뮬 오버라이드. 식은 노드 조건·게임 정의 조건에서 찾는다.
+    /// 시작값 = 등록 초기값. 식은 노드 조건·게임 정의 조건에서 찾는다.
     /// </summary>
     private ConditionSimulation.Result SimulateBranches(DialogueNode node, DialogueScript script)
     {
@@ -402,7 +399,7 @@ public partial class DialogueNodeEditor : UserControl
             _session!.BranchSelection);
     }
 
-    /// <summary>대본 라인의 갈래 분석 — 프리뷰 폴드와 같은 유효 선택(수동+자동)·커서 기준(사본 금지).</summary>
+    /// <summary>대본 라인의 갈래 분석 — 유효 선택(수동+자동)·커서 기준.</summary>
     private BranchFlow.Analysis<DialogueLine> AnalyzeBranches(DialogueScript script, StageBranchSelection effective)
     {
         return BranchFlow.Analyze(
@@ -415,8 +412,8 @@ public partial class DialogueNodeEditor : UserControl
     }
 
     /// <summary>
-    /// 갈래 트리 상태 갱신 (W36-a) — 선택되지 않은 갈래의 카드는 흐려진다(프리뷰에 접히지
-    /// 않는 줄이 밝게 남으면 화면이 거짓말을 한다). 미선택(근사) 갈래는 기존 밝기 그대로다.
+    /// 갈래 트리 상태 갱신 (W36-a) — 선택되지 않은 갈래의 카드는 흐려진다(실행에 안 타는
+    /// 줄이 밝게 남으면 화면이 거짓말을 한다). 미선택(근사) 갈래는 기존 밝기 그대로다.
     /// 카드 재생성 없이 흐림만 바꾸므로 커서 이동마다 불러도 포커스를 잃지 않는다.
     /// </summary>
     private void RefreshBranchStates(DialogueNode node)
@@ -442,7 +439,7 @@ public partial class DialogueNodeEditor : UserControl
 
         foreach (BranchFlow.AnalyzedLine<DialogueLine> line in analysis.Lines)
         {
-            if (!_stageLineCards.TryGetValue(line.Source.LineId, out Border? card) || card is null)
+            if (!_lineCards.TryGetValue(line.Source.LineId, out Border? card) || card is null)
             {
                 continue;
             }
@@ -452,7 +449,7 @@ public partial class DialogueNodeEditor : UserControl
             ToolTip.SetTip(
                 card,
                 dimmed
-                    ? "선택되지 않은 갈래 — 프리뷰·재생에 접히지 않습니다. 갈래 시작 줄(라벨·조건)을 클릭하면 이 갈래를 봅니다."
+                    ? "선택되지 않은 갈래 — 갈래 시작 줄(라벨·조건)을 클릭하면 이 갈래를 봅니다."
                     : null);
         }
     }
@@ -498,8 +495,6 @@ public partial class DialogueNodeEditor : UserControl
         PreviewSummaryText.Text =
             $"{_selectedOutputPreset.DisplayName} · {_previewDocument.Segments.Count}개 Segment · " +
             (scenarioEditable ? "편집 가능 — 저장 상태와 라이브 동기화" : "작업 중 미리 보기 (읽기 전용 라이브 미러)");
-
-        UpdateStagePreview(node);
     }
 
     private string? _pendingDeleteText;
@@ -540,8 +535,8 @@ public partial class DialogueNodeEditor : UserControl
             : outcome.Summary());
     }
 
-    /// <summary>클릭한 라인이 무대 프리뷰의 기준이 되도록 왼쪽 강조 띠로 감싼다.</summary>
-    private Control WrapForStageSelection(Control card, string lineId)
+    /// <summary>클릭한 라인이 선택임을 왼쪽 강조 띠로 보인다 — 줄 추가 자리와 갈래 선택의 기준이다.</summary>
+    private Control WrapForLineSelection(Control card, string lineId)
     {
         var wrapper = new Border
         {
@@ -550,7 +545,7 @@ public partial class DialogueNodeEditor : UserControl
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(3, 0, 0, 0),
             BorderBrush = string.Equals(lineId, _selectedLineId, StringComparison.Ordinal)
-                ? StageSelectionBrush
+                ? LineSelectionBrush
                 : Brushes.Transparent,
             Padding = new Thickness(4, 0, 0, 0),
             Child = card
@@ -560,7 +555,7 @@ public partial class DialogueNodeEditor : UserControl
             PointerPressedEvent,
             (_, args) =>
             {
-                SelectStageLine(lineId);
+                SelectLine(lineId);
 
                 // 우클릭 = 줄 추가/삭제 바로가기 (W47) — ＋ 플라이아웃을 거치지 않는 짧은 길.
                 // 텍스트 입력 칸 위에서는 비켜선다 (W49) — 잘라내기/복사/붙여넣기 기본
@@ -574,7 +569,7 @@ public partial class DialogueNodeEditor : UserControl
             },
             RoutingStrategies.Bubble,
             handledEventsToo: true);
-        _stageLineCards[lineId] = wrapper;
+        _lineCards[lineId] = wrapper;
 
         return wrapper;
     }
@@ -618,7 +613,7 @@ public partial class DialogueNodeEditor : UserControl
         add.Click += (_, _) =>
         {
             flyout.Hide();
-            UiGuard.Run(_session, "줄 추가", AddLine); // 선택된 줄 아래에 — 위의 SelectStageLine이 이미 골랐다
+            UiGuard.Run(_session, "줄 추가", AddLine); // 선택된 줄 아래에 — 위의 SelectLine이 이미 골랐다
         };
 
         // 추가와 삭제 사이에 구분선 (소유자 지시) — 성격이 반대인 두 동작이 붙어 있으면 헷갈린다.
@@ -635,10 +630,7 @@ public partial class DialogueNodeEditor : UserControl
         flyout.ShowAt(anchor, showAtPointer: true);
     }
 
-    /// <summary>바깥(프리뷰·detour 복귀)에서 라인을 짚는 문 — 선택 규칙은 같다.</summary>
-    internal void SelectStageLineById(string lineId) => SelectStageLine(lineId);
-
-    private void SelectStageLine(string lineId)
+    private void SelectLine(string lineId)
     {
         if (string.Equals(_selectedLineId, lineId, StringComparison.Ordinal))
         {
@@ -661,322 +653,17 @@ public partial class DialogueNodeEditor : UserControl
             }
         }
 
-        foreach ((string cardLineId, Border card) in _stageLineCards)
+        foreach ((string cardLineId, Border card) in _lineCards)
         {
             card.BorderBrush = string.Equals(cardLineId, lineId, StringComparison.Ordinal)
-                ? StageSelectionBrush
+                ? LineSelectionBrush
                 : Brushes.Transparent;
         }
 
         if (_session?.Project.FindDialogue(_nodeId) is { } node)
         {
             RefreshBranchStates(node); // 커서 덮어쓰기·새 선택이 흐림 상태를 바꾼다
-            UpdateStagePreview(node);
         }
-    }
-
-    /// <summary>
-    /// 공급된 연출(내보내기와 같은 <see cref="NodeExportResolver"/> 규칙으로 찾는다)을
-    /// 선택 라인까지 접어 하단 무대 프리뷰에 민다. 공급이 없으면 화자만 표시한다.
-    /// </summary>
-    private void UpdateStagePreview(DialogueNode node)
-    {
-        if (StagePreview is null || _session is null)
-        {
-            return;
-        }
-
-        DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
-        DialogueLine? selected = script.Lines.FirstOrDefault(line =>
-                string.Equals(line.LineId, _selectedLineId, StringComparison.Ordinal))
-            ?? script.Lines.FirstOrDefault();
-
-        string contextLabel = $"대사: {node.Name}";
-        NodeExport export = NodeExportResolver.Resolve(_session.Project, node.Id);
-
-        int index = selected is null
-            ? -1
-            : script.Lines.ToList().FindIndex(item =>
-                string.Equals(item.LineId, selected.LineId, StringComparison.Ordinal));
-
-        // 조건 값 시뮬 (W36-b): 수동 선택 + 값 기반 자동 판정을 합친 유효 선택을 쓴다.
-        ConditionSimulation.Result simulation = SimulateBranches(node, script);
-
-        // 스탯 HUD (X3): 작업 중 문서 기준 — (시뮬 시작값 반영) 초기값 + 선택 갈래 기준의
-        // set 누적 (W35 — 문서 순서 근사 은퇴. 선택 상태는 발행 쪽과 같은 LineId 키를 쓴다).
-        BranchFlow.Analysis<DialogueLine> scriptAnalysis = BranchFlow.Analyze(
-            script.Lines,
-            line => line.Transition?.Kind,
-            line => line.LineId,
-            line => line.Text,
-            simulation.Effective,
-            selected?.LineId);
-
-        var setsUpToLine = new List<(string Variable, SetOperatorKind Operator, string Value)>();
-
-        foreach (BranchFlow.AnalyzedLine<DialogueLine> item in scriptAnalysis.Lines)
-        {
-            if (selected is not null &&
-                string.Equals(item.Source.LineId, selected.LineId, StringComparison.Ordinal))
-            {
-                break;
-            }
-        }
-
-        IReadOnlyList<StatFold.StatValue> stats = StatFold.Fold(
-            Array.Empty<(string, string)>(),
-            setsUpToLine);
-
-        // 선택 라인이 옵션 라벨이면 그 블록의 버튼 묶음이 대사창을 대신한다.
-        IReadOnlyList<BranchFlow.Block> scriptBlocks = BranchFlow.PassedBlocks(
-            scriptAnalysis, line => line.LineId, selected?.LineId);
-
-        IReadOnlyList<StageChoiceOption>? choices = StageChoiceOptions.Build(
-            ChoiceOptionBundle.At(
-                script.Lines,
-                index,
-                line => line.Transition?.Kind,
-                line => line.Text),
-            optionIndex => script.Lines[optionIndex].LineId,
-            scriptBlocks);
-
-        if (export.Presentation is null || export.Dialogue is null)
-        {
-            StagePreview.Show(new MiniStagePreviewRequest(
-                contextLabel,
-                MiniStageState.Empty,
-                HasPresentation: false,
-                selected?.LineId,
-                selected?.Speaker,
-                selected?.Text,
-                LineIndex: index,
-                LineCount: script.Lines.Count,
-                Stats: stats,
-                ChoiceOptions: choices,
-                BranchBlocks: scriptBlocks,
-                AutoBranchBlocks: simulation.AutoBlocks.ToArray()));
-            return;
-        }
-
-        // 연출은 자신이 읽은 발행본 기준으로 접는다. 지금 편집 중인 줄이 그 발행본에
-        // 없다면(발행 후 추가된 줄 등) 그 사실을 숨기지 않고 알린다.
-        string? notice = selected is not null && !export.Dialogue.ContainsLine(selected.LineId)
-            ? "이 줄은 공급된 연출이 읽은 발행본에 없습니다. 문서 전체 기준 상태를 표시합니다."
-            : null;
-
-        // 갈래 인식 (W35) — 유효 선택(수동+자동)된 갈래의 라인만 접는다. 미결정 블록은 근사 + 표시.
-        BranchAwareLines.Result branch = BranchAwareLines.UpTo(
-            export.Dialogue, export.Presentation.Bindings, selected?.LineId, simulation.Effective);
-
-        PresentationCommandCatalog catalog = PresentationCommandCatalog.For(_session.Definition);
-
-        CoreStageFoldResult fold = CoreStageFold.Fold(
-            catalog,
-            export.Presentation.SetupCommands,
-            branch.FoldLines,
-            _session.TuningLibrary.Tuning);
-
-        // 이 라인에 붙은 연출 커맨드 — 전이 시간·♪ 칩·실재생(W62)이 같은 것 하나를 본다.
-        IReadOnlyList<PresentationResultCommand>? lineCommands = export.Presentation.Bindings
-            .FirstOrDefault(item =>
-                string.Equals(item.LineId, selected?.LineId, StringComparison.Ordinal))?.Commands;
-
-        IReadOnlyList<StageMotionCue>? dialogueMotionCues = StageMotionCues.Of(
-            catalog,
-            export.Presentation.SetupCommands,
-            branch.FoldLines,
-            lineCommands,
-            _session.TuningLibrary.Tuning,
-            _session.Project.EaseCurves);
-
-        StagePreview.Show(new MiniStagePreviewRequest(
-            contextLabel,
-            fold.State,
-            HasPresentation: true,
-            selected?.LineId,
-            selected?.Speaker,
-            selected?.Text,
-            notice,
-            LineIndex: index,
-            LineCount: script.Lines.Count,
-            // 여기 보이는 것은 공급된 발행 결과다 — 발행은 불변이므로 직접 조작을 잠근다.
-            EditContext: new StageEditContext(
-                export.Presentation.SourceNodeId,
-                selected?.LineId,
-                DisabledReason: "공급된 발행 결과를 보고 있습니다. 작업 중 연출을 편집하려면 연출 노드를 여세요."),
-            Stats: stats,
-            ChoiceOptions: choices,
-            CoreState: fold.CoreState,
-            BranchBlocks: scriptBlocks,
-            // 전이(W33): 이 라인으로 넘어가는 시간 = 라인 커맨드 duration의 최댓값.
-            TransitionSeconds: StageTransitions.SecondsFor(catalog, lineCommands),
-            // 소리 표시(W34-b): 정지 프레임에 없는 오디오를 ♪ 칩으로.
-            AudioCues: StageAudioCues.Of(catalog, lineCommands),
-            AutoBranchBlocks: simulation.AutoBlocks.ToArray(),
-            // 소리 실재생(W62): 재생이 이 라인에 도달하면 위 칩의 원본 커맨드가 울린다.
-            AudioCommands: StageAudioCues.AudioOf(catalog, lineCommands),
-            // 이동 표시(W66): 작가 화면에서도 흐르는 슬롯이 출발 자리에 서고 타임라인·재생이
-            // 그 길을 태운다 — 편집은 위 EditContext가 잠근다.
-            MotionCues: dialogueMotionCues,
-            // 시간 흐름도 연출 편집기와 같은 계획 하나다 (2026-08-26) — 예전에는 이 화면이
-            // 계획 없이 "직전→새 자리" 일괄 보간(걷힘)에 얹혀 근사로 흘렀다.
-            MotionPlan: StageMotionPlan.Build(
-                catalog,
-                export.Presentation.SetupCommands,
-                branch.FoldLines,
-                lineCommands,
-                _session.TuningLibrary.Tuning,
-                _session.Project.EaseCurves),
-            // 페이드는 제 duration으로 흐른다 (2026-08-26) — 라인 시계와 따로 센다.
-            Fades: StageFades.Of(catalog, lineCommands, fold.State),
-            // 대본 패널(2026-08-20): 공급된 발행본 기준 읽기 전용 — 점·편집은 잠금이 막는다.
-            ScriptRows: PresentationScriptModel.Build(
-                catalog, export.Dialogue, export.Presentation.SetupCommands, export.Presentation.Bindings)));
-    }
-
-    /// <summary>
-    /// 프리뷰에서 갈래 선택이 바뀌었다 (W47) — 카드 흐림과 무대 프리뷰만 갱신한다.
-    /// 카드를 다시 만들지 않아 입력 포커스를 잃지 않는다.
-    /// </summary>
-    internal void RefreshBranchView()
-    {
-        if (_session?.Project.FindDialogue(_nodeId) is { } node)
-        {
-            RefreshBranchStates(node);
-            UpdateStagePreview(node);
-        }
-    }
-
-    /// <summary>프리뷰 창의 이전/다음. 선택은 이 편집기의 것 하나뿐이다.
-    /// 재생 중에는 타는 경로만 걷는다 (W39) — 안 타는 갈래 라인은 건너뛰고,
-    /// 경로 끝에서는 실행 출구를 따라 다음 노드로 넘어간다.</summary>
-    internal void MoveStageLine(int delta)
-    {
-        if (_session?.Project.FindDialogue(_nodeId) is not { } node)
-        {
-            return;
-        }
-
-        DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
-
-        if (script.Lines.Count == 0)
-        {
-            return;
-        }
-
-        if (StagePreview?.Playback.IsPlaying == true && TryMoveAlongPath(node, script, delta))
-        {
-            return;
-        }
-
-        int index = script.Lines.ToList().FindIndex(item =>
-            string.Equals(item.LineId, _selectedLineId, StringComparison.Ordinal));
-        int next = Math.Clamp((index < 0 ? 0 : index) + delta, 0, script.Lines.Count - 1);
-
-        SelectStageLine(script.Lines[next].LineId);
-    }
-
-    /// <summary>재생 경로 이동 (W39). 현재 라인이 경로 밖(출구 뒤 등)이면 false —
-    /// 문서 순서 이동으로 계속해 조용히 버리지 않는다.</summary>
-    private bool TryMoveAlongPath(DialogueNode node, DialogueScript script, int delta)
-    {
-        PlaybackPath.Result path = TracePlaybackPath(node, script);
-        int at = path.LineIds.ToList().FindIndex(id =>
-            string.Equals(id, _selectedLineId, StringComparison.Ordinal));
-
-        if (at < 0)
-        {
-            return false;
-        }
-
-        int next = at + delta;
-
-        if (next >= path.LineIds.Count)
-        {
-            // 경로가 갈래에서 끊긴 자리 — 노드 끝과 같은 길로 나간다(detour 복귀 포함).
-            if (!ExitAlongPath(path))
-            {
-                StagePreview!.Playback.StopAtEnd();
-            }
-
-            return true;
-        }
-
-        SelectStageLine(path.LineIds[Math.Max(next, 0)]);
-        return true;
-    }
-
-    /// <summary>이 노드의 재생 경로 — 유효 갈래 선택(수동+자동) 기준, 출구는 그래프의 것.</summary>
-    private PlaybackPath.Result TracePlaybackPath(DialogueNode node, DialogueScript script)
-    {
-        return PlaybackPath.Trace(
-            script.Lines,
-            line => line.Transition?.Kind,
-            line => line.LineId,
-            line => node.BranchExits.TryGetValue(line.LineId, out string? exit) ? exit : null,
-            node.DefaultExitTargetNodeId,
-            SimulateBranches(node, script).Effective,
-            _selectedLineId,
-            // 다녀온 detour는 없는 출구다 — 경로가 그 갈래를 지나 나머지 대본으로 잇는다.
-            StagePreview?.Playback.SpentExitsOf(_nodeId ?? string.Empty));
-    }
-
-    /// <summary>
-    /// 문서 끝 도달 (W39) — 실행 출구를 따라 다음 노드로 전환하면 true.
-    ///
-    /// ⚠ <b>갈래 출구는 detour다</b> (계약 §A2-1, 2026-08-22): 나가기 전에 돌아올 자리를
-    /// 쌓고, 나갈 곳이 없는 노드 끝에서는 쌓아 둔 자리로 돌아간다. 기본 출구는 jump라
-    /// 그대로 나가고 끝이다. 규칙은 <see cref="DetourReturnPlayback"/> 하나다.
-    /// </summary>
-    internal bool TryExitPlaybackNode()
-    {
-        if (_session?.Project.FindDialogue(_nodeId) is not { } node)
-        {
-            return false;
-        }
-
-        DialogueScript script = DialogueScriptResolver.Resolve(_session.Project, node);
-        return ExitAlongPath(TracePlaybackPath(node, script));
-    }
-
-    /// <summary>노드를 나가는 단 하나의 길 — 규칙은 <see cref="DetourReturnPlayback"/>이 진다.</summary>
-    private bool ExitAlongPath(PlaybackPath.Result path) =>
-        DetourReturnPlayback.Exit(_session, StagePreview, _nodeId, path, TryEnterNextNode);
-
-    /// <summary>
-    /// 실행 출구의 대사 노드로 재생을 넘긴다 (W39). 노드 선택이 바뀌면 편집기가 그 노드를
-    /// 열고 첫 라인 프리뷰를 밀어 재생이 이어진다. 대사 노드가 아니면 알리고 멈춘다.
-    /// </summary>
-    private bool TryEnterNextNode(string? targetNodeId)
-    {
-        if (_session is null || StagePreview is null || targetNodeId is null)
-        {
-            return false;
-        }
-
-        if (_session.Project.FindNode(targetNodeId) is not DialogueNode next)
-        {
-            _session.SetStatus("실행 출구가 가리키는 대사 노드를 찾지 못해 이어 재생을 멈췄습니다.");
-            return false;
-        }
-
-        if (string.Equals(next.Id, _nodeId, StringComparison.Ordinal))
-        {
-            // 자기 자신으로 돌아오는 출구 — 선택 변경 이벤트가 없으므로 첫 라인을 직접 고른다.
-            if (DialogueScriptResolver.Resolve(_session.Project, next).Lines.FirstOrDefault() is not { } first)
-            {
-                return false;
-            }
-
-            StagePreview.Playback.OnNodeSwitch();
-            _selectedLineId = null;
-            SelectStageLine(first.LineId);
-            return true;
-        }
-
-        StagePreview.Playback.OnNodeSwitch();
-        _session.Select(next.Id);
-        return true;
     }
 
     private void OnPreviewPresetSelected()
@@ -1004,7 +691,6 @@ public partial class DialogueNodeEditor : UserControl
         _previewDocument = null;
         PreviewBox.Text = string.Empty;
         PreviewSummaryText.Text = "DialogueNode를 선택하면 작업 중 상태를 선택한 출력 프리셋으로 펼쳐 보여 줍니다.";
-        StagePreview?.Show(null);
     }
 
     // ── 대본 ────────────────────────────────────────────────────────────────
@@ -1053,8 +739,8 @@ public partial class DialogueNodeEditor : UserControl
 
         ScriptLine line = _session.Editor.InsertScriptLine(scriptId, at);
 
-        // 새 줄이 새 선택이다 — 프리뷰 기준도 함께 옮긴다.
-        SelectStageLine(line.Id);
+        // 새 줄이 새 선택이다.
+        SelectLine(line.Id);
     }
 
     // ── 카드 ────────────────────────────────────────────────────────────────

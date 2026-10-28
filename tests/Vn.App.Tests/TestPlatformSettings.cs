@@ -12,7 +12,7 @@ namespace Vn.App.Tests;
 /// (기본 500ms 고정) 안이어야 제스처로 묶이는데, 그 간격은 <b>진짜 시계</b>로 잰다
 /// (헤드리스 입력의 Timestamp가 Stopwatch 실시간이다). 전체 스위트 부하에서 GC·스케줄링이
 /// 끼면 500ms가 그냥 넘어가고, 그날그날 다른 테스트가 하나씩 떨어진다 — 2026-08-26에
-/// PresentationGraphStageJumpTests 셋이 각각 한 번씩 그렇게 죽었다.
+/// 더블클릭 테스트 셋이 각각 한 번씩 그렇게 죽었다.
 ///
 /// 시간 창을 <b>프로세스 전체에서</b> 늘려 두면 반대 사고가 난다: 같은 자리를 두 번 따로
 /// 누르는 다른 테스트의 클릭 둘이 더블클릭으로 묶인다. 그래서 창은
@@ -36,7 +36,7 @@ public class TestPlatformSettings : DispatchProxy
 
     /// <summary>
     /// 입력 배선이 이 설정을 실제로 지나갔는지 세는 눈금.
-    /// <see cref="PresentationGraphStageJumpTests"/>의 DoubleClick이 이 값으로 배선 단절을
+    /// 더블클릭을 합성하는 테스트가 이 값으로 배선 단절을
     /// <b>소리 나게</b> 만든다 — Avalonia가 설정을 다른 데서 읽게 바뀌면 간헐 실패가 아니라
     /// 즉시 실패로 드러난다.
     /// </summary>

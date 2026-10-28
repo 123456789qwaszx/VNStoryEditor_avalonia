@@ -4,10 +4,10 @@ using Vn.Authoring.Results;
 namespace Vn.Authoring.Flow;
 
 /// <summary>
-/// 갈래 선택 상태 (W35) — "이 프리뷰는 어느 갈래를 보고 있는가".
+/// 갈래 선택 상태 (W35) — "지금 어느 갈래를 보고 있는가".
 ///
 /// 키는 블록의 시작 라인 LineId다. LineId는 대본과 발행 결과 양쪽에서 영구 불변이라(A-2)
-/// 작업 대본 프리뷰와 발행 기준 프리뷰가 같은 선택을 공유한다.
+/// 작업 대본과 발행 결과가 같은 선택을 공유한다.
 /// 뷰 상태다 — 저장하지 않는다(원칙 E). 선택이 없는 블록은 기존의 문서 순서 근사로
 /// 접히고, 그 사실이 뱃지로 남는다.
 /// </summary>
@@ -115,7 +115,7 @@ public sealed class StageBranchSelection
 /// 선택이 없는 블록은 기존 근사(전부 적용) + Unresolved 표시. <b>커서가 갈래 안에 있으면
 /// 그 갈래(를 감싼 전부)가 선택을 덮는다</b> — 보고 있는 라인이 화면에서 사라지면 안 된다.
 /// 작업 대본(DialogueLine)과 발행 결과(DialogueResultLine)가 델리게이트로 같은 구현
-/// 하나를 지난다(규칙 사본 금지 — ChoiceOptionBundle과 같은 모양).
+/// 하나를 지난다(규칙 사본 금지).
 /// </summary>
 public static class BranchFlow
 {
@@ -244,7 +244,7 @@ public static class BranchFlow
 
     /// <summary>
     /// 블록 구조 — Analyze와 조건 값 시뮬(<see cref="ConditionSimulation"/>),
-    /// 재생 경로(<see cref="PlaybackPath"/>)가 같은 문법 해석 하나를 쓴다(사본 금지).
+    /// 같은 문법 해석 하나를 쓴다(사본 금지).
     ///
     /// 라인마다 <b>프레임 목록</b>(바깥→안 순서로 감싼 (블록, 갈래) 전부)을 돌려준다 (W54).
     /// 평면 문서에서는 프레임이 0~1개라 이전 의미와 같다. 조건 갈래 안 선택 블록은
@@ -367,76 +367,5 @@ public static class BranchFlow
         return analysis.Blocks
             .Where(block => scanned.Contains(block.BlockLineId))
             .ToArray();
-    }
-}
-
-/// <summary>
-/// 발행 결과에서 갈래 인식 폴드 입력을 만든다 (W35) — <see cref="MiniStageFold.LinesUpTo"/>의
-/// 갈래 인식 판. 선택 라인까지(포함) 자르고, 선택된 갈래의 라인만 폴드에 먹인다.
-/// 미선택 블록의 라인은 기존 근사대로 전부 먹이되 HasBranchTransition으로 표시된다 —
-/// 그래서 <see cref="MiniStageState.PassedBranchApproximation"/>이 "미선택 갈래가 있다"는
-/// 정확한 뜻이 된다.
-/// </summary>
-public static class BranchAwareLines
-{
-    public sealed record Result(
-        IReadOnlyList<MiniStageFoldLine> FoldLines,
-        IReadOnlyList<DialogueResultLine> TakenLines,
-        IReadOnlyList<BranchFlow.Block> Blocks);
-
-    public static Result UpTo(
-        DialogueResult dialogue,
-        IReadOnlyList<PresentationResultBinding> bindings,
-        string? selectedLineId,
-        StageBranchSelection selection)
-    {
-        ArgumentNullException.ThrowIfNull(dialogue);
-        ArgumentNullException.ThrowIfNull(bindings);
-        ArgumentNullException.ThrowIfNull(selection);
-
-        BranchFlow.Analysis<DialogueResultLine> analysis = BranchFlow.Analyze(
-            dialogue.Lines,
-            line => line.Transition?.Kind,
-            line => line.LineId,
-            line => line.Transition?.Kind is ConditionTransitionKind.BeginChoice or ConditionTransitionKind.BeginNextOption
-                ? line.Text
-                : line.Transition?.ConditionName is { Length: > 0 } name
-                    ? name
-                    : line.Transition?.Expression ?? string.Empty,
-            selection,
-            selectedLineId is not null && dialogue.ContainsLine(selectedLineId) ? selectedLineId : null);
-
-        var foldLines = new List<MiniStageFoldLine>();
-        var takenLines = new List<DialogueResultLine>();
-        var scannedLineIds = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (BranchFlow.AnalyzedLine<DialogueResultLine> line in analysis.Lines)
-        {
-            scannedLineIds.Add(line.Source.LineId);
-
-            if (line.Taken || line.Unresolved) // 미선택 근사는 기존대로 전부
-            {
-                PresentationResultBinding? binding = bindings.FirstOrDefault(item =>
-                    string.Equals(item.LineId, line.Source.LineId, StringComparison.Ordinal));
-
-                foldLines.Add(new MiniStageFoldLine(
-                    line.Source.LineId,
-                    line.Unresolved,
-                    binding?.Commands ?? Array.Empty<PresentationResultCommand>()));
-                takenLines.Add(line.Source);
-            }
-
-            if (string.Equals(line.Source.LineId, selectedLineId, StringComparison.Ordinal))
-            {
-                break;
-            }
-        }
-
-        // 지나온 블록만 칩으로 노출한다 — 아직 닿지 않은 갈래는 고를 것도 없다.
-        BranchFlow.Block[] passedBlocks = analysis.Blocks
-            .Where(block => scannedLineIds.Contains(block.BlockLineId))
-            .ToArray();
-
-        return new Result(foldLines, takenLines, passedBlocks);
     }
 }

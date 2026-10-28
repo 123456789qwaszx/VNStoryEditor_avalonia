@@ -1,5 +1,9 @@
 # VnTool ↔ 런타임 계약서
 
+> **2026-10-28.** 무대 프리뷰·에셋 탐색기·라인별 커맨드 편집 UI가 툴에서 제거됐다
+> (`../docs/plans/stage-removal.md`). 아래의 프리뷰 판정(§G-13 등)·튜닝 덤프 소비자 항목은
+> 이력이다 — 툴은 더 이상 튜닝 덤프를 읽지 않고, 발행·이미터·진행 계약만 남는다.
+
 > **현행 상태 (2026-09-03, R4 완료).** 실제 소비자 기준은
 > `ked-presentation-runtime/server_DB@d53cc2f`. R0~R4에서 툴의 `Ked.Progression` 사본,
 > `SceneId`, 명시적 `Auto`, 장면 진입 불변식, `ChapterReachability`,
@@ -649,8 +653,8 @@ DialogueEntryId = SanitizeNodeName(대사엔트리)
 ```
 
 `school`과 `casual`이 **툴에서만 같은 키가 된다** — 미리보기가 엉뚱한 초상 치수를 집고
-게임은 올바른 것을 집는데 **오류는 하나도 안 난다.** 소비자는 `Flow/CoreStageFold.cs` ·
-`Flow/MotionInspection.cs` · `Flow/StageMotionPlan.cs` · `Views/MiniStagePreview.axaml.cs`.
+게임은 올바른 것을 집는데 **오류는 하나도 안 난다.** (소비자였던 폴드·모션 계획·프리뷰는
+2026-10-28에 제거됐다 — 이 문단은 이력이다.)
 
 ⚠ **재복사는 해결이 아니다.** 이 사본이 갈리는 것은 사건이 아니라 구조다 — `ked-progression`은
 같은 문제를 **UPM 패키지 + 태그 고정**으로 끝냈고(`#0.2.0`, 2026-08-23) 그 절차가 이미
