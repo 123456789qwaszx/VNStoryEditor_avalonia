@@ -30,9 +30,8 @@
 
 title: Set_blank_ch01_ep00
 ---
-// ─── 배경 리그 (Stage00 / Far) ───
+// ─── 배경 슬롯 (Stage00 / Far) — 캐스팅하지 않은 캐릭터 슬롯, 숨은 채 선다 ───
 <<bg_spawn bg_main class_day>>
-<<bg_size bg_main 1>>
 
 // ─── 캐릭터 슬롯 (Stage00 / Mid) ───
 <<slot c1>>

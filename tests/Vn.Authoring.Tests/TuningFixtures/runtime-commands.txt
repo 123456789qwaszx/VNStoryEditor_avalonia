@@ -1,6 +1,6 @@
 # 런타임 Yarn 브리지에 실제로 등록된 커맨드 이름 — 실측 스냅샷.
 #
-# 정본: ked-presentation-runtime/Assets/Scripts/YarnBridge/ 의 AddCommandHandler 등록.
+# 정본: ked-presentation-runtime/Assets/Ked.Presentation/Playback/YarnBridge/ 의 AddCommandHandler 등록.
 # 이 목록과 docs/game.definition.json 이 갈리면 PresentationCommandCatalogTests가 운다.
 #
 # 갱신 방법 (런타임 저장소 경로에서):
@@ -11,14 +11,13 @@
 # 동적 별칭 1fr~48fr(BindFramePauseAliases)은 이름이 48개로 불어나므로 여기 싣지 않는다.
 # 카탈로그는 그것을 합성 항목 <N>fr 하나로 들고, 테스트가 예외로 안다.
 #
-# 스냅샷 시점: 2026-08-21 (place·size 이징 개통 + 회전 3종 복원)
+# 스냅샷 시점: 2026-10-29 (재생 저장소 dev 701d3a3f — 배경 리그 제거로 bg_place·bg_size가 빠졌다.
+#   그 사이 motion·face_swap이 등록됐다)
 actor
 bg_fade_in
 bg_fade_out
 bg_move
-bg_place
 bg_scale
-bg_size
 bg_slot00
 bg_slot01
 bg_slot02
@@ -47,6 +46,7 @@ char_visual_silhouette
 debug_log
 down
 face
+face_swap
 fade_in
 fade_out
 focus_clear
@@ -54,6 +54,7 @@ focus_on
 gesture
 left
 mirror
+motion
 move_by
 move_reset
 pause

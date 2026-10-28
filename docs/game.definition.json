@@ -42,7 +42,7 @@
     },
     {
       "id": "background",
-      "name": "배경 리그"
+      "name": "배경"
     },
     {
       "id": "shot",
@@ -1673,7 +1673,7 @@
           "default": "10fr"
         }
       ],
-      "notes": "⚠ 툴 전용 표현이다 (2026-08-20 소유자 결정) — 런타임 브리지에 등록되어 있지 않고, 실제 표정 전환은 유니티에서 스파인이 맡는다. 툴의 직접 조작이 '보이는 슬롯의 표정 바꾸기'를 이 낱말로 적는다. 대조 테스트의 예외 목록에 사유와 함께 올라 있다."
+      "notes": "런타임 브리지에 등록된 커맨드다(재생 저장소 dev 701d3a3f 실측) — 2026-08-20에는 툴 전용 표현이라 대조 테스트의 예외였다."
     },
     {
       "id": "char_rig_presentation.fade_in",
@@ -2097,7 +2097,7 @@
     },
     {
       "id": "background.bg_spawn",
-      "name": "배경 리그 생성(Stage00/Far)",
+      "name": "배경 생성(Stage00/Far)",
       "category": "background",
       "outputCommand": "bg_spawn",
       "execution": "queued",
@@ -2116,7 +2116,7 @@
     },
     {
       "id": "background.bg_slot00",
-      "name": "배경 리그 생성(Stage00)",
+      "name": "배경 생성(Stage00)",
       "category": "background",
       "outputCommand": "bg_slot00",
       "execution": "queued",
@@ -2141,7 +2141,7 @@
     },
     {
       "id": "background.bg_slot01",
-      "name": "배경 리그 생성(Stage01)",
+      "name": "배경 생성(Stage01)",
       "category": "background",
       "outputCommand": "bg_slot01",
       "execution": "queued",
@@ -2166,7 +2166,7 @@
     },
     {
       "id": "background.bg_slot02",
-      "name": "배경 리그 생성(Stage02)",
+      "name": "배경 생성(Stage02)",
       "category": "background",
       "outputCommand": "bg_slot02",
       "execution": "queued",
@@ -2190,41 +2190,6 @@
       ]
     },
     {
-      "id": "background.bg_place",
-      "name": "배경 절대 배치",
-      "category": "background",
-      "outputCommand": "bg_place",
-      "execution": "queued",
-      "parameters": [
-        {
-          "name": "rigKey",
-          "type": "rigKey",
-          "required": true
-        },
-        {
-          "name": "x",
-          "type": "signedUnit",
-          "required": false,
-          "default": "0u",
-          "description": "음수 가능"
-        },
-        {
-          "name": "y",
-          "type": "signedUnit",
-          "required": false,
-          "default": "0u",
-          "description": "음수 가능"
-        },
-        {
-          "name": "rotationZ",
-          "type": "float",
-          "required": false,
-          "default": "0"
-        }
-      ],
-      "notes": "Background_Anchor에 절대 위치 + Z회전을 트윈 없이 즉시 세팅한다."
-    },
-    {
       "id": "background.bg_sprite",
       "name": "배경 스프라이트 교체",
       "category": "background",
@@ -2240,33 +2205,6 @@
           "name": "spriteKey",
           "type": "spriteKey",
           "required": true
-        },
-        {
-          "name": "layer",
-          "type": "layerKey",
-          "required": false
-        }
-      ],
-      "notes": "세 번째 인자 layerKey는 현재 스펙에 반영되지 않는다(시그니처에만 존재). 무시해도 무방."
-    },
-    {
-      "id": "background.bg_size",
-      "name": "배경 크기(절대)",
-      "category": "background",
-      "outputCommand": "bg_size",
-      "execution": "queued",
-      "parameters": [
-        {
-          "name": "rigKey",
-          "type": "rigKey",
-          "required": true
-        },
-        {
-          "name": "scale",
-          "type": "float",
-          "required": false,
-          "default": "1",
-          "description": "Background_Size 노드 스케일을 절대값으로 덮어씀"
         }
       ]
     },

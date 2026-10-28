@@ -26,7 +26,9 @@ public class PresentationCommandCatalogTests
         // 클레임을 거는 넛지가 그 일을 다 한다(소유자 결정 · 실사용 0건).
         // 카테고리는 15 그대로 — char_rig_entrance에 show·넛지 4종이 남았다.
         // 2026-08-21: 제자리 몸짓 gesture 개통 → 126.
-        Assert.Equal(126, catalog.Definitions.Count);
+        // 2026-10-29: 런타임이 배경 리그를 지웠다 — bg_*는 캐스팅하지 않은 캐릭터 슬롯이 됐고
+        // bg_place·bg_size가 어휘에서 빠졌다 → 124. 카테고리는 15 그대로(background에 9개가 남았다).
+        Assert.Equal(124, catalog.Definitions.Count);
         Assert.Equal(15, catalog.Categories.Count);
         Assert.Same(catalog, PresentationCommandCatalog.For(definition: null));
     }
@@ -45,10 +47,13 @@ public class PresentationCommandCatalogTests
             .Select(item => item.OutputCommandName)
             .ToHashSet(StringComparer.Ordinal);
 
-        // 예외는 둘뿐이고, 둘 다 사유가 있다. 늘리려면 사유를 여기 적어야 한다.
-        //   <N>fr    — 1fr~48fr 동적 별칭군을 묶은 합성 항목이라 등록 이름과 글자가 다르다.
-        //   face_swap — 툴 전용 표현 (2026-08-20 소유자 결정). 실제 전환은 스파인이 맡는다.
-        string[] toolOnly = ["<N>fr", "face_swap"];
+        // 예외는 한쪽에 하나씩이고, 둘 다 사유가 있다. 늘리려면 사유를 여기 적어야 한다.
+        //   <N>fr  — 1fr~48fr 동적 별칭군을 묶은 합성 항목이라 등록 이름과 글자가 다르다.
+        //   motion — 런타임에만 있다. 이 툴은 연출 커맨드를 저작하지 않는다(2026-10-28 소유자 결정 A,
+        //            docs/plans/stage-removal.md §4). 카탈로그에 넣을지는 따로 정한다.
+        // (face_swap은 2026-08-20부터 툴 전용 예외였는데, 지금은 런타임도 등록한다 — 예외에서 뺐다.)
+        string[] toolOnly = ["<N>fr"];
+        string[] runtimeOnly = ["motion"];
 
         Assert.Equal(
             Array.Empty<string>(),
@@ -56,7 +61,7 @@ public class PresentationCommandCatalogTests
 
         Assert.Equal(
             Array.Empty<string>(),
-            runtime.Except(catalog).OrderBy(name => name, StringComparer.Ordinal));
+            runtime.Except(catalog).Except(runtimeOnly).OrderBy(name => name, StringComparer.Ordinal));
     }
 
     [Fact]
