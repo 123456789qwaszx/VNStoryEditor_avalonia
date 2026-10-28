@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Vn.App.Views.AssetExplorerView">
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0"
+                Padding="12,8"
+                BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="0,1,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+                <ToggleButton Grid.Column="0"
+                              x:Name="CollapseToggle"
+                              IsChecked="False"
+                              FontSize="10"
+                              Padding="4,1"
+                              Content="▶" />
+                <TextBlock Grid.Column="1"
+                           Text="에셋"
+                           FontWeight="SemiBold"
+                           Margin="6,0,0,0"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2"
+                           x:Name="ProblemCountText"
+                           FontSize="10"
+                           Foreground="#C2410C"
+                           VerticalAlignment="Center"
+                           Margin="0,0,6,0" />
+                <Button Grid.Column="3"
+                        x:Name="RootsButton"
+                        Content="폴더…"
+                        FontSize="10"
+                        Padding="6,2"
+                        Margin="0,0,4,0" />
+                <Button Grid.Column="4"
+                        x:Name="TuningButton"
+                        Content="튜닝…"
+                        FontSize="10"
+                        Padding="6,2"
+                        Margin="0,0,4,0" />
+                <Button Grid.Column="5"
+                        x:Name="RefreshButton"
+                        Content="새로 고침"
+                        FontSize="10"
+                        Padding="6,2" />
+            </Grid>
+        </Border>
+
+        <!-- 기본은 접힘 (2026-08-18 팀장 미팅) — 우측 맨 아래로 내려온 뒤로 에셋은
+             평소에 볼 필요가 없는 자료다. 머리글만 남기고 나무는 부를 때 편다. -->
+        <ScrollViewer Grid.Row="1"
+                      x:Name="TreeScroll"
+                      IsVisible="False"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="TreeHost" Margin="10,6,10,10" Spacing="2" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

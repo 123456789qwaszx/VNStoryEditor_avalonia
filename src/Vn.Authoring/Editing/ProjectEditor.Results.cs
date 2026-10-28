@@ -144,9 +144,14 @@ public sealed partial class ProjectEditor
         return new PublishOutcome<PresentationResult>(result, created);
     }
 
+    public PresentationDraft InspectPresentationPublish(string presentationNodeId)
+    {
+        return PresentationPublisher.Draft(Project, presentationNodeId);
+    }
+
     /// <summary>
     /// 대사 노드 하나의 <b>연출 채널</b>을 확보한다 (2026-08-21 소유자 — "미리 다 해둔
-    /// 다음에 고르도록"). 예전에 사람이 그래프에서 하던
+    /// 다음에 무대 프리뷰측에서 뭘 할지 고르도록"). 예전에 사람이 그래프에서 하던
     /// 네 단계(대사 발행 → 연출 노드 만들기 → 발행 결과 연결 → 공급 연결)를 한 번에,
     /// 몇 번을 불러도 같은 채널로 한다:
     ///

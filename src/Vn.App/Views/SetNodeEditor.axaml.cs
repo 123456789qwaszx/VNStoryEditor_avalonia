@@ -317,10 +317,10 @@ public partial class SetNodeEditor : UserControl
     /// 작가가 임의로 추가한다는 게 좋아보이진 않아서").
     ///
     /// 이름·캐릭터키의 주인은 <b>챕터 그래프의 [화자] 탭</b>(→ `game.definition.json`)
-    /// 하나이고, 여기는 그것을 회색으로 비춘다. 표정(초상 스프라이트)은 이 툴의 일이 아니다 —
-    /// 에셋 폴더 규약은 별도 연출 툴이 맡는다 (2026-10-28).
+    /// 하나이고, 여기는 그것을 회색으로 비춘다. 표정만 살아 있다 — 표정의 주인은 에셋 폴더
+    /// 규약이라 누구든 더할 수 있다.
     /// </summary>
-    private const string SpeakerColumns = "26,*,232";
+    private const string SpeakerColumns = "26,*,232,56";
 
     private void RebuildSpeakers()
     {
@@ -329,7 +329,7 @@ public partial class SetNodeEditor : UserControl
         SpeakerHost.Children.Add(BuildTable(
             "등록 화자",
             SpeakerColumns,
-            ["이름", "캐릭터키"],
+            ["이름", "캐릭터키", string.Empty],
             PlannerSpeakers().Select(BuildPlannerSpeakerCells).ToList(),
             "등록된 화자가 없습니다 — 챕터 그래프의 [화자] 탭에서 더하면 여기와 대사 노드 " +
             "드롭다운에 함께 섭니다(모든 챕터가 같은 목록입니다). 안 적어도 화자 칸은 " +
@@ -345,7 +345,8 @@ public partial class SetNodeEditor : UserControl
     private IReadOnlyList<SpeakerSpec> PlannerSpeakers() => _session?.Definition.Speakers ?? [];
 
     /// <summary>
-    /// 기획자 화자 한 줄 — 회색 고정. 고치려면 챕터 그래프 [화자] 탭으로 간다(값의 주인이 거기다).
+    /// 기획자 화자 한 줄 — 회색 고정. 이름·캐릭터키는 잠기고 [표정]만 살아 있다.
+    /// 고치려면 챕터 그래프 [화자] 탭으로 간다(값의 주인이 거기다).
     /// </summary>
     private IReadOnlyList<Control> BuildPlannerSpeakerCells(SpeakerSpec speaker)
     {
@@ -365,7 +366,239 @@ public partial class SetNodeEditor : UserControl
             IsEnabled = false
         };
 
-        return [name, characterId];
+        // 캐릭터키가 없으면 표정을 붙일 대상이 없다. 예전에는 단추가 살아 있어서 누르면
+        // "characterId가 없다"만 뜨고 아무 일도 안 났다 (2026-08-17 소유자 보고) — 이제
+        // 잠그고, <b>어느 칸을 채우면 되는지</b>를 말한다. 작가 화자 줄과 같은 규칙이다.
+        bool hasKey = !string.IsNullOrWhiteSpace(speaker.CharacterId);
+
+        var expressions = new Button
+        {
+            Content = "표정",
+            FontSize = 11,
+            IsEnabled = hasKey,
+            [ToolTip.TipProperty] = hasKey
+                ? "표정은 에셋 폴더 규약이 주인이라 누구든 더할 수 있습니다."
+                : $"'{speaker.Name}'에 캐릭터키가 없어 표정을 붙일 대상이 없습니다. " +
+                  "챕터 그래프 [화자] 탭에서 `캐릭터키`를 채우면 여기서 바로 열립니다."
+        };
+        expressions.Click += (_, _) => UiGuard.Run(_session, "표정 관리", () =>
+            ShowExpressionsFlyout(expressions, speaker.CharacterId));
+
+        return [name, characterId, expressions];
+    }
+
+    // ── 표정 정의 + 스프라이트 복제 ─────────────────────────────────────────
+    //
+    // 초상화 폴더는 참고용이 아니라 복제본을 모으는 자리다: 여기서 이미지를 고르면
+    // {root}/{char}/{variant}/{emotion}.png로 복제되고, 연결 권위가 폴더 규약이므로
+    // (W-asset-02) 복제된 순간 등록도 끝난다. 이미 있으면 그냥 쓴다.
+
+    private void ShowExpressionsFlyout(Control anchor, string characterId)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var panel = new StackPanel { Spacing = 6, MinWidth = 250, MaxWidth = 300 };
+        var flyout = new Flyout { Content = panel, Placement = PlacementMode.Bottom };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{characterId}의 표정",
+            FontSize = 11,
+            FontWeight = Avalonia.Media.FontWeight.SemiBold
+        });
+
+        // 지금 있는 표정 — 폴더 규약 스캔 결과 그대로.
+        Vn.Authoring.Assets.PortraitAssetEntry[] existing = _session.AssetLibrary.PortraitEntries
+            .Where(entry => string.Equals(entry.Key.CharacterId, characterId, StringComparison.Ordinal) &&
+                entry.FileExists)
+            .OrderBy(entry => entry.Key.VariantKey, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Key.EmotionKey, StringComparer.Ordinal)
+            .ToArray();
+
+        if (existing.Length > 0)
+        {
+            foreach (var variantGroup in existing.GroupBy(entry => entry.Key.VariantKey, StringComparer.Ordinal))
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"variant {variantGroup.Key}: " +
+                        string.Join(" ", variantGroup.Select(entry => entry.Key.EmotionKey)),
+                    FontSize = 10,
+                    Opacity = 0.7,
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
+        }
+        else
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "아직 등록된 표정이 없습니다.",
+                FontSize = 10,
+                Opacity = 0.6
+            });
+        }
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "표정 추가 — 없는 번호를 적고 이미지를 고르면 규약 경로로 복제됩니다.",
+            FontSize = 10,
+            Opacity = 0.6,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        var variantBox = new TextBox
+        {
+            Text = Vn.Authoring.Assets.PortraitKey.DefaultVariantKey,
+            FontSize = 11,
+            MinHeight = 24,
+            Width = 60
+        };
+        ToolTip.SetTip(variantBox, "variant (a, b, c …)");
+
+        var emotionBox = new TextBox
+        {
+            Text = Vn.Authoring.Assets.PortraitSpriteImporter.NextFreeEmotionKey(
+                _session.AssetLibrary.PortraitKeys,
+                characterId,
+                Vn.Authoring.Assets.PortraitKey.DefaultVariantKey),
+            FontSize = 11,
+            MinHeight = 24,
+            Width = 60,
+            Margin = new Thickness(4, 0, 0, 0)
+        };
+        ToolTip.SetTip(emotionBox, "표정 번호 (01, 02 …) — 한 자리는 두 자리로 정규화됩니다.");
+
+        var inputRow = new StackPanel { Orientation = Orientation.Horizontal };
+        inputRow.Children.Add(new TextBlock
+        {
+            Text = "variant",
+            FontSize = 10,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0)
+        });
+        inputRow.Children.Add(variantBox);
+        inputRow.Children.Add(new TextBlock
+        {
+            Text = "표정",
+            FontSize = 10,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 4, 0)
+        });
+        inputRow.Children.Add(emotionBox);
+        panel.Children.Add(inputRow);
+
+        var statusText = new TextBlock
+        {
+            FontSize = 10,
+            Opacity = 0.75,
+            TextWrapping = TextWrapping.Wrap
+        };
+        panel.Children.Add(statusText);
+
+        var pickButton = new Button { Content = "이미지 선택해 추가…", FontSize = 10, Padding = new Thickness(7, 2) };
+
+        // 지금 고른 이름이 이미 있는가 — 단추 글자와 실제 쓰기가 같은 판단 하나를 쓴다.
+        bool _overwriting = false;
+        panel.Children.Add(pickButton);
+
+        // variant를 바꾸면 다음 빈 번호도 그 variant 기준으로 따라온다.
+        variantBox.LostFocus += (_, _) =>
+        {
+            emotionBox.Text = Vn.Authoring.Assets.PortraitSpriteImporter.NextFreeEmotionKey(
+                _session.AssetLibrary.PortraitKeys, characterId, variantBox.Text);
+            UpdateStatus();
+        };
+        emotionBox.LostFocus += (_, _) => UpdateStatus();
+
+        void UpdateStatus()
+        {
+            if (_session.PortraitsRoot is not { } root)
+            {
+                statusText.Text = "초상화 폴더가 아직 없습니다. 복제본을 모을 폴더를 먼저 지정하세요.";
+                pickButton.Content = "초상화 폴더 지정…";
+                return;
+            }
+
+            var key = Vn.Authoring.Assets.PortraitKey.Normalize(
+                characterId, variantBox.Text, emotionBox.Text);
+            string target = Vn.Authoring.Assets.PortraitSpriteImporter.TargetPathFor(root, key);
+
+            // 이미 있어도 막지 않는다 (2026-08-17 소유자 요청) — 그림을 고쳐 다시 넣는 것은
+            // 저작 중 흔한 일이다. 대신 단추 글자가 "바꾼다"고 분명히 말하고, 직전 그림은
+            // `.bak`으로 남는다.
+            _overwriting = File.Exists(target);
+
+            if (_overwriting)
+            {
+                statusText.Text = $"'{key}'가 이미 있습니다. 이미지를 고르면 그 자리를 바꿉니다 " +
+                    "— 직전 그림은 같은 폴더에 .bak으로 남습니다.";
+                pickButton.Content = "이미지 선택해 덮어쓰기…";
+            }
+            else
+            {
+                statusText.Text = $"'{key.ToRelativePath()}'가 아직 없습니다. 이미지를 고르면 이 이름으로 복제됩니다.";
+                pickButton.Content = "이미지 선택해 추가…";
+            }
+
+            pickButton.IsEnabled = true;
+        }
+
+        pickButton.Click += async (_, _) => await UiGuard.RunAsync(_session, "표정 스프라이트 추가", async () =>
+        {
+            if (_session.PortraitsRoot is not { } root)
+            {
+                // 폴더부터 — 지정되면 같은 팝오버를 계속 쓸 수 있게 상태만 다시 계산한다.
+                if (await AssetRootPicker.PickAsync(this, _session, backgrounds: false))
+                {
+                    _session.RefreshAssets();
+                    UpdateStatus();
+                }
+
+                return;
+            }
+
+            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+            {
+                _session.SetStatus("이 환경에서는 파일 선택 창을 열 수 없습니다.");
+                return;
+            }
+
+            IReadOnlyList<Avalonia.Platform.Storage.IStorageFile> files = await storage.OpenFilePickerAsync(
+                new Avalonia.Platform.Storage.FilePickerOpenOptions
+                {
+                    Title = "복제할 초상화 이미지 (PNG)",
+                    AllowMultiple = false,
+                    FileTypeFilter =
+                    [
+                        new Avalonia.Platform.Storage.FilePickerFileType("PNG 이미지") { Patterns = ["*.png"] }
+                    ]
+                });
+
+            if (files.Count == 0 || files[0].TryGetLocalPath() is not { } sourcePath)
+            {
+                return;
+            }
+
+            Vn.Authoring.Assets.PortraitSpriteImporter.Imported imported =
+                Vn.Authoring.Assets.PortraitSpriteImporter.Import(
+                    root, sourcePath, characterId, variantBox.Text, emotionBox.Text, _overwriting);
+
+            _session.RefreshAssets();
+            _session.SetStatus(imported.Replaced
+                ? $"'{imported.Key.ToRelativePath()}'를 '{Path.GetFileName(sourcePath)}'로 바꿨습니다 " +
+                  "(직전 그림은 .bak)."
+                : $"'{Path.GetFileName(sourcePath)}'를 '{imported.Key.ToRelativePath()}'로 복제해 등록했습니다.");
+            flyout.Hide();
+        });
+
+        UpdateStatus();
+        flyout.ShowAt(anchor);
     }
 
     /// <summary>비교 연산자 — 아이템(개수)에만 쓴다. 능력은 있다/없다뿐이라 부호가 없다.</summary>

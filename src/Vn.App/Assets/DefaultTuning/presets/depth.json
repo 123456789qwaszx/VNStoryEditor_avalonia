@@ -1,0 +1,160 @@
+{
+    "MonoBehaviour": {
+        "m_Enabled": true,
+        "m_EditorHideFlags": 0,
+        "m_Name": "CharacterDepthTuning",
+        "m_EditorClassIdentifier": "Assembly-CSharp::CharacterDepthTuningSO",
+        "presets": {
+            "far": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": 480.0
+                },
+                "depthScale": 1.0,
+                "preserveFocusPreset": 0,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            },
+            "back": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": 240.0
+                },
+                "depthScale": 1.1399999856948853,
+                "preserveFocusPreset": 20,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            },
+            "mid": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "depthScale": 1.0,
+                "preserveFocusPreset": 20,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            },
+            "front": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": -320.0
+                },
+                "depthScale": 1.3799999952316285,
+                "preserveFocusPreset": 20,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            },
+            "close": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": 440.0
+                },
+                "depthScale": 1.5800000429153443,
+                "preserveFocusPreset": 30,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            },
+            "exp1": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "depthScale": 1.7999999523162842,
+                "preserveFocusPreset": 20,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            },
+            "exp2": {
+                "depthY": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "depthScale": 1.0,
+                "preserveFocusPreset": 20,
+                "preserveFocusOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                }
+            }
+        },
+        "level": {
+            "yCurve": {
+                "serializedVersion": "2",
+                "m_Curve": [
+                    {
+                        "serializedVersion": "3",
+                        "time": 0.0,
+                        "value": 120.0,
+                        "inSlope": 0.0,
+                        "outSlope": -56.0,
+                        "tangentMode": 0,
+                        "weightedMode": 0,
+                        "inWeight": 0.0,
+                        "outWeight": 0.0
+                    },
+                    {
+                        "serializedVersion": "3",
+                        "time": 10.0,
+                        "value": -440.0,
+                        "inSlope": -56.0,
+                        "outSlope": 0.0,
+                        "tangentMode": 0,
+                        "weightedMode": 0,
+                        "inWeight": 0.0,
+                        "outWeight": 0.0
+                    }
+                ],
+                "m_PreInfinity": 2,
+                "m_PostInfinity": 2,
+                "m_RotationOrder": 4
+            },
+            "scaleCurve": {
+                "serializedVersion": "2",
+                "m_Curve": [
+                    {
+                        "serializedVersion": "3",
+                        "time": 0.0,
+                        "value": 0.8600000143051148,
+                        "inSlope": 0.0,
+                        "outSlope": 0.05199999734759331,
+                        "tangentMode": 0,
+                        "weightedMode": 0,
+                        "inWeight": 0.0,
+                        "outWeight": 0.0
+                    },
+                    {
+                        "serializedVersion": "3",
+                        "time": 10.0,
+                        "value": 1.3799999952316285,
+                        "inSlope": 0.05199999734759331,
+                        "outSlope": 0.0,
+                        "tangentMode": 0,
+                        "weightedMode": 0,
+                        "inWeight": 0.0,
+                        "outWeight": 0.0
+                    }
+                ],
+                "m_PreInfinity": 2,
+                "m_PostInfinity": 2,
+                "m_RotationOrder": 4
+            },
+            "farPreserveFocus": 0,
+            "midPreserveFocus": 20,
+            "closePreserveFocus": 20,
+            "frontPreserveFocus": 30
+        }
+    }
+}

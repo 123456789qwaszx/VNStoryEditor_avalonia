@@ -1,0 +1,262 @@
+{
+    "MonoBehaviour": {
+        "m_Enabled": true,
+        "m_EditorHideFlags": 0,
+        "m_Name": "CharacterFocusTuningDB",
+        "m_EditorClassIdentifier": "Assembly-CSharp::CharacterFocusTuningDBSO",
+        "baseOffsets": {
+            "feet": {
+                "x": 0.0,
+                "y": 480.0
+            },
+            "body": {
+                "x": 0.0,
+                "y": 680.0
+            },
+            "bust": {
+                "x": 0.0,
+                "y": 820.0
+            },
+            "face": {
+                "x": 0.0,
+                "y": 950.0
+            },
+            "faceAura": {
+                "x": 0.0,
+                "y": 950.0
+            },
+            "handLeft": {
+                "x": -80.0,
+                "y": 0.0
+            },
+            "handRight": {
+                "x": 80.0,
+                "y": 0.0
+            }
+        },
+        "entries": [
+            {
+                "key": "Leafia",
+                "defaultOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "offsets": {
+                    "feet": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "body": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "bust": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "face": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "faceAura": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handLeft": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handRight": {
+                        "x": 0.0,
+                        "y": 0.0
+                    }
+                }
+            },
+            {
+                "key": "Albedo",
+                "defaultOffset": {
+                    "x": 0.0,
+                    "y": 80.0
+                },
+                "offsets": {
+                    "feet": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "body": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "bust": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "face": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "faceAura": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handLeft": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handRight": {
+                        "x": 0.0,
+                        "y": 0.0
+                    }
+                }
+            },
+            {
+                "key": "jeoseungsaja",
+                "defaultOffset": {
+                    "x": 180.0,
+                    "y": 0.0
+                },
+                "offsets": {
+                    "feet": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "body": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "bust": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "face": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "faceAura": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handLeft": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handRight": {
+                        "x": 0.0,
+                        "y": 0.0
+                    }
+                }
+            },
+            {
+                "key": "Mercurio",
+                "defaultOffset": {
+                    "x": -180.0,
+                    "y": 0.0
+                },
+                "offsets": {
+                    "feet": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "body": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "bust": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "face": {
+                        "x": 30.0,
+                        "y": 0.0
+                    },
+                    "faceAura": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handLeft": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handRight": {
+                        "x": 0.0,
+                        "y": 0.0
+                    }
+                }
+            },
+            {
+                "key": "willow",
+                "defaultOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "offsets": {
+                    "feet": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "body": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "bust": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "face": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "faceAura": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handLeft": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handRight": {
+                        "x": 0.0,
+                        "y": 0.0
+                    }
+                }
+            },
+            {
+                "key": "_",
+                "defaultOffset": {
+                    "x": 0.0,
+                    "y": 0.0
+                },
+                "offsets": {
+                    "feet": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "body": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "bust": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "face": {
+                        "x": 30.0,
+                        "y": 0.0
+                    },
+                    "faceAura": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handLeft": {
+                        "x": 0.0,
+                        "y": 0.0
+                    },
+                    "handRight": {
+                        "x": 0.0,
+                        "y": 0.0
+                    }
+                }
+            }
+        ]
+    }
+}

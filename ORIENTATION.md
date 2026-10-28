@@ -39,8 +39,8 @@ Yarn 편집기가 아니다. **편집기라기보다 컴파일러에 가깝다**
         ↓
   VNStoryEditor_avalonia   ← 지금 이 레포. 저작 · 검증 · 내보내기
         ├─ progression.json ─┐
-        └─ Yarn 번들 ────────┴→ ked-presentation-runtime (유니티, 읽기 전용)
-                                      ↓
+        ├─ Yarn 번들 ────────┼→ ked-presentation-runtime (유니티, 읽기 전용)
+        └─ 튜닝 데이터 ──────┘        ↓
                                 spring-prepare (서버, 세이브·통계)
 ```
 
@@ -120,6 +120,7 @@ Ked.Progression ───────┴→ Vn.Authoring ─┐
 | Yarn 노드 이름 규칙 | `Rendering/YarnBundleEmitter.StoryNodeTitleOf` — 밖에서 손으로 조립 금지 |
 | 도구 모음·창 제목 | `Vn.App/MainWindow.axaml{,.cs}` |
 | 그래프 화면 | `Vn.App/Views/GraphEditorView.axaml.cs` |
+| 무대 조절창 | `Vn.App/Views/StageSceneView.cs` |
 
 ## 7. 밟으면 조용히 터지는 지뢰 (처음 3개월치 실수 목록)
 

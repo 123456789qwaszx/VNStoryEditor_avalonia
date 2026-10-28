@@ -13,6 +13,7 @@ namespace Vn.Authoring.Tests;
 /// W67 후속 — 커스텀 이징 곡선. 지키는 것: ① 곡선은 프로젝트에 살고 왕복한다
 /// ② `@이름` 참조가 어긋나면 내보내기가 막는다(런타임은 조용히 OutCubic으로 물러서므로
 /// 저작이 유일한 방어다) ③ curves.json은 런타임 확정 스키마(배열+name) 그대로다
+/// ④ 베이크는 편집하기 좋은 출발점이다 — 키 자리에서 정확하고 사이에서 가깝다.
 /// </summary>
 public class EaseCurveTests
 {
@@ -184,7 +185,100 @@ public class EaseCurveTests
         }
     }
 
-    // ── 커맨드 소유 곡선 표시 ────────────────
+    // ── 커맨드 소유 곡선 ↔ 보관함 (2026-08-20 소유자 재설계) ────────────────
+
+    private static (Sample Sample, PresentationNode Node, string CommandId) CommandStage(
+        params (string Key, string Value)[] moveArguments)
+    {
+        var sample = new Sample();
+        string line = sample.Line("첫 줄");
+        sample.Editor.SetScriptLineText(sample.Script.Id, line, "라루", "첫 줄");
+        DialogueResult dialogue = sample.Editor.PublishDialogue(sample.Dialogue.Id).Result;
+
+        PresentationNode node = sample.Editor.AddPresentationNode(sample.File.Id, name: "연출");
+        sample.Editor.SetPresentationSource(node.Id, dialogue.Identity.ResultId, dialogue.Identity.Version);
+        var command = sample.Editor.AddPresentationCommand(node.Id, line, "char_rig_staging.move_by",
+            moveArguments.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
+
+        return (sample, node, command.Id);
+    }
+
+    [Fact]
+    public void 곡선_편집을_열면_지금_이징이_커맨드만의_곡선으로_복사된다()
+    {
+        (Sample sample, PresentationNode node, string commandId) =
+            CommandStage(("slot", "c1"), ("x", "+2u"), ("ease", "Linear"));
+
+        (string name, IReadOnlyList<CurveKey> keys, EaseKind bakedFrom) =
+            EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "Linear");
+
+        Assert.Equal(EaseCurve.OwnedNameFor(commandId), name);
+        Assert.Equal(EaseKind.Linear, bakedFrom);
+
+        // 소유 곡선이 프로젝트에 서고, 커맨드 인자가 @이름이 됐다.
+        EaseCurve owned = Assert.Single(sample.Project.EaseCurves);
+        Assert.Equal(commandId, owned.OwnerCommandId);
+        Assert.False(owned.IsLibrary);
+        Assert.Equal(keys, owned.Keys);
+        Assert.Equal("@" + name,
+            node.Bindings.SelectMany(binding => binding.Commands).Single().Arguments["ease"]);
+
+        // 두 번째 열기는 새로 만들지 않고 그대로 돌려준다.
+        (string again, _, _) =
+            EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "@" + name);
+        Assert.Equal(name, again);
+        Assert.Single(sample.Project.EaseCurves);
+    }
+
+    [Fact]
+    public void 보관함과는_복사로만_오간다()
+    {
+        (Sample sample, PresentationNode node, string commandId) =
+            CommandStage(("slot", "c1"), ("x", "+2u"));
+
+        (string ownedName, _, _) =
+            EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "OutCubic");
+
+        // 커맨드 곡선을 보관함에 저장 — 사본이고, 커맨드 쪽은 그대로다.
+        EaseCurveCommandActions.SaveToLibrary(
+            sample.Editor, "hop_snappy", sample.Project.EaseCurves[0].Keys.ToArray());
+        Assert.Equal(2, sample.Project.EaseCurves.Count);
+        EaseCurve library = sample.Project.EaseCurves.Single(curve => curve.IsLibrary);
+        Assert.Equal("hop_snappy", library.Name);
+
+        // 보관함을 고쳐도 커맨드 곡선은 안 변한다 (참조 공유 없음).
+        CurveKey[] changed = SampleKeys();
+        EaseCurveCommandActions.SaveToLibrary(sample.Editor, "hop_snappy", changed);
+        EaseCurve owned = sample.Project.EaseCurves.Single(curve => !curve.IsLibrary);
+        Assert.NotEqual(changed.ToList(), owned.Keys);
+
+        // 반대로 보관함에서 가져오면 커맨드 곡선이 그 키의 사본이 된다.
+        EaseCurveCommandActions.CopyFromLibrary(
+            sample.Editor, node.Id, commandId, "ease",
+            sample.Project.EaseCurves.Single(curve => curve.IsLibrary));
+        owned = sample.Project.EaseCurves.Single(curve => !curve.IsLibrary);
+        Assert.Equal(changed.ToList(), owned.Keys);
+        Assert.Equal(ownedName, owned.Name); // 이름은 여전히 커맨드 소유 이름이다
+    }
+
+    [Fact]
+    public void 표준으로_되돌리면_소유_곡선은_지워지고_보관함_사본은_남는다()
+    {
+        (Sample sample, PresentationNode node, string commandId) =
+            CommandStage(("slot", "c1"), ("x", "+2u"));
+
+        EaseCurveCommandActions.EnsureOwned(sample.Editor, node.Id, commandId, "ease", "OutCubic");
+        EaseCurveCommandActions.SaveToLibrary(sample.Editor, "keep_me", SampleKeys());
+
+        EaseCurveCommandActions.DiscardOwned(
+            sample.Editor, node.Id, commandId, "ease", easeTokenOrNull: null);
+
+        EaseCurve remaining = Assert.Single(sample.Project.EaseCurves);
+        Assert.True(remaining.IsLibrary);
+        Assert.Equal("keep_me", remaining.Name);
+        Assert.False(node.Bindings.SelectMany(binding => binding.Commands).Single()
+            .Arguments.ContainsKey("ease")); // 기본값 복귀 = 인자 생략
+    }
 
     [Fact]
     public void 소유자_표시는_manifest와_undo_스냅샷을_왕복한다()
@@ -208,6 +302,40 @@ public class EaseCurveTests
         Assert.Equal("cmd_pc_ab_12", name);
         Assert.True(EaseCurve.IsValidName(name));
         Assert.Equal(name, EaseCurve.OwnedNameFor("pc_AB-12")); // 같은 Id = 같은 이름
+    }
+
+    // ── 베이크 ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void 베이크는_키_자리에서_정확하고_사이에서_가깝다()
+    {
+        foreach (EaseKind kind in (EaseKind[])[EaseKind.Linear, EaseKind.OutCubic, EaseKind.InOutSine])
+        {
+            CurveKey[] keys = EaseCurveBaker.Bake(kind);
+
+            Assert.Equal(EaseCurveBaker.KeyCount, keys.Length);
+            Assert.Equal(0f, keys[0].Time);
+            Assert.Equal(1f, keys[^1].Time);
+            Assert.Null(EaseCurve.ValidateKeys(keys)); // 런타임 로더 규칙을 그대로 통과한다
+
+            // 키 자리 = 원형 그대로.
+            foreach (CurveKey key in keys)
+            {
+                Assert.Equal(EaseFunctions.Evaluate(kind, key.Time), key.Value, 4);
+            }
+
+            // 키 사이 = 편집 출발점으로 충분히 가깝다(완벽 재현이 목표가 아니다 —
+            // 5키로 만질 만한 모양이 목표다). Linear는 Hermite가 정확히 재현한다.
+            double tolerance = kind == EaseKind.Linear ? 1e-4 : 0.02;
+
+            for (int i = 0; i <= 64; i++)
+            {
+                float t = i / 64f;
+                double error = Math.Abs(
+                    CurveFunctions.Evaluate(keys, t) - EaseFunctions.Evaluate(kind, t));
+                Assert.True(error < tolerance, $"{kind} t={t}: 오차 {error}");
+            }
+        }
     }
 
     // ── 곡선 종류 격리 (2026-08-21 `gesture` 개통) ─────────────────────────

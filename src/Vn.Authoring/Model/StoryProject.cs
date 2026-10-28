@@ -76,6 +76,29 @@ public sealed class StoryProject
     /// <summary>이야기가 시작되는 노드. null이면 아직 정하지 않은 것이다.</summary>
     public string? StartNodeId { get; set; }
 
+    /// <summary>프리뷰 에셋 폴더 설정. 미설정이어도 저작은 계속된다.</summary>
+    public AssetRootSettings AssetRoots { get; init; } = new();
+
+    /// <summary>
+    /// 최근 사용한 연출 커맨드 정의 Id, 최신이 앞. 갤러리의 "최근" 섹션이 읽는다.
+    /// 프로젝트에 저장한다 — 이 프로젝트에서 자주 쓰는 어휘는 프로젝트의 것이다.
+    /// </summary>
+    public List<string> RecentCommandIds { get; init; } = new();
+
+    /// <summary>갤러리 "최근" 섹션이 다 보여 줄 수 있는 만큼만 남긴다.</summary>
+    public const int MaxRecentCommands = 8;
+
+    /// <summary>
+    /// 무대 조절창 [자주 쓰는] 칩 목록 (2026-08-22). <b>null이면 아직 손대지 않은 것</b>이라
+    /// <see cref="StageQuickCommands.Default"/>가 선다 — 사람이 전부 지운 <b>빈 목록과 다르다</b>.
+    /// 이 구분이 없으면 "기본으로 돌려놓기"와 "다 지웠으니 그대로 둬라"가 같은 데이터가 된다.
+    /// </summary>
+    public List<StageQuickCommand>? QuickCommands { get; set; }
+
+    /// <summary>지금 화면에 설 칩 목록 — 손대지 않았으면 기본 목록이다.</summary>
+    public IReadOnlyList<StageQuickCommand> EffectiveQuickCommands =>
+        QuickCommands ?? StageQuickCommands.Default;
+
     /// <summary>내보내기 양식 선택 (X13). 기본 전부 켬.</summary>
     public ExportFormatSelection ExportFormats { get; init; } = new();
 
@@ -178,6 +201,9 @@ public sealed class StoryProject
             FormatVersion = FormatVersion,
             Title = Title,
             StartNodeId = StartNodeId,
+            AssetRoots = AssetRoots.Clone(),
+            RecentCommandIds = new List<string>(RecentCommandIds),
+            QuickCommands = QuickCommands?.Select(chip => chip.Copy()).ToList(),
             ExportFormats = ExportFormats.Clone(),
             OutputPath = OutputPath,
             Scripts = Scripts.Select(script => script.Clone()).ToList(),

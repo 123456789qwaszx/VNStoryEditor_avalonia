@@ -91,7 +91,7 @@ public static class ChapterFixtureWalker
             string.Equals(edge.ToEpisodeId, target, StringComparison.Ordinal));
     }
 
-    // 판정의 단일 구현은 ChapterGateJudge다 (2026-08-27) — 증명기와 한 벌.
+    // 판정의 단일 구현은 ChapterGateJudge다 (2026-08-27) — 증명기·무대 프리뷰와 한 벌.
     // 항의 종류가 스탯 비교 하나뿐이라(2026-08-25 `cleared:` 폐지) 깃발도 같은 길로 판정된다.
     private static bool Satisfied(
         ChapterGraphModel chapter, string? label, int[] stats) =>

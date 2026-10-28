@@ -222,7 +222,7 @@ public static class ChapterReachabilityProver
         return next;
     }
 
-    // 판정의 단일 구현은 ChapterGateJudge다 (2026-08-27) — 워커와 한 벌.
+    // 판정의 단일 구현은 ChapterGateJudge다 (2026-08-27) — 워커·무대 프리뷰와 한 벌.
     // 미정의·깨진 라벨(Broken)도 "지나갈 수 없음"이다: 깨진 조건을 통과시켜 도달 가능을
     // 부풀리지 않는다.
     private static bool Satisfied(

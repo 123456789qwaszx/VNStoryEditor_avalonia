@@ -69,12 +69,31 @@ public static class ProjectSnapshotCodec
             root["startNode"] = project.StartNodeId;
         }
 
+        if (ProjectManifestJson.WriteAssetRoots(project.AssetRoots) is { } assetRoots)
+        {
+            root["assetRoots"] = assetRoots;
+        }
+
+        if (project.RecentCommandIds.Count > 0)
+        {
+            root["recentCommands"] = new JsonArray(
+                project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
+        }
+
+        // 자주 쓰는 칩도 스냅샷에 실린다 — 안 실으면 undo가 방금 담은 칩을 못 되돌리고,
+        // 더 나쁘게는 <b>관계없는 undo가 칩 목록을 통째로 기본값으로 되돌린다</b>
+        // (작가 화자가 겪었던 잠복 버그와 같은 자리다).
+        if (ProjectManifestJson.WriteQuickCommands(project.QuickCommands) is { } quickCommands)
+        {
+            root["quickCommands"] = quickCommands;
+        }
+
         if (ProjectManifestJson.WriteExportFormats(project.ExportFormats) is { } exportFormats)
         {
             root["exportFormats"] = exportFormats;
         }
 
-        if (ProjectPaths.NormalizePath(project.OutputPath) is { } outputPath)
+        if (AssetRootSettings.NormalizePath(project.OutputPath) is { } outputPath)
         {
             root["outputPath"] = outputPath;
         }
@@ -135,8 +154,11 @@ public static class ProjectSnapshotCodec
             FormatVersion = projectFormatVersion,
             Title = (string?)root["title"] ?? "제목 없음",
             StartNodeId = (string?)root["startNode"],
+            AssetRoots = ProjectManifestJson.ReadAssetRoots(root["assetRoots"]),
+            RecentCommandIds = ProjectManifestJson.ReadRecentCommands(root["recentCommands"]).ToList(),
+            QuickCommands = ProjectManifestJson.ReadQuickCommands(root["quickCommands"]),
             ExportFormats = ProjectManifestJson.ReadExportFormats(root["exportFormats"]),
-            OutputPath = ProjectPaths.NormalizePath((string?)root["outputPath"])
+            OutputPath = AssetRootSettings.NormalizePath((string?)root["outputPath"])
         };
 
         foreach (JsonNode? item in root["scripts"]?.AsArray() ?? new JsonArray())

@@ -42,6 +42,13 @@
     <InternalsVisibleTo Include="Vn.App.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 기본 튜닝 (W46) — 런타임 실측 덤프의 스냅샷 데이터.
+         '기본 튜닝 생성' 버튼이 이 내용을 프로젝트 옆 ExportedTuning으로 쓴다. -->
+    <EmbeddedResource Include="Assets\DefaultTuning\**\*.json"
+                      LogicalName="DefaultTuning/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!--
     배포는 exe 하나로 (2026-08-17 — 비개발자에게 넘기기 위해).
 

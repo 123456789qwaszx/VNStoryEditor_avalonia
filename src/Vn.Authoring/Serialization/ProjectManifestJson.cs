@@ -70,12 +70,30 @@ public static class ProjectManifestJson
             root["startNode"] = project.StartNodeId;
         }
 
+        if (WriteAssetRoots(project.AssetRoots) is { } assetRoots)
+        {
+            root["assetRoots"] = assetRoots;
+        }
+
+        if (project.RecentCommandIds.Count > 0)
+        {
+            root["recentCommands"] = new JsonArray(
+                project.RecentCommandIds.Select(id => (JsonNode)id).ToArray());
+        }
+
+        // 자주 쓰는 칩 (2026-08-22) — 손대지 않은 프로젝트에는 <b>키 자체를 안 쓴다</b>.
+        // 빈 배열은 "사람이 다 지웠다"는 뜻이라 기본 목록으로 되돌아가면 안 된다.
+        if (WriteQuickCommands(project.QuickCommands) is { } quickCommands)
+        {
+            root["quickCommands"] = quickCommands;
+        }
+
         if (WriteExportFormats(project.ExportFormats) is { } exportFormats)
         {
             root["exportFormats"] = exportFormats;
         }
 
-        if (ProjectPaths.NormalizePath(project.OutputPath) is { } outputPath)
+        if (AssetRootSettings.NormalizePath(project.OutputPath) is { } outputPath)
         {
             root["outputPath"] = outputPath;
         }
@@ -250,8 +268,11 @@ public static class ProjectManifestJson
         return new ProjectManifest(
             (string?)root["title"] ?? "제목 없음",
             (string?)root["startNode"],
+            ReadAssetRoots(root["assetRoots"]),
+            ReadRecentCommands(root["recentCommands"]),
+            ReadQuickCommands(root["quickCommands"]),
             ReadExportFormats(root["exportFormats"]),
-            ProjectPaths.NormalizePath((string?)root["outputPath"]),
+            AssetRootSettings.NormalizePath((string?)root["outputPath"]),
             scripts,
             references,
             links,
@@ -294,6 +315,70 @@ public static class ProjectManifestJson
         };
     }
 
+    internal static IReadOnlyList<string> ReadRecentCommands(JsonNode? json)
+    {
+        if (json is not JsonArray array)
+        {
+            return Array.Empty<string>();
+        }
+
+        return array
+            .Select(item => (string?)item)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .Take(StoryProject.MaxRecentCommands)
+            .ToArray();
+    }
+
+    /// <summary>비어 있으면 null — manifest에 빈 객체를 남기지 않는다.</summary>
+    internal static JsonObject? WriteAssetRoots(AssetRootSettings assetRoots)
+    {
+        if (assetRoots.IsEmpty)
+        {
+            return null;
+        }
+
+        var json = new JsonObject();
+
+        if (AssetRootSettings.NormalizePath(assetRoots.BackgroundsPath) is { } backgrounds)
+        {
+            json["backgrounds"] = backgrounds;
+        }
+
+        if (AssetRootSettings.NormalizePath(assetRoots.PortraitsPath) is { } portraits)
+        {
+            json["portraits"] = portraits;
+        }
+
+        if (AssetRootSettings.NormalizePath(assetRoots.BgmPath) is { } bgm)
+        {
+            json["bgm"] = bgm;
+        }
+
+        if (AssetRootSettings.NormalizePath(assetRoots.SfxPath) is { } sfx)
+        {
+            json["sfx"] = sfx;
+        }
+
+        return json.Count > 0 ? json : null;
+    }
+
+    internal static AssetRootSettings ReadAssetRoots(JsonNode? json)
+    {
+        if (json is not JsonObject assetRoots)
+        {
+            return new AssetRootSettings();
+        }
+
+        return new AssetRootSettings
+        {
+            BackgroundsPath = AssetRootSettings.NormalizePath((string?)assetRoots["backgrounds"]),
+            PortraitsPath = AssetRootSettings.NormalizePath((string?)assetRoots["portraits"]),
+            BgmPath = AssetRootSettings.NormalizePath((string?)assetRoots["bgm"]),
+            SfxPath = AssetRootSettings.NormalizePath((string?)assetRoots["sfx"])
+        };
+    }
+
     internal static IReadOnlyList<ScriptFileReference> ScriptReferencesOf(StoryProject project)
     {
         return project.Scripts
@@ -310,6 +395,110 @@ public static class ProjectManifestJson
     /// 내보내기 curves.json 스키마와 같은 낱말이다 — 두 파일을 나란히 볼 사람이 같은 것을
     /// 다른 이름으로 읽지 않게. 이름이 빈 곡선은 파일에 안 쓴다.
     /// </summary>
+    /// <summary>
+    /// 자주 쓰는 칩 직렬화 — manifest와 undo 스냅샷 코덱이 같은 것을 쓴다.
+    /// <b>null(손대지 않음)이면 null</b>을 돌려 키를 안 쓰고, 빈 목록은 빈 배열로 남긴다.
+    /// </summary>
+    internal static JsonArray? WriteQuickCommands(IReadOnlyList<StageQuickCommand>? chips)
+    {
+        if (chips is null)
+        {
+            return null;
+        }
+
+        var array = new JsonArray();
+
+        foreach (StageQuickCommand chip in chips)
+        {
+            var steps = new JsonArray();
+
+            foreach (StageQuickStep step in chip.Steps)
+            {
+                var args = new JsonObject();
+
+                // 인자 이름 순으로 — 결정적 출력이라야 저장할 때마다 diff가 안 생긴다.
+                foreach ((string key, string value) in step.Arguments.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                {
+                    args[key] = value;
+                }
+
+                steps.Add(new JsonObject
+                {
+                    ["command"] = step.DefinitionId,
+                    ["args"] = args
+                });
+            }
+
+            array.Add(new JsonObject
+            {
+                ["name"] = chip.DisplayName,
+                ["steps"] = steps
+            });
+        }
+
+        return array;
+    }
+
+    internal static List<StageQuickCommand>? ReadQuickCommands(JsonNode? node)
+    {
+        if (node is not JsonArray array)
+        {
+            return null; // 키가 없다 = 손대지 않았다 → 기본 목록
+        }
+
+        var chips = new List<StageQuickCommand>();
+
+        foreach (JsonNode? item in array)
+        {
+            if (item is not JsonObject chip)
+            {
+                throw new InvalidDataException("quickCommands 항목이 객체가 아닙니다.");
+            }
+
+            // 묶음(2026-08-24)은 steps 배열이다. 그 전에 저장된 칩은 한 단계가 칩 자체에
+            // 펼쳐져 있으므로(command·args) 여기서 한 단계짜리 묶음으로 읽어 올린다 —
+            // <b>이미 담아 둔 칩이 조용히 사라지면 그것이 곧 데이터 손실이다.</b>
+            // 쓰기는 언제나 새 모양 하나다(두 벌로 쓰면 어느 쪽이 진실인지 못 말한다).
+            var steps = new List<StageQuickStep>();
+
+            List<JsonObject> stepNodes = chip["steps"] is JsonArray stepArray
+                ? stepArray
+                    .Select(entry => entry as JsonObject
+                        ?? throw new InvalidDataException("quickCommands 단계가 객체가 아닙니다."))
+                    .ToList()
+                : [chip];
+
+            foreach (JsonObject step in stepNodes)
+            {
+                if ((string?)step["command"] is not { Length: > 0 } definitionId)
+                {
+                    continue; // 커맨드 없는 단계는 낼 것이 없다
+                }
+
+                var arguments = new Dictionary<string, string>(StringComparer.Ordinal);
+
+                foreach (KeyValuePair<string, JsonNode?> pair in step["args"]?.AsObject() ?? new JsonObject())
+                {
+                    if ((string?)pair.Value is { } value)
+                    {
+                        arguments[pair.Key] = value;
+                    }
+                }
+
+                steps.Add(new StageQuickStep(definitionId, arguments));
+            }
+
+            // 단계 없는 칩은 <b>버리지 않는다</b> — 막 만든 빈 묶음이 그 모양이다
+            // (2026-08-24). 여기서 버리면 되돌리기 스냅샷을 오갈 때마다 칩이 사라지고,
+            // 그만큼 뒤 칩들의 자리가 밀려 펼쳐 둔 칩이 딴것으로 바뀐다.
+            chips.Add(new StageQuickCommand(
+                (string?)chip["name"] ?? (steps.Count > 0 ? steps[0].DefinitionId : string.Empty),
+                steps));
+        }
+
+        return chips;
+    }
+
     internal static JsonArray? WriteEaseCurves(IReadOnlyList<EaseCurve> curves)
     {
         List<EaseCurve> named = curves
@@ -558,6 +747,9 @@ public static class ProjectManifestJson
 public sealed record ProjectManifest(
     string Title,
     string? StartNodeId,
+    AssetRootSettings AssetRoots,
+    IReadOnlyList<string> RecentCommandIds,
+    IReadOnlyList<StageQuickCommand>? QuickCommands,
     ExportFormatSelection ExportFormats,
     string? OutputPath,
     IReadOnlyList<ScriptFileReference> Scripts,

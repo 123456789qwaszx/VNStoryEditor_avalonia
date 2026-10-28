@@ -42,6 +42,16 @@ public partial class GraphEditorView : UserControl
     private readonly List<FileProxyVisual> _proxies = new();
     private readonly List<EdgeVisual> _edges = new();
 
+    /// <summary>
+    /// 카드를 <b>더블클릭</b>했다 — "이 노드를 무대에서 본다" (2026-08-25 소유자: "특정
+    /// 노드를 더블 클릭했을 때, 무대프리뷰로 연결되도록. 더블클릭한 노드가 선택된채로").
+    ///
+    /// ⚠ 여기서 탭을 바꾸지 않는다. 이 판은 탭이 있다는 것도, 무대 프리뷰가 있다는 것도
+    /// 모른다 — 두 화면은 서로를 모르고 <see cref="AuthoringSession"/> 하나만 본다(G-1).
+    /// 무엇을 열지는 셸이 정한다.
+    /// </summary>
+    internal event Action<string>? NodeActivated;
+
     /// <summary>챕터(판) 박스 — 펼친 판의 노드들을 감싸는 배경 프레임 + 이름표 (2단계 무대 3번).</summary>
     private readonly List<Control> _frames = new();
 
@@ -159,9 +169,9 @@ public partial class GraphEditorView : UserControl
         ShowSet: FilterSetCheck.IsChecked == true);
 
     /// <summary>
-    /// 우측 곁기둥의 내용을 셸이 물려준다 (2026-08-22) — 노드 편집기 묶음.
+    /// 우측 곁기둥의 내용을 셸이 물려준다 (2026-08-22) — 노드 편집기 묶음 + 에셋 탐색기.
     /// 자리는 이 판의 것이고(쓰는 화면이 여기뿐이다) 배선은 셸의 것이다: 편집기들이
-    /// 세션·발행과 얽혀 있어 이 뷰로 옮기면 그 배선이 두 벌이 된다.
+    /// 세션·무대 프리뷰·발행과 얽혀 있어 이 뷰로 옮기면 그 배선이 두 벌이 된다.
     /// </summary>
     internal void SetSidePanel(Control content) => SideHost.Content = content;
 
@@ -1371,6 +1381,17 @@ public partial class GraphEditorView : UserControl
 
         card.PointerPressed += (_, args) => OnCardPressed(visual, args);
 
+        // 더블클릭 = 이 노드를 무대에서 본다. 첫 누름이 이미 선택과 끌기를 시작해 두므로
+        // (OnCardPressed) 여기서 할 일은 <b>그 끌기를 걷고</b> 셸에 알리는 것뿐이다 —
+        // 안 걷으면 탭이 바뀐 뒤에도 카드가 마우스에 붙어 따라다닌다.
+        card.DoubleTapped += (_, args) =>
+        {
+            _draggingCard = null;
+            _draggingGroup = false;
+            args.Handled = true;
+            NodeActivated?.Invoke(visual.NodeId);
+        };
+
         return visual;
     }
 
@@ -1999,6 +2020,46 @@ public partial class GraphEditorView : UserControl
 
         if (viewRect.Intersects(new Rect(left, top, width, height)))
         {
+            return;
+        }
+
+        Center(target);
+    }
+
+    /// <summary>
+    /// 노드 하나를 <b>화면 한가운데로</b> 가져온다 — 이미 보이더라도 옮긴다
+    /// (2026-08-25 소유자: 무대에서 돌아올 때 "화면 중앙에 온 채").
+    ///
+    /// ⚠ <see cref="ScrollToSelected"/>와 <b>일부러 다르다</b>. 그쪽은 보이는 노드에 끼어들지
+    /// 않는다 — 편집 중에 화면이 저 혼자 움직이면 스크롤해 둔 자리를 빼앗기 때문이다.
+    /// 여기는 사람이 <b>판을 막 열어 눈이 아직 아무 데도 안 붙은</b> 순간이라 그 배려가
+    /// 오히려 방해가 된다: "구석에 조금 보이니까 안 옮긴다"는 곧 못 찾는다는 뜻이다.
+    ///
+    /// 탭을 막 바꾼 순간에는 판도 카드도 <b>아직 재기 전</b>이라 크기가 0이다. 그때 계산하면
+    /// 대체 크기로 어림잡게 되어 카드 높이의 절반쯤 어긋난다 — 가운데에 놓겠다고 해 놓고
+    /// 어중간한 자리에 놓는 셈이라, 판과 카드 <b>둘 다</b> 재어진 다음으로 미룬다.
+    /// </summary>
+    internal void CenterOnNode(string nodeId) => CenterOnNode(nodeId, attempt: 0);
+
+    /// <summary>재어지길 기다리는 횟수. 끝내 안 재어지면 어림값으로라도 옮긴다 — 영원히
+    /// 미루면 아무 일도 안 일어나고, 그것이 가장 나쁘다(사람은 못 찾은 채 남는다).</summary>
+    private const int CenterAttempts = 4;
+
+    private void CenterOnNode(string nodeId, int attempt)
+    {
+        if (TargetVisualOf(nodeId) is not { } target)
+        {
+            return;
+        }
+
+        bool measured =
+            GraphScroll.Viewport.Width > 0 && GraphScroll.Viewport.Height > 0 &&
+            target.Bounds.Width > 0 && target.Bounds.Height > 0;
+
+        if (!measured && attempt < CenterAttempts)
+        {
+            Dispatcher.UIThread.Post(
+                () => CenterOnNode(nodeId, attempt + 1), DispatcherPriority.Loaded);
             return;
         }
 

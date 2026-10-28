@@ -176,6 +176,43 @@ public class CommandTextTests
     }
 
     [Fact]
+    public void 추가한_커맨드는_최근_사용에_최신순으로_쌓인다()
+    {
+        (ProjectEditor editor, PresentationNode node) = BuildEditor();
+
+        editor.AddPresentationSetupCommand(node.Id, "background.bg_spawn");
+        editor.AddPresentationSetupCommand(node.Id, "char_rig_cast.slot");
+        editor.AddPresentationSetupCommand(node.Id, "background.bg_spawn"); // 재사용 → 맨 앞, 중복 없음
+
+        Assert.Equal(
+            ["background.bg_spawn", "char_rig_cast.slot"],
+            editor.Project.RecentCommandIds);
+
+        for (int i = 0; i < 10; i++)
+        {
+            editor.AddPresentationSetupCommand(node.Id, $"cmd.{i}");
+        }
+
+        Assert.Equal(StoryProject.MaxRecentCommands, editor.Project.RecentCommandIds.Count);
+    }
+
+    [Fact]
+    public void 최근_사용이_manifest와_스냅샷을_왕복한다()
+    {
+        var project = new StoryProject();
+        project.RecentCommandIds.AddRange(["a.one", "b.two"]);
+
+        ProjectManifest manifest = ProjectManifestJson.Read(ProjectManifestJson.Write(project));
+        Assert.Equal(["a.one", "b.two"], manifest.RecentCommandIds);
+
+        StoryProject decoded = ProjectSnapshotCodec.Decode(ProjectSnapshotCodec.Encode(project));
+        Assert.Equal(["a.one", "b.two"], decoded.RecentCommandIds);
+
+        // 비어 있으면 키 자체가 없다 — 기존 프로젝트 파일이 바뀌지 않는다.
+        Assert.DoesNotContain("recentCommands", ProjectManifestJson.Write(new StoryProject()), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void 중간이_빈_인자는_자리표로_메워_자리가_안_밀린다()
     {
         // ⚠ 2026-08-21 `gesture`가 드러낸 결함의 고정. 예전에는 값 없는 파라미터에서

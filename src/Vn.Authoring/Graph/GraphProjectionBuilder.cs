@@ -38,7 +38,7 @@ public static class GraphProjectionBuilder
         //   작가의 데이터가 아니다. 식(스탯 변수)이 연출 그래프에 노출되면 안 된다.
         //   공급 자체는 데이터에 살아 있어 조건 라벨과 <<if>> 역조회는 변함없다.
         // - 연출 노드 (2026-08-21 소유자) — 발행·배선이 자동화됐다
-        //   (ProjectEditor.EnsurePresentationChannel).
+        //   (ProjectEditor.EnsurePresentationChannel). 입구는 무대 프리뷰의 선택기이고
         //   그래프에는 카드도 결과·공급 배선도 그리지 않는다. 데이터는 그대로 산다.
         // - 연출 공급 노드 (같은 날, 소유자: "연출 공급을 제거해") — 이 노드가 잇던
         //   상대가 연출 노드인데 그쪽이 숨었다. 공급 데이터는 살아 있어 커맨드 범위·
