@@ -8,28 +8,17 @@ namespace Vn.Authoring.Chapters;
 /// 에피소드들의 대화가 없다고 나오고, 엑셀도 새로운게 열리네. 또 연출그래프에서도
 /// 조건노드가 이전의 챕터를 받고 있어").
 ///
-/// <b>무엇이 잘못됐었나</b> — 개명이 <b>워크북 파일 하나만</b> 옮겼다. 그런데 챕터 Id를
-/// 이름에 지고 있는 것은 그것 말고도 셋이 더 있다:
+/// <b>순서가 규칙이다 — 모델 먼저, 파일은 뒤에</b> (2026-10-29 · `docs/plans/excel-boundary.md` C2).
+/// 개명은 <see cref="ProjectEditor.RenameChapter"/> 한 번이다: <c>Project.Chapters</c>의 Id · 판 이름 ·
+/// 조건 공급 노드 이름이 한 변경으로 바뀌고 되돌리기 한 번에 돌아온다. 그 전에는 여기가 워크북
+/// 파일·대본 폴더·판·배관을 각각 옮기면서 정작 <b>챕터 모델의 Id는 안 바꿨다</b> — 저장하고 다시
+/// 열면 챕터는 옛 이름, 판은 새 이름이었다.
 ///
-/// <list type="number">
-///   <item><c>chapters/{Id}.xlsx</c> — 챕터 워크북</item>
-///   <item><c>episodes/{Id}/</c> — <b>그 챕터의 대본 폴더</b> (2026-08-16에 챕터별로 갈렸다)</item>
-///   <item>판(<c>StoryFile.Name</c>) — 챕터 = 판 1:1 (G-1 v2)</item>
-///   <item>조건 공급 설정노드 <c>챕터 {Id} 조건</c> — A계층 배관</item>
-/// </list>
-///
-/// ②를 안 옮기니 새 이름의 폴더가 <b>비어 있고</b>, 툴은 "대사가 없다"고 말하며 노드를
-/// 더블클릭하면 <b>빈 워크북을 새로 만들어</b> 열었다 — 원고는 옛 폴더에 그대로 살아 있는데.
-/// ④를 안 바꾸니 옛 이름의 배관이 판에 남고, 다음 동기화가 새 이름으로 <b>하나 더</b>
-/// 만들어 조건이 둘로 갈렸다.
-///
-/// <b>그래서 이 클래스가 생겼다.</b> 개명은 네 자리를 <b>함께</b> 옮기는 한 동작이고,
-/// 그 동작의 주인은 하나여야 한다 — 예전에는 파일 이동이 <see cref="ChapterWorkbookWriter"/>에,
-/// 판 이름이 셸에 있었고, 갈라져 있었기 때문에 나머지 둘을 아무도 챙기지 않았다.
-///
-/// <b>반쯤 바뀐 챕터를 남기지 않는다.</b> 파일 이동이 둘이라 뒤엣것이 실패할 수 있다
-/// (엑셀이 대본을 잡고 있으면 폴더가 안 옮겨진다). 그때는 앞엣것을 <b>되돌리고</b>
-/// 사유만 돌려준다 — 워크북은 새 이름인데 원고는 옛 이름인 상태가 가장 나쁘다.
+/// <b>파일은 산출물이다.</b> <c>chapters/{Id}.xlsx</c>와 <c>episodes/{Id}/</c>는 프로젝트에서 다시
+/// 낼 수 있으므로, 옮기는 것은 <i>친절</i>이지 개명의 성립 조건이 아니다. 못 옮기면(엑셀이 잡고
+/// 있다 · 새 이름의 폴더가 이미 있다) 모델을 되돌리지 않고 <see cref="Result.FilesNotMoved"/>로
+/// 사유를 말한다 — 다음 출력이 새 이름으로 내고, 옛 파일은 사람이 치운다. 덮어쓰거나 지우지는
+/// 않는다(남의 폴더의 파일일 수 있다).
 /// </summary>
 public static class ChapterRenamer
 {
@@ -41,22 +30,28 @@ public static class ChapterRenamer
     /// 사람이 지우게 한다: 그냥 두면 런타임이 없는 챕터를 계속 싣는다.
     /// <see cref="ChapterDeleter"/>도 같은 규칙을 쓴다.
     /// </param>
+    /// <param name="FilesNotMoved">
+    /// 워크북이나 대본 폴더를 새 이름으로 옮기지 못한 사유. 모델은 이미 바뀌었다 — 옛 이름의
+    /// 파일이 그대로 남아 있고, 다음 출력이 새 이름으로 낸다.
+    /// </param>
     public sealed record Result(
         bool Renamed,
         string? Failure,
         bool EpisodesMoved = false,
         bool SupplyRenamed = false,
-        string? StaleExport = null)
+        string? StaleExport = null,
+        string? FilesNotMoved = null)
     {
         public static Result Fail(string reason) => new(false, reason);
     }
 
     /// <summary>
-    /// 챕터 Id를 바꾸고 그 이름을 지고 있는 것 넷을 함께 옮긴다.
+    /// 챕터 Id를 바꾸고(모델), 그 이름의 워크북·대본 폴더를 따라 옮긴다(파일, 되면).
     /// </summary>
     /// <param name="projectManifestPath">
     /// 프로젝트 파일 경로. <c>chapters/</c>와 <c>episodes/</c>가 여기서 갈라진다 —
-    /// 폴더 둘을 따로 받으면 서로 다른 프로젝트를 섞을 수 있다.
+    /// 폴더 둘을 따로 받으면 서로 다른 프로젝트를 섞을 수 있다. 아직 저장 안 한 프로젝트(null)면
+    /// 옮길 파일이 없으므로 모델만 바꾼다.
     /// </param>
     public static Result Rename(
         ProjectEditor editor, string? projectManifestPath, string oldId, string newId)
@@ -76,103 +71,73 @@ public static class ChapterRenamer
             return Result.Fail("이름이 같습니다.");
         }
 
-        if (ChapterLibrary.FolderFor(projectManifestPath) is not { } chapters)
+        if (editor.FindChapter(oldId) is null)
         {
-            return Result.Fail("프로젝트를 먼저 저장해야 합니다.");
+            return Result.Fail($"챕터 '{oldId}'가 프로젝트에 없습니다.");
         }
 
-        string? episodesOld = EpisodeLibrary.FolderFor(projectManifestPath, oldId);
-        string? episodesNew = EpisodeLibrary.FolderFor(projectManifestPath, newId);
-
-        // ⚠ 옮기기 <b>전에</b> 막을 것을 전부 본다. 절반쯤 옮기고 나서 "이미 있습니다"를
-        // 만나면 되돌릴 것이 늘어난다.
-        if (episodesOld is not null && episodesNew is not null &&
-            Directory.Exists(episodesOld) && Directory.Exists(episodesNew))
+        if (editor.FindChapter(newId) is not null)
         {
-            return Result.Fail(
-                $"'{newId}'의 대본 폴더가 이미 있습니다 — 옛 원고를 덮어쓸 수 없어 멈췄습니다. " +
-                "그 폴더를 먼저 치우거나 다른 이름을 골라 주세요.");
+            return Result.Fail($"챕터 '{newId}'가 이미 있습니다.");
         }
 
-        ChapterWriteResult moved = ChapterWorkbookWriter.RenameChapterWorkbook(chapters, oldId, newId);
+        // ① 모델 — 챕터 Id · 판 · 배관이 한 변경으로.
+        ChapterRenameEffect effect = editor.RenameChapter(oldId, newId);
 
-        if (!moved.Written)
-        {
-            return Result.Fail(moved.Failure!);
-        }
-
+        // ② 파일 — 산출물을 따라 옮긴다. 못 옮겨도 ①은 그대로다.
+        var notMoved = new List<string>();
         bool episodesMoved = false;
 
-        if (episodesOld is not null && episodesNew is not null && Directory.Exists(episodesOld))
+        if (ChapterLibrary.FolderFor(projectManifestPath) is { } chapters)
         {
-            try
+            if (File.Exists(Path.Combine(chapters, oldId + ".xlsx")))
             {
-                Directory.Move(episodesOld, episodesNew);
-                episodesMoved = true;
-            }
-            catch (Exception exception)
-            {
-                // ⛔ 되돌린다. 워크북만 새 이름이 되면 그 챕터는 "대사가 하나도 없는 챕터"로
-                // 보이고, 노드를 열면 빈 워크북이 새로 생겨 원고가 둘로 갈린다 — 이 건의
-                // 원래 증상 그대로다.
-                ChapterWorkbookWriter.RenameChapterWorkbook(chapters, newId, oldId);
+                ChapterWriteResult moved = ChapterWorkbookWriter.RenameChapterWorkbook(chapters, oldId, newId);
 
-                return Result.Fail(
-                    $"대본 폴더를 옮기지 못해 이름을 되돌렸습니다(엑셀이 대본을 열고 있을 수 " +
-                    $"있습니다): {exception.Message}");
+                if (!moved.Written)
+                {
+                    notMoved.Add($"챕터 워크북을 옮기지 못했습니다: {moved.Failure}");
+                }
+            }
+
+            string? episodesOld = EpisodeLibrary.FolderFor(projectManifestPath, oldId);
+            string? episodesNew = EpisodeLibrary.FolderFor(projectManifestPath, newId);
+
+            if (episodesOld is not null && episodesNew is not null && Directory.Exists(episodesOld))
+            {
+                if (Directory.Exists(episodesNew))
+                {
+                    // 덮어쓰지 않는다 — 그 폴더의 파일이 누구의 것인지 모른다.
+                    notMoved.Add(
+                        $"'{newId}'의 대본 폴더가 이미 있어 옛 폴더 '{oldId}'를 옮기지 않았습니다 — " +
+                        "다음 저장이 새 이름으로 대본을 냅니다. 옛 폴더는 확인하고 치워 주세요.");
+                }
+                else
+                {
+                    try
+                    {
+                        Directory.Move(episodesOld, episodesNew);
+                        episodesMoved = true;
+                    }
+                    catch (Exception exception)
+                    {
+                        notMoved.Add(
+                            $"대본 폴더를 옮기지 못했습니다(엑셀이 대본을 열고 있을 수 있습니다): " +
+                            $"{exception.Message} 다음 저장이 새 이름으로 대본을 냅니다.");
+                    }
+                }
             }
         }
 
-        // 판이 따라간다 — 챕터 = 판 1:1. 판이 아직 없었다면 옮길 것도 없다.
-        StoryFile? board = EpisodeNaming.BoardOf(editor.Project, oldId);
-
-        if (board is not null)
-        {
-            editor.RenameStoryFile(board.Id, newId);
-        }
-
-        string stale = ChapterExportService.ExportPathFor(projectManifestPath!, oldId);
+        string? stale = projectManifestPath is null
+            ? null
+            : ChapterExportService.ExportPathFor(projectManifestPath, oldId);
 
         return new Result(
             true, null,
             episodesMoved,
-            RenameConditionSupply(editor, oldId, newId),
-            File.Exists(stale) ? Path.GetFileName(stale) : null);
-    }
-
-    /// <summary>
-    /// A계층 조건 배관(<c>챕터 {Id} 조건</c>)의 이름을 따라 바꾼다.
-    ///
-    /// 안 바꾸면 옛 이름의 노드가 판에 남고, 다음 동기화가
-    /// <see cref="ChapterBoardSupply.ConditionSupplyNodeName"/>으로 <b>새것을 하나 더</b>
-    /// 만든다. 그러면 같은 챕터의 조건이 노드 둘에 갈려 앉고, 작가 화면에는 옛 챕터의
-    /// 라벨이 그대로 보인다(소유자 보고의 그 화면이다).
-    ///
-    /// ⚠ 새 이름의 배관이 이미 있으면 <b>손대지 않는다</b> — 이름이 겹치면 어느 쪽이 그
-    /// 챕터의 배관인지 정해지지 않는다. 합치는 것은 조건을 옮기는 일이라 개명의 몫이 아니고,
-    /// 그 상태에서도 동기화가 새 이름 쪽에 마저 공급하므로 조용히 깨지지는 않는다.
-    /// </summary>
-    private static bool RenameConditionSupply(ProjectEditor editor, string oldId, string newId)
-    {
-        string oldName = ChapterBoardSupply.ConditionSupplyNodeName(oldId);
-        string newName = ChapterBoardSupply.ConditionSupplyNodeName(newId);
-
-        List<SetNode> supplies = editor.Project.EnumerateNodes().OfType<SetNode>().ToList();
-
-        if (supplies.Any(node => string.Equals(node.Name, newName, StringComparison.Ordinal)))
-        {
-            return false;
-        }
-
-        SetNode? supply = supplies.FirstOrDefault(node =>
-            string.Equals(node.Name, oldName, StringComparison.Ordinal));
-
-        if (supply is null)
-        {
-            return false;
-        }
-
-        editor.RenameNode(supply.Id, newName);
-        return true;
+            effect.SupplyRenamed,
+            stale is not null && File.Exists(stale) ? Path.GetFileName(stale) : null,
+            notMoved.Count == 0 ? null : string.Join(" ", notMoved));
     }
 }

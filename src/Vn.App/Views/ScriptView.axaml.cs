@@ -319,7 +319,8 @@ public partial class ScriptView : UserControl
                     ChapterRenamer.Rename(_session.Editor, _session.ProjectPath, row.ChapterId, wanted);
 
                 _session.SetStatus(chapter.Renamed
-                    ? $"챕터 '{row.ChapterId}' → '{wanted}'. 워크북·대본 폴더·판이 함께 갔습니다."
+                    ? $"챕터 '{row.ChapterId}' → '{wanted}'. 판·조건 노드·워크북·대본 폴더가 함께 갔습니다." +
+                      (chapter.FilesNotMoved is { } notMoved ? $" ⚠ {notMoved}" : string.Empty)
                     : chapter.Failure!);
                 break;
 

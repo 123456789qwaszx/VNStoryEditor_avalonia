@@ -14,10 +14,12 @@ namespace Vn.Authoring.Tests.Chapters;
 /// 또 연출그래프에서도 조건노드가 이전의 챕터를 받고 있어").
 ///
 /// 옮겨야 하는 넷: <c>chapters/{Id}.xlsx</c> · <c>episodes/{Id}/</c> · 판 이름 ·
-/// 조건 공급 노드 <c>챕터 {Id} 조건</c>.
+/// 조건 공급 노드 <c>챕터 {Id} 조건</c>. 2026-10-29부터는 <b>다섯</b> — <c>Project.Chapters</c>의
+/// Id가 먼저다(`docs/plans/excel-boundary.md` C2). 모델 셋(Id·판·배관)은 되돌리기 한 칸이고,
+/// 파일 둘은 산출물이라 못 옮겨도 모델을 되돌리지 않는다.
 ///
 /// ⚠ <b>이 파일의 첫 두 테스트가 신고 그 자체다.</b> 나머지는 고치면서 새로 생긴 사고
-/// 자리(반쯤 바뀐 챕터·이름 충돌)를 막는다.
+/// 자리(옛 파일이 남는 경우·이름 충돌)를 막는다.
 /// </summary>
 public sealed class ChapterRenamerTests : IDisposable
 {
@@ -116,50 +118,115 @@ public sealed class ChapterRenamerTests : IDisposable
         Assert.DoesNotContain(world.Editor.Project.Files, file => file.Name == OldId);
     }
 
+    [Fact]
+    public void 챕터_모델의_Id가_바뀐다()
+    {
+        // ⛔ 2026-10-29까지 여기가 빠져 있었다 — 파일·판·배관은 새 이름인데 Project.Chapters는
+        //    옛 이름이라, 저장하고 다시 열면 챕터 목록은 옛 이름이고 판만 새 이름이었다.
+        World world = Build();
+
+        Assert.True(ChapterRenamer.Rename(world.Editor, world.ProjectPath, OldId, NewId).Renamed);
+
+        Assert.NotNull(world.Editor.FindChapter(NewId));
+        Assert.Null(world.Editor.FindChapter(OldId));
+        Assert.Contains(world.Editor.FindChapter(NewId)!.Episodes, episode => episode.EpisodeId == "main05.02");
+    }
+
+    [Fact]
+    public void 개명은_되돌리기_한_칸이다()
+    {
+        // 사용자 동작 하나 = 되돌리기 한 번. Id·판·배관이 각각 한 칸이면 Ctrl+Z 한 번에 셋이
+        // 어긋난 채 멈춘다.
+        World world = Build();
+
+        ChapterRenamer.Rename(world.Editor, world.ProjectPath, OldId, NewId);
+        world.Editor.Undo();
+
+        Assert.NotNull(world.Editor.FindChapter(OldId));
+        Assert.Null(world.Editor.FindChapter(NewId));
+        Assert.Contains(world.Editor.Project.Files, file => file.Name == OldId);
+        Assert.Contains(
+            world.Editor.Project.EnumerateNodes().OfType<SetNode>(),
+            node => node.Name == ChapterBoardSupply.ConditionSupplyNodeName(OldId));
+    }
+
+    [Fact]
+    public void 프로젝트에_없는_챕터는_개명하지_않는다()
+    {
+        World world = Build();
+
+        ChapterRenamer.Result result =
+            ChapterRenamer.Rename(world.Editor, world.ProjectPath, "없는챕터", NewId);
+
+        Assert.False(result.Renamed);
+        Assert.Contains("프로젝트에 없습니다", result.Failure);
+    }
+
     // ── 고치면서 생긴 사고 자리 ─────────────────────────────────────────────
 
     [Fact]
-    public void 대본_폴더를_못_옮기면_이름을_되돌린다()
+    public void 대본_폴더를_못_옮겨도_모델은_바뀌고_옛_파일은_사유와_함께_남는다()
     {
-        // ⛔ 반쯤 바뀐 챕터가 가장 나쁘다 — 워크북만 새 이름이면 그 챕터는 "대사가 하나도
-        //    없는 챕터"로 보이고, 노드를 열면 빈 워크북이 새로 생겨 원고가 둘로 갈린다.
-        //    이 건의 원래 증상 그대로다.
+        // 파일은 산출물이다 — 프로젝트에서 다시 낸다. 엑셀이 잡고 있어 못 옮긴 것은 개명의
+        // 실패가 아니라 "그 파일을 지금 옮기지 못했다"이고, 옛 파일은 사람이 치운다.
+        // (2026-10-29 전에는 모델까지 되돌렸다 — 원본이 파일이던 시절의 규칙이다.)
         World world = Build();
 
         string script = EpisodeLibrary.FindExisting(
             EpisodeLibrary.FolderFor(world.ProjectPath, OldId)!, "main05.02")!;
 
+        ChapterRenamer.Result result;
+
         // 엑셀이 대본을 잡고 있는 상태 — 폴더가 안 옮겨진다.
         using (new FileStream(script, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            ChapterRenamer.Result result =
-                ChapterRenamer.Rename(world.Editor, world.ProjectPath, OldId, NewId);
-
-            Assert.False(result.Renamed);
-            Assert.Contains("되돌렸습니다", result.Failure);
+            result = ChapterRenamer.Rename(world.Editor, world.ProjectPath, OldId, NewId);
         }
 
-        // 옛 이름 그대로 서 있다 — 워크북도, 대본 폴더도, 판도.
-        Assert.True(File.Exists(Path.Combine(ChapterLibrary.FolderFor(world.ProjectPath)!, OldId + ".xlsx")));
+        Assert.True(result.Renamed);
+        Assert.False(result.EpisodesMoved);
+        Assert.Contains("대본 폴더를 옮기지 못했습니다", result.FilesNotMoved);
+
+        // 모델은 새 이름이다 — 챕터도, 판도.
+        Assert.NotNull(world.Editor.FindChapter(NewId));
+        Assert.Contains(world.Editor.Project.Files, file => file.Name == NewId);
+
+        // 워크북은 옮겨졌고(잠긴 건 대본이다), 옛 대본 폴더는 그대로 남아 있다 — 지우지 않는다.
+        Assert.True(File.Exists(Path.Combine(ChapterLibrary.FolderFor(world.ProjectPath)!, NewId + ".xlsx")));
         Assert.True(Directory.Exists(EpisodeLibrary.FolderFor(world.ProjectPath, OldId)!));
-        Assert.Contains(world.Editor.Project.Files, file => file.Name == OldId);
     }
 
     [Fact]
-    public void 새_이름의_대본_폴더가_이미_있으면_멈춘다()
+    public void 새_이름의_대본_폴더가_이미_있으면_옮기지_않고_말한다()
     {
-        // 덮어쓰면 남의 원고가 사라진다 — 옮기기 전에 본다.
+        // 덮어쓰면 남의 원고가 사라진다 — 그 폴더는 건드리지 않고, 모델만 바꾸고 사유를 말한다.
         World world = Build();
         Directory.CreateDirectory(EpisodeLibrary.FolderFor(world.ProjectPath, NewId)!);
 
         ChapterRenamer.Result result =
             ChapterRenamer.Rename(world.Editor, world.ProjectPath, OldId, NewId);
 
-        Assert.False(result.Renamed);
-        Assert.Contains("이미 있습니다", result.Failure);
+        Assert.True(result.Renamed);
+        Assert.False(result.EpisodesMoved);
+        Assert.Contains("이미 있어", result.FilesNotMoved);
+        Assert.NotNull(world.Editor.FindChapter(NewId));
 
-        // 아무것도 안 건드렸다 — 워크북 이름도 그대로다.
-        Assert.True(File.Exists(Path.Combine(ChapterLibrary.FolderFor(world.ProjectPath)!, OldId + ".xlsx")));
+        // 옛 폴더도 새 폴더도 그대로다.
+        Assert.True(Directory.Exists(EpisodeLibrary.FolderFor(world.ProjectPath, OldId)!));
+        Assert.True(Directory.Exists(EpisodeLibrary.FolderFor(world.ProjectPath, NewId)!));
+    }
+
+    [Fact]
+    public void 아직_저장하지_않은_프로젝트도_챕터를_개명한다()
+    {
+        // 원본은 프로젝트다 — 옮길 파일이 아직 없을 뿐, 개명을 막을 이유가 아니다.
+        World world = Build();
+
+        ChapterRenamer.Result result = ChapterRenamer.Rename(world.Editor, null, OldId, NewId);
+
+        Assert.True(result.Renamed);
+        Assert.Null(result.FilesNotMoved);
+        Assert.NotNull(world.Editor.FindChapter(NewId));
     }
 
     [Fact]
@@ -203,6 +270,10 @@ public sealed class ChapterRenamerTests : IDisposable
         WriteScript(Path.Combine(episodes, "main05.02.xlsx"));
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(Path.Combine(chapters, OldId + ".xlsx"));
+
+        // 원본은 프로젝트다 — 챕터 모델이 있어야 개명할 것이 있다.
+        editor.EnsureChapter(OldId);
+        editor.AddEpisode(OldId, "main05.02", title: "조용한 복도", 0, 0);
 
         EpisodeWorkbookImporter.Run(
             editor, GameDefinition.Empty, board.Id, episodes, chapter);

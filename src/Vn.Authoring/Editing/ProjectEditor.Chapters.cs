@@ -100,7 +100,22 @@ public sealed partial class ProjectEditor
         Mutate(() => Project.Chapters.Remove(chapter));
     }
 
-    public void RenameChapter(string oldId, string newId)
+    /// <summary>
+    /// 챕터 Id를 바꾸고, 그 이름을 지고 있는 모델 둘 — 판(<c>StoryFile.Name</c>, 챕터 = 판 1:1)과
+    /// 조건 공급 설정노드(<c>챕터 {Id} 조건</c>) — 를 <b>한 번의 변경</b>으로 함께 바꾼다.
+    /// 되돌리기 한 번에 셋이 돌아온다.
+    ///
+    /// ⛔ <b>개명의 주인은 모델이다</b> (2026-10-29 · `docs/plans/excel-boundary.md` C2). 그 전에는
+    /// <see cref="Chapters.ChapterRenamer"/>가 워크북 파일·대본 폴더·판·배관을 옮기면서 정작
+    /// <c>Project.Chapters</c>의 Id는 안 바꿨다(이 메서드는 있었는데 아무도 안 불렀다) — 저장하고
+    /// 다시 열면 챕터는 옛 이름, 판은 새 이름이었다. 파일 이름 바꾸기는 후속 출력의 일이다.
+    ///
+    /// ⚠ 새 이름의 배관이 이미 있으면 배관은 <b>손대지 않는다</b> — 이름이 겹치면 어느 쪽이 그
+    /// 챕터의 배관인지 정해지지 않는다. 합치는 것은 조건을 옮기는 일이라 개명의 몫이 아니고,
+    /// 그 상태에서도 동기화가 새 이름 쪽에 마저 공급하므로 조용히 깨지지는 않는다.
+    /// </summary>
+    /// <returns>판·배관의 이름이 실제로 따라갔는가(없었으면 거짓).</returns>
+    public ChapterRenameEffect RenameChapter(string oldId, string newId)
     {
         ChapterDocument chapter = RequireChapter(oldId);
 
@@ -109,7 +124,32 @@ public sealed partial class ProjectEditor
             throw new InvalidOperationException($"챕터 '{newId}'가 이미 있습니다.");
         }
 
-        Mutate(() => chapter.ChapterId = newId);
+        StoryFile? board = EpisodeNaming.BoardOf(Project, oldId);
+
+        string oldSupplyName = ChapterBoardSupply.ConditionSupplyNodeName(oldId);
+        string newSupplyName = ChapterBoardSupply.ConditionSupplyNodeName(newId);
+        List<SetNode> supplies = Project.EnumerateNodes().OfType<SetNode>().ToList();
+
+        SetNode? supply = supplies.Any(node => string.Equals(node.Name, newSupplyName, StringComparison.Ordinal))
+            ? null
+            : supplies.FirstOrDefault(node => string.Equals(node.Name, oldSupplyName, StringComparison.Ordinal));
+
+        Mutate(() =>
+        {
+            chapter.ChapterId = newId;
+
+            if (board is not null)
+            {
+                board.Name = newId;
+            }
+
+            if (supply is not null)
+            {
+                supply.Name = newSupplyName;
+            }
+        });
+
+        return new ChapterRenameEffect(board is not null, supply is not null);
     }
 
     // ── 에피소드 ────────────────────────────────────────────────────────────
@@ -1651,3 +1691,8 @@ public sealed record ChapterConditionRemoveOutcome(
     public static ChapterConditionRemoveOutcome Refuse(string reason, IReadOnlyList<ChapterUse> uses) =>
         new(false, 0, uses, reason);
 }
+
+/// <summary>챕터 개명이 모델에서 함께 바꾼 것 — <see cref="ProjectEditor.RenameChapter"/>의 결과.</summary>
+/// <param name="BoardRenamed">판 이름이 따라갔는가(판이 아직 없었으면 거짓).</param>
+/// <param name="SupplyRenamed">조건 공급 노드의 이름이 따라갔는가.</param>
+public sealed record ChapterRenameEffect(bool BoardRenamed, bool SupplyRenamed);

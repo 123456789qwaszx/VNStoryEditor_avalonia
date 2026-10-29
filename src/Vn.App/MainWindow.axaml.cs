@@ -504,6 +504,7 @@ public partial class MainWindow : Window
             _session.SetStatus(
                 $"챕터 '{chapterId}' → '{newId}'로 바꿨습니다" +
                 (carried.Length > 0 ? $"({carried}도 함께)." : ".") +
+                (result.FilesNotMoved is { } notMoved ? $" ⚠ {notMoved}" : string.Empty) +
                 (result.StaleExport is { } stale
                     ? $" ⚠ 옛 이름의 내보내기 '{stale}'가 남아 있습니다 — 지우고 다시 내보내 주세요."
                     : " 내보낸 JSON이 있었다면 다시 내보내 주세요."));
