@@ -88,7 +88,7 @@ public sealed class HideWhenLockedRemovalTests : IDisposable
         ChapterWorkbookMigrator.Migrate(path);
 
         ChapterExportResult export = ChapterProgressionExporter.Export(
-            ChapterWorkbookReader.Read(path), episodesFolder: null);
+            ChapterWorkbookReader.Read(path));
 
         Assert.False(export.Refused, string.Join(
             " / ", export.Validation.All.Select(item => item.Message)));

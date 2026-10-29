@@ -40,7 +40,7 @@ public sealed class ProgressionSampleGoldenTests : IDisposable
     public void 건네는_표본이_지금_나가는_출력과_같다()
     {
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(ContractWorkbookPath);
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter);
         ChapterExportResult result = ChapterProgressionExporter.ExportValidated(
             chapter, validation, BuildProject());
 

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Vn.Authoring.Model;
 using System.Text;
 
@@ -64,7 +63,7 @@ public sealed class ChapterExportService
     /// <summary>진행 JSON이 놓이는 폴더 이름. 프로젝트 파일 옆이다.</summary>
     public const string ExportFolderName = "exported";
 
-    /// <summary>디스크가 그대로면 다시 증명하지 않는다 — 챕터별 (지문, 결과) 한 벌.</summary>
+    /// <summary>모델이 그대로면 다시 증명하지 않는다 — 챕터별 (지문, 결과) 한 벌.</summary>
     private readonly Dictionary<string, (string Fingerprint, ChapterValidationResult Result)>
         _cache = new(StringComparer.Ordinal);
 
@@ -82,12 +81,16 @@ public sealed class ChapterExportService
         chapterId + ".progression.json");
 
     /// <summary>
-    /// 챕터 하나의 검증 결과 — <b>파일이 그대로면 지난 결과를 그대로 준다</b> (2026-08-18).
+    /// 챕터 하나의 검증 결과 — <b>모델이 그대로면 지난 결과를 그대로 준다</b> (2026-08-18).
     ///
-    /// 검증은 순수 함수다: 챕터 워크북과 그 챕터의 대본 워크북들만 읽는다(에피소드마다
-    /// 파일을 열고, 평평화하고, 상태공간을 훑는다 — 챕터 하나에 200ms 가까이). 그런데
-    /// 화면은 갱신할 때마다 이것을 처음부터 다시 돌리고 있었다. 판을 한 번 다시 그리는
-    /// 값이 6ms인데 그 옆에서 400ms를 태우고 있던 셈이다.
+    /// 검증은 순수 함수다: 챕터 모델과 판(프로젝트)만 읽고 상태공간을 훑는다(챕터 하나에
+    /// 수십~수백 ms). 화면은 갱신할 때마다 이것을 처음부터 다시 돌리고 있었다. 판을 한 번
+    /// 다시 그리는 값이 6ms인데 그 옆에서 400ms를 태우고 있던 셈이다.
+    ///
+    /// ⚠ <b>지문은 검증이 실제로 읽는 것 — 모델 — 에서 짓는다</b> (2026-10-29 ·
+    /// `docs/plans/excel-boundary.md` C3). 그 전에는 챕터·대본 워크북의 SHA-256이었다 — 원본이
+    /// 프로젝트가 된 뒤에는 산출물의 해시라서, 되돌리기·조건 변경·출력 실패에 지문이 안 움직여
+    /// 옛 판정을 되쓸 수 있었다.
     /// </summary>
     /// <param name="project">
     /// 있으면 <b>`대사엔트리`가 실재하는 대사노드를 가리키는지</b>까지 검증한다
@@ -102,8 +105,7 @@ public sealed class ChapterExportService
     {
         ArgumentNullException.ThrowIfNull(entry);
 
-        string? episodesFolder = EpisodeLibrary.FolderFor(projectPath, entry.ChapterId);
-        string fingerprint = Fingerprint(entry.Path, episodesFolder, BoardNames(project, entry.ChapterId));
+        string fingerprint = Fingerprint(entry.Model!, BoardNames(project, entry.ChapterId));
 
         if (_cache.TryGetValue(entry.ChapterId, out var cached) &&
             string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
@@ -111,8 +113,7 @@ public sealed class ChapterExportService
             return cached.Result;
         }
 
-        ChapterValidationResult result =
-            ChapterValidator.Validate(entry.Model!, episodesFolder, project);
+        ChapterValidationResult result = ChapterValidator.Validate(entry.Model!, project);
         ValidationComputeCount++;
         _cache[entry.ChapterId] = (fingerprint, result);
 
@@ -245,95 +246,63 @@ public sealed class ChapterExportService
     }
 
     /// <summary>
-    /// 검증이 읽는 파일 전부의 (이름·내용 해시). 하나라도 다르면 다시 증명한다.
+    /// 검증이 읽는 것 전부의 지문 — 챕터 모델의 내용과 판의 상태. 하나라도 다르면 다시 증명한다.
     ///
-    /// 지문은 <b>파일 내용의 해시</b>다. 수정 시각·크기가 아니다: 화면은 자기가 워크북을
-    /// 쓰고 <b>그 자리에서 곧바로</b> 다시 읽는다(단추 하나가 쓰기와 재읽기를 잇따라 낸다).
-    /// 두 사건이 같은 시각 눈금에 들어가고 길이까지 같으면 시각·크기 지문은 "안 바뀌었다"고
-    /// 답하고, 화면은 방금 적은 값을 모르는 옛 결과를 보여 준다 — <b>캐시가 만드는 가장
-    /// 나쁜 거짓말</b>이다. 그 위험을 아예 없애려고 내용을 본다.
-    ///
-    /// 바이트를 읽는 값이 아깝지 않다: 검증은 그 파일들을 엑셀로 파싱하고 평평화한 뒤
-    /// 상태공간까지 훑는다(200ms 가까이). 여기서 재는 것은 그 앞의 몇 ms다.
-    ///
-    /// 읽지 못하는 파일은 이름만 남긴다 — 잠겨 있다가 풀리는 순간을 놓치지 않으려면
-    /// 그 상태도 지문의 일부여야 한다.
+    /// 모델의 값 객체는 전부 레코드라 <c>ToString</c>이 내용 그대로다(진단까지). 파일을 읽지
+    /// 않으므로 디스크가 바뀌어도(출력·잠김·손상) 지문은 그대로이고, 모델이 바뀌면(편집·되돌리기·
+    /// 가져오기) 반드시 움직인다 — 캐시가 <b>검증과 같은 것</b>을 보는 것이 규칙이다.
     /// </summary>
+    private static string Fingerprint(ChapterGraphModel chapter, IReadOnlyList<string>? boardNames)
+    {
+        var builder = new StringBuilder();
+
+        builder.Append("판|").Append(boardNames is null ? "없음" : string.Join(",", boardNames)).Append('\n');
+        builder.Append("챕터|").Append(chapter.ChapterId).Append('\n');
+
+        void Append(string label, IEnumerable<object> items)
+        {
+            builder.Append(label).Append('|');
+
+            foreach (object item in items)
+            {
+                builder.Append(item).Append('\u001f');
+            }
+
+            builder.Append('\n');
+        }
+
+        Append("에피소드", chapter.Episodes);
+        Append("간선", chapter.Edges);
+        Append("조건", chapter.Conditions);
+        Append("스탯", chapter.Stats);
+        Append("픽스처", chapter.Fixtures);
+        Append("선택지", chapter.ChoiceOptions);
+        Append("진단", chapter.Diagnostics);
+
+        return builder.ToString();
+    }
+
     /// <summary>
-    /// 그 챕터 판의 대사노드 이름들 — 정렬해서 지문에 넣는다. 판이 없으면 null이고,
-    /// 그것도 상태의 일부다(안 연 챕터 ↔ 연 챕터가 지문으로 갈린다).
-    /// </summary>
-    /// <summary>
-    /// 지문에 실을 <b>판의 상태</b>.
+    /// 지문에 실을 <b>판의 상태</b> — 그 챕터 판의 대사노드(이름·표식·줄이 있는지). 판이 없으면
+    /// null이고, 그것도 상태의 일부다(안 연 챕터 ↔ 연 챕터가 지문으로 갈린다).
     ///
-    /// ⚠ <b>그 챕터의 판만 보면 안 된다</b> (2026-08-25). 대사 노드를 찾는 규칙이
-    /// <c>MarkedEpisodeId</c>로 <b>프로젝트 전체</b>를 훑으므로(<see cref="ChapterBoard"/>),
-    /// 다른 판이 서는 것만으로도 이 챕터의 판정이 바뀐다. 자기 판만 재면 그 변화를 놓쳐
-    /// <b>"고쳤는데 계속 거부한다"</b>가 된다 — 실제로 한 번 그랬다: 처음 그리기에서
-    /// 노드가 아직 없어 거부된 챕터가, 동기화가 노드를 세운 뒤에도 옛 결론을 들고 있었다.
-    ///
-    /// 대사 노드는 이름과 <b>줄이 있는지</b>까지 싣는다 — 빈 노드가 오류이므로 줄이
-    /// 생기고 없어지는 것도 판정을 바꾼다.
+    /// 그 챕터의 판만 본다 — 대사 노드를 찾는 규칙(<see cref="ChapterBoard"/>)이 2026-10-29부터
+    /// 그 판만 보므로, 다른 판이 서는 것은 이 챕터의 판정을 바꾸지 않는다. 줄이 있는지까지 싣는
+    /// 이유: 빈 노드가 오류라 줄이 생기고 없어지는 것도 판정을 바꾼다.
     /// </summary>
     private static IReadOnlyList<string>? BoardNames(StoryProject? project, string chapterId)
     {
-        if (project is null)
+        if (project is null || EpisodeNaming.BoardOf(project, chapterId) is not { } board)
         {
             return null;
         }
 
-        return project.EnumerateNodes()
+        return board.Nodes
             .OfType<DialogueNode>()
             .Select(node =>
-                $"{node.Name}{node.MarkedEpisodeId}" +
+                $"{node.Name}{node.MarkedEpisodeId}" +
                 (project.FindScript(node.ScriptId)?.ActiveLines.Any() == true ? "1" : "0"))
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
-    }
-
-    private static string Fingerprint(
-        string chapterWorkbook,
-        string? episodesFolder,
-        IReadOnlyList<string>? boardNames)
-    {
-        var builder = new StringBuilder();
-
-        // 판의 노드 이름이 지문의 일부다 (2026-08-23) — `대사엔트리` 검사가 이것을 보므로,
-        // 동기화가 노드를 만들어도 캐시가 안 깨지면 "고쳤는데 계속 거부한다"가 된다.
-        builder.Append("판|").Append(boardNames is null ? "없음" : string.Join(",", boardNames))
-               .Append('\n');
-
-        void Append(string path)
-        {
-            try
-            {
-                byte[] hash = SHA256.HashData(File.ReadAllBytes(path));
-
-                builder.Append(Path.GetFileName(path)).Append('|')
-                       .Append(Convert.ToHexString(hash)).Append('\n');
-            }
-            catch (IOException)
-            {
-                builder.Append(path).Append("|?\n");
-            }
-            catch (UnauthorizedAccessException)
-            {
-                builder.Append(path).Append("|?\n");
-            }
-        }
-
-        Append(chapterWorkbook);
-
-        if (episodesFolder is not null && Directory.Exists(episodesFolder))
-        {
-            foreach (string path in Directory.EnumerateFiles(episodesFolder, "*.xlsx")
-                         .Where(file => !Path.GetFileName(file).StartsWith("~$", StringComparison.Ordinal))
-                         .OrderBy(file => file, StringComparer.Ordinal))
-            {
-                Append(path);
-            }
-        }
-
-        return builder.ToString();
     }
 }

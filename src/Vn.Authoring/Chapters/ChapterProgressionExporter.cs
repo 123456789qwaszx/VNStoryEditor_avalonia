@@ -42,13 +42,11 @@ public static class ChapterProgressionExporter
     /// 연출 그래프의 배선을 읽을 프로젝트. 없으면 판에서 오는 값(대사 엔트리 이름)이 빈
     /// 문자열이 된다 — 챕터 모델만으로 부르는 자리(테스트·CLI)가 그대로 살아 있어야 한다.
     /// </param>
-    public static ChapterExportResult Export(
-        ChapterGraphModel chapter, string? episodesFolder, StoryProject? project = null)
+    public static ChapterExportResult Export(ChapterGraphModel chapter, StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(chapter);
 
-        return ExportValidated(
-            chapter, ChapterValidator.Validate(chapter, episodesFolder), project);
+        return ExportValidated(chapter, ChapterValidator.Validate(chapter, project), project);
     }
 
     /// <summary>

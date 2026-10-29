@@ -40,7 +40,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         // 아래 테스트가 따로 고정한다.
         ChapterGraphModel trimmed = Trim(chapter, remove: "branch05.02A");
 
-        ChapterExportResult result = ChapterProgressionExporter.Export(trimmed, episodesFolder: null);
+        ChapterExportResult result = ChapterProgressionExporter.Export(trimmed);
 
         Assert.False(result.Refused,
             string.Join(" / ", result.Validation.All.Select(item => item.Message)));
@@ -128,7 +128,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         // 그 상태로 내보내려 하면 거부되고, 무엇이 왜인지가 담긴다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
 
-        ChapterExportResult result = ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        ChapterExportResult result = ChapterProgressionExporter.Export(chapter);
 
         Assert.True(result.Refused);
         Assert.Null(result.Json);
@@ -257,7 +257,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         // (보이는 칸 둘 + 빈 칸들)이 오류 0으로 읽히는 것이 그 계약이다.
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(SamplePath);
 
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter);
 
         Assert.DoesNotContain(validation.Diagnostics, item =>
             item.Severity == ChapterDiagnosticSeverity.Error);
@@ -282,7 +282,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         }
 
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(path);
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter);
 
         // 안 이은 칸으로는 아무 말도 나오지 않는다(견본의 다른 진단은 그대로 둔다).
         Assert.DoesNotContain(validation.Diagnostics, item => item.Message.Contains("간선이 없습니다"));
@@ -315,7 +315,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             []);
 
         ChapterExportResult result =
-            ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+            ChapterProgressionExporter.Export(chapter);
         Assert.False(result.Refused,
             string.Join(" / ", result.Validation.All.Select(item => item.Message)));
 
@@ -399,7 +399,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
         ChapterWorkbookWriter.AddEdge(path, "ep1", "ep2", optionLabel: "무시한다");
 
         ChapterExportResult result = ChapterProgressionExporter.Export(
-            ChapterWorkbookReader.Read(path), episodesFolder: null);
+            ChapterWorkbookReader.Read(path));
         Assert.False(result.Refused, string.Join(" / ", result.Validation.All.Select(item => item.Message)));
 
         using JsonDocument document = JsonDocument.Parse(result.Json!);
@@ -448,7 +448,7 @@ public sealed class ChapterExportAndFixtureTests : IDisposable
             []);
 
         ChapterExportResult result =
-            ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+            ChapterProgressionExporter.Export(chapter);
         Assert.False(result.Refused,
             string.Join(" / ", result.Validation.All.Select(item => item.Message)));
 

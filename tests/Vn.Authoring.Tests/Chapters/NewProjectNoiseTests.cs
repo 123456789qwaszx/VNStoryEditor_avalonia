@@ -25,18 +25,17 @@ public sealed class NewProjectNoiseTests : IDisposable
     public void 갓_만든_챕터와_빈_에피소드는_고칠_것이_없다()
     {
         string chapters = Path.Combine(_directory, "chapters");
-        string episodes = Path.Combine(_directory, "episodes");
 
-        // 툴이 하는 그대로: [＋ 챕터] → [＋ 에피소드] → 노드 더블클릭(빈 워크북 생성).
+        // 툴이 하는 그대로: [＋ 챕터] → [＋ 에피소드]. (대본 워크북은 2026-10-29부터 검증이
+        // 읽지 않는다 — 산출물이다.)
         ChapterWorkbookWriter.EnsureChapterWorkbook(
             chapters, "ch01", [("trust", "신뢰"), ("anger", "분노")]);
         string chapterPath = Path.Combine(chapters, "ch01.xlsx");
 
         ChapterWorkbookWriter.AddEpisode(chapterPath, "ep01", title: string.Empty, 0, 0);
-        EpisodeLibrary.EnsureWorkbook(episodes, "ep01");
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(chapterPath);
-        ChapterValidationResult validation = ChapterValidator.Validate(model, episodes);
+        ChapterValidationResult validation = ChapterValidator.Validate(model);
 
         string[] shown = validation.All
             .Where(item => item.Severity != ChapterDiagnosticSeverity.Info)

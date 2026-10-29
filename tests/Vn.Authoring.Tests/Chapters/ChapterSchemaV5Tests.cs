@@ -349,7 +349,7 @@ public sealed class ChapterSchemaV5Tests : IDisposable
         Assert.Equal(2, model.Edges.Count(edge => edge.OptionLabel == "왼쪽으로"));
 
         // 순서는 `간선` 시트의 행 순서 — 적은 순서가 곧 화면에 뜨는 순서다.
-        string json = ChapterProgressionExporter.Export(model, episodesFolder: null).Json!;
+        string json = ChapterProgressionExporter.Export(model).Json!;
         Assert.True(
             json.IndexOf("왼쪽으로", StringComparison.Ordinal) <
             json.IndexOf("계속", StringComparison.Ordinal),

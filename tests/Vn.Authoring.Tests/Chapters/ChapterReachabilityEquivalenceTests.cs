@@ -131,7 +131,7 @@ public sealed class ChapterReachabilityEquivalenceTests
             plainAdvance: true);
 
         // 툴 검증만 보면 오류가 없다 — 옛 관문은 여기서 통과시켰다.
-        ChapterValidationResult validation = ChapterValidator.Validate(chapter, episodesFolder: null);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter);
 
         Assert.DoesNotContain(
             validation.All, item => item.Severity == ChapterDiagnosticSeverity.Error);

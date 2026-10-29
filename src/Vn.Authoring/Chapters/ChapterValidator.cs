@@ -16,15 +16,17 @@ public sealed record ChapterValidationResult(
 }
 
 /// <summary>
-/// G7 — 챕터·에피소드를 한꺼번에 검증한다. 구조 검증(리더·평평화가 이미 낸 것 + 교차 검증)과
-/// 도달성 증명을 묶어, G8 내보내기가 <b>이 결과 하나만 보고 거부를 결정</b>하게 한다(Gate C 3번).
+/// G7 — 챕터를 검증한다. 구조 검증(모델이 이미 낸 것 + 판과의 교차 검증)과 도달성 증명을 묶어,
+/// G8 내보내기가 <b>이 결과 하나만 보고 거부를 결정</b>하게 한다(Gate C 3번).
+///
+/// ⛔ <b>프로젝트만 본다</b> (2026-10-29 · `docs/plans/excel-boundary.md` C3). 2026-10-29까지 여기가
+/// <c>episodes/{챕터}/*.xlsx</c>를 다시 읽어 리더·평평화의 진단을 합쳤다. 스탯 증감은 이미 챕터
+/// 모델(간선)에서 읽고 "줄이 없는 노드"는 이미 프로젝트(<see cref="VerifyScenesFilled"/>)로 보므로,
+/// 엑셀에서 얻던 것은 <b>산출물에 대한 리더의 불평</b>뿐이었다 — 원본이 같은데 산출물의 상태(없음·
+/// 손상·잠김)로 판정이 달라지는 자리. 엑셀을 읽는 검증은 가져오기(<c>Chapters/Import</c>)에만 있다.
 /// </summary>
 public static class ChapterValidator
 {
-    /// <param name="episodesFolder">
-    /// <b>그 챕터의</b> 대본 폴더 <c>episodes/{ChapterId}/</c> (2026-08-16 — 챕터별 격리).
-    /// null이거나 없으면 워크북 검증은 건너뛴다.
-    /// </param>
     /// <param name="project">
     /// 있으면 <b>`대사엔트리`가 실재하는 대사노드를 가리키는지</b>까지 본다
     /// (2026-08-23 · <see cref="VerifyDialogueEntriesOnBoard"/>). null이면 그 검사를
@@ -32,7 +34,6 @@ public static class ChapterValidator
     /// </param>
     public static ChapterValidationResult Validate(
         ChapterGraphModel chapter,
-        string? episodesFolder,
         StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(chapter);
@@ -41,46 +42,6 @@ public static class ChapterValidator
 
         VerifyDialogueEntriesOnBoard(chapter, project, diagnostics);
         VerifyScenesFilled(chapter, project, diagnostics);
-
-        var conditionsByLabel = chapter.Conditions
-            .ToDictionary(condition => condition.Label, condition => condition, StringComparer.Ordinal);
-
-
-        foreach (ChapterEpisode episode in chapter.Episodes)
-        {
-            string? path = episodesFolder is null
-                ? null
-                : EpisodeLibrary.FindExisting(episodesFolder, episode.EpisodeId);
-
-            if (path is null)
-            {
-                continue; // 아직 대본이 없는 에피소드는 정상이다 — 스탯을 바꾸지 않는 것으로 다룬다.
-            }
-
-            EpisodeWorkbookModel model;
-
-            try
-            {
-                model = EpisodeWorkbookReader.Read(path);
-            }
-            catch (XlsxReadException exception)
-            {
-                diagnostics.Add(new ChapterDiagnostic(
-                    ChapterDiagnosticSeverity.Error,
-                    ChapterDiagnosticCode.SheetMissing,
-                    path, null, null, null,
-                    $"에피소드 워크북을 읽지 못했습니다: {exception.Message}"));
-                continue;
-            }
-
-            diagnostics.AddRange(model.Diagnostics);
-
-            EpisodeFlattenResult flattened = EpisodeFlattener.Flatten(model, conditionsByLabel);
-            diagnostics.AddRange(flattened.Diagnostics);
-
-            // CHOICE/OPTION은 v10에서 규격에서 빠졌다 — 이제 리더가 그 행을 읽는 자리에서
-            // "선택지 시트로 옮기라"고 직접 말한다(위의 model.Diagnostics에 실려 온다).
-        }
 
         // 스탯 증감의 원천은 간선이다 (2026-08-14) — 증명기가 챕터 모델에서 직접 읽는다.
         ChapterReachabilityResult reachability = ChapterReachabilityProver.Prove(chapter);

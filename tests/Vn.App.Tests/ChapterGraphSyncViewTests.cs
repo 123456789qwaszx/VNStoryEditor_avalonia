@@ -460,8 +460,7 @@ public sealed class ChapterGraphSyncViewTests
             Path.Combine(Path.GetDirectoryName(project.ChapterPath)!, chapterId + ".xlsx"));
 
         // ⚠ 내보내기까지 돌린다 — 검증만 보면 코어 관문(CoreRefusals)이 낸 거부가 안 보인다.
-        ChapterExportResult result = ChapterProgressionExporter.Export(
-            model, Path.Combine(Path.GetDirectoryName(project.EpisodesFolder)!, chapterId), board);
+        ChapterExportResult result = ChapterProgressionExporter.Export(model, board);
 
         string errors = string.Join(" || ", result.Validation.All
             .Where(item => item.Severity == ChapterDiagnosticSeverity.Error)

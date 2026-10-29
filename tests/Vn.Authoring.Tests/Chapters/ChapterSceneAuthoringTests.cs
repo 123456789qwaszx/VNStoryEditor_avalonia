@@ -83,7 +83,7 @@ public sealed class ChapterSceneAuthoringTests : IDisposable
             new ChapterEdge("root", "inside", "계속", null, null, 11),
             new ChapterEdge("inside", "next", "다음 장면", null, null, 12));
 
-        ChapterExportResult export = ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        ChapterExportResult export = ChapterProgressionExporter.Export(chapter);
         Assert.False(export.Refused);
 
         using JsonDocument document = JsonDocument.Parse(export.Json!);
@@ -103,7 +103,7 @@ public sealed class ChapterSceneAuthoringTests : IDisposable
             new ChapterEdge("root", "a", "A로", null, null, 11),
             new ChapterEdge("root", "b", "B로", null, null, 12));
 
-        ChapterExportResult export = ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        ChapterExportResult export = ChapterProgressionExporter.Export(chapter);
 
         Assert.True(export.Refused);
         Assert.Contains(export.Validation.All, item =>
@@ -119,7 +119,7 @@ public sealed class ChapterSceneAuthoringTests : IDisposable
             new ChapterEdge("root", "middle", "나간다", null, null, 11),
             new ChapterEdge("middle", "root", "돌아온다", null, null, 12));
 
-        ChapterExportResult export = ChapterProgressionExporter.Export(chapter, episodesFolder: null);
+        ChapterExportResult export = ChapterProgressionExporter.Export(chapter);
 
         Assert.False(export.Refused, string.Join(" / ", export.Validation.All.Select(item => item.Message)));
     }

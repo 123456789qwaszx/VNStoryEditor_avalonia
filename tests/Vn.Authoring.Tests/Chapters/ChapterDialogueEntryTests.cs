@@ -51,7 +51,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
         project.Files.Add(file);
 
         ChapterValidationResult validation =
-            ChapterValidator.Validate(chapter, episodesFolder: null, project);
+            ChapterValidator.Validate(chapter, project);
 
         // 에피소드마다 제 행에서 선다 — 세 개가 비었으면 세 줄이다.
         Assert.Equal(
@@ -86,7 +86,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
         project.Files.Add(file);
 
         ChapterExportResult result =
-            ChapterProgressionExporter.Export(chapter, episodesFolder: null, project);
+            ChapterProgressionExporter.Export(chapter, project);
 
         using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
 
@@ -118,7 +118,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
         project.Files.Add(mine);
 
         ChapterExportResult result =
-            ChapterProgressionExporter.Export(chapter, episodesFolder: null, project);
+            ChapterProgressionExporter.Export(chapter, project);
 
         using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
 
@@ -143,7 +143,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
         project.Files.Add(other);
 
         ChapterValidationResult validation =
-            ChapterValidator.Validate(chapter, episodesFolder: null, project);
+            ChapterValidator.Validate(chapter, project);
 
         Assert.Contains(
             validation.All,
@@ -155,7 +155,7 @@ public sealed class ChapterDialogueEntryTests : IDisposable
     {
         // 챕터 모델만으로 부르는 자리(CLI·테스트)가 그대로 살아 있어야 한다.
         ChapterExportResult result =
-            ChapterProgressionExporter.Export(BuildChapter(), episodesFolder: null);
+            ChapterProgressionExporter.Export(BuildChapter());
 
         using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
 

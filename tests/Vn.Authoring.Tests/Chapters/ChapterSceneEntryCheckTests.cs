@@ -103,7 +103,7 @@ public sealed class ChapterSceneEntryCheckTests
 
     private static bool Refused(ChapterDocument chapter) =>
         ChapterProgressionExporter
-            .Export(chapter.ToGraphModel("chapters/ch01.xlsx"), episodesFolder: null)
+            .Export(chapter.ToGraphModel("chapters/ch01.xlsx"))
             .Refused;
 
     /// <summary>shared 장면에 밖에서 들어오는 자리가 둘 — 규칙 위반.</summary>

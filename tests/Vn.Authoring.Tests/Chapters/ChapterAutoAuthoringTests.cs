@@ -54,7 +54,7 @@ public sealed class ChapterAutoAuthoringTests : IDisposable
         Assert.True(edge.Auto);
         Assert.DoesNotContain(model.Errors, item => item.Code == ChapterDiagnosticCode.OptionLabelBlank);
 
-        ChapterExportResult export = ChapterProgressionExporter.Export(model, episodesFolder: null);
+        ChapterExportResult export = ChapterProgressionExporter.Export(model);
         Assert.False(export.Refused, string.Join(" / ", export.Validation.All.Select(item => item.Message)));
 
         using JsonDocument json = JsonDocument.Parse(export.Json!);

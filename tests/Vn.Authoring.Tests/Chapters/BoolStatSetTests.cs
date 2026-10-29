@@ -185,7 +185,7 @@ public sealed class BoolStatSetTests : IDisposable
         ChapterGraphModel model = Read("trust +1");
 
         Assert.False(
-            ChapterProgressionExporter.Export(model, episodesFolder: null).Refused);
+            ChapterProgressionExporter.Export(model).Refused);
 
         // ⚠ 정수 증감은 `Add`를 **비우지 않고 명시**한다 — 저쪽은 빈 문자열도 더하기로
         // 읽지만(구 JSON 호환), 적어 두면 "아무도 안 정한 것"과 "더하기로 정한 것"이
@@ -232,7 +232,7 @@ public sealed class BoolStatSetTests : IDisposable
     /// <summary>내보내기 — 거부되면 사유를 그대로 들고 넘어진다.</summary>
     private static System.Text.Json.JsonDocument Exported(ChapterGraphModel model)
     {
-        ChapterExportResult result = ChapterProgressionExporter.Export(model, episodesFolder: null);
+        ChapterExportResult result = ChapterProgressionExporter.Export(model);
 
         Assert.False(result.Refused,
             string.Join(" / ", result.Validation.All.Select(item => item.Message)));

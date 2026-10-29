@@ -177,7 +177,7 @@ public sealed class ChapterEdgeStatTests : IDisposable
         ChapterWorkbookWriter.UpdateEdge(path, "ep1", "ep2", statChanges: "trust +2");
 
         ChapterGraphModel model = ChapterWorkbookReader.Read(path);
-        ChapterExportResult result = ChapterProgressionExporter.Export(model, episodesFolder: null);
+        ChapterExportResult result = ChapterProgressionExporter.Export(model);
 
         Assert.False(result.Refused,
             string.Join(" / ", result.Validation.All.Select(item => item.Message)));

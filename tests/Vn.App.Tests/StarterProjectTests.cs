@@ -65,8 +65,7 @@ public sealed class StarterProjectTests : IDisposable
                 .Order(StringComparer.Ordinal));
 
         // 도달성 증명이 통과한다 — 닿을 수 없는 에피소드가 없다.
-        ChapterValidationResult validation = ChapterValidator.Validate(
-            chapter, EpisodeLibrary.FolderFor(manifest, "ch01")!);
+        ChapterValidationResult validation = ChapterValidator.Validate(chapter);
 
         Assert.False(validation.HasErrors, string.Join("\n", validation.All.Select(item => item.Message)));
     });
@@ -107,8 +106,7 @@ public sealed class StarterProjectTests : IDisposable
         ChapterGraphModel chapter = ChapterWorkbookReader.Read(
             Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx"));
 
-        ChapterExportResult result = ChapterProgressionExporter.Export(
-            chapter, EpisodeLibrary.FolderFor(manifest, "ch01")!);
+        ChapterExportResult result = ChapterProgressionExporter.Export(chapter);
 
         Assert.False(result.Refused, string.Join("\n", result.Validation.All.Select(item => item.Message)));
         Assert.Contains("\"StartEpisodeId\": \"시작\"", result.Json!, StringComparison.Ordinal);
