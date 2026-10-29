@@ -3,24 +3,18 @@ using ClosedXML.Excel;
 namespace Vn.Authoring.Chapters;
 
 /// <summary>
-/// 에피소드 워크북에 쓰는 <b>유일한 자리</b> (2026-08-24 소유자: "연출 그래프에서도 대사를
-/// 편집하는 게 편하다").
+/// 에피소드 워크북(산출물)에 <b>셀 단위로</b> 손대는 마지막 자리 — 남은 것은
+/// <see cref="SeedFirstLineIfEmpty"/> 하나다.
 ///
-/// <b>왜 이것이 있어야 했나</b> — 예전에는 없었고, 그게 옳았다. 연출 그래프의 엑셀노드는
-/// 본문이 잠겨 있었고 README도 <i>"대사 본문·화자 → 도구는 여기에 쓰지 않습니다"</i>라고
-/// 적었다. 그런데 잠금을 <b>그냥 풀 수는 없다</b>: <see cref="ChapterBoardSupply.Sync"/>는
-/// 동기화마다 워크북 내용으로 노드 본문을 통째로 덮어쓰고, 그 동기화는 챕터를 고를 때마다·
-/// 워크북이 저장될 때마다 돈다. 잠금만 풀면 사람이 고친 글이 다음 동기화에 <b>증발한다</b> —
-/// 이 코드베이스가 "가장 나쁜 화면"이라고 부르는 바로 그것이다.
+/// ⛔ 화자 칸·내용 칸을 고치던 길(<c>RenameSpeaker</c>·<c>SetLine</c>)은 2026-10-29에 걷혔다
+/// (`docs/plans/excel-boundary.md` C4 · R5). 원본은 프로젝트고 워크북은 산출물이다 — 고칠 것은
+/// 프로젝트의 줄이고, 워크북은 <see cref="EpisodeScriptOutput"/>이 통째로 다시 낸다. 셀을 고치는
+/// 길은 머리글 행(이쪽 1행 · 이미터 2행)처럼 규격을 두 벌로 만들고, 그 두 벌이 갈렸을 때
+/// 조용히 실패했다.
 ///
-/// 그래서 편집을 여는 값은 <b>편집을 엑셀 셀로 곧장 내보내는 것</b>이다. 챕터 그래프가
-/// 2026-08-12에 통과한 그 길과 같다(G-2 v2): 원본은 여전히 엑셀이고, 툴의 편집은 해당
-/// 셀만 고치는 외과수술이다. 그러면 다음 동기화가 읽는 값이 이미 사람이 쓴 값이라 되돌릴
-/// 것이 없다.
-///
-/// <b>여는 것은 두 칸뿐이다</b> (소유자 결정) — 화자(E열)와 내용(F열). 줄을 더하고 지우고
-/// 옮기는 것, 조건 블록(IF~ENDIF)은 <b>엑셀 소유 그대로다</b>. 그것들은 인덱스 재배치와
-/// 빈 템플릿 행 처리가 얽혀 있어, 열면 표의 구조를 두 곳이 갖게 된다.
+/// 여기 남은 심기는 <b>빈 유물</b>(에피소드를 지웠다 같은 Id로 다시 더했을 때 남아 있던 파일)에
+/// 첫 대사를 놓는 일이다 — 사람이 쓴 글에는 손대지 않는다. 산출물이 프로젝트에서 통째로 나오게
+/// 되면 이것도 함께 사라진다(C5).
 /// </summary>
 public static class EpisodeWorkbookWriter
 {
@@ -34,32 +28,6 @@ public static class EpisodeWorkbookWriter
     private const int ColumnIndex = 1;
     private const int ColumnSpeaker = 3;
     private const int ColumnText = 4;
-
-    /// <summary>
-    /// 대사 한 줄의 화자·내용을 고친다. 행은 <b>인덱스(A열)로</b> 찾는다 — 줄의 신원이
-    /// 인덱스이기 때문이다(G-5). 엑셀 행 번호로 찾으면 사람이 시트에서 행을 하나 끼우는
-    /// 순간 엉뚱한 줄을 덮는다.
-    /// </summary>
-    /// <param name="index">C열 값. 노드의 <c>ExcelLineMap</c>이 LineId를 이 값에 묶어 둔다.</param>
-    public static ChapterWriteResult SetLine(
-        string path, int index, string? speaker, string? text)
-    {
-        return Mutate(path, workbook =>
-        {
-            IXLWorksheet sheet = FindEpisodeSheet(workbook)
-                ?? throw new InvalidOperationException(
-                    "이 워크북에서 대본 시트를 찾지 못했습니다 — 머리글이 규격과 다릅니다.");
-
-            int row = FindRowByIndex(sheet, index)
-                ?? throw new InvalidOperationException(
-                    $"인덱스 {index}인 행이 없습니다 — 엑셀에서 그 줄이 지워졌을 수 있습니다.");
-
-            // v15 — 모든 행이 대사다. 블록 행 빗장은 조건 블록과 함께 사라졌다.
-
-            Set(sheet, row, ColumnSpeaker, speaker);
-            Set(sheet, row, ColumnText, text);
-        });
-    }
 
     /// <summary>
     /// 워크북이 <b>사람의 흔적 하나 없이</b> 비어 있으면 첫 대사를 심는다 (2026-08-26).
@@ -113,57 +81,6 @@ public static class EpisodeWorkbookWriter
         return (result, seeded);
     }
 
-    // ⛔ ClearBlockRowIndexes는 2026-09-16에 사라졌다 (규격 v15 — R-C). 블록 행에 남은
-    //    템플릿 번호를 치우던 함수인데, 블록 행 자체가 없어졌다. 옛 파일의 잔해는
-    //    EpisodeWorkbookMigrator가 v15로 이행하면서 한 번에 걷는다.
-
-    public static (ChapterWriteResult Result, int Changed) RenameSpeaker(
-        string path, string oldName, string newName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-
-        string from = (oldName ?? string.Empty).Trim();
-        string to = (newName ?? string.Empty).Trim();
-
-        if (from.Length == 0 || to.Length == 0 ||
-            string.Equals(from, to, StringComparison.Ordinal))
-        {
-            return (ChapterWriteResult.Ok, 0);
-        }
-
-        int changed = 0;
-
-        ChapterWriteResult result = Mutate(path, workbook =>
-        {
-            IXLWorksheet sheet = FindEpisodeSheet(workbook)
-                ?? throw new InvalidOperationException(
-                    "이 워크북에서 대본 시트를 찾지 못했습니다 — 머리글이 규격과 다릅니다.");
-
-            foreach (IXLRow row in sheet.RowsUsed().Where(item => item.RowNumber() > HeaderRow))
-            {
-                int number = row.RowNumber();
-
-                if (!string.Equals(Cell(sheet, number, ColumnSpeaker), from, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                Set(sheet, number, ColumnSpeaker, to);
-                changed++;
-            }
-
-            // 안 바뀐 파일을 다시 쓰면 감시가 깨어나고 내용 해시가 달라져, 아무 일도 없었는데
-            // 그 챕터의 대본을 전부 다시 읽는다.
-            if (changed == 0)
-            {
-                throw new NothingToWriteException();
-            }
-        });
-
-        // 못 썼으면 센 것도 없던 일이다 — 파일은 옛 이름 그대로다.
-        return result.Written ? (result, changed) : (result, 0);
-    }
-
     /// <summary>쓸 것이 없다는 신호 — <see cref="Mutate"/>의 저장을 건너뛴다.</summary>
     private sealed class NothingToWriteException : Exception;
 
@@ -173,28 +90,8 @@ public static class EpisodeWorkbookWriter
                 string.Equals(Cell(sheet, HeaderRow, offset + 1), header, StringComparison.Ordinal))
                 .All(matches => matches));
 
-    private static int? FindRowByIndex(IXLWorksheet sheet, int index) =>
-        sheet.RowsUsed()
-            .Where(row => row.RowNumber() > HeaderRow)
-            .FirstOrDefault(row =>
-                int.TryParse(
-                    Cell(sheet, row.RowNumber(), ColumnIndex),
-                    out int value) && value == index)
-            ?.RowNumber();
-
     private static string Cell(IXLWorksheet sheet, int row, int column) =>
         sheet.Cell(row, column).GetString().Trim();
-
-    private static void Set(IXLWorksheet sheet, int row, int column, string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            sheet.Cell(row, column).Clear(XLClearOptions.Contents);
-            return;
-        }
-
-        sheet.Cell(row, column).SetValue(value);
-    }
 
     /// <summary>
     /// 메모리 사본에서 고치고 원본에 저장한다 — <see cref="ChapterWorkbookWriter"/>의
@@ -202,8 +99,7 @@ public static class EpisodeWorkbookWriter
     /// 그대로 두고 사유만 돌려준다: 반쯤 쓴 워크북은 없다.
     ///
     /// ⚠ 백업(.bak)은 두지 않는다. 저쪽이 백업을 켜는 것은 <b>지우는 종류의 쓰기</b>인데
-    /// (행·간선 삭제) 여기서 여는 것은 두 칸의 덮어쓰기뿐이고, 그 원본은 사람이 방금 보고
-    /// 있던 글이다. 대사 한 자 고칠 때마다 .bak을 굴리면 그게 더 시끄럽다.
+    /// (행·간선 삭제) 여기서 하는 것은 빈 파일에 첫 줄을 놓는 일뿐이다.
     /// </summary>
     private static ChapterWriteResult Mutate(string path, Action<XLWorkbook> edit)
     {

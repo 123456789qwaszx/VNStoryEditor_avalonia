@@ -118,6 +118,15 @@ public sealed class SpeakerTabTests : IDisposable
         (ChapterGraphView view, AuthoringSession session, _) = Show();
 
         Add(view, "늙은 상인", "merchant");
+
+        // 원본은 프로젝트다 (2026-10-29 · excel-boundary C4) — 대본을 들여와야 바꿀 줄이 있고,
+        // 워크북은 그 줄에서 다시 나온다. 두 챕터 다 판을 세워 둬야 들여오기가 둘 다 돈다.
+        // 등록이 먼저다: 공백 든 이름은 등록돼 있어야 파서가 화자로 읽는다.
+        session.Editor.EnsureChapterBoard("ch01");
+        session.Editor.EnsureChapterBoard("ch02");
+        view.ImportEpisodes();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
         Rename(view, 0, "떠돌이 상인");
 
         SpeakerSpec saved = Assert.Single(session.Definition.Speakers);
@@ -259,15 +268,11 @@ public sealed class SpeakerTabTests : IDisposable
         workbook.SaveAs(path);
     }
 
-    /// <summary>그 대본 첫 줄의 화자 칸에 실제로 적혀 있는 글자.</summary>
-    private string SpeakerCell(string chapterId, string episodeId)
-    {
-        using var workbook = new XLWorkbook(EpisodePath(chapterId, episodeId));
-
-        return workbook.Worksheets
-            .First(candidate => candidate.Cell(1, 1).GetString().Trim() == "인덱스")
-            .Cell(2, 3).GetString().Trim();
-    }
+    /// <summary>그 대본(산출물) 첫 줄의 화자 칸에 실제로 적혀 있는 글자 — 머리글 행은 리더가 찾는다.</summary>
+    private string SpeakerCell(string chapterId, string episodeId) =>
+        EpisodeWorkbookReader.Read(EpisodePath(chapterId, episodeId)).Rows
+            .First(row => row.Speaker.Length > 0)
+            .Speaker;
 
     private string EpisodePath(string chapterId, string episodeId) =>
         Path.Combine(_directory, EpisodeLibrary.FolderName, chapterId, episodeId + ".xlsx");
