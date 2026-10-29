@@ -75,13 +75,14 @@
                      그 그림자였다. 이제 표시는 위 배너 하나뿐이다.
                      그 오른쪽 끝이 파괴적 동작의 자리다 — 빨갛게, 편집이 열렸을 때만 보인다. -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-                    <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 잠금이 풀릴 때
-                         갑자기 튀어나오면 그 자리를 누르던 손이 삭제를 누른다(실사례).
-                         평소엔 회색·비활성, 편집이 열려 있을 때만 빨갛게 살아난다. -->
+                    <!-- 삭제는 늘 같은 자리에 있다 (2026-08-16 소유자) — 자리가 움직이면 그 자리를
+                         누르던 손이 삭제를 누른다(실사례). 빨간 것은 지우는 단추라서다. -->
                     <Button x:Name="DeleteEpisodeButton"
                             Content="에피소드 삭제"
                             FontSize="11"
                             VerticalAlignment="Center"
+                            Background="#C0392B"
+                            Foreground="White"
                             ToolTip.Tip="선택한 에피소드의 행과 그 에피소드를 오가는 간선을 함께 지웁니다. 대본 엑셀 파일은 .bak으로 밀어 두고, 챕터의 선택지 문구는 그대로 둡니다." />
                 </StackPanel>
             </Grid>
@@ -227,19 +228,20 @@
                      아래로도 끌린다. 배너가 떴다 사라져도 목록 높이는 안 흔들린다. -->
                 <Grid Grid.Row="2" RowDefinitions="Auto,*">
 
-                <!-- 엑셀이 챕터 파일을 열고 있으면 툴의 모든 쓰기가 거부된다 (2026-08-16
-                     실사례: 챕터 더블클릭으로 엑셀을 연 뒤 툴에서 고치려다 전부 막혔다).
-                     누르기 전에 화면이 먼저 말한다 — 상태줄 한 줄은 묻힌다. -->
+                <!-- 엑셀이 챕터 파일을 열고 있으면 그 파일의 갱신이 미뤄진다 (2026-08-16 실사례:
+                     챕터 더블클릭으로 엑셀을 연 뒤 툴에서 고쳤는데 파일이 안 따라왔다). 쓰기 전에
+                     화면이 먼저 말한다 — 상태줄 한 줄은 묻힌다. 막는 것이 아니라 알리는 것이라
+                     (2026-10-29 C6) 빨강이 아니라 호박색이다. -->
                 <Border x:Name="LockBanner"
                         Grid.Row="0"
                         IsVisible="False"
-                        Background="#FDECEA"
-                        BorderBrush="#E6B0AA"
+                        Background="#FFF4E0"
+                        BorderBrush="#F0C674"
                         BorderThickness="0,0,0,1"
                         Padding="10,6">
                     <TextBlock x:Name="LockBannerText"
                                FontSize="11"
-                               Foreground="#922B21"
+                               Foreground="#7A5A00"
                                TextWrapping="Wrap" />
                 </Border>
 
@@ -266,13 +268,7 @@
                              ⚠ 머리글('에피소드')과 상시 안내('이름 — 고치고 Enter')는
                              2026-08-24에 뺐다 (소유자: "이런 쓸모없는 설명들을 제거해줘").
                              하루 전 그 안내를 붙인 이유는 개명 자리인 줄 아무도 몰라서였는데,
-                             그 몫은 이제 **툴팁**이 진다 — 상시로 자리를 먹지 않는다.
-
-                             ⛔ 아래 칸은 잠겼을 때만 뜬다. 비활성 칸이 아무 말도 없으면
-                             "이 기능이 없다"로 읽힌다(실제로 그렇게 읽혔다) — 그건 설명이
-                             아니라 **상태 보고**라 남긴다. -->
-                        <TextBlock x:Name="IdBoxHint" FontSize="10" Opacity="0.6"
-                                   IsVisible="False" TextWrapping="Wrap" />
+                             그 몫은 이제 **툴팁**이 진다 — 상시로 자리를 먹지 않는다. -->
                         <TextBox x:Name="IdBox" FontSize="11" PlaceholderText="EpisodeId"
                                  ToolTip.Tip="이름을 고치고 Enter를 누르면 개명됩니다 — 간선·픽스처·대본 파일·대사 노드가 함께 따라갑니다. 조건식의 cleared: 참조가 있으면 거부됩니다." />
 

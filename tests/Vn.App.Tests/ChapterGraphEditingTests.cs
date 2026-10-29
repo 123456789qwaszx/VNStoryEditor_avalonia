@@ -192,11 +192,11 @@ public sealed class ChapterGraphEditingTests
     });
 
     [Fact]
-    public void 엑셀이_잡고_있으면_툴_편집_창구가_닫힌다() => HeadlessUi.Run(() =>
+    public void 엑셀이_잡고_있어도_툴_편집_창구는_열려_있다() => HeadlessUi.Run(() =>
     {
         // 2026-08-24 소유자 — "엑셀이 켜지면 자동으로 잠기면서 편집이 불가능하게 막는게
-        // 좋겠어." 예전에는 체크 하나가 문지기였고 기본이 켬이었다. 이제 문을 잠그는 것은
-        // 사람이 아니라 <b>엑셀이 그 파일을 잡았다는 사실</b>이다.
+        // 좋겠어." 그때는 원본이 엑셀이었다. 2026-10-29(excel-boundary C6)부터 원본은 프로젝트고
+        // 엑셀이 잡은 것은 산출물이라, 배너만 서고 창구는 그대로다 — 그 파일의 갱신만 닫힐 때 따라간다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project, locked: true);
 
@@ -204,15 +204,13 @@ public sealed class ChapterGraphEditingTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
-        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
-        Assert.False(view.FindControl<ComboBox>("VisibleCombo")!.IsEnabled);
-        Assert.False(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
-        Assert.False(view.FindControl<Grid>("EdgeFormPanel")!.IsVisible);
-        // 삭제 단추는 늘 같은 자리에 있고 상태만 바뀐다 (2026-08-16 소유자 보고) —
-        // 잠금이 풀리는 순간 튀어나오면 그 자리를 누르던 손이 삭제를 누른다.
+        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+        Assert.True(view.FindControl<ComboBox>("VisibleCombo")!.IsEnabled);
+        Assert.True(view.FindControl<Button>("AddNextEdgeButton")!.IsVisible);
+
         var delete = view.FindControl<Button>("DeleteEpisodeButton")!;
         Assert.True(delete.IsVisible);
-        Assert.False(delete.IsEnabled);
+        Assert.True(delete.IsEnabled);
     });
 
     [Fact]
@@ -256,16 +254,11 @@ public sealed class ChapterGraphEditingTests
     {
         // 2026-08-24 소유자 "이런 쓸모없는 설명들을 제거해줘" — 하루 전 이 자리에 붙였던
         // "이름 — 고치고 Enter"를 걷었다. 개명 자리인 줄 알리는 몫은 툴팁이 진다.
-        //
-        // ⛔ 안내를 지우면서 <b>잠금 사유까지</b> 지우지 않는다 — 아래 짝 테스트가 그 반쪽을
-        //    붙든다. 기본값은 말할 것이 없고, 사람이 안 한 잠금은 말해 줘야 한다.
+        // (잠겼을 때 사유를 적던 칸도 2026-10-29에 잠금 관문과 함께 사라졌다 — 사유는 배너가 말한다.)
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, _) = Show(project);
         view.SelectEpisode("main05.01");
 
-        TextBlock hint = view.FindControl<TextBlock>("IdBoxHint")!;
-
-        Assert.False(hint.IsVisible);
         Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
 
         // 툴팁은 남는다 — 물을 때만 뜨고 자리를 안 먹는다.
@@ -306,22 +299,6 @@ public sealed class ChapterGraphEditingTests
 
         // 남아야 하는 것 — 선택지 머리글은 표의 이름표라 안내가 아니다.
         Assert.Contains(standing, text => text.Contains("선택지", StringComparison.Ordinal));
-    });
-
-    [Fact]
-    public void 잠겼을_때는_이름_칸이_왜_잠겼는지_말한다() => HeadlessUi.Run(() =>
-    {
-        // 비활성 칸이 아무 말도 없으면 "이 기능이 없다"로 읽힌다 — 실제로 그렇게 읽혔다.
-        // ⛔ "엑셀에서만 편집 체크를 푸세요"로는 돌아가지 않는다: 풀 체크가 없다.
-        using var project = new TempProject(SamplePath);
-        (ChapterGraphView view, _) = Show(project, locked: true);
-        view.SelectEpisode("main05.01");
-
-        TextBlock hint = view.FindControl<TextBlock>("IdBoxHint")!;
-
-        Assert.True(hint.IsVisible);
-        Assert.Contains("엑셀", hint.Text);
-        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
     });
 
     [Fact]
@@ -819,8 +796,8 @@ public sealed class ChapterGraphEditingTests
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     /// <param name="locked">
-    /// 엑셀이 그 챕터를 잡고 있는가 (2026-08-24). 진짜 잠긴 파일은 <b>쓸 수도 없어서</b>
-    /// 실제 잠금으로는 편집 규칙을 검증할 수 없다 — 그래서 손을 갈아 끼운다.
+    /// 엑셀이 그 챕터를 잡고 있다고 답할 손 (2026-08-24). 배너의 규칙을 보는 데는 손이면 되고,
+    /// 진짜 잠금까지 보는 것은 <c>ChapterEditGateTests</c>다.
     /// </param>
     private static (ChapterGraphView View, AuthoringSession Session) Show(
         TempProject project, bool locked = false)

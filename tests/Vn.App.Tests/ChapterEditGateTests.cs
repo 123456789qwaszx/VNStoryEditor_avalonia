@@ -10,28 +10,28 @@ using Vn.Authoring.Serialization;
 namespace Vn.App.Tests;
 
 /// <summary>
-/// <b>무엇이 편집을 잠그나</b>, 그리고 자동 저장.
+/// <b>엑셀 잠금은 편집을 막지 않는다</b>, 그리고 자동 저장.
 ///
 /// 2026-08-17 소유자 — ① "엑셀이 열려있으면 그냥 체크 안되게 해버려. 하는 중에 엑셀이
 /// 열리면 현재까지된걸 저장한 뒤에 잠그고" ② "간선을 편집할 때 굳이 적용을 누르지 않아도
-/// 바로 변화가 반영되도록".
+/// 바로 변화가 반영되도록". 2026-08-24 — 체크 대신 엑셀이 켜지면 저절로 잠겼다.
 ///
-/// 2026-08-24 소유자 — "저걸 툴사용자가 체크하는 게 아니라, 엑셀이 켜지면 자동으로
-/// 잠기면서 편집이 불가능하게 막는게 좋겠어." 그래서 [엑셀에서만 편집] 체크가 사라졌다.
-/// ①의 요구는 그대로 남고 <b>더 단순해졌다</b>: 풀 수 없는 체크를 두는 대신 체크를 없앴다.
+/// 2026-10-29 (`docs/plans/excel-boundary.md` C6 · R1) — 원본이 프로젝트가 된 뒤로 ①의 잠금은
+/// 뜻을 잃었다. 엑셀이 잡은 것은 <b>산출물</b>이고, 편집은 프로젝트에 들어가며 그 파일의 갱신만
+/// 닫힐 때 따라간다. 배너는 남고 관문은 사라졌다.
 /// </summary>
 public sealed class ChapterEditGateTests
 {
     private static string SamplePath => Path.GetFullPath(Path.Combine(
         AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "chapter-graph-sample.xlsx"));
 
-    // ── 엑셀이 잡고 있는 동안만 잠긴다 ─────────────────────────────────────
+    // ── 엑셀이 잡고 있어도 편집은 열려 있다 ─────────────────────────────────
 
     [Fact]
-    public void 엑셀이_열고_있으면_편집이_잠긴다() => HeadlessUi.Run(() =>
+    public void 엑셀이_열고_있어도_편집은_열려_있다() => HeadlessUi.Run(() =>
     {
-        // ⛔ 이 잠금을 풀 수 있는 스위치는 화면에 없다. 예전에는 있었고, 풀어도 누르는
-        // 족족 거부됐다 — 열 수 없는 문을 흔들게 두는 셈이었다.
+        // ⛔ 2026-10-29까지는 여기서 IdBox·[＋ 에피소드]가 잠겼다. 산출물의 잠금이 원본의
+        //    편집 권한을 정하던 자리다 — 배너만 남는다.
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: true);
 
@@ -40,66 +40,85 @@ public sealed class ChapterEditGateTests
         view.SelectEpisode("main05.02");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
-        Assert.False(view.FindControl<Button>("AddEpisodeButton")!.IsEnabled);
+        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+        Assert.True(view.FindControl<Button>("AddEpisodeButton")!.IsEnabled);
     });
 
     [Fact]
-    public void 편집_중에_엑셀이_열리면_쓰던_값을_먼저_내고_잠근다() => HeadlessUi.Run(() =>
+    public void 잠금_표시가_떠_있어도_고친_값은_나간다() => HeadlessUi.Run(() =>
     {
+        // 화면의 잠금 판정은 손이고(LockProbe) 파일은 실제로 열려 있다 — 편집이 관문에 막히지
+        // 않으면 값은 프로젝트를 거쳐 워크북까지 간다.
         using var project = new TempProject();
-        (ChapterGraphView view, _) = Show(project, locked: false);
+        (ChapterGraphView view, _) = Show(project, locked: true);
 
         view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // 아직 안 낸 값을 패널에 담아 둔다 — 글자 칸은 초점을 잃어야 나간다.
-        view.FindControl<TextBox>("EdgeLockedMsgBox")!.Text = "신뢰가 부족하다";
+        view.FindControl<ComboBox>("EdgeVisibleCombo")!.SelectedItem = "지쳐있음";
 
-        // 그 사이 엑셀이 열렸다.
-        view.LockProbe = _ => true;
-        view.RefreshFromDisk();
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        // 잠기기 전에 나갔다.
-        ChapterEdge reread = ChapterWorkbookReader.Read(project.ChapterPath).Edges
-            .Single(edge => edge.ToEpisodeId == "branch05.02A");
-        Assert.Equal("신뢰가 부족하다", reread.LockedMessage);
-
-        // 그리고 잠겼다.
-        Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
-        Assert.False(view.FindControl<Button>("AddEpisodeButton")!.IsEnabled);
+        Assert.Equal("지쳐있음", Edge(project).VisibleConditionLabel);
     });
 
     [Fact]
-    public void 엑셀이_닫히면_저절로_다시_열린다() => HeadlessUi.Run(() =>
+    public void 엑셀이_진짜로_잡고_있으면_값은_프로젝트에_들어가고_파일은_닫힐_때_따라간다() => HeadlessUi.Run(() =>
     {
-        // 예전에는 "툴이 스스로 켠 체크만 되돌린다"는 단서가 붙었다 — 사람이 켜 둔 값을
-        // 툴이 돌려놓으면 안 됐기 때문이다. 사람이 켤 것이 없어진 지금은 단서도 없다.
+        // R1의 끝까지 — 실제 잠금으로 본다. 손을 갈아끼우지 않고 파일을 붙든다.
+        using var project = new TempProject();
+        (ChapterGraphView view, AuthoringSession session) = Show(project, locked: null);
+
+        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        using (new FileStream(project.ChapterPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            view.FindControl<ComboBox>("EdgeVisibleCombo")!.SelectedItem = "지쳐있음";
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            // 원본에는 들어갔다.
+            Assert.Equal(
+                "지쳐있음",
+                session.Editor.FindChapter("ch05")!.Edges
+                    .Single(edge => edge.ToEpisodeId == "branch05.02A").VisibleConditionLabel);
+
+            // 산출물은 미뤄졌고, 화면이 그 사실을 말한다 — 편집 창구는 그대로 열려 있다.
+            Assert.Contains("ch05", session.WorkbookOutput.Pending);
+            Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
+            Assert.True(view.FindControl<ComboBox>("EdgeVisibleCombo")!.IsEnabled);
+        }
+
+        // 엑셀이 놓았다 — 사람이 아무것도 안 눌러도 파일이 프로젝트를 따라잡는다.
+        view.RefreshFromDisk();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        Assert.Empty(session.WorkbookOutput.Pending);
+        Assert.Equal("지쳐있음", Edge(project).VisibleConditionLabel);
+        Assert.False(view.FindControl<Border>("LockBanner")!.IsVisible);
+    });
+
+    [Fact]
+    public void 엑셀이_닫히면_배너가_내려간다() => HeadlessUi.Run(() =>
+    {
         using var project = new TempProject();
         (ChapterGraphView view, _) = Show(project, locked: false);
-
-        view.SelectEpisode("main05.02");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         view.LockProbe = _ => true;
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.False(view.FindControl<TextBox>("IdBox")!.IsEnabled);
+        Assert.True(view.FindControl<Border>("LockBanner")!.IsVisible);
 
         view.LockProbe = _ => false;
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.False(view.FindControl<Border>("LockBanner")!.IsVisible);
-        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
     });
 
     [Fact]
     public void 잠금이_그대로면_상태줄에_같은_말을_되풀이하지_않는다() => HeadlessUi.Run(() =>
     {
         // 이 자리는 다시 그리기·쓰기 결과·감시자 알림마다 불린다. 매번 말하면
-        // "엑셀이 닫혔습니다"가 끝없이 흐른다 — 잠금이 <b>움직였을 때만</b> 말한다.
+        // "엑셀이 닫혔습니다"가 끝없이 흐른다 — 미룬 것을 다시 냈을 때만 말한다.
         using var project = new TempProject();
         (ChapterGraphView view, AuthoringSession session) = Show(project, locked: false);
 
@@ -114,15 +133,13 @@ public sealed class ChapterEditGateTests
     [Fact]
     public void 다른_챕터로_옮기면_그_챕터의_잠금을_다시_묻는다() => HeadlessUi.Run(() =>
     {
-        // 엑셀이 ch05를 잡고 있어도 ch06은 남의 일이다. 다시 묻지 않으면 <b>ch06이 잠긴
-        // 채로</b> 보인다 — 편집을 사람이 아니라 잠금이 여닫게 된 뒤로는 그것이 곧
-        // "ch06을 못 고친다"가 된다.
+        // 엑셀이 ch05를 잡고 있어도 ch06은 남의 일이다. 다시 묻지 않으면 <b>ch06에 ch05의
+        // 배너</b>가 선 채로 보인다.
         //
         // ⚠ 이 규칙을 지고 있는 것은 <b>Draw()의 마지막 줄</b>이다
-        // (RefreshPropertyPanel → ApplyEditability → RefreshLockBanner). SelectChapter에
-        // 물음을 한 줄 더 두려다 <b>이 테스트가 그대로 통과해서</b> 되물렀다 — 이미 묻고
-        // 있었다. 같은 물음을 두 곳에 두는 대신 여기서 붙든다: 그 줄이 사라지면 이 테스트가
-        // 먼저 말한다.
+        // (RefreshPropertyPanel → RefreshLockBanner). SelectChapter에 물음을 한 줄 더
+        // 두려다 <b>이 테스트가 그대로 통과해서</b> 되물렀다 — 이미 묻고 있었다. 같은 물음을
+        // 두 곳에 두는 대신 여기서 붙든다: 그 줄이 사라지면 이 테스트가 먼저 말한다.
         using var project = new TempProject(secondChapter: true);
 
         var session = new AuthoringSession();
@@ -146,10 +163,6 @@ public sealed class ChapterEditGateTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.False(view.FindControl<Border>("LockBanner")!.IsVisible);
-
-        view.SelectEpisode("main05.02");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.True(view.FindControl<TextBox>("IdBox")!.IsEnabled);
 
         window.Close();
     });
@@ -222,35 +235,26 @@ public sealed class ChapterEditGateTests
         Assert.Equal("아직 이르다", Edge(project).LockedMessage);
     });
 
-    [Fact]
-    public void 잠겨_있으면_고쳐도_안_써진다() => HeadlessUi.Run(() =>
-    {
-        // 자동 저장은 잠금 위에서 돈다 — 잠긴 동안에는 아예 울리지 않는다. 화면이 막는
-        // 것만으로는 모자란다: 콤보를 코드로 건드리는 길이 남아 있고, 그 길로 쓰기가
-        // 나가면 엑셀이 방금 고친 셀을 툴이 덮는다.
-        using var project = new TempProject();
-        (ChapterGraphView view, _) = Show(project, locked: true);
-
-        view.SelectEdgeKey("main05.02", "branch05.02A", "라루의 제안을 듣는다");
-        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        view.FindControl<ComboBox>("EdgeVisibleCombo")!.SelectedItem = "지쳐있음";
-
-        Assert.Null(Edge(project).VisibleConditionLabel);
-    });
-
     // ── 기반 ────────────────────────────────────────────────────────────────
 
     private static ChapterEdge Edge(TempProject project) =>
         ChapterWorkbookReader.Read(project.ChapterPath).Edges
             .Single(edge => edge.ToEpisodeId == "branch05.02A");
 
-    private static (ChapterGraphView View, AuthoringSession Session) Show(TempProject project, bool locked)
+    /// <param name="locked">
+    /// 엑셀이 그 챕터를 잡고 있다고 답할 손. null이면 손을 갈아끼우지 않는다 — 파일에 진짜로 묻는다.
+    /// </param>
+    private static (ChapterGraphView View, AuthoringSession Session) Show(TempProject project, bool? locked)
     {
         var session = new AuthoringSession();
         session.Open(project.ManifestPath);
 
-        var view = new ChapterGraphView { LockProbe = _ => locked };
+        var view = new ChapterGraphView();
+
+        if (locked is { } answer)
+        {
+            view.LockProbe = _ => answer;
+        }
         var window = new Window { Width = 1400, Height = 800, Content = view };
         window.Show();
         view.Attach(session);

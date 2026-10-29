@@ -48,9 +48,6 @@ internal sealed class StatChangeEditor : StackPanel
     /// </summary>
     public event EventHandler? Changed;
 
-    /// <summary>읽기 전용(엑셀이 그 챕터를 잡고 있음)이면 드롭다운·단추가 잠긴다.</summary>
-    public bool Editable { get; set; } = true;
-
     /// <summary>이 챕터의 스탯 목록과 지금 값으로 편집기를 채운다.</summary>
     public void Load(IReadOnlyList<ChapterStat> stats, IReadOnlyList<StatDelta> deltas)
     {
@@ -156,7 +153,6 @@ internal sealed class StatChangeEditor : StackPanel
                 FontSize = 10,
                 Padding = new Thickness(7, 1),
                 HorizontalAlignment = HorizontalAlignment.Left,
-                IsEnabled = Editable,
                 [ToolTip.TipProperty] =
                     "이 길을 건너는 순간 1회 반영됩니다. 스탯은 챕터 엑셀 `스탯` 시트에서 선언한 것만 고를 수 있습니다."
             };
@@ -201,7 +197,6 @@ internal sealed class StatChangeEditor : StackPanel
         {
             FontSize = 11,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsEnabled = Editable,
             ItemsSource = _stats.Select(Display).ToList(),
             SelectedItem = stat is null ? null : Display(stat),
             PlaceholderText = row.Key // 시트에서 사라진 키도 무엇이었는지는 보인다
@@ -241,7 +236,6 @@ internal sealed class StatChangeEditor : StackPanel
             FontSize = 11,
             MinWidth = isBool ? 74 : 54,
             Margin = new Thickness(4, 0, 0, 0),
-            IsEnabled = Editable,
             ItemsSource = isBool ? new[] { "켬", "끔" } : ["＋", "－"],
             SelectedIndex = row.Seed >= 0 ? 0 : 1
         };
@@ -260,7 +254,6 @@ internal sealed class StatChangeEditor : StackPanel
             FontSize = 11,
             Width = 56,
             Margin = new Thickness(4, 0, 0, 0),
-            IsEnabled = Editable,
             IsVisible = !isBool,
             Text = Math.Abs(row.Seed).ToString(System.Globalization.CultureInfo.InvariantCulture)
         };
@@ -292,7 +285,6 @@ internal sealed class StatChangeEditor : StackPanel
             FontSize = 10,
             Padding = new Thickness(5, 1),
             Margin = new Thickness(4, 0, 0, 0),
-            IsEnabled = Editable,
             [ToolTip.TipProperty] = "이 줄을 지웁니다."
         };
         remove.Click += (_, _) =>
