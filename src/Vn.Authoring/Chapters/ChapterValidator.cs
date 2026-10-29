@@ -111,7 +111,7 @@ public static class ChapterValidator
             return;
         }
 
-        ChapterBoard board = ChapterBoard.For(project);
+        ChapterBoard board = ChapterBoard.For(project, chapter.ChapterId);
 
         foreach (ChapterEpisode episode in chapter.Episodes)
         {
@@ -169,7 +169,7 @@ public static class ChapterValidator
         //    내보내기가 나가고 유니티 사전 대조가 재생을 통째로 막았다(실사례).
         //    한 번도 안 연 챕터도 <b>내보내는 순간</b>에는 같은 사고다 — 안 열었다는 것이
         //    면제 사유가 될 수 없다. 대신 무엇을 하면 되는지를 말한다.
-        ChapterBoard board = ChapterBoard.For(project);
+        ChapterBoard board = ChapterBoard.For(project, chapter.ChapterId);
 
         List<ChapterEpisode> missing = chapter.Episodes
             .Where(episode => board.EpisodeNodeFor(episode) is null)

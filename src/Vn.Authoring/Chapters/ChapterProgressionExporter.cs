@@ -86,7 +86,7 @@ public static class ChapterProgressionExporter
     internal static string SerializeUnchecked(ChapterGraphModel chapter, StoryProject? project = null)
     {
         ArgumentNullException.ThrowIfNull(chapter);
-        var via = ChapterBoard.For(project);
+        var via = ChapterBoard.For(project, chapter.ChapterId);
 
         var payload = new ChapterJson
         {

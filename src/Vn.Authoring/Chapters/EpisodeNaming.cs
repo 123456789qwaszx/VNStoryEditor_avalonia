@@ -61,8 +61,8 @@ public static class EpisodeNaming
     /// 한쪽은 찾고 한쪽은 못 찾았다.
     ///
     /// ⚠ <see cref="ChapterBoard.EpisodeNodeFor"/>는 <b>다섯째가 아니다</b> — 그쪽은
-    /// 내보내기용으로 <i>프로젝트 전체</i>를 훑고 이름 뒷길도 `대사엔트리`를 쓴다. 질문이
-    /// 달라서 남겨 둔 것이고, 그 사실이 <see cref="ChapterBoard"/> 머리에 적혀 있다.
+    /// 내보내기용이라 이름 뒷길이 `대사엔트리`다(여기는 EpisodeId). 2026-10-29부터는 저쪽도
+    /// <b>그 챕터의 판만</b> 본다 — 프로젝트 전체를 훑던 것이 다른 챕터의 같은 Id를 집었다.
     /// </summary>
     public static DialogueNode? CardFor(StoryProject project, string chapterId, string episodeId)
     {

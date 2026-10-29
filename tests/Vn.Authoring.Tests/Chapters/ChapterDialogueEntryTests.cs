@@ -100,6 +100,57 @@ public sealed class ChapterDialogueEntryTests : IDisposable
     }
 
     [Fact]
+    public void 다른_챕터의_같은_EpisodeId는_집지_않는다()
+    {
+        // EpisodeId는 챕터 안에서만 유일하다(EpisodeLibrary). 2026-10-29까지 ChapterBoard가
+        // 프로젝트 전체의 카드를 EpisodeId 하나로 뒤져 먼저 만난 것을 집었다 — 다른 챕터의
+        // `시작`이 이 챕터의 `시작` 대신 잡히면 진행 JSON이 남의 대사를 부른다.
+        ChapterGraphModel chapter = BuildChapter();
+
+        var project = new StoryProject();
+        var other = new StoryFile(name: "다른챕터");
+        other.Nodes.Add(new DialogueNode(name: "남의_카드") { MarkedEpisodeId = "시작" });
+        var mine = new StoryFile(name: chapter.ChapterId);
+        mine.Nodes.Add(new DialogueNode(name: "제_카드") { MarkedEpisodeId = "시작" });
+
+        // 남의 판이 먼저다 — 전체를 뒤지면 이쪽이 먼저 잡힌다.
+        project.Files.Add(other);
+        project.Files.Add(mine);
+
+        ChapterExportResult result =
+            ChapterProgressionExporter.Export(chapter, episodesFolder: null, project);
+
+        using var document = System.Text.Json.JsonDocument.Parse(result.Json!);
+
+        Assert.Equal(
+            "제_카드",
+            document.RootElement
+                .GetProperty("Nodes").EnumerateArray()
+                .Single(node => node.GetProperty("EpisodeId").GetString() == "시작")
+                .GetProperty("DialogueEntryId").GetString());
+    }
+
+    [Fact]
+    public void 제_판이_없으면_남의_판의_카드로_때우지_않는다()
+    {
+        // 판이 아직 없는 챕터 — 다른 챕터에 같은 Id의 카드가 있어도 그것은 남의 것이다.
+        // 검증이 "판에 대사 노드가 없다"로 막아야지, 남의 카드를 부르는 JSON이 나가면 안 된다.
+        ChapterGraphModel chapter = BuildChapter();
+
+        var project = new StoryProject();
+        var other = new StoryFile(name: "다른챕터");
+        other.Nodes.Add(new DialogueNode(name: "남의_카드") { MarkedEpisodeId = "시작" });
+        project.Files.Add(other);
+
+        ChapterValidationResult validation =
+            ChapterValidator.Validate(chapter, episodesFolder: null, project);
+
+        Assert.Contains(
+            validation.All,
+            item => item.Code == ChapterDiagnosticCode.DialogueEntryNodeMissing);
+    }
+
+    [Fact]
     public void 판을_못_보면_엑셀_글자로_되돌아간다()
     {
         // 챕터 모델만으로 부르는 자리(CLI·테스트)가 그대로 살아 있어야 한다.
