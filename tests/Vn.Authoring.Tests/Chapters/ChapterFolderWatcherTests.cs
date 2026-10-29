@@ -103,18 +103,18 @@ public sealed class ChapterFolderWatcherTests : IDisposable
         // 저장이 아니라 다른 어떤 알림도 오지 않는다.
         WriteChapter("ch05.xlsx", episodeTitle: "처음");
 
-        using var locks = new CountdownEvent(1);
+        using var locks = new ManualResetEventSlim(false);
         int saves = 0;
 
         using var watcher = new ChapterFolderWatcher(
             _folder,
             () => Interlocked.Increment(ref saves),
             Debounce,
-            onLockChanged: () => Signal(locks));
+            onLockChanged: locks.Set);
 
-        File.WriteAllText(Path.Combine(_folder, "~$ch05.xlsx"), "lock");
-
-        Assert.True(locks.Wait(Patience), "엑셀이 파일을 열었는데 잠금 알림이 오지 않았다");
+        Assert.True(
+            TouchUntil(locks, () => File.WriteAllText(Path.Combine(_folder, "~$ch05.xlsx"), "lock")),
+            "엑셀이 파일을 열었는데 잠금 알림이 오지 않았다");
         Assert.Equal(0, Volatile.Read(ref saves));   // 저장 쪽으로는 새지 않는다
     }
 
@@ -140,8 +140,9 @@ public sealed class ChapterFolderWatcherTests : IDisposable
         // 감시자가 실제 첫 사건을 받은 뒤 삭제한다. Windows의 FileSystemWatcher 등록과
         // 생성 직후 삭제를 경쟁시키면 삭제 사건 자체가 커널 버퍼에 들어오기 전에 끝나
         // 제품 규칙이 아니라 테스트 시작 타이밍을 재게 된다.
-        File.WriteAllText(lockFile, "lock");
-        Assert.True(opened.Wait(Patience), "엑셀이 파일을 여는 준비 사건을 감시하지 못했다");
+        Assert.True(
+            TouchUntil(opened, () => File.WriteAllText(lockFile, "lock")),
+            "엑셀이 파일을 여는 준비 사건을 감시하지 못했다");
 
         File.Delete(lockFile);
 
@@ -183,6 +184,29 @@ public sealed class ChapterFolderWatcherTests : IDisposable
     }
 
     // ── 기반 ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 켜진 직후의 첫 사건은 <b>올 때까지 되풀이해 적는다</b>. Windows 러너에서 FileSystemWatcher가
+    /// 켜진 직후에 적은 파일의 사건이 10초가 지나도 안 오는 일이 있었다(run 42·43·52 — 매번
+    /// 이 자리였다). 제품은 그 틈을 "다음 클릭이 잠금을 다시 묻는다"로 덮으므로, 여기서 재는
+    /// 것도 <b>감시자가 사건을 듣는가</b>이지 켜지는 순간의 타이밍이 아니다.
+    /// </summary>
+    private static bool TouchUntil(ManualResetEventSlim signal, Action touch)
+    {
+        TimeSpan slice = TimeSpan.FromSeconds(2);
+
+        for (TimeSpan waited = TimeSpan.Zero; waited < Patience; waited += slice)
+        {
+            touch();
+
+            if (signal.Wait(slice))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static void Signal(CountdownEvent signal)
     {

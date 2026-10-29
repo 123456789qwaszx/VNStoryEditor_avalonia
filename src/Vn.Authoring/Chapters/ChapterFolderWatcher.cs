@@ -89,6 +89,7 @@ public sealed class ChapterFolderWatcher : IDisposable
         _watcher.Created += OnTouched;
         _watcher.Deleted += OnTouched;
         _watcher.Renamed += OnTouched;
+        _watcher.Error += OnOverflow;
         _watcher.EnableRaisingEvents = true;
     }
 
@@ -115,6 +116,29 @@ public sealed class ChapterFolderWatcher : IDisposable
             }
 
             // 저장을 안 듣는 감시자면 타이머를 깨우지도 않는다 (R-F) — 깨워 봐야 할 일이 없다.
+            if (_onChanged is not null)
+            {
+                _debounce.Change(_delay, Timeout.InfiniteTimeSpan);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 커널 버퍼가 넘쳐 사건을 잃었다 — 무엇을 잃었는지 모르므로 <b>둘 다</b> 다시 묻게 한다.
+    /// 잠금 알림의 뜻이 "다시 물어보라"라서 거짓 알림의 값이 없고, 저장 알림은 듣는 쪽만 깨운다.
+    /// 전에는 이 사건을 버렸다 — 그러면 넘친 순간의 잠금 변화가 영영 안 들린다.
+    /// </summary>
+    private void OnOverflow(object sender, ErrorEventArgs e)
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _lockDebounce.Change(_delay, Timeout.InfiniteTimeSpan);
+
             if (_onChanged is not null)
             {
                 _debounce.Change(_delay, Timeout.InfiniteTimeSpan);
@@ -194,6 +218,7 @@ public sealed class ChapterFolderWatcher : IDisposable
         _watcher.Created -= OnTouched;
         _watcher.Deleted -= OnTouched;
         _watcher.Renamed -= OnTouched;
+        _watcher.Error -= OnOverflow;
         _watcher.Dispose();
         _lockDebounce.Dispose();
         _debounce.Dispose();
