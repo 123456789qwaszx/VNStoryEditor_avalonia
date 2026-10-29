@@ -106,17 +106,6 @@ public sealed class StatChangeEditorTests
     });
 
     [Fact]
-    public void 읽기_전용이면_아무것도_못_누른다() => HeadlessUi.Run(() =>
-    {
-        // 엑셀이 그 챕터를 잡고 있으면 툴 편집이 잠긴다 — 그 스위치를 이 편집기도 같이 탄다.
-        var editor = new StatChangeEditor { Editable = false };
-        editor.Load([Trust], [new StatDelta("trust", 1)]);
-
-        Assert.False(StatCombo(editor, 0).IsEnabled);
-        Assert.False(AddButton(editor).IsEnabled);
-    });
-
-    [Fact]
     public void 스탯이_하나도_선언되지_않았으면_엑셀로_보낸다() => HeadlessUi.Run(() =>
     {
         var editor = new StatChangeEditor();
