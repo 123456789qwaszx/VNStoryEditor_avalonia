@@ -29,6 +29,8 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
     private readonly string _root = Path.Combine(
         Path.GetTempPath(), "vn-rename-carries", Guid.NewGuid().ToString("N"));
 
+    private readonly WorkbookOutput _output = new();
+
     public SpeakerAndConditionRenameTests() => Directory.CreateDirectory(_root);
 
     public void Dispose()
@@ -161,7 +163,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         World world = BuildProject("라루");
 
         SpeakerRenameOutcome outcome = SpeakerRenamer.Rename(
-            world.Editor, world.ProjectPath, "라루", "라루엘");
+            world.Editor, _output, world.ProjectPath, "라루", "라루엘");
 
         Assert.Equal(1, outcome.ScriptLines);
         Assert.Equal(1, outcome.WorkbooksWritten);
@@ -180,7 +182,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         byte[] before = File.ReadAllBytes(world.WorkbookPath);
 
         SpeakerRenameOutcome outcome = SpeakerRenamer.Rename(
-            world.Editor, world.ProjectPath, "라루X", "누구");
+            world.Editor, _output, world.ProjectPath, "라루X", "누구");
 
         Assert.Equal(0, outcome.ScriptLines);
         Assert.Equal(0, outcome.WorkbooksWritten);
@@ -199,7 +201,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
 
         using (new FileStream(world.WorkbookPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
         {
-            outcome = SpeakerRenamer.Rename(world.Editor, world.ProjectPath, "라루", "라루엘");
+            outcome = SpeakerRenamer.Rename(world.Editor, _output, world.ProjectPath, "라루", "라루엘");
         }
 
         Assert.Equal(1, outcome.ScriptLines);
@@ -207,7 +209,8 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         Assert.Contains("엑셀이", Assert.Single(outcome.Deferred));
 
         Assert.Equal("라루엘", world.Script.Text(world.Line.Id, world.Script.PrimaryLocale).Speaker);
-        Assert.Equal("라루", FirstSpeaker(world.WorkbookPath));   // 옛 산출물 — 다음 출력이 따라잡는다
+        Assert.Equal("라루", FirstSpeaker(world.WorkbookPath));   // 옛 산출물 — 조정자가 기억했다가 따라잡는다
+        Assert.Contains(WorkbookOutput.ScriptTarget("ch01", "main01.01"), _output.Pending);
     }
 
     [Fact]
@@ -222,7 +225,7 @@ public sealed class SpeakerAndConditionRenameTests : IDisposable
         editor.SetScriptLineText(script.Id, line.Id, "라루", "혼잣말");
 
         SpeakerRenameOutcome outcome = SpeakerRenamer.Rename(
-            editor, Path.Combine(_root, "예제.vnproject.json"), "라루", "라루엘");
+            editor, _output, Path.Combine(_root, "예제.vnproject.json"), "라루", "라루엘");
 
         Assert.Equal(1, outcome.ScriptLines);
         Assert.Equal(0, outcome.WorkbooksWritten);

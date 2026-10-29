@@ -11,8 +11,8 @@ public sealed record EmittedEpisodeLine(int Index, string? Speaker, string Text)
 /// 프로젝트의 대사를 <b>대본 워크북 한 벌로 낸다</b> (R-B · 2026-09-15 —
 /// <c>docs/work-orders/tool-owns-workbooks-orders.md</c>).
 ///
-/// <b>성격이 Writer와 다르다.</b> <see cref="EpisodeWorkbookWriter"/>는 "셀 하나 고치기"이고
-/// 원본이 엑셀이라는 전제 위에 섰다. 이쪽은 <b>문서 전체를 낸다</b> — 성격이
+/// <b>성격이 옛 Writer와 다르다.</b> 셀 단위 <c>EpisodeWorkbookWriter</c>(2026-10-29 C5에 걷힘)는
+/// "셀 하나 고치기"였고 원본이 엑셀이라는 전제 위에 섰다. 이쪽은 <b>문서 전체를 낸다</b> — 성격이
 /// <c>YarnBundleEmitter</c>와 같아서 이름도 그렇게 간다. 뒤집기가 끝나면
 /// 워크북은 <c>exported/</c>와 같은 편, 곧 <b>산출물</b>이다.
 ///
@@ -34,8 +34,8 @@ public static class EpisodeWorkbookEmitter
     private const int HeaderRow = 2;
 
     /// <summary>
-    /// ⚠ <see cref="EpisodeWorkbookReader"/>·<see cref="EpisodeWorkbookWriter"/>의 배열과
-    /// <b>한 글자도 달라선 안 된다</b> — 셋 다 이 머리글로 시트를 찾는다.
+    /// ⚠ <see cref="EpisodeWorkbookReader"/>의 배열과 <b>한 글자도 달라선 안 된다</b> —
+    /// 둘 다 이 머리글로 시트를 찾는다.
     /// </summary>
     private static readonly string[] Headers =
         ["인덱스", "LineId", "화자", "내용"];

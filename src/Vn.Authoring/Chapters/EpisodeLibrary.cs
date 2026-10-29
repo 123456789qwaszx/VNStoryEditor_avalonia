@@ -283,14 +283,6 @@ public static class EpisodeLibrary
     }
 
     /// <summary>
-    /// 툴이 에피소드를 더할 때 심는 첫 대사 (2026-08-26 소유자: "에피소드 추가할 시
-    /// 자동으로 기본 대사문구를 한 줄 추가하는 게 좋겠어"). 빈 대본은 검증이 오류로
-    /// 막으므로(줄 없는 노드는 재생이 안 된다), 방금 만든 에피소드가 그 오류부터 들고
-    /// 시작하지 않게 한다 — 문구 자체가 "여기를 채우라"는 표지다.
-    /// </summary>
-    public const string DefaultFirstLine = "(대사를 적어 주세요)";
-
-    /// <summary>
     /// 새 대본이 받을 화자 — 챕터를 가리지 않는 <b>프로젝트 목록 하나</b>다 (2026-08-23에
     /// 챕터 `화자` 시트가 폐지되면서 등록 창구가 정의 파일 하나가 됐다).
     ///
@@ -303,17 +295,11 @@ public static class EpisodeLibrary
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToList();
 
-    /// <param name="firstLine">
-    /// 새 워크북의 2행 `내용`에 심을 첫 대사 (2026-08-26). null이면 예전처럼 빈 템플릿이다 —
-    /// 기본을 바꾸지 않는 이유는, 이 함수는 동기화도 부르는 자리라(엑셀에서 더한 에피소드의
-    /// 첫 대본) 빈 워크북의 규격을 붙드는 곳이 많기 때문이다. 심는 쪽이 명시한다.
-    /// </param>
     /// <returns>새로 만들었으면 true.</returns>
     public static bool EnsureWorkbook(
         string folder,
         string episodeId,
-        IReadOnlyList<string>? speakers = null,
-        string? firstLine = null)
+        IReadOnlyList<string>? speakers = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentException.ThrowIfNullOrWhiteSpace(episodeId);
@@ -371,13 +357,6 @@ public static class EpisodeLibrary
         }
 
         sheet.Column(TextColumn).Width = 50;   // 내용
-
-        // 첫 대사를 심는다 — 인덱스는 위 깔기가 이미 놓았고(2행 = 10), 화자는 비워 둔다
-        // (빈 화자 = 지문). LineId는 첫 동기화가 발급한다.
-        if (firstLine is not null)
-        {
-            sheet.Cell(2, TextColumn).SetValue(firstLine);
-        }
 
         ApplyVocabulary(workbook, sheet, speakers);
 

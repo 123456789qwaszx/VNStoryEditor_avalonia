@@ -30,7 +30,46 @@ public static class EpisodeScriptOutput
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(node);
 
-        return EpisodeWorkbookEmitter.Emit(path, EpisodeWorkbookEmitter.Number(Lines(project, node)));
+        IReadOnlyList<(string? Speaker, string Text)> lines = Lines(project, node);
+
+        // 같은 글이면 안 쓴다 (C5) — 저장마다 모든 대본을 다시 내므로, 안 바뀐 파일까지 두드리면
+        // .bak이 굴러가고 감시가 깨어나고 클라우드 동기화가 매번 깨어난다. 진행 JSON과 같은 규칙이다.
+        if (SameAsExisting(path, lines))
+        {
+            return ChapterWriteResult.Ok;
+        }
+
+        return EpisodeWorkbookEmitter.Emit(path, EpisodeWorkbookEmitter.Number(lines));
+    }
+
+    /// <summary>
+    /// 디스크의 워크북이 이미 이 줄들을 담고 있는가. 못 읽으면(없음·손상·형식 다름) 거짓 — 새로 낸다.
+    /// 화자도 글도 없는 줄은 양쪽에서 빼고 견준다 — 리더가 그런 행을 표의 일부로 안 세기 때문이다.
+    /// </summary>
+    private static bool SameAsExisting(string path, IReadOnlyList<(string? Speaker, string Text)> lines)
+    {
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            IEnumerable<(string? Speaker, string Text)> existing = EpisodeWorkbookReader.Read(path).Rows
+                .Where(row => row.IsLine && !row.IsBlank)
+                .Select(row => (Speaker: row.Speaker.Length == 0 ? null : row.Speaker, row.Text));
+
+            return existing.SequenceEqual(lines.Where(line =>
+                !string.IsNullOrEmpty(line.Speaker) || line.Text.Length > 0));
+        }
+        catch (XlsxReadException)
+        {
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -39,7 +78,7 @@ public static class EpisodeScriptOutput
     ///
     /// ⚠ 비어 있는 화자는 <b>지문</b>이라 그대로 비워 낸다(오류가 아니다).
     /// </summary>
-    private static IEnumerable<(string? Speaker, string Text)> Lines(
+    private static IReadOnlyList<(string? Speaker, string Text)> Lines(
         StoryProject project, DialogueNode node)
     {
         if (node.ScriptId is not { } scriptId ||

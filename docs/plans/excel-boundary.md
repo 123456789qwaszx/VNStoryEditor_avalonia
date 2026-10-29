@@ -32,11 +32,11 @@
 
 | 커밋 | 보고서 | 무엇 | 상태 |
 |---|---|---|---|
-| C1 | 12 | `ChapterBoard`를 그 챕터의 판으로 한정 (R7) | |
-| C2 | 04 | 챕터 개명: `ProjectEditor.RenameChapter`가 ChapterId·판 이름·조건 공급 노드를 한 Mutate로. `ChapterRenamer`는 모델 개명 뒤 파일 이동 — 못 옮겨도 모델을 되돌리지 않고 사유만 (R4) | |
-| C3 | 02·03 | `ChapterValidator`에서 대본 엑셀 읽기 삭제, 지문을 모델 내용으로 (R2·R3) | |
-| C4 | 05·11 | 화자 개명: 프로젝트만 바꾸고 워크북은 재출력. `EpisodeWorkbookWriter.RenameSpeaker` 삭제 (R5) | |
-| C5 | 06 | 출력 조정자: `ChapterOutput`이 대본 워크북도 낸다. 저장 = 전부 재출력 (R6) | |
+| C1 | 12 | `ChapterBoard`를 그 챕터의 판으로 한정 (R7) | 54d4be6 · fe4a21e (run 44) |
+| C2 | 04 | 챕터 개명: `ProjectEditor.RenameChapter`가 ChapterId·판 이름·조건 공급 노드를 한 Mutate로. `ChapterRenamer`는 모델 개명 뒤 파일 이동 — 못 옮겨도 모델을 되돌리지 않고 사유만 (R4) | 003b9d2 (run 45) |
+| C3 | 02·03 | `ChapterValidator`에서 대본 엑셀 읽기 삭제, 지문을 모델 내용으로 (R2·R3) | 477da59 · e012e73 (run 47) |
+| C4 | 05·11 | 화자 개명: 프로젝트만 바꾸고 워크북은 재출력. `EpisodeWorkbookWriter.RenameSpeaker` 삭제 (R5) | cfcfb15 (run 48) |
+| C5 | 06 | 출력 조정자: `ChapterOutput`→`WorkbookOutput`이 대본 워크북도 낸다. 저장 = 전부 재출력. `EpisodeWorkbookWriter`·첫 대사 심기 삭제 (R6) | 이 커밋 |
 | C6 | 01 | 잠금 관문 제거 — 편집은 늘 열려 있고 배너는 "출력이 미뤄진다" (R1) | |
 
 C6를 마지막에 두는 이유: 잠긴 채 편집을 허용하려면 **못 낸 출력을 기억하고 다시 내는 길(C5)**이 먼저 있어야 한다.

@@ -520,6 +520,12 @@ public partial class ChapterGraphView : UserControl
             StartWatching(folder);
         }
 
+        // 대본 워크북도 세션의 조정자가 낸다 (C5) — 엑셀이 대본을 놓는 순간도 들어야 미룬 대본을 다시 낸다.
+        if (!string.Equals(_episodeWatcher?.Folder, episodes, StringComparison.OrdinalIgnoreCase))
+        {
+            StartWatchingEpisodes(episodes);
+        }
+
         // 구판 프로젝트라면 여기서 한 번 들어온다 — 그 뒤로 워크북은 산출물이다 (R-F).
         ImportChaptersOnce();
 
@@ -568,11 +574,29 @@ public partial class ChapterGraphView : UserControl
                 () => UiGuard.Run(_session, "엑셀 잠금 확인", RefreshLockState)));
     }
 
-    // ⛔ `StartWatchingEpisodes`·`SyncEpisodesIfDiskChanged`는 2026-09-16에 걷혔다 (R-D).
-    //    `episodes/`를 감시해 저장을 0.25초 안에 따라가던 길인데, 그것이 곧 <b>워크북이
-    //    원본이라는 전제</b>였다. 이제 대본은 [대본 가져오기] 한 번으로 들어온다(§5.2:
-    //    "임포트는 명시적 동작이다. 파일 감시가 부르지 않는다").
-    //    되살리지 말 것 — 되살리는 순간 툴과 엑셀이 다시 서로를 덮어쓴다.
+    /// <summary>
+    /// `episodes/`의 <b>잠금만</b> 듣는다 (C5 · 2026-10-29). 저장은 듣지 않는다 — 2026-09-16(R-D)에 걷힌
+    /// `SyncEpisodesIfDiskChanged`가 그것이었고, 그것이 곧 <b>워크북이 원본이라는 전제</b>였다. 대본은
+    /// [대본 가져오기] 한 번으로 들어온다(§5.2). 되살리지 말 것 — 되살리는 순간 툴과 엑셀이 다시 서로를
+    /// 덮어쓴다. 여기서 듣는 것은 "엑셀이 대본 파일을 놓았으니 미룬 출력을 다시 내라"뿐이다.
+    /// </summary>
+    private void StartWatchingEpisodes(string? folder)
+    {
+        _episodeWatcher?.Dispose();
+        _episodeWatcher = null;
+
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        _episodeWatcher = new ChapterFolderWatcher(
+            folder,
+            onChanged: null,
+            debounce: null,
+            onLockChanged: () => Dispatcher.UIThread.Post(
+                () => UiGuard.Run(_session, "엑셀 잠금 확인", RefreshLockState)));
+    }
 
     // ⛔ `ReloadIfDiskChanged`·`IfDiskChanged`·`DiskFingerprint`는 2026-09-16에 걷혔다
     //    (R-F). 셋 다 <b>"감시자가 깨웠는데 정말 바뀐 것인가"</b>를 묻는 장치였고, 그 물음은
@@ -913,7 +937,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         SpeakerRenameOutcome outcome = SpeakerRenamer.Rename(
-            _session.Editor, _session.ProjectPath, previous, renamed);
+            _session.Editor, _session.WorkbookOutput, _session.ProjectPath, previous, renamed);
 
         if (outcome.ScriptLines == 0)
         {
@@ -2722,6 +2746,21 @@ public partial class ChapterGraphView : UserControl
     /// </summary>
     private void RefreshLockState()
     {
+        // ⛔ <b>미룬 것을 잊지 않는다</b> (§5.3). 잠금이 움직였다는 신호마다 미룬 출력을 다시 민다 —
+        //    고른 챕터의 잠금이 그대로여도 다른 챕터·대본 파일을 엑셀이 놓았을 수 있다(C5).
+        //    미룬 것이 없으면 파일을 열지 않으므로 값이 없다.
+        if (_session is { } session)
+        {
+            WorkbookEmitRun caught = session.WorkbookOutput.Retry(
+                session.Project, session.ProjectPath, session.Definition);
+
+            if (caught.Written.Count > 0)
+            {
+                session.SetStatus(
+                    $"엑셀이 닫혀 미뤄 둔 워크북 {caught.Written.Count}개를 다시 냈습니다.");
+            }
+        }
+
         bool before = _excelHoldsChapter;
 
         RefreshLockBanner();
@@ -2732,20 +2771,6 @@ public partial class ChapterGraphView : UserControl
         }
 
         RefreshPropertyPanel(preserveTyping: true);
-
-        // ⛔ <b>미룬 것을 잊지 않는다</b> (§5.3). 엑셀이 파일을 놓은 그 순간이 다시 낼
-        //    자리다 — 사람이 아무것도 안 눌러도 파일이 프로젝트를 따라잡는다.
-        if (!_excelHoldsChapter && _session is { } session)
-        {
-            ChapterEmitRun caught = session.ChapterOutput.Retry(
-                session.Project, session.ProjectPath, session.Definition);
-
-            if (caught.Written.Count > 0)
-            {
-                session.SetStatus(
-                    $"엑셀이 닫혀 미뤄 둔 워크북 {caught.Written.Count}개를 다시 냈습니다.");
-            }
-        }
     }
 
     /// <summary>
@@ -4029,7 +4054,7 @@ public partial class ChapterGraphView : UserControl
 
         _selectedEpisodeId = newId;
 
-        ChapterEmitRun emitted = EmitSelectedChapter();
+        WorkbookEmitRun emitted = EmitSelectedChapter();
 
         _session.SetStatus(
             $"'{oldId}' → '{newId}' 개명했습니다. 간선·픽스처·대본 파일·대사 노드가 함께 따라갔습니다." +
@@ -4081,7 +4106,7 @@ public partial class ChapterGraphView : UserControl
 
         _selectedEpisodeId = null;
 
-        ChapterEmitRun emitted = EmitSelectedChapter();
+        WorkbookEmitRun emitted = EmitSelectedChapter();
         _session.SetStatus(result.Describe(episodeId) + emitted.Notice());
     }
 
@@ -4123,53 +4148,26 @@ public partial class ChapterGraphView : UserControl
             _session!.Editor.AddEpisode(chapterId, episodeId, title: string.Empty, x, 0);
         }
 
-        {
-            _selectedEpisodeId = episodeId;
+        _selectedEpisodeId = episodeId;
 
-            // 대본 워크북도 지금 만든다 (v4) — "노드를 클릭해야 생긴다"는 느슨함을 없앤다.
-            // 생성은 없던 파일을 만드는 것이라 단일 writer 원칙과 충돌하지 않고,
-            // 이후 툴은 이 파일을 다시는 쓰지 않는다.
-            //
-            // 첫 대사도 함께 심는다 (2026-08-26 소유자) — 빈 대본은 검증이 오류로 막으므로,
-            // 방금 더한 에피소드가 그 오류부터 들고 시작하지 않게 한다. 동기화가 만드는
-            // 워크북(엑셀에서 더한 에피소드)은 안 심는다 — 그쪽 기획자는 시트에서 적는다.
-            if (SelectedEpisodesFolder is { } episodesFolder)
-            {
-                if (EpisodeLibrary.EnsureWorkbook(
-                        episodesFolder,
-                        episodeId,
-                        ProjectSpeakerNames(),
-                        firstLine: EpisodeLibrary.DefaultFirstLine))
-                {
-                    // 만들기만 한다 — 감시는 더 서지 않는다 (R-D).
-                }
-                // 워크북이 이미 있었다 — 에피소드 삭제가 대본 파일을 남기므로, 지운 Id를
-                // 다시 더하면 빈 유물이 재사용된다. 완전히 비어 있을 때만 심는다(사람이
-                // 쓰다 만 대본에는 손대지 않는다).
-                else if (EpisodeLibrary.FindExisting(episodesFolder, episodeId) is { } existing)
-                {
-                    (ChapterWriteResult seed, _) = EpisodeWorkbookWriter.SeedFirstLineIfEmpty(
-                        existing, EpisodeLibrary.DefaultFirstLine);
+        // ⛔ 여기 있던 `EnsureDialogueNodeFor`는 2026-09-18에 걷혔다. 화면이 에피소드를
+        //    만든 <b>뒤에</b> 카드를 한 줄 더 세우던 자리인데, 그 한 줄을 대본 탭이
+        //    잊어서 <b>작가의 탭에서 만든 에피소드만 쓸 자리가 없었다</b>.
+        //    이제 `AddEpisode`·`AddNextEpisode`가 카드까지 함께 만든다 — 창구가 잊을
+        //    자리 자체가 없어졌다.
 
-                    if (seed.Failure is { } failure)
-                    {
-                        _session?.SetStatus(failure);
-                    }
-                }
-            }
+        WorkbookEmitRun emitted = EmitSelectedChapter();
 
-            // ⛔ 여기 있던 `EnsureDialogueNodeFor`는 2026-09-18에 걷혔다. 화면이 에피소드를
-            //    만든 <b>뒤에</b> 카드를 한 줄 더 세우던 자리인데, 그 한 줄을 대본 탭이
-            //    잊어서 <b>작가의 탭에서 만든 에피소드만 쓸 자리가 없었다</b>.
-            //    이제 `AddEpisode`·`AddNextEpisode`가 카드까지 함께 만든다 — 창구가 잊을
-            //    자리 자체가 없어졌다.
-        }
-
-        ChapterEmitRun emitted = EmitSelectedChapter();
+        // 대본 워크북도 지금 낸다 — 카드가 섰으니 낼 것(첫 줄)이 프로젝트에 있다. 2026-10-29까지는
+        // 여기서 빈 템플릿을 만들고 첫 대사 문구를 셀에 심었다(C5에서 걷힘) — 그 문구는 프로젝트에
+        // 없는 글이라 워크북과 원본이 처음부터 갈렸다. 옛 빌드의 빈 유물이 남아 있어도 덮는다(.bak).
+        WorkbookEmitRun script = EpisodeNaming.CardFor(_session!.Project, chapterId, episodeId) is { } card
+            ? _session.WorkbookOutput.EmitScript(_session.Project, _session.ProjectPath, card)
+            : WorkbookEmitRun.Empty;
 
         _session?.SetStatus(
             $"'{episodeId}'을 더했습니다. Id와 대사엔트리를 패널에서 채워 주세요." +
-            emitted.Notice());
+            emitted.Notice() + script.Notice());
     }
 
     /// <summary>
@@ -4209,11 +4207,11 @@ public partial class ChapterGraphView : UserControl
     /// ⚠ 내는 장치는 <b>세션의 것</b>이다 — 미룬 목록(§5.3)이 화면마다 갈리면 안 되고,
     /// 화면을 지나지 않는 편집(되돌리기)도 같은 자리를 지나야 한다.
     /// </summary>
-    private ChapterEmitRun EmitSelectedChapter() =>
+    private WorkbookEmitRun EmitSelectedChapter() =>
         _session is { } session && _selectedChapterId is { } chapterId
-            ? session.ChapterOutput.Emit(
+            ? session.WorkbookOutput.Emit(
                 session.Project, session.ProjectPath, chapterId, session.Definition)
-            : ChapterEmitRun.Empty;
+            : WorkbookEmitRun.Empty;
 
     /// <summary>
     /// 옛 <c>Report</c> — 워크북에 <b>직접</b> 쓰던 시절의 창구다. 아직 파일을 직접 만지는

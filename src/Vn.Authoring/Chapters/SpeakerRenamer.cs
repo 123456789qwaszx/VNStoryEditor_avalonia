@@ -10,7 +10,8 @@ namespace Vn.Authoring.Chapters;
 /// <param name="WorkbooksWritten">그 줄을 가진 에피소드의 대본 워크북 중 다시 낸 수.</param>
 /// <param name="Deferred">
 /// 지금 다시 내지 못한 워크북의 사유(엑셀이 잡고 있음). <b>실패가 아니라 미룸이다</b> — 원본은
-/// 프로젝트라 이름은 이미 바뀌었고, 못 한 것은 그 파일을 지금 쓰는 일뿐이다. 다음 저장이 다시 낸다.
+/// 프로젝트라 이름은 이미 바뀌었고, 못 한 것은 그 파일을 지금 쓰는 일뿐이다. 조정자가 들고 있다가
+/// 엑셀이 놓으면 다시 내고(<see cref="WorkbookOutput.Retry"/>), 저장도 다시 낸다.
 /// </param>
 public sealed record SpeakerRenameOutcome(
     int ScriptLines,
@@ -40,13 +41,16 @@ public static class SpeakerRenamer
     /// 프로젝트 전체에서 화자 이름을 갈아 끼우고, 바뀐 줄을 가진 에피소드의 워크북을 다시 낸다.
     /// <b>등록부(`game.definition.json`)는 부르는 쪽이 저장한다.</b>
     /// </summary>
+    /// <param name="output">세션의 출력 조정자 — 못 낸 워크북을 기억하는 곳이 하나여야 한다(C5).</param>
     public static SpeakerRenameOutcome Rename(
         ProjectEditor editor,
+        WorkbookOutput output,
         string? projectPath,
         string oldName,
         string newName)
     {
         ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(output);
 
         string from = (oldName ?? string.Empty).Trim();
         string to = (newName ?? string.Empty).Trim();
@@ -74,28 +78,19 @@ public static class SpeakerRenamer
         int written = 0;
         var deferred = new List<string>();
 
-        // 그 대본을 읽는 에피소드 카드마다 워크북을 다시 낸다 — 판이 챕터의 것일 때만
-        // (챕터 아닌 판의 카드는 진행에 안 실리고 워크북도 없다).
+        // 그 대본을 읽는 에피소드 카드마다 워크북을 다시 낸다 — 챕터 아닌 판의 카드는 조정자가
+        // 낼 자리가 없다고 보고 그냥 지나간다(진행에 안 실리고 워크북도 없다).
         foreach (DialogueNode node in editor.Project.EnumerateNodes().OfType<DialogueNode>())
         {
-            if (node.ScriptId is not { } scriptId || !touched.Contains(scriptId) ||
-                EpisodeNaming.ChapterOf(editor.Project, node) is not { } chapter ||
-                EpisodeLibrary.FolderFor(projectPath, chapter.ChapterId) is not { } folder)
+            if (node.ScriptId is not { } scriptId || !touched.Contains(scriptId))
             {
                 continue;
             }
 
-            ChapterWriteResult result = EpisodeScriptOutput.Write(
-                editor.Project, node, EpisodeLibrary.PathFor(folder, EpisodeNaming.EpisodeIdOf(node)));
+            WorkbookEmitRun run = output.EmitScript(editor.Project, projectPath, node);
 
-            if (result.Written)
-            {
-                written++;
-            }
-            else
-            {
-                deferred.Add(result.Failure ?? "대본 워크북을 다시 내지 못했습니다.");
-            }
+            written += run.Written.Count;
+            deferred.AddRange(run.Deferred.Select(item => item.Failure));
         }
 
         return new SpeakerRenameOutcome(lines, written, deferred);

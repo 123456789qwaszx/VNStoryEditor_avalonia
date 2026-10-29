@@ -502,10 +502,9 @@ public sealed class ChapterGraphEditingTests
     [Fact]
     public void 빈_유물_워크북이_남아_있어도_다시_더하면_첫_대사가_선다() => HeadlessUi.Run(() =>
     {
-        // 에피소드 삭제는 대본 파일을 남긴다 — 지운 Id를 다시 더하면 EnsureWorkbook이
-        // 빈 유물을 그대로 재사용해 첫 대사가 안 심겼다(2026-08-26 소유자가 바로 밟았다:
-        // "여전히 기본 대사는 비어있는 상태야"). 비어 있을 때만 심고, 쓰다 만 대본에는
-        // 손대지 않는다.
+        // 옛 빌드의 빈 유물이 그 Id로 남아 있어도 첫 줄은 프로젝트에 선다(2026-08-26 소유자가
+        // 바로 밟았다: "여전히 기본 대사는 비어있는 상태야"). 2026-10-29(C5)부터 워크북은 그 줄에서
+        // 다시 나오므로 유물이 재사용되는 일 자체가 없다.
         using var project = new TempProject(SamplePath);
         (ChapterGraphView view, AuthoringSession session) = Show(project);
 

@@ -1008,21 +1008,10 @@ public partial class ScriptView : UserControl
     /// "미뤘다"로 바뀐 것이 이 자리다.
     /// </summary>
     /// <returns>상태줄에 덧붙일 말. 잘 났으면 빈 문자열이다 — 잘된 일은 조용하다.</returns>
-    private string EmitWorkbook(DialogueNode node)
-    {
-        if (_session is null ||
-            EpisodeTree.Selection is not { ChapterId: { } chapterId } ||
-            EpisodeLibrary.FolderFor(_session.ProjectPath, chapterId) is not { } folder)
-        {
-            return string.Empty;
-        }
-
-        // 노드가 어느 대본 파일의 것인지 — 표식이 없으면 이름이 곧 에피소드 Id다.
-        string episodeId = EpisodeNaming.EpisodeIdOf(node);
-
-        ChapterWriteResult written = EpisodeScriptOutput.Write(
-            _session.Project, node, EpisodeLibrary.PathFor(folder, episodeId));
-
-        return written.Written ? string.Empty : $" ⚠ {written.Failure}";
-    }
+    private string EmitWorkbook(DialogueNode node) =>
+        _session is null
+            ? string.Empty
+            // 내는 장치는 세션의 것이다 (C5) — 못 낸 것을 기억했다가 엑셀이 놓으면 다시 내고, 저장이
+            // 전부 다시 낸다. 화면이 직접 쓰면 그 둘이 없다.
+            : _session.WorkbookOutput.EmitScript(_session.Project, _session.ProjectPath, node).Notice();
 }
