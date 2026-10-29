@@ -3014,7 +3014,7 @@ public partial class ChapterGraphView : UserControl
         }
 
         // 폼을 제자리에 꽂는다 — 누른 줄 바로 아래(새 선택지면 목록 끝).
-        bool formOpen = editable && _edgeFormIndex >= 0;
+        bool formOpen = _edgeFormIndex >= 0;
         EdgeFormHost.IsVisible = formOpen;
         EdgeFormPanel.IsVisible = formOpen;
 
