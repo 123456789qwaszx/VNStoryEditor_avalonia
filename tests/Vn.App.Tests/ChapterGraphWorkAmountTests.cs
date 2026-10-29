@@ -126,23 +126,27 @@ public sealed class ChapterGraphWorkAmountTests : IDisposable
     });
 
     [Fact]
-    public void 워크북이_바뀌면_다시_증명한다() => HeadlessUi.Run(() =>
+    public void 모델이_바뀌면_다시_증명한다() => HeadlessUi.Run(() =>
     {
         // 지문이 낡은 결과를 붙들면 "고쳤는데 오류가 그대로"가 된다 — 캐시가 만드는
         // 가장 나쁜 거짓말이다.
-        (ChapterGraphView view, _, Window window) = Show();
-
-        string path = Path.Combine(_directory, ChapterLibrary.FolderName, "ch01.xlsx");
-        ChapterWorkbookWriter.AddEpisode(path, "새에피소드", title: "새것", 9, 9);
+        //
+        // ⚠ 2026-10-29까지는 <b>워크북 파일</b>을 바꿔 쟀다(지문이 디스크 해시였다). 이제
+        //    지문은 모델의 내용이고 워크북은 산출물이라, 다시 증명하게 하는 것은 프로젝트의
+        //    챕터를 고치는 일이다(excel-boundary C3).
+        (ChapterGraphView view, AuthoringSession session, Window window) = Show();
 
         int before = view.ValidationComputeCount;
+
+        session.Editor.AddEpisode("ch01", "새에피소드", title: "새것", 9, 9);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         view.RefreshFromDisk();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
         Assert.True(
             view.ValidationComputeCount > before,
-            "워크북이 바뀌었으면 다시 증명해야 한다");
+            "모델이 바뀌었으면 다시 증명해야 한다");
 
         window.Close();
     });
